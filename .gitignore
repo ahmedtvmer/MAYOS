@@ -14,5 +14,4 @@ agent/onboarding_graph.py
 agent/state.py
 agent/tools.py
 db
-scripts/test_llm_tools.py
 scripts/test_profile_tool.py
