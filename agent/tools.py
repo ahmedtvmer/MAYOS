@@ -1,9 +1,9 @@
 from langchain_core.tools import tool
-from agent.state import UserProfileSchema
+from agent.UserState import UserProfileSchema
 from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
 
-logger = MyosLogger().get_logger("agent_tools")
+logger = MyosLogger().get_logger(__name__)
 db = DatabaseManager()
 
 @tool(args_schema=UserProfileSchema)

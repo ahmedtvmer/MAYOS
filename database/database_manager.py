@@ -4,6 +4,7 @@ import pandas as pd
 import os
 from pathlib import Path
 import sys
+import uuid
 from datetime import datetime, timezone
 
 # Resolve the absolute path to the project root (/mnt/work/MAYOS)
@@ -108,6 +109,7 @@ class DatabaseManager:
                 age INTEGER NOT NULL,
                 weight_kg REAL NOT NULL,
                 height_cm REAL NOT NULL,
+                rep_preference TEXT DEFAULT 'balanced',
                 current_goal TEXT NOT NULL,
                 long_term_goal TEXT NOT NULL,
                 weekly_frequency INTEGER NOT NULL,
@@ -238,36 +240,104 @@ class DatabaseManager:
         columns = [col[0] for col in cursor.description]
         return dict(zip(columns, row))
 
-    def upsert_user_profile(self, profile: dict) -> None:
-        """Inserts or updates the single-user profile."""
-        cursor = self.conn.cursor()
+    def upsert_user_profile(self, profile_data: dict) -> None:
+        """
+        Inserts or updates the single-user profile using the validated schema dictionary.
+        """
         now = datetime.now(timezone.utc).isoformat()
+        cursor = self.conn.cursor()
+
+        cursor.execute("DELETE FROM user_profile")
+
         cursor.execute("""
             INSERT INTO user_profile (
-                id, proportions, age, weight_kg, height_cm,
-                current_goal, long_term_goal, weekly_frequency,
-                training_age_years, equipment_access,
-                injuries_or_limitations, stress_and_sleep,
-                created_at, updated_at
-            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                proportions = excluded.proportions,
-                age = excluded.age,
-                weight_kg = excluded.weight_kg,
-                height_cm = excluded.height_cm,
-                current_goal = excluded.current_goal,
-                long_term_goal = excluded.long_term_goal,
-                weekly_frequency = excluded.weekly_frequency,
-                training_age_years = excluded.training_age_years,
-                equipment_access = excluded.equipment_access,
-                injuries_or_limitations = excluded.injuries_or_limitations,
-                stress_and_sleep = excluded.stress_and_sleep,
-                updated_at = excluded.updated_at;
+                proportions,
+                age,
+                weight_kg,
+                height_cm,
+                rep_preference,
+                current_goal,
+                long_term_goal,
+                weekly_frequency,
+                training_age_years,
+                equipment_access,
+                injuries_or_limitations,
+                stress_and_sleep,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            profile["proportions"], profile["age"], profile["weight_kg"], profile["height_cm"],
-            profile["current_goal"], profile["long_term_goal"], profile["weekly_frequency"],
-            profile["training_age_years"], profile["equipment_access"],
-            profile.get("injuries_or_limitations", "None"), profile["stress_and_sleep"],
-            now, now
+            profile_data.get("proportions", "balanced"),
+            profile_data.get("age", 25),
+            profile_data.get("weight_kg", 75.0),
+            profile_data.get("height_cm", 175.0),
+            profile_data.get("rep_preference", "balanced"),
+            profile_data.get("current_goal", "hypertrophy"),
+            profile_data.get("long_term_goal", "progressive overload"),
+            min(max(profile_data.get("weekly_frequency", 4), 1), 5), # hard-clamped to max 5 for program generator
+            profile_data.get("training_age_years", 1.0),
+            profile_data.get("equipment_access", "commercial gym"),
+            profile_data.get("injuries_or_limitations", "None"),
+            profile_data.get("stress_and_sleep", "normal"),
+            now
         ))
         self.conn.commit()
+
+    def clear_user_profile(self) -> None:
+        """Clears the singleton user profile row."""
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM user_profile WHERE id = 1")
+        self.conn.commit()
+
+    def save_training_program(self, program_data: dict) -> str:
+        """
+        Persists a generated program, its days, and its exercise prescriptions into SQLite.
+        Deactivates any existing active program.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        program_id = str(uuid.uuid4())
+        cursor = self.conn.cursor()
+
+        try:
+            # Set prior programs as inactive
+            cursor.execute("UPDATE training_programs SET is_active = 0 WHERE is_active = 1")
+
+            # 1. Insert Master Program
+            cursor.execute("""
+                INSERT INTO training_programs (id, name, split_type, weekly_frequency, is_active, created_at)
+                VALUES (?, ?, ?, ?, 1, ?)
+            """, (
+                program_id,
+                program_data["program_name"],
+                program_data["split_type"],
+                program_data["weekly_frequency"],
+                now
+            ))
+
+            # 2. Insert Days & Exercises
+            for day in program_data["days"]:
+                day_id = str(uuid.uuid4())
+                cursor.execute("""
+                    INSERT INTO program_days (id, program_id, day_name, day_order)
+                    VALUES (?, ?, ?, ?)
+                """, (day_id, program_id, day["day_name"], day["day_order"]))
+
+                for idx, ex in enumerate(day["exercises"], start=1):
+                    ex_entry_id = str(uuid.uuid4())
+                    cursor.execute("""
+                        INSERT INTO program_exercises (
+                            id, day_id, exercise_id, order_in_day,
+                            target_sets, target_reps_min, target_reps_max,
+                            target_rpe, rest_seconds, notes
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        ex_entry_id, day_id, ex["exercise_id"], idx,
+                        ex["target_sets"], ex["target_reps_min"], ex["target_reps_max"],
+                        ex.get("target_rpe", 8.5), ex.get("rest_seconds", 120),
+                        ex.get("notes", "")
+                    ))
+
+            self.conn.commit()
+            return program_id
+        except Exception as e:
+            self.conn.rollback()
+            raise RuntimeError(f"Database error while saving program: {e}")

@@ -1,9 +1,15 @@
 import re
-from typing import Annotated, Sequence, Optional
+from typing import Annotated, Sequence, Optional, Literal, Dict, Any
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field, field_validator
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
+
+class OnboardingState(TypedDict):
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+    intake_step: int
+    is_complete: bool
+    profile_data: Optional[Dict[str, Any]]
 
 class UserProfileSchema(BaseModel):
     # Proportions & Biometrics
@@ -11,6 +17,10 @@ class UserProfileSchema(BaseModel):
     age: int = Field(ge=12, le=100)
     weight_kg: float = Field(gt=30.0, lt=200.0)
     height_cm: float = Field(gt=100.0, lt=210.0)
+    rep_preference: Optional[Literal["low", "balanced", "high"]] = Field(
+        default="balanced",
+        description="User's preferred rep range bias: 'low' (4-8 reps), 'balanced' (6-12 reps), 'high' (10-20 reps)"
+    )
     
     # Goals & Volume Capacity
     current_goal: str = Field(description="Immediate training objective")
@@ -64,3 +74,4 @@ class AgentState(TypedDict):
     profile: Optional[dict]  # Store raw dict for SQLite checkpointer serialization
     active_session_id: Optional[str]
     intake_step: int         # 0: unstarted, 1: biometrics, 2: goals, 3: constraints, 4: complete
+

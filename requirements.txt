@@ -6,4 +6,5 @@ langchain-core>=1.6.1
 langchain-huggingface>=1.2.2
 sentence-transformers>=6.0.1
 langgraph>=1.2.11
+streamlit>=1.63.0
 

@@ -6,6 +6,9 @@ sys.path.append(str(BASE_DIR))
 
 from agent.tools import save_user_profile
 from database.database_manager import DatabaseManager
+from utils.logger import MyosLogger
+
+logger = MyosLogger().get_logger(__name__)
 
 db = DatabaseManager()
 
@@ -26,18 +29,18 @@ def test_profile_flow():
     }
 
     result = save_user_profile.invoke(raw_payload)
-    print(f"Tool Output: {result}")
+    logger.info(f"Tool Output: {result}")
 
     saved = db.get_user_profile()
-    print("\nSaved SQLite Record:")
+    logger.info("\nSaved SQLite Record:")
     for k, v in saved.items():
-        print(f"  {k}: {v}")
+        logger.info(f"  {k}: {v}")
 
     assert saved["proportions"] == "long_legs"
     assert saved["weight_kg"] == 80
     assert saved["height_cm"] == 183.0
     assert saved["weekly_frequency"] == 4
-    print("\nAll assertions passed.")
+    logger.info("\nAll assertions passed.")
 
 if __name__ == "__main__":
     test_profile_flow()
