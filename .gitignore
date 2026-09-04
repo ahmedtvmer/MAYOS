@@ -11,4 +11,3 @@ wheels/
 data
 .env
 db
-app.py

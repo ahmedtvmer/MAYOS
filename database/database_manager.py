@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import uuid
 from datetime import datetime, timezone
+import re
 
 # Resolve the absolute path to the project root (/mnt/work/MAYOS)
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -13,6 +14,7 @@ sys.path.append(str(BASE_DIR))
 DEFAULT_DB_PATH = BASE_DIR / "db" / "myos.db"
 DEFAULT_CSV_PATH = BASE_DIR / "data" / "processed_exercises.csv"
 from utils.logger import MyosLogger
+from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
 
 logger = MyosLogger().get_logger(__name__)
 
@@ -49,113 +51,126 @@ class DatabaseManager:
     def create_schema(self):
         cursor = self.conn.cursor()
         cursor.executescript("""
-            PRAGMA foreign_keys = ON;
+        PRAGMA foreign_keys = ON;
 
-            CREATE TABLE IF NOT EXISTS exercises (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                body_part TEXT NOT NULL,
-                target_muscle TEXT NOT NULL,
-                equipment TEXT NOT NULL,
-                image_path TEXT,
-                gif_path TEXT,
-                instructions TEXT
-            );
+        CREATE TABLE IF NOT EXISTS exercises (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            body_part TEXT NOT NULL,
+            target_muscle TEXT NOT NULL,
+            equipment TEXT NOT NULL,
+            image_path TEXT,
+            gif_path TEXT,
+            instructions TEXT
+        );
 
-            CREATE TABLE IF NOT EXISTS exercise_secondary_muscles (
-                exercise_id TEXT NOT NULL,
-                muscle TEXT NOT NULL,
-                FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
-            );
+        CREATE TABLE IF NOT EXISTS exercise_secondary_muscles (
+            exercise_id TEXT NOT NULL,
+            muscle TEXT NOT NULL,
+            FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
+        );
 
-            CREATE TABLE IF NOT EXISTS training_programs (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                split_type TEXT NOT NULL,       -- 'Upper/Lower', 'PPL', 'Full Body'
-                weekly_frequency INTEGER NOT NULL,
-                is_active INTEGER DEFAULT 1,    -- Only one active program at a time
-                created_at TEXT NOT NULL
-            );
+        CREATE TABLE IF NOT EXISTS training_programs (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            split_type TEXT NOT NULL,       -- 'Upper/Lower', 'PPL', 'Full Body'
+            weekly_frequency INTEGER NOT NULL,
+            is_active INTEGER DEFAULT 1,    -- Only one active program at a time
+            created_at TEXT NOT NULL
+        );
 
-            CREATE TABLE IF NOT EXISTS program_days (
-                id TEXT PRIMARY KEY,
-                program_id TEXT NOT NULL,
-                day_name TEXT NOT NULL,          -- 'Upper A', 'Lower A', 'Push', etc.
-                day_order INTEGER NOT NULL,      -- 1, 2, 3, 4
-                FOREIGN KEY(program_id) REFERENCES training_programs(id) ON DELETE CASCADE
-            );
+        CREATE TABLE IF NOT EXISTS program_days (
+            id TEXT PRIMARY KEY,
+            program_id TEXT NOT NULL,
+            day_name TEXT NOT NULL,          -- 'Upper A', 'Lower A', 'Push', etc.
+            day_order INTEGER NOT NULL,      -- 1, 2, 3, 4
+            FOREIGN KEY(program_id) REFERENCES training_programs(id) ON DELETE CASCADE
+        );
 
-            CREATE TABLE IF NOT EXISTS program_exercises (
-                id TEXT PRIMARY KEY,
-                day_id TEXT NOT NULL,
-                exercise_id TEXT NOT NULL,
-                order_in_day INTEGER NOT NULL,
-                target_sets INTEGER NOT NULL,
-                target_reps_min INTEGER NOT NULL,
-                target_reps_max INTEGER NOT NULL,
-                target_rpe REAL,
-                rest_seconds INTEGER DEFAULT 120,
-                notes TEXT,
-                FOREIGN KEY(day_id) REFERENCES program_days(id) ON DELETE CASCADE,
-                FOREIGN KEY(exercise_id) REFERENCES exercises(id)
-            );
+        CREATE TABLE IF NOT EXISTS program_exercises (
+            id TEXT PRIMARY KEY,
+            day_id TEXT NOT NULL,
+            exercise_id TEXT NOT NULL,
+            order_in_day INTEGER NOT NULL,
+            target_sets INTEGER NOT NULL,
+            target_reps_min INTEGER NOT NULL,
+            target_reps_max INTEGER NOT NULL,
+            target_rpe REAL,
+            rest_seconds INTEGER DEFAULT 120,
+            notes TEXT,
+            FOREIGN KEY(day_id) REFERENCES program_days(id) ON DELETE CASCADE,
+            FOREIGN KEY(exercise_id) REFERENCES exercises(id)
+        );
 
-            CREATE INDEX IF NOT EXISTS idx_program_days_prog ON program_days(program_id);
-            CREATE INDEX IF NOT EXISTS idx_program_ex_day ON program_exercises(day_id);
+        CREATE INDEX IF NOT EXISTS idx_program_days_prog ON program_days(program_id);
+        CREATE INDEX IF NOT EXISTS idx_program_ex_day ON program_exercises(day_id);
 
-            CREATE TABLE IF NOT EXISTS user_profile (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                proportions TEXT NOT NULL,
-                age INTEGER NOT NULL,
-                weight_kg REAL NOT NULL,
-                height_cm REAL NOT NULL,
-                rep_preference TEXT DEFAULT 'balanced',
-                current_goal TEXT NOT NULL,
-                long_term_goal TEXT NOT NULL,
-                weekly_frequency INTEGER NOT NULL,
-                training_age_years REAL NOT NULL,
-                equipment_access TEXT NOT NULL,
-                injuries_or_limitations TEXT DEFAULT 'None',
-                stress_and_sleep TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
+        CREATE TABLE IF NOT EXISTS user_profile (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            gender TEXT DEFAULT 'male',
+            proportions TEXT NOT NULL,
+            age INTEGER NOT NULL,
+            weight_kg REAL NOT NULL,
+            height_cm REAL NOT NULL,
+            rep_preference TEXT DEFAULT 'balanced',
+            current_goal TEXT NOT NULL,
+            long_term_goal TEXT NOT NULL,
+            weekly_frequency INTEGER NOT NULL,
+            training_age_years REAL NOT NULL,
+            equipment_access TEXT NOT NULL,
+            injuries_or_limitations TEXT DEFAULT 'None',
+            stress_and_sleep TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
 
-            CREATE TABLE IF NOT EXISTS workout_sessions (
-                id TEXT PRIMARY KEY,
-                session_date TEXT NOT NULL,
-                split_name TEXT NOT NULL,
-                started_at TEXT NOT NULL,
-                completed_at TEXT,
-                session_notes TEXT,
-                readiness_score INTEGER CHECK(readiness_score BETWEEN 1 AND 5)
-            );
+        CREATE TABLE IF NOT EXISTS workout_sessions (
+            id TEXT PRIMARY KEY,
+            session_date TEXT NOT NULL,
+            split_name TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            session_notes TEXT,
+            readiness_score INTEGER CHECK(readiness_score BETWEEN 1 AND 5)
+        );
 
-            CREATE TABLE IF NOT EXISTS workout_sets (
-                id TEXT PRIMARY KEY,
-                session_id TEXT NOT NULL,
-                exercise_id TEXT NOT NULL,
-                set_index INTEGER NOT NULL,
-                weight_kg REAL NOT NULL,
-                reps INTEGER NOT NULL,
-                rpe REAL CHECK(rpe BETWEEN 1 AND 10),
-                is_warmup INTEGER DEFAULT 0,
-                logged_at TEXT NOT NULL,
-                FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE,
-                FOREIGN KEY(exercise_id) REFERENCES exercises(id)
-            );
+        CREATE TABLE IF NOT EXISTS workout_sets (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            exercise_id TEXT NOT NULL,
+            set_index INTEGER NOT NULL,
+            weight_kg REAL NOT NULL,
+            reps INTEGER NOT NULL,
+            rpe REAL CHECK(rpe BETWEEN 1 AND 10),
+            is_warmup INTEGER DEFAULT 0,
+            logged_at TEXT NOT NULL,
+            FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE,
+            FOREIGN KEY(exercise_id) REFERENCES exercises(id)
+        );
 
-            CREATE INDEX IF NOT EXISTS idx_sets_session ON workout_sets(session_id);
-            CREATE INDEX IF NOT EXISTS idx_sets_exercise ON workout_sets(exercise_id);
-            CREATE INDEX IF NOT EXISTS idx_sessions_date ON workout_sessions(session_date);
+        CREATE INDEX IF NOT EXISTS idx_sets_session ON workout_sets(session_id);
+        CREATE INDEX IF NOT EXISTS idx_sets_exercise ON workout_sets(exercise_id);
+        CREATE INDEX IF NOT EXISTS idx_sessions_date ON workout_sessions(session_date);
         """)
 
         cursor.execute(f"""
             CREATE VIRTUAL TABLE IF NOT EXISTS vec_exercises USING vec0(
                 exercise_id INTEGER PRIMARY KEY,
                 embedding float[{self.EMBEDDING_DIM}] distance_metric=cosine
-            );
+        );
         """)
+        
+        # Safe column migrations for existing SQLite databases
+        try:
+            cursor.execute("ALTER TABLE user_profile ADD COLUMN gender TEXT DEFAULT 'male'")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE user_profile ADD COLUMN rep_preference TEXT DEFAULT 'balanced'")
+        except Exception:
+            pass
+
         self.conn.commit()
 
     def initialize_and_seed(self, csv_path=DEFAULT_CSV_PATH):
@@ -163,14 +178,14 @@ class DatabaseManager:
 
         cursor = self.conn.cursor()
         
-        # 2. Check if exercises are already populated
+        # Check if exercises are already populated
         cursor.execute("SELECT COUNT(*) FROM exercises")
         count = cursor.fetchone()[0]
         if count > 0:
             logger.info(f"Database already contains {count} exercises. Skipping CSV seed.")
             return
 
-        # 3. Load CSV and populate tables
+        # Load CSV and populate tables
         logger.info("Seeding database from CSV...")
 
         try:
@@ -179,9 +194,19 @@ class DatabaseManager:
             logger.error(f"Error: {csv_path} not found. Run dataset_handler.py first.")
             return
 
-        # 1. Seed Core Exercises (instructions are already clean)
+        # 1. Clean and Seed Core Exercises
         core_df = df[['id', 'name', 'bodyPart', 'target', 'equipment', 'image_path', 'gif_path', 'instructions']].copy()
         core_df.rename(columns={'bodyPart': 'body_part', 'target': 'target_muscle'}, inplace=True)
+        
+        # Clean naming artifacts: replace leading 'lever ' with 'machine ' and drop 'v. 2'
+        core_df['name'] = (
+            core_df['name']
+            .astype(str)
+            .str.replace(r"^lever\s+", "machine ", regex=True, flags=re.IGNORECASE)
+            .str.replace(r"\s+v\.\s*\d+", "", regex=True, flags=re.IGNORECASE)
+            .str.strip()
+        )
+
         core_df.to_sql('exercises', self.conn, if_exists='append', index=False)
 
         # 2. Process Secondary Muscles using Pandas melt
@@ -194,7 +219,7 @@ class DatabaseManager:
         muscles_df.to_sql('exercise_secondary_muscles', self.conn, if_exists='append', index=False)
 
         self.conn.commit()
-        logger.info("Myos database initialized and seeded successfully.")
+        logger.info("Myos database initialized and seeded successfully with sanitized exercise names.")
 
     def search_similar_exercises(self, query_vector: list[float], limit: int = 5) -> list[dict]:
         """
@@ -242,15 +267,45 @@ class DatabaseManager:
 
     def upsert_user_profile(self, profile_data: dict) -> None:
         """
-        Inserts or updates the single-user profile using the validated schema dictionary.
+        Upserts the singleton user profile row (id = 1) using named parameters.
         """
         now = datetime.now(timezone.utc).isoformat()
         cursor = self.conn.cursor()
 
-        cursor.execute("DELETE FROM user_profile")
+        # Ensure columns exist if working from an existing database file
+        for col_def in [
+            ("gender", "TEXT DEFAULT 'male'"),
+            ("rep_preference", "TEXT DEFAULT 'balanced'")
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE user_profile ADD COLUMN {col_def[0]} {col_def[1]}")
+                self.conn.commit()
+            except Exception:
+                pass
+
+        params = {
+            "id": 1,
+            "gender": str(profile_data.get("gender", "male")).lower(),
+            "proportions": str(profile_data.get("proportions", "balanced")),
+            "age": int(profile_data.get("age", 25)),
+            "weight_kg": float(profile_data.get("weight_kg", 75.0)),
+            "height_cm": float(profile_data.get("height_cm", 175.0)),
+            "rep_preference": str(profile_data.get("rep_preference", "balanced")),
+            "current_goal": str(profile_data.get("current_goal", "hypertrophy")),
+            "long_term_goal": str(profile_data.get("long_term_goal", "progressive overload")),
+            "weekly_frequency": min(max(int(profile_data.get("weekly_frequency", 4)), 1), 5),
+            "training_age_years": float(profile_data.get("training_age_years", 1.0)),
+            "equipment_access": str(profile_data.get("equipment_access", "commercial gym")),
+            "injuries_or_limitations": str(profile_data.get("injuries_or_limitations", "None")),
+            "stress_and_sleep": str(profile_data.get("stress_and_sleep", "normal")),
+            "created_at": now,
+            "updated_at": now
+        }
 
         cursor.execute("""
             INSERT INTO user_profile (
+                id,
+                gender,
                 proportions,
                 age,
                 weight_kg,
@@ -263,23 +318,43 @@ class DatabaseManager:
                 equipment_access,
                 injuries_or_limitations,
                 stress_and_sleep,
-                created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            profile_data.get("proportions", "balanced"),
-            profile_data.get("age", 25),
-            profile_data.get("weight_kg", 75.0),
-            profile_data.get("height_cm", 175.0),
-            profile_data.get("rep_preference", "balanced"),
-            profile_data.get("current_goal", "hypertrophy"),
-            profile_data.get("long_term_goal", "progressive overload"),
-            min(max(profile_data.get("weekly_frequency", 4), 1), 5), # hard-clamped to max 5 for program generator
-            profile_data.get("training_age_years", 1.0),
-            profile_data.get("equipment_access", "commercial gym"),
-            profile_data.get("injuries_or_limitations", "None"),
-            profile_data.get("stress_and_sleep", "normal"),
-            now
-        ))
+                created_at,
+                updated_at
+            ) VALUES (
+                :id,
+                :gender,
+                :proportions,
+                :age,
+                :weight_kg,
+                :height_cm,
+                :rep_preference,
+                :current_goal,
+                :long_term_goal,
+                :weekly_frequency,
+                :training_age_years,
+                :equipment_access,
+                :injuries_or_limitations,
+                :stress_and_sleep,
+                :created_at,
+                :updated_at
+            )
+            ON CONFLICT(id) DO UPDATE SET
+                gender = excluded.gender,
+                proportions = excluded.proportions,
+                age = excluded.age,
+                weight_kg = excluded.weight_kg,
+                height_cm = excluded.height_cm,
+                rep_preference = excluded.rep_preference,
+                current_goal = excluded.current_goal,
+                long_term_goal = excluded.long_term_goal,
+                weekly_frequency = excluded.weekly_frequency,
+                training_age_years = excluded.training_age_years,
+                equipment_access = excluded.equipment_access,
+                injuries_or_limitations = excluded.injuries_or_limitations,
+                stress_and_sleep = excluded.stress_and_sleep,
+                updated_at = excluded.updated_at
+        """, params)
+
         self.conn.commit()
 
     def clear_user_profile(self) -> None:
@@ -341,3 +416,54 @@ class DatabaseManager:
         except Exception as e:
             self.conn.rollback()
             raise RuntimeError(f"Database error while saving program: {e}")
+
+    def get_active_program(self) -> GeneratedProgramSchema | None:
+        """Hydrates the active training program directly from SQLite without LLM synthesis."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT id, name, split_type, weekly_frequency FROM training_programs WHERE is_active = 1 ORDER BY created_at DESC LIMIT 1")
+        prog_row = cursor.fetchone()
+        if not prog_row:
+            return None
+
+        prog_id, name, split_type, weekly_freq = prog_row
+
+        # Fetch days
+        cursor.execute("SELECT id, day_name, day_order FROM program_days WHERE program_id = ? ORDER BY day_order ASC", (prog_id,))
+        day_rows = cursor.fetchall()
+
+        days = []
+        for d_id, d_name, d_order in day_rows:
+            cursor.execute("""
+                SELECT pe.exercise_id, e.name, pe.target_sets, pe.target_reps_min, 
+                       pe.target_reps_max, pe.target_rpe, pe.rest_seconds, pe.notes, 
+                       e.image_path, e.gif_path
+                FROM program_exercises pe
+                JOIN exercises e ON pe.exercise_id = e.id
+                WHERE pe.day_id = ?
+                ORDER BY pe.order_in_day ASC
+            """, (d_id,))
+            ex_rows = cursor.fetchall()
+
+            exercises = [
+                ProgramExerciseSchema(
+                    exercise_id=str(r[0]),
+                    exercise_name=r[1],
+                    target_sets=r[2],
+                    target_reps_min=r[3],
+                    target_reps_max=r[4],
+                    target_rpe=r[5] or 8.5,
+                    rest_seconds=r[6] or 120,
+                    notes=r[7],
+                    image_path=r[8],
+                    gif_path=r[9]
+                )
+                for r in ex_rows
+            ]
+            days.append(ProgramDaySchema(day_name=d_name, day_order=d_order, exercises=exercises))
+
+        return GeneratedProgramSchema(
+            program_name=name,
+            split_type=split_type,
+            weekly_frequency=weekly_freq,
+            days=days
+        )

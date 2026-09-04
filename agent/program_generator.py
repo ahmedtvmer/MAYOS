@@ -91,7 +91,9 @@ def synthesize_day(
                 "name": c["name"],
                 "mechanic": mechanic,
                 "equipment": c["equipment"],
-                "recommended_reps": f"{rep_min}-{rep_max}"
+                "recommended_reps": f"{rep_min}-{rep_max}",
+                "image_path": c.get("image_path"),
+                "gif_path": c.get("gif_path")
             }
             candidate_pool[muscle].append(c_info)
             candidate_lookup[cid] = c_info
@@ -128,18 +130,16 @@ def synthesize_day(
         meta = candidate_lookup.get(ex.exercise_id, {})
         mechanic = meta.get("mechanic", "isolation")
         
-        # Enforce exact rep preference corridor
+        # Attach media assets
+        ex.image_path = meta.get("image_path")
+        ex.gif_path = meta.get("gif_path")
+
         expected_min, expected_max = get_target_rep_window(mechanic, rep_preference)
         ex.target_reps_min = expected_min
         ex.target_reps_max = expected_max
-
-        # Ensure working sets remain 2 or 3
         ex.target_sets = min(max(ex.target_sets, 2), 3)
-
-        # Enforce deterministic, high-yield execution cues
         ex.notes = get_biomechanical_cue(ex.exercise_name, mechanic)
 
-        # Compounds prioritized first in list (0), Isolations last (1)
         cleaned_exercises.append((0 if mechanic == "compound" else 1, ex))
 
     cleaned_exercises.sort(key=lambda x: x[0])
@@ -171,17 +171,21 @@ def generate_program_pipeline(
     user_split_override: str | None = None,
     rep_preference_override: str | None = None
 ) -> tuple[GeneratedProgramSchema, str]:
-    """Orchestrates candidate retrieval, LLM synthesis, database persistence, and table rendering."""
     profile = db.get_user_profile()
     if not profile:
         raise ValueError("No user profile found in SQLite. Run onboarding first.")
 
     freq = profile["weekly_frequency"]
-    split_plan: DynamicSplitPlan = resolve_split(frequency=freq, preference=user_split_override)
+    gender = profile.get("gender", "male")
+    split_plan: DynamicSplitPlan = resolve_split(
+        frequency=freq, 
+        preference=user_split_override, 
+        gender=gender
+    )
     rep_pref = rep_preference_override or profile.get("rep_preference", "balanced")
-    
-    logger.info(f"Generating {split_plan.split_name} ({len(split_plan.days)} days) with '{rep_pref}' rep preference...")
 
+    logger.info(f"Generating {split_plan.split_name} ({len(split_plan.days)} days) for {gender} with '{rep_pref}' rep preference...")
+    
     generated_days: List[ProgramDaySchema] = []
     used_exercise_ids: set[str] = set()
 

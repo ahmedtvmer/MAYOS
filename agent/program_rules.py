@@ -86,17 +86,64 @@ Rules:
 5. Provide 4 to 5 distinct target muscles per day to avoid session volume padding.
 """
 
-def get_default_split(frequency: int) -> DynamicSplitPlan:
-    """Presets featuring 5 distinct, non-redundant movement slots per day."""
+def get_default_split(frequency: int, gender: str = "male") -> DynamicSplitPlan:
+    is_female = (gender or "").lower() == "female"
+
+    if is_female:
+        presets = {
+            1: DynamicSplitPlan(
+                split_name="Full Body (Glute Specialized)",
+                days=[
+                    CustomDayPlan(
+                        day_order=1,
+                        day_name="Full Body",
+                        target_body_parts=["glutes", "hamstrings", "quads", "lats", "abs"]
+                    )
+                ]
+            ),
+            2: DynamicSplitPlan(
+                split_name="Lower (Glute Bias) / Upper & Core",
+                days=[
+                    CustomDayPlan(day_order=1, day_name="Lower (Glute & Quad)", target_body_parts=["glutes", "quads", "hamstrings", "calves", "abs"]),
+                    CustomDayPlan(day_order=2, day_name="Upper & Glute Pump", target_body_parts=["lats", "upper back", "chest", "side delts", "glutes"])
+                ]
+            ),
+            3: DynamicSplitPlan(
+                split_name="Glute Hypertrophy Tri-Phase",
+                days=[
+                    CustomDayPlan(day_order=1, day_name="Lower A (Glute & Quad)", target_body_parts=["glutes", "quads", "calves", "lats", "abs"]),
+                    CustomDayPlan(day_order=2, day_name="Upper & Posture", target_body_parts=["lats", "upper back", "chest", "side delts", "rear delts"]),
+                    CustomDayPlan(day_order=3, day_name="Lower B (Glute & Hamstring)", target_body_parts=["glutes", "hamstrings", "glutes", "quads", "abs"])
+                ]
+            ),
+            4: DynamicSplitPlan(
+                split_name="Lower Body & Glute Specialization",
+                days=[
+                    CustomDayPlan(day_order=1, day_name="Lower 1 (Glute & Quad Bias)", target_body_parts=["glutes", "quads", "hamstrings", "calves", "abs"]),
+                    CustomDayPlan(day_order=2, day_name="Upper (Back & Delts Focus)", target_body_parts=["lats", "upper back", "chest", "side delts", "triceps"]),
+                    CustomDayPlan(day_order=3, day_name="Lower 2 (Glute & Hamstring Bias)", target_body_parts=["glutes", "hamstrings", "quads", "glutes", "calves"]),
+                    CustomDayPlan(day_order=4, day_name="Full Body (Glute & Core Finisher)", target_body_parts=["glutes", "lats", "side delts", "hamstrings", "abs"])
+                ]
+            ),
+            5: DynamicSplitPlan(
+                split_name="5-Day Glute & Physique Specialization",
+                days=[
+                    CustomDayPlan(day_order=1, day_name="Glutes & Quads", target_body_parts=["glutes", "quads", "calves", "abs"]),
+                    CustomDayPlan(day_order=2, day_name="Upper (Back & Shoulders)", target_body_parts=["lats", "upper back", "chest", "side delts"]),
+                    CustomDayPlan(day_order=3, day_name="Glutes & Hamstrings", target_body_parts=["glutes", "hamstrings", "glutes", "calves"]),
+                    CustomDayPlan(day_order=4, day_name="Upper & Core", target_body_parts=["lats", "upper back", "side delts", "abs"]),
+                    CustomDayPlan(day_order=5, day_name="Glute Focus & Legs", target_body_parts=["glutes", "quads", "hamstrings", "abs"])
+                ]
+            )
+        }
+        return presets[frequency]
+
+    # Male Defaults
     presets = {
         1: DynamicSplitPlan(
             split_name="Consolidated Full Body",
             days=[
-                CustomDayPlan(
-                    day_order=1,
-                    day_name="Full Body",
-                    target_body_parts=["quads", "chest", "lats", "hamstrings", "side delts"]
-                )
+                CustomDayPlan(day_order=1, day_name="Full Body", target_body_parts=["quads", "chest", "lats", "hamstrings", "side delts"])
             ]
         ),
         2: DynamicSplitPlan(
@@ -136,15 +183,16 @@ def get_default_split(frequency: int) -> DynamicSplitPlan:
     }
     return presets[frequency]
 
-def resolve_split(frequency: int, preference: str | None = None) -> DynamicSplitPlan:
+def resolve_split(frequency: int, preference: str | None = None, gender: str = "male") -> DynamicSplitPlan:
     clamped_freq = min(max(int(frequency), 1), 5)
     if not preference or preference.strip().lower() in ["standard", "default", "none", "balanced"]:
-        return get_default_split(clamped_freq)
+        return get_default_split(clamped_freq, gender=gender)
 
     structured_llm = llm.with_structured_output(DynamicSplitPlan)
+    gender_context = "female trainee (prioritize glutes and lower body; reduce arm volume)" if gender.lower() == "female" else "male trainee"
     prompt = [
         SystemMessage(content=SYSTEM_SPLIT_PROMPT.format(frequency=clamped_freq)),
-        HumanMessage(content=f"Committed frequency: {clamped_freq} days/week. User Split Request: '{preference}'")
+        HumanMessage(content=f"Frequency: {clamped_freq} days/week. Trainee: {gender_context}. User Split Request: '{preference}'")
     ]
     plan: DynamicSplitPlan = structured_llm.invoke(prompt)
 
@@ -199,7 +247,7 @@ def fetch_filtered_candidates(
         bodyweight_clause = "AND LOWER(name) NOT LIKE '%push-up%' AND LOWER(name) NOT LIKE '%pushup%'"
 
     query = f"""
-        SELECT id, name, body_part, target_muscle, equipment, instructions 
+        SELECT id, name, body_part, target_muscle, equipment, instructions, image_path, gif_path 
         FROM exercises 
         WHERE ({where_clause})
           AND LOWER(body_part) != 'cardio'

@@ -12,6 +12,8 @@ class ProgramExerciseSchema(BaseModel):
     target_rpe: float = Field(default=8.5, ge=7.0, le=10.0, description="Proximity to failure (7.0 to 10.0)")
     rest_seconds: int = Field(default=120, description="Rest period in seconds")
     notes: Optional[str] = Field(default=None, description="Biomechanical execution cue")
+    image_path: Optional[str] = Field(default=None, description="Local path or URL to demonstration image")
+    gif_path: Optional[str] = Field(default=None, description="Local path or URL to demonstration animated GIF")
 
 class ProgramDaySchema(BaseModel):
     day_name: str = Field(description="e.g., 'Upper 1', 'Lower 1'")

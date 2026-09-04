@@ -12,6 +12,10 @@ class OnboardingState(TypedDict):
     profile_data: Optional[Dict[str, Any]]
 
 class UserProfileSchema(BaseModel):
+    gender: Literal["male", "female"] = Field(
+        default="male",
+        description="Biological sex/gender for physique prioritization: 'male' or 'female'"
+    )
     # Proportions & Biometrics
     proportions: str = Field(description="Limb-to-torso proportions: 'long_legs', 'long_torso', or 'balanced'")
     age: int = Field(ge=12, le=100)
