@@ -8,7 +8,9 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
+# pyrefly: ignore [missing-import]
 from database.database_manager import DatabaseManager
+# pyrefly: ignore [missing-import]
 from utils.logger import MyosLogger
 
 Embedding = os.getenv("EMBEDDING_MODEL")
@@ -21,8 +23,7 @@ def serialize_f32(vector: list[float]) -> bytes:
 
 def seed_exercise_embeddings():
     db = DatabaseManager()
-    conn = db.get_connection()
-    cursor = conn.cursor()
+    cursor = db.catalog_conn.cursor()
 
     logger.info("Loading embedding model...")
     embeddings = HuggingFaceEmbeddings(
@@ -50,7 +51,7 @@ def seed_exercise_embeddings():
         "INSERT INTO vec_exercises (exercise_id, embedding) VALUES (?, ?)",
         batch_data
     )
-    conn.commit()
+    db.catalog_conn.commit()
     logger.info("Successfully seeded vec_exercises.")
 
 if __name__ == "__main__":

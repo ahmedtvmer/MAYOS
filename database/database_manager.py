@@ -24,41 +24,59 @@ class DatabaseManager:
     _instance = None
     EMBEDDING_DIM = 384
 
-    def __new__(cls, catalog_path=DEFAULT_CATALOG_PATH, users_dir=DEFAULT_USERS_DIR, active_user="default"):
+    def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super(DatabaseManager, cls).__new__(cls)
-            cls._instance.catalog_path = Path(catalog_path)
-            cls._instance.users_dir = Path(users_dir)
-            cls._instance.active_user = cls._sanitize_username(active_user)
-
-            os.makedirs(cls._instance.catalog_path.parent, exist_ok=True)
-            os.makedirs(cls._instance.users_dir, exist_ok=True)
-
-            # 1. Initialize Shared Catalog Connection (Holds sqlite-vec)
-            cls._instance.catalog_conn = sqlite3.connect(cls._instance.catalog_path, check_same_thread=False)
-            cls._instance.catalog_conn.execute("PRAGMA foreign_keys = ON;")
-            cls._instance.catalog_conn.enable_load_extension(True)
-            sqlite_vec.load(cls._instance.catalog_conn)
-            cls._instance.catalog_conn.enable_load_extension(False)
-
-            # 2. Mount Active User Database
-            cls._instance.user_conn = None
-            cls._instance.switch_user(cls._instance.active_user)
-
-            logger.info("DatabaseManager initialized with decoupled catalog and user ledgers.")
+            cls._instance._initialized = False
         return cls._instance
+
+    def __init__(self, catalog_path=DEFAULT_CATALOG_PATH, users_dir=DEFAULT_USERS_DIR, active_user="default"):
+        # Prevent secondary calls from wiping active connections
+        if getattr(self, "_initialized", False):
+            return
+
+        self.catalog_path = Path(catalog_path)
+        self.users_dir = Path(users_dir)
+        self.active_user = self._sanitize_username(active_user) or "default"
+
+        os.makedirs(self.catalog_path.parent, exist_ok=True)
+        os.makedirs(self.users_dir, exist_ok=True)
+
+        # 1. Shared Catalog Connection (Holds sqlite-vec)
+        self.catalog_conn = sqlite3.connect(self.catalog_path, check_same_thread=False)
+        self.catalog_conn.execute("PRAGMA foreign_keys = ON;")
+        self.catalog_conn.enable_load_extension(True)
+        sqlite_vec.load(self.catalog_conn)
+        self.catalog_conn.enable_load_extension(False)
+
+        # 2. Mount Active User Database
+        self.user_conn = None
+        self.switch_user(self.active_user)
+
+        self._initialized = True
+        logger.info(f"DatabaseManager initialized with catalog and user ledger ({self.active_user}).")
 
     @staticmethod
     def _sanitize_username(username: str) -> str:
-        """Sanitizes user input to safe filesystem characters."""
-        clean = re.sub(r"[^\w\-]", "_", str(username).strip().lower())
+        clean = re.sub(r"[^\w\-]", "", str(username).strip().lower())
         return clean or "default"
 
-    def switch_user(self, username: str) -> None:
+    @staticmethod
+    def _sanitize_username(username: str) -> str:
+        clean = re.sub(r"[^\w\-]", "", str(username).strip().lower())
+        return clean or "default"
+
+    def switch_user(self, username: str) -> bool:
         """Swaps the active user database and attaches the shared catalog."""
         sanitized = self._sanitize_username(username)
+        if not sanitized:
+            return False
+
         if self.user_conn:
-            self.user_conn.close()
+            try:
+                self.user_conn.close()
+            except Exception:
+                pass
 
         self.active_user = sanitized
         user_db_path = self.users_dir / f"{sanitized}.db"
@@ -69,18 +87,24 @@ class DatabaseManager:
         # Attach shared catalog as a read-only database
         escaped_catalog_path = str(self.catalog_path).replace("'", "''")
         self.user_conn.execute(f"ATTACH DATABASE '{escaped_catalog_path}' AS catalog;")
-
-        # Create temporary views to allow transparent JOINs without changing existing SQL queries
         self.user_conn.execute("CREATE TEMP VIEW IF NOT EXISTS exercises AS SELECT * FROM catalog.exercises;")
         self.user_conn.execute("CREATE TEMP VIEW IF NOT EXISTS exercise_secondary_muscles AS SELECT * FROM catalog.exercise_secondary_muscles;")
 
-        # Ensure schema exists on the newly targeted user database
         self.create_user_schema()
         logger.info(f"Active user context switched to: {sanitized}")
+        return True
+
+    def user_exists(self, username: str) -> bool:
+        sanitized = self._sanitize_username(username)
+        if not sanitized:
+            return False
+        return (self.users_dir / f"{sanitized}.db").is_file()
 
     @property
     def conn(self):
-        """Backward-compatible proxy returning the active user's connection."""
+        """Self-healing connection proxy: guarantees user_conn is never None."""
+        if self.user_conn is None:
+            self.switch_user(self.active_user or "default")
         return self.user_conn
     
     def get_connection(self):
@@ -139,6 +163,8 @@ class DatabaseManager:
                 equipment_access TEXT NOT NULL,
                 injuries_or_limitations TEXT DEFAULT 'None',
                 stress_and_sleep TEXT NOT NULL,
+                coach_tone TEXT DEFAULT 'Direct, grounded, and pragmatic',
+                custom_instructions TEXT DEFAULT '',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -206,10 +232,15 @@ class DatabaseManager:
         """)
         self.user_conn.commit()
     
+    def create_schema(self) -> None:
+        """Backward-compatible wrapper to initialize both catalog and user schemas."""
+        self.create_catalog_schema()
+        self.create_user_schema()
+        
     def initialize_and_seed(self, csv_path=DEFAULT_CSV_PATH):
         self.create_schema()
 
-        cursor = self.conn.cursor()
+        cursor = self.catalog_conn.cursor()
         
         # Check if exercises are already populated
         cursor.execute("SELECT COUNT(*) FROM exercises")
@@ -240,7 +271,8 @@ class DatabaseManager:
             .str.strip()
         )
 
-        core_df.to_sql('exercises', self.conn, if_exists='append', index=False)
+        # WRITE TO catalog_conn (NOT self.conn / user_conn)
+        core_df.to_sql('exercises', self.catalog_conn, if_exists='append', index=False)
 
         # 2. Process Secondary Muscles using Pandas melt
         muscle_cols = [c for c in df.columns if c.startswith('secondaryMuscles/')]
@@ -249,9 +281,10 @@ class DatabaseManager:
         muscles_df = muscles_df.dropna(subset=['muscle'])
         muscles_df = muscles_df[['id', 'muscle']].rename(columns={'id': 'exercise_id'})
         
-        muscles_df.to_sql('exercise_secondary_muscles', self.conn, if_exists='append', index=False)
+        # WRITE TO catalog_conn (NOT self.conn / user_conn)
+        muscles_df.to_sql('exercise_secondary_muscles', self.catalog_conn, if_exists='append', index=False)
 
-        self.conn.commit()
+        self.catalog_conn.commit()
         logger.info("Myos database initialized and seeded successfully with sanitized exercise names.")
 
     def search_similar_exercises(self, query_vector: list[float], limit: int = 5) -> list[dict]:
@@ -259,7 +292,7 @@ class DatabaseManager:
         Queries vec_exercises using cosine similarity and joins with 
         relational exercise details.
         """
-        cursor = self.conn.cursor()
+        cursor = self.catalog_conn.cursor()
         serialized_vector = sqlite_vec.serialize_float32(query_vector)
 
         query = """
@@ -575,4 +608,15 @@ class DatabaseManager:
             for r in rows if r[5] == last_date
         ]
 
+    def update_user_persona(self, coach_tone: str, custom_instructions: str) -> None:
+        """Updates the trainee's customized agent behavioral directives."""
+        cursor = self.conn.cursor()
+        now = datetime.now(timezone.utc).isoformat()
+        cursor.execute("""
+            UPDATE user_profile 
+            SET coach_tone = ?, custom_instructions = ?, updated_at = ?
+            WHERE id = 1
+        """, (coach_tone.strip(), custom_instructions.strip(), now))
+        self.conn.commit()
 
+        

@@ -2,9 +2,13 @@ import sys
 from pathlib import Path
 import pandas as pd
 import streamlit as st
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_ollama import ChatOllama
 import uuid
 from datetime import datetime, timezone
+from dotenv import load_dotenv
+import os
+load_dotenv()
 
 # Page Configuration MUST be the first Streamlit command
 st.set_page_config(
@@ -38,14 +42,83 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-db = DatabaseManager()
+# -------------------------------------------------------------------------
+# Session-Scoped Database & Identity Management
+# -------------------------------------------------------------------------
+
+llm = ChatOllama(model=os.getenv("LLM"), temperature=0.0)
+
+if "db" not in st.session_state:
+    st.session_state.db = DatabaseManager()
+
+db: DatabaseManager = st.session_state.db
+
+if "authenticated_user" not in st.session_state:
+    st.session_state.authenticated_user = None
 
 # -------------------------------------------------------------------------
-# Session State & Immediate Cold-Start Hydration
+# Gatekeeper: Login / Registration (Hides all other trainee data)
 # -------------------------------------------------------------------------
+if not st.session_state.authenticated_user:
+    st.title("⚡ Myos Engine")
+    st.caption("Stability-First Mechanical Tension Architecture")
+
+    auth_tab, reg_tab = st.tabs(["🔑 Trainee Login", "✨ New Trainee Setup"])
+
+    with auth_tab:
+        with st.form("login_form"):
+            trainee_id = st.text_input("Trainee ID / Username:").strip()
+            submit_login = st.form_submit_button("Access Ledger", use_container_width=True)
+
+            if submit_login and trainee_id:
+                if db.user_exists(trainee_id):
+                    db.switch_user(trainee_id)
+                    st.session_state.authenticated_user = trainee_id
+                    st.session_state.active_program = db.get_active_program()
+                    st.session_state.graph_state = {
+                        "messages": [],
+                        "intake_step": 1,
+                        "is_complete": bool(db.get_user_profile()),
+                        "profile_data": db.get_user_profile()
+                    }
+                    st.rerun()
+                else:
+                    st.error("Trainee ID not found. Verify spelling or initialize a new profile.")
+
+    with reg_tab:
+        with st.form("register_form"):
+            new_trainee_id = st.text_input("Choose Unique Trainee ID (letters and numbers only):").strip()
+            submit_new = st.form_submit_button("Create Private Ledger", use_container_width=True)
+
+            if submit_new and new_trainee_id:
+                clean_id = db._sanitize_username(new_trainee_id)
+                if db.user_exists(clean_id):
+                    st.warning("This Trainee ID already exists. Please log in.")
+                else:
+                    db.switch_user(clean_id)
+                    st.session_state.authenticated_user = clean_id
+                    st.session_state.active_program = None
+                    st.session_state.graph_state = {
+                        "messages": [],
+                        "intake_step": 1,
+                        "is_complete": False,
+                        "profile_data": None
+                    }
+                    st.success(f"Ledger initialized for {clean_id}.")
+                    st.rerun()
+
+    # Halt execution here until trainee enters their credentials
+    st.stop()
+
+# -------------------------------------------------------------------------
+# Authenticated Trainee Hydration (Executes only after successful login)
+# -------------------------------------------------------------------------
+if st.session_state.authenticated_user and db.active_user != st.session_state.authenticated_user:
+    db.switch_user(st.session_state.authenticated_user)
+
 profile = db.get_user_profile()
 
-if "graph_state" not in st.session_state:
+if "graph_state" not in st.session_state or st.session_state.graph_state is None:
     st.session_state.graph_state = {
         "messages": [],
         "intake_step": 1,
@@ -62,12 +135,11 @@ if profile and st.session_state.active_program is None:
     if saved_program:
         st.session_state.active_program = saved_program
     else:
-        # Fallback: Profile exists but no program in DB yet -> synthesize once
         with st.spinner("Synthesizing your calibrated routine..."):
             prog, _ = generate_program_pipeline(rep_preference_override=profile.get("rep_preference", "balanced"))
             st.session_state.active_program = prog
 
-# If NO profile exists and onboarding haven't run, trigger first question
+# If NO profile exists and onboarding hasn't run, trigger intake question #1
 if not profile and not st.session_state.graph_state["messages"]:
     initial_output = onboarding_graph.invoke(st.session_state.graph_state)
     st.session_state.graph_state.update(initial_output)
@@ -177,8 +249,19 @@ def render_program_dashboard(program):
 # -------------------------------------------------------------------------
 # Sidebar: Profile & Controls
 # -------------------------------------------------------------------------
+# -------------------------------------------------------------------------
+# Sidebar: Profile & Controls
+# -------------------------------------------------------------------------
 with st.sidebar:
     st.title("⚡ Myos Engine")
+    st.caption(f"Trainee: **{st.session_state.authenticated_user}**")
+    
+    if st.button("🔒 Exit / Logout", use_container_width=True):
+        st.session_state.authenticated_user = None
+        st.session_state.active_program = None
+        st.session_state.graph_state = None
+        st.rerun()
+
     st.divider()
 
     if profile:
@@ -190,6 +273,35 @@ with st.sidebar:
         st.markdown(f"**Limitations:** `{profile.get('injuries_or_limitations', 'None')}`")
         st.markdown(f"**Proportions:** `{profile.get('proportions', 'Average')}`")
         st.markdown(f"**Rep Bias:** `{profile.get('rep_preference', 'balanced')}`")
+
+        # --- Coach Persona & Behavior Configuration ---
+        with st.expander("⚙️ Coach Persona & Directives"):
+            tone_options = [
+                "Direct, grounded, and pragmatic",
+                "Scientific & biomechanics-focused",
+                "Drill sergeant / High accountability",
+                "Concise & bullet-points only",
+                "Custom"
+            ]
+            current_tone = profile.get("coach_tone", "Direct, grounded, and pragmatic")
+            default_tone_idx = tone_options.index(current_tone) if current_tone in tone_options else 4
+
+            selected_tone = st.selectbox("Speaking Tone", tone_options, index=default_tone_idx)
+            if selected_tone == "Custom":
+                selected_tone = st.text_input("Define Custom Tone:", value=current_tone)
+
+            custom_rules = st.text_area(
+                "Behavioral Directives & Guardrails:",
+                value=profile.get("custom_instructions", ""),
+                placeholder="e.g., Never use motivational fluff. Always prioritize joint longevity over load.",
+                help="These directives are permanently injected into the training assistant's system prompt for your account."
+            )
+
+            if st.button("Save Coach Settings", use_container_width=True):
+                db.update_user_persona(selected_tone, custom_rules)
+                st.success("Persona saved.")
+                st.rerun()
+
         st.divider()
 
         if st.button("Regenerate Program", use_container_width=True):
@@ -214,7 +326,7 @@ with st.sidebar:
             st.session_state.active_program = None
             st.rerun()
     else:
-        st.info("Onboarding in progress. Answer the intake questions below.")
+        st.info("Onboarding in progress. Answer the intake questions in the chat.") 
 
 # -------------------------------------------------------------------------
 # Viewport Routing: Onboarding vs Active Trainee
@@ -478,70 +590,26 @@ else:
                     )
             else:
                 with st.spinner("Consulting training engine..."):
+                    # Hydrate active trainee profile attributes
+                    user_tone = profile.get("coach_tone", "Direct, grounded, and pragmatic")
+                    user_directives = profile.get("custom_instructions", "")
+
+                    base_system = (
+                        "You are the Myos Training Assistant, an elite strength and hypertrophy coach. "
+                        "You specialize in biomechanics, mechanical tension, and low-injury stability-first training.\n\n"
+                        f"Tone and Delivery Style: {user_tone}.\n"
+                    )
+
+                    if user_directives.strip():
+                        base_system += (
+                            f"Trainee-Specific Behavioral Directives (MUST FOLLOW):\n"
+                            f"{user_directives.strip()}\n"
+                        )
+
                     response = llm.invoke([
-                        SystemMessage(content=(
-                            "You are the Myos Training Assistant. You specialize in biomechanics, "
-                            "hypertrophy, and low-injury stability-first training. "
-                            "Give concise, pragmatic, and direct guidance."
-                        )),
+                        SystemMessage(content=base_system),
                         *st.session_state.graph_state["messages"]
                     ])
                     st.session_state.graph_state["messages"].append(AIMessage(content=response.content))
 
-            st.rerun()# -------------------------------------------------------------------------
-# Chat History Rendering
-# -------------------------------------------------------------------------
-for msg in st.session_state.graph_state["messages"]:
-    if isinstance(msg, HumanMessage):
-        with st.chat_message("user"):
-            st.markdown(msg.content)
-    elif isinstance(msg, AIMessage):
-        with st.chat_message("assistant"):
-            st.markdown(msg.content)
-
-# Hydrate instantly from SQLite if session state is empty
-if profile and not st.session_state.active_program:
-    existing_program = db.get_active_program()
-    if existing_program:
-        st.session_state.active_program = existing_program
-    elif not st.session_state.graph_state["messages"]:
-        with st.spinner("Synthesizing initial program..."):
-            program, _ = generate_program_pipeline()
-            st.session_state.active_program = program
-
-# -------------------------------------------------------------------------
-# Chat Input & Routing
-# -------------------------------------------------------------------------
-if user_input:
-    st.session_state.graph_state["messages"].append(HumanMessage(content=user_input))
-
-    # Case 1: Still in Onboarding Graph
-    if not profile or not st.session_state.graph_state.get("is_complete", False):
-        with st.spinner("Processing responses..."):
-            output_state = onboarding_graph.invoke(st.session_state.graph_state)
-            st.session_state.graph_state.update(output_state)
-
-        if st.session_state.graph_state.get("is_complete", False):
-            with st.spinner("Profile saved. Synthesizing initial training program..."):
-                program, _ = generate_program_pipeline()
-                st.session_state.active_program = program
-                st.session_state.graph_state["messages"].append(
-                    AIMessage(content="Profile setup complete. Your routine and Excel spreadsheet are ready above.")
-                )
-        st.rerun()
-
-    # Case 2: Post-Onboarding Dynamic Interaction
-    else:
-        text = user_input.lower()
-        split_override = user_input if any(w in text for w in ["split", "day", "upper", "lower", "ppl", "arnold", "full body"]) else None
-        rep_override = "high" if "high rep" in text else "low" if ("low rep" in text or "heavy" in text) else None
-
-        with st.spinner("Synthesizing updated program..."):
-            program, _ = generate_program_pipeline(
-                user_split_override=split_override,
-                rep_preference_override=rep_override
-            )
-            st.session_state.active_program = program
-            response = f"Updated your routine to **{program.split_type}** with **{rep_override or 'balanced'}** rep ranges. See dashboard above."
-            st.session_state.graph_state["messages"].append(AIMessage(content=response))
-        st.rerun()
+            st.rerun()
