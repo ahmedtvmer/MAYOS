@@ -14,14 +14,6 @@ def get_progression_increment(mechanic: str, body_part: str | None = None) -> fl
         return 5.0 if is_lower else 2.5
     return 2.5 if is_lower else 1.0
 
-def calculate_epley_e1rm(weight_kg: float, reps: int) -> float:
-    """Calculates estimated 1RM using the standard Epley model."""
-    if reps <= 0 or weight_kg <= 0:
-        return 0.0
-    if reps == 1:
-        return float(weight_kg)
-    return round(weight_kg * (1.0 + (reps / 30.0)), 1)
-
 def evaluate_progression(
     mechanic: str,
     performed_sets: list[dict],

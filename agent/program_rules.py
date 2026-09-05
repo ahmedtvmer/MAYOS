@@ -125,16 +125,38 @@ def get_default_split(frequency: int, gender: str = "male") -> DynamicSplitPlan:
                     CustomDayPlan(day_order=4, day_name="Full Body (Glute & Core Finisher)", target_body_parts=["glutes", "lats", "side delts", "hamstrings", "abs"])
                 ]
             ),
-            5: DynamicSplitPlan(
-                split_name="5-Day Glute & Physique Specialization",
-                days=[
-                    CustomDayPlan(day_order=1, day_name="Glutes & Quads", target_body_parts=["glutes", "quads", "calves", "abs"]),
-                    CustomDayPlan(day_order=2, day_name="Upper (Back & Shoulders)", target_body_parts=["lats", "upper back", "chest", "side delts"]),
-                    CustomDayPlan(day_order=3, day_name="Glutes & Hamstrings", target_body_parts=["glutes", "hamstrings", "glutes", "calves"]),
-                    CustomDayPlan(day_order=4, day_name="Upper & Core", target_body_parts=["lats", "upper back", "side delts", "abs"]),
-                    CustomDayPlan(day_order=5, day_name="Glute Focus & Legs", target_body_parts=["glutes", "quads", "hamstrings", "abs"])
-                ]
-            )
+            # agent/program_rules.py (inside get_default_split)
+
+        5: DynamicSplitPlan(
+            split_name="Hybrid PPL / Upper-Lower",
+            days=[
+                CustomDayPlan(
+                    day_order=1, 
+                    day_name="Push", 
+                    target_body_parts=["chest", "chest", "side delts", "triceps"]
+                ),
+                CustomDayPlan(
+                    day_order=2, 
+                    day_name="Pull", 
+                    target_body_parts=["lats", "upper back", "rear delts", "biceps"]
+                ),
+                CustomDayPlan(
+                    day_order=3, 
+                    day_name="Legs", 
+                    target_body_parts=["quads", "hamstrings", "calves", "abs"]
+                ),
+                CustomDayPlan(
+                    day_order=4, 
+                    day_name="Upper", 
+                    target_body_parts=["chest", "lats", "upper back", "side delts", "biceps"]
+                ),
+                CustomDayPlan(
+                    day_order=5, 
+                    day_name="Lower", 
+                    target_body_parts=["quads", "hamstrings", "glutes", "calves"]
+                )
+            ]
+        )
         }
         return presets[frequency]
 

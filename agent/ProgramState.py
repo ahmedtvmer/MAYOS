@@ -19,10 +19,16 @@ class ProgramDaySchema(BaseModel):
     day_name: str = Field(description="e.g., 'Upper 1', 'Lower 1'")
     day_order: int = Field(ge=1, le=5)
     exercises: List[ProgramExerciseSchema] = Field(
-        min_length=4, 
-        max_length=6, 
-        description="Strictly 4 to 6 high-yield movements per session"
+        min_length=3, 
+        max_length=7, 
+        description="3 to 7 high-yield movements per session"
     )
+
+class ProgramSchema(BaseModel):
+    program_name: str = Field(description="Display title of the generated split")
+    weekly_frequency: int = Field(ge=1, le=7, description="Number of training days per week")
+    split_type: str = Field(default="custom", description="Split categorization, e.g., 'Upper/Lower', 'PPL'")
+    days: List[ProgramDaySchema] = Field(description="Ordered list of training day routines")
 
 class GeneratedProgramSchema(BaseModel):
     program_name: str = Field(description="Descriptive title of the program")

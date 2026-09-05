@@ -1,18 +1,20 @@
+# agent/program_generator.py
 import os
 import re
-import json
-from typing import Dict, Any, List
+import random
+from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_ollama import ChatOllama
+
 from agent.ProgramState import (
     GeneratedProgramSchema, 
     ProgramDaySchema, 
+    ProgramExerciseSchema,
     DynamicSplitPlan
 )
 from agent.program_rules import (
     resolve_split,
-    calculate_volume_budget,
     fetch_filtered_candidates,
     get_target_rep_window
 )
@@ -25,7 +27,6 @@ logger = MyosLogger().get_logger("program_generator")
 db = DatabaseManager()
 llm = ChatOllama(model=os.getenv("LLM", "qwen2.5:3b"), temperature=0.1)
 
-# Biomechanical Execution Cues Template
 MECHANIC_CUES = {
     "compound_press": "Control the 2-3s eccentric, pause briefly at full stretch, drive without locking out aggressively.",
     "compound_pull": "Initiate with scapular depression, pull elbows toward hips, pause 1s at peak contraction.",
@@ -43,21 +44,7 @@ def get_biomechanical_cue(name: str, mechanic: str) -> str:
         return MECHANIC_CUES["compound_lower"]
     return MECHANIC_CUES["isolation"]
 
-DAY_SYNTHESIS_PROMPT = """You are an elite hypertrophy and mechanical-tension coach.
-Assemble a single workout session using ONLY the provided candidates.
-
-Rules:
-1. Exercise Count: Pick EXACTLY 1 exercise per muscle group in target_muscles.
-2. Stability & Overload: Always favor machines, cables, or supported setups over free balance.
-3. Rep Windows & Volume:
-   - Assign working sets: strictly 2 or 3 sets.
-   - Use the 'recommended_reps' provided in each candidate's metadata.
-   - Compound target RPE: 8.0 to 8.5 (1-2 RIR).
-   - Isolation target RPE: 9.0 to 10.0 (0-1 RIR).
-4. Uniqueness: Every exercise_id MUST be unique. Never duplicate exercises in the same workout.
-"""
-
-def synthesize_day(
+def assemble_deterministic_day(
     day_order: int,
     day_name: str,
     target_muscles: List[str],
@@ -66,153 +53,124 @@ def synthesize_day(
     rep_preference: str,
     excluded_ids: set[str]
 ) -> ProgramDaySchema:
-    candidate_pool = {}
-    candidate_lookup: Dict[str, Dict[str, Any]] = {}
+    """
+    Deterministically selects top-ranked exercises directly from SQL candidate pools.
+    Runs in < 5ms per day with zero LLM latency.
+    """
+    selected_exercises = []
 
     for muscle in target_muscles:
         candidates = fetch_filtered_candidates(
             muscle_group=muscle,
             equipment_access=equipment_access,
             limitations=limitations,
-            limit=4
+            limit=6
         )
-        
-        # Filter out movements already used across other days
-        fresh_candidates = [c for c in candidates if str(c["id"]) not in excluded_ids]
-        pool_source = fresh_candidates if fresh_candidates else candidates
 
-        candidate_pool[muscle] = []
-        for c in pool_source:
-            cid = str(c["id"])
-            mechanic = c["mechanic"]
+        # Filter out movements already used on other days
+        available = [c for c in candidates if str(c["id"]) not in excluded_ids]
+        
+        # Pick randomly among top 2-3 available movements for variation
+        chosen = None
+        if available:
+            pool = available[:3]
+            chosen = random.choice(pool)
+        elif candidates:
+            chosen = random.choice(candidates[:2])
+
+        if chosen:
+            cid = str(chosen["id"])
+            excluded_ids.add(cid)
+            mechanic = chosen["mechanic"]
             rep_min, rep_max = get_target_rep_window(mechanic, rep_preference)
-            
-            c_info = {
-                "id": cid,
-                "name": c["name"],
-                "mechanic": mechanic,
-                "equipment": c["equipment"],
-                "recommended_reps": f"{rep_min}-{rep_max}",
-                "image_path": c.get("image_path"),
-                "gif_path": c.get("gif_path")
-            }
-            candidate_pool[muscle].append(c_info)
-            candidate_lookup[cid] = c_info
 
-    day_payload = {
-        "day_order": day_order,
-        "day_name": day_name,
-        "target_muscles": target_muscles,
-        "candidate_pool": candidate_pool
-    }
+            target_rpe = 8.5 if mechanic == "compound" else 9.5
+            rest_secs = 150 if mechanic == "compound" else 90
 
-    structured_llm = llm.with_structured_output(ProgramDaySchema)
-    prompt = [
-        SystemMessage(content=DAY_SYNTHESIS_PROMPT),
-        HumanMessage(content=(
-            f"Generate Day {day_order} ({day_name}). Pick 1 exercise per target muscle.\n"
-            f"Data:\n{json.dumps(day_payload, indent=2)}"
-        ))
-    ]
-
-    day_plan: ProgramDaySchema = structured_llm.invoke(prompt)
-
-    # -------------------------------------------------------------------------
-    # Programmatic Post-Processing & Enforcement
-    # -------------------------------------------------------------------------
-    seen_ids = set()
-    cleaned_exercises = []
-
-    for ex in day_plan.exercises:
-        if ex.exercise_id in seen_ids:
-            continue
-        seen_ids.add(ex.exercise_id)
-
-        meta = candidate_lookup.get(ex.exercise_id, {})
-        mechanic = meta.get("mechanic", "isolation")
-        
-        # Attach media assets
-        ex.image_path = meta.get("image_path")
-        ex.gif_path = meta.get("gif_path")
-
-        expected_min, expected_max = get_target_rep_window(mechanic, rep_preference)
-        ex.target_reps_min = expected_min
-        ex.target_reps_max = expected_max
-        ex.target_sets = min(max(ex.target_sets, 2), 3)
-        ex.notes = get_biomechanical_cue(ex.exercise_name, mechanic)
-
-        cleaned_exercises.append((0 if mechanic == "compound" else 1, ex))
-
-    cleaned_exercises.sort(key=lambda x: x[0])
-    day_plan.exercises = [item[1] for item in cleaned_exercises]
-
-    return day_plan
-
-def format_program_markdown(program: GeneratedProgramSchema) -> str:
-    lines = []
-    lines.append(f"# {program.program_name}")
-    lines.append(f"**Split:** {program.split_type} | **Frequency:** {program.weekly_frequency} Days/Week\n")
-
-    for day in program.days:
-        lines.append(f"### Day {day.day_order}: {day.day_name}")
-        lines.append("| Order | Exercise | Sets | Reps | Target RPE | Rest | Notes & Execution Cues |")
-        lines.append("| :---: | :--- | :---: | :---: | :---: | :---: | :--- |")
-        
-        for idx, ex in enumerate(day.exercises, start=1):
-            cue = ex.notes if ex.notes else "-"
-            reps = f"{ex.target_reps_min}–{ex.target_reps_max}"
-            lines.append(
-                f"| {idx} | **{ex.exercise_name}** | {ex.target_sets} | {reps} | @{ex.target_rpe} | {ex.rest_seconds}s | {cue} |"
+            exercise_schema = ProgramExerciseSchema(
+                exercise_id=cid,
+                exercise_name=chosen["name"],
+                target_sets=3 if mechanic == "compound" else 2,
+                target_reps_min=rep_min,
+                target_reps_max=rep_max,
+                target_rpe=target_rpe,
+                rest_seconds=rest_secs,
+                notes=get_biomechanical_cue(chosen["name"], mechanic),
+                image_path=chosen.get("image_path"),
+                gif_path=chosen.get("gif_path")
             )
-        lines.append("")
+            selected_exercises.append((0 if mechanic == "compound" else 1, exercise_schema))
 
-    return "\n".join(lines)
+    selected_exercises.sort(key=lambda x: x[0])
+    ordered_list = [item[1] for item in selected_exercises]
 
-def extract_frequency_from_text(text: str | None) -> int | None:
-    """Extracts target frequency (1-5) from phrases like '3 days', '3-day', '4x', or 'three days'."""
+    if len(ordered_list) < 3:
+        backup_candidates = fetch_filtered_candidates(
+            muscle_group=target_muscles[0] if target_muscles else "chest",
+            equipment_access=equipment_access,
+            limitations=limitations,
+            limit=5
+        )
+        for c in backup_candidates:
+            if str(c["id"]) not in excluded_ids:
+                excluded_ids.add(str(c["id"]))
+                ordered_list.append(
+                    ProgramExerciseSchema(
+                        exercise_id=str(c["id"]),
+                        exercise_name=c["name"],
+                        target_sets=2,
+                        target_reps_min=10,
+                        target_reps_max=15,
+                        target_rpe=9.0,
+                        rest_seconds=90,
+                        notes=get_biomechanical_cue(c["name"], "isolation"),
+                        image_path=c.get("image_path"),
+                        gif_path=c.get("gif_path")
+                    )
+                )
+                if len(ordered_list) >= 3:
+                    break
+
+    return ProgramDaySchema(
+        day_order=day_order,
+        day_name=day_name,
+        exercises=ordered_list
+    )
+
+def extract_frequency_from_text(text: str | None) -> Optional[int]:
     if not text:
         return None
-    
-    # Numeric matches: '3 days', '3-day', '3x'
     match = re.search(r"\b([1-5])\s*(?:days?|x|-day)\b", text.lower())
     if match:
         return int(match.group(1))
-    
-    # Word-based matches
     words = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5}
     for word, num in words.items():
         if re.search(rf"\b{word}\s*(?:days?|-day)\b", text.lower()):
             return num
-            
     return None
 
 def generate_program_pipeline(
-    user_split_override: str | None = None,
-    rep_preference_override: str | None = None,
-    frequency_override: int | None = None
+    user_split_override: Optional[str] = None,
+    rep_preference_override: Optional[str] = None,
+    frequency_override: Optional[int] = None
 ) -> tuple[GeneratedProgramSchema, str]:
     profile = db.get_user_profile()
     if not profile:
-        raise ValueError("No user profile found in SQLite. Run onboarding first.")
+        raise ValueError("No user profile found in SQLite. Complete intake first.")
 
-    # 1. Resolve frequency: check explicit parameter -> check prompt text -> fallback to DB
     detected_freq = frequency_override or extract_frequency_from_text(user_split_override)
     freq = detected_freq if detected_freq else profile.get("weekly_frequency", 4)
     freq = min(max(int(freq), 1), 5)
 
-    # 2. Persist new frequency if changed
     if freq != profile.get("weekly_frequency"):
         db.update_user_frequency(freq)
-        logger.info(f"Updated user profile frequency in SQLite to {freq} days/week.")
 
-    # 3. If prompt only specified a day count (e.g., 'switch to 3 days'), clear split_override 
-    # to trigger the default calibrated preset for that frequency
     clean_split_override = user_split_override
     if user_split_override:
         text = user_split_override.lower()
-        split_keywords = ["upper", "lower", "ppl", "push", "pull", "legs", "arnold", "full body", "bro split"]
-        if not any(kw in text for kw in split_keywords):
-            clean_split_override = None  # Revert to standard preset for this frequency
+        keywords = ["upper", "lower", "ppl", "push", "pull", "legs", "arnold", "full body", "bro split"]
+        if not any(kw in text for kw in keywords):
+            clean_split_override = None
 
     gender = profile.get("gender", "male")
     split_plan: DynamicSplitPlan = resolve_split(
@@ -220,29 +178,22 @@ def generate_program_pipeline(
         preference=clean_split_override, 
         gender=gender
     )
-    
     rep_pref = rep_preference_override or profile.get("rep_preference", "balanced")
 
-    logger.info(f"Generating {split_plan.split_name} ({len(split_plan.days)} days) for {gender} with '{rep_pref}' rep preference...")
-    
     generated_days: List[ProgramDaySchema] = []
     used_exercise_ids: set[str] = set()
 
+    # Fast deterministic synthesis
     for day in split_plan.days:
-        logger.info(f"Synthesizing Day {day.day_order}: {day.day_name}...")
-        day_plan = synthesize_day(
+        day_plan = assemble_deterministic_day(
             day_order=day.day_order,
             day_name=day.day_name,
             target_muscles=day.target_body_parts,
-            equipment_access=profile["equipment_access"],
+            equipment_access=profile.get("equipment_access", "commercial gym"),
             limitations=profile.get("injuries_or_limitations", "None"),
             rep_preference=rep_pref,
             excluded_ids=used_exercise_ids
         )
-        
-        for ex in day_plan.exercises:
-            used_exercise_ids.add(ex.exercise_id)
-
         generated_days.append(day_plan)
 
     program = GeneratedProgramSchema(
@@ -253,7 +204,15 @@ def generate_program_pipeline(
     )
 
     db.save_training_program(program.model_dump())
-    logger.info("Program successfully persisted to SQLite database.")
+    
+    # Table formatting
+    lines = [f"# {program.program_name}", f"**Split:** {program.split_type} | **Frequency:** {program.weekly_frequency} Days/Week\n"]
+    for day in program.days:
+        lines.append(f"### Day {day.day_order}: {day.day_name}")
+        lines.append("| Order | Exercise | Sets | Reps | Target RPE | Rest | Notes |")
+        lines.append("| :---: | :--- | :---: | :---: | :---: | :---: | :--- |")
+        for idx, ex in enumerate(day.exercises, start=1):
+            lines.append(f"| {idx} | **{ex.exercise_name}** | {ex.target_sets} | {ex.target_reps_min}-{ex.target_reps_max} | @{ex.target_rpe} | {ex.rest_seconds}s | {ex.notes or '-'} |")
+        lines.append("")
 
-    table_output = format_program_markdown(program)
-    return program, table_output
+    return program, "\n".join(lines)

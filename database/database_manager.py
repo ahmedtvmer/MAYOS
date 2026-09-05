@@ -7,6 +7,8 @@ from pathlib import Path
 import pandas as pd
 import sqlite3
 import sqlite_vec
+from typing import Optional
+import threading
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
@@ -16,7 +18,11 @@ DEFAULT_USERS_DIR = BASE_DIR / "db" / "users"
 DEFAULT_CSV_PATH = BASE_DIR / "data" / "processed_exercises.csv"
 
 from utils.logger import MyosLogger
-from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
+from agent.ProgramState import (
+    GeneratedProgramSchema,
+    ProgramDaySchema,
+    ProgramExerciseSchema
+)
 
 logger = MyosLogger().get_logger(__name__)
 
@@ -24,43 +30,64 @@ class DatabaseManager:
     _instance = None
     EMBEDDING_DIM = 384
 
+    _lock: threading.Lock = threading.Lock()
+
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
-            cls._instance = super(DatabaseManager, cls).__new__(cls)
-            cls._instance._initialized = False
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super(DatabaseManager, cls).__new__(cls)
+                    cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self, catalog_path=DEFAULT_CATALOG_PATH, users_dir=DEFAULT_USERS_DIR, active_user="default"):
-        # Prevent secondary calls from wiping active connections
+    def __init__(
+        self, 
+        catalog_path=DEFAULT_CATALOG_PATH, 
+        users_dir=DEFAULT_USERS_DIR, 
+        active_user: Optional[str] = None
+    ):
+        # Handle secondary calls across modules: switch user if explicitly requested
         if getattr(self, "_initialized", False):
+            if active_user is not None:
+                sanitized = self._sanitize_username(active_user)
+                if sanitized and sanitized != self.active_user:
+                    self.switch_user(sanitized)
             return
 
-        self.catalog_path = Path(catalog_path)
-        self.users_dir = Path(users_dir)
-        self.active_user = self._sanitize_username(active_user) or "default"
+        with self._lock:
+            if getattr(self, "_initialized", False):
+                return
 
-        os.makedirs(self.catalog_path.parent, exist_ok=True)
-        os.makedirs(self.users_dir, exist_ok=True)
+            self.catalog_path = Path(catalog_path)
+            self.users_dir = Path(users_dir)
+            
+            # Initial user resolution
+            initial_user = self._sanitize_username(active_user) if active_user else "default"
+            self.active_user = initial_user or "default"
 
-        # 1. Shared Catalog Connection (Holds sqlite-vec)
-        self.catalog_conn = sqlite3.connect(self.catalog_path, check_same_thread=False)
-        self.catalog_conn.execute("PRAGMA foreign_keys = ON;")
-        self.catalog_conn.enable_load_extension(True)
-        sqlite_vec.load(self.catalog_conn)
-        self.catalog_conn.enable_load_extension(False)
+            os.makedirs(self.catalog_path.parent, exist_ok=True)
+            os.makedirs(self.users_dir, exist_ok=True)
 
-        # 2. Mount Active User Database
-        self.user_conn = None
-        self.switch_user(self.active_user)
+            # 1. Shared Vector Catalog Connection
+            self.catalog_conn = sqlite3.connect(self.catalog_path, check_same_thread=False)
+            self.catalog_conn.execute("PRAGMA foreign_keys = ON;")
+            self.catalog_conn.enable_load_extension(True)
+            sqlite_vec.load(self.catalog_conn)
+            self.catalog_conn.enable_load_extension(False)
 
-        self._initialized = True
-        logger.info(f"DatabaseManager initialized with catalog and user ledger ({self.active_user}).")
+            # 2. Mount Active User Database
+            self.user_conn: Optional[sqlite3.Connection] = None
+            self.switch_user(self.active_user)
 
-    @staticmethod
-    def _sanitize_username(username: str) -> str:
-        clean = re.sub(r"[^\w\-]", "", str(username).strip().lower())
-        return clean or "default"
+            self._initialized = True
+            logger.info(f"DatabaseManager initialized with catalog and user ledger ({self.active_user}).")
 
+    @property
+    def conn(self) -> sqlite3.Connection:
+        """Dynamic alias ensuring queries always hit the current active user ledger."""
+        if self.user_conn is None:
+            raise RuntimeError(f"No active database connection mounted for user '{self.active_user}'.")
+        return self.user_conn
     @staticmethod
     def _sanitize_username(username: str) -> str:
         clean = re.sub(r"[^\w\-]", "", str(username).strip().lower())
@@ -72,20 +99,37 @@ class DatabaseManager:
         if not sanitized:
             return False
 
+        # 1. Idempotency Guard: Avoid tearing down healthy connections on Streamlit reruns
+        if self.user_conn is not None and self.active_user == sanitized:
+            return True
+
+        # 2. Commit and safely terminate prior user connection
         if self.user_conn:
             try:
+                self.user_conn.commit()
                 self.user_conn.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Error closing active connection for {self.active_user}: {e}")
 
         self.active_user = sanitized
         user_db_path = self.users_dir / f"{sanitized}.db"
 
+        # 3. Establish connection with WAL mode and foreign key enforcement
         self.user_conn = sqlite3.connect(user_db_path, check_same_thread=False)
+        self.user_conn.row_factory = sqlite3.Row
         self.user_conn.execute("PRAGMA foreign_keys = ON;")
+        self.user_conn.execute("PRAGMA journal_mode = WAL;")
 
-        # Attach shared catalog as a read-only database
-        escaped_catalog_path = str(self.catalog_path).replace("'", "''")
+        # 4. Load sqlite-vec extension directly into user connection for vector joins
+        try:
+            self.user_conn.enable_load_extension(True)
+            sqlite_vec.load(self.user_conn)
+            self.user_conn.enable_load_extension(False)
+        except Exception as e:
+            logger.warning(f"Failed to load sqlite_vec into user connection: {e}")
+
+        # 5. Attach shared catalog as a read-only database
+        escaped_catalog_path = str(self.catalog_path.resolve()).replace("'", "''")
         self.user_conn.execute(f"ATTACH DATABASE '{escaped_catalog_path}' AS catalog;")
         self.user_conn.execute("CREATE TEMP VIEW IF NOT EXISTS exercises AS SELECT * FROM catalog.exercises;")
         self.user_conn.execute("CREATE TEMP VIEW IF NOT EXISTS exercise_secondary_muscles AS SELECT * FROM catalog.exercise_secondary_muscles;")
@@ -93,19 +137,12 @@ class DatabaseManager:
         self.create_user_schema()
         logger.info(f"Active user context switched to: {sanitized}")
         return True
-
+    
     def user_exists(self, username: str) -> bool:
         sanitized = self._sanitize_username(username)
         if not sanitized:
             return False
         return (self.users_dir / f"{sanitized}.db").is_file()
-
-    @property
-    def conn(self):
-        """Self-healing connection proxy: guarantees user_conn is never None."""
-        if self.user_conn is None:
-            self.switch_user(self.active_user or "default")
-        return self.user_conn
     
     def get_connection(self):
         return self.conn
@@ -171,6 +208,7 @@ class DatabaseManager:
 
             CREATE TABLE IF NOT EXISTS training_programs (
                 id TEXT PRIMARY KEY,
+                program_name TEXT NOT NULL,
                 name TEXT NOT NULL,
                 split_type TEXT NOT NULL,
                 weekly_frequency INTEGER NOT NULL,
@@ -210,7 +248,8 @@ class DatabaseManager:
                 started_at TEXT NOT NULL,
                 completed_at TEXT,
                 session_notes TEXT,
-                readiness_score INTEGER CHECK(readiness_score BETWEEN 1 AND 5)
+                readiness_score INTEGER CHECK(readiness_score BETWEEN 1 AND 5),
+                coach_debrief TEXT
             );
 
             CREATE TABLE IF NOT EXISTS workout_sets (
@@ -437,40 +476,60 @@ class DatabaseManager:
         self.conn.commit()
 
     def save_training_program(self, program_data: dict) -> str:
-        """
-        Persists a generated program, its days, and its exercise prescriptions into SQLite.
-        Deactivates any existing active program.
-        """
-        now = datetime.now(timezone.utc).isoformat()
-        program_id = str(uuid.uuid4())
+        """Deactivates all previous programs and commits the newest routine to SQLite."""
         cursor = self.conn.cursor()
-
         try:
-            # Set prior programs as inactive
-            cursor.execute("UPDATE training_programs SET is_active = 0 WHERE is_active = 1")
+            # 1. Deactivate prior programs
+            cursor.execute("UPDATE training_programs SET is_active = 0")
 
-            # 1. Insert Master Program
-            cursor.execute("""
-                INSERT INTO training_programs (id, name, split_type, weekly_frequency, is_active, created_at)
-                VALUES (?, ?, ?, ?, 1, ?)
-            """, (
-                program_id,
-                program_data["program_name"],
-                program_data["split_type"],
-                program_data["weekly_frequency"],
-                now
-            ))
+            prog_id = program_data.get("id") or str(uuid.uuid4())
+            created_at = program_data.get("created_at") or datetime.now(timezone.utc).isoformat()
+            prog_name = program_data.get("program_name") or program_data.get("name", "Custom Program")
 
-            # 2. Insert Days & Exercises
-            for day in program_data["days"]:
-                day_id = str(uuid.uuid4())
+            # 2. Inspect table columns to satisfy legacy 'name' NOT NULL constraints
+            cursor.execute("PRAGMA table_info(training_programs)")
+            existing_cols = {col[1] for col in cursor.fetchall()}
+
+            cols = ["id", "weekly_frequency", "split_type", "is_active", "created_at"]
+            vals = [
+                prog_id,
+                program_data.get("weekly_frequency", 4),
+                program_data.get("split_type", "custom"),
+                1,
+                created_at
+            ]
+
+            # Populate both legacy 'name' and new 'program_name' columns if present
+            if "name" in existing_cols:
+                cols.append("name")
+                vals.append(prog_name)
+            if "program_name" in existing_cols:
+                cols.append("program_name")
+                vals.append(prog_name)
+
+            col_clause = ", ".join(cols)
+            val_placeholders = ", ".join(["?"] * len(vals))
+
+            cursor.execute(
+                f"INSERT INTO training_programs ({col_clause}) VALUES ({val_placeholders})",
+                vals
+            )
+
+            # 3. Commit Program Days and Program Exercises
+            for day in program_data.get("days", []):
+                day_id = day.get("id") or str(uuid.uuid4())
                 cursor.execute("""
                     INSERT INTO program_days (id, program_id, day_name, day_order)
                     VALUES (?, ?, ?, ?)
-                """, (day_id, program_id, day["day_name"], day["day_order"]))
+                """, (
+                    day_id,
+                    prog_id,
+                    day["day_name"],
+                    day["day_order"]
+                ))
 
-                for idx, ex in enumerate(day["exercises"], start=1):
-                    ex_entry_id = str(uuid.uuid4())
+                for order_idx, ex in enumerate(day.get("exercises", []), start=1):
+                    pe_id = ex.get("id") or str(uuid.uuid4())
                     cursor.execute("""
                         INSERT INTO program_exercises (
                             id, day_id, exercise_id, order_in_day,
@@ -478,40 +537,69 @@ class DatabaseManager:
                             target_rpe, rest_seconds, notes
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
-                        ex_entry_id, day_id, ex["exercise_id"], idx,
-                        ex["target_sets"], ex["target_reps_min"], ex["target_reps_max"],
-                        ex.get("target_rpe", 8.5), ex.get("rest_seconds", 120),
+                        pe_id,
+                        day_id,
+                        str(ex["exercise_id"]),
+                        order_idx,
+                        ex.get("target_sets", 3),
+                        ex.get("target_reps_min", 8),
+                        ex.get("target_reps_max", 12),
+                        ex.get("target_rpe", 8.5),
+                        ex.get("rest_seconds", 120),
                         ex.get("notes", "")
                     ))
 
             self.conn.commit()
-            return program_id
+            return prog_id
+
         except Exception as e:
             self.conn.rollback()
             raise RuntimeError(f"Database error while saving program: {e}")
-
-    def get_active_program(self) -> GeneratedProgramSchema | None:
-        """Hydrates the active training program directly from SQLite without LLM synthesis."""
+    
+    def get_active_program(self) -> Optional[GeneratedProgramSchema]:
+        """Retrieves the newest active training program with backwards-compatible column selection."""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT id, name, split_type, weekly_frequency FROM training_programs WHERE is_active = 1 ORDER BY created_at DESC LIMIT 1")
-        prog_row = cursor.fetchone()
-        if not prog_row:
+
+        # Check existing columns to safely select name
+        cursor.execute("PRAGMA table_info(training_programs)")
+        existing_cols = {col[1] for col in cursor.fetchall()}
+        
+        if "program_name" in existing_cols and "name" in existing_cols:
+            name_selector = "COALESCE(program_name, name)"
+        elif "program_name" in existing_cols:
+            name_selector = "program_name"
+        else:
+            name_selector = "name"
+
+        cursor.execute(f"""
+            SELECT id, {name_selector}, weekly_frequency, split_type 
+            FROM training_programs 
+            WHERE is_active = 1 
+            ORDER BY created_at DESC 
+            LIMIT 1
+        """)
+        row = cursor.fetchone()
+        if not row:
             return None
 
-        prog_id, name, split_type, weekly_freq = prog_row
+        prog_id, prog_name, freq, split_type = row
 
-        # Fetch days
-        cursor.execute("SELECT id, day_name, day_order FROM program_days WHERE program_id = ? ORDER BY day_order ASC", (prog_id,))
-        day_rows = cursor.fetchall()
+        cursor.execute("""
+            SELECT id, day_name, day_order 
+            FROM program_days 
+            WHERE program_id = ? 
+            ORDER BY day_order ASC
+        """, (prog_id,))
+        days_rows = cursor.fetchall()
 
         days = []
-        for d_id, d_name, d_order in day_rows:
+        for d_id, d_name, d_order in days_rows:
             cursor.execute("""
                 SELECT pe.exercise_id, e.name, pe.target_sets, pe.target_reps_min, 
-                       pe.target_reps_max, pe.target_rpe, pe.rest_seconds, pe.notes, 
+                       pe.target_reps_max, pe.target_rpe, pe.rest_seconds, pe.notes,
                        e.image_path, e.gif_path
                 FROM program_exercises pe
-                JOIN exercises e ON pe.exercise_id = e.id
+                JOIN catalog.exercises e ON pe.exercise_id = e.id
                 WHERE pe.day_id = ?
                 ORDER BY pe.order_in_day ASC
             """, (d_id,))
@@ -521,26 +609,30 @@ class DatabaseManager:
                 ProgramExerciseSchema(
                     exercise_id=str(r[0]),
                     exercise_name=r[1],
-                    target_sets=r[2],
-                    target_reps_min=r[3],
-                    target_reps_max=r[4],
-                    target_rpe=r[5] or 8.5,
-                    rest_seconds=r[6] or 120,
-                    notes=r[7],
+                    target_sets=int(r[2]),
+                    target_reps_min=int(r[3]),
+                    target_reps_max=int(r[4]),
+                    target_rpe=float(r[5]) if r[5] is not None else 8.5,
+                    rest_seconds=int(r[6]) if r[6] is not None else 120,
+                    notes=r[7] or "",
                     image_path=r[8],
                     gif_path=r[9]
-                )
-                for r in ex_rows
+                ) for r in ex_rows
             ]
-            days.append(ProgramDaySchema(day_name=d_name, day_order=d_order, exercises=exercises))
+
+            days.append(ProgramDaySchema(
+                day_name=d_name,
+                day_order=d_order,
+                exercises=exercises
+            ))
 
         return GeneratedProgramSchema(
-            program_name=name,
-            split_type=split_type,
-            weekly_frequency=weekly_freq,
+            program_name=prog_name,
+            weekly_frequency=int(freq),
+            split_type=split_type or "custom",
             days=days
         )
-
+    
     def update_user_frequency(self, frequency: int) -> None:
         """Updates the active user's weekly training frequency in SQLite."""
         clamped = min(max(int(frequency), 1), 5)
@@ -619,4 +711,80 @@ class DatabaseManager:
         """, (coach_tone.strip(), custom_instructions.strip(), now))
         self.conn.commit()
 
+    def swap_program_exercise(
+        self, 
+        old_exercise_id: str, 
+        new_exercise_id: str, 
+        new_notes: str = "",
+        day_id: str | None = None
+    ) -> bool:
+        """
+        Swaps an exercise in the active program without regenerating the split.
+        If day_id is None, swaps the first occurrence found in the active routine.
+        """
+        cursor = self.conn.cursor()
         
+        # 1. Verify the active program exists
+        cursor.execute("""
+            SELECT id FROM training_programs 
+            WHERE is_active = 1 
+            ORDER BY created_at DESC 
+            LIMIT 1
+        """)
+        active_prog = cursor.fetchone()
+        if not active_prog:
+            return False
+            
+        prog_id = active_prog[0]
+
+        # 2. Locate matching program_exercises record
+        if day_id:
+            cursor.execute("""
+                SELECT pe.id 
+                FROM program_exercises pe
+                JOIN program_days pd ON pe.day_id = pd.id
+                WHERE pd.program_id = ? AND pe.day_id = ? AND pe.exercise_id = ?
+                LIMIT 1
+            """, (prog_id, day_id, old_exercise_id))
+        else:
+            cursor.execute("""
+                SELECT pe.id 
+                FROM program_exercises pe
+                JOIN program_days pd ON pe.day_id = pd.id
+                WHERE pd.program_id = ? AND pe.exercise_id = ?
+                LIMIT 1
+            """, (prog_id, old_exercise_id))
+
+        row = cursor.fetchone()
+        if not row:
+            return False
+
+        pe_id = row[0]
+
+        # 3. Update the record in place
+        cursor.execute("""
+            UPDATE program_exercises 
+            SET exercise_id = ?, notes = ?
+            WHERE id = ?
+        """, (new_exercise_id, new_notes, pe_id))
+        
+        self.conn.commit()
+        return True
+
+    def save_session_debrief(self, session_id: str, debrief: str) -> None:
+        """Persists the post-session coach debrief to the workout_sessions record."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE workout_sessions 
+            SET coach_debrief = ? 
+            WHERE id = ?
+        """, (debrief.strip(), session_id))
+        self.conn.commit()
+
+    def get_session_debrief(self, session_id: str) -> str | None:
+        """Retrieves a previously stored debrief for a session."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT coach_debrief FROM workout_sessions WHERE id = ?", (session_id,))
+        row = cursor.fetchone()
+        return row[0] if row else None
+
