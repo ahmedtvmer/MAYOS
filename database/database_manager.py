@@ -508,25 +508,12 @@ class DatabaseManager:
             days=days
         )
 
-<<<<<<< HEAD
     def update_user_frequency(self, frequency: int) -> None:
         """Updates the active user's weekly training frequency in SQLite."""
         clamped = min(max(int(frequency), 1), 5)
         cursor = self.conn.cursor()
         cursor.execute("UPDATE user_profile SET weekly_frequency = ?, updated_at = ? WHERE id = 1", 
                        (clamped, datetime.now(timezone.utc).isoformat()))
-=======
-    def update_user_frequency(self, frequency: int, user_id: int = 1) -> None:
-        """
-        Updates the weekly training frequency for a given user_id in SQLite.
-        """
-        clamped = min(max(int(frequency), 1), 5)
-        cursor = self.conn.cursor()
-        cursor.execute(
-            "UPDATE user_profile SET weekly_frequency = ?, updated_at = ? WHERE id = ?",
-            (clamped, datetime.now(timezone.utc).isoformat(), user_id)
-        )
->>>>>>> 3a6389a (refactor: remove singleton constraint on user_profile to support multi-user operations via user_id parameters)
         self.conn.commit()
 
     def log_workout_session(
