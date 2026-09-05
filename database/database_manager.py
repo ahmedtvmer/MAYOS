@@ -105,8 +105,9 @@ class DatabaseManager:
         CREATE INDEX IF NOT EXISTS idx_program_days_prog ON program_days(program_id);
         CREATE INDEX IF NOT EXISTS idx_program_ex_day ON program_exercises(day_id);
 
+        -- id is now an unconstrained INTEGER PRIMARY KEY
         CREATE TABLE IF NOT EXISTS user_profile (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
+            id INTEGER PRIMARY KEY,
             gender TEXT DEFAULT 'male',
             proportions TEXT NOT NULL,
             age INTEGER NOT NULL,
@@ -157,19 +158,15 @@ class DatabaseManager:
             CREATE VIRTUAL TABLE IF NOT EXISTS vec_exercises USING vec0(
                 exercise_id INTEGER PRIMARY KEY,
                 embedding float[{self.EMBEDDING_DIM}] distance_metric=cosine
-        );
+            );
         """)
         
         # Safe column migrations for existing SQLite databases
-        try:
-            cursor.execute("ALTER TABLE user_profile ADD COLUMN gender TEXT DEFAULT 'male'")
-        except Exception:
-            pass
-
-        try:
-            cursor.execute("ALTER TABLE user_profile ADD COLUMN rep_preference TEXT DEFAULT 'balanced'")
-        except Exception:
-            pass
+        for col, col_type in [("gender", "TEXT DEFAULT 'male'"), ("rep_preference", "TEXT DEFAULT 'balanced'")]:
+            try:
+                cursor.execute(f"ALTER TABLE user_profile ADD COLUMN {col} {col_type}")
+            except Exception:
+                pass
 
         self.conn.commit()
 
@@ -255,24 +252,27 @@ class DatabaseManager:
         columns = ["id", "name", "body_part", "target_muscle", "equipment", "instructions", "distance"]
         return [dict(zip(columns, row)) for row in rows]
 
-    def get_user_profile(self) -> dict | None:
-        """Retrieves the single-user profile as a dictionary, or None if unseeded."""
+    def get_user_profile(self, user_id: int = 1) -> dict | None:
+        """
+        Retrieves a user profile by user_id as a dictionary, 
+        or None if unseeded.
+        """
         cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM user_profile WHERE id = 1")
+        cursor.execute("SELECT * FROM user_profile WHERE id = ?", (user_id,))
         row = cursor.fetchone()
         if not row:
             return None
         columns = [col[0] for col in cursor.description]
         return dict(zip(columns, row))
 
-    def upsert_user_profile(self, profile_data: dict) -> None:
+    def upsert_user_profile(self, profile_data: dict, user_id: int = 1) -> None:
         """
-        Upserts the singleton user profile row (id = 1) using named parameters.
+        Upserts a user profile row identified by user_id using named parameters.
         """
         now = datetime.now(timezone.utc).isoformat()
         cursor = self.conn.cursor()
 
-        # Ensure columns exist if working from an existing database file
+        # Check for column presence
         for col_def in [
             ("gender", "TEXT DEFAULT 'male'"),
             ("rep_preference", "TEXT DEFAULT 'balanced'")
@@ -283,8 +283,10 @@ class DatabaseManager:
             except Exception:
                 pass
 
+        target_user_id = int(profile_data.get("id", user_id))
+
         params = {
-            "id": 1,
+            "id": target_user_id,
             "gender": str(profile_data.get("gender", "male")).lower(),
             "proportions": str(profile_data.get("proportions", "balanced")),
             "age": int(profile_data.get("age", 25)),
@@ -357,10 +359,12 @@ class DatabaseManager:
 
         self.conn.commit()
 
-    def clear_user_profile(self) -> None:
-        """Clears the singleton user profile row."""
+    def clear_user_profile(self, user_id: int = 1) -> None:
+        """
+        Clears the user profile row for a given user_id.
+        """
         cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM user_profile WHERE id = 1")
+        cursor.execute("DELETE FROM user_profile WHERE id = ?", (user_id,))
         self.conn.commit()
 
     def save_training_program(self, program_data: dict) -> str:
@@ -468,12 +472,25 @@ class DatabaseManager:
             days=days
         )
 
+<<<<<<< HEAD
     def update_user_frequency(self, frequency: int) -> None:
         """Updates the active user's weekly training frequency in SQLite."""
         clamped = min(max(int(frequency), 1), 5)
         cursor = self.conn.cursor()
         cursor.execute("UPDATE user_profile SET weekly_frequency = ?, updated_at = ? WHERE id = 1", 
                        (clamped, datetime.now(timezone.utc).isoformat()))
+=======
+    def update_user_frequency(self, frequency: int, user_id: int = 1) -> None:
+        """
+        Updates the weekly training frequency for a given user_id in SQLite.
+        """
+        clamped = min(max(int(frequency), 1), 5)
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "UPDATE user_profile SET weekly_frequency = ?, updated_at = ? WHERE id = ?",
+            (clamped, datetime.now(timezone.utc).isoformat(), user_id)
+        )
+>>>>>>> 3a6389a (refactor: remove singleton constraint on user_profile to support multi-user operations via user_id parameters)
         self.conn.commit()
 
     def log_workout_session(
