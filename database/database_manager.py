@@ -1,18 +1,20 @@
-import sqlite3
-import sqlite_vec
-import pandas as pd
 import os
-from pathlib import Path
+import re
 import sys
 import uuid
 from datetime import datetime, timezone
-import re
+from pathlib import Path
+import pandas as pd
+import sqlite3
+import sqlite_vec
 
-# Resolve the absolute path to the project root (/mnt/work/MAYOS)
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
-DEFAULT_DB_PATH = BASE_DIR / "db" / "myos.db"
+
+DEFAULT_CATALOG_PATH = BASE_DIR / "db" / "catalog.db"
+DEFAULT_USERS_DIR = BASE_DIR / "db" / "users"
 DEFAULT_CSV_PATH = BASE_DIR / "data" / "processed_exercises.csv"
+
 from utils.logger import MyosLogger
 from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
 
@@ -22,136 +24,90 @@ class DatabaseManager:
     _instance = None
     EMBEDDING_DIM = 384
 
-    def __new__(cls, db_path=DEFAULT_DB_PATH):
+    def __new__(cls, catalog_path=DEFAULT_CATALOG_PATH, users_dir=DEFAULT_USERS_DIR, active_user="default"):
         if cls._instance is None:
             cls._instance = super(DatabaseManager, cls).__new__(cls)
-            cls._instance.db_path = db_path
-            
-            # Ensure the db directory exists before connecting
-            os.makedirs(os.path.dirname(db_path), exist_ok=True)
-            
-            cls._instance.conn = sqlite3.connect(db_path, check_same_thread=False)
+            cls._instance.catalog_path = Path(catalog_path)
+            cls._instance.users_dir = Path(users_dir)
+            cls._instance.active_user = cls._sanitize_username(active_user)
 
-            # Enable foreign key support
-            cls._instance.conn.execute("PRAGMA foreign_keys = ON;")
+            os.makedirs(cls._instance.catalog_path.parent, exist_ok=True)
+            os.makedirs(cls._instance.users_dir, exist_ok=True)
 
-            # Load sqlite-vec extension
-            cls._instance.conn.enable_load_extension(True)
-            sqlite_vec.load(cls._instance.conn)
-            cls._instance.conn.enable_load_extension(False)
+            # 1. Initialize Shared Catalog Connection (Holds sqlite-vec)
+            cls._instance.catalog_conn = sqlite3.connect(cls._instance.catalog_path, check_same_thread=False)
+            cls._instance.catalog_conn.execute("PRAGMA foreign_keys = ON;")
+            cls._instance.catalog_conn.enable_load_extension(True)
+            sqlite_vec.load(cls._instance.catalog_conn)
+            cls._instance.catalog_conn.enable_load_extension(False)
 
-            
-            logger.info("SQLite connection established with sqlite-vec extension loaded.")
+            # 2. Mount Active User Database
+            cls._instance.user_conn = None
+            cls._instance.switch_user(cls._instance.active_user)
 
+            logger.info("DatabaseManager initialized with decoupled catalog and user ledgers.")
         return cls._instance
 
+    @staticmethod
+    def _sanitize_username(username: str) -> str:
+        """Sanitizes user input to safe filesystem characters."""
+        clean = re.sub(r"[^\w\-]", "_", str(username).strip().lower())
+        return clean or "default"
+
+    def switch_user(self, username: str) -> None:
+        """Swaps the active user database and attaches the shared catalog."""
+        sanitized = self._sanitize_username(username)
+        if self.user_conn:
+            self.user_conn.close()
+
+        self.active_user = sanitized
+        user_db_path = self.users_dir / f"{sanitized}.db"
+
+        self.user_conn = sqlite3.connect(user_db_path, check_same_thread=False)
+        self.user_conn.execute("PRAGMA foreign_keys = ON;")
+
+        # Attach shared catalog as a read-only database
+        escaped_catalog_path = str(self.catalog_path).replace("'", "''")
+        self.user_conn.execute(f"ATTACH DATABASE '{escaped_catalog_path}' AS catalog;")
+
+        # Create temporary views to allow transparent JOINs without changing existing SQL queries
+        self.user_conn.execute("CREATE TEMP VIEW IF NOT EXISTS exercises AS SELECT * FROM catalog.exercises;")
+        self.user_conn.execute("CREATE TEMP VIEW IF NOT EXISTS exercise_secondary_muscles AS SELECT * FROM catalog.exercise_secondary_muscles;")
+
+        # Ensure schema exists on the newly targeted user database
+        self.create_user_schema()
+        logger.info(f"Active user context switched to: {sanitized}")
+
+    @property
+    def conn(self):
+        """Backward-compatible proxy returning the active user's connection."""
+        return self.user_conn
+    
     def get_connection(self):
         return self.conn
 
-    def create_schema(self):
-        cursor = self.conn.cursor()
+    def create_catalog_schema(self) -> None:
+        """Initializes the master catalog tables and vector index."""
+        cursor = self.catalog_conn.cursor()
         cursor.executescript("""
-        PRAGMA foreign_keys = ON;
+            PRAGMA foreign_keys = ON;
 
-        CREATE TABLE IF NOT EXISTS exercises (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            body_part TEXT NOT NULL,
-            target_muscle TEXT NOT NULL,
-            equipment TEXT NOT NULL,
-            image_path TEXT,
-            gif_path TEXT,
-            instructions TEXT
-        );
+            CREATE TABLE IF NOT EXISTS exercises (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                body_part TEXT NOT NULL,
+                target_muscle TEXT NOT NULL,
+                equipment TEXT NOT NULL,
+                image_path TEXT,
+                gif_path TEXT,
+                instructions TEXT
+            );
 
-        CREATE TABLE IF NOT EXISTS exercise_secondary_muscles (
-            exercise_id TEXT NOT NULL,
-            muscle TEXT NOT NULL,
-            FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
-        );
-
-        CREATE TABLE IF NOT EXISTS training_programs (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            split_type TEXT NOT NULL,       -- 'Upper/Lower', 'PPL', 'Full Body'
-            weekly_frequency INTEGER NOT NULL,
-            is_active INTEGER DEFAULT 1,    -- Only one active program at a time
-            created_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS program_days (
-            id TEXT PRIMARY KEY,
-            program_id TEXT NOT NULL,
-            day_name TEXT NOT NULL,          -- 'Upper A', 'Lower A', 'Push', etc.
-            day_order INTEGER NOT NULL,      -- 1, 2, 3, 4
-            FOREIGN KEY(program_id) REFERENCES training_programs(id) ON DELETE CASCADE
-        );
-
-        CREATE TABLE IF NOT EXISTS program_exercises (
-            id TEXT PRIMARY KEY,
-            day_id TEXT NOT NULL,
-            exercise_id TEXT NOT NULL,
-            order_in_day INTEGER NOT NULL,
-            target_sets INTEGER NOT NULL,
-            target_reps_min INTEGER NOT NULL,
-            target_reps_max INTEGER NOT NULL,
-            target_rpe REAL,
-            rest_seconds INTEGER DEFAULT 120,
-            notes TEXT,
-            FOREIGN KEY(day_id) REFERENCES program_days(id) ON DELETE CASCADE,
-            FOREIGN KEY(exercise_id) REFERENCES exercises(id)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_program_days_prog ON program_days(program_id);
-        CREATE INDEX IF NOT EXISTS idx_program_ex_day ON program_exercises(day_id);
-
-        -- id is now an unconstrained INTEGER PRIMARY KEY
-        CREATE TABLE IF NOT EXISTS user_profile (
-            id INTEGER PRIMARY KEY,
-            gender TEXT DEFAULT 'male',
-            proportions TEXT NOT NULL,
-            age INTEGER NOT NULL,
-            weight_kg REAL NOT NULL,
-            height_cm REAL NOT NULL,
-            rep_preference TEXT DEFAULT 'balanced',
-            current_goal TEXT NOT NULL,
-            long_term_goal TEXT NOT NULL,
-            weekly_frequency INTEGER NOT NULL,
-            training_age_years REAL NOT NULL,
-            equipment_access TEXT NOT NULL,
-            injuries_or_limitations TEXT DEFAULT 'None',
-            stress_and_sleep TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS workout_sessions (
-            id TEXT PRIMARY KEY,
-            session_date TEXT NOT NULL,
-            split_name TEXT NOT NULL,
-            started_at TEXT NOT NULL,
-            completed_at TEXT,
-            session_notes TEXT,
-            readiness_score INTEGER CHECK(readiness_score BETWEEN 1 AND 5)
-        );
-
-        CREATE TABLE IF NOT EXISTS workout_sets (
-            id TEXT PRIMARY KEY,
-            session_id TEXT NOT NULL,
-            exercise_id TEXT NOT NULL,
-            set_index INTEGER NOT NULL,
-            weight_kg REAL NOT NULL,
-            reps INTEGER NOT NULL,
-            rpe REAL CHECK(rpe BETWEEN 1 AND 10),
-            is_warmup INTEGER DEFAULT 0,
-            logged_at TEXT NOT NULL,
-            FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE,
-            FOREIGN KEY(exercise_id) REFERENCES exercises(id)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_sets_session ON workout_sets(session_id);
-        CREATE INDEX IF NOT EXISTS idx_sets_exercise ON workout_sets(exercise_id);
-        CREATE INDEX IF NOT EXISTS idx_sessions_date ON workout_sessions(session_date);
+            CREATE TABLE IF NOT EXISTS exercise_secondary_muscles (
+                exercise_id TEXT NOT NULL,
+                muscle TEXT NOT NULL,
+                FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
+            );
         """)
 
         cursor.execute(f"""
@@ -160,16 +116,96 @@ class DatabaseManager:
                 embedding float[{self.EMBEDDING_DIM}] distance_metric=cosine
             );
         """)
-        
-        # Safe column migrations for existing SQLite databases
-        for col, col_type in [("gender", "TEXT DEFAULT 'male'"), ("rep_preference", "TEXT DEFAULT 'balanced'")]:
-            try:
-                cursor.execute(f"ALTER TABLE user_profile ADD COLUMN {col} {col_type}")
-            except Exception:
-                pass
+        self.catalog_conn.commit()
 
-        self.conn.commit()
+    def create_user_schema(self) -> None:
+        """Initializes trainee-specific tables inside the active user database."""
+        cursor = self.user_conn.cursor()
+        cursor.executescript("""
+            PRAGMA foreign_keys = ON;
 
+            CREATE TABLE IF NOT EXISTS user_profile (
+                id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+                gender TEXT DEFAULT 'male',
+                proportions TEXT NOT NULL,
+                age INTEGER NOT NULL,
+                weight_kg REAL NOT NULL,
+                height_cm REAL NOT NULL,
+                rep_preference TEXT DEFAULT 'balanced',
+                current_goal TEXT NOT NULL,
+                long_term_goal TEXT NOT NULL,
+                weekly_frequency INTEGER NOT NULL,
+                training_age_years REAL NOT NULL,
+                equipment_access TEXT NOT NULL,
+                injuries_or_limitations TEXT DEFAULT 'None',
+                stress_and_sleep TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS training_programs (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                split_type TEXT NOT NULL,
+                weekly_frequency INTEGER NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS program_days (
+                id TEXT PRIMARY KEY,
+                program_id TEXT NOT NULL,
+                day_name TEXT NOT NULL,
+                day_order INTEGER NOT NULL,
+                FOREIGN KEY(program_id) REFERENCES training_programs(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS program_exercises (
+                id TEXT PRIMARY KEY,
+                day_id TEXT NOT NULL,
+                exercise_id TEXT NOT NULL,
+                order_in_day INTEGER NOT NULL,
+                target_sets INTEGER NOT NULL,
+                target_reps_min INTEGER NOT NULL,
+                target_reps_max INTEGER NOT NULL,
+                target_rpe REAL,
+                rest_seconds INTEGER DEFAULT 120,
+                notes TEXT,
+                FOREIGN KEY(day_id) REFERENCES program_days(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_program_days_prog ON program_days(program_id);
+            CREATE INDEX IF NOT EXISTS idx_program_ex_day ON program_exercises(day_id);
+
+            CREATE TABLE IF NOT EXISTS workout_sessions (
+                id TEXT PRIMARY KEY,
+                session_date TEXT NOT NULL,
+                split_name TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                session_notes TEXT,
+                readiness_score INTEGER CHECK(readiness_score BETWEEN 1 AND 5)
+            );
+
+            CREATE TABLE IF NOT EXISTS workout_sets (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                exercise_id TEXT NOT NULL,
+                set_index INTEGER NOT NULL,
+                weight_kg REAL NOT NULL,
+                reps INTEGER NOT NULL,
+                rpe REAL CHECK(rpe BETWEEN 1 AND 10),
+                is_warmup INTEGER DEFAULT 0,
+                logged_at TEXT NOT NULL,
+                FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_sets_session ON workout_sets(session_id);
+            CREATE INDEX IF NOT EXISTS idx_sets_exercise ON workout_sets(exercise_id);
+            CREATE INDEX IF NOT EXISTS idx_sessions_date ON workout_sessions(session_date);
+        """)
+        self.user_conn.commit()
+    
     def initialize_and_seed(self, csv_path=DEFAULT_CSV_PATH):
         self.create_schema()
 
