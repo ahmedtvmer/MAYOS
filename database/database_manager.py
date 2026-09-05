@@ -467,3 +467,72 @@ class DatabaseManager:
             weekly_frequency=weekly_freq,
             days=days
         )
+
+    def update_user_frequency(self, frequency: int) -> None:
+        """Updates the active user's weekly training frequency in SQLite."""
+        clamped = min(max(int(frequency), 1), 5)
+        cursor = self.conn.cursor()
+        cursor.execute("UPDATE user_profile SET weekly_frequency = ?, updated_at = ? WHERE id = 1", 
+                       (clamped, datetime.now(timezone.utc).isoformat()))
+        self.conn.commit()
+
+    def log_workout_session(
+        self,
+        session_id: str,
+        session_date: str,
+        split_name: str,
+        started_at: str,
+        completed_at: str,
+        readiness_score: int = 4,
+        notes: str = ""
+    ) -> None:
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT INTO workout_sessions (
+                id, session_date, split_name, started_at, completed_at, session_notes, readiness_score
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (session_id, session_date, split_name, started_at, completed_at, notes, readiness_score))
+        self.conn.commit()
+
+    def log_workout_set(
+        self,
+        set_id: str,
+        session_id: str,
+        exercise_id: str,
+        set_index: int,
+        weight_kg: float,
+        reps: int,
+        rpe: float,
+        is_warmup: int = 0
+    ) -> None:
+        cursor = self.conn.cursor()
+        now = datetime.now(timezone.utc).isoformat()
+        cursor.execute("""
+            INSERT INTO workout_sets (
+                id, session_id, exercise_id, set_index, weight_kg, reps, rpe, is_warmup, logged_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (set_id, session_id, exercise_id, set_index, weight_kg, reps, rpe, is_warmup, now))
+        self.conn.commit()
+
+    def get_last_performance(self, exercise_id: str) -> list[dict]:
+        """Fetches sets from the most recent session for this exercise."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT ws.set_index, ws.weight_kg, ws.reps, ws.rpe, ws.is_warmup, s.session_date
+            FROM workout_sets ws
+            JOIN workout_sessions s ON ws.session_id = s.id
+            WHERE ws.exercise_id = ? AND ws.is_warmup = 0
+            ORDER BY s.session_date DESC, ws.set_index ASC
+            LIMIT 10
+        """, (exercise_id,))
+        rows = cursor.fetchall()
+        if not rows:
+            return []
+        
+        last_date = rows[0][5]
+        return [
+            {"set_index": r[0], "weight_kg": r[1], "reps": r[2], "rpe": r[3]}
+            for r in rows if r[5] == last_date
+        ]
+
+

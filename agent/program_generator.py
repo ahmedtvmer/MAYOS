@@ -1,4 +1,5 @@
 import os
+import re
 import json
 from typing import Dict, Any, List
 from dotenv import load_dotenv
@@ -167,21 +168,59 @@ def format_program_markdown(program: GeneratedProgramSchema) -> str:
 
     return "\n".join(lines)
 
+def extract_frequency_from_text(text: str | None) -> int | None:
+    """Extracts target frequency (1-5) from phrases like '3 days', '3-day', '4x', or 'three days'."""
+    if not text:
+        return None
+    
+    # Numeric matches: '3 days', '3-day', '3x'
+    match = re.search(r"\b([1-5])\s*(?:days?|x|-day)\b", text.lower())
+    if match:
+        return int(match.group(1))
+    
+    # Word-based matches
+    words = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5}
+    for word, num in words.items():
+        if re.search(rf"\b{word}\s*(?:days?|-day)\b", text.lower()):
+            return num
+            
+    return None
+
 def generate_program_pipeline(
     user_split_override: str | None = None,
-    rep_preference_override: str | None = None
+    rep_preference_override: str | None = None,
+    frequency_override: int | None = None
 ) -> tuple[GeneratedProgramSchema, str]:
     profile = db.get_user_profile()
     if not profile:
         raise ValueError("No user profile found in SQLite. Run onboarding first.")
 
-    freq = profile["weekly_frequency"]
+    # 1. Resolve frequency: check explicit parameter -> check prompt text -> fallback to DB
+    detected_freq = frequency_override or extract_frequency_from_text(user_split_override)
+    freq = detected_freq if detected_freq else profile.get("weekly_frequency", 4)
+    freq = min(max(int(freq), 1), 5)
+
+    # 2. Persist new frequency if changed
+    if freq != profile.get("weekly_frequency"):
+        db.update_user_frequency(freq)
+        logger.info(f"Updated user profile frequency in SQLite to {freq} days/week.")
+
+    # 3. If prompt only specified a day count (e.g., 'switch to 3 days'), clear split_override 
+    # to trigger the default calibrated preset for that frequency
+    clean_split_override = user_split_override
+    if user_split_override:
+        text = user_split_override.lower()
+        split_keywords = ["upper", "lower", "ppl", "push", "pull", "legs", "arnold", "full body", "bro split"]
+        if not any(kw in text for kw in split_keywords):
+            clean_split_override = None  # Revert to standard preset for this frequency
+
     gender = profile.get("gender", "male")
     split_plan: DynamicSplitPlan = resolve_split(
         frequency=freq, 
-        preference=user_split_override, 
+        preference=clean_split_override, 
         gender=gender
     )
+    
     rep_pref = rep_preference_override or profile.get("rep_preference", "balanced")
 
     logger.info(f"Generating {split_plan.split_name} ({len(split_plan.days)} days) for {gender} with '{rep_pref}' rep preference...")

@@ -1,6 +1,14 @@
 import io
+import re
 import pandas as pd
 from agent.ProgramState import GeneratedProgramSchema
+
+def sanitize_sheet_title(title: str) -> str:
+    """
+    Strips Excel-illegal characters (\ / ? * : [ ]) and trims to 31 chars.
+    """
+    clean_title = re.sub(r"[\\/*?:\[\]]", "-", title)
+    return clean_title.strip()[:31]
 
 def export_program_to_excel(program: GeneratedProgramSchema) -> bytes:
     """
@@ -34,7 +42,8 @@ def export_program_to_excel(program: GeneratedProgramSchema) -> bytes:
                 })
             
             df = pd.DataFrame(rows)
-            sheet_name = day.day_name[:31]  # Excel 31-char sheet name limit
+            raw_title = f"Day {day.day_order} - {day.day_name}"
+            sheet_name = sanitize_sheet_title(raw_title)
             df.to_excel(writer, sheet_name=sheet_name, index=False)
             
     return output.getvalue()
