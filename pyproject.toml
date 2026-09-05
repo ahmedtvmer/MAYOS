@@ -8,7 +8,16 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "langchain-core>=1.6.1",
+    "langchain-huggingface>=1.2.2",
+    "langchain-ollama>=1.1.0",
+    "langgraph>=1.2.11",
+    "openpyxl>=3.1.5",
     "pandas>=3.0.5",
+    "python-dotenv>=1.2.3",
+    "sentence-transformers>=6.0.1",
+    "sqlite-vec>=0.1.9",
+    "streamlit>=1.63.0",
 ]
 
 [project.scripts]

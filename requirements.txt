@@ -1,1 +1,12 @@
 pandas>=3.0.5
+sqlite-vec>=0.1.9
+python-dotenv>=1.2.3
+langchain-ollama>=1.1.0
+langchain-core>=1.6.1
+langchain-huggingface>=1.2.2
+sentence-transformers>=6.0.1
+langgraph>=1.2.11
+streamlit>=1.63.0
+openpyxl>=3.1.5
+
+
