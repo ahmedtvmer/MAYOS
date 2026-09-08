@@ -4,8 +4,8 @@ import re
 import random
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
-from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_ollama import ChatOllama
+from utils.model_downloader import llm
+
 
 from agent.ProgramState import (
     GeneratedProgramSchema, 
@@ -25,7 +25,6 @@ load_dotenv()
 logger = MyosLogger().get_logger("program_generator")
 
 db = DatabaseManager()
-llm = ChatOllama(model=os.getenv("LLM", "qwen2.5:3b"), temperature=0.1)
 
 MECHANIC_CUES = {
     "compound_press": "Control the 2-3s eccentric, pause briefly at full stretch, drive without locking out aggressively.",

@@ -2,14 +2,10 @@ import os
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_ollama import ChatOllama
+from utils.model_downloader import llm
 
 load_dotenv()
-llm = ChatOllama(
-    model=os.getenv("LLM", "qwen2.5:3b"),
-    temperature=0.0,
-    num_ctx=4096
-)
+
 DEBRIEF_SYSTEM_TEMPLATE = """You are Myos, an elite strength coach and biomechanics specialist.
 Analyze the completed workout session telemetry provided by the trainee.
 
@@ -33,7 +29,8 @@ def generate_session_debrief(
     exercise_summaries: List[Dict[str, Any]],
     profile: Dict[str, Any],
     total_tonnage: Optional[float] = None,
-    total_sets: Optional[int] = None
+    total_sets: Optional[int] = None,
+    fatigue_info: dict = None
 ) -> str:
     """
     Summarizes session telemetry and invokes the local LLM to generate
@@ -42,6 +39,17 @@ def generate_session_debrief(
     coach_tone = profile.get("coach_tone", "Direct, grounded, and pragmatic")
     raw_instructions = profile.get("custom_instructions", "").strip()
     custom_rules = f"Trainee Guardrails: {raw_instructions}" if raw_instructions else ""
+
+    fatigue_instruction = ""
+    if fatigue_info and fatigue_info.get("deload_recommended"):
+        fatigue_instruction = (
+            f"\n[CRITICAL DIRECTIVE: DELOAD ACTIVE]\n"
+            f"- Deload Triggered: {fatigue_info['reason']}\n"
+            f"- Prescribed Volume Cut: {int((1.0 - fatigue_info['volume_multiplier']) * 100)}%\n"
+            f"- Mandatory Intensity Ceiling: RPE {fatigue_info['intensity_cap_rpe']}\n"
+            f"You MUST instruct the trainee to cut working sets by {int((1.0 - fatigue_info['volume_multiplier']) * 100)}% "
+            f"and hard cap all movements at RPE {fatigue_info['intensity_cap_rpe']} for the next session. Do not suggest arbitrary percentages."
+        )
 
     # 1. Resolve Session Volume & Sets safely
     if total_tonnage is not None:
@@ -65,6 +73,7 @@ def generate_session_debrief(
         f"- **Graduated Exercises**: {', '.join(graduated_exercises) if graduated_exercises else 'None (Consolidating)'}",
         f"- **Holding / Working in Rep Corridor**: {', '.join(holding_exercises) if holding_exercises else 'None'}",
         f"- **Trainee Notes**: {session_notes if session_notes else 'None logged'}\n",
+        f"- **Fatigue & CNS Check**: {fatigue_instruction}",
         "**Movement Performance Details**:"
     ]
 

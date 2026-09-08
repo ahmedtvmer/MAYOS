@@ -949,3 +949,55 @@ class DatabaseManager:
         )
 
 
+    def find_exercise_by_name(self, query: str) -> Optional[dict]:
+        """
+        Finds a catalog exercise by name using exact match, substring match, 
+        or multi-keyword intersection without requiring vector embeddings.
+        """
+        clean = query.strip().lower()
+        if not clean:
+            return None
+
+        cursor = self.catalog_conn.cursor()
+
+        # 1. Exact match
+        cursor.execute("""
+            SELECT id, name, body_part, target_muscle, equipment 
+            FROM exercises 
+            WHERE LOWER(name) = ? 
+            LIMIT 1
+        """, (clean,))
+        row = cursor.fetchone()
+        if row:
+            return {"id": str(row[0]), "name": row[1], "body_part": row[2], "target_muscle": row[3], "equipment": row[4]}
+
+        # 2. Substring match
+        cursor.execute("""
+            SELECT id, name, body_part, target_muscle, equipment 
+            FROM exercises 
+            WHERE LOWER(name) LIKE ? 
+            ORDER BY LENGTH(name) ASC 
+            LIMIT 1
+        """, (f"%{clean}%",))
+        row = cursor.fetchone()
+        if row:
+            return {"id": str(row[0]), "name": row[1], "body_part": row[2], "target_muscle": row[3], "equipment": row[4]}
+
+        # 3. Token-level keyword matching (e.g. "lat pulldown machine" matches "Machine Lat Pulldown")
+        tokens = [t for t in re.split(r"\s+", clean) if len(t) > 2]
+        if tokens:
+            where_clauses = ["LOWER(name) LIKE ?" for _ in tokens]
+            params = [f"%{t}%" for t in tokens]
+            sql = f"""
+                SELECT id, name, body_part, target_muscle, equipment 
+                FROM exercises 
+                WHERE {" AND ".join(where_clauses)}
+                ORDER BY LENGTH(name) ASC 
+                LIMIT 1
+            """
+            cursor.execute(sql, params)
+            row = cursor.fetchone()
+            if row:
+                return {"id": str(row[0]), "name": row[1], "body_part": row[2], "target_muscle": row[3], "equipment": row[4]}
+
+        return None

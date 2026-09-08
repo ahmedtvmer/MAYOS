@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import time
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Annotated, Sequence, Optional, Literal, Dict, Any, List, Generator, Tuple
@@ -9,7 +10,6 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
-from langchain_ollama import ChatOllama
 from langchain_huggingface import HuggingFaceEmbeddings
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
@@ -22,6 +22,7 @@ from agent.program_generator import generate_program_pipeline, extract_frequency
 from agent.program_rules import COMPOUND_KEYWORDS
 from utils.logger import MyosLogger
 from utils.text_scrubber import scrub_coach_output
+from utils.model_downloader import llm
 
 load_dotenv()
 logger = MyosLogger().get_logger(__name__)
@@ -31,13 +32,6 @@ db = DatabaseManager()
 # -------------------------------------------------------------------------
 # Engine Configuration & Token Clamping
 # -------------------------------------------------------------------------
-llm = ChatOllama(
-    model=os.getenv("LLM", "qwen2.5:3b"),
-    temperature=0.0,
-    num_ctx=4096,
-    keep_alive="30m",
-    num_predict=200
-)
 
 EMBED_MODEL = HuggingFaceEmbeddings(
     model_name=os.getenv("EMBEDDING_MODEL"),
@@ -51,10 +45,11 @@ STATIC_SYSTEM_CORE = """You are Myos, an elite hypertrophy and biomechanics coac
 
 Core Directives:
 - Base all advice on mechanical tension, lengthened-position loading, and stability.
-- You have full, direct access to the trainee's database and performance records via the telemetry header below.
+- Directly answer the trainee's specific question and target the exact exercise queried. 
+- NEVER substitute or pivot to exercises from the telemetry unless the user explicitly asks about their previous session, split, or logged performance.
+- NEVER prescribe light weights for 'activation' or short rest periods for 'fatigue'. True mechanical tension demands high motor unit recruitment, load near failure (0-3 RIR), and full recovery (2-3+ min rest).
 - NEVER say 'As an AI...', 'I don't have access to your telemetry', or ask the user to provide details already recorded in telemetry.
 - If the user asks how they did, analyze the 'Last Session' telemetry directly.
-- Keep answers clear, technical, and actionable. Zero conversational or motivational filler.
 
 Clinical & Biomechanical Guardrails:
 - NEVER diagnose medical conditions, injuries, or pain syndromes.
@@ -597,30 +592,74 @@ def clinical_intercept_node(state: AssistantState) -> Dict[str, Any]:
 # -------------------------------------------------------------------------
 # Node 7: Unified Coaching & Science QA Generation
 # -------------------------------------------------------------------------
+RE_SESSION_REVIEW_QUERY = re.compile(
+    r"\b(how\s+did\s+i\s+do|last\s+session|last\s+workout|my\s+performance|"
+    r"how\s+was\s+my|review\s+my|feedback\s+on\s+my|my\s+sets|my\s+volume)\b",
+    re.IGNORECASE
+)
+
 def build_prompt_payload(state: AssistantState) -> List[BaseMessage]:
-    """Builds static-to-dynamic prefix-cached prompt payload."""
+    """
+    Builds a minimal, query-scoped prompt payload to minimize CPU prefill latency (TTFT)
+    and prevent context hijacking/hallucination on 3B models.
+    """
     coach_tone = state.get("coach_tone", "Direct, grounded, and pragmatic")
     custom_directives = state.get("custom_instructions", "")
-    telemetry = state.get("telemetry_context", "")
+    telemetry = (state.get("telemetry_context") or "").strip()
 
-    prompt_parts = [STATIC_SYSTEM_CORE]
+    messages = state.get("messages", [])
+    last_msg = messages[-1] if messages else None
+    raw_query = (last_msg.content if hasattr(last_msg, "content") else str(last_msg)) if last_msg else ""
 
-    persona_block = f"\n[COACHING DIRECTIVES]\nTone: {coach_tone}"
+    # Determine if the query explicitly asks for historical session analysis
+    is_session_review = bool(RE_SESSION_REVIEW_QUERY.search(raw_query)) if "RE_SESSION_REVIEW_QUERY" in globals() else False
+
+    # Prune telemetry aggressively for general technique/biomechanics QA to minimize prefill tokens
+    if telemetry:
+        if not is_session_review:
+            # Strip all numerical session data, fatigue markers, and progression signals
+            ignored_prefixes = (
+                "last session:",
+                "progression targets:",
+                "[progression signals]",
+                "systemic state:",
+                "rolling readiness:"
+            )
+            filtered_lines = [
+                line for line in telemetry.splitlines()
+                if not line.lower().lstrip().startswith(ignored_prefixes)
+            ]
+            telemetry = "\n".join(line for line in filtered_lines if line.strip())
+
+    prompt_parts = [STATIC_SYSTEM_CORE.strip() if "STATIC_SYSTEM_CORE" in globals() else "You are Myos, an elite strength coach."]
+
+    directives = [f"Tone: {coach_tone}"]
     if custom_directives.strip():
-        persona_block += f"\nCustom Directives: {custom_directives.strip()}"
-    prompt_parts.append(persona_block)
+        directives.append(f"Directives: {custom_directives.strip()}")
+    prompt_parts.append(f"[COACHING DIRECTIVES]\n" + "\n".join(directives))
 
     if telemetry:
-        prompt_parts.append(f"\n{telemetry}")
+        prompt_parts.append(f"[TRAINEE CONTEXT]\n{telemetry}")
 
-    full_system_prompt = "\n".join(prompt_parts)
+    prompt_parts.append(
+        "[TASK DIRECTIVE]\n"
+        "Answer the latest inquiry directly and concisely using 3-4 bullet points. "
+        "Focus purely on actionable biomechanics and cueing. "
+        "Do not invent exercise history or numbers not explicitly provided."
+    )
 
-    raw_messages = state.get("messages", [])
+    full_system_prompt = "\n\n".join(prompt_parts)
+
+    # Filter strictly to conversational message objects
     dialogue_messages = [
-        m for m in raw_messages 
+        m for m in messages 
         if isinstance(m, (HumanMessage, AIMessage))
     ]
-    clamped_tail = dialogue_messages[-TAIL_WINDOW_SIZE:]
+
+    # Bound conversational context strictly to the last 2 turns (4 messages max) to protect CPU TTFT
+    window_size = globals().get("TAIL_WINDOW_SIZE", 4)
+    clamped_window = min(window_size, 4)
+    clamped_tail = dialogue_messages[-clamped_window:]
 
     return [SystemMessage(content=full_system_prompt), *clamped_tail]
 
@@ -629,6 +668,54 @@ def generation_node(state: AssistantState) -> Dict[str, Any]:
     response = llm.invoke(payload)
     cleaned_content = scrub_coach_output(response.content)
     return {"response_content": cleaned_content, "program_updated": False}
+
+RE_EXERCISE_PERFORMANCE_QUERY = re.compile(
+    r"\b(?:how\s+did\s+i\s+do\s+(?:in|on|for)|what\s+did\s+i\s+(?:do|hit|lift)\s+(?:in|on|for)|my\s+last\s+session\s+(?:for|on))\s+(.+)",
+    re.IGNORECASE
+)
+
+def exercise_history_node(state: AssistantState) -> Dict[str, Any]:
+    """Retrieves exact logged performance for a specific movement without LLM confabulation."""
+    messages = state.get("messages", [])
+    raw_query = messages[-1].content if messages else ""
+
+    match = RE_EXERCISE_PERFORMANCE_QUERY.search(raw_query)
+    target_name = match.group(1).strip(" ?.") if match else raw_query
+
+    # 1. Text lookup in catalog (no vector embedding required)
+    exercise = db.find_exercise_by_name(target_name)
+    if not exercise:
+        return {
+            "response_content": f"I couldn't find '{target_name}' in your movement catalog."
+        }
+
+    # 2. Pull completed sets using existing db method
+    sets = db.get_last_performance(exercise["id"])
+    if not sets:
+        return {
+            "response_content": f"You haven't logged any completed working sets for **{exercise['name']}** yet."
+        }
+
+    # 3. Format accurate response from SQLite ledger
+    set_lines = []
+    best_e1rm = 0.0
+
+    for s in sets:
+        w = s["weight_kg"]
+        r = s["reps"]
+        rpe = s["rpe"]
+        e1rm = round(w * (1 + r / 30.0), 1) if r > 1 else w
+        best_e1rm = max(best_e1rm, e1rm)
+        set_lines.append(f"- Set {s['set_index']}: **{w} kg** × **{r} reps** @ RPE {rpe}")
+
+    summary = "\n".join(set_lines)
+    response = (
+        f"**Last Logged Session for {exercise['name']}:**\n"
+        f"{summary}\n\n"
+        f"**Peak Estimated 1RM:** {best_e1rm} kg"
+    )
+
+    return {"response_content": response}
 
 # -------------------------------------------------------------------------
 # Graph Assembly (.invoke() Compatible)
@@ -669,6 +756,15 @@ assistant_graph = builder.compile()
 # -------------------------------------------------------------------------
 # Token Streaming Generator Adapter
 # -------------------------------------------------------------------------
+
+def _stream_text_smoothly(text: str, delay: float = 0.015) -> Generator[str, None, None]:
+    """Simulates word-by-word streaming for deterministic zero-LLM responses."""
+    words = text.split(" ")
+    for i, word in enumerate(words):
+        chunk = word + (" " if i < len(words) - 1 else "")
+        yield chunk
+        time.sleep(delay)
+
 def stream_assistant_turn(state: Dict[str, Any]) -> Generator[str, None, None]:
     """
     Streaming generator adapter for real-time UI token streaming.
@@ -680,41 +776,68 @@ def stream_assistant_turn(state: Dict[str, Any]) -> Generator[str, None, None]:
         hydration = hydrate_context_node(state)  # type: ignore
         state.update(hydration)
 
+    messages = state.get("messages", [])
+    if not messages:
+        yield "No message received."
+        return
+    
+    last_message = messages[-1]
+    user_query = last_message.content if hasattr(last_message, "content") else str(last_message)
+
     r_out = router_node(state)  # type: ignore
     state.update(r_out)
     intent = state.get("intent", "coaching_qa")
 
+    # ====== EARLY BYPASS 0: Clinical Red-Flag Intercept ======
     if intent == "clinical_intercept":
-        intercept_res = clinical_intercept_node(state)  # type: ignore
+        intercept_res = clinical_intercept_node(state)
         state.update(intercept_res)
-        yield state.get("response_content", CLINICAL_SAFEGUARD_RESPONSE)
+        yield from _stream_text_smoothly(state.get("response_content", CLINICAL_SAFEGUARD_RESPONSE))
         return
 
+    # ====== EARLY BYPASS 1: Exercise Substitution ======
     if intent == "exercise_substitution":
-        sub_res = exercise_substitution_node(state)  # type: ignore
+        sub_res = exercise_substitution_node(state)
         state.update(sub_res)
-        yield state.get("response_content", "Exercise substitution executed.")
+        yield from _stream_text_smoothly(state.get("response_content", "Exercise substitution executed."))
         return
 
+    # ====== EARLY BYPASS 2: Program Mutation ======
     if intent == "program_mutation":
-        mut_res = program_mutation_node(state)  # type: ignore
+        mut_res = program_mutation_node(state)
         state.update(mut_res)
-        yield state.get("response_content", "Routine rebuilt.")
+        yield from _stream_text_smoothly(state.get("response_content", "Routine rebuilt."))
         return
 
+    # ====== EARLY BYPASS 3: Catalog Search ======
     if intent == "catalog_search":
-        cat_res = catalog_search_node(state)  # type: ignore
+        cat_res = catalog_search_node(state)
         state.update(cat_res)
-        yield state.get("response_content", "Catalog search complete.")
+        yield from _stream_text_smoothly(state.get("response_content", "Catalog search complete."))
         return
 
-    payload = build_prompt_payload(state)  # type: ignore
-    chunks: List[str] = []
-    for chunk in llm.stream(payload):
-        if chunk.content:
-            chunks.append(chunk.content)
-            yield chunk.content
+    if RE_EXERCISE_PERFORMANCE_QUERY.search(user_query):
+        res = exercise_history_node(state)
+        state.update(res)
+        content = res.get("response_content", "")
+        state["response_content"] = content
+        yield content
+        return
+    
+    payload = build_prompt_payload(state)
+    accumulated_tokens = []
 
-    raw_text = "".join(chunks)
-    state["response_content"] = scrub_coach_output(raw_text)
-    state["program_updated"] = False
+    try:
+        for chunk in llm.stream(payload):
+            token = chunk.content if hasattr(chunk, "content") else str(chunk)
+            accumulated_tokens.append(token)
+            yield token
+
+        full_response = "".join(accumulated_tokens)
+        state["response_content"] = full_response
+        state["messages"].append(AIMessage(content=full_response))
+
+    except Exception as e:
+        error_msg = f"Inference pipeline failure: {str(e)}"
+        state["response_content"] = error_msg
+        yield error_msg

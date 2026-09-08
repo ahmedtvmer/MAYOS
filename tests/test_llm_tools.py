@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from langchain_ollama import ChatOllama
+from utils.model_downloader import llm
 from langchain_core.tools import tool
 from langchain_huggingface import HuggingFaceEmbeddings
 from dotenv import load_dotenv
@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field, field_validator
 load_dotenv()
 
 Embedding = os.getenv("EMBEDDING_MODEL")
-llm = ChatOllama(model=os.getenv("LLM"), temperature=0.0)
 
 # Anchor paths
 BASE_DIR = Path(__file__).resolve().parent.parent

@@ -6,9 +6,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from agent.assistant_graph import llm, STATIC_SYSTEM_CORE
+from agent.assistant_graph import STATIC_SYSTEM_CORE
 from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
+from utils.model_downloader import llm
+
 
 logger = MyosLogger().get_logger(__name__)
 

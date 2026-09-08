@@ -499,6 +499,20 @@ else:
 
             st.subheader(f"Logging: {day_plan.day_name}")
 
+            # 1. Evaluate systemic fatigue ONCE at the session level
+            fatigue_info = evaluate_systemic_fatigue(db)
+
+            # 2. Render Deload Warning Banner when active
+            if fatigue_info["deload_recommended"]:
+                st.warning(
+                    f"🚨 **DELOAD PROTOCOL ACTIVE ({fatigue_info['severity']})**\n\n"
+                    f"- **Driver:** {fatigue_info['reason']}\n"
+                    f"- **Prescription Directive:** Cut total working sets by "
+                    f"{int((1.0 - fatigue_info['volume_multiplier']) * 100)}% and cap all movements at "
+                    f"**RPE {fatigue_info['intensity_cap_rpe']}**.",
+                    icon="⚠️"
+                )
+
             with st.form(key=f"workout_log_form_{day_plan.day_order}"):
                 readiness = st.slider(
                     "Readiness & CNS State",
@@ -517,12 +531,11 @@ else:
                     )
 
                     st.markdown(f"#### #{ex_idx} • {ex.exercise_name.title()}")
-                    st.caption(f"Prescription: {ex.target_sets} sets × {ex.target_reps_min}–{ex.target_reps_max} reps @ RPE {ex.target_rpe}")
 
+                    # Calculate volume and intensity caps
                     effective_sets = ex.target_sets
                     target_rpe_cap = ex.target_rpe or 8.5
 
-                    fatigue_info = evaluate_systemic_fatigue(db)
                     if fatigue_info["deload_recommended"]:
                         effective_sets = max(1, round(ex.target_sets * fatigue_info["volume_multiplier"]))
                         target_rpe_cap = min(target_rpe_cap, fatigue_info["intensity_cap_rpe"] or 10.0)
@@ -538,7 +551,6 @@ else:
 
                     last_perf = db.get_last_performance(ex.exercise_id)
                     default_weight = 20.0
-                    st.caption(f"Prescription: {effective_sets} sets (Deload Adjusted) × {ex.target_reps_min}–{ex.target_reps_max} reps @ RPE {min(ex.target_rpe or 8.5, fatigue_info['intensity_cap_rpe'] or 10.0)}")
 
                     if last_perf:
                         top_prev = max(last_perf, key=lambda s: s["weight_kg"])
@@ -548,7 +560,7 @@ else:
                             last_rpe=top_prev.get("rpe", 8.5),
                             target_reps_min=ex.target_reps_min,
                             target_reps_max=ex.target_reps_max,
-                            target_rpe=ex.target_rpe or 8.5,
+                            target_rpe=target_rpe_cap,
                             equipment="barbell" if is_barbell else "other"
                         )
                         default_weight = proj["projected_weight"]
@@ -751,6 +763,8 @@ else:
                             "target_text": target_text
                         })
 
+                fatigue_post = evaluate_systemic_fatigue(db)
+
                 with st.spinner("Coach is analyzing session telemetry..."):
                     debrief_content = generate_session_debrief(
                         split_name=day_plan.day_name,
@@ -759,7 +773,8 @@ else:
                         exercise_summaries=exercise_summaries,
                         profile=profile or {},
                         total_tonnage=total_tonnage_kg,
-                        total_sets=total_working_sets
+                        total_sets=total_working_sets,
+                        fatigue_info=fatigue_post
                     )
                     db.save_session_debrief(session_id, debrief_content)
 

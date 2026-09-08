@@ -5,21 +5,17 @@ from typing import TypedDict, List, Dict, Any, Optional, Literal
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from langchain_core.messages import AIMessage, HumanMessage, BaseMessage
-from langchain_ollama import ChatOllama
 from langgraph.graph import StateGraph, END
 
 from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
+from utils.model_downloader import llm
 
 load_dotenv()
 logger = MyosLogger().get_logger(__name__)
 
 db = DatabaseManager()
-llm = ChatOllama(
-    model=os.getenv("LLM", "qwen2.5:3b"),
-    temperature=0.0,
-    num_ctx=4096
-)
+
 # -------------------------------------------------------------------------
 # Step Prompts Configuration
 # -------------------------------------------------------------------------

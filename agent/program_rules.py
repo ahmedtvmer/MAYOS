@@ -2,17 +2,14 @@ import os
 from typing import Dict, List, Any
 from dotenv import load_dotenv
 from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_ollama import ChatOllama
+from utils.model_downloader import llm
+
 from agent.ProgramState import DynamicSplitPlan, CustomDayPlan
 from database.database_manager import DatabaseManager
 
 load_dotenv()
 db = DatabaseManager()
-llm = ChatOllama(
-    model=os.getenv("LLM", "qwen2.5:3b"),
-    temperature=0.0,
-    num_ctx=4096
-)
+
 # -------------------------------------------------------------------------
 # Muscle Slang to Database Clause Translation Layer
 # -------------------------------------------------------------------------

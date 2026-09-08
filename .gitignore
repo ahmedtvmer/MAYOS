@@ -15,3 +15,5 @@ pyproject.toml
 data
 .env
 db
+models/
+*.gguf

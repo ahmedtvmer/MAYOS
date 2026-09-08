@@ -12,18 +12,12 @@ from agent.assistant_graph import (
     router_node,
     stream_assistant_turn,
     exercise_substitution_node,
-    llm,
     db as assistant_db,
     STATIC_SYSTEM_CORE,
-    RE_EXPLICIT_SWAP,
-    RE_SINGLE_SWAP,
-    RE_PROGRAM_MUTATION,
-    RE_FREQ_DIGIT,
-    RE_SEARCH_TOKENS,
     RE_ACTION_HINT
 )
 from utils.logger import MyosLogger
-from database.database_manager import DatabaseManager
+from utils.model_downloader import llm
 
 logger = MyosLogger().get_logger(__name__)
 

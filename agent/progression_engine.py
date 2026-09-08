@@ -1,7 +1,5 @@
-import math
-from typing import Dict, List, Any
+from typing import Optional, Union, Tuple, Dict, Any, List
 from datetime import datetime, timezone, timedelta
-import sqlite3
 
 from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
@@ -35,18 +33,32 @@ def project_next_load(
     last_weight: float,
     last_reps: int,
     last_rpe: float,
-    target_reps_min: int,
-    target_reps_max: int,
-    target_rpe: float,
+    target_reps_min: Optional[int] = None,
+    target_reps_max: Optional[int] = None,
+    target_reps: Optional[Union[int, Tuple[int, int], str]] = None,
+    target_rpe: float = 8.5,
     equipment: str = "barbell"
 ) -> Dict[str, Any]:
     """
-    Hypertrophy double progression with dynamic RPE auto-regulation:
-    - Maintains weight while accumulating reps within [min, max].
-    - Increments load when the rep ceiling is reached at target RPE.
-    - Upscales load early if RPE indicates surplus capacity (RIR >= 3).
-    - Protects against overshoots (RPE 10).
+    Auto-regulates target load for the next exposure based on RIR/RPE and rep brackets.
+    Supports either explicit target_reps_min/max or a fallback target_reps parameter.
     """
+    # Normalize rep bracket if target_reps was provided
+    if target_reps is not None:
+        if isinstance(target_reps, tuple) and len(target_reps) == 2:
+            target_reps_min = target_reps_min or target_reps[0]
+            target_reps_max = target_reps_max or target_reps[1]
+        elif isinstance(target_reps, int):
+            target_reps_min = target_reps_min or target_reps
+            target_reps_max = target_reps_max or target_reps
+        elif isinstance(target_reps, str) and "-" in target_reps:
+            parts = target_reps.split("-")
+            target_reps_min = target_reps_min or int(parts[0].strip())
+            target_reps_max = target_reps_max or int(parts[1].strip())
+
+    target_reps_min = target_reps_min or 8
+    target_reps_max = target_reps_max or 12
+
     if last_weight <= 0 or last_reps <= 0:
         return {
             "projected_weight": max(last_weight, 20.0),
@@ -106,6 +118,31 @@ def project_next_load(
         "status": "LOAD_MAINTAINED"
     }
 
+def normalize_muscle_group(muscle_name: str) -> str:
+    """Maps granular ExerciseDB anatomical targets to standardized display categories."""
+    m = (muscle_name or "").strip().lower()
+
+    if any(k in m for k in ["pectoral", "chest"]):
+        return "Chest"
+    if any(k in m for k in ["lat", "upper back", "trap", "rhomboid", "spine", "back"]):
+        return "Back"
+    if any(k in m for k in ["quad", "rectus femoris", "vastus"]):
+        return "Quads"
+    if any(k in m for k in ["hamstring", "biceps femoris", "glute"]):
+        return "Hamstrings & Glutes"
+    if any(k in m for k in ["delt", "shoulder"]):
+        return "Shoulders"
+    if any(k in m for k in ["bicep", "brachialis"]):
+        return "Biceps"
+    if any(k in m for k in ["tricep"]):
+        return "Triceps"
+    if any(k in m for k in ["calve", "soleus", "gastrocnemius"]):
+        return "Calves"
+    if any(k in m for k in ["ab", "core", "oblique"]):
+        return "Abs"
+
+    return "Other"
+
 def get_weekly_muscle_volume(db: DatabaseManager, days_lookback: int = 7) -> Dict[str, float]:
     """
     Aggregates working sets across a rolling window.
@@ -115,12 +152,12 @@ def get_weekly_muscle_volume(db: DatabaseManager, days_lookback: int = 7) -> Dic
     cursor = db.conn.cursor()
     cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days_lookback)).isoformat()[:10]
 
-    # Query all working sets inside lookback window
+    # Query working sets and primary targets
     query = """
         SELECT 
             ws.exercise_id,
             e.target_muscle,
-            ws.session_id
+            e.body_part
         FROM workout_sets ws
         JOIN workout_sessions s ON ws.session_id = s.id
         JOIN catalog.exercises e ON ws.exercise_id = e.id
@@ -131,20 +168,26 @@ def get_weekly_muscle_volume(db: DatabaseManager, days_lookback: int = 7) -> Dic
 
     volume_tally: Dict[str, float] = {}
 
-    for ex_id, target_muscle, _ in working_sets:
-        # 1. Primary muscle credit
-        prim = target_muscle.strip().lower()
-        volume_tally[prim] = volume_tally.get(prim, 0.0) + 1.0
+    for ex_id, target_muscle, body_part in working_sets:
+        # 1. Attribute 1.0 set credit to normalized primary group
+        primary_group = normalize_muscle_group(target_muscle)
+        if primary_group == "Other":
+            primary_group = normalize_muscle_group(body_part)
 
-        # 2. Secondary muscles credit (0.5 sets each)
+        if primary_group != "Other":
+            volume_tally[primary_group] = volume_tally.get(primary_group, 0.0) + 1.0
+
+        # 2. Attribute 0.5 set credit to secondary synergists
         cursor.execute(
             "SELECT muscle FROM catalog.exercise_secondary_muscles WHERE exercise_id = ?",
             (ex_id,)
         )
         sec_rows = cursor.fetchall()
         for (sec_m,) in sec_rows:
-            sec = sec_m.strip().lower()
-            volume_tally[sec] = volume_tally.get(sec, 0.0) + 0.5
+            sec_group = normalize_muscle_group(sec_m)
+            # Prevent double-counting the same group on the same exercise
+            if sec_group != "Other" and sec_group != primary_group:
+                volume_tally[sec_group] = volume_tally.get(sec_group, 0.0) + 0.5
 
     return {k: round(v, 1) for k, v in sorted(volume_tally.items(), key=lambda x: x[1], reverse=True)}
 
@@ -183,8 +226,20 @@ def get_exercise_progression_history(db: DatabaseManager, exercise_id: str) -> L
 
 def get_progression_signals(db: DatabaseManager) -> str:
     """Extracts compact progression and plateau signals for prompt telemetry."""
-    cursor = db.conn.cursor()
+    cursor = db.user_conn.cursor()
     
+    # Map active routine exercises to their prescribed rep ceilings
+    active_program = db.get_active_program()
+    target_ceilings = {}
+    if active_program:
+        for day in active_program.days:
+            for ex in day.exercises:
+                target_ceilings[str(ex.exercise_id)] = (
+                    ex.target_reps_min, 
+                    ex.target_reps_max, 
+                    ex.target_rpe or 8.5
+                )
+
     # Inspect distinct exercises performed in the last 30 days
     cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()[:10]
     cursor.execute("""
@@ -203,11 +258,21 @@ def get_progression_signals(db: DatabaseManager) -> str:
         if len(history) >= 2:
             last = history[-1]
             prev = history[-2]
+
+            # Fetch actual prescribed bracket or fall back to standard 8-12 @ RPE 8.5
+            rmin, rmax, rpe_target = target_ceilings.get(str(ex_id), (8, 12, 8.5))
+
             proj = project_next_load(
-                last["weight_kg"], last["reps"], last["rpe"], 
-                target_reps=last["reps"], target_rpe=8.5, equipment=eq
+                last_weight=last["weight_kg"],
+                last_reps=last["reps"],
+                last_rpe=last["rpe"],
+                target_reps_min=rmin,
+                target_reps_max=rmax,
+                target_rpe=rpe_target,
+                equipment=eq or "barbell"
             )
-            if proj["delta_kg"] > 0:
+
+            if proj["status"] in ("PROGRESSION_UP", "DYNAMIC_UPSCALE") and proj["delta_kg"] > 0:
                 signals.append(f"{name}: +{proj['delta_kg']}kg target ({proj['projected_weight']}kg)")
             elif len(history) >= 3 and history[-1]["e1rm"] <= history[-3]["e1rm"]:
                 signals.append(f"{name}: Stalled (3 exposures @ ~{last['weight_kg']}kg)")
@@ -215,7 +280,6 @@ def get_progression_signals(db: DatabaseManager) -> str:
     if not signals:
         return "Progression: Establishing baseline loads across routine."
     return "Progression Targets: " + " | ".join(signals[:3])
-
 
 def evaluate_systemic_fatigue(db_manager) -> Dict[str, Any]:
     """
