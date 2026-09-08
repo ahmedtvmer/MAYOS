@@ -1,17 +1,18 @@
+import os
 import sys
-from pathlib import Path
-import pandas as pd
-import streamlit as st
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_ollama import ChatOllama
+import time
 import uuid
 from datetime import datetime, timezone
-import time
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
 from dotenv import load_dotenv
-import os
+from langchain_core.messages import AIMessage, HumanMessage
+
 load_dotenv()
 
-# Page Configuration MUST be the first Streamlit command
+# Streamlit Page Configuration MUST be the first command
 st.set_page_config(
     page_title="Myos | Training Engine",
     page_icon="⚡",
@@ -22,16 +23,23 @@ st.set_page_config(
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(BASE_DIR))
 
+from agent.assistant_graph import assistant_graph, stream_assistant_turn
+from agent.debrief import generate_session_debrief
 from agent.onboarding_graph import onboarding_graph
 from agent.program_generator import generate_program_pipeline
+from agent.progression_engine import (
+    calculate_e1rm,
+    evaluate_systemic_fatigue,
+    get_exercise_progression_history,
+    get_weekly_muscle_volume,
+    project_next_load,
+)
+from core.warmup import calculate_warmup_sets
 from database.database_manager import DatabaseManager
 from utils.exporter import export_program_to_excel
-from agent.debrief import generate_session_debrief
-from core.warmup import calculate_warmup_sets
-from core.progression import evaluate_progression, calculate_epley_e1rm
-from agent.assistant_graph import assistant_graph
+from utils.plate_calculator import calculate_barbell_plates
 
-# Clean Table & Dark Theme Styling
+# Clean Dark Theme Styling
 st.markdown("""
 <style>
     .stApp {
@@ -46,13 +54,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------------------
-# Session-Scoped Database & Identity Management
+# Database Initialization & Session State Hydration
 # -------------------------------------------------------------------------
-
-llm = ChatOllama(model=os.getenv("LLM"), temperature=0.0)
-
-
-
 db = DatabaseManager()
 
 if "authenticated_user" not in st.session_state:
@@ -70,11 +73,8 @@ if "onboarding_state" not in st.session_state:
         "profile_data": None
     }
 
-if "assistant_messages" not in st.session_state:
-    st.session_state.assistant_messages = []
-
 # -------------------------------------------------------------------------
-# Gatekeeper: Login / Registration (Hides all other trainee data)
+# Gatekeeper: Login & Registration
 # -------------------------------------------------------------------------
 if not st.session_state.get("authenticated_user"):
     st.title("⚡ Myos Engine")
@@ -99,10 +99,9 @@ if not st.session_state.get("authenticated_user"):
                         "is_complete": bool(db.get_user_profile()),
                         "profile_data": db.get_user_profile()
                     }
-                    st.session_state.assistant_messages = []
                     st.rerun()
                 else:
-                    st.error("Trainee ID not found. Verify spelling or initialize a new profile.")
+                    st.error("Trainee ID not found. Verify spelling or create a new profile.")
 
     with reg_tab:
         with st.form("register_form"):
@@ -124,36 +123,19 @@ if not st.session_state.get("authenticated_user"):
                         "is_complete": False,
                         "profile_data": None
                     }
-                    st.session_state.assistant_messages = []
                     st.success(f"Ledger initialized for {clean_id}.")
                     st.rerun()
 
-    # Halt execution until authenticated
     st.stop()
 
 # -------------------------------------------------------------------------
-# Authenticated Trainee Hydration (Executes only after successful login)
+# Authenticated Trainee Context Hydration
 # -------------------------------------------------------------------------
 if st.session_state.authenticated_user and db.active_user != st.session_state.authenticated_user:
     db.switch_user(st.session_state.authenticated_user)
 
 profile = db.get_user_profile()
 
-if "onboarding_state" not in st.session_state:
-    st.session_state.onboarding_state = {
-        "messages": [],
-        "intake_step": 1,
-        "is_complete": bool(profile),
-        "profile_data": profile
-    }
-
-if "assistant_messages" not in st.session_state:
-    st.session_state.assistant_messages = []
-
-if "active_program" not in st.session_state:
-    st.session_state.active_program = db.get_active_program()
-
-# If user profile already exists, load the saved program instantly on startup
 if profile and st.session_state.active_program is None:
     saved_program = db.get_active_program()
     if saved_program:
@@ -163,24 +145,18 @@ if profile and st.session_state.active_program is None:
             prog, _ = generate_program_pipeline(rep_preference_override=profile.get("rep_preference", "balanced"))
             st.session_state.active_program = prog
 
-# If NO profile exists and onboarding hasn't run, trigger intake question #1
 if not profile and not st.session_state.onboarding_state["messages"]:
     st.session_state.onboarding_state["trainee_id"] = st.session_state.authenticated_user
     initial_output = onboarding_graph.invoke(st.session_state.onboarding_state)
     st.session_state.onboarding_state.update(initial_output)
 
 # -------------------------------------------------------------------------
-# UI Component: Program Dashboard & Excel Exporter
+# Program Visualization Helpers
 # -------------------------------------------------------------------------
 def resolve_media_path(path: str | None) -> str | None:
-    """
-    Resolves remote URLs or verifies existing local file paths.
-    Checks root, data/, and dataset/ directories.
-    Returns None if the file cannot be verified on disk.
-    """
+    """Verifies local existence or remote accessibility of demo assets."""
     if not path or not isinstance(path, str):
         return None
-        
     if path.startswith("http://") or path.startswith("https://"):
         return path
 
@@ -190,15 +166,13 @@ def resolve_media_path(path: str | None) -> str | None:
         BASE_DIR / "data" / path,
         BASE_DIR / "dataset" / path,
     ]
-
     for candidate in candidates:
         if candidate.is_file():
             return str(candidate.resolve())
-
     return None
 
 def render_program_dashboard(program):
-    """Renders tabs per training day with dataframes and visual form demos."""
+    """Renders daily training cards, loading tables, and media execution demos."""
     st.subheader(f"📋 {program.program_name}")
     st.caption(f"**Split:** {program.split_type} | **Weekly Frequency:** {program.weekly_frequency} Days")
 
@@ -216,7 +190,6 @@ def render_program_dashboard(program):
 
     for idx, day in enumerate(program.days):
         with tabs[idx]:
-            # 1. Scannable Double-Progression Overview Matrix
             data = [
                 {
                     "Order": i + 1,
@@ -229,9 +202,8 @@ def render_program_dashboard(program):
                 }
                 for i, ex in enumerate(day.exercises)
             ]
-            df = pd.DataFrame(data)
             st.dataframe(
-                df,
+                pd.DataFrame(data),
                 hide_index=True,
                 use_container_width=True,
                 column_config={
@@ -245,37 +217,26 @@ def render_program_dashboard(program):
                 }
             )
 
-            st.write("")
             st.markdown("##### 🎬 Biomechanical Execution & Form Demos")
-
-            # 2. Collapsible Media & Cue Cards
-            # Collapsible Media & Cue Cards
             for i, ex in enumerate(day.exercises):
                 with st.expander(f"#{i+1} • {ex.exercise_name.title()} (Visual Demo & Cues)"):
-                    # Give the demo a compact column and the details more space
                     col_demo, col_details = st.columns([1, 3])
-                    
                     with col_demo:
                         media = resolve_media_path(ex.gif_path) or resolve_media_path(ex.image_path)
-                        
                         if media:
                             try:
-                                # Lock width to prevent low-res GIF upscaling blur
                                 st.image(media, width=260)
                             except Exception:
                                 st.caption("Demonstration media could not be loaded.")
                         else:
                             st.caption("No media asset found on disk.")
-
                     with col_details:
                         st.markdown(f"**Loading Parameters:** `{ex.target_sets} sets × {ex.target_reps_min}–{ex.target_reps_max} reps @ RPE {ex.target_rpe}`")
                         st.markdown(f"**Prescribed Rest:** `{ex.rest_seconds} seconds`")
                         st.markdown(f"**Execution Cue:**\n> {ex.notes or 'Maintain maximum tension through full active range of motion.'}")
+
 # -------------------------------------------------------------------------
-# Sidebar: Profile & Controls
-# -------------------------------------------------------------------------
-# -------------------------------------------------------------------------
-# Sidebar: Profile & Controls
+# Sidebar: Controls & Persona Settings
 # -------------------------------------------------------------------------
 with st.sidebar:
     st.title("⚡ Myos Engine")
@@ -290,9 +251,6 @@ with st.sidebar:
     if profile:
         st.subheader("Active Profile")
 
-        # -----------------------------------------------------------------
-        # Direct Profile Editor (Zero-LLM UI Form)
-        # -----------------------------------------------------------------
         with st.expander("✏️ Edit Profile & Biomechanics", expanded=False):
             with st.form("edit_profile_form"):
                 proportions_opts = ["balanced", "long_legs", "long_torso"]
@@ -314,7 +272,6 @@ with st.sidebar:
                 save_profile_btn = st.form_submit_button("Save Profile Changes", use_container_width=True)
 
                 if save_profile_btn:
-                    # Detect if frequency or biomechanical drivers changed
                     freq_changed = int(new_freq) != int(profile.get("weekly_frequency", 4))
                     rep_changed = new_rep_pref != profile.get("rep_preference", "balanced")
                     limits_changed = new_limitations.strip() != profile.get("injuries_or_limitations", "None")
@@ -331,7 +288,6 @@ with st.sidebar:
                     }
                     db.upsert_user_profile(updated_payload)
 
-                    # Automatically compile a matching routine if frequency or constraints shifted
                     if freq_changed or rep_changed or limits_changed:
                         new_prog, _ = generate_program_pipeline(
                             rep_preference_override=new_rep_pref,
@@ -344,14 +300,12 @@ with st.sidebar:
 
                     st.rerun()
 
-        # Scannable Badges of Current State
         st.markdown(f"**Proportions:** `{profile.get('proportions', 'balanced')}`")
         st.markdown(f"**Rep Bias:** `{profile.get('rep_preference', 'balanced')}`")
         st.markdown(f"**Frequency:** `{profile.get('weekly_frequency', 4)} days/week`")
         st.markdown(f"**Limitations:** `{profile.get('injuries_or_limitations', 'None')}`")
         st.markdown(f"**Equipment:** `{profile.get('equipment_access', 'Commercial Gym')}`")
 
-        # --- Coach Persona & Behavior Configuration ---
         with st.expander("⚙️ Coach Persona & Directives"):
             tone_options = [
                 "Direct, grounded, and pragmatic",
@@ -370,8 +324,7 @@ with st.sidebar:
             custom_rules = st.text_area(
                 "Behavioral Directives & Guardrails:",
                 value=profile.get("custom_instructions", ""),
-                placeholder="e.g., Never use motivational fluff. Always prioritize joint longevity over load.",
-                help="These directives are permanently injected into the training assistant's system prompt for your account."
+                placeholder="e.g., Never use motivational fluff. Always prioritize joint longevity over load."
             )
 
             if st.button("Save Coach Settings", use_container_width=True):
@@ -383,23 +336,22 @@ with st.sidebar:
 
         if st.button("🔄 Regenerate Program", use_container_width=True):
             with st.spinner("⚡ Rebuilding split matrix and overload parameters..."):
-                time.sleep(0.35)  # Perceptual visual buffer for sub-50ms assembly
+                time.sleep(0.35)
                 latest_profile = db.get_user_profile()
                 target_freq = latest_profile.get("weekly_frequency", 4)
-
                 program, _ = generate_program_pipeline(
                     rep_preference_override=latest_profile.get("rep_preference", "balanced"),
                     frequency_override=target_freq
                 )
-
                 st.session_state.active_program = program
                 st.session_state.just_regenerated = True
                 st.rerun()
 
         if st.button("Reset Profile", type="secondary", use_container_width=True):
             db.clear_user_profile()
-            st.session_state.graph_state = {
+            st.session_state.onboarding_state = {
                 "messages": [],
+                "trainee_id": st.session_state.authenticated_user,
                 "intake_step": 1,
                 "is_complete": False,
                 "profile_data": None
@@ -407,7 +359,7 @@ with st.sidebar:
             st.session_state.active_program = None
             st.rerun()
     else:
-        st.info("Onboarding in progress. Answer the intake questions in the chat.") 
+        st.info("Onboarding in progress. Answer the intake questions in the chat.")
 
 # -------------------------------------------------------------------------
 # Viewport Routing: Onboarding vs Active Trainee
@@ -439,38 +391,96 @@ if not profile:
                     prog, _ = generate_program_pipeline()
                     st.session_state.active_program = prog
 
-                    st.write("🤖 Initializing Training Assistant context...")
-                    st.session_state.assistant_messages = [
-                        AIMessage(
-                            content=(
-                                f"Welcome! I have calibrated your active program: **{prog.program_name}** "
-                                f"({prog.weekly_frequency} days/week). "
-                                "Inspect your routine in **Program & Dashboard**, "
-                                "or command exercise substitutions and loading adjustments here."
-                            )
-                        )
-                    ]
+                    db.add_chat_message(
+                        "assistant",
+                        f"Welcome! I have calibrated your active routine: **{prog.program_name}** "
+                        f"({prog.weekly_frequency} days/week). Inspect your split in **Program & Dashboard**, "
+                        "log your work in **Active Workout Logger**, or query me here."
+                    )
                     status.update(label="✅ Calibration complete!", state="complete", expanded=False)
 
-                st.session_state.just_onboarded = True
+                st.session_state.just_regenerated = True
                 st.rerun()
 
         st.rerun()
 
 else:
-    # 2. Fully Separated 3-Tab Architecture
     main_view_tab, logger_tab, chat_tab = st.tabs([
         "📋 Program & Dashboard", 
         "🏋️ Active Workout Logger", 
         "💬 Training Assistant"
     ])
 
-    # ---------------- TAB 1: Pure Program View ----------------
+    # ---------------- TAB 1: Program & Dashboard ----------------
     with main_view_tab:
         if st.session_state.get("just_regenerated"):
             st.toast("✅ Routine recalibrated and saved to ledger!", icon="⚡")
             st.session_state.just_regenerated = False
 
+        prof = db.get_user_profile() or {}
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.metric("Trainee", f"{prof.get('gender', 'M').capitalize()}, {prof.get('age', 25)}yo")
+        with m2:
+            st.metric("Bodyweight", f"{prof.get('weight_kg', 75.0)} kg")
+        with m3:
+            st.metric("Frequency", f"{prof.get('weekly_frequency', 4)} d/wk")
+        with m4:
+            st.metric("Rep Bias", prof.get('rep_preference', 'balanced').capitalize())
+
+        st.divider()
+
+        # Rolling 7-Day Fractional Volume Distribution
+        st.markdown("#### 📈 Rolling 7-Day Volume Attribution")
+        st.caption("Direct Sets = 1.0 | Secondary Synergists = 0.5")
+
+        vol_data = get_weekly_muscle_volume(db, days_lookback=7)
+        if vol_data:
+            df_vol = pd.DataFrame(list(vol_data.items()), columns=["Muscle", "Effective Sets"])
+            st.bar_chart(df_vol.set_index("Muscle"), color="#FF4B4B")
+        else:
+            st.info("No sets logged in the last 7 days. Complete a workout in Tab 2 to populate volume telemetry.")
+
+        st.divider()
+
+        # Longitudinal Overload Trajectory
+        st.markdown("#### 🎯 Longitudinal Overload Trajectory")
+        st.caption("Inspect RPE-adjusted estimated 1RM (e1RM) and top-set loads across recorded exposures.")
+
+        cursor = db.user_conn.cursor()
+        cursor.execute("""
+            SELECT DISTINCT e.id, e.name 
+            FROM workout_sets ws
+            JOIN catalog.exercises e ON ws.exercise_id = e.id
+            ORDER BY e.name ASC
+        """)
+        logged_exercises = cursor.fetchall()
+
+        if logged_exercises:
+            ex_options = {name: ex_id for ex_id, name in logged_exercises}
+            selected_name = st.selectbox("Select Movement to Inspect:", list(ex_options.keys()))
+            selected_id = ex_options[selected_name]
+
+            history = get_exercise_progression_history(db, selected_id)
+            if history:
+                df_hist = pd.DataFrame(history)
+                c_chart1, c_chart2 = st.columns(2)
+                with c_chart1:
+                    st.markdown("**Estimated 1RM (kg)**")
+                    st.line_chart(df_hist.set_index("date")["e1rm"])
+                with c_chart2:
+                    st.markdown("**Top Set Load (kg)**")
+                    st.line_chart(df_hist.set_index("date")["weight_kg"])
+
+                last_entry = history[-1]
+                st.caption(f"Latest Recorded: **{last_entry['weight_kg']} kg × {last_entry['reps']} reps @ RPE {last_entry['rpe']}** (e1RM: {last_entry['e1rm']} kg)")
+        else:
+            st.info("Log workouts in Tab 2 to unlock movement overload charts.")
+
+        st.divider()
+
+        # Active Split Blueprint
+        st.markdown("#### 📋 Active Routine Blueprint")
         if st.session_state.active_program is not None:
             render_program_dashboard(st.session_state.active_program)
         else:
@@ -489,9 +499,7 @@ else:
 
             st.subheader(f"Logging: {day_plan.day_name}")
 
-            # Unique key per day order
             with st.form(key=f"workout_log_form_{day_plan.day_order}"):
-                # 1. Dynamic readiness slider inside the form
                 readiness = st.slider(
                     "Readiness & CNS State",
                     min_value=1,
@@ -503,12 +511,70 @@ else:
 
                 session_payload = []
                 for ex_idx, ex in enumerate(day_plan.exercises, start=1):
+                    is_barbell = (
+                        "barbell" in ex.exercise_name.lower()
+                        or "barbell" in str(getattr(ex, "equipment", "")).lower()
+                    )
+
                     st.markdown(f"#### #{ex_idx} • {ex.exercise_name.title()}")
-                    st.caption(f"Target: {ex.target_sets} sets × {ex.target_reps_min}–{ex.target_reps_max} reps @ RPE {ex.target_rpe}")
+                    st.caption(f"Prescription: {ex.target_sets} sets × {ex.target_reps_min}–{ex.target_reps_max} reps @ RPE {ex.target_rpe}")
+
+                    effective_sets = ex.target_sets
+                    target_rpe_cap = ex.target_rpe or 8.5
+
+                    fatigue_info = evaluate_systemic_fatigue(db)
+                    if fatigue_info["deload_recommended"]:
+                        effective_sets = max(1, round(ex.target_sets * fatigue_info["volume_multiplier"]))
+                        target_rpe_cap = min(target_rpe_cap, fatigue_info["intensity_cap_rpe"] or 10.0)
+                        st.caption(
+                            f"Prescription: **{effective_sets} sets** (Deload Adjusted from {ex.target_sets}) × "
+                            f"{ex.target_reps_min}–{ex.target_reps_max} reps @ RPE {target_rpe_cap}"
+                        )
+                    else:
+                        st.caption(
+                            f"Prescription: {ex.target_sets} sets × "
+                            f"{ex.target_reps_min}–{ex.target_reps_max} reps @ RPE {ex.target_rpe}"
+                        )
 
                     last_perf = db.get_last_performance(ex.exercise_id)
-                    default_weight = last_perf[0]["weight_kg"] if last_perf else 20.0
+                    default_weight = 20.0
+                    st.caption(f"Prescription: {effective_sets} sets (Deload Adjusted) × {ex.target_reps_min}–{ex.target_reps_max} reps @ RPE {min(ex.target_rpe or 8.5, fatigue_info['intensity_cap_rpe'] or 10.0)}")
 
+                    if last_perf:
+                        top_prev = max(last_perf, key=lambda s: s["weight_kg"])
+                        proj = project_next_load(
+                            last_weight=top_prev["weight_kg"],
+                            last_reps=top_prev["reps"],
+                            last_rpe=top_prev.get("rpe", 8.5),
+                            target_reps_min=ex.target_reps_min,
+                            target_reps_max=ex.target_reps_max,
+                            target_rpe=ex.target_rpe or 8.5,
+                            equipment="barbell" if is_barbell else "other"
+                        )
+                        default_weight = proj["projected_weight"]
+                        delta = proj["delta_kg"]
+                        delta_tag = f"(+{delta}kg)" if delta > 0 else (f"({delta}kg)" if delta < 0 else "(Maintained)")
+                        st.info(f"🎯 **Auto-Regulated Target:** {proj['projected_weight']} kg × {ex.target_reps_min}–{ex.target_reps_max} reps @ RPE {ex.target_rpe} {delta_tag}")
+
+                        # Soft Progression Ceiling / Anomaly Alert
+                        if delta >= 5.0 or (top_prev["weight_kg"] > 0 and (delta / top_prev["weight_kg"]) >= 0.10):
+                            st.warning(
+                                f"⚠️ **Large Load Jump (+{delta:g} kg vs last session):** "
+                                f"Prior top set was {top_prev['weight_kg']:g} kg. Verify target load before unracking.",
+                                icon="⚠️"
+                            )
+
+                        # Plate loading badge for barbell movements
+                        if is_barbell and default_weight > 0:
+                            plate_data = calculate_barbell_plates(default_weight)
+                            st.caption(f"🏋️ **Loading:** `{plate_data['formatted_display']}`")
+                    else:
+                        st.caption("🎯 **Target:** Baseline session. Enter calibration weight.")
+                        if is_barbell and default_weight > 0:
+                            plate_data = calculate_barbell_plates(default_weight)
+                            st.caption(f"🏋️ **Loading:** `{plate_data['formatted_display']}`")
+
+                    # Warm-up Ramp Sets with Plate Math
                     if ex_idx == 1 or ex.target_reps_min <= 8:
                         with st.expander("🔥 Warm-up Ramp Sets"):
                             warmups = calculate_warmup_sets(default_weight)
@@ -517,11 +583,18 @@ else:
                                 for w_i, w_set in enumerate(warmups):
                                     with w_cols[w_i]:
                                         st.metric(f"{w_set['set']} ({w_set['reps']} reps)", f"{w_set['load_kg']} kg", w_set["focus"])
+                                        if is_barbell:
+                                            w_plates = calculate_barbell_plates(w_set["load_kg"])
+                                            p_str = ", ".join(f"{p:g}" for p in w_plates["plates_per_side"])
+                                            side_str = f"[{p_str}]/side" if p_str else "Bar Only"
+                                            st.caption(f"🏋️ `{side_str}`")
 
                     ex_sets = []
-                    for s_i in range(ex.target_sets):
-                        last_set = last_perf[s_i] if s_i < len(last_perf) else None
+                    for s_i in range(effective_sets):
+                        last_set = last_perf[s_i] if (last_perf and s_i < len(last_perf)) else None
                         last_str = f"Last: {last_set['weight_kg']}kg × {last_set['reps']}" if last_set else "Last: —"
+                        
+                        initial_load = float(default_weight) if s_i == 0 else (float(last_set["weight_kg"]) if last_set else float(default_weight))
 
                         c1, c2, c3, c4 = st.columns([1, 2, 2, 2])
                         c1.markdown(f"**Set {s_i+1}**")
@@ -531,7 +604,7 @@ else:
                             "Load (kg)",
                             min_value=0.0,
                             max_value=500.0,
-                            value=float(last_set["weight_kg"] if last_set else default_weight),
+                            value=initial_load,
                             step=2.5,
                             key=f"w_{day_plan.day_order}_{ex.exercise_id}_{s_i}"
                         )
@@ -547,11 +620,10 @@ else:
                             "RPE",
                             min_value=6.0,
                             max_value=10.0,
-                            value=float(ex.target_rpe),
+                            value=float(last_set["rpe"] if (last_set and last_set.get("rpe")) else ex.target_rpe),
                             step=0.5,
                             key=f"rpe_{day_plan.day_order}_{ex.exercise_id}_{s_i}"
                         )
-
                         ex_sets.append({"weight_kg": weight, "reps": reps, "rpe": rpe})
 
                     session_payload.append({
@@ -579,64 +651,105 @@ else:
                     notes=session_notes
                 )
 
-                st.success("✅ Session Saved to Ledger.")
-
+                total_tonnage_kg = 0.0
+                total_working_sets = 0
                 exercise_summaries = []
-                for item in session_payload:
-                    ex = item["exercise"]
-                    sets = item["sets"]
-                    prev_sets = item["previous_perf"]
 
-                    volume_load = 0.0
-                    for s_i, s_data in enumerate(sets, start=1):
+                # Unified commit and analytics processing
+                for item in session_payload:
+                    ex_obj = item["exercise"]
+                    sets_data = item["sets"]
+                    prev_perf = item.get("previous_perf") or []
+                    working_sets = [s for s in sets_data if not s.get("is_warmup", False)]
+                    
+                    total_working_sets += len(working_sets)
+                    ex_volume = sum(s["weight_kg"] * s["reps"] for s in working_sets)
+                    total_tonnage_kg += ex_volume
+
+                    # Persist individual sets to SQLite
+                    for idx, s in enumerate(sets_data, start=1):
                         db.log_workout_set(
                             set_id=str(uuid.uuid4()),
                             session_id=session_id,
-                            exercise_id=ex.exercise_id,
-                            set_index=s_i,
-                            weight_kg=s_data["weight_kg"],
-                            reps=s_data["reps"],
-                            rpe=s_data["rpe"]
+                            exercise_id=str(ex_obj.exercise_id),
+                            set_index=idx,
+                            weight_kg=float(s["weight_kg"]),
+                            reps=int(s["reps"]),
+                            rpe=float(s["rpe"]),
+                            is_warmup=0
                         )
-                        volume_load += (s_data["weight_kg"] * s_data["reps"])
 
-                    best_set = max(sets, key=lambda s: calculate_epley_e1rm(s["weight_kg"], s["reps"]))
-                    current_e1rm = calculate_epley_e1rm(best_set["weight_kg"], best_set["reps"])
+                    if working_sets:
+                        top_set = max(working_sets, key=lambda x: x["weight_kg"])
+                        curr_e1rm = round(calculate_e1rm(top_set["weight_kg"], top_set["reps"], top_set["rpe"]), 2)
 
-                    if prev_sets:
-                        prev_best_set = max(prev_sets, key=lambda s: calculate_epley_e1rm(s["weight_kg"], s["reps"]))
-                        prev_best_load = prev_best_set["weight_kg"]
-                        prev_e1rm = calculate_epley_e1rm(prev_best_load, prev_best_set["reps"])
-                        load_delta = round(best_set["weight_kg"] - prev_best_load, 1)
-                        e1rm_delta = round(current_e1rm - prev_e1rm, 1)
-                    else:
-                        load_delta = None
-                        e1rm_delta = None
+                        # Project future prescription target for directive string
+                        next_proj = project_next_load(
+                            last_weight=top_set["weight_kg"],
+                            last_reps=top_set["reps"],
+                            last_rpe=top_set["rpe"],
+                            target_reps_min=ex_obj.target_reps_min,
+                            target_reps_max=ex_obj.target_reps_max,
+                            target_rpe=ex_obj.target_rpe or 8.5,
+                            equipment="barbell" if ("barbell" in ex_obj.exercise_name.lower()) else "other"
+                        )
 
-                    body_part = getattr(ex, "body_part", None) or getattr(ex, "target_muscle", "")
-                    mechanic = "compound" if ex.target_reps_min <= 8 else "isolation"
+                        if prev_perf:
+                            prev_top = max(prev_perf, key=lambda x: x["weight_kg"])
+                            prev_e1rm = round(calculate_e1rm(prev_top["weight_kg"], prev_top["reps"], prev_top.get("rpe", 8.5)), 2)
+                            e1rm_delta = round(curr_e1rm - prev_e1rm, 2)
+                            load_delta = round(top_set["weight_kg"] - prev_top["weight_kg"], 2)
+                            reps_delta = top_set["reps"] - prev_top["reps"]
 
-                    verdict = evaluate_progression(
-                        mechanic=mechanic,
-                        performed_sets=sets,
-                        target_reps_min=ex.target_reps_min,
-                        target_reps_max=ex.target_reps_max,
-                        body_part=body_part
-                    )
+                            if top_set["weight_kg"] > prev_top["weight_kg"]:
+                                status_badge = "LOAD INCREASE"
+                                action = "increase"
+                            elif top_set["reps"] > prev_top["reps"] and top_set["weight_kg"] >= prev_top["weight_kg"]:
+                                status_badge = "REP OVERLOAD"
+                                action = "increase"
+                            elif top_set["reps"] >= ex_obj.target_reps_max and top_set["rpe"] <= ex_obj.target_rpe:
+                                status_badge = "GRADUATED"
+                                action = "increase"
+                            elif top_set["rpe"] >= 10.0 and ex_obj.target_rpe <= 8.5:
+                                status_badge = "OVERSHOOT"
+                                action = "deload"
+                            else:
+                                status_badge = "CONSOLIDATING"
+                                action = "hold"
+                        else:
+                            e1rm_delta = None
+                            load_delta = None
+                            reps_delta = None
+                            status_badge = "BASELINE"
+                            action = "hold"
 
-                    exercise_summaries.append({
-                        "name": ex.exercise_name.title(),
-                        "top_load": best_set["weight_kg"],
-                        "top_reps": best_set["reps"],
-                        "top_rpe": best_set["rpe"],
-                        "volume_load": volume_load,
-                        "current_e1rm": current_e1rm,
-                        "load_delta": load_delta,
-                        "e1rm_delta": e1rm_delta,
-                        "action": verdict.get("action", "hold"),
-                        "status_badge": verdict.get("status_badge", ""),
-                        "target_text": verdict.get("target_text", "")
-                    })
+                        # Formulate concrete next session directive text
+                        if next_proj["status"] == "PROGRESSION_UP":
+                            target_text = f"Bracket ceiling reached. Advance load to {next_proj['projected_weight']} kg for {ex_obj.target_reps_min}–{ex_obj.target_reps_max} reps."
+                        elif next_proj["status"] == "DYNAMIC_UPSCALE":
+                            target_text = f"Velocity surplus detected. Step load up to {next_proj['projected_weight']} kg (+{next_proj['delta_kg']} kg)."
+                        elif next_proj["status"] == "RPE_OVERSHOOT_DELOAD":
+                            target_text = f"Exertion threshold exceeded. Deload to {next_proj['projected_weight']} kg to re-establish reserve."
+                        elif prev_perf:
+                            target_text = f"Consolidate at {top_set['weight_kg']} kg. Push for {min(top_set['reps'] + 1, ex_obj.target_reps_max)} reps @ RPE {ex_obj.target_rpe}."
+                        else:
+                            target_text = f"Baseline logged at {top_set['weight_kg']} kg. Target {ex_obj.target_reps_min}–{ex_obj.target_reps_max} reps next session."
+
+                        exercise_summaries.append({
+                            "name": ex_obj.exercise_name,
+                            "top_load": top_set["weight_kg"],
+                            "top_reps": top_set["reps"],
+                            "top_rpe": top_set["rpe"],
+                            "sets_completed": len(working_sets),
+                            "volume_load": ex_volume,
+                            "current_e1rm": curr_e1rm,
+                            "e1rm_delta": e1rm_delta,
+                            "load_delta": load_delta,
+                            "reps_delta": reps_delta,
+                            "action": action,
+                            "status_badge": status_badge,
+                            "target_text": target_text
+                        })
 
                 with st.spinner("Coach is analyzing session telemetry..."):
                     debrief_content = generate_session_debrief(
@@ -644,68 +757,110 @@ else:
                         readiness=readiness,
                         session_notes=session_notes,
                         exercise_summaries=exercise_summaries,
-                        profile=profile or {}
+                        profile=profile or {},
+                        total_tonnage=total_tonnage_kg,
+                        total_sets=total_working_sets
                     )
                     db.save_session_debrief(session_id, debrief_content)
-                    st.session_state.assistant_messages.append(
-                        AIMessage(content=f"### 📋 Debrief: {day_plan.day_name} ({today_date})\n\n{debrief_content}")
-                    )
 
+                    compact_pointer = (
+                        f"📋 **Session Logged:** {day_plan.day_name} ({today_date}) | "
+                        f"{total_working_sets} Sets | Volume: {total_tonnage_kg:,.1f} kg | "
+                        f"Readiness: {readiness}/5 | Saved to Ledger."
+                    )
+                    db.add_chat_message("assistant", compact_pointer)
+
+                st.success("✅ Session Saved to Ledger.")
+
+                # Post-Session Visual Debrief & Movement Breakdown
                 st.markdown("### 🎙️ Coach Post-Session Debrief")
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Total Volume Load", f"{total_tonnage_kg:,.1f} kg")
+                m2.metric("Working Sets", f"{total_working_sets} sets")
+                m3.metric("Session Readiness", f"{readiness}/5")
+
                 st.markdown(debrief_content)
                 st.divider()
 
                 st.markdown("### 📊 Movement Analytics")
                 for ex_stat in exercise_summaries:
-                    st.markdown(f"#### {ex_stat['name']} `{ex_stat['status_badge']}`")
+                    badge = ex_stat.get("status_badge", "LOGGED")
+                    st.markdown(f"#### {ex_stat.get('name', 'Movement')} `{badge}`")
+
                     c_load, c_e1rm, c_target = st.columns([1.2, 1.2, 2.6])
                     with c_load:
-                        delta_str = f"{ex_stat['load_delta']:+} kg vs last" if ex_stat["load_delta"] is not None else "Baseline set"
-                        st.metric("Top Load", f"{ex_stat['top_load']} kg × {ex_stat['top_reps']}", delta=delta_str)
+                        ld = ex_stat.get("load_delta")
+                        delta_str = f"{ld:+} kg vs last" if ld is not None else "Baseline set"
+                        st.metric("Top Load", f"{ex_stat.get('top_load', 0.0)} kg × {ex_stat.get('top_reps', 0)}", delta=delta_str)
                     with c_e1rm:
-                        e1rm_delta_str = f"{ex_stat['e1rm_delta']:+} kg e1RM" if ex_stat["e1rm_delta"] is not None else None
-                        st.metric("Est. 1-Rep Max", f"{ex_stat['current_e1rm']} kg", delta=e1rm_delta_str)
+                        ed = ex_stat.get("e1rm_delta")
+                        e1rm_delta_str = f"{ed:+} kg e1RM" if ed is not None else None
+                        st.metric("Est. 1-Rep Max", f"{ex_stat.get('current_e1rm', 0.0)} kg", delta=e1rm_delta_str)
                     with c_target:
                         st.markdown("**Next Session Directive:**")
-                        st.markdown(f"> {ex_stat['target_text']}")
+                        directive = ex_stat.get("target_text", "Maintain current load and strive for rep progression.")
+                        st.markdown(f"> {directive}")
                     st.divider()
 
     # ---------------- TAB 3: Training Assistant ----------------
     with chat_tab:
-        st.subheader("💬 Training Assistant")
-        st.caption("Ask biomechanics questions, search movements, or command split adjustments.")
+        c_title, c_clear = st.columns([4, 1])
+        with c_title:
+            st.subheader("💬 Training Assistant")
+            st.caption("Ask biomechanics questions, search movements, or command split adjustments.")
+        with c_clear:
+            if st.button("🗑️ Clear", use_container_width=True, help="Flush current dialogue context"):
+                db.clear_chat_history()
+                st.rerun()
 
-        # Render strictly assistant messages
-        for msg in st.session_state.assistant_messages:
-            role = "user" if isinstance(msg, HumanMessage) else "assistant"
-            with st.chat_message(role):
-                st.markdown(msg.content)
+        # 1. Render dialogue history from SQLite ledger
+        full_history = db.get_chat_history()
+        for msg in full_history:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
 
         user_input = st.chat_input("Ask a question or enter a command...")
         if user_input:
-            st.session_state.assistant_messages.append(HumanMessage(content=user_input))
+            # 2. Persist user turn immediately to SQLite and render
+            db.add_chat_message("user", user_input)
+            with st.chat_message("user"):
+                st.markdown(user_input)
 
-            with st.spinner("Processing..."):
+            # 3. Clamped 6-message dialogue tail
+            recent_records = db.get_chat_history(limit=6)
+            tail_messages = []
+            for r in recent_records:
+                if r["role"] == "user":
+                    tail_messages.append(HumanMessage(content=r["content"]))
+                elif r["role"] == "assistant":
+                    tail_messages.append(AIMessage(content=r["content"]))
+
+            # 4. Real-Time Token Streaming (No blocking spinner)
+            with st.chat_message("assistant"):
                 initial_state = {
-                    "messages": st.session_state.assistant_messages,
+                    "messages": tail_messages,
                     "trainee_id": st.session_state.authenticated_user,
                     "coach_tone": profile.get("coach_tone", "Direct, grounded, and pragmatic"),
                     "custom_instructions": profile.get("custom_instructions", ""),
+                    "telemetry_context": None,
                     "intent": None,
                     "intent_metadata": {},
-                    "retrieved_context": None,
                     "program_updated": False,
                     "response_content": None
                 }
 
-                output = assistant_graph.invoke(initial_state)
+                # Stream tokens iteratively into the active container
+                generator = stream_assistant_turn(initial_state)
+                streamed_output = st.write_stream(generator)
 
-                if output.get("program_updated"):
+                # 5. Atomic persistence to SQLite post-completion
+                final_response = initial_state.get("response_content") or streamed_output
+                if final_response:
+                    db.add_chat_message("assistant", final_response)
+
+                # 6. Synchronize routine state on mutations or substitutions
+                if initial_state.get("program_updated"):
                     st.session_state.active_program = db.get_active_program()
-
-                if output.get("response_content"):
-                    st.session_state.assistant_messages.append(
-                        AIMessage(content=output["response_content"])
-                    )
-
-            st.rerun()
+                    st.toast("Routine updated in ledger!", icon="📋")
+                    time.sleep(0.4)
+                    st.rerun()

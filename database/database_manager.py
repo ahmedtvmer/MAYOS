@@ -265,6 +265,15 @@ class DatabaseManager:
                 FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS chat_history (
+                id TEXT PRIMARY KEY,
+                role TEXT CHECK(role IN ('user', 'assistant', 'system')) NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_history(created_at);
+
             CREATE INDEX IF NOT EXISTS idx_sets_session ON workout_sets(session_id);
             CREATE INDEX IF NOT EXISTS idx_sets_exercise ON workout_sets(exercise_id);
             CREATE INDEX IF NOT EXISTS idx_sessions_date ON workout_sessions(session_date);
@@ -326,13 +335,22 @@ class DatabaseManager:
         self.catalog_conn.commit()
         logger.info("Myos database initialized and seeded successfully with sanitized exercise names.")
 
+    EXCLUDED_BIOMECHANICAL_PATTERNS = (
+        "behind neck",
+        "behind the neck",
+        "upright row",
+    )
+
     def search_similar_exercises(self, query_vector: list[float], limit: int = 5) -> list[dict]:
         """
-        Queries vec_exercises using cosine similarity and joins with 
-        relational exercise details.
+        Queries vec_exercises using cosine similarity, applies biomechanical exclusion 
+        guards, and joins with relational exercise details.
         """
         cursor = self.catalog_conn.cursor()
         serialized_vector = sqlite_vec.serialize_float32(query_vector)
+
+        # Oversample by 3x to ensure sufficient candidates remain after filtering
+        oversample_k = limit * 3
 
         query = """
             WITH knn_matches AS (
@@ -353,13 +371,25 @@ class DatabaseManager:
             ORDER BY m.distance ASC;
         """
         
-        cursor.execute(query, (serialized_vector, limit))
+        cursor.execute(query, (serialized_vector, oversample_k))
         rows = cursor.fetchall()
 
-        # Return clean dictionaries ready for the agent to reason over
         columns = ["id", "name", "body_part", "target_muscle", "equipment", "instructions", "distance"]
-        return [dict(zip(columns, row)) for row in rows]
+        candidates = []
+        for row in rows:
+            record = dict(zip(columns, row))
+            name_lower = record["name"].lower()
+            
+            # Biomechanical exclusion filter
+            if any(pattern in name_lower for pattern in self.EXCLUDED_BIOMECHANICAL_PATTERNS):
+                continue
+                
+            candidates.append(record)
+            if len(candidates) >= limit:
+                break
 
+        return candidates
+    
     def get_user_profile(self, user_id: int = 1) -> dict | None:
         """
         Retrieves a user profile by user_id as a dictionary, 
@@ -680,24 +710,34 @@ class DatabaseManager:
         self.conn.commit()
 
     def get_last_performance(self, exercise_id: str) -> list[dict]:
-        """Fetches sets from the most recent session for this exercise."""
+        """Fetches sets from the single most recent session for this exercise."""
         cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT ws.set_index, ws.weight_kg, ws.reps, ws.rpe, ws.is_warmup, s.session_date
-            FROM workout_sets ws
-            JOIN workout_sessions s ON ws.session_id = s.id
-            WHERE ws.exercise_id = ? AND ws.is_warmup = 0
-            ORDER BY s.session_date DESC, ws.set_index ASC
-            LIMIT 10
-        """, (exercise_id,))
-        rows = cursor.fetchall()
-        if not rows:
-            return []
         
-        last_date = rows[0][5]
+        cursor.execute("""
+            SELECT s.id
+            FROM workout_sessions s
+            JOIN workout_sets ws ON ws.session_id = s.id
+            WHERE ws.exercise_id = ? AND ws.is_warmup = 0
+            ORDER BY s.started_at DESC, s.ROWID DESC
+            LIMIT 1
+        """, (exercise_id,))
+        session_row = cursor.fetchone()
+        if not session_row:
+            return []
+
+        latest_session_id = session_row[0]
+
+        cursor.execute("""
+            SELECT ws.set_index, ws.weight_kg, ws.reps, ws.rpe, ws.is_warmup
+            FROM workout_sets ws
+            WHERE ws.session_id = ? AND ws.exercise_id = ? AND ws.is_warmup = 0
+            ORDER BY ws.set_index ASC
+        """, (latest_session_id, exercise_id))
+        rows = cursor.fetchall()
+
         return [
             {"set_index": r[0], "weight_kg": r[1], "reps": r[2], "rpe": r[3]}
-            for r in rows if r[5] == last_date
+            for r in rows
         ]
 
     def update_user_persona(self, coach_tone: str, custom_instructions: str) -> None:
@@ -787,4 +827,125 @@ class DatabaseManager:
         cursor.execute("SELECT coach_debrief FROM workout_sessions WHERE id = ?", (session_id,))
         row = cursor.fetchone()
         return row[0] if row else None
+
+    def add_chat_message(self, role: str, content: str) -> str:
+        """Persists a single chat message directly to the active user's SQLite ledger."""
+        cursor = self.conn.cursor()
+        msg_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        cursor.execute(
+            "INSERT INTO chat_history (id, role, content, created_at) VALUES (?, ?, ?, ?)",
+            (msg_id, role, content, now)
+        )
+        self.conn.commit()
+        return msg_id
+
+    def get_chat_history(self, limit: Optional[int] = None) -> list[dict]:
+        """
+        Retrieves chat history in chronological order.
+        If limit is provided, returns only the most recent N messages.
+        """
+        cursor = self.conn.cursor()
+        if limit:
+            cursor.execute("""
+                SELECT id, role, content, created_at 
+                FROM chat_history 
+                ORDER BY created_at DESC 
+                LIMIT ?
+            """, (limit,))
+            rows = cursor.fetchall()
+            return [
+                {"id": r[0], "role": r[1], "content": r[2], "created_at": r[3]}
+                for r in reversed(rows)
+            ]
+        else:
+            cursor.execute("""
+                SELECT id, role, content, created_at 
+                FROM chat_history 
+                ORDER BY created_at ASC
+            """)
+            rows = cursor.fetchall()
+            return [
+                {"id": r[0], "role": r[1], "content": r[2], "created_at": r[3]}
+                for r in rows
+            ]
+
+    def clear_chat_history(self) -> None:
+        """Flushes the chat table for the active user during episodic eviction."""
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM chat_history")
+        self.conn.commit()
+
+    def get_compact_telemetry(self) -> str:
+        """Constructs a token-dense telemetry snapshot for prompt conditioning."""
+        cursor = self.conn.cursor()
+
+        # 1. Trainee Biometrics
+        prof = self.get_user_profile() or {}
+        gender = prof.get("gender", "male").capitalize()
+        age = prof.get("age", "?")
+        wt = prof.get("weight_kg", "?")
+        ht = prof.get("height_cm", "?")
+        props = prof.get("proportions", "balanced").replace("_", " ")
+        goal = prof.get("current_goal", "Hypertrophy")
+        rep_bias = prof.get("rep_preference", "balanced")
+
+        # 2. Active Routine
+        cursor.execute("""
+            SELECT program_name, weekly_frequency, split_type 
+            FROM training_programs 
+            WHERE is_active = 1 
+            ORDER BY created_at DESC 
+            LIMIT 1
+        """)
+        prog_row = cursor.fetchone()
+        prog_str = f"{prog_row[0]} ({prog_row[1]}d/wk {prog_row[2]})" if prog_row else "None"
+
+        # 3. Latest Session
+        cursor.execute("""
+            SELECT id, session_date, split_name, readiness_score, coach_debrief
+            FROM workout_sessions 
+            ORDER BY session_date DESC, started_at DESC 
+            LIMIT 1
+        """)
+        last_session = cursor.fetchone()
+
+        if last_session:
+            s_id, s_date, s_split, s_readiness, s_debrief = last_session
+            cursor.execute("""
+                SELECT e.name, ws.weight_kg, ws.reps, ws.rpe
+                FROM workout_sets ws
+                JOIN catalog.exercises e ON ws.exercise_id = e.id
+                WHERE ws.session_id = ? AND ws.is_warmup = 0
+                ORDER BY ws.weight_kg DESC 
+                LIMIT 1
+            """, (s_id,))
+            top_set = cursor.fetchone()
+            top_str = f" | Top: {top_set[0]} {top_set[1]}kg x {top_set[2]} @ RPE {top_set[3]}" if top_set else ""
+            last_str = f"{s_split} ({s_date}) | Readiness: {s_readiness}/5{top_str}"
+        else:
+            last_str = "No recorded sessions yet in ledger."
+        
+
+        from agent.progression_engine import evaluate_systemic_fatigue
+
+        fatigue_state = evaluate_systemic_fatigue(self)
+        if fatigue_state["deload_recommended"]:
+            fatigue_line = f"Systemic State: DELOAD RECOMMENDED ({fatigue_state['reason']} | Cap RPE at {fatigue_state['intensity_cap_rpe']})"
+        else:
+            fatigue_line = f"Systemic State: Recovered (Rolling Readiness: {fatigue_state['recent_readiness_avg'] or 'N/A'}/5)"
+        
+        # 4. Deterministic Progression Signals
+        from agent.progression_engine import get_progression_signals
+        prog_signals = get_progression_signals(self)
+
+        return (
+            "[TRAINEE TELEMETRY & SYSTEM STATE]\n"
+            f"Trainee: {gender}, {age}yo | {wt}kg @ {ht}cm | Build: {props}\n"
+            f"Goal: {goal} | Rep Bias: {rep_bias} | Routine: {prog_str}\n"
+            f"Last Session: {last_str}\n"
+            f"{prog_signals}\n"
+            f"{fatigue_line}"
+        )
+
 

@@ -8,8 +8,11 @@ from database.database_manager import DatabaseManager
 
 load_dotenv()
 db = DatabaseManager()
-llm = ChatOllama(model=os.getenv("LLM"), temperature=0.0)
-
+llm = ChatOllama(
+    model=os.getenv("LLM", "qwen2.5:3b"),
+    temperature=0.0,
+    num_ctx=4096
+)
 # -------------------------------------------------------------------------
 # Muscle Slang to Database Clause Translation Layer
 # -------------------------------------------------------------------------
