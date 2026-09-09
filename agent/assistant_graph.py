@@ -529,6 +529,30 @@ def _stream_text_smoothly(text: str, delay: float = 0.035) -> Generator[str, Non
 # Internal engine logger (writes silently to logs/myos.log)
 
 
+import logging
+
+# Configure log path
+LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / "myos.log"
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Attach dedicated FileHandler if not already registered
+def _get_telemetry_handler() -> logging.FileHandler:
+    for handler in logger.handlers:
+        if isinstance(handler, logging.FileHandler) and Path(handler.baseFilename).resolve() == LOG_FILE.resolve():
+            return handler
+    fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+    logger.addHandler(fh)
+    return fh
+
+_telemetry_handler = _get_telemetry_handler()
+
+
 def _record_telemetry_event(
     intent: str,
     fast_path_ms: float,
@@ -538,22 +562,21 @@ def _record_telemetry_event(
     tps: float = 0.0,
     user_id: str = "default"
 ) -> None:
-    """Logs internal engine latency without exposing metrics to trainee UI."""
-    logger = MyosLogger().get_logger("engine.telemetry")
+    """Logs internal engine latency directly to disk without UI disruption."""
     log_payload = (
         f"[TELEMETRY] User: {user_id} | Intent: {intent} | "
         f"Router: {fast_path_ms:.3f}ms | TTFT: {ttft_ms:.1f}ms | "
         f"Tokens: {tokens} | GenTime: {gen_time_s:.2f}s | Speed: {tps:.2f} TPS"
     )
     logger.info(log_payload)
+    _telemetry_handler.flush()
 
-    # Threshold alert for CPU thermal throttling or thread contention
     if intent == "coaching_qa" and tps > 0 and tps < 8.0:
         logger.warning(
             f"[PERF DEGRADATION] Low inference throughput detected: {tps:.2f} TPS "
             f"(Threshold: 8.0 TPS). Check CPU temperature or background processes."
         )
-
+        _telemetry_handler.flush()
 
 def stream_assistant_turn(state: Dict[str, Any]) -> Generator[str, None, None]:
     t_start = time.perf_counter()
