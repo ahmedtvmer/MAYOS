@@ -12,7 +12,14 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 
-def test_step_test(label: str, initial_state: dict, user_reply: str, expected_step: int, should_reject: bool):
+def _assert_step_transition(
+    label: str,
+    initial_state: dict,
+    user_reply: str,
+    expected_step: int,
+    should_reject: bool,
+) -> dict:
+    """Helper assertion function (hidden from Pytest discovery via leading underscore)."""
     state = dict(initial_state)
     state["messages"] = list(state.get("messages", [])) + [HumanMessage(content=user_reply)]
 
@@ -42,7 +49,8 @@ def test_step_test(label: str, initial_state: dict, user_reply: str, expected_st
     return result
 
 
-if __name__ == "__main__":
+def test_onboarding_validation_workflow():
+    """Validates the multi-step conversational intake state machine end-to-end."""
     logger.info("⚡ Starting Intake Validation Test Suite...")
 
     # 0. Initial Graph Boot
@@ -57,7 +65,7 @@ if __name__ == "__main__":
     )
 
     # TEST 1: Step 1 - Pure Off-Topic / Chit-chat (Must Reject)
-    state_after_t1 = test_step_test(
+    state_after_t1 = _assert_step_transition(
         label="Test 1: Off-Topic Chat",
         initial_state=boot_state,
         user_reply="Can you write me a python script to scrape gym websites?",
@@ -66,16 +74,16 @@ if __name__ == "__main__":
     )
 
     # TEST 2: Step 1 - Missing Key Biometrics (Must Reject)
-    state_after_t2 = test_step_test(
+    state_after_t2 = _assert_step_transition(
         label="Test 2: Incomplete Biometrics",
         initial_state=state_after_t1,
-        user_reply="male, 21 years old, long legs",  # Missing weight and height
+        user_reply="male, 21 years old, long legs",
         expected_step=1,
         should_reject=True,
     )
 
     # TEST 3: Step 1 - Physically Impossible Biometrics (Must Reject)
-    state_after_t3 = test_step_test(
+    state_after_t3 = _assert_step_transition(
         label="Test 3: Impossible Biometrics",
         initial_state=state_after_t2,
         user_reply="balanced, male, 5 years old, 400kg, 320cm",
@@ -84,7 +92,7 @@ if __name__ == "__main__":
     )
 
     # TEST 4: Step 1 - Valid Biometrics (Must Accept & Advance to Step 2)
-    state_after_t4 = test_step_test(
+    state_after_t4 = _assert_step_transition(
         label="Test 4: Valid Step 1 Submission",
         initial_state=state_after_t3,
         user_reply="1lower body is longer, 2male, 21, 80kg, 183cm",
@@ -93,7 +101,7 @@ if __name__ == "__main__":
     )
 
     # TEST 5: Step 2 - Out-of-Bounds Frequency (Must Reject)
-    state_after_t5 = test_step_test(
+    state_after_t5 = _assert_step_transition(
         label="Test 5: Frequency > 5 Days",
         initial_state=state_after_t4,
         user_reply="3strength 4longevity 5seven days a week 63years",
@@ -102,7 +110,7 @@ if __name__ == "__main__":
     )
 
     # TEST 6: Step 2 - Valid Goals & Capacity (Must Accept & Advance to Step 3)
-    state_after_t6 = test_step_test(
+    state_after_t6 = _assert_step_transition(
         label="Test 6: Valid Step 2 Submission",
         initial_state=state_after_t5,
         user_reply="3hypertrophy 4health and longevity 54 days per week 63 years lifting",
@@ -111,7 +119,7 @@ if __name__ == "__main__":
     )
 
     # TEST 7: Step 3 - Valid Logistics & Final Completion (Must Complete Intake)
-    state_after_t7 = test_step_test(
+    state_after_t7 = _assert_step_transition(
         label="Test 7: Valid Step 3 Submission",
         initial_state=state_after_t6,
         user_reply="7commercial gym 8no injuries 9medium stress, 8 hours sleep",
@@ -121,3 +129,7 @@ if __name__ == "__main__":
 
     assert state_after_t7["is_complete"] is True, "Failed: Intake failed to flag is_complete=True on Step 3!"
     logger.info("\n🎉 All 7 validation edge cases passed successfully.")
+
+
+if __name__ == "__main__":
+    test_onboarding_validation_workflow()

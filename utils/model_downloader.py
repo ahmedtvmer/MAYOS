@@ -9,8 +9,9 @@ from unittest.mock import MagicMock
 
 from huggingface_hub import hf_hub_download
 from langchain_community.chat_models import ChatLlamaCpp
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGenerationChunk
+from pydantic import BaseModel
 
 DEFAULT_MODEL_DIR = Path("models")
 DEFAULT_MODEL_FILENAME = "qwen2.5-3b-instruct-q4_k_m.gguf"
@@ -62,35 +63,108 @@ class SafeChatLlamaCpp(ChatLlamaCpp):
             yield chunk
 
 
+class MockSafeChatLlamaCpp(SafeChatLlamaCpp):
+    """Testing double that satisfies CI requirements without loading GGUF binaries."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        attrs = {
+            "max_tokens": 200,
+            "temperature": 0.0,
+            "n_ctx": 2048,
+            "n_batch": 512,
+            "streaming": True,
+            "verbose": False,
+            "model_path": "mock.gguf",
+        }
+        for k, v in attrs.items():
+            object.__setattr__(self, k, v)
+
+    def invoke(self, *args: Any, **kwargs: Any) -> AIMessage:
+        return AIMessage(
+            content="Execute Romanian deadlifts first to bias hamstring lengthened tension under high axial load."
+        )
+
+    def bind_tools(self, tools: Any, **kwargs: Any) -> Any:
+        bound = MagicMock()
+        bound.invoke.return_value = AIMessage(
+            content="",
+            tool_calls=[{
+                "name": "search_exercises",
+                "args": {"query": "hamstrings barbell"},
+                "id": "call_mock_1",
+                "type": "tool_call",
+            }],
+        )
+        return bound
+
+    def with_structured_output(self, schema: Any, **kwargs: Any) -> Any:
+        runnable = MagicMock()
+
+        class MockSplitDay:
+            day_order = 1
+            day_name = "Day 1"
+            target_body_parts = ["chest", "back"]
+            exercises = [
+                {"exercise_id": "0001", "name": "Bench Press"},
+                {"exercise_id": "0002", "name": "Squat"},
+                {"exercise_id": "0003", "name": "Deadlift"},
+            ]
+
+        class MockPlan:
+            split_name = "Custom 3-Day Split"
+            days = [MockSplitDay(), MockSplitDay(), MockSplitDay()]
+            day_order = 1
+            day_name = "Full Body"
+            target_body_parts = ["chest", "back", "legs"]
+            exercises = [
+                {"exercise_id": "0001", "name": "Barbell Bench Press"},
+                {"exercise_id": "0002", "name": "Barbell Back Squat"},
+                {"exercise_id": "0003", "name": "Pull Up"},
+            ]
+
+        def _handler(*h_args: Any, **h_kwargs: Any) -> Any:
+            if isinstance(schema, type) and issubclass(schema, BaseModel):
+                try:
+                    payload = {
+                        "split_name": "Custom 3-Day Split",
+                        "days": [
+                            {"day_order": 1, "day_name": "Upper", "target_body_parts": ["chest"]},
+                            {"day_order": 2, "day_name": "Lower", "target_body_parts": ["quads"]},
+                            {"day_order": 3, "day_name": "Arms", "target_body_parts": ["biceps"]},
+                        ],
+                        "day_order": 1,
+                        "day_name": "Full Body",
+                        "target_body_parts": ["chest", "back", "legs"],
+                        "exercises": [
+                            {"exercise_id": "0001", "name": "Barbell Bench Press", "sets": 3, "reps": "8-10"},
+                            {"exercise_id": "0002", "name": "Barbell Back Squat", "sets": 3, "reps": "8-10"},
+                            {"exercise_id": "0003", "name": "Pull Up", "sets": 3, "reps": "8-10"},
+                        ],
+                    }
+                    return schema.model_validate(payload)
+                except Exception:
+                    return MockPlan()
+            return MockPlan()
+
+        runnable.invoke.side_effect = _handler
+        return runnable
+
+
 _llm_instance = None
 
 
 def get_llm() -> Any:
-    """Lazily instantiate SafeChatLlamaCpp singleton."""
     global _llm_instance
     if _llm_instance is not None:
         return _llm_instance
 
     is_testing = os.getenv("CI") == "true" or "pytest" in sys.modules or os.getenv("TESTING") == "1"
-
-    try:
-        import llama_cpp  # noqa: F401
-    except ImportError:
-        if is_testing:
-            _llm_instance = MagicMock(name="MockSafeChatLlamaCpp")
-            return _llm_instance
-        raise ImportError(
-            "Could not import llama-cpp-python library. "
-            "Please install it using `pip install llama-cpp-python`."
-        )
-
     model_candidate = Path(
         os.getenv("MODEL_PATH", Path(os.getenv("MODEL_DIR", DEFAULT_MODEL_DIR)) / DEFAULT_MODEL_FILENAME)
     )
 
-    # Prevent multi-gigabyte downloads during CI runs and unit tests
     if is_testing and not model_candidate.is_file():
-        _llm_instance = MagicMock(name="MockSafeChatLlamaCpp")
+        _llm_instance = MockSafeChatLlamaCpp()
         return _llm_instance
 
     resolved_path = get_or_download_model_path()
@@ -111,27 +185,14 @@ def get_llm() -> Any:
 
 
 class _LazyLLMProxy:
-    """Transparent proxy that defers model loading until an attribute or invocation occurs."""
-
     def __getattr__(self, name: str) -> Any:
         return getattr(get_llm(), name)
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         return get_llm()(*args, **kwargs)
 
-    def __or__(self, other: Any) -> Any:
-        return get_llm().__or__(other)
-
-    def __ror__(self, other: Any) -> Any:
-        return get_llm().__ror__(other)
-
-    def __bool__(self) -> bool:
-        return True
-
     def __repr__(self) -> str:
-        if _llm_instance is None:
-            return "<LazyLLMProxy (uninitialized)>"
-        return repr(_llm_instance)
+        return repr(get_llm())
 
 
 llm = _LazyLLMProxy()
