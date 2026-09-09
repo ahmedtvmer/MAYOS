@@ -168,6 +168,7 @@ class DatabaseManager:
                     exercise_id INTEGER PRIMARY KEY,
                     embedding float[{self.EMBEDDING_DIM}] distance_metric=cosine
                 );
+                CREATE INDEX IF NOT EXISTS idx_secondary_muscles_ex ON exercise_secondary_muscles(exercise_id);
             """)
             self.catalog_conn.commit()
 
@@ -259,6 +260,19 @@ class DatabaseManager:
             CREATE INDEX IF NOT EXISTS idx_sets_session ON workout_sets(session_id);
             CREATE INDEX IF NOT EXISTS idx_sets_exercise ON workout_sets(exercise_id);
             CREATE INDEX IF NOT EXISTS idx_sessions_date ON workout_sessions(session_date);
+
+            CREATE TABLE IF NOT EXISTS engine_telemetry (
+            id TEXT PRIMARY KEY,
+            timestamp TEXT NOT NULL,
+            route_intent TEXT NOT NULL,
+            fast_path_latency_ms REAL,
+            ttft_ms REAL,
+            generation_ms REAL,
+            token_count INTEGER,
+            tps REAL,
+            memory_rss_mb REAL
+            );
+            CREATE INDEX IF NOT EXISTS idx_telemetry_ts ON engine_telemetry(timestamp);
         """)
         self.conn.commit()
 
@@ -515,6 +529,16 @@ class DatabaseManager:
                 id, session_id, exercise_id, set_index, weight_kg, reps, rpe, is_warmup, logged_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (set_id, session_id, exercise_id, set_index, weight_kg, reps, rpe, is_warmup, datetime.now(timezone.utc).isoformat()))
+        self.conn.commit()
+
+    def log_workout_sets_batch(self, sets_payload: List[Dict[str, Any]]) -> None:
+        """Persists all session sets in a single atomic transaction."""
+        cursor = self.conn.cursor()
+        cursor.executemany("""
+            INSERT INTO workout_sets (
+                id, session_id, exercise_id, set_index, weight_kg, reps, rpe, is_warmup, logged_at
+            ) VALUES (:id, :session_id, :exercise_id, :set_index, :weight_kg, :reps, :rpe, :is_warmup, :logged_at)
+        """, sets_payload)
         self.conn.commit()
 
     def get_last_performance(self, exercise_id: str) -> List[Dict[str, Any]]:

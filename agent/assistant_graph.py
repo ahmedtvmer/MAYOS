@@ -8,7 +8,6 @@ from typing import Annotated, Sequence, Optional, Literal, Dict, Any, List, Gene
 from typing_extensions import TypedDict
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
-
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
 from langchain_huggingface import HuggingFaceEmbeddings
 from langgraph.graph import StateGraph, END
@@ -527,7 +526,38 @@ def _stream_text_smoothly(text: str, delay: float = 0.035) -> Generator[str, Non
         yield word + (" " if i < len(words) - 1 else "")
         time.sleep(delay)
 
+# Internal engine logger (writes silently to logs/myos.log)
+
+
+def _record_telemetry_event(
+    intent: str,
+    fast_path_ms: float,
+    ttft_ms: float = 0.0,
+    gen_time_s: float = 0.0,
+    tokens: int = 0,
+    tps: float = 0.0,
+    user_id: str = "default"
+) -> None:
+    """Logs internal engine latency without exposing metrics to trainee UI."""
+    logger = MyosLogger().get_logger("engine.telemetry")
+    log_payload = (
+        f"[TELEMETRY] User: {user_id} | Intent: {intent} | "
+        f"Router: {fast_path_ms:.3f}ms | TTFT: {ttft_ms:.1f}ms | "
+        f"Tokens: {tokens} | GenTime: {gen_time_s:.2f}s | Speed: {tps:.2f} TPS"
+    )
+    logger.info(log_payload)
+
+    # Threshold alert for CPU thermal throttling or thread contention
+    if intent == "coaching_qa" and tps > 0 and tps < 8.0:
+        logger.warning(
+            f"[PERF DEGRADATION] Low inference throughput detected: {tps:.2f} TPS "
+            f"(Threshold: 8.0 TPS). Check CPU temperature or background processes."
+        )
+
+
 def stream_assistant_turn(state: Dict[str, Any]) -> Generator[str, None, None]:
+    t_start = time.perf_counter()
+
     if not state.get("telemetry_context"):
         state.update(hydrate_context_node(state))
 
@@ -535,56 +565,94 @@ def stream_assistant_turn(state: Dict[str, Any]) -> Generator[str, None, None]:
     if not messages:
         yield "No message received."
         return
-    
+
     last_msg = messages[-1]
     user_query = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+    user_id = state.get("trainee_id", "default")
 
-    # 1. Deterministic Performance Check (wrapped in _stream_text_smoothly)
+    # 1. Deterministic Performance Check
     if RE_EXERCISE_PERFORMANCE_QUERY.search(user_query):
         res = exercise_history_node(state)
         state.update(res)
+        router_ms = (time.perf_counter() - t_start) * 1000.0
+        _record_telemetry_event("exercise_history", router_ms, user_id=user_id)
         yield from _stream_text_smoothly(res.get("response_content", ""))
         return
 
+    # 2. Router Fast-Path Evaluation
     state.update(router_node(state))
     intent = state.get("intent", "coaching_qa")
+    router_ms = (time.perf_counter() - t_start) * 1000.0
 
     if intent == "clinical_intercept":
         res = clinical_intercept_node(state)
         state.update(res)
+        _record_telemetry_event(intent, router_ms, user_id=user_id)
         yield from _stream_text_smoothly(state.get("response_content", CLINICAL_SAFEGUARD_RESPONSE))
         return
 
     if intent == "exercise_substitution":
         res = exercise_substitution_node(state)
         state.update(res)
+        _record_telemetry_event(intent, router_ms, user_id=user_id)
         yield from _stream_text_smoothly(state.get("response_content", "Exercise substitution executed."))
         return
 
     if intent == "program_mutation":
         res = program_mutation_node(state)
         state.update(res)
+        _record_telemetry_event(intent, router_ms, user_id=user_id)
         yield from _stream_text_smoothly(state.get("response_content", "Routine rebuilt."))
         return
 
     if intent == "catalog_search":
         res = catalog_search_node(state)
         state.update(res)
+        _record_telemetry_event(intent, router_ms, user_id=user_id)
         yield from _stream_text_smoothly(state.get("response_content", "Catalog search complete."))
         return
 
+    # 3. Local LLM Token Streaming & Throughput Measurement
     payload = build_prompt_payload(state)
     accumulated_tokens = []
+
+    t_stream_start = time.perf_counter()
+    first_token_time = None
+    token_count = 0
+
     try:
         for chunk in llm.stream(payload):
+            if first_token_time is None:
+                first_token_time = time.perf_counter()
+
             token = chunk.content if hasattr(chunk, "content") else str(chunk)
             accumulated_tokens.append(token)
+            token_count += 1
             yield token
+
+        t_end = time.perf_counter()
+
+        # Latency calculations
+        ttft_ms = ((first_token_time - t_stream_start) * 1000.0) if first_token_time else 0.0
+        gen_duration_s = (t_end - first_token_time) if first_token_time else 0.0
+        tps = (token_count / gen_duration_s) if gen_duration_s > 0 else 0.0
+
+        _record_telemetry_event(
+            intent=intent,
+            fast_path_ms=router_ms,
+            ttft_ms=ttft_ms,
+            gen_time_s=gen_duration_s,
+            tokens=token_count,
+            tps=tps,
+            user_id=user_id
+        )
 
         full_response = "".join(accumulated_tokens)
         state["response_content"] = full_response
         state["messages"].append(AIMessage(content=full_response))
+
     except Exception as e:
         error_msg = f"Inference pipeline failure: {str(e)}"
         state["response_content"] = error_msg
+        logger.error(f"[TELEMETRY ERROR] User: {user_id} | Failure: {str(e)}")
         yield error_msg

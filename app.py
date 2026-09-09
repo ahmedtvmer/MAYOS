@@ -649,6 +649,7 @@ else:
                 now_iso = datetime.now(timezone.utc).isoformat()
                 today_date = datetime.now().strftime("%Y-%m-%d")
 
+                # 1. Register session metadata
                 db.log_workout_session(
                     session_id=session_id,
                     session_date=today_date,
@@ -662,8 +663,9 @@ else:
                 total_tonnage_kg = 0.0
                 total_working_sets = 0
                 exercise_summaries = []
+                all_sets_to_batch = []
 
-                # Unified commit and analytics processing
+                # 2. Process metrics & assemble atomic batch insert payload
                 for item in session_payload:
                     ex_obj = item["exercise"]
                     sets_data = item["sets"]
@@ -674,24 +676,24 @@ else:
                     ex_volume = sum(s["weight_kg"] * s["reps"] for s in working_sets)
                     total_tonnage_kg += ex_volume
 
-                    # Persist individual sets to SQLite
+                    # Append to unified batch payload
                     for idx, s in enumerate(sets_data, start=1):
-                        db.log_workout_set(
-                            set_id=str(uuid.uuid4()),
-                            session_id=session_id,
-                            exercise_id=str(ex_obj.exercise_id),
-                            set_index=idx,
-                            weight_kg=float(s["weight_kg"]),
-                            reps=int(s["reps"]),
-                            rpe=float(s["rpe"]),
-                            is_warmup=0
-                        )
+                        all_sets_to_batch.append({
+                            "id": str(uuid.uuid4()),
+                            "session_id": session_id,
+                            "exercise_id": str(ex_obj.exercise_id),
+                            "set_index": idx,
+                            "weight_kg": float(s["weight_kg"]),
+                            "reps": int(s["reps"]),
+                            "rpe": float(s["rpe"]),
+                            "is_warmup": 0,
+                            "logged_at": now_iso
+                        })
 
                     if working_sets:
                         top_set = max(working_sets, key=lambda x: x["weight_kg"])
                         curr_e1rm = round(calculate_e1rm(top_set["weight_kg"], top_set["reps"], top_set["rpe"]), 2)
 
-                        # Project future prescription target for directive string
                         next_proj = project_next_load(
                             last_weight=top_set["weight_kg"],
                             last_reps=top_set["reps"],
@@ -731,7 +733,6 @@ else:
                             status_badge = "BASELINE"
                             action = "hold"
 
-                        # Formulate concrete next session directive text
                         if next_proj["status"] == "PROGRESSION_UP":
                             target_text = f"Bracket ceiling reached. Advance load to {next_proj['projected_weight']} kg for {ex_obj.target_reps_min}–{ex_obj.target_reps_max} reps."
                         elif next_proj["status"] == "DYNAMIC_UPSCALE":
@@ -758,6 +759,9 @@ else:
                             "status_badge": status_badge,
                             "target_text": target_text
                         })
+
+                # 3. Atomic commit of all workout sets
+                db.log_workout_sets_batch(all_sets_to_batch)
 
                 fatigue_post = evaluate_systemic_fatigue(db)
 
