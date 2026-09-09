@@ -1,0 +1,4 @@
+exercise_id,name,primary_muscle,secondary_muscles,equipment,mechanics
+bench_press,Barbell Bench Press,Chest,"Triceps,Front Delts",Barbell,Compound
+back_squat,Barbell Back Squat,Quadriceps,"Glutes,Hamstrings",Barbell,Compound
+pull_up,Pull Up,Lats,"Biceps,Rear Delts",Bodyweight,Compound

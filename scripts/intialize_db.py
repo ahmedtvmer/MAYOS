@@ -3,6 +3,8 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+import os
+
 import sqlite_vec
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -11,6 +13,10 @@ sys.path.append(str(BASE_DIR))
 DEFAULT_PROCESSED_PATH = BASE_DIR / "data" / "processed_exercises.csv"
 CATALOG_PATH = BASE_DIR / "db" / "catalog.db"
 USERS_DIR = BASE_DIR / "db" / "users"
+
+FIXTURE_PATH = Path("tests/fixtures/mock_exercises.csv")
+
+csv_path = Path(os.getenv("SEED_CSV_PATH", DEFAULT_PROCESSED_PATH if DEFAULT_PROCESSED_PATH.exists() else FIXTURE_PATH))
 
 from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
@@ -31,7 +37,7 @@ def run_tests():
 
     # 2. Run schema initialization and dataset seeding
     logger.info("Running initialize_and_seed()...")
-    db.initialize_and_seed(csv_path=DEFAULT_PROCESSED_PATH)
+    db.initialize_and_seed(csv_path=csv_path)
 
     # 3. Verify row counts in catalog tables
     cat_cursor.execute("SELECT COUNT(*) FROM exercises")
