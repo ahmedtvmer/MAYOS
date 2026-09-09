@@ -18,21 +18,23 @@ def run_test():
     # 1. Mount isolated test ledger and seed baseline profile
     test_user = "test_generator_trainee"
     db.switch_user(test_user)
-    db.upsert_user_profile({
-        "gender": "male",
-        "proportions": "balanced",
-        "age": 22,
-        "weight_kg": 80.0,
-        "height_cm": 180.0,
-        "rep_preference": "balanced",
-        "current_goal": "hypertrophy",
-        "long_term_goal": "progressive overload",
-        "weekly_frequency": 4,
-        "training_age_years": 3.0,
-        "equipment_access": "commercial gym",
-        "injuries_or_limitations": "None",
-        "stress_and_sleep": "normal"
-    })
+    db.upsert_user_profile(
+        {
+            "gender": "male",
+            "proportions": "balanced",
+            "age": 22,
+            "weight_kg": 80.0,
+            "height_cm": 180.0,
+            "rep_preference": "balanced",
+            "current_goal": "hypertrophy",
+            "long_term_goal": "progressive overload",
+            "weekly_frequency": 4,
+            "training_age_years": 3.0,
+            "equipment_access": "commercial gym",
+            "injuries_or_limitations": "None",
+            "stress_and_sleep": "normal",
+        }
+    )
 
     # 2. Execute program synthesis
     program, table_view = generate_program_pipeline()

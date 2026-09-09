@@ -1,40 +1,43 @@
 import re
-from typing import Annotated, Sequence, Optional, Literal, Dict, Any
-from typing_extensions import TypedDict
-from pydantic import BaseModel, Field, field_validator
+from collections.abc import Sequence
+from typing import Annotated, Any, Literal
+
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
+from pydantic import BaseModel, Field, field_validator
+from typing_extensions import TypedDict
+
 
 class OnboardingState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
     intake_step: int
     is_complete: bool
-    profile_data: Optional[Dict[str, Any]]
+    profile_data: dict[str, Any] | None
+
 
 class UserProfileSchema(BaseModel):
     gender: Literal["male", "female"] = Field(
-        default="male",
-        description="Biological sex/gender for physique prioritization: 'male' or 'female'"
+        default="male", description="Biological sex/gender for physique prioritization: 'male' or 'female'"
     )
     # Proportions & Biometrics
     proportions: str = Field(description="Limb-to-torso proportions: 'long_legs', 'long_torso', or 'balanced'")
     age: int = Field(ge=12, le=100)
     weight_kg: float = Field(gt=30.0, lt=200.0)
     height_cm: float = Field(gt=100.0, lt=210.0)
-    rep_preference: Optional[Literal["low", "balanced", "high"]] = Field(
+    rep_preference: Literal["low", "balanced", "high"] | None = Field(
         default="balanced",
-        description="User's preferred rep range bias: 'low' (4-8 reps), 'balanced' (6-12 reps), 'high' (10-20 reps)"
+        description="User's preferred rep range bias: 'low' (4-8 reps), 'balanced' (6-12 reps), 'high' (10-20 reps)",
     )
-    
+
     # Goals & Volume Capacity
     current_goal: str = Field(description="Immediate training objective")
     long_term_goal: str = Field(description="Longer-term strength/physique target")
     weekly_frequency: int = Field(ge=1, le=7)
     training_age_years: float = Field(ge=0.0)
-    
+
     # Logistics & Systemic Recovery
     equipment_access: str = Field(description="Available equipment or gym type")
-    injuries_or_limitations: Optional[str] = Field(default="None")
+    injuries_or_limitations: str | None = Field(default="None")
     stress_and_sleep: str = Field(description="Daily stress level and average sleep quality")
 
     @field_validator("proportions", mode="before")
@@ -73,9 +76,9 @@ class UserProfileSchema(BaseModel):
                 return float(match.group(0))
         return v
 
+
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
-    profile: Optional[dict]  # Store raw dict for SQLite checkpointer serialization
-    active_session_id: Optional[str]
-    intake_step: int         # 0: unstarted, 1: biometrics, 2: goals, 3: constraints, 4: complete
-
+    profile: dict | None  # Store raw dict for SQLite checkpointer serialization
+    active_session_id: str | None
+    intake_step: int  # 0: unstarted, 1: biometrics, 2: goals, 3: constraints, 4: complete

@@ -1,12 +1,13 @@
 import os
 import re
+import sqlite3
 import sys
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Any
-import sqlite3
+from typing import Any
+
 import pandas as pd
 import sqlite_vec
 
@@ -17,10 +18,15 @@ DEFAULT_CATALOG_PATH = BASE_DIR / "db" / "catalog.db"
 DEFAULT_USERS_DIR = BASE_DIR / "db" / "users"
 DEFAULT_CSV_PATH = BASE_DIR / "data" / "processed_exercises.csv"
 
+from agent.ProgramState import (
+    GeneratedProgramSchema,
+    ProgramDaySchema,
+    ProgramExerciseSchema,
+)
 from utils.logger import MyosLogger
-from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
 
 logger = MyosLogger().get_logger(__name__)
+
 
 class DatabaseManager:
     _instance = None
@@ -32,16 +38,11 @@ class DatabaseManager:
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
-                    cls._instance = super(DatabaseManager, cls).__new__(cls)
+                    cls._instance = super().__new__(cls)
                     cls._instance._initialized = False
         return cls._instance
 
-    def __init__(
-        self, 
-        catalog_path=DEFAULT_CATALOG_PATH, 
-        users_dir=DEFAULT_USERS_DIR, 
-        active_user: Optional[str] = None
-    ):
+    def __init__(self, catalog_path=DEFAULT_CATALOG_PATH, users_dir=DEFAULT_USERS_DIR, active_user: str | None = None):
         if getattr(self, "_initialized", False):
             if active_user is not None:
                 sanitized = self._sanitize_username(active_user)
@@ -81,11 +82,11 @@ class DatabaseManager:
         self._local.active_user = val
 
     @property
-    def user_conn(self) -> Optional[sqlite3.Connection]:
+    def user_conn(self) -> sqlite3.Connection | None:
         return getattr(self._local, "user_conn", None)
 
     @user_conn.setter
-    def user_conn(self, val: Optional[sqlite3.Connection]):
+    def user_conn(self, val: sqlite3.Connection | None):
         self._local.user_conn = val
 
     @property
@@ -131,16 +132,18 @@ class DatabaseManager:
         escaped_path = str(self.catalog_path.resolve()).replace("'", "''")
         new_conn.execute(f"ATTACH DATABASE '{escaped_path}' AS catalog;")
         new_conn.execute("CREATE TEMP VIEW IF NOT EXISTS exercises AS SELECT * FROM catalog.exercises;")
-        new_conn.execute("CREATE TEMP VIEW IF NOT EXISTS exercise_secondary_muscles AS SELECT * FROM catalog.exercise_secondary_muscles;")
+        new_conn.execute(
+            "CREATE TEMP VIEW IF NOT EXISTS exercise_secondary_muscles AS SELECT * FROM catalog.exercise_secondary_muscles;"
+        )
 
         self.user_conn = new_conn
         self.create_user_schema()
         return True
-    
+
     def user_exists(self, username: str) -> bool:
         sanitized = self._sanitize_username(username)
         return (self.users_dir / f"{sanitized}.db").is_file() if sanitized else False
-    
+
     def get_connection(self) -> sqlite3.Connection:
         return self.conn
 
@@ -296,26 +299,28 @@ class DatabaseManager:
                 logger.error(f"Error: {csv_path} not found.")
                 return
 
-            core_df = df[['id', 'name', 'bodyPart', 'target', 'equipment', 'image_path', 'gif_path', 'instructions']].copy()
-            core_df.rename(columns={'bodyPart': 'body_part', 'target': 'target_muscle'}, inplace=True)
-            core_df['name'] = (
-                core_df['name']
+            core_df = df[
+                ["id", "name", "bodyPart", "target", "equipment", "image_path", "gif_path", "instructions"]
+            ].copy()
+            core_df.rename(columns={"bodyPart": "body_part", "target": "target_muscle"}, inplace=True)
+            core_df["name"] = (
+                core_df["name"]
                 .astype(str)
                 .str.replace(r"^lever\s+", "machine ", regex=True, flags=re.IGNORECASE)
                 .str.replace(r"\s+v\.\s*\d+", "", regex=True, flags=re.IGNORECASE)
                 .str.strip()
             )
-            core_df.to_sql('exercises', self.catalog_conn, if_exists='append', index=False)
+            core_df.to_sql("exercises", self.catalog_conn, if_exists="append", index=False)
 
-            muscle_cols = [c for c in df.columns if c.startswith('secondaryMuscles/')]
-            muscles_df = df.melt(id_vars=['id'], value_vars=muscle_cols, value_name='muscle').dropna(subset=['muscle'])
-            muscles_df = muscles_df[['id', 'muscle']].rename(columns={'id': 'exercise_id'})
-            muscles_df.to_sql('exercise_secondary_muscles', self.catalog_conn, if_exists='append', index=False)
+            muscle_cols = [c for c in df.columns if c.startswith("secondaryMuscles/")]
+            muscles_df = df.melt(id_vars=["id"], value_vars=muscle_cols, value_name="muscle").dropna(subset=["muscle"])
+            muscles_df = muscles_df[["id", "muscle"]].rename(columns={"id": "exercise_id"})
+            muscles_df.to_sql("exercise_secondary_muscles", self.catalog_conn, if_exists="append", index=False)
             self.catalog_conn.commit()
 
     EXCLUDED_BIOMECHANICAL_PATTERNS = ("behind neck", "behind the neck", "upright row")
 
-    def search_similar_exercises(self, query_vector: List[float], limit: int = 5) -> List[Dict[str, Any]]:
+    def search_similar_exercises(self, query_vector: list[float], limit: int = 5) -> list[dict[str, Any]]:
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
             serialized_vector = sqlite_vec.serialize_float32(query_vector)
@@ -342,14 +347,14 @@ class DatabaseManager:
                     break
             return candidates
 
-    def get_user_profile(self, user_id: int = 1) -> Optional[Dict[str, Any]]:
+    def get_user_profile(self, user_id: int = 1) -> dict[str, Any] | None:
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM user_profile WHERE id = ?", (user_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
 
     def upsert_user_profile(self, profile_data: dict, user_id: int = 1) -> None:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cursor = self.conn.cursor()
         params = {
             "id": int(profile_data.get("id", user_id)),
@@ -367,9 +372,10 @@ class DatabaseManager:
             "injuries_or_limitations": str(profile_data.get("injuries_or_limitations", "None")),
             "stress_and_sleep": str(profile_data.get("stress_and_sleep", "normal")),
             "created_at": now,
-            "updated_at": now
+            "updated_at": now,
         }
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO user_profile (
                 id, gender, proportions, age, weight_kg, height_cm, rep_preference,
                 current_goal, long_term_goal, weekly_frequency, training_age_years,
@@ -387,7 +393,9 @@ class DatabaseManager:
                 training_age_years = excluded.training_age_years, equipment_access = excluded.equipment_access,
                 injuries_or_limitations = excluded.injuries_or_limitations, stress_and_sleep = excluded.stress_and_sleep,
                 updated_at = excluded.updated_at
-        """, params)
+        """,
+            params,
+        )
         self.conn.commit()
 
     def clear_user_profile(self, user_id: int = 1) -> None:
@@ -400,14 +408,20 @@ class DatabaseManager:
         try:
             cursor.execute("UPDATE training_programs SET is_active = 0")
             prog_id = program_data.get("id") or str(uuid.uuid4())
-            created_at = program_data.get("created_at") or datetime.now(timezone.utc).isoformat()
+            created_at = program_data.get("created_at") or datetime.now(UTC).isoformat()
             prog_name = program_data.get("program_name") or program_data.get("name", "Custom Program")
 
             cursor.execute("PRAGMA table_info(training_programs)")
             existing_cols = {col[1] for col in cursor.fetchall()}
 
             cols = ["id", "weekly_frequency", "split_type", "is_active", "created_at"]
-            vals = [prog_id, program_data.get("weekly_frequency", 4), program_data.get("split_type", "custom"), 1, created_at]
+            vals = [
+                prog_id,
+                program_data.get("weekly_frequency", 4),
+                program_data.get("split_type", "custom"),
+                1,
+                created_at,
+            ]
 
             if "name" in existing_cols:
                 cols.append("name")
@@ -417,30 +431,38 @@ class DatabaseManager:
                 vals.append(prog_name)
 
             cursor.execute(
-                f"INSERT INTO training_programs ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(vals))})",
-                vals
+                f"INSERT INTO training_programs ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(vals))})", vals
             )
 
             for day in program_data.get("days", []):
                 day_id = day.get("id") or str(uuid.uuid4())
                 cursor.execute(
                     "INSERT INTO program_days (id, program_id, day_name, day_order) VALUES (?, ?, ?, ?)",
-                    (day_id, prog_id, day["day_name"], day["day_order"])
+                    (day_id, prog_id, day["day_name"], day["day_order"]),
                 )
 
                 for order_idx, ex in enumerate(day.get("exercises", []), start=1):
                     pe_id = ex.get("id") or str(uuid.uuid4())
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         INSERT INTO program_exercises (
                             id, day_id, exercise_id, order_in_day, target_sets,
                             target_reps_min, target_reps_max, target_rpe, rest_seconds, notes
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        pe_id, day_id, str(ex["exercise_id"]), order_idx,
-                        ex.get("target_sets", 3), ex.get("target_reps_min", 8),
-                        ex.get("target_reps_max", 12), ex.get("target_rpe", 8.5),
-                        ex.get("rest_seconds", 120), ex.get("notes", "")
-                    ))
+                    """,
+                        (
+                            pe_id,
+                            day_id,
+                            str(ex["exercise_id"]),
+                            order_idx,
+                            ex.get("target_sets", 3),
+                            ex.get("target_reps_min", 8),
+                            ex.get("target_reps_max", 12),
+                            ex.get("target_rpe", 8.5),
+                            ex.get("rest_seconds", 120),
+                            ex.get("notes", ""),
+                        ),
+                    )
 
             self.conn.commit()
             return prog_id
@@ -448,13 +470,13 @@ class DatabaseManager:
             self.conn.rollback()
             raise RuntimeError(f"Database error while saving program: {e}")
 
-    def get_active_program(self) -> Optional[GeneratedProgramSchema]:
+    def get_active_program(self) -> GeneratedProgramSchema | None:
         cursor = self.conn.cursor()
         cursor.execute("""
-            SELECT id, COALESCE(program_name, name), weekly_frequency, split_type 
-            FROM training_programs 
-            WHERE is_active = 1 
-            ORDER BY created_at DESC 
+            SELECT id, COALESCE(program_name, name), weekly_frequency, split_type
+            FROM training_programs
+            WHERE is_active = 1
+            ORDER BY created_at DESC
             LIMIT 1
         """)
         row = cursor.fetchone()
@@ -462,20 +484,25 @@ class DatabaseManager:
             return None
 
         prog_id, prog_name, freq, split_type = row
-        cursor.execute("SELECT id, day_name, day_order FROM program_days WHERE program_id = ? ORDER BY day_order ASC", (prog_id,))
+        cursor.execute(
+            "SELECT id, day_name, day_order FROM program_days WHERE program_id = ? ORDER BY day_order ASC", (prog_id,)
+        )
         days_rows = cursor.fetchall()
 
         days = []
         for d_id, d_name, d_order in days_rows:
-            cursor.execute("""
-                SELECT pe.exercise_id, e.name, pe.target_sets, pe.target_reps_min, 
+            cursor.execute(
+                """
+                SELECT pe.exercise_id, e.name, pe.target_sets, pe.target_reps_min,
                        pe.target_reps_max, pe.target_rpe, pe.rest_seconds, pe.notes,
                        e.image_path, e.gif_path
                 FROM program_exercises pe
                 JOIN catalog.exercises e ON pe.exercise_id = e.id
                 WHERE pe.day_id = ?
                 ORDER BY pe.order_in_day ASC
-            """, (d_id,))
+            """,
+                (d_id,),
+            )
             exercises = [
                 ProgramExerciseSchema(
                     exercise_id=str(r[0]),
@@ -487,93 +514,132 @@ class DatabaseManager:
                     rest_seconds=int(r[6]) if r[6] is not None else 120,
                     notes=r[7] or "",
                     image_path=r[8],
-                    gif_path=r[9]
-                ) for r in cursor.fetchall()
+                    gif_path=r[9],
+                )
+                for r in cursor.fetchall()
             ]
             days.append(ProgramDaySchema(day_name=d_name, day_order=d_order, exercises=exercises))
 
         return GeneratedProgramSchema(
-            program_name=prog_name,
-            weekly_frequency=int(freq),
-            split_type=split_type or "custom",
-            days=days
+            program_name=prog_name, weekly_frequency=int(freq), split_type=split_type or "custom", days=days
         )
 
     def update_user_frequency(self, frequency: int) -> None:
         cursor = self.conn.cursor()
         cursor.execute(
             "UPDATE user_profile SET weekly_frequency = ?, updated_at = ? WHERE id = 1",
-            (min(max(int(frequency), 1), 5), datetime.now(timezone.utc).isoformat())
+            (min(max(int(frequency), 1), 5), datetime.now(UTC).isoformat()),
         )
         self.conn.commit()
 
     def log_workout_session(
-        self, session_id: str, session_date: str, split_name: str,
-        started_at: str, completed_at: str, readiness_score: int = 4, notes: str = ""
+        self,
+        session_id: str,
+        session_date: str,
+        split_name: str,
+        started_at: str,
+        completed_at: str,
+        readiness_score: int = 4,
+        notes: str = "",
     ) -> None:
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO workout_sessions (
                 id, session_date, split_name, started_at, completed_at, session_notes, readiness_score
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (session_id, session_date, split_name, started_at, completed_at, notes, readiness_score))
+        """,
+            (session_id, session_date, split_name, started_at, completed_at, notes, readiness_score),
+        )
         self.conn.commit()
 
     def log_workout_set(
-        self, set_id: str, session_id: str, exercise_id: str,
-        set_index: int, weight_kg: float, reps: int, rpe: float, is_warmup: int = 0
+        self,
+        set_id: str,
+        session_id: str,
+        exercise_id: str,
+        set_index: int,
+        weight_kg: float,
+        reps: int,
+        rpe: float,
+        is_warmup: int = 0,
     ) -> None:
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO workout_sets (
                 id, session_id, exercise_id, set_index, weight_kg, reps, rpe, is_warmup, logged_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (set_id, session_id, exercise_id, set_index, weight_kg, reps, rpe, is_warmup, datetime.now(timezone.utc).isoformat()))
+        """,
+            (
+                set_id,
+                session_id,
+                exercise_id,
+                set_index,
+                weight_kg,
+                reps,
+                rpe,
+                is_warmup,
+                datetime.now(UTC).isoformat(),
+            ),
+        )
         self.conn.commit()
 
-    def log_workout_sets_batch(self, sets_payload: List[Dict[str, Any]]) -> None:
+    def log_workout_sets_batch(self, sets_payload: list[dict[str, Any]]) -> None:
         """Persists all session sets in a single atomic transaction."""
         cursor = self.conn.cursor()
-        cursor.executemany("""
+        cursor.executemany(
+            """
             INSERT INTO workout_sets (
                 id, session_id, exercise_id, set_index, weight_kg, reps, rpe, is_warmup, logged_at
             ) VALUES (:id, :session_id, :exercise_id, :set_index, :weight_kg, :reps, :rpe, :is_warmup, :logged_at)
-        """, sets_payload)
+        """,
+            sets_payload,
+        )
         self.conn.commit()
 
-    def get_last_performance(self, exercise_id: str) -> List[Dict[str, Any]]:
+    def get_last_performance(self, exercise_id: str) -> list[dict[str, Any]]:
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT s.id
             FROM workout_sessions s
             JOIN workout_sets ws ON ws.session_id = s.id
             WHERE ws.exercise_id = ? AND ws.is_warmup = 0
             ORDER BY s.started_at DESC, s.ROWID DESC
             LIMIT 1
-        """, (exercise_id,))
+        """,
+            (exercise_id,),
+        )
         session_row = cursor.fetchone()
         if not session_row:
             return []
 
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT ws.set_index, ws.weight_kg, ws.reps, ws.rpe
             FROM workout_sets ws
             WHERE ws.session_id = ? AND ws.exercise_id = ? AND ws.is_warmup = 0
             ORDER BY ws.set_index ASC
-        """, (session_row[0], exercise_id))
+        """,
+            (session_row[0], exercise_id),
+        )
         return [dict(r) for r in cursor.fetchall()]
 
     def update_user_persona(self, coach_tone: str, custom_instructions: str) -> None:
         cursor = self.conn.cursor()
-        cursor.execute("""
-            UPDATE user_profile 
+        cursor.execute(
+            """
+            UPDATE user_profile
             SET coach_tone = ?, custom_instructions = ?, updated_at = ?
             WHERE id = 1
-        """, (coach_tone.strip(), custom_instructions.strip(), datetime.now(timezone.utc).isoformat()))
+        """,
+            (coach_tone.strip(), custom_instructions.strip(), datetime.now(UTC).isoformat()),
+        )
         self.conn.commit()
 
     def swap_program_exercise(
-        self, old_exercise_id: str, new_exercise_id: str, new_notes: str = "", day_id: Optional[str] = None
+        self, old_exercise_id: str, new_exercise_id: str, new_notes: str = "", day_id: str | None = None
     ) -> bool:
         cursor = self.conn.cursor()
         cursor.execute("SELECT id FROM training_programs WHERE is_active = 1 ORDER BY created_at DESC LIMIT 1")
@@ -583,23 +649,31 @@ class DatabaseManager:
 
         prog_id = active_prog[0]
         if day_id:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT pe.id FROM program_exercises pe
                 JOIN program_days pd ON pe.day_id = pd.id
                 WHERE pd.program_id = ? AND pe.day_id = ? AND pe.exercise_id = ? LIMIT 1
-            """, (prog_id, day_id, old_exercise_id))
+            """,
+                (prog_id, day_id, old_exercise_id),
+            )
         else:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT pe.id FROM program_exercises pe
                 JOIN program_days pd ON pe.day_id = pd.id
                 WHERE pd.program_id = ? AND pe.exercise_id = ? LIMIT 1
-            """, (prog_id, old_exercise_id))
+            """,
+                (prog_id, old_exercise_id),
+            )
 
         row = cursor.fetchone()
         if not row:
             return False
 
-        cursor.execute("UPDATE program_exercises SET exercise_id = ?, notes = ? WHERE id = ?", (new_exercise_id, new_notes, row[0]))
+        cursor.execute(
+            "UPDATE program_exercises SET exercise_id = ?, notes = ? WHERE id = ?", (new_exercise_id, new_notes, row[0])
+        )
         self.conn.commit()
         return True
 
@@ -608,7 +682,7 @@ class DatabaseManager:
         cursor.execute("UPDATE workout_sessions SET coach_debrief = ? WHERE id = ?", (debrief.strip(), session_id))
         self.conn.commit()
 
-    def get_session_debrief(self, session_id: str) -> Optional[str]:
+    def get_session_debrief(self, session_id: str) -> str | None:
         cursor = self.conn.cursor()
         cursor.execute("SELECT coach_debrief FROM workout_sessions WHERE id = ?", (session_id,))
         row = cursor.fetchone()
@@ -619,15 +693,17 @@ class DatabaseManager:
         msg_id = str(uuid.uuid4())
         cursor.execute(
             "INSERT INTO chat_history (id, role, content, created_at) VALUES (?, ?, ?, ?)",
-            (msg_id, role, content, datetime.now(timezone.utc).isoformat())
+            (msg_id, role, content, datetime.now(UTC).isoformat()),
         )
         self.conn.commit()
         return msg_id
 
-    def get_chat_history(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    def get_chat_history(self, limit: int | None = None) -> list[dict[str, Any]]:
         cursor = self.conn.cursor()
         if limit:
-            cursor.execute("SELECT id, role, content, created_at FROM chat_history ORDER BY created_at DESC LIMIT ?", (limit,))
+            cursor.execute(
+                "SELECT id, role, content, created_at FROM chat_history ORDER BY created_at DESC LIMIT ?", (limit,)
+            )
             return [dict(r) for r in reversed(cursor.fetchall())]
         cursor.execute("SELECT id, role, content, created_at FROM chat_history ORDER BY created_at ASC")
         return [dict(r) for r in cursor.fetchall()]
@@ -649,33 +725,44 @@ class DatabaseManager:
 
         cursor = self.conn.cursor()
         cursor.execute("""
-            SELECT program_name, weekly_frequency, split_type 
+            SELECT program_name, weekly_frequency, split_type
             FROM training_programs WHERE is_active = 1 ORDER BY created_at DESC LIMIT 1
         """)
         prog_row = cursor.fetchone()
         prog_str = f"{prog_row[0]} ({prog_row[1]}d/wk {prog_row[2]})" if prog_row else "None"
 
-        cursor.execute("SELECT id, session_date, split_name, readiness_score FROM workout_sessions ORDER BY session_date DESC, started_at DESC LIMIT 1")
+        cursor.execute(
+            "SELECT id, session_date, split_name, readiness_score FROM workout_sessions ORDER BY session_date DESC, started_at DESC LIMIT 1"
+        )
         last_session = cursor.fetchone()
         if last_session:
             s_id, s_date, s_split, s_readiness = last_session
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT e.name, ws.weight_kg, ws.reps, ws.rpe
                 FROM workout_sets ws JOIN catalog.exercises e ON ws.exercise_id = e.id
                 WHERE ws.session_id = ? AND ws.is_warmup = 0 ORDER BY ws.weight_kg DESC LIMIT 1
-            """, (s_id,))
+            """,
+                (s_id,),
+            )
             top_set = cursor.fetchone()
             top_str = f" | Top: {top_set[0]} {top_set[1]}kg x {top_set[2]} @ RPE {top_set[3]}" if top_set else ""
             last_str = f"{s_split} ({s_date}) | Readiness: {s_readiness}/5{top_str}"
         else:
             last_str = "No recorded sessions yet in ledger."
 
-        from agent.progression_engine import evaluate_systemic_fatigue, get_progression_signals
+        from agent.progression_engine import (
+            evaluate_systemic_fatigue,
+            get_progression_signals,
+        )
+
         fatigue_state = evaluate_systemic_fatigue(self)
         if fatigue_state["deload_recommended"]:
             fatigue_line = f"Systemic State: DELOAD RECOMMENDED ({fatigue_state['reason']} | Cap RPE at {fatigue_state['intensity_cap_rpe']})"
         else:
-            fatigue_line = f"Systemic State: Recovered (Rolling Readiness: {fatigue_state['recent_readiness_avg'] or 'N/A'}/5)"
+            fatigue_line = (
+                f"Systemic State: Recovered (Rolling Readiness: {fatigue_state['recent_readiness_avg'] or 'N/A'}/5)"
+            )
 
         return (
             "[TRAINEE TELEMETRY & SYSTEM STATE]\n"
@@ -686,32 +773,56 @@ class DatabaseManager:
             f"{fatigue_line}"
         )
 
-    def find_exercise_by_name(self, query: str) -> Optional[Dict[str, Any]]:
+    def find_exercise_by_name(self, query: str) -> dict[str, Any] | None:
         clean = query.strip().lower()
         if not clean:
             return None
 
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
-            cursor.execute("SELECT id, name, body_part, target_muscle, equipment FROM exercises WHERE LOWER(name) = ? LIMIT 1", (clean,))
+            cursor.execute(
+                "SELECT id, name, body_part, target_muscle, equipment FROM exercises WHERE LOWER(name) = ? LIMIT 1",
+                (clean,),
+            )
             row = cursor.fetchone()
             if row:
-                return {"id": str(row[0]), "name": row[1], "body_part": row[2], "target_muscle": row[3], "equipment": row[4]}
+                return {
+                    "id": str(row[0]),
+                    "name": row[1],
+                    "body_part": row[2],
+                    "target_muscle": row[3],
+                    "equipment": row[4],
+                }
 
-            cursor.execute("SELECT id, name, body_part, target_muscle, equipment FROM exercises WHERE LOWER(name) LIKE ? ORDER BY LENGTH(name) ASC LIMIT 1", (f"%{clean}%",))
+            cursor.execute(
+                "SELECT id, name, body_part, target_muscle, equipment FROM exercises WHERE LOWER(name) LIKE ? ORDER BY LENGTH(name) ASC LIMIT 1",
+                (f"%{clean}%",),
+            )
             row = cursor.fetchone()
             if row:
-                return {"id": str(row[0]), "name": row[1], "body_part": row[2], "target_muscle": row[3], "equipment": row[4]}
+                return {
+                    "id": str(row[0]),
+                    "name": row[1],
+                    "body_part": row[2],
+                    "target_muscle": row[3],
+                    "equipment": row[4],
+                }
 
             tokens = [t for t in re.split(r"\s+", clean) if len(t) > 2]
             if tokens:
                 where_clauses = ["LOWER(name) LIKE ?" for _ in tokens]
                 cursor.execute(
                     f"SELECT id, name, body_part, target_muscle, equipment FROM exercises WHERE {' AND '.join(where_clauses)} ORDER BY LENGTH(name) ASC LIMIT 1",
-                    [f"%{t}%" for t in tokens]
+                    [f"%{t}%" for t in tokens],
                 )
                 row = cursor.fetchone()
                 if row:
-                    return {"id": str(row[0]), "name": row[1], "body_part": row[2], "target_muscle": row[3], "equipment": row[4]}
+                    return {
+                        "id": str(row[0]),
+                        "name": row[1],
+                        "body_part": row[2],
+                        "target_muscle": row[3],
+                        "equipment": row[4],
+                    }
 
             return None

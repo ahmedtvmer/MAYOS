@@ -1,23 +1,23 @@
 # tests/test_assistant_pipeline.py
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 from langchain_core.messages import HumanMessage
-from utils.model_downloader import SafeChatLlamaCpp
+
 from agent.assistant_graph import (
+    RE_ACTION_HINT,
+    STATIC_SYSTEM_CORE,
+    exercise_substitution_node,
     router_node,
     stream_assistant_turn,
-    exercise_substitution_node,
-    db as assistant_db,
-    STATIC_SYSTEM_CORE,
-    RE_ACTION_HINT
 )
+from agent.assistant_graph import db as assistant_db
 from utils.logger import MyosLogger
-from utils.model_downloader import llm
+from utils.model_downloader import SafeChatLlamaCpp, llm
 
 logger = MyosLogger().get_logger(__name__)
 
@@ -42,7 +42,7 @@ def test_phase1_tier1_explicit_swaps():
         ("swap hack squat for leg press", "hack squat", "leg press"),
         ("replace barbell bench press with dumbbell press", "barbell bench press", "dumbbell press"),
         ("substitute pull-ups to lat pulldown", "pull-ups", "lat pulldown"),
-        ("switch out seated cable row instead of chest supported row", "seated cable row", "chest supported row")
+        ("switch out seated cable row instead of chest supported row", "seated cable row", "chest supported row"),
     ]
 
     for q, expected_src, expected_tgt in queries:
@@ -52,8 +52,12 @@ def test_phase1_tier1_explicit_swaps():
         assert res["intent"] == "exercise_substitution", f"Failed intent for: {q}"
         meta = res["intent_metadata"]
         assert meta["mode"] == "direct_swap"
-        assert meta["source_exercise"].lower() == expected_src.lower(), f"Source mismatch on '{q}': got {meta['source_exercise']}"
-        assert meta["target_exercise"].lower() == expected_tgt.lower(), f"Target mismatch on '{q}': got {meta['target_exercise']}"
+        assert meta["source_exercise"].lower() == expected_src.lower(), (
+            f"Source mismatch on '{q}': got {meta['source_exercise']}"
+        )
+        assert meta["target_exercise"].lower() == expected_tgt.lower(), (
+            f"Target mismatch on '{q}': got {meta['target_exercise']}"
+        )
 
     logger.info("✅ Phase 1 Tier 1: Two-way explicit swaps verified.")
 
@@ -64,7 +68,7 @@ def test_phase1_tier1_single_swaps():
         ("swap hack squat", "hack squat"),
         ("alternative for leg extension", "leg extension"),
         ("substitute dips", "dips"),
-        ("replace standing calf raise", "standing calf raise")
+        ("replace standing calf raise", "standing calf raise"),
     ]
 
     for q, expected_src in queries:
@@ -86,7 +90,7 @@ def test_phase1_tier1_program_mutations():
         ("rebuild program", None),
         ("switch split to 3 days", 3),
         ("change routine to 5 d/wk", 5),
-        ("new split 4 days a week", 4)
+        ("new split 4 days a week", 4),
     ]
 
     for q, expected_freq in queries:
@@ -105,7 +109,7 @@ def test_phase1_tier1_catalog_search():
         ("search incline dumbbell press", "incline dumbbell press"),
         ("find cable chest fly", "cable chest fly"),
         ("lookup seated leg curl", "seated leg curl"),
-        ("list exercises lateral raise", "lateral raise")
+        ("list exercises lateral raise", "lateral raise"),
     ]
 
     for q, expected_term in queries:
@@ -124,7 +128,7 @@ def test_phase1_tier2_coaching_qa_passthrough():
         "How should I tuck my elbows on the close grip bench press?",
         "What is the best rep range for calf hypertrophy?",
         "My lower back feels fatigued from stiff-legged deadlifts.",
-        "Can you explain lengthened-position mechanical tension?"
+        "Can you explain lengthened-position mechanical tension?",
     ]
 
     for q in queries:
@@ -143,7 +147,7 @@ def test_phase2_streaming_generator_qa():
     mock_chunks = [
         MagicMock(content="Keep your elbows "),
         MagicMock(content="tucked at 45 degrees "),
-        MagicMock(content="to maximize tension on the triceps.")
+        MagicMock(content="to maximize tension on the triceps."),
     ]
 
     state = {
@@ -155,7 +159,7 @@ def test_phase2_streaming_generator_qa():
         "intent": None,
         "intent_metadata": {},
         "program_updated": False,
-        "response_content": None
+        "response_content": None,
     }
 
     with patch.object(SafeChatLlamaCpp, "stream", return_value=iter(mock_chunks)):
@@ -185,16 +189,14 @@ def test_phase2_streaming_generator_programmatic_bypass():
         "intent": None,
         "intent_metadata": {},
         "program_updated": False,
-        "response_content": None
+        "response_content": None,
     }
 
-    with patch("agent.assistant_graph.program_mutation_node") as mock_mutation, \
-         patch.object(SafeChatLlamaCpp, "stream") as mock_llm_stream:
-
-        mock_mutation.return_value = {
-            "program_updated": True,
-            "response_content": "Rebuilt routine for 3 days/week."
-        }
+    with (
+        patch("agent.assistant_graph.program_mutation_node") as mock_mutation,
+        patch.object(SafeChatLlamaCpp, "stream") as mock_llm_stream,
+    ):
+        mock_mutation.return_value = {"program_updated": True, "response_content": "Rebuilt routine for 3 days/week."}
 
         generator = stream_assistant_turn(state)
         output = list(generator)
@@ -217,13 +219,9 @@ def test_phase3_substitution_lookup_candidates():
         "custom_instructions": "",
         "telemetry_context": "",
         "intent": "exercise_substitution",
-        "intent_metadata": {
-            "mode": "lookup_candidates",
-            "source_exercise": "hack squat",
-            "target_exercise": None
-        },
+        "intent_metadata": {"mode": "lookup_candidates", "source_exercise": "hack squat", "target_exercise": None},
         "program_updated": False,
-        "response_content": None
+        "response_content": None,
     }
 
     mock_ex = MagicMock(exercise_id="ex_123", exercise_name="Hack Squat")
@@ -235,15 +233,34 @@ def test_phase3_substitution_lookup_candidates():
     mock_conn = MagicMock()
     mock_conn.cursor.return_value = mock_cur_instance
 
-    with patch("database.database_manager.DatabaseManager.get_active_program", return_value=mock_prog), \
-         patch.object(assistant_db, "catalog_conn", mock_conn), \
-         patch("database.database_manager.DatabaseManager.search_similar_exercises") as mock_search, \
-         patch("database.database_manager.DatabaseManager.swap_program_exercise") as mock_swap:
-
+    with (
+        patch("database.database_manager.DatabaseManager.get_active_program", return_value=mock_prog),
+        patch.object(assistant_db, "catalog_conn", mock_conn),
+        patch("database.database_manager.DatabaseManager.search_similar_exercises") as mock_search,
+        patch("database.database_manager.DatabaseManager.swap_program_exercise") as mock_swap,
+    ):
         mock_search.return_value = [
-            {"id": "ex_999", "name": "Leg Press", "target_muscle": "quadriceps", "body_part": "quadriceps", "equipment": "machine"},
-            {"id": "ex_888", "name": "Pendulum Squat", "target_muscle": "quadriceps", "body_part": "quadriceps", "equipment": "machine"},
-            {"id": "ex_777", "name": "Front Squat", "target_muscle": "quadriceps", "body_part": "quadriceps", "equipment": "barbell"}
+            {
+                "id": "ex_999",
+                "name": "Leg Press",
+                "target_muscle": "quadriceps",
+                "body_part": "quadriceps",
+                "equipment": "machine",
+            },
+            {
+                "id": "ex_888",
+                "name": "Pendulum Squat",
+                "target_muscle": "quadriceps",
+                "body_part": "quadriceps",
+                "equipment": "machine",
+            },
+            {
+                "id": "ex_777",
+                "name": "Front Squat",
+                "target_muscle": "quadriceps",
+                "body_part": "quadriceps",
+                "equipment": "barbell",
+            },
         ]
 
         result = exercise_substitution_node(state)
@@ -267,13 +284,9 @@ def test_phase3_substitution_direct_swap():
         "custom_instructions": "",
         "telemetry_context": "",
         "intent": "exercise_substitution",
-        "intent_metadata": {
-            "mode": "direct_swap",
-            "source_exercise": "hack squat",
-            "target_exercise": "leg press"
-        },
+        "intent_metadata": {"mode": "direct_swap", "source_exercise": "hack squat", "target_exercise": "leg press"},
         "program_updated": False,
-        "response_content": None
+        "response_content": None,
     }
 
     mock_ex = MagicMock(exercise_id="ex_123", exercise_name="Hack Squat")
@@ -285,21 +298,26 @@ def test_phase3_substitution_direct_swap():
     mock_conn = MagicMock()
     mock_conn.cursor.return_value = mock_cur_instance
 
-    with patch("database.database_manager.DatabaseManager.get_active_program", return_value=mock_prog), \
-         patch.object(assistant_db, "catalog_conn", mock_conn), \
-         patch("database.database_manager.DatabaseManager.search_similar_exercises") as mock_search, \
-         patch("database.database_manager.DatabaseManager.swap_program_exercise", return_value=True) as mock_swap:
-
+    with (
+        patch("database.database_manager.DatabaseManager.get_active_program", return_value=mock_prog),
+        patch.object(assistant_db, "catalog_conn", mock_conn),
+        patch("database.database_manager.DatabaseManager.search_similar_exercises") as mock_search,
+        patch("database.database_manager.DatabaseManager.swap_program_exercise", return_value=True) as mock_swap,
+    ):
         mock_search.return_value = [
-            {"id": "ex_999", "name": "Leg Press", "target_muscle": "quadriceps", "body_part": "quadriceps", "equipment": "machine"}
+            {
+                "id": "ex_999",
+                "name": "Leg Press",
+                "target_muscle": "quadriceps",
+                "body_part": "quadriceps",
+                "equipment": "machine",
+            }
         ]
 
         result = exercise_substitution_node(state)
 
         mock_swap.assert_called_once_with(
-        old_exercise_id="ex_123",
-        new_exercise_id="ex_999",
-        new_notes=mock_swap.call_args[1]["new_notes"]
+            old_exercise_id="ex_123", new_exercise_id="ex_999", new_notes=mock_swap.call_args[1]["new_notes"]
         )
 
         assert result["program_updated"] is True
@@ -316,7 +334,7 @@ def test_component1_medical_red_flag_interceptor():
         "My lower back has shooting pain down my left leg",
         "I have severe numbness and tingling in my triceps",
         "I think I tore my pectoral tendon on bench press",
-        "My knee has painful swelling and joint clicking with pain"
+        "My knee has painful swelling and joint clicking with pain",
     ]
 
     for q in red_flag_queries:
@@ -329,7 +347,7 @@ def test_component1_medical_red_flag_interceptor():
             "intent": None,
             "intent_metadata": {},
             "program_updated": False,
-            "response_content": None
+            "response_content": None,
         }
 
         with patch.object(SafeChatLlamaCpp, "stream") as mock_llm_stream:
@@ -346,6 +364,7 @@ def test_component1_medical_red_flag_interceptor():
 
     logger.info("✅ Component 1: Medical red-flag zero-LLM interceptor verified.")
 
+
 def test_component1_biomechanical_catalog_exclusion():
     """Validates that high-risk movement patterns are filtered out of catalog searches."""
     test_vec = [0.0] * 384
@@ -361,6 +380,7 @@ def test_component1_biomechanical_catalog_exclusion():
 
     logger.info("✅ Component 1: Biomechanical catalog exclusions verified.")
 
+
 def run_all_tests():
     logger.info("⚡ Running Zero-LLM Fast Routing, UI Token Streaming & Deterministic Exercise Substitution...\n")
     test_phase1_engine_configuration()
@@ -375,7 +395,9 @@ def run_all_tests():
     test_phase3_substitution_direct_swap()
     test_component1_medical_red_flag_interceptor()
     test_component1_biomechanical_catalog_exclusion()
-    logger.info("\n🎉 Zero-LLM Fast Routing, UI Token Streaming & Deterministic Exercise Substitution Unit Tests Passed Successfully.")
+    logger.info(
+        "\n🎉 Zero-LLM Fast Routing, UI Token Streaming & Deterministic Exercise Substitution Unit Tests Passed Successfully."
+    )
 
 
 if __name__ == "__main__":

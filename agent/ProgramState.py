@@ -1,7 +1,9 @@
-from typing import TypedDict, List, Dict, Any, Optional, Literal
+from typing import Any, Literal, TypedDict
+
 from pydantic import BaseModel, Field
 
 # --- Pydantic Output Contracts ---
+
 
 class ProgramExerciseSchema(BaseModel):
     exercise_id: str = Field(description="Exact ID matching candidate from the database")
@@ -11,53 +13,58 @@ class ProgramExerciseSchema(BaseModel):
     target_reps_max: int = Field(ge=4, le=30, description="Upper bound of rep window")
     target_rpe: float = Field(default=8.5, ge=7.0, le=10.0, description="Proximity to failure (7.0 to 10.0)")
     rest_seconds: int = Field(default=120, description="Rest period in seconds")
-    notes: Optional[str] = Field(default=None, description="Biomechanical execution cue")
-    image_path: Optional[str] = Field(default=None, description="Local path or URL to demonstration image")
-    gif_path: Optional[str] = Field(default=None, description="Local path or URL to demonstration animated GIF")
+    notes: str | None = Field(default=None, description="Biomechanical execution cue")
+    image_path: str | None = Field(default=None, description="Local path or URL to demonstration image")
+    gif_path: str | None = Field(default=None, description="Local path or URL to demonstration animated GIF")
+
 
 class ProgramDaySchema(BaseModel):
     day_name: str = Field(description="e.g., 'Upper 1', 'Lower 1'")
     day_order: int = Field(ge=1, le=5)
-    exercises: List[ProgramExerciseSchema] = Field(
-        min_length=3, 
-        max_length=7, 
-        description="3 to 7 high-yield movements per session"
+    exercises: list[ProgramExerciseSchema] = Field(
+        min_length=3, max_length=7, description="3 to 7 high-yield movements per session"
     )
+
 
 class ProgramSchema(BaseModel):
     program_name: str = Field(description="Display title of the generated split")
     weekly_frequency: int = Field(ge=1, le=7, description="Number of training days per week")
     split_type: str = Field(default="custom", description="Split categorization, e.g., 'Upper/Lower', 'PPL'")
-    days: List[ProgramDaySchema] = Field(description="Ordered list of training day routines")
+    days: list[ProgramDaySchema] = Field(description="Ordered list of training day routines")
+
 
 class GeneratedProgramSchema(BaseModel):
     program_name: str = Field(description="Descriptive title of the program")
     split_type: str = Field(description="Resolved split architecture")
     weekly_frequency: int = Field(ge=1, le=5)
-    days: List[ProgramDaySchema]
+    days: list[ProgramDaySchema]
+
 
 # --- LangGraph Node State ---
 
+
 class ProgramState(TypedDict):
     user_id: int
-    raw_profile: Dict[str, Any]
-    user_split_override: Optional[str]
+    raw_profile: dict[str, Any]
+    user_split_override: str | None
     rep_preference: Literal["low", "balanced", "high"]
     resolved_frequency: int
     resolved_split: str
-    target_days: List[str]
-    volume_budget: Dict[str, int]
-    candidate_pool: Dict[str, List[Dict[str, Any]]]
-    generated_program: Optional[GeneratedProgramSchema]
-    error: Optional[str]
+    target_days: list[str]
+    volume_budget: dict[str, int]
+    candidate_pool: dict[str, list[dict[str, Any]]]
+    generated_program: GeneratedProgramSchema | None
+    error: str | None
+
 
 class CustomDayPlan(BaseModel):
     day_order: int = Field(ge=1, le=5)
     day_name: str = Field(description="e.g., 'Chest & Back', 'Upper', 'Arms & Delts'")
-    target_body_parts: List[str] = Field(
+    target_body_parts: list[str] = Field(
         description="Target muscle groups for this session, e.g. ['chest', 'back'] or ['waist', 'upper legs'] matching the dataset's body_part column"
     )
 
+
 class DynamicSplitPlan(BaseModel):
     split_name: str = Field(description="Clean descriptive title for this split")
-    days: List[CustomDayPlan] = Field(description="Exact list of days matching committed frequency")
+    days: list[CustomDayPlan] = Field(description="Exact list of days matching committed frequency")

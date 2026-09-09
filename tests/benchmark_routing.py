@@ -1,21 +1,16 @@
 # tests/benchmark_routing.py
 import os
+import statistics
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List
-import statistics
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
-from agent.assistant_graph import (
-    router_node,
-    IntentClassification,
-    ROUTER_PROMPT
-)
+from agent.assistant_graph import ROUTER_PROMPT, IntentClassification, router_node
 from utils.model_downloader import llm
 
 BENCHMARK_PROMPTS = [
@@ -32,6 +27,7 @@ ITERATIONS = 5
 
 structured_llm = llm.with_structured_output(IntentClassification)
 
+
 def time_fast_path(query: str) -> float:
     """Executes pure deterministic router logic."""
     start = time.perf_counter()
@@ -40,15 +36,14 @@ def time_fast_path(query: str) -> float:
     end = time.perf_counter()
     return (end - start) * 1000.0  # ms
 
+
 def time_llm_routing(query: str) -> float:
     """Forces standard structured LLM intent extraction."""
     start = time.perf_counter()
-    _ = structured_llm.invoke([
-        SystemMessage(content=ROUTER_PROMPT),
-        HumanMessage(content=query)
-    ])
+    _ = structured_llm.invoke([SystemMessage(content=ROUTER_PROMPT), HumanMessage(content=query)])
     end = time.perf_counter()
     return (end - start) * 1000.0  # ms
+
 
 def run_benchmark():
     print("=" * 80)
@@ -58,13 +53,15 @@ def run_benchmark():
 
     print("\nWarming up inference pipeline...")
     for _ in range(WARMUP_RUNS):
-        _ = structured_llm.invoke([
-            SystemMessage(content=ROUTER_PROMPT),
-            HumanMessage(content="how do I optimize mechanical tension on RDLs?")
-        ])
+        _ = structured_llm.invoke(
+            [
+                SystemMessage(content=ROUTER_PROMPT),
+                HumanMessage(content="how do I optimize mechanical tension on RDLs?"),
+            ]
+        )
     print("Warmup complete.\n")
 
-    results: List[Dict] = []
+    results: list[dict] = []
 
     for category, prompt in BENCHMARK_PROMPTS:
         fast_latencies = []
@@ -79,13 +76,15 @@ def run_benchmark():
         llm_mean = statistics.mean(llm_latencies)
         speedup = llm_mean / fast_mean if fast_mean > 0 else 0.0
 
-        results.append({
-            "category": category,
-            "prompt": prompt,
-            "fast_mean_ms": fast_mean,
-            "llm_mean_ms": llm_mean,
-            "speedup": speedup
-        })
+        results.append(
+            {
+                "category": category,
+                "prompt": prompt,
+                "fast_mean_ms": fast_mean,
+                "llm_mean_ms": llm_mean,
+                "speedup": speedup,
+            }
+        )
 
     print(f"{'Category':<26} | {'Regex Router':<14} | {'LLM Router':<14} | {'Speedup':<10}")
     print("-" * 72)
@@ -100,7 +99,8 @@ def run_benchmark():
 
     avg_fast = statistics.mean([r["fast_mean_ms"] for r in results])
     avg_llm = statistics.mean([r["llm_mean_ms"] for r in results])
-    print(f"{'OVERALL AVERAGE':<26} | {avg_fast:>8.3f} ms    | {avg_llm:>8.1f} ms    | {avg_llm/avg_fast:>7.0f}x\n")
+    print(f"{'OVERALL AVERAGE':<26} | {avg_fast:>8.3f} ms    | {avg_llm:>8.1f} ms    | {avg_llm / avg_fast:>7.0f}x\n")
+
 
 if __name__ == "__main__":
     run_benchmark()

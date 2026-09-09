@@ -1,6 +1,8 @@
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 from dotenv import load_dotenv
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
+
 from utils.model_downloader import llm
 
 load_dotenv()
@@ -21,15 +23,16 @@ Directives:
    - **Next Session Directives**: Clear execution marching orders.
 """
 
+
 def generate_session_debrief(
     split_name: str,
     readiness: int,
     session_notes: str,
-    exercise_summaries: List[Dict[str, Any]],
-    profile: Dict[str, Any],
-    total_tonnage: Optional[float] = None,
-    total_sets: Optional[int] = None,
-    fatigue_info: Optional[Dict[str, Any]] = None
+    exercise_summaries: list[dict[str, Any]],
+    profile: dict[str, Any],
+    total_tonnage: float | None = None,
+    total_sets: int | None = None,
+    fatigue_info: dict[str, Any] | None = None,
 ) -> str:
     coach_tone = profile.get("coach_tone", "Direct, grounded, and pragmatic")
     raw_instructions = profile.get("custom_instructions", "").strip()
@@ -37,7 +40,7 @@ def generate_session_debrief(
 
     fatigue_instruction = ""
     if fatigue_info and fatigue_info.get("deload_recommended"):
-        cut_pct = int((1.0 - fatigue_info['volume_multiplier']) * 100)
+        cut_pct = int((1.0 - fatigue_info["volume_multiplier"]) * 100)
         fatigue_instruction = (
             f"\n[CRITICAL DIRECTIVE: DELOAD ACTIVE]\n"
             f"- Deload Triggered: {fatigue_info['reason']}\n"
@@ -47,8 +50,14 @@ def generate_session_debrief(
             f"and cap movements at RPE {fatigue_info['intensity_cap_rpe']} next session."
         )
 
-    total_volume_kg = float(total_tonnage) if total_tonnage is not None else sum(ex.get("volume_load", 0.0) for ex in exercise_summaries)
-    total_work_sets = int(total_sets) if total_sets is not None else sum(ex.get("sets_completed", 0) for ex in exercise_summaries)
+    total_volume_kg = (
+        float(total_tonnage)
+        if total_tonnage is not None
+        else sum(ex.get("volume_load", 0.0) for ex in exercise_summaries)
+    )
+    total_work_sets = (
+        int(total_sets) if total_sets is not None else sum(ex.get("sets_completed", 0) for ex in exercise_summaries)
+    )
 
     graduated_exercises = [ex["name"] for ex in exercise_summaries if ex.get("action") == "increase"]
     holding_exercises = [ex["name"] for ex in exercise_summaries if ex.get("action") == "hold"]
@@ -61,13 +70,17 @@ def generate_session_debrief(
         f"- **Holding / Working in Rep Corridor**: {', '.join(holding_exercises) if holding_exercises else 'None'}",
         f"- **Trainee Notes**: {session_notes if session_notes else 'None logged'}\n",
         f"- **Fatigue & CNS Check**: {fatigue_instruction}",
-        "**Movement Performance Details**:"
+        "**Movement Performance Details**:",
     ]
 
     for ex in exercise_summaries:
         e1rm_val = ex.get("current_e1rm")
         e1rm_delta = ex.get("e1rm_delta")
-        e1rm_str = f" | e1RM: {e1rm_val} kg" + (f" ({e1rm_delta:+} kg)" if e1rm_delta is not None else "") if e1rm_val is not None else ""
+        e1rm_str = (
+            f" | e1RM: {e1rm_val} kg" + (f" ({e1rm_delta:+} kg)" if e1rm_delta is not None else "")
+            if e1rm_val is not None
+            else ""
+        )
         action_str = f" | Status: {ex.get('action', 'RECORDED').upper()}" if "action" in ex else ""
         telemetry_lines.append(
             f"  * {ex['name']}: Top Set {ex.get('top_load', 0.0)}kg × {ex.get('top_reps', 0)} @ RPE {ex.get('top_rpe', 8.5)}{e1rm_str}{action_str}"
@@ -75,10 +88,12 @@ def generate_session_debrief(
 
     system_prompt = DEBRIEF_SYSTEM_TEMPLATE.format(coach_tone=coach_tone, custom_instructions=custom_rules)
     try:
-        response = llm.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Analyze this session relative to readiness:\n\n{chr(10).join(telemetry_lines)}")
-        ])
+        response = llm.invoke(
+            [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=f"Analyze this session relative to readiness:\n\n{chr(10).join(telemetry_lines)}"),
+            ]
+        )
         return response.content
     except Exception as e:
         return (

@@ -37,7 +37,7 @@ jobs:
 
       - name: Lint with Ruff
         run: |
-          ruff check .
+          ruff check --select E,F,W --ignore E402,E501,EXE002 .
 
       - name: Run Schema Initialization & Index Verification
         run: |

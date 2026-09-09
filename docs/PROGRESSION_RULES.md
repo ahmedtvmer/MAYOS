@@ -218,7 +218,7 @@ Myos strictly separates biomechanical auto-regulation from medical diagnosis. Th
 ```python
 RE_ACUTE_INJURY = re.compile(
     r"\b(sharp pop|popped|tore|torn|snapped|shooting pain|numbness|tingling|joint swelling|severe pain)\b",
-    re.IGNORECASE
+    re.IGNORECASE,
 )
 ```
 

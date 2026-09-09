@@ -1,11 +1,20 @@
-from typing import Optional, List, Dict, Any
+from typing import Any
 
 LOWER_BODY_TARGETS = {
-    "quads", "hamstrings", "glutes", "calves", "quadriceps", 
-    "adductors", "abductors", "legs", "lower body", "thighs"
+    "quads",
+    "hamstrings",
+    "glutes",
+    "calves",
+    "quadriceps",
+    "adductors",
+    "abductors",
+    "legs",
+    "lower body",
+    "thighs",
 }
 
-def get_progression_increment(mechanic: str, body_part: Optional[str] = None) -> float:
+
+def get_progression_increment(mechanic: str, body_part: str | None = None) -> float:
     is_compound = "compound" in (mechanic or "").lower()
     target = (body_part or "").strip().lower()
     is_lower = any(part in target for part in LOWER_BODY_TARGETS)
@@ -14,14 +23,15 @@ def get_progression_increment(mechanic: str, body_part: Optional[str] = None) ->
         return 5.0 if is_lower else 2.5
     return 2.5 if is_lower else 1.0
 
+
 def evaluate_progression(
     mechanic: str,
-    performed_sets: List[Dict[str, Any]],
+    performed_sets: list[dict[str, Any]],
     target_reps_min: int,
     target_reps_max: int,
-    body_part: Optional[str] = None,
-    increment_kg: Optional[float] = None
-) -> Dict[str, Any]:
+    body_part: str | None = None,
+    increment_kg: float | None = None,
+) -> dict[str, Any]:
     if not performed_sets:
         return {"action": "hold", "step": 0.0, "target_text": "No sets logged."}
 
@@ -40,7 +50,7 @@ def evaluate_progression(
                 "step": step,
                 "next_load": next_load,
                 "status_badge": f"Graduated (+{step} kg)",
-                "target_text": f"Advance load to **{next_load} kg** next week for {target_reps_min}–{target_reps_max} reps."
+                "target_text": f"Advance load to **{next_load} kg** next week for {target_reps_min}–{target_reps_max} reps.",
             }
         return {
             "action": "hold",
@@ -48,7 +58,7 @@ def evaluate_progression(
             "step": step,
             "next_load": base_load,
             "status_badge": "Rep Corridor Phase",
-            "target_text": f"Maintain **{base_load} kg**. Hit **{target_reps_max} reps** on all sets before loading up."
+            "target_text": f"Maintain **{base_load} kg**. Hit **{target_reps_max} reps** on all sets before loading up.",
         }
 
     graduated_sets = []
@@ -70,8 +80,9 @@ def evaluate_progression(
         "is_compound": False,
         "step": step,
         "status_badge": f"DDP Evaluated (Step: +{step} kg)",
-        "target_text": " | ".join(status_parts)
+        "target_text": " | ".join(status_parts),
     }
+
 
 def calculate_epley_e1rm(weight_kg: float, reps: int) -> float:
     """Calculates estimated 1RM using standard Epley formulation."""
