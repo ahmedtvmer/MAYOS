@@ -17,4 +17,4 @@ data
 db
 models/
 *.gguf
-logs/
+logs
