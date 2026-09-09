@@ -40,10 +40,12 @@ jobs:
           ruff check --select E,F,W --ignore E402,E501,EXE002 .
 
       - name: Run Schema Initialization & Index Verification
+        env:
+          SEED_CSV_PATH: "tests/fixtures/mock_exercises.csv"
         run: |
           python scripts/intialize_db.py
           sqlite3 db/catalog.db "PRAGMA index_list('exercise_secondary_muscles');" | grep -q "idx_secondary_muscles_ex"
-
+          
       - name: Run Unit & Telemetry Tests
         env:
           SKIP_LLM_LOAD: "true"
