@@ -76,7 +76,7 @@ flowchart TD
 
 ## 2. LangGraph State Schema & Data Contracts
 
-The runtime state (`AssistantState`) flows immutably across nodes in `agent/assistant_graph.py`[cite: 1]:
+The runtime state (`AssistantState`) flows immutably across nodes in `agent/assistant_graph.py`:
 
 ```python
 class AssistantState(TypedDict):
@@ -132,7 +132,7 @@ stateDiagram-v2
 
 ## 3. Deterministic Fast-Path Routing Logic
 
-The fast-path router eliminates LLM classification latency on routine user queries through a multi-tiered hierarchy of compiled regular expressions[cite: 1]:
+The fast-path router eliminates LLM classification latency on routine user queries through a multi-tiered hierarchy of compiled regular expressions:
 
 ```mermaid
 flowchart TD
@@ -162,7 +162,7 @@ flowchart TD
 
 ## 4. Dual-Database Topology & Thread-Local Connection Model
 
-Myos combines a static, read-only exercise catalog (`catalog.db`) with dynamic, isolated per-user transaction ledgers (`db/users/<user_id>.db`)[cite: 1]. Cross-tenant leakage is physically impossible, and SQLite Write-Ahead Logging (`WAL`) prevents write contention[cite: 1]:
+Myos combines a static, read-only exercise catalog (`catalog.db`) with dynamic, isolated per-user transaction ledgers (`db/users/<user_id>.db`). Cross-tenant leakage is physically impossible, and SQLite Write-Ahead Logging (`WAL`) prevents write contention:
 
 ```mermaid
 sequenceDiagram
@@ -199,7 +199,7 @@ sequenceDiagram
 
 ## 5. Token Streaming & Tool-Call Sanitization Flow
 
-To prevent `llama-cpp-python` streaming tool calls from corrupting Pydantic structured output parsers via repeated function name concatenation, `SafeChatLlamaCpp` intercepts the raw C++ chunk stream[cite: 1]:
+To prevent `llama-cpp-python` streaming tool calls from corrupting Pydantic structured output parsers via repeated function name concatenation, `SafeChatLlamaCpp` intercepts the raw C++ chunk stream:
 
 ```mermaid
 sequenceDiagram
@@ -236,7 +236,7 @@ sequenceDiagram
 
 ## 6. Biomechanical Auto-Regulation State Machine
 
-During active workout logging in Tab 2, working sets are auto-regulated using RPE-adjusted effective 1RM calculations, Olympic barbell plate quantization, and fatigue thresholds[cite: 1]:
+During active workout logging in Tab 2, working sets are auto-regulated using RPE-adjusted effective 1RM calculations, Olympic barbell plate quantization, and fatigue thresholds:
 
 ```mermaid
 flowchart TD
@@ -274,7 +274,7 @@ flowchart TD
 
 ## 7. Context Clamping & Telemetry Hydration Pipeline
 
-To maintain flat inference latency and prevent token evaluation degradation across long training histories, Myos replaces full chat serialization with a bounded context pipeline[cite: 1]:
+To maintain flat inference latency and prevent token evaluation degradation across long training histories, Myos replaces full chat serialization with a bounded context pipeline:
 
 ```mermaid
 flowchart LR
