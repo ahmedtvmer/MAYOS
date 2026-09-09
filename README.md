@@ -44,14 +44,14 @@
       <a href="#getting-started">Getting Started</a>
       <ul>
         <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#installation--setup">Installation & Setup</a></li>
-        <li><a href="#database-initialization--vector-seeding">Database Initialization & Vector Seeding</a></li>
+        <li><a href="#quickstart-with-docker">Quickstart with Docker</a></li>
+        <li><a href="#optional-local-development-without-docker">Optional: Local Development (Without Docker)</a></li>
       </ul>
     </li>
     <li><a href="#usage--workflows">Usage & Workflows</a></li>
     <li><a href="#empirical-benchmarks--performance">Empirical Benchmarks & Performance</a></li>
     <li><a href="#biomechanical-progression-rules">Biomechanical Progression Rules</a></li>
-    <li><a href="#docker-deployment">Docker Deployment</a></li>
+    <li><a href="#observability--telemetry">Observability & Telemetry</a></li>
     <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#license">License</a></li>
     <li><a href="#contact">Contact</a></li>
@@ -67,9 +67,11 @@
 Commercial training applications frequently depend on rigid linear progression (+2.5 kg next week regardless of fatigue) and binary volume counters that inflate synergistic muscle tracking . Conversely, naive AI agents pass every conversational turn through an LLM prompt, incurring 3–6 second local CPU bottlenecks just to categorize intent or confirm routine modifications .
 
 Myos resolves these tradeoffs directly:
-* **Zero-Cloud Dependency**: Runs entirely offline on local CPU hardware using quantized GGUF inference .
-* **Sub-Millisecond Fast Path**: Deterministic regex filters process standard actions and clinical alerts in approximately 15 microseconds—bypassing LLM inference entirely .
-* **Biomechanical Auto-Regulation**: Scales working loads through effective estimated 1RMs ($w \cdot (1 + \text{effective\_reps}/30)$), snaps weights to 2.5 kg barbell increments with per-side Olympic plate breakdowns, and scores secondary synergists at 0.5 sets .
+* **Zero-Cloud Dependency**: Runs entirely offline on local CPU hardware using quantized GGUF inference.
+* **Sub-Millisecond Fast Path**: Deterministic regex filters process standard actions and clinical alerts in approximately 15 microseconds—bypassing LLM inference entirely.
+* **Biomechanical Auto-Regulation**: Scales working loads through effective estimated $$ 1\text{RM} = w \cdot \left(1 + \frac{\text{effective\_reps}}{30}\right) $$
+, snaps weights to 2.5 kg barbell increments with per-side Olympic plate breakdowns, and scores secondary synergists at 0.5 sets.
+* **Atomic Transaction Integrity**: All sets and session telemetry commit in single atomic batches, preventing database lockups or corrupted partial sessions.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -157,11 +159,11 @@ To prevent CPU prompt evaluation times from degrading quadratically over extende
 ### Prerequisites
 
 * [Docker Desktop](https://www.docker.com/products/docker-desktop/) or Docker Engine with Docker Compose v2.
-* A CPU supporting AVX2 instructions (standard on all modern x86_64 processors) .
+* A CPU supporting AVX2 instructions (standard on modern x86_64 processors).
 
 ### Quickstart with Docker
 
-The application is fully containerized with OpenMP CPU optimization, precompiled AVX2 `llama-cpp-python` binaries, and persistent storage volumes .
+The engine is containerized with OpenMP multithreading, precompiled AVX2 `llama-cpp-python` wheels, and isolated persistent volumes.
 
 1. **Clone the Repository**:
    ```bash
@@ -180,24 +182,24 @@ The application is fully containerized with OpenMP CPU optimization, precompiled
    docker compose up -d
    ```
 
-Access the application directly in your browser at **`http://localhost:8501`** .
+Access the application directly in your browser at **`http://localhost:8501`**.
 
-> *Note: On first startup, the model artifact (`qwen2.5-3b-instruct-q4_k_m.gguf`) will download automatically to your mounted `./models` directory if not already present .*
+> *Note: On first startup, the model artifact (`qwen2.5-3b-instruct-q4_k_m.gguf`) downloads automatically to your mounted `./models` directory if not already cached.*
 
 <details>
   <summary><b>Optional: Local Development (Without Docker)</b></summary>
   <br />
 
-  If you prefer running natively on the host machine using [uv](https://github.com/astral-sh/uv) :
+  If running natively on the host machine using [uv](https://github.com/astral-sh/uv):
 
   ```bash
-  # 1. Create environment and install dependencies
+  # 1. Create virtual environment and install dependencies
   uv venv
   source .venv/bin/activate
   uv pip install --extra-index-url [https://abetlen.github.io/llama-cpp-python/whl/cpu](https://abetlen.github.io/llama-cpp-python/whl/cpu) llama-cpp-python
   uv pip install -r requirements.txt
 
-  # 2. Seed database
+  # 2. Bootstrap database and embeddings
   uv run python scripts/intialize_db.py
   uv run python scripts/seed_vectors.py
 
@@ -330,6 +332,31 @@ The containerized engine isolates CPU thread pools via OpenMP and mounts persist
    docker compose up --build -d
    docker compose logs -f
    ```
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+---
+
+## Observability & Telemetry
+
+Diagnostic telemetry is captured silently at the engine layer, ensuring zero disruption to the athlete interface:
+
+* **Telemetry Log Format**:
+  ```text
+  [TELEMETRY] User: ahmed | Intent: coaching_qa | Router: 0.018ms | TTFT: 245.2ms | Tokens: 94 | GenTime: 6.82s | Speed: 13.78 TPS
+  ```
+* **Performance Degradation Warnings**: An out-of-band warning is logged whenever generation speed drops below 8.0 TPS, signaling potential thermal throttling or CPU contention:
+  ```text
+  [PERF DEGRADATION] Low inference throughput detected: 6.42 TPS (Threshold: 8.0 TPS). Check CPU temperature or background processes.
+  ```
+* **Monitoring Commands**:
+  ```bash
+  # Stream live telemetry events
+  tail -f logs/myos.log | grep "\[TELEMETRY\]"
+
+  # Inspect thermal/throughput degradation alerts
+  grep "\[PERF DEGRADATION\]" logs/myos.log
+  ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
