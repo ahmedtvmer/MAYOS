@@ -1,0 +1,26 @@
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Model weights (mounted via volume, never copied)
+models/
+*.gguf
+*.bin
+
+# Local caches & artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+
+# Git & IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Database mounts (prevent baking local test states)
+database/*.db

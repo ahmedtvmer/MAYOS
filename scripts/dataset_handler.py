@@ -1,19 +1,29 @@
 import json
 import pandas as pd
-from utils.logger import MyosLogger
+from pathlib import Path
+import sys
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
+# Resolve the absolute path to the project root (/mnt/work/MAYOS)
+BASE_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_CSV_PATH = BASE_DIR / "data" / "exercises.csv"
+DEFAULT_JSON_PATH = BASE_DIR / "data" / "exercises.json"
+DEFAULT_PROCESSED_PATH = BASE_DIR / "data" / "processed_exercises.csv"
+
+
+from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 ## loading json file
 try:
-  with open("../data/exercises.json", "r", encoding="utf-8") as json_file:
+  with open(DEFAULT_JSON_PATH, "r", encoding="utf-8") as json_file:
     json_file_data = json.load(json_file)
     logger.info("JSON file loaded successfully")
 except FileNotFoundError:
   logger.error("JSON file not found")
 
 ## loading csv file
-csv_file_data = pd.read_csv("../data/exercises.csv")
+csv_file_data = pd.read_csv(DEFAULT_CSV_PATH)
 
 ## assigning image and gif path at each row in csv
 for item, row in zip(json_file_data, csv_file_data.itertuples()):
@@ -37,7 +47,7 @@ cols_to_drop = [c for c in instruction_cols if c in processed_df.columns]
 processed_df.drop(columns=instruction_cols, inplace=True)
 
 # 5. Save the clean output
-processed_df.to_csv('../data/processed_exercises.csv', index=False)
+processed_df.to_csv(DEFAULT_PROCESSED_PATH, index=False)  
 logger.info("Data processed. Instructions merged. Saved to processed_exercises.csv")
 
 

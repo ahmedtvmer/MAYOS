@@ -5,8 +5,15 @@ build/
 dist/
 wheels/
 *.egg-info
+uv.lock
+.python-version
+pyproject.toml
+
 
 # Virtual environments
 .venv
 data
-database/database_manager.py
+.env
+db
+models/
+*.gguf
