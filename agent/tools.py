@@ -1,12 +1,15 @@
 # agent/tools.py
 from typing import Any
+
 from langchain_core.tools import tool
+
 from agent.UserState import UserProfileSchema
 from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
 db = DatabaseManager()
+
 
 @tool(args_schema=UserProfileSchema)
 def save_user_profile(
@@ -23,7 +26,7 @@ def save_user_profile(
     injuries_or_limitations: str = "None",
     gender: str = "male",
     rep_preference: str = "balanced",
-    **kwargs: Any
+    **kwargs: Any,
 ) -> str:
     """
     Saves the user's physical profile, goals, constraints, and recovery metrics to the database.
@@ -42,13 +45,13 @@ def save_user_profile(
         "training_age_years": training_age_years,
         "equipment_access": equipment_access,
         "injuries_or_limitations": injuries_or_limitations,
-        "stress_and_sleep": stress_and_sleep
+        "stress_and_sleep": stress_and_sleep,
     }
-    
+
     try:
         db.upsert_user_profile(profile_data)
         logger.info("User profile successfully upserted into SQLite.")
         return "User profile successfully saved and locked into database."
     except Exception as e:
         logger.error(f"Failed to save profile: {e}")
-        return f"Database error while saving profile: {str(e)}"
+        return f"Database error while saving profile: {e!s}"

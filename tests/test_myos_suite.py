@@ -1,36 +1,31 @@
-import os
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
-import pytest
 
+import pytest
 from langchain_community.chat_models import ChatLlamaCpp
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import HumanMessage
 
 from agent.assistant_graph import (
-    assistant_graph,
     clinical_intercept_node,
     router_node,
     stream_assistant_turn,
 )
-from agent.onboarding_graph import onboarding_graph
 from agent.progression_engine import (
     calculate_e1rm,
     evaluate_systemic_fatigue,
-    get_weekly_muscle_volume,
-    normalize_muscle_group,
     project_next_load,
 )
-from core.progression import calculate_epley_e1rm, evaluate_progression
+from core.progression import calculate_epley_e1rm
 from core.warmup import calculate_warmup_sets
 from database.database_manager import DatabaseManager
 from utils.plate_calculator import calculate_barbell_plates
 from utils.text_scrubber import scrub_coach_output
 
-
 # ============================================================================
 # 1. BIOMECHANICS, WARMUP & PROGRESSION TESTS
 # ============================================================================
+
 
 def test_e1rm_formulations():
     # Epley baseline: 100kg x 1 rep = 100kg; 100kg x 10 reps = 133.3kg
@@ -75,7 +70,7 @@ def test_dynamic_progression_logic():
         target_reps_min=6,
         target_reps_max=8,
         target_rpe=8.5,
-        equipment="barbell"
+        equipment="barbell",
     )
     assert proj_step["status"] == "PROGRESSION_UP"
     assert proj_step["delta_kg"] == 2.5
@@ -89,7 +84,7 @@ def test_dynamic_progression_logic():
         target_reps_min=8,
         target_reps_max=10,
         target_rpe=8.0,
-        equipment="barbell"
+        equipment="barbell",
     )
     assert proj_down["status"] == "RPE_OVERSHOOT_DELOAD"
     assert proj_down["delta_kg"] == -2.5
@@ -100,16 +95,14 @@ def test_dynamic_progression_logic():
 # 2. SYSTEMIC FATIGUE & DELOAD LOGIC
 # ============================================================================
 
+
 def test_systemic_fatigue_states():
     mock_db = MagicMock()
     mock_cursor = MagicMock()
     mock_db.user_conn.cursor.return_value = mock_cursor
 
     # Case A: Acute readiness floor (Readiness = 1/5)
-    mock_cursor.fetchall.side_effect = [
-        [("s1", "2026-09-08", 1), ("s2", "2026-09-06", 4)],
-        [("s1", 8.5)]
-    ]
+    mock_cursor.fetchall.side_effect = [[("s1", "2026-09-08", 1), ("s2", "2026-09-06", 4)], [("s1", 8.5)]]
     res_acute = evaluate_systemic_fatigue(mock_db)
     assert res_acute["deload_recommended"] is True
     assert res_acute["severity"] == "HIGH"
@@ -118,7 +111,7 @@ def test_systemic_fatigue_states():
     # Case B: High exertion density (>= 50% sets >= RPE 9.5 and avg readiness <= 3.0)
     mock_cursor.fetchall.side_effect = [
         [("s1", "2026-09-08", 3), ("s2", "2026-09-06", 3), ("s3", "2026-09-04", 3)],
-        [("s1", 10.0), ("s1", 9.5), ("s2", 10.0), ("s2", 8.0), ("s3", 8.0), ("s3", 8.0)]
+        [("s1", 10.0), ("s1", 9.5), ("s2", 10.0), ("s2", 8.0), ("s3", 8.0), ("s3", 8.0)],
     ]
     res_density = evaluate_systemic_fatigue(mock_db)
     assert res_density["deload_recommended"] is True
@@ -130,17 +123,21 @@ def test_systemic_fatigue_states():
 # 3. ROUTER & CLINICAL INTERCEPT FAST PATH (<1ms)
 # ============================================================================
 
-@pytest.mark.parametrize("query,expected_intent", [
-    ("I felt a sharp pop in my shoulder", "clinical_intercept"),
-    ("Shooting pain down my leg on squats", "clinical_intercept"),
-    ("My pec is swollen and tore on bench", "clinical_intercept"),
-    ("swap barbell bench press for dumbbell press", "exercise_substitution"),
-    ("alternatives for leg curl", "exercise_substitution"),
-    ("switch routine to 3 days a week", "program_mutation"),
-    ("rebuild split", "program_mutation"),
-    ("search seated cable row", "catalog_search"),
-    ("How do I bias the lengthened position on RDLs?", "coaching_qa"),
-])
+
+@pytest.mark.parametrize(
+    "query,expected_intent",
+    [
+        ("I felt a sharp pop in my shoulder", "clinical_intercept"),
+        ("Shooting pain down my leg on squats", "clinical_intercept"),
+        ("My pec is swollen and tore on bench", "clinical_intercept"),
+        ("swap barbell bench press for dumbbell press", "exercise_substitution"),
+        ("alternatives for leg curl", "exercise_substitution"),
+        ("switch routine to 3 days a week", "program_mutation"),
+        ("rebuild split", "program_mutation"),
+        ("search seated cable row", "catalog_search"),
+        ("How do I bias the lengthened position on RDLs?", "coaching_qa"),
+    ],
+)
 def test_deterministic_router_fast_paths(query, expected_intent):
     state = {"messages": [HumanMessage(content=query)]}
     result = router_node(state)
@@ -164,6 +161,7 @@ def test_output_scrubber():
 # 4. DATABASE INTEGRITY, TRANSACTIONS & MULTI-TENANCY
 # ============================================================================
 
+
 def test_database_manager_operations(tmp_path):
     catalog_path = tmp_path / "catalog.db"
     users_dir = tmp_path / "users"
@@ -177,17 +175,19 @@ def test_database_manager_operations(tmp_path):
     assert mode.lower() == "wal"
 
     # User profile persistence
-    db.upsert_user_profile({
-        "gender": "male",
-        "proportions": "long_femurs",
-        "age": 22,
-        "weight_kg": 85.0,
-        "height_cm": 182.0,
-        "weekly_frequency": 4,
-        "training_age_years": 3.0,
-        "equipment_access": "Commercial Gym",
-        "stress_and_sleep": "Normal"
-    })
+    db.upsert_user_profile(
+        {
+            "gender": "male",
+            "proportions": "long_femurs",
+            "age": 22,
+            "weight_kg": 85.0,
+            "height_cm": 182.0,
+            "weekly_frequency": 4,
+            "training_age_years": 3.0,
+            "equipment_access": "Commercial Gym",
+            "stress_and_sleep": "Normal",
+        }
+    )
     saved_profile = db.get_user_profile()
     assert saved_profile["weight_kg"] == 85.0
     assert saved_profile["weekly_frequency"] == 4
@@ -195,7 +195,7 @@ def test_database_manager_operations(tmp_path):
     # Cascading deletes test
     session_id = str(uuid.uuid4())
     set_id = str(uuid.uuid4())
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(UTC).isoformat()
 
     db.log_workout_session(session_id, now_iso[:10], "Lower 1", now_iso, now_iso, 4)
     db.log_workout_set(set_id, session_id, "ex_dummy", 1, 100.0, 8, 8.5)
@@ -212,11 +212,12 @@ def test_database_manager_operations(tmp_path):
 # 5. STREAMING TURN RUNTIME (MOCKING ChatLlamaCpp)
 # ============================================================================
 
+
 def test_stream_assistant_turn_mocked_llm():
     mock_chunks = [
         MagicMock(content="Maintain "),
         MagicMock(content="scapular retraction "),
-        MagicMock(content="throughout the movement.")
+        MagicMock(content="throughout the movement."),
     ]
 
     state = {
@@ -228,7 +229,7 @@ def test_stream_assistant_turn_mocked_llm():
         "intent": None,
         "intent_metadata": {},
         "program_updated": False,
-        "response_content": None
+        "response_content": None,
     }
 
     # Patch ChatLlamaCpp.stream rather than ChatOllama

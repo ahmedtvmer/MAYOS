@@ -4,12 +4,17 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
-from agent.program_rules import resolve_split, calculate_volume_budget, fetch_filtered_candidates
+from agent.program_rules import (
+    calculate_volume_budget,
+    fetch_filtered_candidates,
+    resolve_split,
+)
 from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
 db = DatabaseManager()
+
 
 def test_rules():
     logger.info("--- 1. Testing Default Presets & Frequency Clamping ---")
@@ -46,16 +51,14 @@ def test_rules():
 
     logger.info("\n--- 4. Testing Candidate Retrieval & Contraindication Filters ---")
     candidates = fetch_filtered_candidates(
-        body_part="back", 
-        equipment_access="commercial gym", 
-        limitations="lower back tightness",
-        limit=3
+        body_part="back", equipment_access="commercial gym", limitations="lower back tightness", limit=3
     )
     for c in candidates:
         logger.info(f"  [ID {c['id']}] {c['name']} (Target: {c['target_muscle']})")
         assert "deadlift" not in c["name"].lower()
 
     logger.info("\nAll deterministic and dynamic program rules passed.")
+
 
 if __name__ == "__main__":
     test_rules()

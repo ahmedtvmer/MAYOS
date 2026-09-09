@@ -12,6 +12,7 @@ logger = MyosLogger().get_logger(__name__)
 
 db = DatabaseManager()
 
+
 def test_profile_flow():
     # Simulate messy LLM outputs with units and strings
     raw_payload = {
@@ -25,7 +26,7 @@ def test_profile_flow():
         "training_age_years": "3 years",
         "equipment_access": "Commercial gym",
         "injuries_or_limitations": "Occasional lower back tightness",
-        "stress_and_sleep": "Medium stress, 7 hours sleep"
+        "stress_and_sleep": "Medium stress, 7 hours sleep",
     }
 
     result = save_user_profile.invoke(raw_payload)
@@ -41,6 +42,7 @@ def test_profile_flow():
     assert saved["height_cm"] == 183.0
     assert saved["weekly_frequency"] == 4
     logger.info("\nAll assertions passed.")
+
 
 if __name__ == "__main__":
     test_profile_flow()

@@ -1,8 +1,9 @@
 # utils/model_downloader.py
 import multiprocessing
 import os
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator, List, Optional
+from typing import Any
 
 from huggingface_hub import hf_hub_download
 from langchain_community.chat_models import ChatLlamaCpp
@@ -26,10 +27,7 @@ def get_or_download_model_path() -> str:
     if not target_file.is_file():
         print(f"⚡ Downloading {DEFAULT_MODEL_FILENAME} from {REPO_ID}...")
         hf_hub_download(
-            repo_id=REPO_ID,
-            filename=DEFAULT_MODEL_FILENAME,
-            local_dir=str(target_dir),
-            local_dir_use_symlinks=False
+            repo_id=REPO_ID, filename=DEFAULT_MODEL_FILENAME, local_dir=str(target_dir), local_dir_use_symlinks=False
         )
         print("✅ Download complete.")
 
@@ -39,9 +37,9 @@ def get_or_download_model_path() -> str:
 class SafeChatLlamaCpp(ChatLlamaCpp):
     def _stream(
         self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[Any] = None,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: Any | None = None,
         **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
         seen_tool_indices = set()
@@ -71,5 +69,5 @@ llm = SafeChatLlamaCpp(
     n_threads_batch=physical_cores,
     max_tokens=200,
     streaming=True,
-    verbose=False
+    verbose=False,
 )

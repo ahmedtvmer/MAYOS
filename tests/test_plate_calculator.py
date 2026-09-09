@@ -5,8 +5,8 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
-from utils.plate_calculator import calculate_barbell_plates
 from utils.logger import MyosLogger
+from utils.plate_calculator import calculate_barbell_plates
 
 logger = MyosLogger().get_logger(__name__)
 

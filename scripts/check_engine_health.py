@@ -6,8 +6,8 @@
 
 import re
 import statistics
-from pathlib import Path
 import sys
+from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
@@ -16,6 +16,7 @@ from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
 LOG_PATH = Path(__file__).resolve().parent.parent / "logs" / "myos.log"
+
 
 def analyze_logs():
     if not LOG_PATH.is_file():
@@ -45,6 +46,7 @@ def analyze_logs():
     logger.info(f"Average Throughput:      {statistics.mean(tps_values):.2f} TPS")
     logger.info(f"Min / Max Throughput:    {min(tps_values):.2f} / {max(tps_values):.2f} TPS")
     logger.info("=" * 50)
+
 
 if __name__ == "__main__":
     analyze_logs()

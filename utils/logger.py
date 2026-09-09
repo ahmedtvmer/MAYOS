@@ -1,13 +1,14 @@
 import logging
-import sys
 import os
+import sys
+
 
 class MyosLogger:
     _instance = None
 
-    def __new__(cls, log_file='../logs/myos.log'):
+    def __new__(cls, log_file="../logs/myos.log"):
         if cls._instance is None:
-            cls._instance = super(MyosLogger, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
             cls._instance._initialize_logger(log_file)
         return cls._instance
 
@@ -33,7 +34,7 @@ class MyosLogger:
 
     def get_logger(self, module_name):
         """
-        Returns a child logger. 
+        Returns a child logger.
         Pass __name__ from the calling file to track where the log came from.
         """
         return logging.getLogger(f"myos.{module_name}")

@@ -33,3 +33,20 @@ build-backend = "uv_build"
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = [
+    "E402",    # Module level import not at top of file
+    "E501",    # Line length
+    "EXE002",  # Missing executable shebang
+    "UP006",   # Deprecated collections type hints
+    "UP035",   # Deprecated typing imports
+    "I001",    # Unsorted import blocks
+    "W291",    # Trailing whitespace
+    "W293",    # Blank line contains whitespace
+]

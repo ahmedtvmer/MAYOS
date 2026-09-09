@@ -1,10 +1,19 @@
-import re
 import random
-from typing import List, Optional
+import re
+
 from dotenv import load_dotenv
 
-from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema, DynamicSplitPlan
-from agent.program_rules import resolve_split, fetch_filtered_candidates, get_target_rep_window
+from agent.program_rules import (
+    fetch_filtered_candidates,
+    get_target_rep_window,
+    resolve_split,
+)
+from agent.ProgramState import (
+    DynamicSplitPlan,
+    GeneratedProgramSchema,
+    ProgramDaySchema,
+    ProgramExerciseSchema,
+)
 from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
 
@@ -16,8 +25,9 @@ MECHANIC_CUES = {
     "compound_press": "Control the 2-3s eccentric, pause briefly at full stretch, drive without locking out aggressively.",
     "compound_pull": "Initiate with scapular depression, pull elbows toward hips, pause 1s at peak contraction.",
     "compound_lower": "Brace core into belt/pad, control descent into active depth, drive through mid-foot.",
-    "isolation": "Eliminate momentum, control the eccentric portion, push to genuine concentric failure (0-1 RIR)."
+    "isolation": "Eliminate momentum, control the eccentric portion, push to genuine concentric failure (0-1 RIR).",
 }
+
 
 def get_biomechanical_cue(name: str, mechanic: str) -> str:
     name_lower = name.lower()
@@ -29,23 +39,21 @@ def get_biomechanical_cue(name: str, mechanic: str) -> str:
         return MECHANIC_CUES["compound_lower"]
     return MECHANIC_CUES["isolation"]
 
+
 def assemble_deterministic_day(
     day_order: int,
     day_name: str,
-    target_muscles: List[str],
+    target_muscles: list[str],
     equipment_access: str,
     limitations: str,
     rep_preference: str,
-    excluded_ids: set[str]
+    excluded_ids: set[str],
 ) -> ProgramDaySchema:
     selected_exercises = []
 
     for muscle in target_muscles:
         candidates = fetch_filtered_candidates(
-            muscle_group=muscle,
-            equipment_access=equipment_access,
-            limitations=limitations,
-            limit=6
+            muscle_group=muscle, equipment_access=equipment_access, limitations=limitations, limit=6
         )
         available = [c for c in candidates if str(c["id"]) not in excluded_ids]
         chosen = random.choice(available[:3]) if available else (random.choice(candidates[:2]) if candidates else None)
@@ -66,7 +74,7 @@ def assemble_deterministic_day(
                 rest_seconds=150 if mechanic == "compound" else 90,
                 notes=get_biomechanical_cue(chosen["name"], mechanic),
                 image_path=chosen.get("image_path"),
-                gif_path=chosen.get("gif_path")
+                gif_path=chosen.get("gif_path"),
             )
             selected_exercises.append((0 if mechanic == "compound" else 1, exercise_schema))
 
@@ -78,7 +86,7 @@ def assemble_deterministic_day(
             muscle_group=target_muscles[0] if target_muscles else "chest",
             equipment_access=equipment_access,
             limitations=limitations,
-            limit=5
+            limit=5,
         )
         for c in backup_candidates:
             if str(c["id"]) not in excluded_ids:
@@ -94,7 +102,7 @@ def assemble_deterministic_day(
                         rest_seconds=90,
                         notes=get_biomechanical_cue(c["name"], "isolation"),
                         image_path=c.get("image_path"),
-                        gif_path=c.get("gif_path")
+                        gif_path=c.get("gif_path"),
                     )
                 )
                 if len(ordered_list) >= 3:
@@ -102,7 +110,8 @@ def assemble_deterministic_day(
 
     return ProgramDaySchema(day_order=day_order, day_name=day_name, exercises=ordered_list)
 
-def extract_frequency_from_text(text: Optional[str]) -> Optional[int]:
+
+def extract_frequency_from_text(text: str | None) -> int | None:
     if not text:
         return None
     match = re.search(r"\b([1-5])\s*(?:days?|x|-day)\b", text.lower())
@@ -114,10 +123,11 @@ def extract_frequency_from_text(text: Optional[str]) -> Optional[int]:
             return num
     return None
 
+
 def generate_program_pipeline(
-    user_split_override: Optional[str] = None,
-    rep_preference_override: Optional[str] = None,
-    frequency_override: Optional[int] = None
+    user_split_override: str | None = None,
+    rep_preference_override: str | None = None,
+    frequency_override: int | None = None,
 ) -> tuple[GeneratedProgramSchema, str]:
     profile = db.get_user_profile()
     if not profile:
@@ -137,13 +147,11 @@ def generate_program_pipeline(
             clean_split_override = None
 
     split_plan: DynamicSplitPlan = resolve_split(
-        frequency=freq, 
-        preference=clean_split_override, 
-        gender=profile.get("gender", "male")
+        frequency=freq, preference=clean_split_override, gender=profile.get("gender", "male")
     )
     rep_pref = rep_preference_override or profile.get("rep_preference", "balanced")
 
-    generated_days: List[ProgramDaySchema] = []
+    generated_days: list[ProgramDaySchema] = []
     used_exercise_ids: set[str] = set()
 
     for day in split_plan.days:
@@ -154,7 +162,7 @@ def generate_program_pipeline(
             equipment_access=profile.get("equipment_access", "commercial gym"),
             limitations=profile.get("injuries_or_limitations", "None"),
             rep_preference=rep_pref,
-            excluded_ids=used_exercise_ids
+            excluded_ids=used_exercise_ids,
         )
         generated_days.append(day_plan)
 
@@ -162,18 +170,23 @@ def generate_program_pipeline(
         program_name=f"Custom {split_plan.split_name}",
         split_type=split_plan.split_name,
         weekly_frequency=len(split_plan.days),
-        days=generated_days
+        days=generated_days,
     )
 
     db.save_training_program(program.model_dump())
-    
-    lines = [f"# {program.program_name}", f"**Split:** {program.split_type} | **Frequency:** {program.weekly_frequency} Days/Week\n"]
+
+    lines = [
+        f"# {program.program_name}",
+        f"**Split:** {program.split_type} | **Frequency:** {program.weekly_frequency} Days/Week\n",
+    ]
     for day in program.days:
         lines.append(f"### Day {day.day_order}: {day.day_name}")
         lines.append("| Order | Exercise | Sets | Reps | Target RPE | Rest | Notes |")
         lines.append("| :---: | :--- | :---: | :---: | :---: | :---: | :--- |")
         for idx, ex in enumerate(day.exercises, start=1):
-            lines.append(f"| {idx} | **{ex.exercise_name}** | {ex.target_sets} | {ex.target_reps_min}-{ex.target_reps_max} | @{ex.target_rpe} | {ex.rest_seconds}s | {ex.notes or '-'} |")
+            lines.append(
+                f"| {idx} | **{ex.exercise_name}** | {ex.target_sets} | {ex.target_reps_min}-{ex.target_reps_max} | @{ex.target_rpe} | {ex.rest_seconds}s | {ex.notes or '-'} |"
+            )
         lines.append("")
 
     return program, "\n".join(lines)

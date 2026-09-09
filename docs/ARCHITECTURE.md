@@ -85,13 +85,9 @@ class AssistantState(TypedDict):
     coach_tone: str
     custom_instructions: str
     telemetry_context: str
-    intent: Optional[Literal[
-        "clinical_intercept",
-        "exercise_substitution",
-        "program_mutation",
-        "catalog_search",
-        "coaching_qa"
-    ]]
+    intent: Optional[
+        Literal["clinical_intercept", "exercise_substitution", "program_mutation", "catalog_search", "coaching_qa"]
+    ]
     intent_metadata: Dict[str, Any]
     program_updated: bool
     response_content: Optional[str]

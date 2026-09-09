@@ -2,26 +2,36 @@ import os
 import re
 import sys
 import time
+from collections.abc import Generator, Sequence
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Annotated, Sequence, Optional, Literal, Dict, Any, List, Generator, Tuple
-from typing_extensions import TypedDict
+from typing import (
+    Annotated,
+    Any,
+    Literal,
+)
+
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
-from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_huggingface import HuggingFaceEmbeddings
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
+from pydantic import BaseModel, Field
+from typing_extensions import TypedDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
-from database.database_manager import DatabaseManager
-from agent.program_generator import generate_program_pipeline, extract_frequency_from_text, get_biomechanical_cue
+from agent.program_generator import (
+    extract_frequency_from_text,
+    generate_program_pipeline,
+    get_biomechanical_cue,
+)
 from agent.program_rules import COMPOUND_KEYWORDS
+from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
-from utils.text_scrubber import scrub_coach_output
 from utils.model_downloader import llm
+from utils.text_scrubber import scrub_coach_output
 
 load_dotenv()
 logger = MyosLogger().get_logger(__name__)
@@ -30,9 +40,7 @@ db = DatabaseManager()
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5").strip("'\"")
 
 EMBED_MODEL = HuggingFaceEmbeddings(
-    model_name=EMBEDDING_MODEL_NAME,
-    model_kwargs={"device": "cpu"},
-    encode_kwargs={"normalize_embeddings": True}
+    model_name=EMBEDDING_MODEL_NAME, model_kwargs={"device": "cpu"}, encode_kwargs={"normalize_embeddings": True}
 )
 
 TAIL_WINDOW_SIZE = 4
@@ -41,7 +49,7 @@ STATIC_SYSTEM_CORE = """You are Myos, an elite hypertrophy and biomechanics coac
 
 Core Directives:
 - Base all advice on mechanical tension, lengthened-position loading, and stability.
-- Directly answer the trainee's specific question and target the exact exercise queried. 
+- Directly answer the trainee's specific question and target the exact exercise queried.
 - NEVER substitute or pivot to exercises from the telemetry unless the user explicitly asks about their previous session, split, or logged performance.
 - NEVER prescribe light weights for 'activation' or short rest periods for 'fatigue'. True mechanical tension demands high motor unit recruitment, load near failure (0-3 RIR), and full recovery (2-3+ min rest).
 - NEVER say 'As an AI...', 'I don't have access to your telemetry', or ask the user to provide details already recorded in telemetry.
@@ -58,31 +66,30 @@ Output Budget & Structural Constraints:
 - Conclude every thought decisively within 80–130 words so generation terminates cleanly before hitting token limits.
 - Never trail off, introduce speculative tangents, or append boilerplate conversational wrap-ups."""
 
-IntentType = Literal[
-    "clinical_intercept",
-    "exercise_substitution",
-    "program_mutation", 
-    "catalog_search", 
-    "coaching_qa"
-]
+IntentType = Literal["clinical_intercept", "exercise_substitution", "program_mutation", "catalog_search", "coaching_qa"]
+
 
 class IntentClassification(BaseModel):
-    intent: str = Field(description="One of: 'exercise_substitution', 'program_mutation', 'catalog_search', 'coaching_qa'")
-    source_exercise: Optional[str] = Field(default=None, description="Exercise being replaced or queried")
-    target_exercise: Optional[str] = Field(default=None, description="New replacement exercise, if specified")
-    target_frequency: Optional[int] = Field(default=None, description="Target frequency if modifying schedule (1-5).")
-    search_query: Optional[str] = Field(default=None, description="Search term for movement catalog.")
+    intent: str = Field(
+        description="One of: 'exercise_substitution', 'program_mutation', 'catalog_search', 'coaching_qa'"
+    )
+    source_exercise: str | None = Field(default=None, description="Exercise being replaced or queried")
+    target_exercise: str | None = Field(default=None, description="New replacement exercise, if specified")
+    target_frequency: int | None = Field(default=None, description="Target frequency if modifying schedule (1-5).")
+    search_query: str | None = Field(default=None, description="Search term for movement catalog.")
+
 
 class AssistantState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
     trainee_id: str
     coach_tone: str
     custom_instructions: str
-    telemetry_context: Optional[str]
-    intent: Optional[IntentType]
-    intent_metadata: Dict[str, Any]
+    telemetry_context: str | None
+    intent: IntentType | None
+    intent_metadata: dict[str, Any]
     program_updated: bool
-    response_content: Optional[str]
+    response_content: str | None
+
 
 RE_ACUTE_INJURY = re.compile(
     r"\b("
@@ -98,7 +105,7 @@ RE_ACUTE_INJURY = re.compile(
     r"can['']t\s+move\s+my|"
     r"joint\s+clicking\s+with\s+pain"
     r")\b",
-    re.IGNORECASE
+    re.IGNORECASE,
 )
 
 CLINICAL_SAFEGUARD_RESPONSE = (
@@ -112,23 +119,22 @@ CLINICAL_SAFEGUARD_RESPONSE = (
 
 RE_EXPLICIT_SWAP = re.compile(
     r"\b(?:swap|replace|substitute|switch(?:\s+out)?|change)\b\s+(?P<source>.+?)\s+\b(?:for|with|instead of|to)\b\s+(?P<target>.+)",
-    re.IGNORECASE
+    re.IGNORECASE,
 )
 RE_SINGLE_SWAP = re.compile(
     r"(?:(?:i\s+(?:just\s+)?want|show\s+me|give\s+me)\s+)?\b(?:swap|replace|substitute|alternatives?\s+(?:for|to)|switch(?:\s+out)?)\b\s+(?P<source>[a-zA-Z0-9\s\(\)\-\_]+)",
-    re.IGNORECASE
+    re.IGNORECASE,
 )
 RE_PROGRAM_MUTATION = re.compile(
     r"\b(rebuild|regenerate|new\s+split|"
     r"(?:change|switch|update)\s+(?:the\s+)?(?:split(?!\s+squat)|routine|program)|"
     r"(\d+)\s*(?:days?|d/wk|days\s+a\s+week))\b",
-    re.IGNORECASE
+    re.IGNORECASE,
 )
 RE_FREQ_DIGIT = re.compile(r"\b([1-6])\s*(?:days?|d/wk|days\s+a\s+week)\b", re.IGNORECASE)
 RE_SEARCH_TOKENS = re.compile(r"\b(search|find|lookup|show me|list exercises)\b", re.IGNORECASE)
 RE_ACTION_HINT = re.compile(
-    r"\b(swap|replace|substitute|change|split|routine|program|days|rebuild|alternatives?|exercises)\b",
-    re.IGNORECASE
+    r"\b(swap|replace|substitute|change|split|routine|program|days|rebuild|alternatives?|exercises)\b", re.IGNORECASE
 )
 
 ROUTER_PROMPT = """Classify the trainee query into EXACTLY one category:
@@ -139,9 +145,15 @@ ROUTER_PROMPT = """Classify the trainee query into EXACTLY one category:
 
 Extract entities where present."""
 
+
 class SubstitutionResolution(BaseModel):
-    source_exercise: Optional[str] = Field(default=None, description="The exact exercise name from the active routine being replaced or queried.")
-    target_exercise: Optional[str] = Field(default=None, description="The replacement exercise the user wants, or None if only asking for ideas.")
+    source_exercise: str | None = Field(
+        default=None, description="The exact exercise name from the active routine being replaced or queried."
+    )
+    target_exercise: str | None = Field(
+        default=None, description="The replacement exercise the user wants, or None if only asking for ideas."
+    )
+
 
 COREFERENCE_RESOLVER_PROMPT = """You are an entity resolution engine for a fitness app.
 The user wants to replace or find alternatives for an exercise, but used a conversational reference.
@@ -156,40 +168,40 @@ User's Query: "{user_query}"
 
 Identify source_exercise and target_exercise. Return ONLY valid structured data."""
 
+
 def resolve_coreference_with_llm(
-    query: str, 
-    messages: Sequence[BaseMessage], 
-    active_program
-) -> Tuple[Optional[str], Optional[str]]:
-    routine_names = [f"- {ex.exercise_name} (Day: {day.day_name})" for day in active_program.days for ex in day.exercises]
+    query: str, messages: Sequence[BaseMessage], active_program
+) -> tuple[str | None, str | None]:
+    routine_names = [
+        f"- {ex.exercise_name} (Day: {day.day_name})" for day in active_program.days for ex in day.exercises
+    ]
     tail = [m for m in messages if isinstance(m, (HumanMessage, AIMessage))][-3:]
     chat_lines = [f"{'Trainee' if isinstance(m, HumanMessage) else 'Coach'}: {m.content}" for m in tail]
 
     prompt = COREFERENCE_RESOLVER_PROMPT.format(
-        active_exercises="\n".join(routine_names),
-        chat_history="\n".join(chat_lines),
-        user_query=query
+        active_exercises="\n".join(routine_names), chat_history="\n".join(chat_lines), user_query=query
     )
     try:
         structured_llm = llm.with_structured_output(SubstitutionResolution)
-        res: SubstitutionResolution = structured_llm.invoke([
-            SystemMessage(content=prompt),
-            HumanMessage(content=query)
-        ])
+        res: SubstitutionResolution = structured_llm.invoke(
+            [SystemMessage(content=prompt), HumanMessage(content=query)]
+        )
         return res.source_exercise, res.target_exercise
     except Exception as e:
         logger.warning(f"Coreference LLM fallback failed: {e}")
         return None, None
 
-def hydrate_context_node(state: AssistantState) -> Dict[str, Any]:
+
+def hydrate_context_node(state: AssistantState) -> dict[str, Any]:
     profile = db.get_user_profile() or {}
     return {
         "coach_tone": profile.get("coach_tone", "Direct, grounded, and pragmatic"),
         "custom_instructions": profile.get("custom_instructions", ""),
-        "telemetry_context": db.get_compact_telemetry()
+        "telemetry_context": db.get_compact_telemetry(),
     }
 
-def router_node(state: AssistantState) -> Dict[str, Any]:
+
+def router_node(state: AssistantState) -> dict[str, Any]:
     messages = state.get("messages", [])
     if not messages:
         return {"intent": "coaching_qa", "intent_metadata": {}}
@@ -201,44 +213,57 @@ def router_node(state: AssistantState) -> Dict[str, Any]:
 
     if RE_PROGRAM_MUTATION.search(query):
         freq_match = RE_FREQ_DIGIT.search(query)
-        return {"intent": "program_mutation", "intent_metadata": {"target_frequency": int(freq_match.group(1)) if freq_match else None}}
+        return {
+            "intent": "program_mutation",
+            "intent_metadata": {"target_frequency": int(freq_match.group(1)) if freq_match else None},
+        }
 
     explicit_match = RE_EXPLICIT_SWAP.search(query)
     if explicit_match:
         data = explicit_match.groupdict()
         src, tgt = data["source"].strip(), data["target"].strip().rstrip(".!?")
         if src.lower() not in ["split", "routine", "program", "schedule"] and not RE_FREQ_DIGIT.search(tgt):
-            return {"intent": "exercise_substitution", "intent_metadata": {"mode": "direct_swap", "source_exercise": src, "target_exercise": tgt}}
+            return {
+                "intent": "exercise_substitution",
+                "intent_metadata": {"mode": "direct_swap", "source_exercise": src, "target_exercise": tgt},
+            }
 
     single_match = RE_SINGLE_SWAP.search(query)
     if single_match:
         src = single_match.group("source").strip().rstrip(".!?")
         if src.lower() not in ["split", "routine", "program", "schedule"]:
-            return {"intent": "exercise_substitution", "intent_metadata": {"mode": "lookup_candidates", "source_exercise": src, "target_exercise": None}}
+            return {
+                "intent": "exercise_substitution",
+                "intent_metadata": {"mode": "lookup_candidates", "source_exercise": src, "target_exercise": None},
+            }
 
     if RE_SEARCH_TOKENS.search(query):
-        return {"intent": "catalog_search", "intent_metadata": {"search_query": RE_SEARCH_TOKENS.sub("", query).strip().rstrip(".!?")}}
+        return {
+            "intent": "catalog_search",
+            "intent_metadata": {"search_query": RE_SEARCH_TOKENS.sub("", query).strip().rstrip(".!?")},
+        }
 
     if not RE_ACTION_HINT.search(query):
         return {"intent": "coaching_qa", "intent_metadata": {}}
 
     try:
         structured_llm = llm.with_structured_output(IntentClassification)
-        res: IntentClassification = structured_llm.invoke([
-            SystemMessage(content=ROUTER_PROMPT),
-            HumanMessage(content=query)
-        ])
+        res: IntentClassification = structured_llm.invoke(
+            [SystemMessage(content=ROUTER_PROMPT), HumanMessage(content=query)]
+        )
         metadata = {}
         if res.intent == "exercise_substitution":
             src = res.source_exercise
             if not src:
-                match = re.search(r"\b(?:for|to|swap|replace|substitute)\s+([a-zA-Z0-9\s\(\)\-\_]+)", query, re.IGNORECASE)
+                match = re.search(
+                    r"\b(?:for|to|swap|replace|substitute)\s+([a-zA-Z0-9\s\(\)\-\_]+)", query, re.IGNORECASE
+                )
                 if match:
                     src = match.group(1).strip()
             metadata = {
                 "mode": "direct_swap" if res.target_exercise else "lookup_candidates",
                 "source_exercise": src,
-                "target_exercise": res.target_exercise
+                "target_exercise": res.target_exercise,
             }
         elif res.intent == "program_mutation":
             metadata = {"target_frequency": res.target_frequency}
@@ -249,18 +274,39 @@ def router_node(state: AssistantState) -> Dict[str, Any]:
     except Exception:
         return {"intent": "coaching_qa", "intent_metadata": {}}
 
+
 STANCE_MODIFIERS = {
-    "assisted", "standing", "seated", "lying", "incline", "decline", 
-    "flat", "machine", "cable", "barbell", "dumbbell", "lever", "plate", 
-    "weighted", "neutral", "grip", "wide", "close", "single", "arm", "leg"
+    "assisted",
+    "standing",
+    "seated",
+    "lying",
+    "incline",
+    "decline",
+    "flat",
+    "machine",
+    "cable",
+    "barbell",
+    "dumbbell",
+    "lever",
+    "plate",
+    "weighted",
+    "neutral",
+    "grip",
+    "wide",
+    "close",
+    "single",
+    "arm",
+    "leg",
 }
+
 
 def clean_movement_stem(name: str) -> str:
     tokens = re.findall(r"\w+", name.lower())
     core = [t for t in tokens if t not in STANCE_MODIFIERS]
     return " ".join(core) if core else name.lower()
 
-def exercise_substitution_node(state: AssistantState) -> Dict[str, Any]:
+
+def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
     meta = state.get("intent_metadata", {})
     source_name = (meta.get("source_exercise") or "").strip()
     target_desc = (meta.get("target_exercise") or "").strip()
@@ -268,15 +314,18 @@ def exercise_substitution_node(state: AssistantState) -> Dict[str, Any]:
 
     active_program = db.get_active_program()
     if not active_program:
-        return {"program_updated": False, "response_content": "No active routine found in your ledger. Generate a baseline routine first."}
+        return {
+            "program_updated": False,
+            "response_content": "No active routine found in your ledger. Generate a baseline routine first.",
+        }
 
     PRONOUNS = {"it", "this", "that", "them", "choice", "option"}
     source_lower = source_name.lower()
     needs_llm_resolution = (
-        not source_name or 
-        source_lower in PRONOUNS or 
-        len(source_name) < 3 or
-        any(word in source_lower for word in ["choice", "option", "number", "first", "second", "third"])
+        not source_name
+        or source_lower in PRONOUNS
+        or len(source_name) < 3
+        or any(word in source_lower for word in ["choice", "option", "number", "first", "second", "third"])
     )
 
     if needs_llm_resolution:
@@ -299,7 +348,7 @@ def exercise_substitution_node(state: AssistantState) -> Dict[str, Any]:
 
             sim = max(
                 SequenceMatcher(None, source_name.lower(), ex_name_clean).ratio(),
-                SequenceMatcher(None, source_stem, ex_stem).ratio()
+                SequenceMatcher(None, source_stem, ex_stem).ratio(),
             )
             if sim > best_similarity:
                 best_similarity = sim
@@ -320,8 +369,16 @@ def exercise_substitution_node(state: AssistantState) -> Dict[str, Any]:
                 target_desc = resolved_tgt
 
     if not matched_ex or best_similarity < 0.55:
-        routine_list = [f"- {ex.exercise_name.title()} (Day {d.day_order}: {d.day_name})" for d in active_program.days for ex in d.exercises]
-        return {"program_updated": False, "response_content": f"Could not identify **'{source_name or query}'** in your active split.\n\n**Active Movements:**\n" + "\n".join(routine_list)}
+        routine_list = [
+            f"- {ex.exercise_name.title()} (Day {d.day_order}: {d.day_name})"
+            for d in active_program.days
+            for ex in d.exercises
+        ]
+        return {
+            "program_updated": False,
+            "response_content": f"Could not identify **'{source_name or query}'** in your active split.\n\n**Active Movements:**\n"
+            + "\n".join(routine_list),
+        }
 
     cursor = db.catalog_conn.cursor()
     cursor.execute("SELECT body_part, target_muscle, equipment FROM exercises WHERE id = ?", (matched_ex.exercise_id,))
@@ -336,15 +393,22 @@ def exercise_substitution_node(state: AssistantState) -> Dict[str, Any]:
             if str(c["id"]) == str(matched_ex.exercise_id):
                 continue
             cand_muscle, cand_body = c.get("target_muscle", "").lower(), c.get("body_part", "").lower()
-            if (target_muscle and target_muscle.lower() in cand_muscle) or (cand_body and body_part and cand_body == body_part.lower()):
+            if (target_muscle and target_muscle.lower() in cand_muscle) or (
+                cand_body and body_part and cand_body == body_part.lower()
+            ):
                 valid_candidates.append(c)
             if len(valid_candidates) == 3:
                 break
 
         if not valid_candidates:
-            return {"program_updated": False, "response_content": f"No direct biomechanical alternatives found for **{matched_ex.exercise_name.title()}**."}
+            return {
+                "program_updated": False,
+                "response_content": f"No direct biomechanical alternatives found for **{matched_ex.exercise_name.title()}**.",
+            }
 
-        lines = [f"**Biomechanical Alternatives for {matched_ex.exercise_name.title()}** (`{target_muscle.title()}` | `{target_day.day_name}`):"]
+        lines = [
+            f"**Biomechanical Alternatives for {matched_ex.exercise_name.title()}** (`{target_muscle.title()}` | `{target_day.day_name}`):"
+        ]
         for i, c in enumerate(valid_candidates, start=1):
             is_comp = any(kw in c["name"].lower() for kw in COMPOUND_KEYWORDS) and "calf" not in c["name"].lower()
             cue = get_biomechanical_cue(c["name"], "compound" if is_comp else "isolation")
@@ -355,20 +419,38 @@ def exercise_substitution_node(state: AssistantState) -> Dict[str, Any]:
     query_vec = EMBED_MODEL.embed_query(f"{target_muscle} {target_desc}")
     candidates = db.search_similar_exercises(query_vec, limit=10)
     replacement = next(
-        (c for c in candidates if str(c["id"]) != str(matched_ex.exercise_id) and (
-            (target_muscle and (target_muscle.lower() in c.get("target_muscle", "").lower() or c.get("target_muscle", "").lower() in target_muscle.lower())) or
-            (body_part and body_part.lower() == c.get("body_part", "").lower())
-        )),
-        None
+        (
+            c
+            for c in candidates
+            if str(c["id"]) != str(matched_ex.exercise_id)
+            and (
+                (
+                    target_muscle
+                    and (
+                        target_muscle.lower() in c.get("target_muscle", "").lower()
+                        or c.get("target_muscle", "").lower() in target_muscle.lower()
+                    )
+                )
+                or (body_part and body_part.lower() == c.get("body_part", "").lower())
+            )
+        ),
+        None,
     )
 
     if not replacement:
-        return {"program_updated": False, "response_content": f"Could not find a biomechanically suitable match for **'{target_desc}'** targeting {target_muscle}."}
+        return {
+            "program_updated": False,
+            "response_content": f"Could not find a biomechanically suitable match for **'{target_desc}'** targeting {target_muscle}.",
+        }
 
-    is_compound = any(kw in replacement["name"].lower() for kw in COMPOUND_KEYWORDS) and "calf" not in replacement["name"].lower()
+    is_compound = (
+        any(kw in replacement["name"].lower() for kw in COMPOUND_KEYWORDS) and "calf" not in replacement["name"].lower()
+    )
     new_cue = get_biomechanical_cue(replacement["name"], "compound" if is_compound else "isolation")
 
-    success = db.swap_program_exercise(old_exercise_id=matched_ex.exercise_id, new_exercise_id=str(replacement["id"]), new_notes=new_cue)
+    success = db.swap_program_exercise(
+        old_exercise_id=matched_ex.exercise_id, new_exercise_id=str(replacement["id"]), new_notes=new_cue
+    )
     if success:
         return {
             "program_updated": True,
@@ -377,11 +459,15 @@ def exercise_substitution_node(state: AssistantState) -> Dict[str, Any]:
                 f"- **Removed:** {matched_ex.exercise_name.title()}\n"
                 f"- **Installed:** {replacement['name'].title()} (`{replacement['target_muscle']}` | `{replacement['equipment']}`)\n"
                 f"- **Execution Directive:** *{new_cue}*"
-            )
+            ),
         }
-    return {"program_updated": False, "response_content": "Database error: unable to update program slot in SQLite ledger."}
+    return {
+        "program_updated": False,
+        "response_content": "Database error: unable to update program slot in SQLite ledger.",
+    }
 
-def program_mutation_node(state: AssistantState) -> Dict[str, Any]:
+
+def program_mutation_node(state: AssistantState) -> dict[str, Any]:
     query = state["messages"][-1].content
     meta = state.get("intent_metadata", {})
     freq = meta.get("target_frequency") or extract_frequency_from_text(query)
@@ -390,34 +476,41 @@ def program_mutation_node(state: AssistantState) -> Dict[str, Any]:
         db.clear_chat_history()
         return {
             "program_updated": True,
-            "response_content": f"Rebuilt routine: **{prog.program_name}** ({prog.weekly_frequency} Days/Week). Context cleared for new routine."
+            "response_content": f"Rebuilt routine: **{prog.program_name}** ({prog.weekly_frequency} Days/Week). Context cleared for new routine.",
         }
     except Exception as e:
         logger.error(f"Mutation failure: {e}")
         return {"program_updated": False, "response_content": "Could not rebuild split with those parameters."}
 
-def catalog_search_node(state: AssistantState) -> Dict[str, Any]:
+
+def catalog_search_node(state: AssistantState) -> dict[str, Any]:
     query = state.get("intent_metadata", {}).get("search_query") or state["messages"][-1].content
     try:
         candidates = db.search_similar_exercises(EMBED_MODEL.embed_query(query), limit=4)
         if not candidates or candidates[0].get("distance", 1.0) > 0.85:
             return {"response_content": f"No exercises matching '{query}' were found in the catalog."}
-        formatted = [f"- **{c['name'].title()}** (`{c['target_muscle']}` | `{c['equipment']}`)\n  *{c['instructions'][:120]}...*" for c in candidates]
+        formatted = [
+            f"- **{c['name'].title()}** (`{c['target_muscle']}` | `{c['equipment']}`)\n  *{c['instructions'][:120]}...*"
+            for c in candidates
+        ]
         return {"response_content": f"**Catalog Matches for '{query}':**\n\n" + "\n\n".join(formatted)}
     except Exception as e:
         logger.error(f"Catalog search error: {e}")
         return {"response_content": "Failed to search the exercise catalog."}
 
-def clinical_intercept_node(state: AssistantState) -> Dict[str, Any]:
+
+def clinical_intercept_node(state: AssistantState) -> dict[str, Any]:
     return {"program_updated": False, "response_content": CLINICAL_SAFEGUARD_RESPONSE}
+
 
 RE_SESSION_REVIEW_QUERY = re.compile(
     r"\b(how\s+did\s+i\s+do|last\s+session|last\s+workout|my\s+performance|"
     r"how\s+was\s+my|review\s+my|feedback\s+on\s+my|my\s+sets|my\s+volume)\b",
-    re.IGNORECASE
+    re.IGNORECASE,
 )
 
-def build_prompt_payload(state: AssistantState) -> List[BaseMessage]:
+
+def build_prompt_payload(state: AssistantState) -> list[BaseMessage]:
     coach_tone = state.get("coach_tone", "Direct, grounded, and pragmatic")
     custom_directives = state.get("custom_instructions", "")
     telemetry = (state.get("telemetry_context") or "").strip()
@@ -427,8 +520,16 @@ def build_prompt_payload(state: AssistantState) -> List[BaseMessage]:
     raw_query = (last_msg.content if hasattr(last_msg, "content") else str(last_msg)) if last_msg else ""
 
     if telemetry and not RE_SESSION_REVIEW_QUERY.search(raw_query):
-        ignored_prefixes = ("last session:", "progression targets:", "[progression signals]", "systemic state:", "rolling readiness:")
-        filtered_lines = [line for line in telemetry.splitlines() if not line.lower().lstrip().startswith(ignored_prefixes)]
+        ignored_prefixes = (
+            "last session:",
+            "progression targets:",
+            "[progression signals]",
+            "systemic state:",
+            "rolling readiness:",
+        )
+        filtered_lines = [
+            line for line in telemetry.splitlines() if not line.lower().lstrip().startswith(ignored_prefixes)
+        ]
         telemetry = "\n".join(line for line in filtered_lines if line.strip())
 
     prompt_parts = [STATIC_SYSTEM_CORE.strip()]
@@ -451,16 +552,19 @@ def build_prompt_payload(state: AssistantState) -> List[BaseMessage]:
     clamped_tail = dialogue_messages[-TAIL_WINDOW_SIZE:]
     return [SystemMessage(content="\n\n".join(prompt_parts)), *clamped_tail]
 
-def generation_node(state: AssistantState) -> Dict[str, Any]:
+
+def generation_node(state: AssistantState) -> dict[str, Any]:
     response = llm.invoke(build_prompt_payload(state))
     return {"response_content": scrub_coach_output(response.content), "program_updated": False}
 
+
 RE_EXERCISE_PERFORMANCE_QUERY = re.compile(
     r"\b(?:how\s+did\s+i\s+do\s+(?:in|on|for)|what\s+did\s+i\s+(?:do|hit|lift)\s+(?:in|on|for)|my\s+last\s+session\s+(?:for|on))\s+(.+)",
-    re.IGNORECASE
+    re.IGNORECASE,
 )
 
-def exercise_history_node(state: AssistantState) -> Dict[str, Any]:
+
+def exercise_history_node(state: AssistantState) -> dict[str, Any]:
     messages = state.get("messages", [])
     raw_query = messages[-1].content if messages else ""
     match = RE_EXERCISE_PERFORMANCE_QUERY.search(raw_query)
@@ -490,6 +594,7 @@ def exercise_history_node(state: AssistantState) -> Dict[str, Any]:
         )
     }
 
+
 builder = StateGraph(AssistantState)
 builder.add_node("hydrate_context", hydrate_context_node)
 builder.add_node("router", router_node)
@@ -509,8 +614,8 @@ builder.add_conditional_edges(
         "exercise_substitution": "exercise_substitution",
         "program_mutation": "program_mutation",
         "catalog_search": "catalog_search",
-        "coaching_qa": "generation"
-    }
+        "coaching_qa": "generation",
+    },
 )
 for node in ["clinical_intercept", "exercise_substitution", "program_mutation", "catalog_search", "generation"]:
     builder.add_edge(node, END)
@@ -519,12 +624,14 @@ assistant_graph = builder.compile()
 
 # agent/assistant_graph.py
 
+
 def _stream_text_smoothly(text: str, delay: float = 0.035) -> Generator[str, None, None]:
     """Streams static text chunks with cadence visible over Streamlit WebSockets."""
     words = text.split(" ")
     for i, word in enumerate(words):
         yield word + (" " if i < len(words) - 1 else "")
         time.sleep(delay)
+
 
 # Internal engine logger (writes silently to logs/myos.log)
 
@@ -539,6 +646,7 @@ LOG_FILE = LOG_DIR / "myos.log"
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 # Attach dedicated FileHandler if not already registered
 def _get_telemetry_handler() -> logging.FileHandler:
     for handler in logger.handlers:
@@ -550,6 +658,7 @@ def _get_telemetry_handler() -> logging.FileHandler:
     logger.addHandler(fh)
     return fh
 
+
 _telemetry_handler = _get_telemetry_handler()
 
 
@@ -560,7 +669,7 @@ def _record_telemetry_event(
     gen_time_s: float = 0.0,
     tokens: int = 0,
     tps: float = 0.0,
-    user_id: str = "default"
+    user_id: str = "default",
 ) -> None:
     """Logs internal engine latency directly to disk without UI disruption."""
     log_payload = (
@@ -578,7 +687,8 @@ def _record_telemetry_event(
         )
         _telemetry_handler.flush()
 
-def stream_assistant_turn(state: Dict[str, Any]) -> Generator[str, None, None]:
+
+def stream_assistant_turn(state: dict[str, Any]) -> Generator[str, None, None]:
     t_start = time.perf_counter()
 
     if not state.get("telemetry_context"):
@@ -667,7 +777,7 @@ def stream_assistant_turn(state: Dict[str, Any]) -> Generator[str, None, None]:
             gen_time_s=gen_duration_s,
             tokens=token_count,
             tps=tps,
-            user_id=user_id
+            user_id=user_id,
         )
 
         full_response = "".join(accumulated_tokens)
@@ -675,7 +785,7 @@ def stream_assistant_turn(state: Dict[str, Any]) -> Generator[str, None, None]:
         state["messages"].append(AIMessage(content=full_response))
 
     except Exception as e:
-        error_msg = f"Inference pipeline failure: {str(e)}"
+        error_msg = f"Inference pipeline failure: {e!s}"
         state["response_content"] = error_msg
-        logger.error(f"[TELEMETRY ERROR] User: {user_id} | Failure: {str(e)}")
+        logger.error(f"[TELEMETRY ERROR] User: {user_id} | Failure: {e!s}")
         yield error_msg
