@@ -3,6 +3,7 @@
 
 # # Filter strictly for CPU degradation warnings or thermal throttling
 # grep "\[PERF DEGRADATION\]" logs/myos.log
+
 import re
 import statistics
 from pathlib import Path

@@ -1,0 +1,2 @@
+2026-09-09 05:37:15,262 - agent.assistant_graph - INFO - [TELEMETRY] User: ci_test_user | Intent: clinical_intercept | Router: 1.841ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-09 05:37:17,357 - agent.assistant_graph - INFO - [TELEMETRY] User: ci_test_user | Intent: coaching_qa | Router: 0.015ms | TTFT: 250.0ms | Tokens: 35 | GenTime: 2.50s | Speed: 14.00 TPS
