@@ -32,7 +32,7 @@ jobs:
 
       - name: Install llama-cpp-python
         run: |
-          uv pip install llama-cpp-python \
+          uv pip install --system llama-cpp-python \
             --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 
       - name: Install Dependencies
