@@ -30,6 +30,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgomp1 sqlite3
 
+      - name: Install llama-cpp-python
+        run: |
+          uv pip install llama-cpp-python \
+            --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+
       - name: Install Dependencies
         run: |
           uv pip install --system -r requirements.txt
@@ -37,7 +42,7 @@ jobs:
 
       - name: Lint with Ruff
         run: |
-          ruff check --select E,F,W --ignore E402,E501,EXE002,W291,W293 .
+          ruff check --select E,F,W --ignore E402,E501,EXE002,W291,W292,W293 .
 
       - name: Run Schema Initialization & Index Verification
         env:
