@@ -1,4 +1,4 @@
-exercise_id,name,primary_muscle,secondary_muscles,equipment,mechanics
-bench_press,Barbell Bench Press,Chest,"Triceps,Front Delts",Barbell,Compound
-back_squat,Barbell Back Squat,Quadriceps,"Glutes,Hamstrings",Barbell,Compound
-pull_up,Pull Up,Lats,"Biceps,Rear Delts",Bodyweight,Compound
+id,name,bodyPart,target,secondaryMuscles,equipment,instructions,image_path,gif_path
+0001,Barbell Bench Press,chest,pectorals,"['triceps', 'anterior deltoid']",barbell,"['Lie back on flat bench...', 'Press upward...']",images/0001.jpg,gifs/0001.gif
+0002,Barbell Back Squat,upper legs,quadriceps,"['glutes', 'hamstrings']",barbell,"['Rest bar on traps...', 'Squat down...']",images/0002.jpg,gifs/0002.gif
+0003,Pull Up,back,latissimus dorsi,"['biceps', 'rhomboids']",body weight,"['Grip bar overhand...', 'Pull chin above bar...']",images/0003.jpg,gifs/0003.gif
