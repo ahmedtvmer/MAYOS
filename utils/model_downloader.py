@@ -100,15 +100,69 @@ class MockSafeChatLlamaCpp(SafeChatLlamaCpp):
     def with_structured_output(self, schema: Any, **kwargs: Any) -> Any:
         runnable = MagicMock()
 
+        # Match exercise IDs with your active catalog (e.g. "1" for mock fixture)
+        sample_exercises = [
+            {
+                "id": "1",
+                "exercise_id": "1",
+                "name": "3/4 sit-up",
+                "exercise_name": "3/4 sit-up",
+                "body_part": "waist",
+                "target": "abs",
+                "target_muscle": "abs",
+                "target_sets": 3,
+                "target_reps_min": 8,
+                "target_reps_max": 10,
+                "target_rpe": 8.0,
+                "rest_seconds": 90,
+                "notes": "",
+                "sets": 3,
+                "reps": "8-10",
+                "rpe": 8.0,
+            },
+            {
+                "id": "1",
+                "exercise_id": "1",
+                "name": "3/4 sit-up",
+                "exercise_name": "3/4 sit-up",
+                "body_part": "waist",
+                "target": "abs",
+                "target_muscle": "abs",
+                "target_sets": 3,
+                "target_reps_min": 8,
+                "target_reps_max": 10,
+                "target_rpe": 8.0,
+                "rest_seconds": 90,
+                "notes": "",
+                "sets": 3,
+                "reps": "8-10",
+                "rpe": 8.0,
+            },
+            {
+                "id": "1",
+                "exercise_id": "1",
+                "name": "3/4 sit-up",
+                "exercise_name": "3/4 sit-up",
+                "body_part": "waist",
+                "target": "abs",
+                "target_muscle": "abs",
+                "target_sets": 3,
+                "target_reps_min": 8,
+                "target_reps_max": 10,
+                "target_rpe": 8.0,
+                "rest_seconds": 90,
+                "notes": "",
+                "sets": 3,
+                "reps": "8-10",
+                "rpe": 8.0,
+            },
+        ]
+        
         class MockSplitDay:
             day_order = 1
             day_name = "Day 1"
             target_body_parts = ["chest", "back"]
-            exercises = [
-                {"exercise_id": "0001", "name": "Bench Press"},
-                {"exercise_id": "0002", "name": "Squat"},
-                {"exercise_id": "0003", "name": "Deadlift"},
-            ]
+            exercises = sample_exercises
 
         class MockPlan:
             split_name = "Custom 3-Day Split"
@@ -116,11 +170,7 @@ class MockSafeChatLlamaCpp(SafeChatLlamaCpp):
             day_order = 1
             day_name = "Full Body"
             target_body_parts = ["chest", "back", "legs"]
-            exercises = [
-                {"exercise_id": "0001", "name": "Barbell Bench Press"},
-                {"exercise_id": "0002", "name": "Barbell Back Squat"},
-                {"exercise_id": "0003", "name": "Pull Up"},
-            ]
+            exercises = sample_exercises
 
         def _handler(*h_args: Any, **h_kwargs: Any) -> Any:
             if isinstance(schema, type) and issubclass(schema, BaseModel):
@@ -128,18 +178,29 @@ class MockSafeChatLlamaCpp(SafeChatLlamaCpp):
                     payload = {
                         "split_name": "Custom 3-Day Split",
                         "days": [
-                            {"day_order": 1, "day_name": "Upper", "target_body_parts": ["chest"]},
-                            {"day_order": 2, "day_name": "Lower", "target_body_parts": ["quads"]},
-                            {"day_order": 3, "day_name": "Arms", "target_body_parts": ["biceps"]},
+                            {
+                                "day_order": 1,
+                                "day_name": "Upper",
+                                "target_body_parts": ["chest"],
+                                "exercises": sample_exercises,
+                            },
+                            {
+                                "day_order": 2,
+                                "day_name": "Lower",
+                                "target_body_parts": ["quads"],
+                                "exercises": sample_exercises,
+                            },
+                            {
+                                "day_order": 3,
+                                "day_name": "Arms",
+                                "target_body_parts": ["biceps"],
+                                "exercises": sample_exercises,
+                            },
                         ],
                         "day_order": 1,
                         "day_name": "Full Body",
                         "target_body_parts": ["chest", "back", "legs"],
-                        "exercises": [
-                            {"exercise_id": "0001", "name": "Barbell Bench Press", "sets": 3, "reps": "8-10"},
-                            {"exercise_id": "0002", "name": "Barbell Back Squat", "sets": 3, "reps": "8-10"},
-                            {"exercise_id": "0003", "name": "Pull Up", "sets": 3, "reps": "8-10"},
-                        ],
+                        "exercises": sample_exercises,
                     }
                     return schema.model_validate(payload)
                 except Exception:
@@ -148,7 +209,6 @@ class MockSafeChatLlamaCpp(SafeChatLlamaCpp):
 
         runnable.invoke.side_effect = _handler
         return runnable
-
 
 _llm_instance = None
 

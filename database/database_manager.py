@@ -510,44 +510,54 @@ class DatabaseManager:
 
         prog_id, prog_name, freq, split_type = row
         cursor.execute(
-            "SELECT id, day_name, day_order FROM program_days WHERE program_id = ? ORDER BY day_order ASC", (prog_id,)
+            "SELECT id, day_name, day_order FROM program_days WHERE program_id = ? ORDER BY day_order ASC",
+            (prog_id,),
         )
         days_rows = cursor.fetchall()
+        if not days_rows:
+            return None
 
         days = []
-        for d_id, d_name, d_order in days_rows:
-            cursor.execute(
-                """
-                SELECT pe.exercise_id, e.name, pe.target_sets, pe.target_reps_min,
-                       pe.target_reps_max, pe.target_rpe, pe.rest_seconds, pe.notes,
-                       e.image_path, e.gif_path
-                FROM program_exercises pe
-                JOIN catalog.exercises e ON pe.exercise_id = e.id
-                WHERE pe.day_id = ?
-                ORDER BY pe.order_in_day ASC
-            """,
-                (d_id,),
-            )
-            exercises = [
-                ProgramExerciseSchema(
-                    exercise_id=str(r[0]),
-                    exercise_name=r[1],
-                    target_sets=int(r[2]),
-                    target_reps_min=int(r[3]),
-                    target_reps_max=int(r[4]),
-                    target_rpe=float(r[5]) if r[5] is not None else 8.5,
-                    rest_seconds=int(r[6]) if r[6] is not None else 120,
-                    notes=r[7] or "",
-                    image_path=r[8],
-                    gif_path=r[9],
+        try:
+            for d_id, d_name, d_order in days_rows:
+                cursor.execute(
+                    """
+                    SELECT pe.exercise_id, e.name, pe.target_sets, pe.target_reps_min,
+                           pe.target_reps_max, pe.target_rpe, pe.rest_seconds, pe.notes,
+                           e.image_path, e.gif_path
+                    FROM program_exercises pe
+                    JOIN catalog.exercises e ON pe.exercise_id = e.id
+                    WHERE pe.day_id = ?
+                    ORDER BY pe.order_in_day ASC
+                """,
+                    (d_id,),
                 )
-                for r in cursor.fetchall()
-            ]
-            days.append(ProgramDaySchema(day_name=d_name, day_order=d_order, exercises=exercises))
+                exercises = [
+                    ProgramExerciseSchema(
+                        exercise_id=str(r[0]),
+                        exercise_name=r[1],
+                        target_sets=int(r[2]),
+                        target_reps_min=int(r[3]),
+                        target_reps_max=int(r[4]),
+                        target_rpe=float(r[5]) if r[5] is not None else 8.5,
+                        rest_seconds=int(r[6]) if r[6] is not None else 120,
+                        notes=r[7] or "",
+                        image_path=r[8],
+                        gif_path=r[9],
+                    )
+                    for r in cursor.fetchall()
+                ]
+                days.append(ProgramDaySchema(day_name=d_name, day_order=d_order, exercises=exercises))
 
-        return GeneratedProgramSchema(
-            program_name=prog_name, weekly_frequency=int(freq), split_type=split_type or "custom", days=days
-        )
+            return GeneratedProgramSchema(
+                program_name=prog_name,
+                weekly_frequency=int(freq),
+                split_type=split_type or "custom",
+                days=days,
+            )
+        except Exception as exc:
+            logger.warning(f"Active program '{prog_id}' is malformed or incomplete: {exc}")
+            return None
 
     def update_user_frequency(self, frequency: int) -> None:
         cursor = self.conn.cursor()
