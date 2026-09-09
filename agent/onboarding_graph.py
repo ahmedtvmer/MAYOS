@@ -1,10 +1,8 @@
-# agent/onboarding_graph.py
-import os
 import re
 from typing import TypedDict, List, Dict, Any, Optional, Literal
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
-from langchain_core.messages import AIMessage, HumanMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from langgraph.graph import StateGraph, END
 
 from database.database_manager import DatabaseManager
@@ -13,12 +11,8 @@ from utils.model_downloader import llm
 
 load_dotenv()
 logger = MyosLogger().get_logger(__name__)
-
 db = DatabaseManager()
 
-# -------------------------------------------------------------------------
-# Step Prompts Configuration
-# -------------------------------------------------------------------------
 STEP_PROMPTS: Dict[int, str] = {
     1: (
         "Welcome to Myos. Let's set up your profile.\n\n"
@@ -45,9 +39,6 @@ WORDS_TO_INT = {
     "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10
 }
 
-# -------------------------------------------------------------------------
-# Robust Segment Parsers
-# -------------------------------------------------------------------------
 STEP1_SEGMENT_RE = re.compile(
     r"(?:^|[,\.;\s])1(?:[:\.\-\)]|\s+|(?=[a-zA-Z]))\s*(?P<q1>.*?)"
     r"(?:[,\.;\s]+|(?<=[a-zA-Z]))2(?:[:\.\-\)]|\s+|(?=[a-zA-Z]))\s*(?P<q2>.*)$",
@@ -77,9 +68,6 @@ def parse_number_token(text: str) -> Optional[float]:
     m = re.search(r"(\d+(?:\.\d+)?)", t)
     return float(m.group(1)) if m else None
 
-# -------------------------------------------------------------------------
-# Schemas & State Contracts
-# -------------------------------------------------------------------------
 class Step1Extraction(BaseModel):
     is_off_topic: bool = Field(default=False)
     proportions: Optional[Literal["long_legs", "long_torso", "balanced"]] = None
@@ -109,69 +97,61 @@ class OnboardingGraphState(TypedDict):
     is_complete: bool
     profile_data: Optional[Dict[str, Any]]
 
-OnboardingState = OnboardingGraphState
-
 step1_extractor = llm.with_structured_output(Step1Extraction)
 step2_extractor = llm.with_structured_output(Step2Extraction)
 step3_extractor = llm.with_structured_output(Step3Extraction)
 
-# -------------------------------------------------------------------------
-# Core Intake Node
-# -------------------------------------------------------------------------
+def _reject(step: int, reason: str, profile: dict) -> Dict[str, Any]:
+    return {
+        "messages": [AIMessage(content=f"⚠️ **Invalid response:** {reason}\n\nPlease provide valid data for the following:\n\n{STEP_PROMPTS[step]}")],
+        "intake_step": step,
+        "is_complete": False,
+        "profile_data": profile
+    }
+
+def _advance(next_step: int, profile: dict) -> Dict[str, Any]:
+    return {
+        "messages": [AIMessage(content=STEP_PROMPTS[next_step])],
+        "intake_step": next_step,
+        "is_complete": False,
+        "profile_data": profile
+    }
+
 def intake_node(state: OnboardingGraphState) -> Dict[str, Any]:
     messages = state.get("messages", [])
     step = state.get("intake_step", 1)
     profile = dict(state.get("profile_data") or {})
 
     if not messages:
-        return {
-            "messages": [AIMessage(content=STEP_PROMPTS[1])],
-            "intake_step": 1,
-            "is_complete": False,
-            "profile_data": profile
-        }
+        return {"messages": [AIMessage(content=STEP_PROMPTS[1])], "intake_step": 1, "is_complete": False, "profile_data": profile}
 
     raw_input = messages[-1].content.strip()
 
-    # ---------------------------------------------------------------------
-    # STEP 1: Biometrics & Proportions
-    # ---------------------------------------------------------------------
     if step == 1:
         seg_match = STEP1_SEGMENT_RE.search(raw_input)
         proportions, gender, age, weight_kg, height_cm = None, None, None, None, None
         is_off_topic = False
 
         if seg_match:
-            q1_text = seg_match.group("q1").lower()
-            q2_text = seg_match.group("q2").lower()
-
+            q1_text, q2_text = seg_match.group("q1").lower(), seg_match.group("q2").lower()
             if "lower" in q1_text or "leg" in q1_text: proportions = "long_legs"
             elif "upper" in q1_text or "torso" in q1_text: proportions = "long_torso"
-            elif "balanced" in q1_text or "equal" in q1_text or "same" in q1_text: proportions = "balanced"
+            elif any(k in q1_text for k in ["balanced", "equal", "same"]): proportions = "balanced"
 
             if "female" in q2_text or "woman" in q2_text: gender = "female"
             elif "male" in q2_text or "man" in q2_text: gender = "male"
 
-            # Direct unit-based extraction (prevents \b word-boundary truncation on '80kg' and '183cm')
             w_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:kg|kilos?)\b", q2_text)
-            if w_match:
-                weight_kg = float(w_match.group(1))
+            if w_match: weight_kg = float(w_match.group(1))
 
             h_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:cm|centimeters?)\b", q2_text)
-            if h_match:
-                height_cm = float(h_match.group(1))
+            if h_match: height_cm = float(h_match.group(1))
 
             a_match = re.search(r"\b(1[2-9]|[2-9]\d)\s*(?:years?|yrs?|yo)\b", q2_text)
-            if a_match:
-                age = int(a_match.group(1))
+            if a_match: age = int(a_match.group(1))
 
-            # General numeric fallback without word boundary restrictions
             all_nums = [float(n) for n in re.findall(r"\d+(?:\.\d+)?", q2_text)]
-            claimed = set()
-            if weight_kg is not None: claimed.add(weight_kg)
-            if height_cm is not None: claimed.add(height_cm)
-            if age is not None: claimed.add(float(age))
-
+            claimed = {n for n in [weight_kg, height_cm, float(age) if age else None] if n is not None}
             unclaimed = [n for n in all_nums if n not in claimed]
 
             if height_cm is None:
@@ -180,28 +160,21 @@ def intake_node(state: OnboardingGraphState) -> Dict[str, Any]:
                         height_cm = n
                         unclaimed.remove(n)
                         break
-
             if weight_kg is None:
                 for n in unclaimed:
                     if 30.0 <= n <= 250.0:
                         weight_kg = n
                         unclaimed.remove(n)
                         break
-
             if age is None:
                 for n in unclaimed:
                     if 12 <= n <= 100:
                         age = int(n)
-                        unclaimed.remove(n)
                         break
         else:
-            ext: Step1Extraction = step1_extractor.invoke(
-                f"Extract Step 1 biometrics:\n\"{raw_input}\"\n"
-                "Normalize proportions to 'long_legs', 'long_torso', or 'balanced'."
-            )
+            ext: Step1Extraction = step1_extractor.invoke(f"Extract Step 1 biometrics:\n\"{raw_input}\"")
             is_off_topic = ext.is_off_topic
-            proportions, gender = ext.proportions, ext.gender
-            age, weight_kg, height_cm = ext.age, ext.weight_kg, ext.height_cm
+            proportions, gender, age, weight_kg, height_cm = ext.proportions, ext.gender, ext.age, ext.weight_kg, ext.height_cm
 
         if is_off_topic:
             return _reject(step, "Input is off-topic. Please provide your proportion comparison and biometrics.", profile)
@@ -216,18 +189,9 @@ def intake_node(state: OnboardingGraphState) -> Dict[str, Any]:
         if missing:
             return _reject(step, f"Incomplete or invalid biometrics: Please provide valid {', '.join(missing)}.", profile)
 
-        profile.update({
-            "proportions": proportions,
-            "gender": gender,
-            "age": age,
-            "weight_kg": weight_kg,
-            "height_cm": height_cm
-        })
+        profile.update({"proportions": proportions, "gender": gender, "age": age, "weight_kg": weight_kg, "height_cm": height_cm})
         return _advance(step + 1, profile)
 
-    # ---------------------------------------------------------------------
-    # STEP 2: Goals & Frequency Capacity
-    # ---------------------------------------------------------------------
     elif step == 2:
         seg_match = STEP2_SEGMENT_RE.search(raw_input)
         current_goal, long_term_goal, weekly_frequency, training_age_years = None, None, None, None
@@ -237,19 +201,12 @@ def intake_node(state: OnboardingGraphState) -> Dict[str, Any]:
         if seg_match:
             current_goal = seg_match.group("q3").strip()
             long_term_goal = seg_match.group("q4").strip()
-            
             raw_freq = parse_number_token(seg_match.group("q5"))
-            if raw_freq is not None:
-                weekly_frequency = int(raw_freq)
-
+            if raw_freq is not None: weekly_frequency = int(raw_freq)
             raw_age = parse_number_token(seg_match.group("q6"))
-            if raw_age is not None:
-                training_age_years = float(raw_age)
+            if raw_age is not None: training_age_years = float(raw_age)
         else:
-            ext: Step2Extraction = step2_extractor.invoke(
-                f"Extract Step 2 goals and capacity:\n\"{raw_input}\"\n"
-                "Extract weekly_frequency as integer exactly as requested without clamping."
-            )
+            ext: Step2Extraction = step2_extractor.invoke(f"Extract Step 2 goals and capacity:\n\"{raw_input}\"")
             is_off_topic = ext.is_off_topic
             current_goal, long_term_goal = ext.current_goal, ext.long_term_goal
             weekly_frequency, training_age_years = ext.weekly_frequency, ext.training_age_years
@@ -259,43 +216,30 @@ def intake_node(state: OnboardingGraphState) -> Dict[str, Any]:
             return _reject(step, "Input is off-topic. Please answer the goals and volume questions.", profile)
 
         missing = []
-        if not current_goal or len(current_goal.strip()) < 2: 
-            missing.append("current primary goal")
-        if not long_term_goal or len(long_term_goal.strip()) < 2: 
-            missing.append("long-term goal")
-        if weekly_frequency is None or not (1 <= weekly_frequency <= 5):
-            missing.append("weekly frequency (must be strictly between 1 and 5 days)")
-        if training_age_years is None or not (0.0 <= training_age_years <= 70.0):
-            missing.append("training age (years of lifting)")
+        if not current_goal or len(current_goal.strip()) < 2: missing.append("current primary goal")
+        if not long_term_goal or len(long_term_goal.strip()) < 2: missing.append("long-term goal")
+        if weekly_frequency is None or not (1 <= weekly_frequency <= 5): missing.append("weekly frequency (must be strictly between 1 and 5 days)")
+        if training_age_years is None or not (0.0 <= training_age_years <= 70.0): missing.append("training age (years of lifting)")
 
         if missing:
             return _reject(step, f"Invalid or missing details: {', '.join(missing)}.", profile)
 
         profile.update({
-            "current_goal": current_goal.strip(),
-            "long_term_goal": long_term_goal.strip(),
-            "weekly_frequency": weekly_frequency,
-            "training_age_years": training_age_years,
+            "current_goal": current_goal.strip(), "long_term_goal": long_term_goal.strip(),
+            "weekly_frequency": weekly_frequency, "training_age_years": training_age_years,
             "rep_preference": rep_pref
         })
         return _advance(step + 1, profile)
 
-    # ---------------------------------------------------------------------
-    # STEP 3: Logistics & Systemic Recovery
-    # ---------------------------------------------------------------------
     else:
         seg_match = STEP3_SEGMENT_RE.search(raw_input)
         equipment, injuries, recovery = None, None, None
         is_off_topic = False
 
         if seg_match:
-            equipment = seg_match.group("q7").strip()
-            injuries = seg_match.group("q8").strip()
-            recovery = seg_match.group("q9").strip()
+            equipment, injuries, recovery = seg_match.group("q7").strip(), seg_match.group("q8").strip(), seg_match.group("q9").strip()
         else:
-            ext: Step3Extraction = step3_extractor.invoke(
-                f"Extract Step 3 logistics:\n\"{raw_input}\""
-            )
+            ext: Step3Extraction = step3_extractor.invoke(f"Extract Step 3 logistics:\n\"{raw_input}\"")
             is_off_topic = ext.is_off_topic
             equipment, injuries, recovery = ext.equipment_access, ext.injuries_or_limitations, ext.stress_and_sleep
 
@@ -318,47 +262,19 @@ def intake_node(state: OnboardingGraphState) -> Dict[str, Any]:
 
         trainee = state.get("trainee_id") or db.active_user or "default"
         db.switch_user(trainee)
-
         profile.setdefault("coach_tone", "Direct, grounded, and pragmatic")
         profile.setdefault("custom_instructions", "")
         db.upsert_user_profile(profile)
 
-        gender_display = profile.get("gender", "male").capitalize()
-        completion_msg = f"Profile setup complete ({gender_display} specialization active). Calibrating program..."
-
         return {
-            "messages": [AIMessage(content=completion_msg)],
+            "messages": [AIMessage(content=f"Profile setup complete ({profile.get('gender', 'male').capitalize()} specialization active). Calibrating program...")],
             "intake_step": 3,
             "is_complete": True,
             "profile_data": profile
         }
 
-# -------------------------------------------------------------------------
-# Helper Dispatchers
-# -------------------------------------------------------------------------
-def _reject(step: int, reason: str, profile: dict) -> Dict[str, Any]:
-    retry_message = f"⚠️ **Invalid response:** {reason}\n\nPlease provide valid data for the following:\n\n{STEP_PROMPTS[step]}"
-    return {
-        "messages": [AIMessage(content=retry_message)],
-        "intake_step": step,
-        "is_complete": False,
-        "profile_data": profile
-    }
-
-def _advance(next_step: int, profile: dict) -> Dict[str, Any]:
-    return {
-        "messages": [AIMessage(content=STEP_PROMPTS[next_step])],
-        "intake_step": next_step,
-        "is_complete": False,
-        "profile_data": profile
-    }
-
-# -------------------------------------------------------------------------
-# Graph Assembly
-# -------------------------------------------------------------------------
 builder = StateGraph(OnboardingGraphState)
 builder.add_node("intake_processor", intake_node)
 builder.set_entry_point("intake_processor")
 builder.add_edge("intake_processor", END)
-
 onboarding_graph = builder.compile()

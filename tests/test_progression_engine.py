@@ -5,7 +5,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
-from agent.progression_engine import calculate_e1rm, project_next_load, round_to_increment
+from agent.progression_engine import calculate_e1rm, project_next_load
 from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)

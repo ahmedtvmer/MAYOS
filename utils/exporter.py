@@ -4,7 +4,7 @@ import pandas as pd
 from agent.ProgramState import GeneratedProgramSchema
 
 def sanitize_sheet_title(title: str) -> str:
-    """
+    r"""
     Strips Excel-illegal characters (\ / ? * : [ ]) and trims to 31 chars.
     """
     clean_title = re.sub(r"[\\/*?:\[\]]", "-", title)
@@ -30,7 +30,6 @@ def export_program_to_excel(program: GeneratedProgramSchema) -> bytes:
                     "Target RPE": f"@{ex.target_rpe}",
                     "Rest": f"{ex.rest_seconds}s",
                     "Execution Cues": ex.notes or "",
-                    # Week-by-Week Double Progression Ledger
                     "W1 Load (kg)": "",
                     "W1 Reps": "",
                     "W2 Load (kg)": "",

@@ -1,3 +1,4 @@
+# tests/benchmark_routing.py
 import os
 import sys
 import time
@@ -17,8 +18,6 @@ from agent.assistant_graph import (
 )
 from utils.model_downloader import llm
 
-
-# Test cases representing primary fast-path branches
 BENCHMARK_PROMPTS = [
     ("Clinical Intercept", "I felt a sharp pop in my shoulder during bench press"),
     ("Explicit Swap (2-Way)", "swap barbell squat for pendulum squat"),
@@ -33,7 +32,6 @@ ITERATIONS = 5
 
 structured_llm = llm.with_structured_output(IntentClassification)
 
-
 def time_fast_path(query: str) -> float:
     """Executes pure deterministic router logic."""
     start = time.perf_counter()
@@ -41,7 +39,6 @@ def time_fast_path(query: str) -> float:
     _ = router_node(state)
     end = time.perf_counter()
     return (end - start) * 1000.0  # ms
-
 
 def time_llm_routing(query: str) -> float:
     """Forces standard structured LLM intent extraction."""
@@ -53,19 +50,17 @@ def time_llm_routing(query: str) -> float:
     end = time.perf_counter()
     return (end - start) * 1000.0  # ms
 
-
 def run_benchmark():
     print("=" * 80)
     print("⚡ ZERO-LLM ROUTING VS TRADITIONAL LLM CLASSIFICATION BENCHMARK")
-    print(f"Model: {os.getenv('LLM', 'qwen2.5:3b')} | Runs: {ITERATIONS} (after {WARMUP_RUNS} warmups)")
+    print(f"Model: {os.getenv('MODEL_PATH', 'Qwen 2.5 3B GGUF')} | Runs: {ITERATIONS} (after {WARMUP_RUNS} warmups)")
     print("=" * 80)
 
-    # Warmup Ollama context and weights
     print("\nWarming up inference pipeline...")
     for _ in range(WARMUP_RUNS):
         _ = structured_llm.invoke([
             SystemMessage(content=ROUTER_PROMPT),
-            HumanMessage(content="warmup query")
+            HumanMessage(content="how do I optimize mechanical tension on RDLs?")
         ])
     print("Warmup complete.\n")
 
@@ -92,7 +87,6 @@ def run_benchmark():
             "speedup": speedup
         })
 
-    # Render Results
     print(f"{'Category':<26} | {'Regex Router':<14} | {'LLM Router':<14} | {'Speedup':<10}")
     print("-" * 72)
     for r in results:
@@ -107,7 +101,6 @@ def run_benchmark():
     avg_fast = statistics.mean([r["fast_mean_ms"] for r in results])
     avg_llm = statistics.mean([r["llm_mean_ms"] for r in results])
     print(f"{'OVERALL AVERAGE':<26} | {avg_fast:>8.3f} ms    | {avg_llm:>8.1f} ms    | {avg_llm/avg_fast:>7.0f}x\n")
-
 
 if __name__ == "__main__":
     run_benchmark()

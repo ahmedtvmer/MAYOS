@@ -6,8 +6,8 @@ from unittest.mock import patch, MagicMock
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
-from langchain_core.messages import HumanMessage, AIMessage
-from langchain_ollama import ChatOllama
+from langchain_core.messages import HumanMessage
+from utils.model_downloader import SafeChatLlamaCpp
 from agent.assistant_graph import (
     router_node,
     stream_assistant_turn,
@@ -26,8 +26,8 @@ def test_phase1_engine_configuration():
     """Validates model parameters and system prompt token budget constraints."""
     logger.info("Verifying Phase 1 Engine Configuration & Directives...")
 
-    assert getattr(llm, "num_predict", None) == 200, (
-        f"Expected llm.num_predict == 200, found {getattr(llm, 'num_predict', None)}"
+    assert getattr(llm, "max_tokens", None) == 200, (
+        f"Expected llm.max_tokens == 200, found {getattr(llm, 'max_tokens', None)}"
     )
 
     assert "Output Budget & Structural Constraints:" in STATIC_SYSTEM_CORE
@@ -158,7 +158,7 @@ def test_phase2_streaming_generator_qa():
         "response_content": None
     }
 
-    with patch.object(ChatOllama, "stream", return_value=iter(mock_chunks)):
+    with patch.object(SafeChatLlamaCpp, "stream", return_value=iter(mock_chunks)):
         generator = stream_assistant_turn(state)
 
         yielded_tokens = []
@@ -175,7 +175,7 @@ def test_phase2_streaming_generator_qa():
 
 
 def test_phase2_streaming_generator_programmatic_bypass():
-    """Validates that programmatic nodes yield confirmation without invoking llm.stream()."""
+    """Validates that programmatic nodes stream confirmation without invoking llm.stream()."""
     state = {
         "messages": [HumanMessage(content="switch split to 3 days")],
         "trainee_id": "test_user",
@@ -189,7 +189,7 @@ def test_phase2_streaming_generator_programmatic_bypass():
     }
 
     with patch("agent.assistant_graph.program_mutation_node") as mock_mutation, \
-         patch.object(ChatOllama, "stream") as mock_llm_stream:
+         patch.object(SafeChatLlamaCpp, "stream") as mock_llm_stream:
 
         mock_mutation.return_value = {
             "program_updated": True,
@@ -201,8 +201,8 @@ def test_phase2_streaming_generator_programmatic_bypass():
 
         mock_llm_stream.assert_not_called()
         mock_mutation.assert_called_once()
-        assert len(output) == 1
-        assert output[0] == "Rebuilt routine for 3 days/week."
+        assert len(output) > 0
+        assert "".join(output) == "Rebuilt routine for 3 days/week."
         assert state["program_updated"] is True
 
     logger.info("✅ Phase 2: Programmatic zero-LLM streaming bypass verified.")
@@ -297,10 +297,9 @@ def test_phase3_substitution_direct_swap():
         result = exercise_substitution_node(state)
 
         mock_swap.assert_called_once_with(
-            old_exercise_id="ex_123",
-            new_exercise_id="ex_999",
-            new_notes=mock_swap.call_args[1]["new_notes"],
-            day_id=None
+        old_exercise_id="ex_123",
+        new_exercise_id="ex_999",
+        new_notes=mock_swap.call_args[1]["new_notes"]
         )
 
         assert result["program_updated"] is True
@@ -333,21 +332,19 @@ def test_component1_medical_red_flag_interceptor():
             "response_content": None
         }
 
-        with patch.object(ChatOllama, "stream") as mock_llm_stream:
-            # Test generator streaming path
+        with patch.object(SafeChatLlamaCpp, "stream") as mock_llm_stream:
             tokens = list(stream_assistant_turn(state))
 
             # 1. Must NOT invoke LLM inference
             mock_llm_stream.assert_not_called()
 
-            # 2. Must return safeguard response
-            assert len(tokens) == 1
-            assert "Clinical Safeguard Triggered" in tokens[0]
-            assert "Cease training the affected movement immediately" in tokens[0]
+            # 2. Must stream safeguard response text
+            full_response = "".join(tokens)
+            assert "Clinical Safeguard Triggered" in full_response
+            assert "Cease training the affected movement immediately" in full_response
             assert state["intent"] == "clinical_intercept"
 
     logger.info("✅ Component 1: Medical red-flag zero-LLM interceptor verified.")
-
 
 def test_component1_biomechanical_catalog_exclusion():
     """Validates that high-risk movement patterns are filtered out of catalog searches."""

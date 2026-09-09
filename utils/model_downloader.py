@@ -1,16 +1,20 @@
+# utils/model_downloader.py
+import multiprocessing
 import os
 from pathlib import Path
+from typing import Any, Iterator, List, Optional
+
 from huggingface_hub import hf_hub_download
 from langchain_community.chat_models import ChatLlamaCpp
-
+from langchain_core.messages import BaseMessage
+from langchain_core.outputs import ChatGenerationChunk
 
 DEFAULT_MODEL_DIR = Path("models")
 DEFAULT_MODEL_FILENAME = "qwen2.5-3b-instruct-q4_k_m.gguf"
 REPO_ID = "Qwen/Qwen2.5-3B-Instruct-GGUF"
-N_THREADS=os.getenv("OMP_NUM_THREADS")
+
 
 def get_or_download_model_path() -> str:
-    """Returns local model path, downloading from Hugging Face if absent."""
     env_path = os.getenv("MODEL_PATH")
     if env_path and Path(env_path).is_file():
         return env_path
@@ -20,7 +24,7 @@ def get_or_download_model_path() -> str:
     target_file = target_dir / DEFAULT_MODEL_FILENAME
 
     if not target_file.is_file():
-        print(f"⚡ Model artifact not found. Downloading {DEFAULT_MODEL_FILENAME} from {REPO_ID}...")
+        print(f"⚡ Downloading {DEFAULT_MODEL_FILENAME} from {REPO_ID}...")
         hf_hub_download(
             repo_id=REPO_ID,
             filename=DEFAULT_MODEL_FILENAME,
@@ -31,19 +35,41 @@ def get_or_download_model_path() -> str:
 
     return str(target_file)
 
-import multiprocessing
 
-# Use physical cores (avoid hyperthreading contention on CPU inference)
-physical_cores = multiprocessing.cpu_count() // 2 or 4
+class SafeChatLlamaCpp(ChatLlamaCpp):
+    def _stream(
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> Iterator[ChatGenerationChunk]:
+        seen_tool_indices = set()
+        for chunk in super()._stream(messages, stop=stop, run_manager=run_manager, **kwargs):
+            tc_chunks = getattr(chunk.message, "tool_call_chunks", None)
+            if tc_chunks:
+                for tc in tc_chunks:
+                    idx = tc.get("index", 0) if isinstance(tc, dict) else getattr(tc, "index", 0)
+                    if idx in seen_tool_indices:
+                        if isinstance(tc, dict):
+                            tc["name"] = None
+                        else:
+                            tc.name = None
+                    else:
+                        seen_tool_indices.add(idx)
+            yield chunk
 
-llm = ChatLlamaCpp(
+
+physical_cores = max(1, multiprocessing.cpu_count() // 2)
+
+llm = SafeChatLlamaCpp(
     model_path=get_or_download_model_path(),
     temperature=0.0,
-    n_ctx=2048,             # Reduce context ceiling from 4096 to 2048 (drops memory footprint)
-    n_batch=512,            # Process up to 512 prompt tokens in parallel SIMD batches
-    n_threads=physical_cores,       # Threads dedicated to token generation
-    n_threads_batch=physical_cores, # Threads dedicated to prompt evaluation (TTFT)
-    max_tokens=250,
+    n_ctx=2048,
+    n_batch=512,
+    n_threads=physical_cores,
+    n_threads_batch=physical_cores,
+    max_tokens=200,
     streaming=True,
     verbose=False
 )

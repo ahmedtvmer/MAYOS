@@ -1,29 +1,15 @@
-# agent/program_generator.py
-import os
 import re
 import random
-from typing import Dict, Any, List, Optional
+from typing import List, Optional
 from dotenv import load_dotenv
-from utils.model_downloader import llm
 
-
-from agent.ProgramState import (
-    GeneratedProgramSchema, 
-    ProgramDaySchema, 
-    ProgramExerciseSchema,
-    DynamicSplitPlan
-)
-from agent.program_rules import (
-    resolve_split,
-    fetch_filtered_candidates,
-    get_target_rep_window
-)
+from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema, DynamicSplitPlan
+from agent.program_rules import resolve_split, fetch_filtered_candidates, get_target_rep_window
 from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
 
 load_dotenv()
 logger = MyosLogger().get_logger("program_generator")
-
 db = DatabaseManager()
 
 MECHANIC_CUES = {
@@ -52,10 +38,6 @@ def assemble_deterministic_day(
     rep_preference: str,
     excluded_ids: set[str]
 ) -> ProgramDaySchema:
-    """
-    Deterministically selects top-ranked exercises directly from SQL candidate pools.
-    Runs in < 5ms per day with zero LLM latency.
-    """
     selected_exercises = []
 
     for muscle in target_muscles:
@@ -65,17 +47,8 @@ def assemble_deterministic_day(
             limitations=limitations,
             limit=6
         )
-
-        # Filter out movements already used on other days
         available = [c for c in candidates if str(c["id"]) not in excluded_ids]
-        
-        # Pick randomly among top 2-3 available movements for variation
-        chosen = None
-        if available:
-            pool = available[:3]
-            chosen = random.choice(pool)
-        elif candidates:
-            chosen = random.choice(candidates[:2])
+        chosen = random.choice(available[:3]) if available else (random.choice(candidates[:2]) if candidates else None)
 
         if chosen:
             cid = str(chosen["id"])
@@ -83,17 +56,14 @@ def assemble_deterministic_day(
             mechanic = chosen["mechanic"]
             rep_min, rep_max = get_target_rep_window(mechanic, rep_preference)
 
-            target_rpe = 8.5 if mechanic == "compound" else 9.5
-            rest_secs = 150 if mechanic == "compound" else 90
-
             exercise_schema = ProgramExerciseSchema(
                 exercise_id=cid,
                 exercise_name=chosen["name"],
                 target_sets=3 if mechanic == "compound" else 2,
                 target_reps_min=rep_min,
                 target_reps_max=rep_max,
-                target_rpe=target_rpe,
-                rest_seconds=rest_secs,
+                target_rpe=8.5 if mechanic == "compound" else 9.5,
+                rest_seconds=150 if mechanic == "compound" else 90,
                 notes=get_biomechanical_cue(chosen["name"], mechanic),
                 image_path=chosen.get("image_path"),
                 gif_path=chosen.get("gif_path")
@@ -130,13 +100,9 @@ def assemble_deterministic_day(
                 if len(ordered_list) >= 3:
                     break
 
-    return ProgramDaySchema(
-        day_order=day_order,
-        day_name=day_name,
-        exercises=ordered_list
-    )
+    return ProgramDaySchema(day_order=day_order, day_name=day_name, exercises=ordered_list)
 
-def extract_frequency_from_text(text: str | None) -> Optional[int]:
+def extract_frequency_from_text(text: Optional[str]) -> Optional[int]:
     if not text:
         return None
     match = re.search(r"\b([1-5])\s*(?:days?|x|-day)\b", text.lower())
@@ -166,23 +132,20 @@ def generate_program_pipeline(
 
     clean_split_override = user_split_override
     if user_split_override:
-        text = user_split_override.lower()
         keywords = ["upper", "lower", "ppl", "push", "pull", "legs", "arnold", "full body", "bro split"]
-        if not any(kw in text for kw in keywords):
+        if not any(kw in user_split_override.lower() for kw in keywords):
             clean_split_override = None
 
-    gender = profile.get("gender", "male")
     split_plan: DynamicSplitPlan = resolve_split(
         frequency=freq, 
         preference=clean_split_override, 
-        gender=gender
+        gender=profile.get("gender", "male")
     )
     rep_pref = rep_preference_override or profile.get("rep_preference", "balanced")
 
     generated_days: List[ProgramDaySchema] = []
     used_exercise_ids: set[str] = set()
 
-    # Fast deterministic synthesis
     for day in split_plan.days:
         day_plan = assemble_deterministic_day(
             day_order=day.day_order,
@@ -204,7 +167,6 @@ def generate_program_pipeline(
 
     db.save_training_program(program.model_dump())
     
-    # Table formatting
     lines = [f"# {program.program_name}", f"**Split:** {program.split_type} | **Frequency:** {program.weekly_frequency} Days/Week\n"]
     for day in program.days:
         lines.append(f"### Day {day.day_order}: {day.day_name}")

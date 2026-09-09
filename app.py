@@ -1,4 +1,3 @@
-import os
 import sys
 import time
 import uuid
@@ -23,7 +22,7 @@ st.set_page_config(
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(BASE_DIR))
 
-from agent.assistant_graph import assistant_graph, stream_assistant_turn
+from agent.assistant_graph import stream_assistant_turn
 from agent.debrief import generate_session_debrief
 from agent.onboarding_graph import onboarding_graph
 from agent.program_generator import generate_program_pipeline
@@ -575,16 +574,13 @@ else:
                                 f"Prior top set was {top_prev['weight_kg']:g} kg. Verify target load before unracking.",
                                 icon="⚠️"
                             )
-
-                        # Plate loading badge for barbell movements
-                        if is_barbell and default_weight > 0:
-                            plate_data = calculate_barbell_plates(default_weight)
-                            st.caption(f"🏋️ **Loading:** `{plate_data['formatted_display']}`")
                     else:
                         st.caption("🎯 **Target:** Baseline session. Enter calibration weight.")
-                        if is_barbell and default_weight > 0:
-                            plate_data = calculate_barbell_plates(default_weight)
-                            st.caption(f"🏋️ **Loading:** `{plate_data['formatted_display']}`")
+
+                    # Plate loading badge for barbell movements
+                    if is_barbell and default_weight > 0:
+                        plate_data = calculate_barbell_plates(default_weight)
+                        st.caption(f"🏋️ **Loading:** `{plate_data['formatted_display']}`")
 
                     # Warm-up Ramp Sets with Plate Math
                     if ex_idx == 1 or ex.target_reps_min <= 8:

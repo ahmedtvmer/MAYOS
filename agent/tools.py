@@ -1,3 +1,5 @@
+# agent/tools.py
+from typing import Any
 from langchain_core.tools import tool
 from agent.UserState import UserProfileSchema
 from database.database_manager import DatabaseManager
@@ -18,17 +20,22 @@ def save_user_profile(
     training_age_years: float,
     equipment_access: str,
     stress_and_sleep: str,
-    injuries_or_limitations: str = "None"
+    injuries_or_limitations: str = "None",
+    gender: str = "male",
+    rep_preference: str = "balanced",
+    **kwargs: Any
 ) -> str:
     """
     Saves the user's physical profile, goals, constraints, and recovery metrics to the database.
     Call this once all 9 onboarding profile questions have been collected from the user.
     """
     profile_data = {
+        "gender": gender,
         "proportions": proportions,
         "age": age,
         "weight_kg": weight_kg,
         "height_cm": height_cm,
+        "rep_preference": rep_preference,
         "current_goal": current_goal,
         "long_term_goal": long_term_goal,
         "weekly_frequency": weekly_frequency,

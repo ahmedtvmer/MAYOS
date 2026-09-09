@@ -1,5 +1,5 @@
-import os
-from typing import Dict, List, Any
+import re
+from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 from langchain_core.messages import SystemMessage, HumanMessage
 from utils.model_downloader import llm
@@ -10,29 +10,19 @@ from database.database_manager import DatabaseManager
 load_dotenv()
 db = DatabaseManager()
 
-# -------------------------------------------------------------------------
-# Muscle Slang to Database Clause Translation Layer
-# -------------------------------------------------------------------------
 SLANG_TO_SQL_MAP = {
-    # Lower Body
     "quads": "LOWER(target_muscle) = 'quads'",
     "hamstrings": "LOWER(target_muscle) = 'hamstrings'",
     "glutes": "LOWER(target_muscle) = 'glutes'",
     "calves": "LOWER(target_muscle) = 'calves' OR LOWER(body_part) = 'lower legs'",
-    
-    # Upper Body Pull
     "lats": "LOWER(target_muscle) = 'lats'",
     "upper back": "LOWER(target_muscle) IN ('upper back', 'traps', 'spine')",
     "biceps": "LOWER(target_muscle) IN ('biceps', 'brachialis')",
-    
-    # Upper Body Push
     "chest": "LOWER(target_muscle) = 'pectorals' OR LOWER(body_part) = 'chest'",
     "side delts": "LOWER(name) LIKE '%lateral raise%' OR (LOWER(target_muscle) = 'delts' AND LOWER(name) LIKE '%side%')",
     "rear delts": "LOWER(name) LIKE '%rear delt%' OR LOWER(name) LIKE '%face pull%'",
     "front delts": "LOWER(target_muscle) = 'delts' AND LOWER(name) LIKE '%press%'",
     "triceps": "LOWER(target_muscle) = 'triceps'",
-    
-    # Core
     "abs": "LOWER(target_muscle) = 'abs' OR LOWER(body_part) = 'waist'",
 }
 
@@ -46,32 +36,16 @@ EXCLUDED_TERMS = [
     "hop", "run", "reach", "twist", "tilt", "roll", "walk"
 ]
 
-# -------------------------------------------------------------------------
-# Rep Corridor Rules (Biomechanical Bounds)
-# -------------------------------------------------------------------------
 REP_WINDOWS = {
-    "low": {
-        "compound": (5, 8),
-        "isolation": (8, 12),
-    },
-    "balanced": {
-        "compound": (6, 10),
-        "isolation": (10, 15),
-    },
-    "high": {
-        "compound": (8, 12),
-        "isolation": (12, 20),
-    },
+    "low": {"compound": (5, 8), "isolation": (8, 12)},
+    "balanced": {"compound": (6, 10), "isolation": (10, 15)},
+    "high": {"compound": (8, 12), "isolation": (12, 20)},
 }
 
 def get_target_rep_window(mechanic: str, rep_preference: str = "balanced") -> tuple[int, int]:
-    """Resolves safe rep boundaries based on movement mechanic and user preference."""
     pref = rep_preference.lower() if rep_preference in REP_WINDOWS else "balanced"
     return REP_WINDOWS[pref].get(mechanic, (8, 12))
 
-# -------------------------------------------------------------------------
-# Dynamic Split Presets & LLM Fallback
-# -------------------------------------------------------------------------
 SYSTEM_SPLIT_PROMPT = """You are an expert biomechanics and hypertrophy coach.
 Convert the user's split preference into a structured training week.
 
@@ -93,13 +67,7 @@ def get_default_split(frequency: int, gender: str = "male") -> DynamicSplitPlan:
         presets = {
             1: DynamicSplitPlan(
                 split_name="Full Body (Glute Specialized)",
-                days=[
-                    CustomDayPlan(
-                        day_order=1,
-                        day_name="Full Body",
-                        target_body_parts=["glutes", "hamstrings", "quads", "lats", "abs"]
-                    )
-                ]
+                days=[CustomDayPlan(day_order=1, day_name="Full Body", target_body_parts=["glutes", "hamstrings", "quads", "lats", "abs"])]
             ),
             2: DynamicSplitPlan(
                 split_name="Lower (Glute Bias) / Upper & Core",
@@ -125,48 +93,23 @@ def get_default_split(frequency: int, gender: str = "male") -> DynamicSplitPlan:
                     CustomDayPlan(day_order=4, day_name="Full Body (Glute & Core Finisher)", target_body_parts=["glutes", "lats", "side delts", "hamstrings", "abs"])
                 ]
             ),
-            # agent/program_rules.py (inside get_default_split)
-
-        5: DynamicSplitPlan(
-            split_name="Hybrid PPL / Upper-Lower",
-            days=[
-                CustomDayPlan(
-                    day_order=1, 
-                    day_name="Push", 
-                    target_body_parts=["chest", "chest", "side delts", "triceps"]
-                ),
-                CustomDayPlan(
-                    day_order=2, 
-                    day_name="Pull", 
-                    target_body_parts=["lats", "upper back", "rear delts", "biceps"]
-                ),
-                CustomDayPlan(
-                    day_order=3, 
-                    day_name="Legs", 
-                    target_body_parts=["quads", "hamstrings", "calves", "abs"]
-                ),
-                CustomDayPlan(
-                    day_order=4, 
-                    day_name="Upper", 
-                    target_body_parts=["chest", "lats", "upper back", "side delts", "biceps"]
-                ),
-                CustomDayPlan(
-                    day_order=5, 
-                    day_name="Lower", 
-                    target_body_parts=["quads", "hamstrings", "glutes", "calves"]
-                )
-            ]
-        )
+            5: DynamicSplitPlan(
+                split_name="Hybrid PPL / Upper-Lower",
+                days=[
+                    CustomDayPlan(day_order=1, day_name="Push", target_body_parts=["chest", "chest", "side delts", "triceps"]),
+                    CustomDayPlan(day_order=2, day_name="Pull", target_body_parts=["lats", "upper back", "rear delts", "biceps"]),
+                    CustomDayPlan(day_order=3, day_name="Legs", target_body_parts=["quads", "hamstrings", "calves", "abs"]),
+                    CustomDayPlan(day_order=4, day_name="Upper", target_body_parts=["chest", "lats", "upper back", "side delts", "biceps"]),
+                    CustomDayPlan(day_order=5, day_name="Lower", target_body_parts=["quads", "hamstrings", "glutes", "calves"])
+                ]
+            )
         }
         return presets[frequency]
 
-    # Male Defaults
     presets = {
         1: DynamicSplitPlan(
             split_name="Consolidated Full Body",
-            days=[
-                CustomDayPlan(day_order=1, day_name="Full Body", target_body_parts=["quads", "chest", "lats", "hamstrings", "side delts"])
-            ]
+            days=[CustomDayPlan(day_order=1, day_name="Full Body", target_body_parts=["quads", "chest", "lats", "hamstrings", "side delts"])]
         ),
         2: DynamicSplitPlan(
             split_name="Full Body A/B",
@@ -205,7 +148,7 @@ def get_default_split(frequency: int, gender: str = "male") -> DynamicSplitPlan:
     }
     return presets[frequency]
 
-def resolve_split(frequency: int, preference: str | None = None, gender: str = "male") -> DynamicSplitPlan:
+def resolve_split(frequency: int, preference: Optional[str] = None, gender: str = "male") -> DynamicSplitPlan:
     clamped_freq = min(max(int(frequency), 1), 5)
     if not preference or preference.strip().lower() in ["standard", "default", "none", "balanced"]:
         return get_default_split(clamped_freq, gender=gender)
@@ -217,10 +160,8 @@ def resolve_split(frequency: int, preference: str | None = None, gender: str = "
         HumanMessage(content=f"Frequency: {clamped_freq} days/week. Trainee: {gender_context}. User Split Request: '{preference}'")
     ]
     plan: DynamicSplitPlan = structured_llm.invoke(prompt)
-
     if len(plan.days) > clamped_freq:
         plan.days = plan.days[:clamped_freq]
-
     return plan
 
 def calculate_volume_budget(stress_and_sleep: str) -> int:
@@ -229,39 +170,26 @@ def calculate_volume_budget(stress_and_sleep: str) -> int:
         "poor", "bad", "terrible", "low sleep", "lack of sleep", 
         "insomnia", "high stress", "stressed", "4 hours", "5 hours", "6 hours"
     ]
-    if any(phrase in text for phrase in poor_indicators):
-        return 8
-    return 12
-
-import re
+    return 8 if any(phrase in text for phrase in poor_indicators) else 12
 
 def clean_exercise_name(name: str, replace_with_machine: bool = True) -> str:
-    """
-    Cleans dataset naming artifacts.
-    Replaces leading 'lever ' with 'machine ' (or strips it if False).
-    Also strips trailing version numbers like 'v. 2'.
-    """
     replacement = "machine " if replace_with_machine else ""
     cleaned = re.sub(r"^lever\s+", replacement, name, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+v\.\s*\d+", "", cleaned, flags=re.IGNORECASE)
     return cleaned.strip()
 
 def fetch_filtered_candidates(
-    muscle_group: str | None = None,
+    muscle_group: Optional[str] = None,
     equipment_access: str = "commercial gym",
     limitations: str = "None",
     limit: int = 4,
-    body_part: str | None = None,
+    body_part: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     conn = db.get_connection()
     cursor = conn.cursor()
 
     target = (muscle_group or body_part or "").strip().lower()
-    where_clause = SLANG_TO_SQL_MAP.get(target)
-
-    if not where_clause:
-        where_clause = f"(LOWER(target_muscle) LIKE '%{target}%' OR LOWER(body_part) LIKE '%{target}%')"
-
+    where_clause = SLANG_TO_SQL_MAP.get(target, f"(LOWER(target_muscle) LIKE '%{target}%' OR LOWER(body_part) LIKE '%{target}%')")
     exclusion_sql = " AND ".join([f"LOWER(name) NOT LIKE '%{term}%'" for term in EXCLUDED_TERMS])
 
     bodyweight_clause = ""
@@ -276,11 +204,9 @@ def fetch_filtered_candidates(
           AND ({exclusion_sql})
           {bodyweight_clause}
     """
-
     if any(w in limitations.lower() for w in ["back", "lumbar", "spine"]):
         query += " AND LOWER(name) NOT LIKE '%deadlift%' AND LOWER(name) NOT LIKE '%good morning%'"
 
-    # Rank machines/cables/supported setups first for high progressive overload stability
     query += """
         ORDER BY 
           CASE 
@@ -299,7 +225,6 @@ def fetch_filtered_candidates(
           RANDOM()
         LIMIT ?
     """
-
     cursor.execute(query, (limit,))
     rows = cursor.fetchall()
     cols = [col[0] for col in cursor.description]
@@ -309,8 +234,7 @@ def fetch_filtered_candidates(
         item = dict(zip(cols, row))
         item["name"] = clean_exercise_name(item["name"], replace_with_machine=True)
         name_lower = item["name"].lower()
-        is_calf = "calf" in name_lower
-        is_compound = any(kw in name_lower for kw in COMPOUND_KEYWORDS) and not is_calf
+        is_compound = any(kw in name_lower for kw in COMPOUND_KEYWORDS) and "calf" not in name_lower
         item["mechanic"] = "compound" if is_compound else "isolation"
         candidates.append(item)
 
