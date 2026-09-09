@@ -1,4 +1,4 @@
-id,name,bodyPart,target,secondaryMuscles,equipment,instructions,image_path,gif_path
-0001,Barbell Bench Press,chest,pectorals,"['triceps', 'anterior deltoid']",barbell,"['Lie back on flat bench...', 'Press upward...']",images/0001.jpg,gifs/0001.gif
-0002,Barbell Back Squat,upper legs,quadriceps,"['glutes', 'hamstrings']",barbell,"['Rest bar on traps...', 'Squat down...']",images/0002.jpg,gifs/0002.gif
-0003,Pull Up,back,latissimus dorsi,"['biceps', 'rhomboids']",body weight,"['Grip bar overhand...', 'Pull chin above bar...']",images/0003.jpg,gifs/0003.gif
+bodyPart,equipment,id,name,target,secondaryMuscles/0,secondaryMuscles/1,secondaryMuscles/2,secondaryMuscles/3,secondaryMuscles/4,secondaryMuscles/5,image_path,gif_path,instructions
+waist,body weight,1,3/4 sit-up,abs,hip flexors,lower back,,,,,images/0001-2gPfomN.jpg,videos/0001-2gPfomN.gif,"Lie flat on your back with your knees bent and feet flat on the ground.
+Place your hands behind your head with your elbows pointing outwards.
+Engaging your abs, slowly lift your upper body off the ground, curling forward until your torso is at a 45-degree angle."

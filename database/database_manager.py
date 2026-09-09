@@ -313,10 +313,35 @@ class DatabaseManager:
             core_df.to_sql("exercises", self.catalog_conn, if_exists="append", index=False)
 
             muscle_cols = [c for c in df.columns if c.startswith("secondaryMuscles/")]
-            muscles_df = df.melt(id_vars=["id"], value_vars=muscle_cols, value_name="muscle").dropna(subset=["muscle"])
-            muscles_df = muscles_df[["id", "muscle"]].rename(columns={"id": "exercise_id"})
-            muscles_df.to_sql("exercise_secondary_muscles", self.catalog_conn, if_exists="append", index=False)
-            self.catalog_conn.commit()
+
+            if muscle_cols:
+                muscles_df = (
+                    df.melt(id_vars=["id"], value_vars=muscle_cols, value_name="muscle")
+                    .dropna(subset=["muscle"])
+                )
+                # Clean whitespace and case
+                muscles_df["muscle"] = muscles_df["muscle"].astype(str).str.strip().str.lower()
+                
+                # Filter out empty strings and stringified nulls
+                muscles_df = muscles_df[
+                    ~muscles_df["muscle"].isin(["", "nan", "none", "null"])
+                ]
+                
+                # Rename and drop duplicate pairs
+                muscles_df = (
+                    muscles_df[["id", "muscle"]]
+                    .rename(columns={"id": "exercise_id"})
+                    .drop_duplicates()
+                )
+
+                if not muscles_df.empty:
+                    muscles_df.to_sql(
+                        "exercise_secondary_muscles",
+                        self.catalog_conn,
+                        if_exists="append",
+                        index=False
+                    )
+                    self.catalog_conn.commit()
 
     EXCLUDED_BIOMECHANICAL_PATTERNS = ("behind neck", "behind the neck", "upright row")
 
