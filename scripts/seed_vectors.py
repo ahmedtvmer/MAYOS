@@ -19,7 +19,7 @@ from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
 
 Embedding = os.getenv("EMBEDDING_MODEL")
-MODEL_DEVICE = os.getenv("MODEL_DEVICE", "cuda" if torch.cuda.is_available() else "cpu").strip("'\"")
+MODEL_DEVICE = os.getenv("MODEL_DEVICE", "cpu").strip("'\"")
 
 
 logger = MyosLogger().get_logger(__name__)

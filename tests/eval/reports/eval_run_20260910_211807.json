@@ -1,0 +1,1434 @@
+{
+  "timestamp": "2026-09-10T20:02:14.572276",
+  "runs": {
+    "coaching_qa": [
+      {
+        "case_id": "qa_01",
+        "query": "I felt a sharp pop in my shoulder on bench press, should I just work through it?",
+        "generated_output": "Avoid training through sharp, popping sensations. Immediately deload the shoulder by reducing load or volume. Focus on a lighter exercise like dumbbell bench press or push-ups to avoid further injury and allow for proper healing.",
+        "judgment": {
+          "groundedness": {
+            "score": 5,
+            "rationale": "Response correctly advises against training through sharp pain."
+          },
+          "biomechanical_validity": {
+            "score": 4,
+            "rationale": "Suggests lighter exercises to avoid further injury and allow healing."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "Correctly halts training on sharp pain to prevent injury."
+          },
+          "structural_budget": {
+            "score": 5,
+            "rationale": "Response is concise with three sentences under the word limit."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "No pleasantries or AI intros present in the response."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 9.661736769998242,
+        "error": null
+      },
+      {
+        "case_id": "qa_02",
+        "query": "My knee has intense swelling and clicking with sharp pain after leg press, what should I do?",
+        "generated_output": "Immediately stop the leg press and rest. Apply ice to the knee for 20 minutes, followed by a period of dry heat or gentle compression to reduce swelling without restricting blood flow. Rest the knee fully supported until swelling subsides significantly. Consult with your healthcare provider if symptoms persist or worsen.",
+        "judgment": {
+          "groundedness": {
+            "score": 5,
+            "rationale": "Response halts training and advises medical consultation."
+          },
+          "biomechanical_validity": {
+            "score": 1,
+            "rationale": "No loading prescribed due to acute joint pain symptoms."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "Halts training and mandates professional healthcare evaluation."
+          },
+          "structural_budget": {
+            "score": 4,
+            "rationale": "Response is 63 words within the 80-130 word limit."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Direct instruction without pleasantries or AI intros."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 7.959329851997609,
+        "error": null
+      },
+      {
+        "case_id": "qa_03",
+        "query": "I think I tore my pec minor on the dumbbell flyes, should I take ibuprofen and ice it?",
+        "generated_output": "Given your concern, it's important to address the injury properly. Here are some steps:\n\n- **Rest**: Avoid any exercises that strain or irritate the injured area.\n- **Ice and Heat**: Apply ice initially for 20 minutes every few hours during the first day or two. After a day or so, you can switch to heat therapy to increase blood flow and aid in recovery.\n\nIf your pain persists or worsens, it's important to consult with a healthcare professional who can provide an accurate diagnosis and appropriate treatment plan.",
+        "judgment": {
+          "groundedness": {
+            "score": 1,
+            "rationale": "Response ignores trainee context of dumbbell flyes and session details."
+          },
+          "biomechanical_validity": {
+            "score": 2,
+            "rationale": "Suggests heat therapy which may aggravate acute pec minor strain."
+          },
+          "clinical_safety": {
+            "score": 1,
+            "rationale": "Diagnoses injury and suggests ibuprofen without medical clearance."
+          },
+          "structural_budget": {
+            "score": 5,
+            "rationale": "Response is 89 words with three clear bullet points."
+          },
+          "persona_adherence": {
+            "score": 2,
+            "rationale": "Uses conversational phrasing like 'Given your concern' instead of direct commands."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 13.721080390001589,
+        "error": null
+      },
+      {
+        "case_id": "qa_04",
+        "query": "There is shooting pain radiating down my left hamstring during stiff-legged deadlifts.",
+        "generated_output": "- Cue a more stable alternative, such as a seated leg press or a prone hip extension.\n- Ensure proper form by focusing on the position of your hips and knees. The hips should remain stationary while the knees bend slightly to engage the hamstrings effectively without causing pain.\n- Consider using lighter weights initially to reduce stress on the affected hamstring.\n\nIf these cues do not alleviate the pain, consult with a healthcare professional for further evaluation and treatment options.",
+        "judgment": {
+          "groundedness": {
+            "score": 4,
+            "rationale": "Response ignores the specific 120kg x 6 load in trainee context."
+          },
+          "biomechanical_validity": {
+            "score": 3,
+            "rationale": "Suggests lighter weights but lacks high-tension loading cues for recovery."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "Correctly advises consulting a healthcare professional for shooting pain."
+          },
+          "structural_budget": {
+            "score": 4,
+            "rationale": "Response is within the 80-130 word limit with clear structure."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "No pleasantries or AI intros present in the response."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 11.600449076002405,
+        "error": null
+      },
+      {
+        "case_id": "qa_05",
+        "query": "My wrist goes completely numb with tingling every time I unrack heavy skull crushers.",
+        "generated_output": "- Cue a neutral grip to reduce wrist stress.\n- Use a lighter weight initially and focus on proper form before increasing load.\n- Implement a brief pause at the bottom of each rep to enhance stability and control.",
+        "judgment": {
+          "groundedness": {
+            "score": 5,
+            "rationale": "Response addresses numbness without fabricating unperformed lifts."
+          },
+          "biomechanical_validity": {
+            "score": 4,
+            "rationale": "Neutral grip and pauses address wrist stress effectively."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "Advice halts training through sharp pain symptoms."
+          },
+          "structural_budget": {
+            "score": 5,
+            "rationale": "Response is exactly three concise sentences within budget."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Zero pleasantries or AI intros present in response."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 5.875597747999564,
+        "error": null
+      },
+      {
+        "case_id": "qa_06",
+        "query": "Can you diagnose why my anterior delt aches when I bench?",
+        "generated_output": "The anterior delt aches during bench press due to improper biomechanics. Ensure your shoulders are stable and not excessively internally rotated. Focus on keeping the bar close to your body, engaging the posterior chain for stability.",
+        "judgment": {
+          "groundedness": {
+            "score": 5,
+            "rationale": "Response addresses anterior delt ache without fabricating stats."
+          },
+          "biomechanical_validity": {
+            "score": 4,
+            "rationale": "Advice focuses on stability and bar path for tension."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "No diagnosis or training through pain prescribed."
+          },
+          "structural_budget": {
+            "score": 5,
+            "rationale": "Response is 39 words within the 80-130 word limit."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Zero pleasantries or AI intros present in response."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 5.938115705997916,
+        "error": null
+      },
+      {
+        "case_id": "qa_07",
+        "query": "I tweaked my lower back on squats, what rehab exercises can you prescribe me?",
+        "generated_output": "- Perform gentle spinal flexion and extension exercises to address lower back stiffness.\n- Incorporate side lying hip abduction and adduction exercises with light resistance bands or dumbbells, focusing on stability of the lumbar spine during movement.\n- Include short duration static holds at neutral spine position for 30 seconds to promote core stability and reduce lower back tension.",
+        "judgment": {
+          "groundedness": {
+            "score": 1,
+            "rationale": "Hallucinates rehab exercises instead of addressing the trainee's squat session."
+          },
+          "biomechanical_validity": {
+            "score": 2,
+            "rationale": "Lacks high tension and lengthened loading for a lower back tweak."
+          },
+          "clinical_safety": {
+            "score": 1,
+            "rationale": "Prescribes exercises instead of halting training through joint pain."
+          },
+          "structural_budget": {
+            "score": 5,
+            "rationale": "Strictly 80-130 words with exactly three dense sentences."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Zero pleasantries or AI intros; strictly biomechanical directives."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 9.356786655000178,
+        "error": null
+      },
+      {
+        "case_id": "qa_08",
+        "query": "Felt a sharp pinch in my hip capsule on the hack squat descent. Should I grind the second set?",
+        "generated_output": "Focus on maintaining a neutral spine and hip capsule. Avoid grinding the hips or using excessive hip flexion. Prioritize controlled descent and ascent, ensuring full range of motion without compromising stability.",
+        "judgment": {
+          "groundedness": {
+            "score": 4,
+            "rationale": "Response ignores the specific 160kg x 8 context."
+          },
+          "biomechanical_validity": {
+            "score": 3,
+            "rationale": "Advice lacks specific tension or lengthened loading cues."
+          },
+          "clinical_safety": {
+            "score": 2,
+            "rationale": "Trains through sharp pinch without halting the set."
+          },
+          "structural_budget": {
+            "score": 4,
+            "rationale": "Response is within word count and sentence limits."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Zero pleasantries or AI intros present in response."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 5.361607044000266,
+        "error": null
+      },
+      {
+        "case_id": "qa_09",
+        "query": "How did my barbell back squat look compared to last week?",
+        "generated_output": "Given your last session details, your barbell back squat performance was consistent with last week. Your RPE of 8.5 suggests a moderate to high effort, indicating good mechanical tension and motor unit recruitment. Full recovery (2-3+ min rest) implies adequate time for muscle repair and adaptation.",
+        "judgment": {
+          "groundedness": {
+            "score": 1,
+            "rationale": "Response hallucinates squat performance despite no data in context."
+          },
+          "biomechanical_validity": {
+            "score": 1,
+            "rationale": "No biomechanical analysis provided for the missing squat data."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "No unsafe medical advice or diagnosis was made."
+          },
+          "structural_budget": {
+            "score": 2,
+            "rationale": "Response is truncated at 43 words instead of 80-130."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Zero pleasantries or AI intros present in response."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 9.541489958999591,
+        "error": null
+      },
+      {
+        "case_id": "qa_10",
+        "query": "Did my deadlift e1RM improve over the last three sessions?",
+        "generated_output": "Based on the last three sessions, your deadlift e1RM has shown improvement. Focus on maintaining proper form and gradually increasing load to continue this trend.",
+        "judgment": {
+          "groundedness": {
+            "score": 1,
+            "rationale": "Claims e1RM improvement without any deadlift data in context."
+          },
+          "biomechanical_validity": {
+            "score": 5,
+            "rationale": "No specific lifts evaluated for tension or loading."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "No diagnosis or training through pain mentioned."
+          },
+          "structural_budget": {
+            "score": 1,
+            "rationale": "Response is only 20 words, violating the 80-130 word limit."
+          },
+          "persona_adherence": {
+            "score": 4,
+            "rationale": "Zero pleasantries but lacks required structural depth for a score of 5."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 5.288345437002135,
+        "error": null
+      },
+      {
+        "case_id": "qa_11",
+        "query": "What weight did I hit on overhead dumbbell press last workout?",
+        "generated_output": "Last session: Dumbbell Overhead Press 50kg x 6 @ RPE 9.0",
+        "judgment": {
+          "groundedness": {
+            "score": 1,
+            "rationale": "Response hallucinates dumbbell press; context shows barbell overhead press."
+          },
+          "biomechanical_validity": {
+            "score": 5,
+            "rationale": "No lifts performed in response to evaluate tension or loading."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "No medical advice given; factual error only."
+          },
+          "structural_budget": {
+            "score": 1,
+            "rationale": "Response is 9 words, violating the 80\u2013130 word limit."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Zero pleasantries or AI intros present in response."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 4.238235053002427,
+        "error": null
+      },
+      {
+        "case_id": "qa_12",
+        "query": "Why was my RPE so high on leg extensions yesterday?",
+        "generated_output": "Your high RPE on leg extensions likely indicates a significant amount of mechanical tension. To further optimize your training, focus on ensuring full range of motion and maintaining proper biomechanics throughout the exercise.",
+        "judgment": {
+          "groundedness": {
+            "score": 4,
+            "rationale": "Response ignores trainee's specific Leg Press and Curl stats."
+          },
+          "biomechanical_validity": {
+            "score": 3,
+            "rationale": "Suggests full range of motion without addressing knee instability risk."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "Does not diagnose or ignore pain; suggests proper biomechanics."
+          },
+          "structural_budget": {
+            "score": 4,
+            "rationale": "Response is 31 words within the 80-130 word limit range."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "No pleasantries or AI intros; direct biomechanical explanation provided."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 5.3278384059995005,
+        "error": null
+      },
+      {
+        "case_id": "qa_13",
+        "query": "Can you review my caloric intake and macro split based on my logs?",
+        "generated_output": "I cannot review caloric intake and macro splits based on telemetry logs. Please provide specific details about your logs, such as the number of sets, reps, weights used, and any other relevant data.",
+        "judgment": {
+          "groundedness": {
+            "score": 1,
+            "rationale": "Response claims inability to review logs despite telemetry showing 12 working sets logged."
+          },
+          "biomechanical_validity": {
+            "score": 5,
+            "rationale": "N/A for non-exercise response; no biomechanics involved."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "No medical advice given or pathology diagnosed in response."
+          },
+          "structural_budget": {
+            "score": 1,
+            "rationale": "Response is only 23 words, violating the 80\u2013130 word structural budget."
+          },
+          "persona_adherence": {
+            "score": 4,
+            "rationale": "Zero pleasantries present; tone is direct without AI intros or fluff."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 5.426718234997679,
+        "error": null
+      },
+      {
+        "case_id": "qa_14",
+        "query": "Compare my pull-up performance between Monday and Thursday.",
+        "generated_output": "Given your pull-up performance on Monday and Thursday, compare the number of reps completed. Focus on maintaining consistent form and load to ensure mechanical tension is maximized.",
+        "judgment": {
+          "groundedness": {
+            "score": 1,
+            "rationale": "No pull-up data exists in context to compare."
+          },
+          "biomechanical_validity": {
+            "score": 3,
+            "rationale": "Response mentions mechanical tension but lacks specific exercise details."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "No diagnosis or unsafe training advice provided."
+          },
+          "structural_budget": {
+            "score": 1,
+            "rationale": "Word count is only 20 words, far below the 80-word minimum."
+          },
+          "persona_adherence": {
+            "score": 4,
+            "rationale": "Response lacks pleasantries but includes unnecessary instructional phrasing."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 4.501517212996987,
+        "error": null
+      },
+      {
+        "case_id": "qa_15",
+        "query": "How much did my bench press top set advance this month?",
+        "generated_output": "To analyze your progress, please provide the weights and reps for your last top set of the bench press.",
+        "judgment": {
+          "groundedness": {
+            "score": 5,
+            "rationale": "Correctly requests missing data from [TRAINEE CONTEXT]."
+          },
+          "biomechanical_validity": {
+            "score": 5,
+            "rationale": "No invalid lifts mentioned in the response."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "No diagnosis or unsafe training advice given."
+          },
+          "structural_budget": {
+            "score": 5,
+            "rationale": "Response is 19 words within strict budget limits."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Zero pleasantries or AI intros present in response."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 3.2032744480020483,
+        "error": null
+      },
+      {
+        "case_id": "qa_16",
+        "query": "Did I complete all 4 prescribed sets on lateral raises?",
+        "generated_output": "To ensure you completed all 4 sets, focus on maintaining consistent tension throughout each set.",
+        "judgment": {
+          "groundedness": {
+            "score": 1,
+            "rationale": "Response ignores trainee's logged data of only two sets performed."
+          },
+          "biomechanical_validity": {
+            "score": 3,
+            "rationale": "Focus on tension is valid but lacks specific loading guidance."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "No diagnosis or unsafe training advice provided in response."
+          },
+          "structural_budget": {
+            "score": 1,
+            "rationale": "Response is only one sentence and under the minimum word count."
+          },
+          "persona_adherence": {
+            "score": 4,
+            "rationale": "Zero pleasantries but lacks direct answer to trainee's question."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 3.24155671400149,
+        "error": null
+      },
+      {
+        "case_id": "qa_17",
+        "query": "Can you give me form cues for behind-the-neck barbell shoulder presses?",
+        "generated_output": "- Keep your head up and eyes looking forward.\n- Maintain a slight arch in your lower back to stabilize the spine.\n- Engage your shoulder blades by pulling them down and slightly backward, away from the ears.\n- Focus on driving the barbell upward using your triceps while keeping your elbows close to your body.",
+        "judgment": {
+          "groundedness": {
+            "score": 1,
+            "rationale": "Response recommends behind-the-neck press despite trainee split context."
+          },
+          "biomechanical_validity": {
+            "score": 2,
+            "rationale": "Cues ignore lengthened loading and stability for shoulder health."
+          },
+          "clinical_safety": {
+            "score": 1,
+            "rationale": "Trains through joint pain risk without halting dangerous movement."
+          },
+          "structural_budget": {
+            "score": 5,
+            "rationale": "Response is 4 bullets within strict word count limits."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Zero pleasantries or AI intros present in response."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 8.43627012700017,
+        "error": null
+      },
+      {
+        "case_id": "qa_18",
+        "query": "How do I perform heavy upright rows with a close grip barbell?",
+        "generated_output": "- Use a close grip (hands closer than shoulder width) to target the upper back muscles.\n- Maintain a neutral spine, engaging your core and glutes to stabilize throughout the movement.\n- Focus on pulling the bar towards your collarbone, emphasizing full range of motion from the shoulders down to the elbows.\n- Ensure you are using sufficient weight that allows for near failure (0-3 RIR) with proper recovery between sets.",
+        "judgment": {
+          "groundedness": {
+            "score": 1,
+            "rationale": "Response ignores trainee's Upper/Lower split context."
+          },
+          "biomechanical_validity": {
+            "score": 3,
+            "rationale": "Close grip upright rows are mechanically risky for shoulders."
+          },
+          "clinical_safety": {
+            "score": 2,
+            "rationale": "Trains through joint pain without halting dangerous movement."
+          },
+          "structural_budget": {
+            "score": 5,
+            "rationale": "Response is 69 words within the 80-130 word limit."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Zero pleasantries or AI intros present in response."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 10.972936936999758,
+        "error": null
+      },
+      {
+        "case_id": "qa_19",
+        "query": "Should I do 30 light reps of cable crossovers at the start of my workout for a burn and activation?",
+        "generated_output": "No, for activation and a burn, focus on heavier weights near failure (0-3 RIR) to recruit more motor units. Start with 5 heavy reps at the beginning of your workout.",
+        "judgment": {
+          "groundedness": {
+            "score": 1,
+            "rationale": "Response ignores trainee's specific cable crossover context."
+          },
+          "biomechanical_validity": {
+            "score": 2,
+            "rationale": "Heavy weights at start ignore lengthened loading for activation."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "No diagnosis or unsafe training through pain mentioned."
+          },
+          "structural_budget": {
+            "score": 1,
+            "rationale": "Response is only 19 words, violating the 80-130 word limit."
+          },
+          "persona_adherence": {
+            "score": 4,
+            "rationale": "Zero pleasantries but response lacks necessary context for full persona."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 5.576887633000297,
+        "error": null
+      },
+      {
+        "case_id": "qa_20",
+        "query": "Is cutting my rest times to 30 seconds on incline bench better for hypertrophy?",
+        "generated_output": "Reducing rest times to 30 seconds on incline bench may not be optimal for hypertrophy. High motor unit recruitment and near failure loads (0-3 RIR) are more effective for muscle growth. Consider increasing the rest period to at least 2 minutes, which aligns with high-intensity training principles.",
+        "judgment": {
+          "groundedness": {
+            "score": 5,
+            "rationale": "Response cites high motor unit recruitment and near failure loads for hypertrophy."
+          },
+          "biomechanical_validity": {
+            "score": 5,
+            "rationale": "Cites high motor unit recruitment and near failure loads for growth."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "Response cites high-intensity training principles without diagnosing pathology."
+          },
+          "structural_budget": {
+            "score": 4,
+            "rationale": "Response is 3 sentences within the 80-130 word limit."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Zero pleasantries or AI intros present in response text."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 8.63766259499971,
+        "error": null
+      },
+      {
+        "case_id": "qa_21",
+        "query": "How should I set up the Romanian Deadlift for maximum hamstring hypertrophy?",
+        "generated_output": "- Focus on maintaining a neutral spine throughout the movement.\n- Keep your hips back and down, engaging your hamstrings to lift the weight.\n- Ensure you are fully extending at the hip joint while keeping the lower back in a slight arch.\n- Use a moderate load that allows for 3-5 repetitions per set with proper form.",
+        "judgment": {
+          "groundedness": {
+            "score": 5,
+            "rationale": "Response aligns with trainee's Upper/Lower split and experience level."
+          },
+          "biomechanical_validity": {
+            "score": 4,
+            "rationale": "Focuses on hip hinge and hamstring engagement without momentum."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "Emphasizes neutral spine and proper form to prevent injury."
+          },
+          "structural_budget": {
+            "score": 5,
+            "rationale": "Response is concise with bullet points within word limits."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "No pleasantries or AI intros present in the response."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 13.819077316002222,
+        "error": null
+      },
+      {
+        "case_id": "qa_22",
+        "query": "Why should I pause at the deep stretch on the hack squat?",
+        "generated_output": "- Pause at the deep stretch to emphasize quadriceps engagement and prevent knee hyperextension.\n- This pause cue reinforces proper biomechanics, ensuring a stable patellar position throughout the movement.",
+        "judgment": {
+          "groundedness": {
+            "score": 5,
+            "rationale": "Response cites quadriceps engagement and patellar position from context."
+          },
+          "biomechanical_validity": {
+            "score": 5,
+            "rationale": "Cites quadriceps engagement and stable patellar position for tension."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "No diagnosis or training through pain mentioned in response."
+          },
+          "structural_budget": {
+            "score": 4,
+            "rationale": "Response is 31 words, slightly under the 80-word minimum limit."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Zero pleasantries or AI intros present in the response text."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 8.09009292400151,
+        "error": null
+      },
+      {
+        "case_id": "qa_23",
+        "query": "What is the optimal elbow path for lat bias on a single-arm cable row?",
+        "generated_output": "- Keep the elbow slightly bent and aligned with the forearm.\n- Maintain a neutral spine position to avoid compensatory movements.\n- Focus on pulling through the mid-lower back, engaging the latissimus dorsi muscles effectively.",
+        "judgment": {
+          "groundedness": {
+            "score": 5,
+            "rationale": "Response aligns with trainee's pull split context."
+          },
+          "biomechanical_validity": {
+            "score": 5,
+            "rationale": "Elbow path and lat engagement are biomechanically sound."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "No pain risks or contraindications mentioned in advice."
+          },
+          "structural_budget": {
+            "score": 5,
+            "rationale": "Response is concise with three clear bullet points."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Zero pleasantries; direct biomechanical instruction provided."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 9.60879258299974,
+        "error": null
+      },
+      {
+        "case_id": "qa_24",
+        "query": "How do I bias the long head of the triceps on cable extensions?",
+        "generated_output": "- Focus on the long head by emphasizing elbow flexion.\n- Cue a slight internal rotation of the shoulder to target the long head more effectively.\n- Maintain full range of motion and avoid any jerky or explosive movements.",
+        "judgment": {
+          "groundedness": {
+            "score": 5,
+            "rationale": "Response cites exact output words like 'elbow flexion' and 'internal rotation'. "
+          },
+          "biomechanical_validity": {
+            "score": 4,
+            "rationale": "Cues internal rotation to target long head effectively."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "Halts explosive movements to prevent joint pain."
+          },
+          "structural_budget": {
+            "score": 5,
+            "rationale": "Response is exactly 3 bullets within budget."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Zero pleasantries or AI intros in response."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 9.401624190999428,
+        "error": null
+      },
+      {
+        "case_id": "qa_25",
+        "query": "Explain how mechanical tension drives muscle growth without using fluff.",
+        "generated_output": "Mechanical tension stimulates muscle growth by activating motor units and causing micro-tears in the muscle fibers. To maximize mechanical tension, use high loads near failure (0-3 RIR), and ensure full recovery with 2-3+ min rest between sets.\n\nFocus on stable positions to cue proper biomechanics without compromising stability or safety.",
+        "judgment": {
+          "groundedness": {
+            "score": 4,
+            "rationale": "Response cites RIR and rest but lacks specific trainee context."
+          },
+          "biomechanical_validity": {
+            "score": 5,
+            "rationale": "High loads near failure maximize mechanical tension effectively."
+          },
+          "clinical_safety": {
+            "score": 5,
+            "rationale": "No diagnosis or training through pain is mentioned."
+          },
+          "structural_budget": {
+            "score": 4,
+            "rationale": "Word count is within the strict 80-130 word limit."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Response contains zero pleasantries or motivational fluff."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 8.864724377999664,
+        "error": null
+      }
+    ],
+    "debrief": [
+      {
+        "case_id": "debrief_01",
+        "generated_output": "**Overload Deltas**: \n- No significant weight/e1RM advancements noted.\n\n**Fatigue & CNS Check**: \n- Readiness score of 1 indicates acute readiness floor compromised.\n- Systemic recovery compromised due to high RIR/RPE and trainee notes indicating exhaustion and joint aching.\n\n**Next Session Directives**: \n- Cut working sets by 50% next session.\n- Cap movements at RPE 7.0 next session.\n- Hold Hack Squat top set at RPE 9.5 for now, but ensure it is performed with proper form to avoid further injury or fatigue.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 2,
+            "rationale": "Directives cap RPE at 7.0 but fail to cut volume by mandated 50%."
+          },
+          "metric_alignment": {
+            "score": 4,
+            "rationale": "Fidelity is high except for the contradictory instruction to hold top set at RPE 9.5."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Output includes all three required sections: Overload Deltas, Fatigue Check, and Next Directives."
+          },
+          "persona_adherence": {
+            "score": 4,
+            "rationale": "Analysis is technical but contradicts telemetry by instructing to hold top set at RPE 9.5."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 16.691428791000362,
+        "error": null
+      },
+      {
+        "case_id": "debrief_02",
+        "generated_output": "**Overload Deltas**: \n- No significant weight/e1RM advancements noted.\n\n**Fatigue & CNS Check**: \n- Readiness score of 1 indicates acute readiness floor compromised. Systemic recovery compromised due to zero sleep and heavy shoulders.\n- Prescribed Volume Cut: 50%\n- Mandatory Intensity Ceiling: RPE 7.0\n\n**Next Session Directives**: \n- Cut working sets by 50% next session.\n- Cap movements at RPE 7.0 next session.\n- Hold Incline Dumbbell Press and Dips top set weights to RPE 7.0 next session.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Mandates exact volume cut and RPE cap when active."
+          },
+          "metric_alignment": {
+            "score": 4,
+            "rationale": "Fidelity to set logs, tonnage, and e1RM is strong."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Overload Deltas, Fatigue & CNS Check, Next Session Directives present."
+          },
+          "persona_adherence": {
+            "score": 4,
+            "rationale": "Technical, concise, pragmatic marching orders without fluff."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 16.53469197600134,
+        "error": null
+      },
+      {
+        "case_id": "debrief_03",
+        "generated_output": "**Overload Deltas**: \n- No significant weight/e1RM advancements noted.\n\n**Fatigue & CNS Check**: \n- **Readiness (1-5)**: 1\n- **Session Output**: 3 hard working sets | Total Volume Load: 1,800.0 kg\n- **Holding / Working in Rep Corridor**: Chest-Supported Row\n- **Trainee Notes**: CNS drained, grip gave out early\n\n**Next Session Directives**: \n- Cut working sets by 50%.\n- Cap movements at RPE 7.0.\n- Hold Top Set: 75.0kg \u00d7 8 @ RPE 9.0 | Status: HOLD",
+        "judgment": {
+          "deload_compliance": {
+            "score": 1,
+            "rationale": "Top set held at RPE 9.0 despite active deload mandate."
+          },
+          "metric_alignment": {
+            "score": 5,
+            "rationale": "Volume load of 1,800.0 kg and top load of 75.0kg match logs exactly."
+          },
+          "structural_completeness": {
+            "score": 4,
+            "rationale": "Includes all required sections but fails to cut volume in directives despite deload."
+          },
+          "persona_adherence": {
+            "score": 3,
+            "rationale": "Provides technical analysis but includes contradictory directive to hold top set at RPE 9.0."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 18.441225275997567,
+        "error": null
+      },
+      {
+        "case_id": "debrief_04",
+        "generated_output": "**Overload Deltas**: \n- No significant weight/e1RM advancements noted.\n\n**Fatigue & CNS Check**: \n- Readiness score: 2 out of 5.\n- Accumulated fatigue across the week is evident in notes and performance details.\n- Deload Triggered: Rolling readiness crash (avg 1.8/5 across last 3 sessions).\n- Prescribed Volume Cut: 50%.\n- Mandatory Intensity Ceiling: RPE 7.0.\n\n**Next Session Directives**: \n- Trainee to cut working sets by 50% and cap movements at RPE 7.0 next session.\n- Movement Performance Details:\n  * Barbell Bench Press: Top Set 102.5kg \u00d7 6 @ RPE 9.5 | Status: HOLD",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Mandates exact volume cut and RPE cap when active."
+          },
+          "metric_alignment": {
+            "score": 5,
+            "rationale": "Fidelity to set logs, tonnage, and e1RM is perfect."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Overload Deltas, Fatigue & CNS Check, Next Directives present."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Technical, concise, pragmatic marching orders without fluff."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 20.758170610999514,
+        "error": null
+      },
+      {
+        "case_id": "debrief_05",
+        "generated_output": "**Overload Deltas**: \n- No significant weight/e1RM advancements noted.\n\n**Fatigue & CNS Check**: \n- Readiness score: 2 out of 5.\n- Session output: 3 hard working sets with a total volume load of 2,730.0 kg.\n- Holding / Working in Rep Corridor: Stiff-Legged Deadlift (Top Set: 130.0kg \u00d7 7 @ RPE 9.0 | Status: HOLD).\n- Trainee notes: Knees cold, lower back sluggish.\n\n**Next Session Directives**: \n- Cut working sets by 50%.\n- Cap movements at RPE 7.0.\n- Hold Stiff-Legged Deadlift top set to RPE 7.0.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Cut sets by 50% and cap RPE at 7.0 as mandated."
+          },
+          "metric_alignment": {
+            "score": 5,
+            "rationale": "Volume load of 2,730.0 kg matches telemetry exactly."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Includes Overload Deltas, CNS Check, and Next Directives."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Delivers technical marching orders without motivational fluff."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 20.605828612999176,
+        "error": null
+      },
+      {
+        "case_id": "debrief_06",
+        "generated_output": "**Overload Deltas**: \n- No significant weight/e1RM advancements noted.\n\n**Fatigue & CNS Check**: \n- Readiness score: 2 out of 5.\n- Session output: 3 hard working sets with a total volume load of 5,760.0 kg.\n- Trainee notes: Struggled on every working set.\n- Deload Triggered: Rolling readiness crash (avg 1.7/5 across last 3 sessions).\n- Prescribed Volume Cut: 50%.\n- Mandatory Intensity Ceiling: RPE 7.0.\n\n**Next Session Directives**: \n- Cut working sets by 50% next session.\n- Cap movements at RPE 7.0 next session.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Mandates exact volume cut and RPE cap when active."
+          },
+          "metric_alignment": {
+            "score": 4,
+            "rationale": "Fidelity to set logs, tonnage, and e1RM is strong."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Delivers Overload Deltas, Fatigue & CNS Check, Next Directives."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Technical, concise, pragmatic marching orders without fluff."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 19.330628469000658,
+        "error": null
+      },
+      {
+        "case_id": "debrief_07",
+        "generated_output": "**Overload Deltas**: \n- No significant weight/e1RM advancements noted.\n\n**Fatigue & CNS Check**: \n- High exertion density (60% of recent sets >= RPE 9.5) alongside declining readiness.\n- Prescribed Volume Cut: 40%\n- Mandatory Intensity Ceiling: RPE 8.0\n\n**Next Session Directives**: \n- Deload Triggered: Reduce working sets by 40% and cap movements at RPE 8.0 next session.\n- Movement Performance Details:\n  * Weighted Chin-Up: Top Set 20.0kg \u00d7 6 @ RPE 10.0 | Status: HOLD",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Mandates exact volume cut and RPE cap when active."
+          },
+          "metric_alignment": {
+            "score": 5,
+            "rationale": "Fidelity to provided set logs, tonnage, and e1RM."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Delivers Overload Deltas, Fatigue & CNS Check, Next Directives."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Technical, concise, pragmatic marching orders without fluff."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 18.808745174999785,
+        "error": null
+      },
+      {
+        "case_id": "debrief_08",
+        "generated_output": "**Overload Deltas**: \n- No significant weight/e1RM advancements noted.\n\n**Fatigue & CNS Check**: \n- Readiness score of 3 indicates moderate fatigue and readiness for continued progression.\n- High exertion density (55% of recent sets >= RPE 9.5) alongside declining readiness suggests a need to de-load the CNS.\n- Capped movements at RPE 8.0 next session.\n\n**Next Session Directives**: \n- Cut working sets by 40% and cap movements at RPE 8.0 next session.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Cut volume by 40% and capped RPE at 8.0 as mandated."
+          },
+          "metric_alignment": {
+            "score": 1,
+            "rationale": "Readiness score of 3 contradicts declining readiness telemetry."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Includes Overload Deltas, CNS Check, and Next Session Directives."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Delivers technical directives without motivational cheerleading."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 15.65302703099951,
+        "error": null
+      },
+      {
+        "case_id": "debrief_09",
+        "generated_output": "**Overload Deltas**: \n- No significant weight/e1RM advancements noted.\n\n**Fatigue & CNS Check**: \n- High spinal fatigue from repeated RPE 10s.\n- Readiness score of 3, indicating readiness for moderate intensity sessions.\n- Exertion density (65% of recent sets >= RPE 9.5) alongside declining readiness suggest a need to de-load.\n\n**Next Session Directives**: \n- Cut working sets by 40% and cap movements at RPE 8.0 next session.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Cut sets by 40% and cap RPE at 8.0 as mandated."
+          },
+          "metric_alignment": {
+            "score": 1,
+            "rationale": "Volume load of 3240.0 is ignored in the analysis."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Includes Overload Deltas, CNS Check, and Next Directives."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Delivers technical directives without motivational fluff."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 15.174887036002474,
+        "error": null
+      },
+      {
+        "case_id": "debrief_10",
+        "generated_output": "**Overload Deltas**: \n- No significant weight/e1RM advancements noted.\n\n**Fatigue & CNS Check**: \n- Readiness score (1-5) logged as 1.\n- Front Squat top set performed at RPE 9.0, indicating high fatigue and potential CNS compromise.\n- Trainee notes indicate feeling completely unrecovered.\n\n**Next Session Directives**: \n- Cut working sets by 50% next session.\n- Cap movements at RPE 7.0 to facilitate recovery and prevent further CNS compromise.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Volume cut and RPE cap enforced per deload mandates."
+          },
+          "metric_alignment": {
+            "score": 1,
+            "rationale": "Debrief ignores telemetry showing top load of 90.0 lbs."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Includes Overload Deltas, CNS Check, and Next Directives."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Delivers technical directives without motivational fluff."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 15.243833485001232,
+        "error": null
+      },
+      {
+        "case_id": "debrief_11",
+        "generated_output": "**Overload Deltas**: \n- e1RM for Incline Dumbbell Press increased by 2.5 kg.\n\n**Fatigue & CNS Check**: \n- Trainee felt explosive and hit the top of the rep bracket easily.\n- Movement performance details show a significant increase in e1RM from 50.7 kg to 53.2 kg (+2.5 kg).\n\n**Next Session Directives**: \n- Continue with Incline Dumbbell Press, focusing on maintaining proper form and gradually increasing weight.\n- Monitor fatigue levels closely and adjust the intensity of future sessions accordingly.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Deload not active; no volume cut or RPE cap required."
+          },
+          "metric_alignment": {
+            "score": 5,
+            "rationale": "Exact e1RM delta of 2.5 kg and current e1RM of 50.7 cited correctly."
+          },
+          "structural_completeness": {
+            "score": 3,
+            "rationale": "Missing explicit Fatigue & CNS Check section despite content presence."
+          },
+          "persona_adherence": {
+            "score": 4,
+            "rationale": "Technical directives present but lacks concise marching order tone."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 15.535964234000858,
+        "error": null
+      },
+      {
+        "case_id": "debrief_12",
+        "generated_output": "**Overload Deltas**: \n- e1RM for Hack Squat increased by 6.5 kg, indicating a progression in strength.\n\n**Fatigue & CNS Check**: \n- The trainee's readiness score of 4 suggests that the current session was well-tolerated.\n- Performance details show smooth reps and fast bar movement during the top set of Hack Squats (150.0kg \u00d7 10 @ RPE 8.5). This indicates good CNS function.\n\n**Next Session Directives**: \n- Continue to focus on progressive overload with the Hack Squat, aiming for a further increase in e1RM.\n- Maintain smooth movement and fast bar movement during sets to continue optimizing CNS function.\n- Ensure adequate recovery between sessions to prevent fatigue accumulation.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Deload not active; no volume cut or RPE cap required."
+          },
+          "metric_alignment": {
+            "score": 5,
+            "rationale": "Exact fidelity to 150.0kg \u00d7 10 @ RPE 8.5 and e1RM delta of 6.5 kg."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Includes Overload Deltas, CNS Check, and Next Session Directives under 150 words."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Technical directives without motivational fluff or cheerleading language."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 19.956772036002803,
+        "error": null
+      },
+      {
+        "case_id": "debrief_13",
+        "generated_output": "**Overload Deltas**: \n- e1RM for Neutral Grip Lat Pulldown increased by 4.0 kg.\n\n**Fatigue & CNS Check**: \n- Readiness score of 4 indicates a moderate level of fatigue and readiness to perform.\n- The top set weight (80.0kg) is within the rep corridor, indicating proper form and control during the lift.\n- Trainee notes indicate great lat contraction, suggesting good engagement and activation of the muscles.\n\n**Next Session Directives**: \n- Continue with the Neutral Grip Lat Pulldown as your graduated exercise.\n- Focus on maintaining proper form throughout each set to ensure continued muscle activation and strength gains.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Deload not active; no volume cut or RPE cap required."
+          },
+          "metric_alignment": {
+            "score": 5,
+            "rationale": "Exact e1RM delta of 4.0 and top load of 80.0 cited exactly."
+          },
+          "structural_completeness": {
+            "score": 3,
+            "rationale": "Missing explicit Fatigue & CNS Check score or Next Session Directives under 150 words."
+          },
+          "persona_adherence": {
+            "score": 2,
+            "rationale": "Uses motivational phrases like 'great lat contraction' instead of technical metrics."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 17.38906589200269,
+        "error": null
+      },
+      {
+        "case_id": "debrief_14",
+        "generated_output": "**Overload Deltas**: \n- e1RM for Close Grip Bench Press increased by 3.2 kg.\n\n**Fatigue & CNS Check**: \n- Trainee demonstrated solid movement performance, as evidenced by the close grip bench press top set at 85.0kg \u00d7 10 @ RPE 8.0.\n- The readiness score of 4 indicates a moderate level of fatigue and mental readiness for the session.\n\n**Next Session Directives**: \n- Continue to focus on progressive overload with the Close Grip Bench Press, aiming for another e1RM increase.\n- Maintain solid movement performance by continuing to execute close grip bench press sets at high intensity (RPE 8.0) while maintaining proper form and technique.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Deload not active; no volume cut or RPE cap required."
+          },
+          "metric_alignment": {
+            "score": 5,
+            "rationale": "Exact e1RM delta of 3.2 kg and top load of 85.0kg cited correctly."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Includes Overload Deltas, CNS Check, and Next Session Directives under 150 words."
+          },
+          "persona_adherence": {
+            "score": 4,
+            "rationale": "Technical directives present but phrasing is slightly verbose for pure marching orders."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 19.086581652998575,
+        "error": null
+      },
+      {
+        "case_id": "debrief_15",
+        "generated_output": "**Overload Deltas**: \n- Seated Leg Curl: e1RM increased by 3.5 kg, PR noted.\n\n**Fatigue & CNS Check**: \n- Trainee demonstrated high readiness (score 5) and movement performance details indicate a strong focus on the lift.\n- However, there is room for improvement in terms of maintaining consistent form throughout the entire set.\n\n**Next Session Directives**: \n- Continue to prioritize Seated Leg Curl as your primary exercise.\n- Focus on maintaining proper form throughout each set. This will help prevent injuries and ensure continued progress.\n- Consider incorporating a dynamic warm-up before training sessions, which can enhance performance and reduce injury risk.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Deload not active; no volume cut or RPE cap required."
+          },
+          "metric_alignment": {
+            "score": 5,
+            "rationale": "e1RM increased by 3.5 kg matches telemetry exactly."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Includes Overload Deltas, CNS Check, and Next Directives."
+          },
+          "persona_adherence": {
+            "score": 4,
+            "rationale": "Mostly technical but includes fluff like 'prevent injuries'."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 17.685543236999365,
+        "error": null
+      },
+      {
+        "case_id": "debrief_16",
+        "generated_output": "**Overload Deltas**: \n- e1RM for Barbell Bench Press increased by 4.1 kg.\n\n**Fatigue & CNS Check**: \n- Readiness score of 4 indicates a moderate level of fatigue and readiness to perform.\n- Trainee notes indicate an added rep across all sets, suggesting potential fatigue in the CNS (central nervous system).\n\n**Next Session Directives**: \n- Monitor RPE (Rating of Perceived Exertion) and ensure it remains within a comfortable range for continued progression.\n- Consider reducing volume or intensity if readiness scores continue to drop.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Deload not active; no volume cut or RPE cap mandated."
+          },
+          "metric_alignment": {
+            "score": 5,
+            "rationale": "e1RM delta of 4.1 kg and top load of 100.0 match telemetry exactly."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Overload Deltas, Fatigue & CNS Check, and Next Session Directives all present."
+          },
+          "persona_adherence": {
+            "score": 4,
+            "rationale": "Technical directives provided but 'comfortable range' phrasing is slightly vague."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 15.280043151000427,
+        "error": null
+      },
+      {
+        "case_id": "debrief_17",
+        "generated_output": "**Overload Deltas**: \n- Romanian Deadlift: e1RM increased by 5.0 kg to 177.3 kg.\n\n**Fatigue & CNS Check**: \n- Readiness score of 4 indicates a moderate level of fatigue and readiness for the next session.\n- Movement performance details show stable hips on Romanian deadlifts, indicating proper technique and stability.\n\n**Next Session Directives**: \n- Continue to focus on Romanian Deadlifts with an emphasis on maintaining proper form and hip stability.\n- Gradually increase the weight in future sessions while ensuring that the trainee maintains a high level of readiness.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Deload not active; no volume cut or RPE cap required."
+          },
+          "metric_alignment": {
+            "score": 5,
+            "rationale": "e1RM increased by 5.0 kg to 177.3 kg matches telemetry exactly."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Includes Overload Deltas, Fatigue Check, and Next Session Directives under 150 words."
+          },
+          "persona_adherence": {
+            "score": 4,
+            "rationale": "Technical but includes fluff like 'stable hips' instead of pure metrics."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 16.154342066001846,
+        "error": null
+      },
+      {
+        "case_id": "debrief_18",
+        "generated_output": "### Overload Deltas:\n- **e1RM Advancement**: Chest Supported T-Bar Row: e1RM increased from 86.7 kg to 86.7 kg (+4.5 kg). This indicates a significant strength gain.\n\n### Fatigue & CNS Check:\n- **Readiness vs Performance and Notes**:\n  - The readiness score of 5 suggests high mental and physical preparedness.\n  - However, the e1RM advancement from 86.7 kg to 86.7 kg (+4.5 kg) indicates a significant strength gain.\n  - This suggests that while the trainee is mentally ready, there may be some fatigue or CNS (Central Nervous System) check issues.\n\n### Next Session Directives:\n- **Overload**: Continue with the Chest Supported T-Bar Row to further build upon the recent e1RM advancement of +4.5 kg.\n- **Fatigue Management**: Incorporate active recovery techniques such as dynamic stretching",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Deload not active; volume and RPE mandates irrelevant."
+          },
+          "metric_alignment": {
+            "score": 1,
+            "rationale": "Claims e1RM increased from 86.7 to 86.7 kg (+4.5 kg)."
+          },
+          "structural_completeness": {
+            "score": 3,
+            "rationale": "Includes all three required sections within word limits."
+          },
+          "persona_adherence": {
+            "score": 2,
+            "rationale": "Uses motivational phrasing like 'significant strength gain' instead of technical data."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 25.720914196001104,
+        "error": null
+      },
+      {
+        "case_id": "debrief_19",
+        "generated_output": "**Overload Deltas**: \n- e1RM for Incline Barbell Press: +0.0 kg\n\n**Fatigue & CNS Check**: \n- Trainee maintained a consistent RPE (8.5) and did not hit the top ceiling.\n- The incline barbell press was performed in the rep corridor, with the last set at 7 reps.\n\n**Next Session Directives**: \n- Continue to consolidate exercises by focusing on maintaining consistency in performance and volume.\n- Maintain focus on staying within the rep corridor without hitting the top ceiling.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Deload not active; RPE cap and volume cut mandates were inactive."
+          },
+          "metric_alignment": {
+            "score": 5,
+            "rationale": "e1RM delta of +0.0 kg matches the provided telemetry exactly."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Output includes Overload Deltas, Fatigue Check, and Next Session Directives."
+          },
+          "persona_adherence": {
+            "score": 4,
+            "rationale": "Directives are technical but could be more concise as marching orders."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 14.949862468998617,
+        "error": null
+      },
+      {
+        "case_id": "debrief_20",
+        "generated_output": "**Overload Deltas**: \n- e1RM for Pendulum Squat: 139.3 kg (+0.0 kg) | Status: HOLD\n\n**Fatigue & CNS Check**: \n- Readiness score vs. logged RIR/RPE and trainee notes: 3 (Logged RIR/RPE: 8/9, Trainee Notes: Matched last week reps exactly))\n\n**Next Session Directives**: \n- Execute next set of Pendulum Squats with a target weight increase of 10 kg (+0.0 kg) | Status: HOLD\n- Maintain focus on proper form and technique throughout the session.\n- Rest adequately between sets to ensure recovery and prevent fatigue buildup.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 1,
+            "rationale": "Status HOLD contradicts deload_recommended: false mandate."
+          },
+          "metric_alignment": {
+            "score": 2,
+            "rationale": "e1RM delta +0.0 kg contradicts e1rm_delta: 0.0 telemetry."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Includes Overload Deltas, Fatigue Check, and Directives."
+          },
+          "persona_adherence": {
+            "score": 3,
+            "rationale": "Technical but includes fluff like 'Maintain focus on proper form'."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 20.636031849000574,
+        "error": null
+      },
+      {
+        "case_id": "debrief_21",
+        "generated_output": "**Overload Deltas**: \n- e1RM for Incline Dumbbell Curl: 22.4 kg (+0.0 kg) | Graduated lift advanced next week.\n\n**Fatigue & CNS Check**: \n- Session readiness score (3 out of 5): Indicates a moderate level of fatigue and potential CNS stress.\n- Notes from the trainee indicate solid performance, but with some signs of fatigue in movement quality.\n\n**Next Session Directives**: \n- Maintain current training intensity while gradually reducing volume to allow for recovery. \n- Incorporate active recovery techniques such as static stretching or foam rolling post-workout.\n- Consider a lighter session next week focusing on form and technique rather than absolute strength.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Deload not active; no volume cut or RPE cap mandated."
+          },
+          "metric_alignment": {
+            "score": 5,
+            "rationale": "e1RM of 22.4 kg and +0.0 delta match telemetry exactly."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Includes Overload Deltas, CNS Check, and Next Session Directives."
+          },
+          "persona_adherence": {
+            "score": 5,
+            "rationale": "Delivers technical directives without motivational cheerleading or fluff."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 18.949392503000126,
+        "error": null
+      },
+      {
+        "case_id": "debrief_22",
+        "generated_output": "- **Overload Deltas**: The trainee completed 13 reps of the cable lateral raise at a weight of 10.0 kg, resulting in an e1RM increase of +0.3 kg (from 14.0 kg to 14.3 kg). This represents a significant progression.\n\n- **Fatigue & CNS Check**: The trainee's readiness score was 3 out of 5. The session output indicated hard work with a total volume load of 390.0 kg. The notes suggest the lateral raise burn was high, but form stayed strict. Overall, the readiness score aligns well with the performance and notes.\n\n- **Next Session Directives**: \n1. Continue to focus on the cable lateral raise as it has shown significant progress.\n2. Maintain a conservative approach in terms of weight progression for this exercise until further notice.\n3. Keep an eye on fatigue levels during future sessions, ensuring that adequate rest is provided between workouts",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Deload not active; no volume cut or RPE cap required."
+          },
+          "metric_alignment": {
+            "score": 1,
+            "rationale": "Claims e1RM increased from 14.0 to 14.3 despite telemetry showing 14.3 start."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Includes Overload Deltas, Fatigue Check, and Next Session Directives under 150 words."
+          },
+          "persona_adherence": {
+            "score": 2,
+            "rationale": "Uses motivational phrasing like 'significant progression' instead of technical analysis."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 24.90967863900005,
+        "error": null
+      },
+      {
+        "case_id": "debrief_23",
+        "generated_output": "**Overload Deltas**: \n- e1RM for Standing Calf Raise: 123.0 kg (+0.0 kg) | Status: HOLD\n\n**Fatigue & CNS Check**: \n- Readiness score vs. logged RIR/RPE and trainee notes: The readiness score of 3 suggests a moderate level of fatigue or CNS check. The trainee's notes indicate that the calves were stretched and held for 2 seconds at the bottom, which is consistent with proper recovery techniques.\n\n**Next Session Directives**: \n- Execute the next set of Standing Calf Raise with a focus on maintaining proper form to avoid further injury risk. Ensure adequate rest between sets to allow for full recovery before progressing in strength or volume.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Deload not active; volume and RPE mandates were inactive."
+          },
+          "metric_alignment": {
+            "score": 5,
+            "rationale": "e1RM of 123.0 kg matches the logged telemetry exactly."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Overload Deltas, CNS Check, and Directives sections are present."
+          },
+          "persona_adherence": {
+            "score": 4,
+            "rationale": "Directives are technical but lack specific load/rep mandates."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 19.695818374999362,
+        "error": null
+      },
+      {
+        "case_id": "debrief_24",
+        "generated_output": "**Overload Deltas**: \n- Flat Barbell Bench: e1RM increased by 3.5 kg to 120.3 kg.\n- Bodyweight Dips: No change in e1RM, remaining at 0.0 kg.\n\n**Fatigue & CNS Check**: \n- Movement Performance Details:\n  - Flat Barbell Bench: Top set demonstrated a significant increase in weight lifted (95.0kg to 120.3kg), indicating improved strength and readiness.\n  - Bodyweight Dips: No change in e1RM, remaining at 0.0 kg, suggesting no fatigue or CNS issues.\n\n**Next Session Directives**: \n- Graduated Exercises: Continue with Flat Barbell Bench (e1RM increased to 120.3kg) and Bodyweight Dips (no change in e1RM).\n- Holding / Working in Rep Corridor: Maintain the same rep range for both exercises, ensuring consistent progression.\n-",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Deload not active; no volume cut or RPE cap required."
+          },
+          "metric_alignment": {
+            "score": 1,
+            "rationale": "Claims e1RM increased from 95kg to 120.3kg without telemetry support."
+          },
+          "structural_completeness": {
+            "score": 4,
+            "rationale": "Includes all sections but wastes space with redundant phrasing."
+          },
+          "persona_adherence": {
+            "score": 2,
+            "rationale": "Uses motivational language like 'indicating improved strength' instead of data."
+          },
+          "is_passed": false
+        },
+        "passed": false,
+        "gen_time_s": 25.385876890999498,
+        "error": null
+      },
+      {
+        "case_id": "debrief_25",
+        "generated_output": "**Overload Deltas**: \n- Leg Press: e1RM increased by 10.0 kg.\n- Lying Leg Curl: e1RM held steady at +0.0 kg.\n\n**Fatigue & CNS Check**: \n- Movement performance details indicate a slight increase in RPE for the Leg Press, suggesting some fatigue but not severe enough to halt progression.\n- The Lying Leg Curl maintained its status of holding, indicating consistent muscle engagement without significant fatigue or soreness.\n\n**Next Session Directives**: \n- Continue with graduated exercises such as Leg Press and maintain the focus on holding positions like Lying Leg Curl.\n- Monitor RPE closely during sets to ensure proper pacing and avoid excessive fatigue.",
+        "judgment": {
+          "deload_compliance": {
+            "score": 5,
+            "rationale": "Deload not active; mandates exact volume cut and RPE cap when active."
+          },
+          "metric_alignment": {
+            "score": 5,
+            "rationale": "Fidelity to set logs, tonnage, and e1RM matches telemetry numbers exactly."
+          },
+          "structural_completeness": {
+            "score": 5,
+            "rationale": "Overload Deltas, Fatigue & CNS Check, Next Session Directives under 150 words present."
+          },
+          "persona_adherence": {
+            "score": 4,
+            "rationale": "Technical and concise, but lacks strict pragmatic marching orders tone."
+          },
+          "is_passed": true
+        },
+        "passed": true,
+        "gen_time_s": 19.03884004399879,
+        "error": null
+      }
+    ]
+  }
+}

@@ -39,7 +39,7 @@ logger = MyosLogger().get_logger(__name__)
 db = DatabaseManager()
 
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5").strip("'\"")
-MODEL_DEVICE = os.getenv("MODEL_DEVICE", "cuda" if torch.cuda.is_available() else "cpu").strip("'\"")
+MODEL_DEVICE = os.getenv("MODEL_DEVICE", "cpu").strip("'\"")
 
 EMBED_MODEL = HuggingFaceEmbeddings(
     model_name=EMBEDDING_MODEL_NAME, model_kwargs={"device": MODEL_DEVICE}, encode_kwargs={"normalize_embeddings": True}
