@@ -230,11 +230,14 @@ def get_llm() -> Any:
     resolved_path = get_or_download_model_path()
     physical_cores = max(1, multiprocessing.cpu_count() // 2)
 
+    n_gpu_layers = int(os.getenv("N_GPU_LAYERS", "-1"))
+
     _llm_instance = SafeChatLlamaCpp(
         model_path=resolved_path,
         temperature=0.0,
         n_ctx=2048,
         n_batch=512,
+        n_gpu_layers=n_gpu_layers,
         n_threads=physical_cores,
         n_threads_batch=physical_cores,
         max_tokens=200,

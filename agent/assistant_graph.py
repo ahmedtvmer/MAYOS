@@ -18,6 +18,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
+import torch
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
@@ -38,9 +39,10 @@ logger = MyosLogger().get_logger(__name__)
 db = DatabaseManager()
 
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5").strip("'\"")
+MODEL_DEVICE = os.getenv("MODEL_DEVICE", "cuda" if torch.cuda.is_available() else "cpu").strip("'\"")
 
 EMBED_MODEL = HuggingFaceEmbeddings(
-    model_name=EMBEDDING_MODEL_NAME, model_kwargs={"device": "cpu"}, encode_kwargs={"normalize_embeddings": True}
+    model_name=EMBEDDING_MODEL_NAME, model_kwargs={"device": MODEL_DEVICE}, encode_kwargs={"normalize_embeddings": True}
 )
 
 TAIL_WINDOW_SIZE = 4
