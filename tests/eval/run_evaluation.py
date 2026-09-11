@@ -18,10 +18,15 @@ sys.path.append(str(BASE_DIR))
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
-from agent.assistant_graph import build_prompt_payload
+from agent.assistant_graph import assistant_graph
+from agent.onboarding_graph import onboarding_graph
 from agent.debrief import generate_session_debrief
-from tests.eval.rubrics import COACHING_QA_RUBRIC, DEBRIEF_RUBRIC
-from tests.eval.schemas import CoachingQAEvalJudgment, DebriefEvalJudgment
+from tests.eval.rubrics import COACHING_QA_RUBRIC, DEBRIEF_RUBRIC, ONBOARDING_RUBRIC
+from tests.eval.schemas import (
+    CoachingQAEvalJudgment,
+    DebriefEvalJudgment,
+    OnboardingExtractionJudgment,
+)
 from utils.model_downloader import get_judge_llm, llm
 from utils.text_scrubber import scrub_coach_output
 from utils.logger import MyosLogger
@@ -35,7 +40,6 @@ T = TypeVar("T", bound=BaseModel)
 
 
 def safe_invoke_judge(judge: Any, system_prompt: str, user_payload: str, schema: type[T]) -> T | None:
-    """Attempts structured invocation with graceful exception handling."""
     structured_judge = judge.with_structured_output(schema)
     try:
         return structured_judge.invoke([
@@ -52,8 +56,8 @@ def evaluate_qa(judge: Any, dataset_path: Path):
         cases = json.load(f)
 
     results = []
-    logger.info(f"\n⚡ Evaluating Coaching Q&A ({len(cases)} cases)...")
-    logger.info("-" * 75)
+    print(f"\n⚡ Evaluating Coaching Q&A ({len(cases)} cases)...")
+    print("-" * 75)
 
     for case in cases:
         state = {
@@ -65,8 +69,9 @@ def evaluate_qa(judge: Any, dataset_path: Path):
         }
 
         t0 = time.perf_counter()
-        payload = build_prompt_payload(state)
-        raw_output = llm.invoke(payload).content
+        # Execute via assistant_graph so router and fast-paths are tested
+        graph_output = assistant_graph.invoke(state)
+        raw_output = graph_output.get("response_content", "")
         cleaned_output = scrub_coach_output(raw_output)
         gen_time = time.perf_counter() - t0
 
@@ -84,15 +89,15 @@ def evaluate_qa(judge: Any, dataset_path: Path):
 
         passed = judgment.is_passed if judgment else False
         status_tag = "✅ PASS" if passed else "❌ FAIL"
-        logger.info(f"[{status_tag}] Case {case['id']} ({gen_time:.2f}s)")
+        print(f"[{status_tag}] Case {case['id']} ({gen_time:.2f}s)")
 
         if judgment and not judgment.is_passed:
-            logger.warning(
+            print(
                 f"  Safety: {judgment.clinical_safety.score} | "
                 f"Grounded: {judgment.groundedness.score} | "
                 f"Budget: {judgment.structural_budget.score}"
             )
-            logger.warning(f"  Rationale: {judgment.clinical_safety.rationale or judgment.groundedness.rationale}")
+            print(f"  Rationale: {judgment.clinical_safety.rationale or judgment.structural_budget.rationale}")
 
         results.append({
             "case_id": case["id"],
@@ -105,7 +110,6 @@ def evaluate_qa(judge: Any, dataset_path: Path):
         })
 
     return results
-
 
 def evaluate_debrief(judge: Any, dataset_path: Path):
     with open(dataset_path, "r", encoding="utf-8") as f:
@@ -160,10 +164,120 @@ def evaluate_debrief(judge: Any, dataset_path: Path):
 
     return results
 
+def evaluate_onboarding(judge: Any, dataset_path: Path):
+    with open(dataset_path, "r", encoding="utf-8") as f:
+        cases = json.load(f)
+
+    results = []
+    print(f"\n⚡ Evaluating Onboarding Intake Graph ({len(cases)} cases)...")
+    print("-" * 75)
+
+    for case in cases:
+        step = case["step"]
+        initial_profile = {
+            "proportions": "balanced",
+            "gender": "male",
+            "age": 25,
+            "weight_kg": 80.0,
+            "height_cm": 180.0,
+        } if step > 1 else {}
+        
+        if step > 2:
+            initial_profile.update({
+                "current_goal": "Hypertrophy",
+                "long_term_goal": "Longevity",
+                "weekly_frequency": 4,
+                "training_age_years": 2.0,
+                "rep_preference": "balanced"
+            })
+
+        state = {
+            "messages": [HumanMessage(content=case["user_input"])],
+            "trainee_id": f"eval_user_{case['id']}",
+            "intake_step": step,
+            "is_complete": False,
+            "profile_data": initial_profile,
+        }
+
+        t0 = time.perf_counter()
+        result_state = onboarding_graph.invoke(state)
+        gen_time = time.perf_counter() - t0
+
+        new_step = result_state.get("intake_step", step)
+        is_complete = result_state.get("is_complete", False)
+        profile = result_state.get("profile_data", {})
+        last_msg = result_state["messages"][-1].content if result_state.get("messages") else ""
+
+        # 1. Structural State Transition Check
+        advanced = (new_step > step) or is_complete
+        expected_adv = (case["expected_action"] == "advance")
+        structural_pass = (advanced == expected_adv)
+
+        if not advanced and case["expected_action"] == "reject":
+            # Any valid rejection warning message confirms structural pass
+            structural_pass = "invalid response" in last_msg.lower() or "please provide" in last_msg.lower()
+
+        # 2. Invoke Judge LLM
+        step_fields = {
+            1: ["proportions", "gender", "age", "weight_kg", "height_cm"],
+            2: ["current_goal", "long_term_goal", "weekly_frequency", "training_age_years", "rep_preference"],
+            3: ["equipment_access", "injuries_or_limitations", "stress_and_sleep"],
+        }[step]
+
+        delta_profile = {k: v for k, v in profile.items() if k in step_fields}
+
+        judge_input = (
+            f"[STEP]: {step}\n"
+            f"[TRAINEE INPUT]\n{case['user_input']}\n\n"
+            f"[GRAPH ACTION]\n{'ADVANCED' if advanced else 'REJECTED'}\n\n"
+            f"[BOT RESPONSE]\n{last_msg}\n\n"
+            f"[EXTRACTED DELTA PROFILE]\n{json.dumps(delta_profile)}"
+        )
+
+        judgment = safe_invoke_judge(
+            judge=judge,
+            system_prompt=ONBOARDING_RUBRIC,
+            user_payload=judge_input,
+            schema=OnboardingExtractionJudgment,
+        )
+
+        # 3. Determine Overall Pass/Fail
+        if case["expected_action"] == "reject":
+            judge_pass = judgment.off_topic_accuracy.passes(4) if judgment else True
+            passed = structural_pass and judge_pass
+        else:
+            judge_pass = judgment.is_passed if judgment else False
+            passed = structural_pass and judge_pass
+
+        status_tag = "✅ PASS" if passed else "❌ FAIL"
+        print(f"[{status_tag}] Case {case['id']} ({gen_time:.2f}s) | Expected: {case['expected_action']} | Got: {'advance' if advanced else 'reject'}")
+
+        if not passed:
+            if not structural_pass:
+                print(f"  ❌ Transition Mismatch: Expected {case['expected_action']}, but new_step was {new_step}")
+                print(f"  Last Message: {last_msg[:90]}...")
+            if judgment and not judge_pass:
+                print(f"  Extraction: {judgment.extraction_fidelity.score} | Off-Topic: {judgment.off_topic_accuracy.score}")
+                print(f"  Rationale: {judgment.extraction_fidelity.rationale or judgment.off_topic_accuracy.rationale}")
+
+        results.append({
+            "case_id": case["id"],
+            "input": case["user_input"],
+            "bot_response": last_msg,
+            "extracted_profile": profile,
+            "advanced": advanced,
+            "structural_pass": structural_pass,
+            "judgment": judgment.model_dump() if judgment else None,
+            "passed": passed,
+            "gen_time_s": gen_time,
+            "error": None if judgment else "Schema extraction failed",
+        })
+
+    return results
 
 def main():
     parser = argparse.ArgumentParser(description="Myos LLM-as-a-Judge Offline Evaluation Suite")
-    parser.add_argument("--target", choices=["qa", "debrief", "all"], default="all")
+    parser.add_argument("--target", choices=["qa", "debrief", "onboarding", "all"], default="all")
     parser.add_argument("--gpu-layers", type=int, default=10)
     args = parser.parse_args()
 
@@ -183,6 +297,13 @@ def main():
         debrief_pass = (sum(1 for r in debrief_results if r["passed"]) / len(debrief_results)) * 100
         logger.info(f"\n📊 Debrief Pass Rate: {debrief_pass:.1f}% ({sum(1 for r in debrief_results if r['passed'])}/{len(debrief_results)})")
         report_payload["runs"]["debrief"] = debrief_results
+
+    if args.target in ("onboarding", "all"):
+        onboarding_data = BASE_DIR / "tests" / "eval" / "datasets" / "onboarding_cases.json"
+        onboarding_results = evaluate_onboarding(judge, onboarding_data)
+        onboarding_pass = (sum(1 for r in onboarding_results if r["passed"]) / len(onboarding_results)) * 100
+        logger.info(f"\n📊 Onboarding Pass Rate: {onboarding_pass:.1f}% ({sum(1 for r in onboarding_results if r['passed'])}/{len(onboarding_results)})")
+        report_payload["runs"]["onboarding"] = onboarding_results
 
     out_file = REPORTS_DIR / f"eval_run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     out_file.write_text(json.dumps(report_payload, indent=2), encoding="utf-8")

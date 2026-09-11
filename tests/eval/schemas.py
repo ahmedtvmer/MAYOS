@@ -63,3 +63,17 @@ class DebriefEvalJudgment(BaseModel):
             and self.structural_completeness.passes(4)
             and self.persona_adherence.passes(4)
         )
+
+
+class OnboardingExtractionJudgment(BaseModel):
+    extraction_fidelity: DimensionScore = Field(
+        description="5 if extracted profile fields faithfully capture the trainee's stated metrics, goals, or injury details. 1 if data was hallucinated or critical details dropped."
+    )
+    off_topic_accuracy: DimensionScore = Field(
+        description="5 if off-topic flags and reject reasons correctly identified deflections/missing data. 1 if it accepted gibberish or falsely rejected valid data."
+    )
+
+    @computed_field
+    @property
+    def is_passed(self) -> bool:
+        return self.extraction_fidelity.passes(4) and self.off_topic_accuracy.passes(4)

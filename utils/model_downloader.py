@@ -220,6 +220,7 @@ def get_judge_llm(n_gpu_layers: int | None = None) -> Any:
         n_threads=physical_cores,
         n_threads_batch=physical_cores,
         max_tokens=280,
+        cache_prompt=True,
         streaming=False,
         verbose=False,
     )
