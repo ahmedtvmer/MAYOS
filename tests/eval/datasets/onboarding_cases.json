@@ -1,0 +1,154 @@
+[
+  {
+    "id": "onboard_s1_01",
+    "step": 1,
+    "user_input": "My torso is definitely longer than my legs. I am a 25 year old male, weighing 84.5kg and standing at 182cm.",
+    "expected_action": "advance",
+    "expected_fields": {
+      "proportions": "long_torso",
+      "gender": "male",
+      "age": 25,
+      "weight_kg": 84.5,
+      "height_cm": 182.0
+    },
+    "notes": "Natural language Step 1 with decimals; regex will fail, LLM extractor must succeed."
+  },
+  {
+    "id": "onboard_s1_02",
+    "step": 1,
+    "user_input": "Lower body is longer for sure. Female, 29 yrs old, around 62 kilos and 168 cm tall.",
+    "expected_action": "advance",
+    "expected_fields": {
+      "proportions": "long_legs",
+      "gender": "female",
+      "age": 29,
+      "weight_kg": 62.0,
+      "height_cm": 168.0
+    },
+    "notes": "Natural language Step 1 testing long_legs and female gender extraction."
+  },
+  {
+    "id": "onboard_s1_03",
+    "step": 1,
+    "user_input": "Can you tell me what the best diet is to get shredded while lifting?",
+    "expected_action": "reject",
+    "expected_reason_contains": "off-topic",
+    "notes": "Off-topic trap: user asks about nutrition instead of providing biometrics."
+  },
+  {
+    "id": "onboard_s1_04",
+    "step": 1,
+    "user_input": "I am a 22 year old guy, 75kg and 178cm.",
+    "expected_action": "reject",
+    "expected_reason_contains": "upper body vs lower body",
+    "notes": "Missing field trap: omitted proportion comparison. Must reject."
+  },
+  {
+    "id": "onboard_s1_05",
+    "step": 1,
+    "user_input": "Both seem pretty balanced. Male, age 8, 45kg, 140cm.",
+    "expected_action": "reject",
+    "expected_reason_contains": "age (between 12 and 100)",
+    "notes": "Boundary trap: age 8 is below the 12-year floor. Must reject."
+  },
+  {
+    "id": "onboard_s2_01",
+    "step": 2,
+    "user_input": "Right now I want to build bigger arms and chest. Long term I want a dense physique without joint pain. I can lift 4 days a week, and I have been training for 3.5 years. I prefer moderate reps.",
+    "expected_action": "advance",
+    "expected_fields": {
+      "weekly_frequency": 4,
+      "training_age_years": 3.5,
+      "rep_preference": "balanced"
+    },
+    "notes": "Valid conversational Step 2 extraction without numbered formatting."
+  },
+  {
+    "id": "onboard_s2_02",
+    "step": 2,
+    "user_input": "Current goal is pure lat width, long term is adding 5kg of stage lean tissue. Can train five days weekly, lifting for 6 years, prefer low rep heavy compounds.",
+    "expected_action": "advance",
+    "expected_fields": {
+      "weekly_frequency": 5,
+      "training_age_years": 6.0,
+      "rep_preference": "low"
+    },
+    "notes": "Spelled-out numbers ('five') and low rep preference extraction."
+  },
+  {
+    "id": "onboard_s2_03",
+    "step": 2,
+    "user_input": "I want to train 7 days a week for 2 hours a day so I can grow as fast as possible. Lifting for zero years.",
+    "expected_action": "reject",
+    "expected_reason_contains": "weekly frequency",
+    "notes": "Boundary trap: 7 days exceeds the 1–5 day limit enforced by onboarding_graph."
+  },
+  {
+    "id": "onboard_s2_04",
+    "step": 2,
+    "user_input": "Who is the greatest bodybuilder of all time in your opinion?",
+    "expected_action": "reject",
+    "expected_reason_contains": "off-topic",
+    "notes": "Off-topic trap: trivia question during intake step 2."
+  },
+  {
+    "id": "onboard_s2_05",
+    "step": 2,
+    "user_input": "Primary goal is getting huge, long term is staying healthy. Frequency is 4 days.",
+    "expected_action": "reject",
+    "expected_reason_contains": "training age",
+    "notes": "Missing field trap: omitted lifting experience / training age."
+  },
+  {
+    "id": "onboard_s3_01",
+    "step": 3,
+    "user_input": "Full commercial gym with hack squats and cable towers. Mild left shoulder impingement on vertical pressing. Moderate office job stress and 7.5 hours of solid sleep.",
+    "expected_action": "advance",
+    "expected_fields": {
+      "has_equipment": true,
+      "has_injuries": true,
+      "has_recovery": true
+    },
+    "notes": "Valid Step 3 completion with nuanced injury details."
+  },
+  {
+    "id": "onboard_s3_02",
+    "step": 3,
+    "user_input": "Garage gym with barbell, rack, flat bench, and dumbbells up to 40kg. Zero joint issues or injuries. High startup stress, sleep is erratic around 5 to 6 hours.",
+    "expected_action": "advance",
+    "expected_fields": {
+      "has_equipment": true,
+      "has_injuries": true,
+      "has_recovery": true
+    },
+    "notes": "Valid Step 3 with garage gym equipment and high stress."
+  },
+  {
+    "id": "onboard_s3_03",
+    "step": 3,
+    "user_input": "I have a barbell and some bands. High stress and 6 hours sleep.",
+    "expected_action": "reject",
+    "expected_reason_contains": "injuries/limitations",
+    "notes": "Missing field trap: completely skipped question 8 regarding injuries."
+  },
+  {
+    "id": "onboard_s3_04",
+    "step": 3,
+    "user_input": "Write me a python script to calculate my 1RM based on the Brzycki formula.",
+    "expected_action": "reject",
+    "expected_reason_contains": "off-topic",
+    "notes": "Adversarial / off-topic coding request during intake step 3."
+  },
+  {
+    "id": "onboard_s3_05",
+    "step": 3,
+    "user_input": "Commercial gym. I had a lumbar disc herniation 2 years ago so no heavy axial spinal loading. Desk job stress is low, sleep 8 hours nightly.",
+    "expected_action": "advance",
+    "expected_fields": {
+      "has_equipment": true,
+      "has_injuries": true,
+      "has_recovery": true
+    },
+    "notes": "Critical clinical note: lumbar disc herniation must be extracted into profile."
+  }
+]

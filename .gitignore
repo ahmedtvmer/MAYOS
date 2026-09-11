@@ -17,8 +17,5 @@ data
 db
 models/
 *.gguf
-<<<<<<< HEAD
 logs
-=======
-logs
->>>>>>> 5db703e (fix(lint): remove executable file permissions and ignore EXE002)
+tests/eval/reports/

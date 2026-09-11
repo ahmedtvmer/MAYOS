@@ -1,0 +1,628 @@
+[
+  {
+    "id": "debrief_01",
+    "split_name": "Lower 1",
+    "readiness": 1,
+    "session_notes": "Exhausted, joints aching",
+    "fatigue_info": {
+      "deload_recommended": true,
+      "severity": "HIGH",
+      "reason": "Acute readiness floor (1/5 logged). Systemic recovery compromised.",
+      "volume_multiplier": 0.5,
+      "intensity_cap_rpe": 7.0
+    },
+    "exercise_summaries": [
+      {
+        "name": "Hack Squat",
+        "top_load": 140.0,
+        "top_reps": 8,
+        "top_rpe": 9.5,
+        "sets_completed": 3,
+        "volume_load": 3360.0,
+        "action": "hold"
+      }
+    ],
+    "notes": "Deload active: must mandate 50% volume cut and RPE 7.0 ceiling."
+  },
+  {
+    "id": "debrief_02",
+    "split_name": "Push 1",
+    "readiness": 1,
+    "session_notes": "Zero sleep, shoulders heavy",
+    "fatigue_info": {
+      "deload_recommended": true,
+      "severity": "HIGH",
+      "reason": "Acute readiness floor (1/5 logged). Systemic recovery compromised.",
+      "volume_multiplier": 0.5,
+      "intensity_cap_rpe": 7.0
+    },
+    "exercise_summaries": [
+      {
+        "name": "Incline Dumbbell Press",
+        "top_load": 36.0,
+        "top_reps": 8,
+        "top_rpe": 9.0,
+        "sets_completed": 3,
+        "volume_load": 864.0,
+        "action": "hold"
+      },
+      {
+        "name": "Dips",
+        "top_load": 15.0,
+        "top_reps": 8,
+        "top_rpe": 9.5,
+        "sets_completed": 2,
+        "volume_load": 240.0,
+        "action": "hold"
+      }
+    ],
+    "notes": "Deload active: enforce 50% volume reduction and RPE 7.0 cap across pressing movements."
+  },
+  {
+    "id": "debrief_03",
+    "split_name": "Pull 1",
+    "readiness": 1,
+    "session_notes": "CNS drained, grip gave out early",
+    "fatigue_info": {
+      "deload_recommended": true,
+      "severity": "HIGH",
+      "reason": "Acute readiness floor (1/5 logged). Systemic recovery compromised.",
+      "volume_multiplier": 0.5,
+      "intensity_cap_rpe": 7.0
+    },
+    "exercise_summaries": [
+      {
+        "name": "Chest-Supported Row",
+        "top_load": 75.0,
+        "top_reps": 8,
+        "top_rpe": 9.0,
+        "sets_completed": 3,
+        "volume_load": 1800.0,
+        "action": "hold"
+      }
+    ],
+    "notes": "Deload active: verify RPE ceiling and cut working sets by 50%."
+  },
+  {
+    "id": "debrief_04",
+    "split_name": "Upper 1",
+    "readiness": 2,
+    "session_notes": "Accumulated fatigue across week",
+    "fatigue_info": {
+      "deload_recommended": true,
+      "severity": "HIGH",
+      "reason": "Rolling readiness crash (avg 1.8/5 across last 3 sessions).",
+      "volume_multiplier": 0.5,
+      "intensity_cap_rpe": 7.0
+    },
+    "exercise_summaries": [
+      {
+        "name": "Barbell Bench Press",
+        "top_load": 102.5,
+        "top_reps": 6,
+        "top_rpe": 9.5,
+        "sets_completed": 3,
+        "volume_load": 1845.0,
+        "action": "hold"
+      }
+    ],
+    "notes": "Deload active: rolling crash demands systemic deload (50% cut, RPE 7 cap)."
+  },
+  {
+    "id": "debrief_05",
+    "split_name": "Lower 2",
+    "readiness": 2,
+    "session_notes": "Knees cold, lower back sluggish",
+    "fatigue_info": {
+      "deload_recommended": true,
+      "severity": "HIGH",
+      "reason": "Rolling readiness crash (avg 2.0/5 across last 3 sessions).",
+      "volume_multiplier": 0.5,
+      "intensity_cap_rpe": 7.0
+    },
+    "exercise_summaries": [
+      {
+        "name": "Stiff-Legged Deadlift",
+        "top_load": 130.0,
+        "top_reps": 7,
+        "top_rpe": 9.0,
+        "sets_completed": 3,
+        "volume_load": 2730.0,
+        "action": "hold"
+      }
+    ],
+    "notes": "Deload active: mandate intensity cap at RPE 7.0 and volume reduction."
+  },
+  {
+    "id": "debrief_06",
+    "split_name": "Legs 1",
+    "readiness": 2,
+    "session_notes": "Struggled on every working set",
+    "fatigue_info": {
+      "deload_recommended": true,
+      "severity": "HIGH",
+      "reason": "Rolling readiness crash (avg 1.7/5 across last 3 sessions).",
+      "volume_multiplier": 0.5,
+      "intensity_cap_rpe": 7.0
+    },
+    "exercise_summaries": [
+      {
+        "name": "Leg Press",
+        "top_load": 240.0,
+        "top_reps": 8,
+        "top_rpe": 9.5,
+        "sets_completed": 3,
+        "volume_load": 5760.0,
+        "action": "hold"
+      }
+    ],
+    "notes": "Deload active: rolling crash requires 50% set reduction."
+  },
+  {
+    "id": "debrief_07",
+    "split_name": "Upper 2",
+    "readiness": 3,
+    "session_notes": "Grinded out every single rep to failure",
+    "fatigue_info": {
+      "deload_recommended": true,
+      "severity": "MODERATE",
+      "reason": "High exertion density (60% of recent sets >= RPE 9.5) alongside declining readiness.",
+      "volume_multiplier": 0.6,
+      "intensity_cap_rpe": 8.0
+    },
+    "exercise_summaries": [
+      {
+        "name": "Weighted Chin-Up",
+        "top_load": 20.0,
+        "top_reps": 6,
+        "top_rpe": 10.0,
+        "sets_completed": 3,
+        "volume_load": 480.0,
+        "action": "hold"
+      }
+    ],
+    "notes": "Deload active: exertion density triggers 40% volume reduction and RPE 8.0 ceiling."
+  },
+  {
+    "id": "debrief_08",
+    "split_name": "Push 2",
+    "readiness": 3,
+    "session_notes": "Overshot all RPE targets by 1.5",
+    "fatigue_info": {
+      "deload_recommended": true,
+      "severity": "MODERATE",
+      "reason": "High exertion density (55% of recent sets >= RPE 9.5) alongside declining readiness.",
+      "volume_multiplier": 0.6,
+      "intensity_cap_rpe": 8.0
+    },
+    "exercise_summaries": [
+      {
+        "name": "Overhead Barbell Press",
+        "top_load": 60.0,
+        "top_reps": 7,
+        "top_rpe": 10.0,
+        "sets_completed": 3,
+        "volume_load": 1260.0,
+        "action": "hold"
+      }
+    ],
+    "notes": "Deload active: mandate 40% volume cut and RPE 8.0 cap."
+  },
+  {
+    "id": "debrief_09",
+    "split_name": "Lower 1",
+    "readiness": 3,
+    "session_notes": "High spinal fatigue from repeated RPE 10s",
+    "fatigue_info": {
+      "deload_recommended": true,
+      "severity": "MODERATE",
+      "reason": "High exertion density (65% of recent sets >= RPE 9.5) alongside declining readiness.",
+      "volume_multiplier": 0.6,
+      "intensity_cap_rpe": 8.0
+    },
+    "exercise_summaries": [
+      {
+        "name": "Romanian Deadlift",
+        "top_load": 135.0,
+        "top_reps": 8,
+        "top_rpe": 10.0,
+        "sets_completed": 3,
+        "volume_load": 3240.0,
+        "action": "hold"
+      }
+    ],
+    "notes": "Deload active: enforce 40% volume cut and RPE 8.0 ceiling."
+  },
+  {
+    "id": "debrief_10",
+    "split_name": "Full Body A",
+    "readiness": 1,
+    "session_notes": "Felt completely unrecovered",
+    "fatigue_info": {
+      "deload_recommended": true,
+      "severity": "HIGH",
+      "reason": "Acute readiness floor (1/5 logged). Systemic recovery compromised.",
+      "volume_multiplier": 0.5,
+      "intensity_cap_rpe": 7.0
+    },
+    "exercise_summaries": [
+      {
+        "name": "Front Squat",
+        "top_load": 90.0,
+        "top_reps": 6,
+        "top_rpe": 9.0,
+        "sets_completed": 2,
+        "volume_load": 1080.0,
+        "action": "hold"
+      }
+    ],
+    "notes": "Deload active: check deload compliance and zero cheerleading."
+  },
+  {
+    "id": "debrief_11",
+    "split_name": "Upper 1",
+    "readiness": 5,
+    "session_notes": "Felt explosive, hit top of rep bracket easily",
+    "fatigue_info": {
+      "deload_recommended": false
+    },
+    "exercise_summaries": [
+      {
+        "name": "Incline Dumbbell Press",
+        "top_load": 38.0,
+        "top_reps": 10,
+        "top_rpe": 8.0,
+        "sets_completed": 3,
+        "volume_load": 1140.0,
+        "action": "increase",
+        "current_e1rm": 50.7,
+        "e1rm_delta": 2.5
+      }
+    ],
+    "notes": "Progression graduation: acknowledge load increase (+2.5kg) next session."
+  },
+  {
+    "id": "debrief_12",
+    "split_name": "Lower 1",
+    "readiness": 4,
+    "session_notes": "Smooth reps, bar moved fast",
+    "fatigue_info": {
+      "deload_recommended": false
+    },
+    "exercise_summaries": [
+      {
+        "name": "Hack Squat",
+        "top_load": 150.0,
+        "top_reps": 10,
+        "top_rpe": 8.5,
+        "sets_completed": 3,
+        "volume_load": 4500.0,
+        "action": "increase",
+        "current_e1rm": 200.0,
+        "e1rm_delta": 6.5
+      }
+    ],
+    "notes": "Progression graduation: hit rep ceiling (10 reps); mandate load progression next week."
+  },
+  {
+    "id": "debrief_13",
+    "split_name": "Pull 1",
+    "readiness": 4,
+    "session_notes": "Great lat contraction",
+    "fatigue_info": {
+      "deload_recommended": false
+    },
+    "exercise_summaries": [
+      {
+        "name": "Neutral Grip Lat Pulldown",
+        "top_load": 80.0,
+        "top_reps": 12,
+        "top_rpe": 8.5,
+        "sets_completed": 3,
+        "volume_load": 2880.0,
+        "action": "increase",
+        "current_e1rm": 112.0,
+        "e1rm_delta": 4.0
+      }
+    ],
+    "notes": "Progression graduation: 12 reps reached; advance pin load next exposure."
+  },
+  {
+    "id": "debrief_14",
+    "split_name": "Push 1",
+    "readiness": 4,
+    "session_notes": "Solid triceps lockouts",
+    "fatigue_info": {
+      "deload_recommended": false
+    },
+    "exercise_summaries": [
+      {
+        "name": "Close Grip Bench Press",
+        "top_load": 85.0,
+        "top_reps": 10,
+        "top_rpe": 8.0,
+        "sets_completed": 3,
+        "volume_load": 2550.0,
+        "action": "increase",
+        "current_e1rm": 113.3,
+        "e1rm_delta": 3.2
+      }
+    ],
+    "notes": "Progression graduation: acknowledge load step up."
+  },
+  {
+    "id": "debrief_15",
+    "split_name": "Legs 1",
+    "readiness": 5,
+    "session_notes": "PR on leg curl",
+    "fatigue_info": {
+      "deload_recommended": false
+    },
+    "exercise_summaries": [
+      {
+        "name": "Seated Leg Curl",
+        "top_load": 65.0,
+        "top_reps": 12,
+        "top_rpe": 8.5,
+        "sets_completed": 3,
+        "volume_load": 2340.0,
+        "action": "increase",
+        "current_e1rm": 91.0,
+        "e1rm_delta": 3.5
+      }
+    ],
+    "notes": "Progression graduation: step load up on cable stack."
+  },
+  {
+    "id": "debrief_16",
+    "split_name": "Upper 2",
+    "readiness": 4,
+    "session_notes": "Added a rep across all sets",
+    "fatigue_info": {
+      "deload_recommended": false
+    },
+    "exercise_summaries": [
+      {
+        "name": "Barbell Bench Press",
+        "top_load": 100.0,
+        "top_reps": 8,
+        "top_rpe": 8.5,
+        "sets_completed": 3,
+        "volume_load": 2400.0,
+        "action": "increase",
+        "current_e1rm": 126.7,
+        "e1rm_delta": 4.1
+      }
+    ],
+    "notes": "Progression graduation: verify e1RM delta reporting."
+  },
+  {
+    "id": "debrief_17",
+    "split_name": "Lower 2",
+    "readiness": 4,
+    "session_notes": "Stable hips on Romanian deadlifts",
+    "fatigue_info": {
+      "deload_recommended": false
+    },
+    "exercise_summaries": [
+      {
+        "name": "Romanian Deadlift",
+        "top_load": 140.0,
+        "top_reps": 8,
+        "top_rpe": 8.5,
+        "sets_completed": 3,
+        "volume_load": 3360.0,
+        "action": "increase",
+        "current_e1rm": 177.3,
+        "e1rm_delta": 5.0
+      }
+    ],
+    "notes": "Progression graduation: acknowledge graduated status and +2.5kg next target."
+  },
+  {
+    "id": "debrief_18",
+    "split_name": "Pull 2",
+    "readiness": 5,
+    "session_notes": "Chest supported row felt weightless",
+    "fatigue_info": {
+      "deload_recommended": false
+    },
+    "exercise_summaries": [
+      {
+        "name": "Chest Supported T-Bar Row",
+        "top_load": 65.0,
+        "top_reps": 10,
+        "top_rpe": 7.5,
+        "sets_completed": 3,
+        "volume_load": 1950.0,
+        "action": "increase",
+        "current_e1rm": 86.7,
+        "e1rm_delta": 4.5
+      }
+    ],
+    "notes": "Dynamic upscale: low RPE surplus warrants immediate load jump."
+  },
+  {
+    "id": "debrief_19",
+    "split_name": "Push 1",
+    "readiness": 3,
+    "session_notes": "Stayed in rep pocket, did not hit top ceiling",
+    "fatigue_info": {
+      "deload_recommended": false
+    },
+    "exercise_summaries": [
+      {
+        "name": "Incline Barbell Press",
+        "top_load": 80.0,
+        "top_reps": 7,
+        "top_rpe": 8.5,
+        "sets_completed": 3,
+        "volume_load": 1680.0,
+        "action": "hold",
+        "current_e1rm": 98.7,
+        "e1rm_delta": 0.0
+      }
+    ],
+    "notes": "Consolidation state: maintain 80kg; push for 8 reps before loading up."
+  },
+  {
+    "id": "debrief_20",
+    "split_name": "Lower 1",
+    "readiness": 3,
+    "session_notes": "Matched last week reps exactly",
+    "fatigue_info": {
+      "deload_recommended": false
+    },
+    "exercise_summaries": [
+      {
+        "name": "Pendulum Squat",
+        "top_load": 110.0,
+        "top_reps": 8,
+        "top_rpe": 9.0,
+        "sets_completed": 3,
+        "volume_load": 2640.0,
+        "action": "hold",
+        "current_e1rm": 139.3,
+        "e1rm_delta": 0.0
+      }
+    ],
+    "notes": "Consolidation state: command holding load and striving for rep accumulation."
+  },
+  {
+    "id": "debrief_21",
+    "split_name": "Pull 1",
+    "readiness": 3,
+    "session_notes": "Biceps pumped, pulled solid reps",
+    "fatigue_info": {
+      "deload_recommended": false
+    },
+    "exercise_summaries": [
+      {
+        "name": "Incline Dumbbell Curl",
+        "top_load": 16.0,
+        "top_reps": 11,
+        "top_rpe": 8.5,
+        "sets_completed": 3,
+        "volume_load": 528.0,
+        "action": "hold",
+        "current_e1rm": 22.4,
+        "e1rm_delta": 0.0
+      }
+    ],
+    "notes": "Consolidation state: hit 11 reps in 10-12 bracket; hold 16kg until 12 reps cleared."
+  },
+  {
+    "id": "debrief_22",
+    "split_name": "Upper 1",
+    "readiness": 3,
+    "session_notes": "Lateral raise burn was high, form stayed strict",
+    "fatigue_info": {
+      "deload_recommended": false
+    },
+    "exercise_summaries": [
+      {
+        "name": "Cable Lateral Raise",
+        "top_load": 10.0,
+        "top_reps": 13,
+        "top_rpe": 9.0,
+        "sets_completed": 3,
+        "volume_load": 390.0,
+        "action": "hold",
+        "current_e1rm": 14.3,
+        "e1rm_delta": 0.0
+      }
+    ],
+    "notes": "Consolidation state: rep corridor target is 15 reps; keep load fixed."
+  },
+  {
+    "id": "debrief_23",
+    "split_name": "Legs 1",
+    "readiness": 3,
+    "session_notes": "Calves stretched and held for 2s at bottom",
+    "fatigue_info": {
+      "deload_recommended": false
+    },
+    "exercise_summaries": [
+      {
+        "name": "Standing Calf Raise",
+        "top_load": 90.0,
+        "top_reps": 11,
+        "top_rpe": 9.0,
+        "sets_completed": 3,
+        "volume_load": 2970.0,
+        "action": "hold",
+        "current_e1rm": 123.0,
+        "e1rm_delta": 0.0
+      }
+    ],
+    "notes": "Consolidation state: verify no load advance is prescribed."
+  },
+  {
+    "id": "debrief_24",
+    "split_name": "Upper 2",
+    "readiness": 4,
+    "session_notes": "Bench graduated, dips consolidating",
+    "fatigue_info": {
+      "deload_recommended": false
+    },
+    "exercise_summaries": [
+      {
+        "name": "Flat Barbell Bench",
+        "top_load": 95.0,
+        "top_reps": 8,
+        "top_rpe": 8.0,
+        "sets_completed": 3,
+        "volume_load": 2280.0,
+        "action": "increase",
+        "current_e1rm": 120.3,
+        "e1rm_delta": 3.5
+      },
+      {
+        "name": "Bodyweight Dips",
+        "top_load": 0.0,
+        "top_reps": 10,
+        "top_rpe": 8.5,
+        "sets_completed": 2,
+        "volume_load": 0.0,
+        "action": "hold",
+        "current_e1rm": 0.0,
+        "e1rm_delta": 0.0
+      }
+    ],
+    "notes": "Mixed action: bench graduated (+2.5kg), dips holding; report each accurately."
+  },
+  {
+    "id": "debrief_25",
+    "split_name": "Lower 1",
+    "readiness": 4,
+    "session_notes": "Leg press graduated, leg curl holding",
+    "fatigue_info": {
+      "deload_recommended": false
+    },
+    "exercise_summaries": [
+      {
+        "name": "Leg Press",
+        "top_load": 300.0,
+        "top_reps": 10,
+        "top_rpe": 8.5,
+        "sets_completed": 3,
+        "volume_load": 9000.0,
+        "action": "increase",
+        "current_e1rm": 400.0,
+        "e1rm_delta": 10.0
+      },
+      {
+        "name": "Lying Leg Curl",
+        "top_load": 50.0,
+        "top_reps": 9,
+        "top_rpe": 9.0,
+        "sets_completed": 2,
+        "volume_load": 900.0,
+        "action": "hold",
+        "current_e1rm": 65.0,
+        "e1rm_delta": 0.0
+      }
+    ],
+    "notes": "Mixed action: Leg press graduated (+10kg volume load), curl consolidating."
+  }
+]

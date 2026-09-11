@@ -81,29 +81,34 @@ def parse_number_token(text: str) -> float | None:
 
 
 class Step1Extraction(BaseModel):
-    is_off_topic: bool = Field(default=False)
-    proportions: Literal["long_legs", "long_torso", "balanced"] | None = None
-    gender: Literal["male", "female"] | None = None
-    age: int | None = None
-    weight_kg: float | None = None
-    height_cm: float | None = None
+    proportions: Literal["long_legs", "long_torso", "balanced"] | None = Field(
+        default=None,
+        description="Must be null if user did not compare upper vs lower body or torso vs legs. NEVER guess balanced.",
+    )
+    gender: Literal["male", "female"] | None = Field(default=None)
+    age: int | None = Field(default=None)
+    weight_kg: float | None = Field(default=None)
+    height_cm: float | None = Field(default=None)
+    is_off_topic: bool = Field(default=False, description="True ONLY if user asks non-intake questions.")
 
 
 class Step2Extraction(BaseModel):
-    is_off_topic: bool = Field(default=False)
-    current_goal: str | None = None
-    long_term_goal: str | None = None
-    weekly_frequency: int | None = None
-    training_age_years: float | None = None
-    rep_preference: Literal["low", "balanced", "high"] | None = "balanced"
+    current_goal: str | None = Field(default=None, description="Primary short-term goal.")
+    long_term_goal: str | None = Field(default=None, description="Long-term physique/strength goal.")
+    weekly_frequency: int | None = Field(default=None, description="Integer days committed per week.")
+    training_age_years: float | None = Field(default=None, description="Years of lifting experience.")
+    rep_preference: Literal["low", "balanced", "high"] | None = Field(default="balanced")
+    is_off_topic: bool = Field(default=False, description="True ONLY if input is unrelated to workout goals.")
 
 
 class Step3Extraction(BaseModel):
-    is_off_topic: bool = Field(default=False)
-    equipment_access: str | None = None
-    injuries_or_limitations: str | None = None
-    stress_and_sleep: str | None = None
-
+    equipment_access: str | None = Field(default=None, description="Gym or home equipment available.")
+    injuries_or_limitations: str | None = Field(
+        default=None,
+        description="Injuries or joint issues. If user states none, zero, or healthy, set to 'None'.",
+    )
+    stress_and_sleep: str | None = Field(default=None, description="Job/daily stress and sleep hours/quality.")
+    is_off_topic: bool = Field(default=False, description="True ONLY if completely unrelated to fitness logistics.")
 
 class OnboardingGraphState(TypedDict):
     messages: list[BaseMessage]
@@ -208,15 +213,17 @@ def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
                         age = int(n)
                         break
         else:
-            ext: Step1Extraction = step1_extractor.invoke(f'Extract Step 1 biometrics:\n"{raw_input}"')
-            is_off_topic = ext.is_off_topic
-            proportions, gender, age, weight_kg, height_cm = (
-                ext.proportions,
-                ext.gender,
-                ext.age,
-                ext.weight_kg,
-                ext.height_cm,
+            prompt = (
+                f"Extract Step 1 biometrics from user input:\n\"{raw_input}\"\n\n"
+                f"RULES:\n"
+                f"- If upper vs lower body proportions are NOT mentioned, leave proportions as null.\n"
+                f"- Flag is_off_topic=True ONLY if input is trivia, coding, or unrelated to biometrics."
             )
+            ext: Step1Extraction = step1_extractor.invoke(prompt)
+            proportions, gender, age, weight_kg, height_cm = (
+                ext.proportions, ext.gender, ext.age, ext.weight_kg, ext.height_cm
+            )
+            is_off_topic = ext.is_off_topic and not any([proportions, gender, age, weight_kg, height_cm])
 
         if is_off_topic:
             return _reject(
@@ -261,11 +268,21 @@ def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
             if raw_age is not None:
                 training_age_years = float(raw_age)
         else:
-            ext: Step2Extraction = step2_extractor.invoke(f'Extract Step 2 goals and capacity:\n"{raw_input}"')
-            is_off_topic = ext.is_off_topic
+            prompt = (
+                f"Extract Step 2 goals and capacity from user input:\n\"{raw_input}\"\n\n"
+                f"RULES:\n"
+                f"- current_goal: primary short-term focus.\n"
+                f"- long_term_goal: long-term outcome.\n"
+                f"- weekly_frequency: integer days per week (1-7).\n"
+                f"- training_age_years: lifting experience in years.\n"
+                f"- Flag is_off_topic=True ONLY if input is completely unrelated to lifting."
+            )
+            ext: Step2Extraction = step2_extractor.invoke(prompt)
             current_goal, long_term_goal = ext.current_goal, ext.long_term_goal
             weekly_frequency, training_age_years = ext.weekly_frequency, ext.training_age_years
             rep_pref = ext.rep_preference or "balanced"
+            has_step2_data = any([current_goal, long_term_goal, weekly_frequency is not None, training_age_years is not None])
+            is_off_topic = ext.is_off_topic and not has_step2_data
 
         if is_off_topic:
             return _reject(step, "Input is off-topic. Please answer the goals and volume questions.", profile)
@@ -306,12 +323,25 @@ def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
                 seg_match.group("q9").strip(),
             )
         else:
-            ext: Step3Extraction = step3_extractor.invoke(f'Extract Step 3 logistics:\n"{raw_input}"')
-            is_off_topic = ext.is_off_topic
+            prompt = (
+            f"Extract Step 3 logistics from user input:\n\"{raw_input}\"\n\n"
+            f"RULES:\n"
+            f"- equipment_access: gym or equipment details.\n"
+            f"- injuries_or_limitations: injuries or issues. If user EXPLICITLY states none/healthy, set 'None'. "
+            f"If injuries are NOT mentioned at all, you MUST leave this null.\n"
+            f"- stress_and_sleep: job stress and sleep hours.\n"
+            f"- Flag is_off_topic=True ONLY if completely unrelated to fitness logistics."
+            )
+            ext: Step3Extraction = step3_extractor.invoke(prompt)
             equipment, injuries, recovery = ext.equipment_access, ext.injuries_or_limitations, ext.stress_and_sleep
+            has_step3_data = any([equipment, injuries, recovery])
+            is_off_topic = ext.is_off_topic and not has_step3_data
 
         if is_off_topic:
             return _reject(step, "Input is off-topic. Please answer the logistics questions.", profile)
+
+        if injuries and injuries.strip().lower() in {"0", "no", "none", "nil", "n/a", "zero joint issues or injuries"}:
+            injuries = "None"
 
         missing = []
         if not equipment or len(equipment.strip()) < 2:

@@ -1,28 +1,42 @@
-FROM python:3.12-slim
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 
 WORKDIR /app
 
-# Install system dependencies (SQLite, OpenMP runtime for CPU inference)
+# Install Python 3.12 and SQLite dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    curl \
     sqlite3 \
     libgomp1 \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    python3.12 \
+    python3.12-dev \
+    python3.12-distutils \
     && rm -rf /var/lib/apt/lists/*
 
-# Install UV binary
+# Point python to 3.12
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1 \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+
+# Install UV
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-# Copy ONLY requirements first to leverage Docker layer caching
+# NVIDIA Container runtime flags
+ENV NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    N_GPU_LAYERS=-1 \
+    EMBEDDING_DEVICE=cuda
+
 COPY requirements.txt .
 
-# Install prebuilt llama-cpp-python wheel with AVX2 CPU acceleration
+# Install CUDA 12.4 prebuilt wheel for llama-cpp-python
 RUN uv pip install --system \
-    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu \
+    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124 \
     llama-cpp-python
 
-# Install remaining project dependencies into system Python
 RUN uv pip install --system -r requirements.txt
 
-# Copy application source code
 COPY . .
 
 EXPOSE 8501
