@@ -3,7 +3,6 @@ import struct
 import sys
 from pathlib import Path
 
-import torch
 
 from dotenv import load_dotenv
 from langchain_huggingface import HuggingFaceEmbeddings

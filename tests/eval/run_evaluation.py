@@ -27,7 +27,7 @@ from tests.eval.schemas import (
     DebriefEvalJudgment,
     OnboardingExtractionJudgment,
 )
-from utils.model_downloader import get_judge_llm, llm
+from utils.model_downloader import get_judge_llm
 from utils.text_scrubber import scrub_coach_output
 from utils.logger import MyosLogger
 
