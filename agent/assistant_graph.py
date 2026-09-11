@@ -872,8 +872,6 @@ def stream_assistant_turn(state: dict[str, Any]) -> Generator[str, None, None]:
         yield "No message received."
         return
 
-    last_msg = messages[-1]
-    user_query = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
     user_id = state.get("trainee_id", "default")
 
     state.update(router_node(state))
