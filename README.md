@@ -147,10 +147,13 @@ Open **`http://localhost:8501`** in your browser. The quantized model weights (`
 
 ## Performance Highlights
 
-* **~237,212x Latency Elimination**: Deterministic regex routing resolves common actions in 0.015 ms, bypassing a 3.6-second local CPU classification prompt.
-* **Invariant ~7s Response Ceiling**: Enforcing a strict 4-message context tail (`TAIL_WINDOW_SIZE = 4`) and compact 5-line telemetry prevents quadratic context degradation as workout history scales.
-* **Sub-25ms In-Process Vector Search**: `sqlite-vec` queries embedded C virtual tables directly, eliminating client-server vector database overhead.
-* **Zero Write Contention**: Thread-isolated WAL ledgers sustained 10 concurrent threads committing 150 sets simultaneously with 0 lock errors.
+## Performance Highlights
+
+* **100% Evaluation Pass Rate (65-Case Suite)**: Scored 100% across all 65 standard test cases covering Onboarding (15/15), Debrief (25/25), and Coaching Q&A (25/25).
+* **93.3% Generalization Pass Rate (15 Unseen Cases)**: Evaluated on unseen movement variations, inverted query syntax, and novel trauma scenarios with zero prompt regressions.
+* **~237,212x Latency Elimination**: Deterministic regex and dynamic ledger triage resolve actions in 0.002 ms – 0.015 ms, completely bypassing CPU classification prompts.
+* **Zero Math Hallucination**: Offloads e1RM tracking, Olympic barbell plate distribution, and volume tonnage directly to deterministic Python algorithms.
+* **Invariant ~7s Response Ceiling**: Enforcing a strict 4-message context tail (`TAIL_WINDOW_SIZE = 4`) and compact telemetry snapshot prevents token degradation over extended training histories.
 
 > Review the full empirical benchmark tables and context scaling curves in [`docs/ARCHITECTURAL_BENCHMARKS.md`](docs/ARCHITECTURAL_BENCHMARKS.md).
 
@@ -187,11 +190,13 @@ docker compose exec myos-engine python scripts/check_engine_health.py
 ## Roadmap
 
 - [x] Zero-regression architecture refactoring and multi-tenant WAL migration.
-- [x] Sub-millisecond regex router and clinical safeguard interceptor.
+- [x] Sub-millisecond regex router, banned movement vetoes, and clinical safeguard interceptor.
+- [x] Dynamic entity extraction and introspective ledger reconciliation layer.
+- [x] Hybrid deterministic debrief architecture (zero-hallucination metrics).
+- [x] 100% standard benchmark pass rate and 93.3% unseen generalization verification.
 - [x] `SafeChatLlamaCpp` streaming tool-call sanitization.
 - [x] In-process `sqlite-vec` semantic exercise catalog search.
 - [x] Fractional synergist volume attribution (1.0 direct / 0.5 synergist).
-- [x] Atomic batch insertion for workout sets to prevent partial-write states.
 - [ ] Export session logs to standardized CSV / JSON fitness exchange formats.
 - [ ] Direct Apple HealthKit and Google Health Connect local synchronization.
 - [ ] Optional Vulkan / CUDA GPU offload support in Docker runtime.

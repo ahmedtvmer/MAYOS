@@ -79,18 +79,28 @@ flowchart TD
 The runtime state (`AssistantState`) flows immutably across nodes in `agent/assistant_graph.py`:
 
 ```python
+IntentType = Literal[
+    "clinical_intercept",
+    "banned_movement",
+    "telemetry_intercept",
+    "exercise_history",
+    "exercise_substitution",
+    "program_mutation",
+    "catalog_search",
+    "coaching_qa",
+]
+
+
 class AssistantState(TypedDict):
-    messages: Annotated[List[BaseMessage], add_messages]
-    trainee_id: str
-    coach_tone: str
-    custom_instructions: str
-    telemetry_context: str
-    intent: Optional[
-        Literal["clinical_intercept", "exercise_substitution", "program_mutation", "catalog_search", "coaching_qa"]
-    ]
-    intent_metadata: Dict[str, Any]
-    program_updated: bool
-    response_content: Optional[str]
+  messages: Annotated[Sequence[BaseMessage], add_messages]
+  trainee_id: str
+  coach_tone: str
+  custom_instructions: str
+  telemetry_context: str | None
+  intent: IntentType | None
+  intent_metadata: dict[str, Any]
+  program_updated: bool
+  response_content: str | None
 ```
 
 ### State Node Execution Lifecycle
@@ -131,27 +141,24 @@ stateDiagram-v2
 The fast-path router eliminates LLM classification latency on routine user queries through a multi-tiered hierarchy of compiled regular expressions:
 
 ```mermaid
-flowchart TD
-    Start(["Raw Trainee Query"]) --> Tier0{"Tier 0: History Lookup\nRE_EXERCISE_PERFORMANCE_QUERY"}
+lowchart TD
+    Start(["Raw Trainee Query"]) --> Tier0{"Tier 0: Red Flag & Clinical Safety\nRE_ACUTE_INJURY | RE_DIAGNOSIS"}
     
-    Tier0 -- Match --> ExecHist["exercise_history_node\n(Query workout_sets directly)"]
-    Tier0 -- No Match --> Tier1_RedFlag{"Tier 1: Clinical Intercept\nRE_ACUTE_INJURY"}
+    Tier0 -- "Acute Trauma / Diagnosis Request" --> ClinNode["clinical_intercept_node\n(Halt movement / Decline diagnosis in 0.005s)"]
+    Tier0 -- Safe --> Tier1{"Tier 1: Banned Biomechanics\nRE_BANNED_MOVEMENT"}
     
-    Tier1_RedFlag -- "Acute Pain/Tear/Pop" --> ClinNode["clinical_intercept_node\n(Halt movement immediately)"]
-    Tier1_RedFlag -- Safe --> Tier1_Action{"Tier 1: Action Hint Gate\nRE_ACTION_HINT"}
+    Tier1 -- "Behind-Neck / Upright Row / Burn Sets" --> BannedNode["banned_movement_node\n(Deterministic VETO in 0.002s)"]
+    Tier1 -- Safe --> Tier2{"Tier 2: Dynamic Ledger Reconciler\nreconcile_telemetry_query()"}
     
-    Tier1_Action -- "No Action Keywords" --> DirectQA["Direct Pass-Through to LLM\n(Latency: ~0.018ms)"]
+    Tier2 -- "Historical Query on Unlogged Lift / Set Count" --> TelemetryNode["telemetry_intercept_node\n(Zero-data refusal / Audit in 0.002s)"]
+    Tier2 -- "Conceptual or Logged" --> Tier3{"Tier 3: Structured Mutations\nRE_PROGRAM_MUTATION | RE_EXPLICIT_SWAP"}
     
-    Tier1_Action -- "Action Keyword Detected" --> Tier2_Sub{"Exercise Substitution?\nRE_EXERCISE_SWAP"}
-    Tier2_Sub -- "Explicit Swap / Alternative" --> SubNode["exercise_substitution_node\n(Execute direct swap or KNN lookup)"]
+    Tier3 -- "Split Rebuild / Frequency Change" --> MutNode["program_mutation_node"]
+    Tier3 -- "Movement Swap / Candidate Lookup" --> SubNode["exercise_substitution_node"]
+    Tier3 -- "None" --> Tier4{"Tier 4: Catalog Search\nRE_SEARCH_TOKENS"}
     
-    Tier2_Sub -- No --> Tier2_Mut{"Program Mutation?\nRE_PROGRAM_MUTATION"}
-    Tier2_Mut -- "Rebuild / Frequency Shift" --> MutNode["program_mutation_node\n(Regenerate split structure)"]
-    
-    Tier2_Mut -- No --> Tier2_Cat{"Catalog Search?\nRE_CATALOG_SEARCH"}
-    Tier2_Cat -- "Find / Search / List" --> CatNode["catalog_search_node\n(Direct KNN vector query)"]
-    
-    Tier2_Cat -- No --> DirectQA
+    Tier4 -- "Search / Lookup Query" --> CatNode["catalog_search_node"]
+    Tier4 -- "General Coaching Question" --> GenNode["generation_node\n(Local Qwen 2.5 3B Inference)"]
 ```
 
 ---
@@ -309,4 +316,17 @@ flowchart LR
     end
 
     FinalPayload --> Inference["SafeChatLlamaCpp (Flat ~7s CPU Invariant)"]
+
+---
+
+## 8. Hybrid Post-Workout Debrief Architecture
+
+To prevent small language models (3B) from hallucinating mathematical calculations or echoing bracketed prompt templates, session debriefs are assembled via a hybrid deterministic-generative pipeline:
+
+1. **Deterministic Metrics Calculation (`format_overload_deltas`)**:
+   Calculates e1RM deltas, load advancements (+2.5 kg), and rep-corridor holds directly in Python. If no load advancement occurred, yields an exact maintenance directive.
+2. **Deterministic Fatigue Snapshot (`format_fatigue_cns_check`)**:
+   Extracts logged readiness ($X/5$), volume load tonnage, and trainee notes into a pre-formatted markdown block.
+3. **Bounded Directive Synthesis (`generate_session_debrief`)**:
+   The LLM is tasked *exclusively* with generating 2 to 3 concise bullet points under `**Next Session Directives**:` adhering strictly to active deload RPE caps or progression directives.
 ```

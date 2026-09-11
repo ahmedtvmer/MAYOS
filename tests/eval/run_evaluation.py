@@ -120,6 +120,7 @@ def evaluate_debrief(judge: Any, dataset_path: Path):
     logger.info("-" * 75)
 
     for case in cases:
+        case_id = case.get("id") or case.get("case_id", "unknown")
         t0 = time.perf_counter()
         output = generate_session_debrief(
             split_name=case["split_name"],
@@ -145,7 +146,7 @@ def evaluate_debrief(judge: Any, dataset_path: Path):
 
         passed = judgment.is_passed if judgment else False
         status_tag = "✅ PASS" if passed else "❌ FAIL"
-        logger.info(f"[{status_tag}] Case {case['id']} ({gen_time:.2f}s)")
+        logger.info(f"[{status_tag}] Case {case_id} ({gen_time:.2f}s)")
 
         if judgment and not judgment.is_passed:
             logger.warning(
@@ -154,7 +155,8 @@ def evaluate_debrief(judge: Any, dataset_path: Path):
             )
 
         results.append({
-            "case_id": case["id"],
+            "case_id": case_id,
+            "split_name": case.get("split_name"),
             "generated_output": output,
             "judgment": judgment.model_dump() if judgment else None,
             "passed": passed,
@@ -163,7 +165,6 @@ def evaluate_debrief(judge: Any, dataset_path: Path):
         })
 
     return results
-
 def evaluate_onboarding(judge: Any, dataset_path: Path):
     with open(dataset_path, "r", encoding="utf-8") as f:
         cases = json.load(f)
@@ -278,34 +279,91 @@ def evaluate_onboarding(judge: Any, dataset_path: Path):
 def main():
     parser = argparse.ArgumentParser(description="Myos LLM-as-a-Judge Offline Evaluation Suite")
     parser.add_argument("--target", choices=["qa", "debrief", "onboarding", "all"], default="all")
+    parser.add_argument("--generalize", action="store_true", help="Run 15 unseen generalization cases across all modules")
     parser.add_argument("--gpu-layers", type=int, default=10)
     args = parser.parse_args()
 
     judge = get_judge_llm(n_gpu_layers=args.gpu_layers)
     report_payload = {"timestamp": datetime.now().isoformat(), "runs": {}}
+    datasets_dir = BASE_DIR / "tests" / "eval" / "datasets"
 
-    if args.target in ("qa", "all"):
-        qa_data = BASE_DIR / "tests" / "eval" / "datasets" / "coaching_qa_cases.json"
-        qa_results = evaluate_qa(judge, qa_data)
-        qa_pass = (sum(1 for r in qa_results if r["passed"]) / len(qa_results)) * 100
-        logger.info(f"\n📊 Coaching Q&A Pass Rate: {qa_pass:.1f}% ({sum(1 for r in qa_results if r['passed'])}/{len(qa_results)})")
-        report_payload["runs"]["coaching_qa"] = qa_results
+    if args.generalize:
+        gen_file = datasets_dir / "generalization_cases.json"
+        if not gen_file.exists():
+            logger.error(f"Generalization dataset not found at: {gen_file}")
+            return
 
-    if args.target in ("debrief", "all"):
-        debrief_data = BASE_DIR / "tests" / "eval" / "datasets" / "debrief_cases.json"
-        debrief_results = evaluate_debrief(judge, debrief_data)
-        debrief_pass = (sum(1 for r in debrief_results if r["passed"]) / len(debrief_results)) * 100
-        logger.info(f"\n📊 Debrief Pass Rate: {debrief_pass:.1f}% ({sum(1 for r in debrief_results if r['passed'])}/{len(debrief_results)})")
-        report_payload["runs"]["debrief"] = debrief_results
+        with open(gen_file, "r", encoding="utf-8") as f:
+            gen_data = json.load(f)
 
-    if args.target in ("onboarding", "all"):
-        onboarding_data = BASE_DIR / "tests" / "eval" / "datasets" / "onboarding_cases.json"
-        onboarding_results = evaluate_onboarding(judge, onboarding_data)
-        onboarding_pass = (sum(1 for r in onboarding_results if r["passed"]) / len(onboarding_results)) * 100
-        logger.info(f"\n📊 Onboarding Pass Rate: {onboarding_pass:.1f}% ({sum(1 for r in onboarding_results if r['passed'])}/{len(onboarding_results)})")
-        report_payload["runs"]["onboarding"] = onboarding_results
+        logger.info("\n" + "=" * 75)
+        logger.info("🚀 RUNNING FINAL GENERALIZATION EVALUATION (15 UNSEEN CASES)")
+        logger.info("=" * 75)
 
-    out_file = REPORTS_DIR / f"eval_run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        qa_tmp = datasets_dir / "_tmp_gen_qa.json"
+        deb_tmp = datasets_dir / "_tmp_gen_deb.json"
+        onb_tmp = datasets_dir / "_tmp_gen_onb.json"
+
+        try:
+            qa_tmp.write_text(json.dumps(gen_data.get("coaching_qa", [])), encoding="utf-8")
+            deb_tmp.write_text(json.dumps(gen_data.get("debrief", [])), encoding="utf-8")
+            onb_tmp.write_text(json.dumps(gen_data.get("onboarding", [])), encoding="utf-8")
+
+            qa_results = evaluate_qa(judge, qa_tmp)
+            qa_pass = (sum(1 for r in qa_results if r["passed"]) / len(qa_results)) * 100 if qa_results else 0.0
+            logger.info(f"\n📊 Generalization QA Pass Rate: {qa_pass:.1f}% ({sum(1 for r in qa_results if r['passed'])}/{len(qa_results)})")
+            report_payload["runs"]["coaching_qa"] = qa_results
+
+            debrief_results = evaluate_debrief(judge, deb_tmp)
+            debrief_pass = (sum(1 for r in debrief_results if r["passed"]) / len(debrief_results)) * 100 if debrief_results else 0.0
+            logger.info(f"\n📊 Generalization Debrief Pass Rate: {debrief_pass:.1f}% ({sum(1 for r in debrief_results if r['passed'])}/{len(debrief_results)})")
+            report_payload["runs"]["debrief"] = debrief_results
+
+            onboarding_results = evaluate_onboarding(judge, onb_tmp)
+            onboarding_pass = (sum(1 for r in onboarding_results if r["passed"]) / len(onboarding_results)) * 100 if onboarding_results else 0.0
+            logger.info(f"\n📊 Generalization Onboarding Pass Rate: {onboarding_pass:.1f}% ({sum(1 for r in onboarding_results if r['passed'])}/{len(onboarding_results)})")
+            report_payload["runs"]["onboarding"] = onboarding_results
+
+            total_cases = len(qa_results) + len(debrief_results) + len(onboarding_results)
+            total_passed = (
+                sum(1 for r in qa_results if r["passed"])
+                + sum(1 for r in debrief_results if r["passed"])
+                + sum(1 for r in onboarding_results if r["passed"])
+            )
+            total_pct = (total_passed / total_cases * 100) if total_cases > 0 else 0.0
+            logger.info("\n" + "=" * 75)
+            logger.info(f"🎯 FINAL GENERALIZATION SCORE: {total_passed}/{total_cases} ({total_pct:.1f}%)")
+            logger.info("=" * 75)
+
+        finally:
+            qa_tmp.unlink(missing_ok=True)
+            deb_tmp.unlink(missing_ok=True)
+            onb_tmp.unlink(missing_ok=True)
+
+    else:
+        if args.target in ("qa", "all"):
+            qa_data = datasets_dir / "coaching_qa_cases.json"
+            qa_results = evaluate_qa(judge, qa_data)
+            qa_pass = (sum(1 for r in qa_results if r["passed"]) / len(qa_results)) * 100 if qa_results else 0.0
+            logger.info(f"\n📊 Coaching Q&A Pass Rate: {qa_pass:.1f}% ({sum(1 for r in qa_results if r['passed'])}/{len(qa_results)})")
+            report_payload["runs"]["coaching_qa"] = qa_results
+
+        if args.target in ("debrief", "all"):
+            debrief_data = datasets_dir / "debrief_cases.json"
+            debrief_results = evaluate_debrief(judge, debrief_data)
+            debrief_pass = (sum(1 for r in debrief_results if r["passed"]) / len(debrief_results)) * 100 if debrief_results else 0.0
+            logger.info(f"\n📊 Debrief Pass Rate: {debrief_pass:.1f}% ({sum(1 for r in debrief_results if r['passed'])}/{len(debrief_results)})")
+            report_payload["runs"]["debrief"] = debrief_results
+
+        if args.target in ("onboarding", "all"):
+            onboarding_data = datasets_dir / "onboarding_cases.json"
+            onboarding_results = evaluate_onboarding(judge, onboarding_data)
+            onboarding_pass = (sum(1 for r in onboarding_results if r["passed"]) / len(onboarding_results)) * 100 if onboarding_results else 0.0
+            logger.info(f"\n📊 Onboarding Pass Rate: {onboarding_pass:.1f}% ({sum(1 for r in onboarding_results if r['passed'])}/{len(onboarding_results)})")
+            report_payload["runs"]["onboarding"] = onboarding_results
+
+    prefix = "gen_" if args.generalize else ""
+    out_file = REPORTS_DIR / f"{prefix}eval_run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     out_file.write_text(json.dumps(report_payload, indent=2), encoding="utf-8")
     logger.info(f"\n📁 Benchmark artifact written to: {out_file}")
 
