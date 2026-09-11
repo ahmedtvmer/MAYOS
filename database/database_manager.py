@@ -313,10 +313,35 @@ class DatabaseManager:
             core_df.to_sql("exercises", self.catalog_conn, if_exists="append", index=False)
 
             muscle_cols = [c for c in df.columns if c.startswith("secondaryMuscles/")]
-            muscles_df = df.melt(id_vars=["id"], value_vars=muscle_cols, value_name="muscle").dropna(subset=["muscle"])
-            muscles_df = muscles_df[["id", "muscle"]].rename(columns={"id": "exercise_id"})
-            muscles_df.to_sql("exercise_secondary_muscles", self.catalog_conn, if_exists="append", index=False)
-            self.catalog_conn.commit()
+
+            if muscle_cols:
+                muscles_df = (
+                    df.melt(id_vars=["id"], value_vars=muscle_cols, value_name="muscle")
+                    .dropna(subset=["muscle"])
+                )
+                # Clean whitespace and case
+                muscles_df["muscle"] = muscles_df["muscle"].astype(str).str.strip().str.lower()
+                
+                # Filter out empty strings and stringified nulls
+                muscles_df = muscles_df[
+                    ~muscles_df["muscle"].isin(["", "nan", "none", "null"])
+                ]
+                
+                # Rename and drop duplicate pairs
+                muscles_df = (
+                    muscles_df[["id", "muscle"]]
+                    .rename(columns={"id": "exercise_id"})
+                    .drop_duplicates()
+                )
+
+                if not muscles_df.empty:
+                    muscles_df.to_sql(
+                        "exercise_secondary_muscles",
+                        self.catalog_conn,
+                        if_exists="append",
+                        index=False
+                    )
+                    self.catalog_conn.commit()
 
     EXCLUDED_BIOMECHANICAL_PATTERNS = ("behind neck", "behind the neck", "upright row")
 
@@ -485,44 +510,54 @@ class DatabaseManager:
 
         prog_id, prog_name, freq, split_type = row
         cursor.execute(
-            "SELECT id, day_name, day_order FROM program_days WHERE program_id = ? ORDER BY day_order ASC", (prog_id,)
+            "SELECT id, day_name, day_order FROM program_days WHERE program_id = ? ORDER BY day_order ASC",
+            (prog_id,),
         )
         days_rows = cursor.fetchall()
+        if not days_rows:
+            return None
 
         days = []
-        for d_id, d_name, d_order in days_rows:
-            cursor.execute(
-                """
-                SELECT pe.exercise_id, e.name, pe.target_sets, pe.target_reps_min,
-                       pe.target_reps_max, pe.target_rpe, pe.rest_seconds, pe.notes,
-                       e.image_path, e.gif_path
-                FROM program_exercises pe
-                JOIN catalog.exercises e ON pe.exercise_id = e.id
-                WHERE pe.day_id = ?
-                ORDER BY pe.order_in_day ASC
-            """,
-                (d_id,),
-            )
-            exercises = [
-                ProgramExerciseSchema(
-                    exercise_id=str(r[0]),
-                    exercise_name=r[1],
-                    target_sets=int(r[2]),
-                    target_reps_min=int(r[3]),
-                    target_reps_max=int(r[4]),
-                    target_rpe=float(r[5]) if r[5] is not None else 8.5,
-                    rest_seconds=int(r[6]) if r[6] is not None else 120,
-                    notes=r[7] or "",
-                    image_path=r[8],
-                    gif_path=r[9],
+        try:
+            for d_id, d_name, d_order in days_rows:
+                cursor.execute(
+                    """
+                    SELECT pe.exercise_id, e.name, pe.target_sets, pe.target_reps_min,
+                           pe.target_reps_max, pe.target_rpe, pe.rest_seconds, pe.notes,
+                           e.image_path, e.gif_path
+                    FROM program_exercises pe
+                    JOIN catalog.exercises e ON pe.exercise_id = e.id
+                    WHERE pe.day_id = ?
+                    ORDER BY pe.order_in_day ASC
+                """,
+                    (d_id,),
                 )
-                for r in cursor.fetchall()
-            ]
-            days.append(ProgramDaySchema(day_name=d_name, day_order=d_order, exercises=exercises))
+                exercises = [
+                    ProgramExerciseSchema(
+                        exercise_id=str(r[0]),
+                        exercise_name=r[1],
+                        target_sets=int(r[2]),
+                        target_reps_min=int(r[3]),
+                        target_reps_max=int(r[4]),
+                        target_rpe=float(r[5]) if r[5] is not None else 8.5,
+                        rest_seconds=int(r[6]) if r[6] is not None else 120,
+                        notes=r[7] or "",
+                        image_path=r[8],
+                        gif_path=r[9],
+                    )
+                    for r in cursor.fetchall()
+                ]
+                days.append(ProgramDaySchema(day_name=d_name, day_order=d_order, exercises=exercises))
 
-        return GeneratedProgramSchema(
-            program_name=prog_name, weekly_frequency=int(freq), split_type=split_type or "custom", days=days
-        )
+            return GeneratedProgramSchema(
+                program_name=prog_name,
+                weekly_frequency=int(freq),
+                split_type=split_type or "custom",
+                days=days,
+            )
+        except Exception as exc:
+            logger.warning(f"Active program '{prog_id}' is malformed or incomplete: {exc}")
+            return None
 
     def update_user_frequency(self, frequency: int) -> None:
         cursor = self.conn.cursor()

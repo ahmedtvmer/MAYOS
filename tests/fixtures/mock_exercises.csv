@@ -1,4 +1,4 @@
-exercise_id,name,primary_muscle,secondary_muscles,equipment,mechanics
-bench_press,Barbell Bench Press,Chest,"Triceps,Front Delts",Barbell,Compound
-back_squat,Barbell Back Squat,Quadriceps,"Glutes,Hamstrings",Barbell,Compound
-pull_up,Pull Up,Lats,"Biceps,Rear Delts",Bodyweight,Compound
+bodyPart,equipment,id,name,target,secondaryMuscles/0,secondaryMuscles/1,secondaryMuscles/2,secondaryMuscles/3,secondaryMuscles/4,secondaryMuscles/5,image_path,gif_path,instructions
+waist,body weight,1,3/4 sit-up,abs,hip flexors,lower back,,,,,images/0001-2gPfomN.jpg,videos/0001-2gPfomN.gif,"Lie flat on your back with your knees bent and feet flat on the ground.
+Place your hands behind your head with your elbows pointing outwards.
+Engaging your abs, slowly lift your upper body off the ground, curling forward until your torso is at a 45-degree angle."

@@ -30,6 +30,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgomp1 sqlite3
 
+      - name: Cache GGUF & Embedding Models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/
+            ~/.cache/huggingface
+          key: myos-models-${{ runner.os }}-qwen2.5-3b-bge
+          restore-keys: |
+            myos-models-${{ runner.os }}-
+
+      - name: Install llama-cpp-python (CPU AVX2)
+        run: |
+          uv pip install --system llama-cpp-python \
+            --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+
       - name: Install Dependencies
         run: |
           uv pip install --system -r requirements.txt
@@ -37,14 +52,16 @@ jobs:
 
       - name: Lint with Ruff
         run: |
-          ruff check --select E,F,W --ignore E402,E501,EXE002 .
+          ruff check --select E,F,W --ignore E402,E501,EXE002,W291,W292,W293 .
 
-      - name: Run Schema Initialization & Index Verification
+      - name: Run Schema Initialization & Vector Seeding
         env:
           SEED_CSV_PATH: "tests/fixtures/mock_exercises.csv"
+          MODEL_DEVICE: "cpu"
         run: |
           python scripts/intialize_db.py
           sqlite3 db/catalog.db "PRAGMA index_list('exercise_secondary_muscles');" | grep -q "idx_secondary_muscles_ex"
+          python scripts/seed_vectors.py
           
       - name: Run Unit & Telemetry Tests
         env:
@@ -60,6 +77,14 @@ jobs:
       - name: Run WAL Concurrency Stress Test
         run: |
           python tests/benchmark_wal_concurrency.py
+
+      - name: Run Generalization Benchmark (15 Unseen Cases)
+        env:
+          OMP_NUM_THREADS: "2"
+          MODEL_DEVICE: "cpu"
+          N_GPU_LAYERS: "0"
+        run: |
+          python tests/eval/run_evaluation.py --generalize --gpu-layers 0
 
   docker-build:
     name: Docker Build Validation

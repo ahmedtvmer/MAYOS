@@ -1,2 +1,10 @@
 2026-09-09 05:37:15,262 - agent.assistant_graph - INFO - [TELEMETRY] User: ci_test_user | Intent: clinical_intercept | Router: 1.841ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
 2026-09-09 05:37:17,357 - agent.assistant_graph - INFO - [TELEMETRY] User: ci_test_user | Intent: coaching_qa | Router: 0.015ms | TTFT: 250.0ms | Tokens: 35 | GenTime: 2.50s | Speed: 14.00 TPS
+2026-09-09 21:09:34,918 - agent.assistant_graph - INFO - [TELEMETRY] User: new_trainee | Intent: clinical_intercept | Router: 1.934ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-09 21:10:45,180 - agent.assistant_graph - INFO - [TELEMETRY] User: new_trainee | Intent: coaching_qa | Router: 1.851ms | TTFT: 31267.8ms | Tokens: 161 | GenTime: 29.00s | Speed: 5.55 TPS
+2026-09-09 21:10:45,186 - agent.assistant_graph - WARNING - [PERF DEGRADATION] Low inference throughput detected: 5.55 TPS (Threshold: 8.0 TPS). Check CPU temperature or background processes.
+2026-09-09 21:11:19,784 - agent.assistant_graph - INFO - [TELEMETRY] User: new_trainee | Intent: exercise_substitution | Router: 1.592ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-09 21:12:24,847 - agent.assistant_graph - INFO - [TELEMETRY] User: new_trainee | Intent: exercise_substitution | Router: 1.621ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-09 21:13:06,809 - agent.assistant_graph - INFO - [TELEMETRY] User: new_trainee | Intent: coaching_qa | Router: 1.647ms | TTFT: 23722.4ms | Tokens: 42 | GenTime: 8.14s | Speed: 5.16 TPS
+2026-09-09 21:13:06,810 - agent.assistant_graph - WARNING - [PERF DEGRADATION] Low inference throughput detected: 5.16 TPS (Threshold: 8.0 TPS). Check CPU temperature or background processes.
+2026-09-09 21:13:30,017 - agent.assistant_graph - INFO - [TELEMETRY] User: new_trainee | Intent: program_mutation | Router: 2.053ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS

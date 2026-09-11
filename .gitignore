@@ -18,3 +18,4 @@ db
 models/
 *.gguf
 logs
+tests/eval/reports/

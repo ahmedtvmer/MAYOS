@@ -11,7 +11,7 @@ from utils.model_downloader import llm
 
 load_dotenv()
 
-Embedding = os.getenv("EMBEDDING_MODEL")
+Embedding = os.getenv("EMBEDDING_MODEL", 'BAAI/bge-small-en-v1.5')
 
 # Anchor paths
 BASE_DIR = Path(__file__).resolve().parent.parent

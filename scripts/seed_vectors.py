@@ -3,6 +3,8 @@ import struct
 import sys
 from pathlib import Path
 
+import torch
+
 from dotenv import load_dotenv
 from langchain_huggingface import HuggingFaceEmbeddings
 
@@ -17,6 +19,8 @@ from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
 
 Embedding = os.getenv("EMBEDDING_MODEL")
+MODEL_DEVICE = os.getenv("MODEL_DEVICE", "cpu").strip("'\"")
+
 
 logger = MyosLogger().get_logger(__name__)
 
@@ -32,7 +36,7 @@ def seed_exercise_embeddings():
 
     logger.info("Loading embedding model...")
     embeddings = HuggingFaceEmbeddings(
-        model_name=Embedding, model_kwargs={"device": "cpu"}, encode_kwargs={"normalize_embeddings": True}
+        model_name=Embedding, model_kwargs={"device": MODEL_DEVICE}, encode_kwargs={"normalize_embeddings": True}
     )
 
     cursor.execute("SELECT id, name, target_muscle, equipment, instructions FROM exercises")
