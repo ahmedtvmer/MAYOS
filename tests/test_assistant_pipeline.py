@@ -31,10 +31,9 @@ def test_phase1_engine_configuration():
     )
 
     assert "Output Budget & Structural Constraints:" in STATIC_SYSTEM_CORE
-    assert "strictly 2 to 4 complete, dense sentences" in STATIC_SYSTEM_CORE
-    assert "80–130 words" in STATIC_SYSTEM_CORE
+    assert "Strictly 40 to 90 words total" in STATIC_SYSTEM_CORE
+    assert "EXACTLY 2 to 3 concise, high-density bullet points" in STATIC_SYSTEM_CORE
     logger.info("✅ Phase 1 configuration & prompt budgeting verified.")
-
 
 def test_phase1_tier1_explicit_swaps():
     """Validates two-way deterministic exercise swaps."""

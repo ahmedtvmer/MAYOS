@@ -1,8 +1,5 @@
 # agent/debrief.py
-from typing import Any, Dict, List, Optional
-from langchain_core.messages import HumanMessage, SystemMessage
-from utils.model_downloader import llm
-from utils.text_scrubber import scrub_coach_output
+from typing import Any, Dict, List
 
 DEBRIEF_SYSTEM_PROMPT = """You are an elite hypertrophic analytics engine.
 Generate ONLY the '**Next Session Directives**' section for the debrief.
@@ -47,77 +44,42 @@ def generate_session_debrief(
     split_name: str,
     readiness: int,
     session_notes: str,
-    exercise_summaries: List[Dict[str, Any]],
-    profile: Optional[Dict[str, Any]] = None,
-    fatigue_info: Optional[Dict[str, Any]] = None,
+    exercise_summaries: list[dict[str, Any]],
+    profile: dict[str, Any] | None = None,
+    fatigue_info: dict[str, Any] | None = None,
 ) -> str:
     """Generates a structured post-workout debrief from raw telemetry."""
     is_deload = bool(fatigue_info and fatigue_info.get("deload_recommended", False))
-    
-    # 1. Format Deload Telemetry
-    if is_deload:
-        vol_cut_pct = int((1.0 - fatigue_info.get("volume_multiplier", 0.5)) * 100)
-        rpe_cap = fatigue_info.get("intensity_cap_rpe", 7.0)
-        deload_block = (
-            f"[DELOAD STATUS]: ACTIVE\n"
-            f"- Severity: {fatigue_info.get('severity', 'HIGH')}\n"
-            f"- Trigger Reason: {fatigue_info.get('reason')}\n"
-            f"- Mandated Volume Cut: {vol_cut_pct}%\n"
-            f"- Mandated Next Session RPE Cap: RPE {rpe_cap}\n"
-        )
-    else:
-        deload_block = "[DELOAD STATUS]: INACTIVE (Normal Progression)\n"
 
-    # 2. Format Exercise Metrics
-    exercise_lines = []
-    total_tonnage = 0.0
-    for ex in exercise_summaries:
-        vol = ex.get("volume_load", 0.0)
-        total_tonnage += vol
-        top_load = ex.get("top_load", 0.0)
-        top_reps = ex.get("top_reps", 0)
-        hist_rpe = ex.get("top_rpe", 8.0)
-        action = ex.get("action", "hold")
-        curr_e1rm = ex.get("current_e1rm")
-        e1rm_delta = ex.get("e1rm_delta", 0.0)
-
-        e1rm_str = f"{curr_e1rm:.1f} kg (Delta: {e1rm_delta:+.1f} kg)" if curr_e1rm else "N/A"
-        
-        target_directive = "Advance load (+2.5 kg)" if action == "increase" else "Hold load; build reps"
-        if is_deload:
-            target_directive = f"DELOAD: Reduce sets, cap at RPE {fatigue_info.get('intensity_cap_rpe', 7.0)}"
-
-        exercise_lines.append(
-            f"- {ex['name']}:\n"
-            f"  * Logged Set: {top_load} kg x {top_reps} reps @ historical RPE {hist_rpe}\n"
-            f"  * Calculated e1RM: {e1rm_str}\n"
-            f"  * Programmed Action: {action.upper()} -> Next Directive: {target_directive}"
-        )
-
-    telemetry_payload = (
-        f"{deload_block}\n"
-        f"[SESSION TELEMETRY]\n"
-        f"- Split: {split_name}\n"
-        f"- Logged Readiness: {readiness}/5\n"
-        f"- Total Volume Load: {total_tonnage:,.1f} kg\n"
-        f"- Trainee Notes: {session_notes or 'None'}\n\n"
-        f"[EXERCISE PERFORMANCE]\n" + "\n".join(exercise_lines)
-    )
-
+    # 1. Deterministic Metrics & Fatigue Blocks
+    total_tonnage = sum(ex.get("volume_load", 0.0) for ex in exercise_summaries)
     deltas_block = format_overload_deltas(exercise_summaries)
     fatigue_block = format_fatigue_cns_check(readiness, total_tonnage, session_notes)
 
-    messages = [
-        SystemMessage(content=DEBRIEF_SYSTEM_PROMPT),
-        HumanMessage(content=telemetry_payload),
-    ]
+    # 2. Deterministic Next Session Directives (Zero LLM Drift)
+    directives: list[str] = []
 
-    raw_directives = llm.invoke(messages).content
-    cleaned_directives = scrub_coach_output(raw_directives)
+    if is_deload:
+        rpe_cap = fatigue_info.get("intensity_cap_rpe", 7.0)
+        directives.append(f"- DELOAD: Reduce sets, cap at RPE {rpe_cap:.1f}.")
+        directives.append("- Hold current progression and prepare for deload adjustments.")
+        if fatigue_info.get("severity") == "HIGH" or "readiness" in fatigue_info.get("reason", "").lower():
+            directives.append("- Monitor readiness closely and adjust volume cuts as necessary.")
+    else:
+        for ex in exercise_summaries:
+            action = ex.get("action", "hold")
+            name = ex.get("name", "Exercise")
+            delta = ex.get("e1rm_delta", 0.0)
+            if action == "increase" or delta > 0:
+                directives.append(f"- Advance load (+2.5 kg) for {name}.")
+            else:
+                directives.append(f"- Hold load; build reps in the {name}.")
 
-    final_output = (
+    directives_block = "**Next Session Directives**:\n" + "\n".join(directives)
+
+    # 3. Assemble Immutable 3-Section Payload
+    return (
         f"**Overload Deltas**:\n{deltas_block}\n\n"
         f"**Fatigue & CNS Check**:\n{fatigue_block}\n\n"
-        f"{cleaned_directives}"
+        f"{directives_block}"
     )
-    return final_output
