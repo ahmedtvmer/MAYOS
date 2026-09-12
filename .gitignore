@@ -17,5 +17,6 @@ data
 db
 models/
 *.gguf
-logs
 tests/eval/reports/
+logs/*.log
+.pytest_cache/
