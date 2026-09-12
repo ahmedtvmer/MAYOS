@@ -8,3 +8,13 @@
 2026-09-09 21:13:06,809 - agent.assistant_graph - INFO - [TELEMETRY] User: new_trainee | Intent: coaching_qa | Router: 1.647ms | TTFT: 23722.4ms | Tokens: 42 | GenTime: 8.14s | Speed: 5.16 TPS
 2026-09-09 21:13:06,810 - agent.assistant_graph - WARNING - [PERF DEGRADATION] Low inference throughput detected: 5.16 TPS (Threshold: 8.0 TPS). Check CPU temperature or background processes.
 2026-09-09 21:13:30,017 - agent.assistant_graph - INFO - [TELEMETRY] User: new_trainee | Intent: program_mutation | Router: 2.053ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-12 13:08:59,385 - agent.assistant_graph - INFO - [TELEMETRY] User: test_user | Intent: coaching_qa | Router: 0.033ms | TTFT: 0.0ms | Tokens: 3 | GenTime: 0.00s | Speed: 1390820.63 TPS
+2026-09-12 13:08:59,387 - agent.assistant_graph - INFO - [TELEMETRY] User: test_user | Intent: program_mutation | Router: 0.018ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-12 13:08:59,733 - agent.assistant_graph - INFO - [TELEMETRY] User: test_user | Intent: clinical_intercept | Router: 0.541ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-12 13:09:01,804 - agent.assistant_graph - INFO - [TELEMETRY] User: test_user | Intent: clinical_intercept | Router: 0.464ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-12 13:09:03,876 - agent.assistant_graph - INFO - [TELEMETRY] User: test_user | Intent: clinical_intercept | Router: 0.578ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-12 13:09:05,948 - agent.assistant_graph - INFO - [TELEMETRY] User: test_user | Intent: clinical_intercept | Router: 0.470ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-12 13:09:08,019 - agent.assistant_graph - INFO - [TELEMETRY] User: test_user | Intent: clinical_intercept | Router: 0.349ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-12 13:09:11,821 - agent.assistant_graph - INFO - [TELEMETRY] User: test_trainee | Intent: coaching_qa | Router: 0.025ms | TTFT: 0.0ms | Tokens: 3 | GenTime: 0.00s | Speed: 1432664.66 TPS
+2026-09-12 13:09:29,397 - agent.assistant_graph - INFO - [TELEMETRY] User: ci_test_user | Intent: clinical_intercept | Router: 0.673ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-12 13:09:31,470 - agent.assistant_graph - INFO - [TELEMETRY] User: ci_test_user | Intent: coaching_qa | Router: 0.015ms | TTFT: 250.0ms | Tokens: 35 | GenTime: 2.50s | Speed: 14.00 TPS
