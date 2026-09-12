@@ -1,3 +1,4 @@
+# agent/onboarding_graph.py
 import re
 from typing import Any, Literal, TypedDict
 
@@ -36,17 +37,8 @@ STEP_PROMPTS: dict[int, str] = {
 }
 
 WORDS_TO_INT = {
-    "zero": 0,
-    "one": 1,
-    "two": 2,
-    "three": 3,
-    "four": 4,
-    "five": 5,
-    "six": 6,
-    "seven": 7,
-    "eight": 8,
-    "nine": 9,
-    "ten": 10,
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
+    "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
 }
 
 STEP1_SEGMENT_RE = re.compile(
@@ -110,6 +102,7 @@ class Step3Extraction(BaseModel):
     stress_and_sleep: str | None = Field(default=None, description="Job/daily stress and sleep hours/quality.")
     is_off_topic: bool = Field(default=False, description="True ONLY if completely unrelated to fitness logistics.")
 
+
 class OnboardingGraphState(TypedDict):
     messages: list[BaseMessage]
     trainee_id: str | None
@@ -159,6 +152,7 @@ def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
         }
 
     raw_input = messages[-1].content.strip()
+    raw_lower = raw_input.lower()
 
     if step == 1:
         seg_match = STEP1_SEGMENT_RE.search(raw_input)
@@ -208,9 +202,11 @@ def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
                         unclaimed.remove(n)
                         break
             if age is None:
-                for n in unclaimed:
+                cleaned_for_age = re.sub(r"\d+(?:\.\d+)?\s*(?:kg|kilos?|cm|centimeters?)", "", raw_lower)
+                standalone_nums = [int(n) for n in re.findall(r"\b(\d+)\b", cleaned_for_age)]
+                for n in standalone_nums:
                     if 12 <= n <= 100:
-                        age = int(n)
+                        age = n
                         break
         else:
             prompt = (
@@ -225,10 +221,49 @@ def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
             )
             is_off_topic = ext.is_off_topic and not any([proportions, gender, age, weight_kg, height_cm])
 
+        raw_lower = raw_input.lower()
+        if not proportions:
+            if any(k in raw_lower for k in ["longer leg", "long leg", "legs than torso", "legs longer", "longer legs"]):
+                proportions = "long_legs"
+            elif any(k in raw_lower for k in ["longer torso", "long torso", "torso than legs", "torso longer"]):
+                proportions = "long_torso"
+            elif any(k in raw_lower for k in ["balanced", "equal", "same", "proportional"]):
+                proportions = "balanced"
+            elif any(k in raw_lower for k in ["legs", "torso", "limbs"]):
+                proportions = "long_legs" if "leg" in raw_lower else "balanced"
+            else:
+                proportions = "balanced"
+
+        if not gender:
+            if re.search(r"\b(male|man|boy)\b", raw_lower):
+                gender = "male"
+            elif re.search(r"\b(female|woman|girl)\b", raw_lower):
+                gender = "female"
+
+        if weight_kg is None:
+            w_m = re.search(r"(\d+(?:\.\d+)?)\s*(?:kg|kilos?|kilos)\b", raw_lower) or re.search(r"weighing\s+(\d+(?:\.\d+)?)", raw_lower)
+            if w_m:
+                weight_kg = float(w_m.group(1))
+
+        if height_cm is None:
+            h_m = re.search(r"(\d+(?:\.\d+)?)\s*(?:cm|centimeters?)\b", raw_lower) or re.search(r"at\s+(\d+(?:\.\d+)?)\s*cm", raw_lower)
+            if h_m:
+                height_cm = float(h_m.group(1))
+
+        if age is None:
+            a_m = re.search(r"\b(\d+)\s*(?:years?\s*old|yrs?\s*old|yo|years?|yrs?)\b", raw_lower) or re.search(r"\bam\s+(?:an?\s+)?(\d+)\s*year", raw_lower)
+            if a_m:
+                age = int(a_m.group(1))
+            else:
+                cleaned_for_age = re.sub(r"\d+(?:\.\d+)?\s*(?:kg|kilos?|cm|centimeters?)", "", raw_lower)
+                standalone_nums = [int(n) for n in re.findall(r"\b(\d+)\b", cleaned_for_age)]
+                for n in standalone_nums:
+                    if 12 <= n <= 100:
+                        age = n
+                        break
+
         if is_off_topic:
-            return _reject(
-                step, "Input is off-topic. Please provide your proportion comparison and biometrics.", profile
-            )
+            return _reject(step, "Input is off-topic. Please provide your proportion comparison and biometrics.", profile)
 
         missing = []
         if not proportions:
@@ -243,13 +278,9 @@ def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
             missing.append("height (between 100 and 250 cm)")
 
         if missing:
-            return _reject(
-                step, f"Incomplete or invalid biometrics: Please provide valid {', '.join(missing)}.", profile
-            )
+            return _reject(step, f"Incomplete or invalid biometrics: Please provide valid {', '.join(missing)}.", profile)
 
-        profile.update(
-            {"proportions": proportions, "gender": gender, "age": age, "weight_kg": weight_kg, "height_cm": height_cm}
-        )
+        profile.update({"proportions": proportions, "gender": gender, "age": age, "weight_kg": weight_kg, "height_cm": height_cm})
         return _advance(step + 1, profile)
 
     elif step == 2:
@@ -283,6 +314,38 @@ def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
             rep_pref = ext.rep_preference or "balanced"
             has_step2_data = any([current_goal, long_term_goal, weekly_frequency is not None, training_age_years is not None])
             is_off_topic = ext.is_off_topic and not has_step2_data
+
+        if not current_goal:
+            curr_m = re.search(r"(?:current\s*(?:primary\s*)?(?:focus|goal)|focus|goal)\s*(?:is|:)?\s*([^.]+)", raw_input, re.I)
+            if not curr_m:
+                curr_m = re.search(r"(?:want to|looking to)\s*([^,.]+)", raw_input, re.I)
+            if curr_m:
+                current_goal = curr_m.group(1).strip()
+            elif len(raw_input.strip()) > 5:
+                current_goal = raw_input.split(".")[0].strip()
+
+        if not long_term_goal:
+            long_m = re.search(r"(?:long[\s-]term(?:\s+goal)?)\s*(?:is|:)?\s*([^.]+)", raw_input, re.I)
+            if not long_m:
+                long_m = re.search(r"(?:eventually|future)\s*(?:want to|goal is)\s*([^.]+)", raw_input, re.I)
+            if long_m:
+                long_term_goal = long_m.group(1).strip()
+            else:
+                long_term_goal = current_goal or "Maintain strength and hypertrophy progression"
+
+        if weekly_frequency is None:
+            freq_m = re.search(r"\b([1-7])\s*(?:days?\s*(?:weekly|a\s+week|per\s+week|\/wk)?)\b", raw_input, re.I)
+            if freq_m:
+                weekly_frequency = int(freq_m.group(1))
+
+        if training_age_years is None:
+            exp_m = re.search(r"(?:lifting|training)(?:\s+for)?\s*(\d+(?:\.\d+)?)\s*years?", raw_input, re.I)
+            if not exp_m:
+                exp_m = re.search(r"(\d+(?:\.\d+)?)\s*years?\s*(?:of\s+)?(?:lifting|training)", raw_input, re.I)
+            if not exp_m:
+                exp_m = re.search(r"\b(\d+(?:\.\d+)?)\s*years?\b", raw_input, re.I)
+            if exp_m:
+                training_age_years = float(exp_m.group(1))
 
         if is_off_topic:
             return _reject(step, "Input is off-topic. Please answer the goals and volume questions.", profile)
@@ -324,24 +387,46 @@ def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
             )
         else:
             prompt = (
-            f"Extract Step 3 logistics from user input:\n\"{raw_input}\"\n\n"
-            f"RULES:\n"
-            f"- equipment_access: gym or equipment details.\n"
-            f"- injuries_or_limitations: injuries or issues. If user EXPLICITLY states none/healthy, set 'None'. "
-            f"If injuries are NOT mentioned at all, you MUST leave this null.\n"
-            f"- stress_and_sleep: job stress and sleep hours.\n"
-            f"- Flag is_off_topic=True ONLY if completely unrelated to fitness logistics."
+                f"Extract Step 3 logistics from user input:\n\"{raw_input}\"\n\n"
+                f"RULES:\n"
+                f"- equipment_access: gym or equipment details.\n"
+                f"- injuries_or_limitations: injuries or issues. If user EXPLICITLY states none/healthy, set 'None'. "
+                f"If injuries are NOT mentioned at all, you MUST leave this null.\n"
+                f"- stress_and_sleep: job stress and sleep hours.\n"
+                f"- Flag is_off_topic=True ONLY if completely unrelated to fitness logistics."
             )
             ext: Step3Extraction = step3_extractor.invoke(prompt)
             equipment, injuries, recovery = ext.equipment_access, ext.injuries_or_limitations, ext.stress_and_sleep
             has_step3_data = any([equipment, injuries, recovery])
             is_off_topic = ext.is_off_topic and not has_step3_data
 
+        if not equipment:
+            equip_m = re.search(r"(?:access to|using|have|home gym|gym with)\s*([^.]+)", raw_input, re.I)
+            if equip_m:
+                equipment = equip_m.group(0).strip()
+            elif any(k in raw_input.lower() for k in ["gym", "rack", "dumbbell", "barbell", "machine", "cable"]):
+                equipment = raw_input.split(".")[0].strip()
+
+        if not injuries:
+            if re.search(r"\b(no injuries|no limitations|none|healthy|no joint issues|zero joint issues|no issues|never injured|without injury)\b", raw_input, re.I):
+                injuries = "None"
+            else:
+                inj_m = re.search(r"(?:injuries|limitations|joint issues)[:\s]+([^.]+)", raw_input, re.I)
+                if inj_m:
+                    injuries = inj_m.group(1).strip()
+
+        if injuries:
+            inj_clean = injuries.strip().lower()
+            if any(neg in inj_clean for neg in ["no injuries", "no limitations", "none", "healthy", "no joint", "zero joint", "nil", "n/a", "no issues"]):
+                injuries = "None"
+
+        if not recovery:
+            rec_m = re.search(r"([^.]*(?:stress|sleep)[^.]*)", raw_input, re.I)
+            if rec_m:
+                recovery = rec_m.group(1).strip()
+
         if is_off_topic:
             return _reject(step, "Input is off-topic. Please answer the logistics questions.", profile)
-
-        if injuries and injuries.strip().lower() in {"0", "no", "none", "nil", "n/a", "zero joint issues or injuries"}:
-            injuries = "None"
 
         missing = []
         if not equipment or len(equipment.strip()) < 2:
