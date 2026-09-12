@@ -8,14 +8,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     sqlite3 \
     libgomp1 \
-    && add-apt-repository ppa:deadsnakes/ppa \
+    build-essential \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
     && apt-get update && apt-get install -y --no-install-recommends \
     python3.12 \
     python3.12-dev \
-    python3.12-distutils \
+    python3.12-venv \
     && rm -rf /var/lib/apt/lists/*
 
-# Point python to 3.12
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
+
+    # Point python to 3.12
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1 \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
 
