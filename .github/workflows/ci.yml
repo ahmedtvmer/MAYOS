@@ -58,6 +58,7 @@ jobs:
         env:
           SEED_CSV_PATH: "tests/fixtures/mock_exercises.csv"
           MODEL_DEVICE: "cpu"
+          EMBEDDING_MODEL: "BAAI/bge-small-en-v1.5"
         run: |
           python scripts/intialize_db.py
           sqlite3 db/catalog.db "PRAGMA index_list('exercise_secondary_muscles');" | grep -q "idx_secondary_muscles_ex"

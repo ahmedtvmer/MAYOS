@@ -17,8 +17,8 @@ from database.database_manager import DatabaseManager
 # pyrefly: ignore [missing-import]
 from utils.logger import MyosLogger
 
-Embedding = os.getenv("EMBEDDING_MODEL")
-MODEL_DEVICE = os.getenv("MODEL_DEVICE", "cpu").strip("'\"")
+Embedding = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
+MODEL_DEVICE = os.getenv("MODEL_DEVICE", "cpu")
 
 
 logger = MyosLogger().get_logger(__name__)
