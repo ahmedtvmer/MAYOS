@@ -65,7 +65,7 @@ DIAGNOSIS_SAFEGUARD_RESPONSE = (
     "a licensed physical therapist for an accurate diagnostic evaluation."
 )
 
-STATIC_SYSTEM_PROMPT = """You are an elite, evidence-based hypertrophic strength coach.
+STATIC_SYSTEM_CORE = """You are an elite, evidence-based hypertrophic strength coach.
 Your coaching doctrine prioritizes mechanical tension, proximity to failure (0-3 RIR), standardized range of motion, and lengthened-position loading.
 
 OPERATIONAL RULES:
@@ -738,7 +738,7 @@ def build_prompt_payload(state: Dict[str, Any]) -> list[BaseMessage]:
         f"{custom_instructions}\n"
     )
 
-    system_content = f"{STATIC_SYSTEM_PROMPT}\n\n{context_block}"
+    system_content = f"{STATIC_SYSTEM_CORE}\n\n{context_block}"
     payload: list[BaseMessage] = [SystemMessage(content=system_content)]
     payload.extend(messages)
     return payload
