@@ -37,3 +37,12 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Context**: Allowing progressive overload or RPE 9–10 top sets under acute systemic exhaustion or unrecovered joint strain sharply elevates soft-tissue injury risk.
 * **Rationale**: **Internal Coaching Heuristic (Auto-regulation).** While general tapering literature indicates volume reductions between 30% and 70% dissipate fatigue while preserving adaptation, the specific combination of a 50% set cut and an RPE 7.0 cap is an auto-regulatory heuristic. Halving working sets cuts mechanical accumulation, and capping intensity at RPE 7.0 prevents failure-induced strain while reinforcing motor patterns.
 * **Code References**: `agent/progression_engine.py` (readiness and deload evaluation), `agent/prompts.py` (`STATIC_SYSTEM_CORE`).
+
+---
+
+### ADR 005: Lazy Per-User Schema Migrations & Atomic Snapshotting
+* **Status**: Accepted
+* **Rule**: Per-user databases (`db/users/<id>.db`) migrate lazily upon connection mount in `DatabaseManager.switch_user()`. Version state is tracked using `PRAGMA user_version`. Backups use `sqlite3.Connection.backup()`, enforcing a 3+1 retention policy (3 rolling session backups + 1 immutable pre-migration snapshot).
+* **Context**: SQLite `CREATE TABLE IF NOT EXISTS` cannot alter tables or handle schema evolutions. Eager migrations on engine boot degrade startup performance with large user directories, and raw file copies during WAL execution risk file corruption.
+* **Rationale**: **Local-First Resilience & Zero-Downtime Snapshots.** Using SQLite's native online backup API flushes active WAL frames into a consistent snapshot while transactions remain open. Lazy execution bounds startup time to $O(1)$ relative to total users. If a migration fails mid-stream, the engine executes an atomic rollback from the pre-migration snapshot.
+* **Code References**: `database/migration_manager.py`, `database/database_manager.py` (`switch_user`, `create_user_schema`).
