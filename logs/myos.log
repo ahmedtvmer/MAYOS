@@ -38,3 +38,13 @@
 2026-09-12 21:11:51,171 - agent.assistant_graph - INFO - [TELEMETRY] User: test_trainee | Intent: coaching_qa | Router: 15.107ms | TTFT: 0.0ms | Tokens: 3 | GenTime: 0.00s | Speed: 722716.91 TPS
 2026-09-12 21:12:06,119 - agent.assistant_graph - INFO - [TELEMETRY] User: ci_test_user | Intent: clinical_intercept | Router: 1.067ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
 2026-09-12 21:12:08,201 - agent.assistant_graph - INFO - [TELEMETRY] User: ci_test_user | Intent: coaching_qa | Router: 0.015ms | TTFT: 250.0ms | Tokens: 35 | GenTime: 2.50s | Speed: 14.00 TPS
+2026-09-13 17:20:50,056 - agent.assistant_graph - INFO - [TELEMETRY] User: test_user | Intent: coaching_qa | Router: 15.986ms | TTFT: 0.1ms | Tokens: 3 | GenTime: 0.00s | Speed: 254885.30 TPS
+2026-09-13 17:20:50,079 - agent.assistant_graph - INFO - [TELEMETRY] User: test_user | Intent: program_mutation | Router: 19.024ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-13 17:20:50,298 - agent.assistant_graph - INFO - [TELEMETRY] User: test_user | Intent: clinical_intercept | Router: 0.291ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-13 17:20:52,382 - agent.assistant_graph - INFO - [TELEMETRY] User: test_user | Intent: clinical_intercept | Router: 0.447ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-13 17:20:54,468 - agent.assistant_graph - INFO - [TELEMETRY] User: test_user | Intent: clinical_intercept | Router: 0.654ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-13 17:20:56,553 - agent.assistant_graph - INFO - [TELEMETRY] User: test_user | Intent: clinical_intercept | Router: 0.600ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-13 17:20:58,634 - agent.assistant_graph - INFO - [TELEMETRY] User: test_user | Intent: clinical_intercept | Router: 0.441ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-13 17:21:02,858 - agent.assistant_graph - INFO - [TELEMETRY] User: test_trainee | Intent: coaching_qa | Router: 15.739ms | TTFT: 0.0ms | Tokens: 3 | GenTime: 0.00s | Speed: 823723.20 TPS
+2026-09-13 17:21:17,809 - agent.assistant_graph - INFO - [TELEMETRY] User: ci_test_user | Intent: clinical_intercept | Router: 1.021ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-13 17:21:19,896 - agent.assistant_graph - INFO - [TELEMETRY] User: ci_test_user | Intent: coaching_qa | Router: 0.015ms | TTFT: 250.0ms | Tokens: 35 | GenTime: 2.50s | Speed: 14.00 TPS

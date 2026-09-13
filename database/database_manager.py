@@ -16,12 +16,21 @@ sys.path.append(str(BASE_DIR))
 
 DEFAULT_CATALOG_PATH = BASE_DIR / "db" / "catalog.db"
 DEFAULT_USERS_DIR = BASE_DIR / "db" / "users"
+DEFAULT_BACKUPS_DIR = BASE_DIR / "db" / "backups"
 DEFAULT_CSV_PATH = BASE_DIR / "data" / "processed_exercises.csv"
 
 from agent.ProgramState import (
     GeneratedProgramSchema,
     ProgramDaySchema,
     ProgramExerciseSchema,
+)
+from database.migration_manager import (
+    CURRENT_USER_SCHEMA_VERSION,
+    apply_lazy_migrations,
+    create_atomic_backup,
+    get_user_schema_version,
+    prune_user_backups,
+    set_user_schema_version,
 )
 from utils.logger import MyosLogger
 
@@ -42,7 +51,13 @@ class DatabaseManager:
                     cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self, catalog_path=DEFAULT_CATALOG_PATH, users_dir=DEFAULT_USERS_DIR, active_user: str | None = None):
+    def __init__(
+        self,
+        catalog_path=DEFAULT_CATALOG_PATH,
+        users_dir=DEFAULT_USERS_DIR,
+        backups_dir=DEFAULT_BACKUPS_DIR,
+        active_user: str | None = None,
+    ):
         if getattr(self, "_initialized", False):
             if active_user is not None:
                 sanitized = self._sanitize_username(active_user)
@@ -56,11 +71,13 @@ class DatabaseManager:
 
             self.catalog_path = Path(catalog_path)
             self.users_dir = Path(users_dir)
+            self.backups_dir = Path(backups_dir)
             self._default_user = self._sanitize_username(active_user) if active_user else "default"
             self._catalog_lock = threading.Lock()
 
             os.makedirs(self.catalog_path.parent, exist_ok=True)
             os.makedirs(self.users_dir, exist_ok=True)
+            os.makedirs(self.backups_dir, exist_ok=True)
 
             self.catalog_conn = sqlite3.connect(self.catalog_path, check_same_thread=False)
             self.catalog_conn.execute("PRAGMA foreign_keys = ON;")
@@ -137,9 +154,23 @@ class DatabaseManager:
         )
 
         self.user_conn = new_conn
-        self.create_user_schema()
-        return True
 
+        # Check schema state and apply lazy migrations
+        v = get_user_schema_version(new_conn)
+        if v == 0:
+            cursor = new_conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_profile';")
+            if not cursor.fetchone():
+                self.create_user_schema()
+            else:
+                set_user_schema_version(new_conn, CURRENT_USER_SCHEMA_VERSION)
+                new_conn.commit()
+        else:
+            apply_lazy_migrations(new_conn, sanitized, self.users_dir, self.backups_dir)
+
+        prune_user_backups(self.backups_dir / sanitized, max_rolling=3)
+        return True
+    
     def user_exists(self, username: str) -> bool:
         sanitized = self._sanitize_username(username)
         return (self.users_dir / f"{sanitized}.db").is_file() if sanitized else False
@@ -265,19 +296,29 @@ class DatabaseManager:
             CREATE INDEX IF NOT EXISTS idx_sessions_date ON workout_sessions(session_date);
 
             CREATE TABLE IF NOT EXISTS engine_telemetry (
-            id TEXT PRIMARY KEY,
-            timestamp TEXT NOT NULL,
-            route_intent TEXT NOT NULL,
-            fast_path_latency_ms REAL,
-            ttft_ms REAL,
-            generation_ms REAL,
-            token_count INTEGER,
-            tps REAL,
-            memory_rss_mb REAL
+                id TEXT PRIMARY KEY,
+                timestamp TEXT NOT NULL,
+                route_intent TEXT NOT NULL,
+                fast_path_latency_ms REAL,
+                ttft_ms REAL,
+                generation_ms REAL,
+                token_count INTEGER,
+                tps REAL,
+                memory_rss_mb REAL
             );
             CREATE INDEX IF NOT EXISTS idx_telemetry_ts ON engine_telemetry(timestamp);
         """)
+        set_user_schema_version(self.conn, CURRENT_USER_SCHEMA_VERSION)
         self.conn.commit()
+
+    def backup_active_user(self) -> Path:
+        """Creates an on-demand rolling snapshot of the active user ledger."""
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        user_backup_dir = self.backups_dir / self.active_user
+        backup_path = user_backup_dir / f"{self.active_user}_auto_{timestamp}.db"
+        create_atomic_backup(self.conn, backup_path)
+        prune_user_backups(user_backup_dir, max_rolling=3)
+        return backup_path
 
     def create_schema(self) -> None:
         self.create_catalog_schema()
