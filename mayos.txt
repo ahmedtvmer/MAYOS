@@ -169,7 +169,7 @@ models/
 tests/eval/reports/
 logs/*.log
 .pytest_cache/
-
+mayos.txt
 
 ================================================================================
 FILE: ./.python-version
@@ -3908,12 +3908,21 @@ sys.path.append(str(BASE_DIR))
 
 DEFAULT_CATALOG_PATH = BASE_DIR / "db" / "catalog.db"
 DEFAULT_USERS_DIR = BASE_DIR / "db" / "users"
+DEFAULT_BACKUPS_DIR = BASE_DIR / "db" / "backups"
 DEFAULT_CSV_PATH = BASE_DIR / "data" / "processed_exercises.csv"
 
 from agent.ProgramState import (
     GeneratedProgramSchema,
     ProgramDaySchema,
     ProgramExerciseSchema,
+)
+from database.migration_manager import (
+    CURRENT_USER_SCHEMA_VERSION,
+    apply_lazy_migrations,
+    create_atomic_backup,
+    get_user_schema_version,
+    prune_user_backups,
+    set_user_schema_version,
 )
 from utils.logger import MyosLogger
 
@@ -3934,7 +3943,13 @@ class DatabaseManager:
                     cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self, catalog_path=DEFAULT_CATALOG_PATH, users_dir=DEFAULT_USERS_DIR, active_user: str | None = None):
+    def __init__(
+        self,
+        catalog_path=DEFAULT_CATALOG_PATH,
+        users_dir=DEFAULT_USERS_DIR,
+        backups_dir=DEFAULT_BACKUPS_DIR,
+        active_user: str | None = None,
+    ):
         if getattr(self, "_initialized", False):
             if active_user is not None:
                 sanitized = self._sanitize_username(active_user)
@@ -3948,11 +3963,13 @@ class DatabaseManager:
 
             self.catalog_path = Path(catalog_path)
             self.users_dir = Path(users_dir)
+            self.backups_dir = Path(backups_dir)
             self._default_user = self._sanitize_username(active_user) if active_user else "default"
             self._catalog_lock = threading.Lock()
 
             os.makedirs(self.catalog_path.parent, exist_ok=True)
             os.makedirs(self.users_dir, exist_ok=True)
+            os.makedirs(self.backups_dir, exist_ok=True)
 
             self.catalog_conn = sqlite3.connect(self.catalog_path, check_same_thread=False)
             self.catalog_conn.execute("PRAGMA foreign_keys = ON;")
@@ -4029,9 +4046,23 @@ class DatabaseManager:
         )
 
         self.user_conn = new_conn
-        self.create_user_schema()
-        return True
 
+        # Check schema state and apply lazy migrations
+        v = get_user_schema_version(new_conn)
+        if v == 0:
+            cursor = new_conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_profile';")
+            if not cursor.fetchone():
+                self.create_user_schema()
+            else:
+                set_user_schema_version(new_conn, CURRENT_USER_SCHEMA_VERSION)
+                new_conn.commit()
+        else:
+            apply_lazy_migrations(new_conn, sanitized, self.users_dir, self.backups_dir)
+
+        prune_user_backups(self.backups_dir / sanitized, max_rolling=3)
+        return True
+    
     def user_exists(self, username: str) -> bool:
         sanitized = self._sanitize_username(username)
         return (self.users_dir / f"{sanitized}.db").is_file() if sanitized else False
@@ -4157,19 +4188,29 @@ class DatabaseManager:
             CREATE INDEX IF NOT EXISTS idx_sessions_date ON workout_sessions(session_date);
 
             CREATE TABLE IF NOT EXISTS engine_telemetry (
-            id TEXT PRIMARY KEY,
-            timestamp TEXT NOT NULL,
-            route_intent TEXT NOT NULL,
-            fast_path_latency_ms REAL,
-            ttft_ms REAL,
-            generation_ms REAL,
-            token_count INTEGER,
-            tps REAL,
-            memory_rss_mb REAL
+                id TEXT PRIMARY KEY,
+                timestamp TEXT NOT NULL,
+                route_intent TEXT NOT NULL,
+                fast_path_latency_ms REAL,
+                ttft_ms REAL,
+                generation_ms REAL,
+                token_count INTEGER,
+                tps REAL,
+                memory_rss_mb REAL
             );
             CREATE INDEX IF NOT EXISTS idx_telemetry_ts ON engine_telemetry(timestamp);
         """)
+        set_user_schema_version(self.conn, CURRENT_USER_SCHEMA_VERSION)
         self.conn.commit()
+
+    def backup_active_user(self) -> Path:
+        """Creates an on-demand rolling snapshot of the active user ledger."""
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        user_backup_dir = self.backups_dir / self.active_user
+        backup_path = user_backup_dir / f"{self.active_user}_auto_{timestamp}.db"
+        create_atomic_backup(self.conn, backup_path)
+        prune_user_backups(user_backup_dir, max_rolling=3)
+        return backup_path
 
     def create_schema(self) -> None:
         self.create_catalog_schema()
@@ -4756,6 +4797,182 @@ class DatabaseManager:
 
 
 ================================================================================
+FILE: ./database/migration_manager.py
+================================================================================
+
+# database/migration_manager.py
+import sqlite3
+from collections.abc import Callable
+from datetime import UTC, datetime
+from pathlib import Path
+
+from utils.logger import MyosLogger
+
+logger = MyosLogger().get_logger(__name__)
+
+# Current target schema version for all user ledgers
+CURRENT_USER_SCHEMA_VERSION: int = 1
+
+
+def get_user_schema_version(conn: sqlite3.Connection) -> int:
+    """Reads the current user_version PRAGMA from the SQLite connection."""
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA user_version;")
+    row = cursor.fetchone()
+    return int(row[0]) if row else 0
+
+
+def set_user_schema_version(conn: sqlite3.Connection, version: int) -> None:
+    """Sets the user_version PRAGMA integer."""
+    conn.execute(f"PRAGMA user_version = {int(version)};")
+
+
+def create_atomic_backup(
+    conn: sqlite3.Connection,
+    backup_path: Path,
+) -> Path:
+    """Creates a consistent, online point-in-time snapshot using the SQLite backup API.
+
+    Safely drains WAL pages into the target file without taking the database offline.
+    """
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+
+    dest_conn = sqlite3.connect(str(backup_path))
+    try:
+        conn.backup(dest_conn)
+    finally:
+        dest_conn.close()
+
+    logger.info(f"Atomic snapshot created: {backup_path.name}")
+    return backup_path
+
+
+def restore_atomic_backup(
+    backup_path: Path,
+    target_conn: sqlite3.Connection,
+) -> None:
+    """Restores database state from a backup snapshot into an active SQLite connection."""
+    if not backup_path.is_file():
+        raise FileNotFoundError(f"Backup snapshot not found: {backup_path}")
+
+    src_conn = sqlite3.connect(str(backup_path))
+    try:
+        src_conn.backup(target_conn)
+    finally:
+        src_conn.close()
+
+    logger.warning(f"Database successfully restored from snapshot: {backup_path.name}")
+
+
+def prune_user_backups(user_backup_dir: Path, max_rolling: int = 3) -> None:
+    """Enforces the 3+1 retention policy:
+
+    - Keeps all immutable pre-migration snapshots (*_pre_v*).
+    - Retains only the most recent `max_rolling` (default: 3) automated snapshots.
+    """
+    if not user_backup_dir.is_dir():
+        return
+
+    rolling_snapshots = []
+    for f in user_backup_dir.glob("*.db"):
+        if "_pre_v" not in f.name:
+            rolling_snapshots.append(f)
+
+    # Sort ascending by modification time (oldest first)
+    rolling_snapshots.sort(key=lambda p: p.stat().st_mtime)
+
+    # Prune oldest if exceeding retention
+    while len(rolling_snapshots) > max_rolling:
+        oldest = rolling_snapshots.pop(0)
+        try:
+            oldest.unlink()
+            logger.info(f"Pruned expired rolling snapshot: {oldest.name}")
+        except OSError as e:
+            logger.warning(f"Failed to prune snapshot {oldest}: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Migration Registry & Upgrade Handlers
+# ---------------------------------------------------------------------------
+
+MigrationCallable = Callable[[sqlite3.Connection], None]
+
+# Migration map: from_version -> migration function to reach (from_version + 1)
+# Example: 1: migrate_v1_to_v2
+MIGRATION_REGISTRY: dict[int, MigrationCallable] = {}
+
+
+def apply_lazy_migrations(
+    conn: sqlite3.Connection,
+    username: str,
+    users_dir: Path,
+    backups_dir: Path,
+    target_version: int = CURRENT_USER_SCHEMA_VERSION,
+) -> None:
+    """Evaluates and executes lazy migrations on the mounted user database.
+
+    Execution Flow:
+    1. Check PRAGMA user_version.
+    2. If version == 0 and tables exist (pre-migration legacy DB), stamp to v1.
+    3. If version == 0 and empty, the caller initializes baseline schema and sets v1.
+    4. If version < target_version, snapshot the DB, run sequential migrations in a
+       transaction, and update user_version.
+    5. If an error occurs, rollback and restore snapshot.
+    """
+    current_version = get_user_schema_version(conn)
+
+    # Handle legacy databases initialized prior to PRAGMA user_version tracking
+    if current_version == 0:
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_profile';")
+        if cursor.fetchone():
+            # Existing legacy v1 database detected
+            set_user_schema_version(conn, 1)
+            conn.commit()
+            current_version = 1
+        else:
+            # Fresh database: caller will provision baseline v1 schema
+            return
+
+    if current_version == target_version:
+        return
+
+    if current_version > target_version:
+        raise RuntimeError(
+            f"User ledger '{username}' has schema version {current_version}, which is "
+            f"newer than the engine's target version {target_version}. Please update Myos."
+        )
+
+    # Migration required: current_version < target_version
+    user_backup_dir = backups_dir / username
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    snapshot_path = user_backup_dir / f"{username}_pre_v{current_version}_to_v{target_version}_{timestamp}.db"
+
+    create_atomic_backup(conn, snapshot_path)
+
+    try:
+        conn.execute("BEGIN IMMEDIATE;")
+        step_version = current_version
+        while step_version < target_version:
+            if step_version not in MIGRATION_REGISTRY:
+                raise NotImplementedError(
+                    f"Missing migration step from schema version {step_version} to {step_version + 1}."
+                )
+            logger.info(f"Applying migration v{step_version} -> v{step_version + 1} for '{username}'...")
+            MIGRATION_REGISTRY[step_version](conn)
+            step_version += 1
+
+        set_user_schema_version(conn, target_version)
+        conn.commit()
+        logger.info(f"Successfully migrated '{username}' ledger to schema v{target_version}.")
+    except Exception as exc:
+        conn.rollback()
+        logger.error(f"Migration failed for '{username}': {exc}. Triggering atomic rollback...")
+        restore_atomic_backup(snapshot_path, conn)
+        raise RuntimeError(f"Database migration aborted and reverted for '{username}': {exc}") from exc
+
+
+================================================================================
 FILE: ./DECISIONS.md
 ================================================================================
 
@@ -4798,6 +5015,15 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Context**: Allowing progressive overload or RPE 9–10 top sets under acute systemic exhaustion or unrecovered joint strain sharply elevates soft-tissue injury risk.
 * **Rationale**: **Internal Coaching Heuristic (Auto-regulation).** While general tapering literature indicates volume reductions between 30% and 70% dissipate fatigue while preserving adaptation, the specific combination of a 50% set cut and an RPE 7.0 cap is an auto-regulatory heuristic. Halving working sets cuts mechanical accumulation, and capping intensity at RPE 7.0 prevents failure-induced strain while reinforcing motor patterns.
 * **Code References**: `agent/progression_engine.py` (readiness and deload evaluation), `agent/prompts.py` (`STATIC_SYSTEM_CORE`).
+
+---
+
+### ADR 005: Lazy Per-User Schema Migrations & Atomic Snapshotting
+* **Status**: Accepted
+* **Rule**: Per-user databases (`db/users/<id>.db`) migrate lazily upon connection mount in `DatabaseManager.switch_user()`. Version state is tracked using `PRAGMA user_version`. Backups use `sqlite3.Connection.backup()`, enforcing a 3+1 retention policy (3 rolling session backups + 1 immutable pre-migration snapshot).
+* **Context**: SQLite `CREATE TABLE IF NOT EXISTS` cannot alter tables or handle schema evolutions. Eager migrations on engine boot degrade startup performance with large user directories, and raw file copies during WAL execution risk file corruption.
+* **Rationale**: **Local-First Resilience & Zero-Downtime Snapshots.** Using SQLite's native online backup API flushes active WAL frames into a consistent snapshot while transactions remain open. Lazy execution bounds startup time to $O(1)$ relative to total users. If a migration fails mid-stream, the engine executes an atomic rollback from the pre-migration snapshot.
+* **Code References**: `database/migration_manager.py`, `database/database_manager.py` (`switch_user`, `create_user_schema`).
 
 ================================================================================
 FILE: ./docker-compose.yaml
@@ -17675,6 +17901,141 @@ def test_tool_calling():
 
 if __name__ == "__main__":
     test_tool_calling()
+
+
+================================================================================
+FILE: ./tests/test_migration_manager.py
+================================================================================
+
+# tests/test_migration_manager.py
+import sqlite3
+from pathlib import Path
+
+import pytest
+from database.database_manager import DatabaseManager
+from database.migration_manager import (
+    CURRENT_USER_SCHEMA_VERSION,
+    MIGRATION_REGISTRY,
+    apply_lazy_migrations,
+    create_atomic_backup,
+    get_user_schema_version,
+    prune_user_backups,
+    restore_atomic_backup,
+    set_user_schema_version,
+)
+
+
+@pytest.fixture
+def temp_db_env(tmp_path: Path):
+    catalog_path = tmp_path / "catalog.db"
+    users_dir = tmp_path / "users"
+    backups_dir = tmp_path / "backups"
+
+    # Create dummy catalog
+    cat_conn = sqlite3.connect(catalog_path)
+    cat_conn.execute("CREATE TABLE exercises (id TEXT PRIMARY KEY, name TEXT);")
+    cat_conn.execute("CREATE TABLE exercise_secondary_muscles (exercise_id TEXT, muscle TEXT);")
+    cat_conn.commit()
+    cat_conn.close()
+
+    db = DatabaseManager(
+        catalog_path=catalog_path,
+        users_dir=users_dir,
+        backups_dir=backups_dir,
+        active_user="alice",
+    )
+    return db, users_dir, backups_dir
+
+
+def test_schema_version_stamping(temp_db_env):
+    db, users_dir, _ = temp_db_env
+    version = get_user_schema_version(db.conn)
+    assert version == CURRENT_USER_SCHEMA_VERSION == 1
+
+
+def test_atomic_backup_and_restore(temp_db_env):
+    db, users_dir, backups_dir = temp_db_env
+    db.add_chat_message("user", "Hello backup test")
+
+    snapshot_path = backups_dir / "alice" / "test_snap.db"
+    create_atomic_backup(db.conn, snapshot_path)
+    assert snapshot_path.is_file()
+
+    # Clear chat in active DB
+    db.clear_chat_history()
+    assert len(db.get_chat_history()) == 0
+
+    # Restore from snapshot
+    restore_atomic_backup(snapshot_path, db.conn)
+    history = db.get_chat_history()
+    assert len(history) == 1
+    assert history[0]["content"] == "Hello backup test"
+
+
+def test_rolling_backup_pruning(tmp_path: Path):
+    user_backup_dir = tmp_path / "backups" / "bob"
+    user_backup_dir.mkdir(parents=True)
+
+    # Create 5 rolling backups and 1 immutable pre-migration backup
+    for i in range(5):
+        f = user_backup_dir / f"bob_auto_20260901_0{i}.db"
+        f.write_text("test")
+    pre_mig = user_backup_dir / "bob_pre_v1_to_v2_20260901_00.db"
+    pre_mig.write_text("pre-migration")
+
+    prune_user_backups(user_backup_dir, max_rolling=3)
+
+    remaining = list(user_backup_dir.glob("*.db"))
+    assert pre_mig in remaining  # Immutable backup preserved
+    rolling = [f for f in remaining if "_pre_v" not in f.name]
+    assert len(rolling) == 3
+
+
+def test_lazy_migration_execution_and_rollback(temp_db_env, monkeypatch):
+    db, users_dir, backups_dir = temp_db_env
+
+    # Simulate an upgrade from v1 to v2
+    def mock_migrate_v1_to_v2(conn: sqlite3.Connection):
+        conn.execute("ALTER TABLE user_profile ADD COLUMN test_column TEXT DEFAULT 'migrated';")
+
+    MIGRATION_REGISTRY[1] = mock_migrate_v1_to_v2
+    try:
+        # Reset version to 1 to simulate pending migration to v2
+        set_user_schema_version(db.conn, 1)
+        db.conn.commit()
+
+        apply_lazy_migrations(
+            conn=db.conn,
+            username="alice",
+            users_dir=users_dir,
+            backups_dir=backups_dir,
+            target_version=2,
+        )
+
+        assert get_user_schema_version(db.conn) == 2
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT test_column FROM user_profile LIMIT 1;")
+        # Should succeed without error
+
+        # Test failure rollback: migration raises exception
+        def failing_v2_to_v3(conn: sqlite3.Connection):
+            conn.execute("INVALID SQL SYNTAX HERE;")
+
+        MIGRATION_REGISTRY[2] = failing_v2_to_v3
+        with pytest.raises(RuntimeError, match="Database migration aborted and reverted"):
+            apply_lazy_migrations(
+                conn=db.conn,
+                username="alice",
+                users_dir=users_dir,
+                backups_dir=backups_dir,
+                target_version=3,
+            )
+
+        # Version must have rolled back to 2
+        assert get_user_schema_version(db.conn) == 2
+    finally:
+        MIGRATION_REGISTRY.pop(1, None)
+        MIGRATION_REGISTRY.pop(2, None)
 
 
 ================================================================================
