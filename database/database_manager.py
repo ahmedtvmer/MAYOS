@@ -1,12 +1,14 @@
+import json
 import os
 import re
 import sqlite3
 import sys
 import threading
 import uuid
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import pandas as pd
 import sqlite_vec
@@ -81,6 +83,9 @@ class DatabaseManager:
 
             self.catalog_conn = sqlite3.connect(self.catalog_path, check_same_thread=False)
             self.catalog_conn.execute("PRAGMA foreign_keys = ON;")
+            self.catalog_conn.execute("PRAGMA journal_mode = WAL;")
+            self.catalog_conn.execute("PRAGMA busy_timeout = 5000;")
+            self.catalog_conn.execute("PRAGMA synchronous = NORMAL;")
             self.catalog_conn.enable_load_extension(True)
             sqlite_vec.load(self.catalog_conn)
             self.catalog_conn.enable_load_extension(False)
@@ -145,6 +150,8 @@ class DatabaseManager:
         new_conn.row_factory = sqlite3.Row
         new_conn.execute("PRAGMA foreign_keys = ON;")
         new_conn.execute("PRAGMA journal_mode = WAL;")
+        new_conn.execute("PRAGMA busy_timeout = 5000;")
+        new_conn.execute("PRAGMA synchronous = NORMAL;")
 
         escaped_path = str(self.catalog_path.resolve()).replace("'", "''")
         new_conn.execute(f"ATTACH DATABASE '{escaped_path}' AS catalog;")
@@ -170,6 +177,16 @@ class DatabaseManager:
         prune_user_backups(self.backups_dir / sanitized, max_rolling=3)
         return True
     
+    @contextmanager
+    def catalog_locked(self) -> Iterator[sqlite3.Connection]:
+        """Yields the shared catalog connection under the catalog lock.
+
+        All direct catalog reads must go through this helper; the raw
+        ``catalog_conn`` cursor is not thread-safe on its own.
+        """
+        with self._catalog_lock:
+            yield self.catalog_conn
+
     def user_exists(self, username: str) -> bool:
         sanitized = self._sanitize_username(username)
         return (self.users_dir / f"{sanitized}.db").is_file() if sanitized else False
@@ -310,6 +327,15 @@ class DatabaseManager:
                 memory_rss_mb REAL
             );
             CREATE INDEX IF NOT EXISTS idx_telemetry_ts ON engine_telemetry(timestamp);
+
+            CREATE TABLE IF NOT EXISTS onboarding_state (
+                id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+                intake_step INTEGER NOT NULL,
+                is_complete INTEGER NOT NULL DEFAULT 0,
+                profile_data TEXT,
+                messages TEXT NOT NULL DEFAULT '[]',
+                updated_at TEXT NOT NULL
+            );
         """)
         if get_user_schema_version(self.conn) < CURRENT_USER_SCHEMA_VERSION:
             set_user_schema_version(self.conn, CURRENT_USER_SCHEMA_VERSION)
@@ -427,6 +453,46 @@ class DatabaseManager:
         cursor = self.conn.cursor()
         cursor.execute("SELECT key, value FROM assistant_memory WHERE key = ?", ("preferred_name",))
         return dict(cursor.fetchall())
+
+    def save_onboarding_state(self, state: dict[str, Any]) -> None:
+        """Persists onboarding intake progress in the bound user's ledger (survives restarts)."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO onboarding_state (id, intake_step, is_complete, profile_data, messages, updated_at)
+            VALUES (1, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                intake_step = excluded.intake_step, is_complete = excluded.is_complete,
+                profile_data = excluded.profile_data, messages = excluded.messages,
+                updated_at = excluded.updated_at
+            """,
+            (
+                int(state.get("intake_step", 1)),
+                1 if state.get("is_complete") else 0,
+                json.dumps(state.get("profile_data")),
+                json.dumps(state.get("messages", [])),
+                datetime.now(UTC).isoformat(),
+            ),
+        )
+        self.conn.commit()
+
+    def load_onboarding_state(self) -> dict[str, Any] | None:
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT intake_step, is_complete, profile_data, messages FROM onboarding_state WHERE id = 1")
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            "intake_step": row["intake_step"],
+            "is_complete": bool(row["is_complete"]),
+            "profile_data": json.loads(row["profile_data"]) if row["profile_data"] else None,
+            "messages": json.loads(row["messages"]) if row["messages"] else [],
+        }
+
+    def clear_onboarding_state(self) -> None:
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM onboarding_state WHERE id = 1")
+        self.conn.commit()
 
     def set_assistant_memory(self, key: str, value: str) -> None:
         if key != "preferred_name":

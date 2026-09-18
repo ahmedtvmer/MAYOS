@@ -3,6 +3,7 @@ import logging
 import multiprocessing
 import os
 import sys
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -172,6 +173,9 @@ class MockSafeChatLlamaCpp(SafeChatLlamaCpp):
 
 _llm_instance = None
 _judge_llm_instance = None
+#: Serializes singleton construction; without it concurrent first-requests
+#: load the GGUF twice and OOM the host.
+_load_lock = threading.Lock()
 
 
 def _load_local_model(constructor, gpu_layers: int, **kwargs: Any) -> Any:
@@ -197,51 +201,56 @@ def get_llm(n_gpu_layers: int | None = None) -> Any:
     if _llm_instance is not None:
         return _llm_instance
 
-    is_testing = os.getenv("CI") == "true" or "pytest" in sys.modules or os.getenv("TESTING") == "1"
-    model_candidate = Path(
-        os.getenv("MODEL_PATH", Path(os.getenv("MODEL_DIR", DEFAULT_MODEL_DIR)) / MODEL_REGISTRY["production"]["filename"])
-    )
+    with _load_lock:
+        if _llm_instance is not None:
+            return _llm_instance
 
-    if is_testing and not model_candidate.is_file():
-        _llm_instance = MockSafeChatLlamaCpp()
+        is_testing = os.getenv("CI") == "true" or "pytest" in sys.modules or os.getenv("TESTING") == "1"
+        model_candidate = Path(
+            os.getenv("MODEL_PATH", Path(os.getenv("MODEL_DIR", DEFAULT_MODEL_DIR)) / MODEL_REGISTRY["production"]["filename"])
+        )
+
+        if is_testing and not model_candidate.is_file():
+            _llm_instance = MockSafeChatLlamaCpp()
+            return _llm_instance
+
+        resolved_path = get_or_download_model_path("production")
+        physical_cores = max(1, multiprocessing.cpu_count() // 2)
+        gpu_layers = n_gpu_layers if n_gpu_layers is not None else int(os.getenv("N_GPU_LAYERS", "-1"))
+
+        from llama_cpp import LlamaRAMCache
+
+        instance = _load_local_model(
+            SafeChatLlamaCpp, gpu_layers,
+            model_path=resolved_path,
+            temperature=0.0,
+            n_ctx=2048,
+            n_batch=512,
+            n_threads=physical_cores,
+            n_threads_batch=physical_cores,
+            max_tokens=200,
+            streaming=True,
+            verbose=False,
+        )
+        instance.client.set_cache(LlamaRAMCache(capacity_bytes=256 * 1024 * 1024))
+        _llm_instance = instance
         return _llm_instance
-
-    resolved_path = get_or_download_model_path("production")
-    physical_cores = max(1, multiprocessing.cpu_count() // 2)
-    gpu_layers = n_gpu_layers if n_gpu_layers is not None else int(os.getenv("N_GPU_LAYERS", "-1"))
-
-    from llama_cpp import LlamaRAMCache
-
-    instance = _load_local_model(
-        SafeChatLlamaCpp, gpu_layers,
-        model_path=resolved_path,
-        temperature=0.0,
-        n_ctx=2048,
-        n_batch=512,
-        n_threads=physical_cores,
-        n_threads_batch=physical_cores,
-        max_tokens=200,
-        streaming=True,
-        verbose=False,
-    )
-    instance.client.set_cache(LlamaRAMCache(capacity_bytes=256 * 1024 * 1024))
-    _llm_instance = instance
-    return _llm_instance
 
 
 def unload_llm() -> None:
     """Explicitly releases the production LLM client and reclaims CUDA VRAM."""
     global _llm_instance
-    if _llm_instance is not None:
+    with _load_lock:
+        instance, _llm_instance = _llm_instance, None
+    if instance is not None:
         try:
-            client = getattr(_llm_instance, "client", None)
+            client = getattr(instance, "client", None)
             if client is not None:
                 if hasattr(client, "close"):
                     client.close()
                 del client
         except Exception:
             pass
-        _llm_instance = None
         gc.collect()
         try:
             import torch
@@ -256,39 +265,44 @@ def get_judge_llm(n_gpu_layers: int | None = None) -> Any:
     if _judge_llm_instance is not None:
         return _judge_llm_instance
 
-    resolved_path = get_or_download_model_path("judge")
-    physical_cores = max(1, multiprocessing.cpu_count() // 2)
-    gpu_layers = n_gpu_layers if n_gpu_layers is not None else int(os.getenv("JUDGE_N_GPU_LAYERS", "18"))
+    with _load_lock:
+        if _judge_llm_instance is not None:
+            return _judge_llm_instance
 
-    _judge_llm_instance = _load_local_model(
-        ChatLlamaCpp, gpu_layers,
-        model_path=resolved_path,
-        temperature=0.0,
-        n_ctx=4096,
-        n_batch=512,
-        flash_attn=True,
-        n_threads=physical_cores,
-        n_threads_batch=physical_cores,
-        max_tokens=280,
-        streaming=False,
-        verbose=False,
-    )
-    return _judge_llm_instance
+        resolved_path = get_or_download_model_path("judge")
+        physical_cores = max(1, multiprocessing.cpu_count() // 2)
+        gpu_layers = n_gpu_layers if n_gpu_layers is not None else int(os.getenv("JUDGE_N_GPU_LAYERS", "18"))
+
+        _judge_llm_instance = _load_local_model(
+            ChatLlamaCpp, gpu_layers,
+            model_path=resolved_path,
+            temperature=0.0,
+            n_ctx=4096,
+            n_batch=512,
+            flash_attn=True,
+            n_threads=physical_cores,
+            n_threads_batch=physical_cores,
+            max_tokens=280,
+            streaming=False,
+            verbose=False,
+        )
+        return _judge_llm_instance
 
 
 def unload_judge_llm() -> None:
     """Explicitly releases the judge LLM client and reclaims CUDA VRAM."""
     global _judge_llm_instance
-    if _judge_llm_instance is not None:
+    with _load_lock:
+        instance, _judge_llm_instance = _judge_llm_instance, None
+    if instance is not None:
         try:
-            client = getattr(_judge_llm_instance, "client", None)
+            client = getattr(instance, "client", None)
             if client is not None:
                 if hasattr(client, "close"):
                     client.close()
                 del client
         except Exception:
             pass
-        _judge_llm_instance = None
         gc.collect()
         try:
             import torch

@@ -61,3 +61,61 @@ def test_unrelated_failure_is_not_swallowed(monkeypatch):
 
     with pytest.raises(ValueError, match="Corrupt GGUF header"):
         model_downloader.get_judge_llm(n_gpu_layers=4)
+
+
+def test_concurrent_first_load_constructs_once(monkeypatch):
+    import threading
+    import time
+
+    calls = []
+
+    def slow_constructor(**kwargs):
+        calls.append(1)
+        time.sleep(0.2)
+        instance = MagicMock()
+        instance.client = MagicMock()
+        return instance
+
+    monkeypatch.setattr(model_downloader, "_llm_instance", None)
+    monkeypatch.setattr(model_downloader, "SafeChatLlamaCpp", slow_constructor)
+    monkeypatch.setattr(model_downloader.Path, "is_file", lambda self: True)
+    monkeypatch.setattr(model_downloader, "get_or_download_model_path", lambda kind: "mock.gguf")
+    results = []
+
+    def load():
+        results.append(model_downloader.get_llm(n_gpu_layers=0))
+
+    threads = [threading.Thread(target=load) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert len(calls) == 1
+    assert all(result is results[0] for result in results)
+
+
+def test_inference_gateway_serializes_and_unloads(monkeypatch):
+    import asyncio
+
+    monkeypatch.setattr(model_downloader, "_llm_instance", object())
+    monkeypatch.setattr(model_downloader, "_judge_llm_instance", object())
+    from svc import llm as llm_gateway
+
+    order = []
+
+    async def main():
+        async def job(tag):
+            def work():
+                order.append(f"start-{tag}")
+                return tag
+
+            return await llm_gateway.run_inference(work)
+
+        return await asyncio.gather(job("a"), job("b"))
+
+    assert sorted(asyncio.run(main())) == ["a", "b"]
+    assert order == ["start-a", "start-b"]
+    assert llm_gateway.is_llm_loaded() is True
+    llm_gateway.unload_all()
+    assert llm_gateway.is_llm_loaded() is False
+    assert llm_gateway.is_judge_loaded() is False

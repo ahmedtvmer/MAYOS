@@ -455,3 +455,15 @@ def test_session_comparison_volume_and_sets_do_not_decide_strength(temp_db_env, 
     sign = 1 if extra_session == "current" else -1
     assert exercise["deltas"] == {"load_kg": 0, "reps": 0, "sets": sign, "volume_kg": sign * 800, "e1rm": 0}
     assert exercise["status"] == "unchanged"
+
+
+def test_onboarding_state_roundtrip_and_clear(temp_db_env):
+    db, _, _ = temp_db_env
+    assert db.load_onboarding_state() is None
+    db.save_onboarding_state({"intake_step": 2, "is_complete": False, "profile_data": {"age": 30}, "messages": [{"role": "assistant", "content": "Q?"}]})
+    loaded = db.load_onboarding_state()
+    assert loaded == {"intake_step": 2, "is_complete": False, "profile_data": {"age": 30}, "messages": [{"role": "assistant", "content": "Q?"}]}
+    db.save_onboarding_state({"intake_step": 3, "is_complete": True, "profile_data": None, "messages": []})
+    assert db.load_onboarding_state()["intake_step"] == 3
+    db.clear_onboarding_state()
+    assert db.load_onboarding_state() is None

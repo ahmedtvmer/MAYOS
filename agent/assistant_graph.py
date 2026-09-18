@@ -659,9 +659,10 @@ def _history_exercise_matches(target: str, entries: list[dict[str, Any]]) -> lis
 
 
 def _history_catalog_matches(target: str) -> list[dict[str, Any]]:
-    cursor = db.catalog_conn.cursor()
-    cursor.execute("SELECT id, name FROM exercises ORDER BY name COLLATE NOCASE, id")
-    entries = [{"exercise_id": str(row[0]), "name": row[1]} for row in cursor.fetchall()]
+    with db.catalog_locked() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name FROM exercises ORDER BY name COLLATE NOCASE, id")
+        entries = [{"exercise_id": str(row[0]), "name": row[1]} for row in cursor.fetchall()]
     return _history_exercise_matches(target, entries)
 
 
@@ -841,9 +842,10 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
         msg = f"Could not identify **'{raw_source or source_name or query}'** in your active split.\n\n**Active Movements:**\n" + "\n".join(routine_list)
         return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
-    cursor = db.catalog_conn.cursor()
-    cursor.execute("SELECT body_part, target_muscle, equipment FROM exercises WHERE id = ?", (matched_ex.exercise_id,))
-    target_meta = cursor.fetchone()
+    with db.catalog_locked() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT body_part, target_muscle, equipment FROM exercises WHERE id = ?", (matched_ex.exercise_id,))
+        target_meta = cursor.fetchone()
     body_part, target_muscle, _ = target_meta if target_meta else ("", "", "")
 
     if not target_desc:

@@ -128,10 +128,16 @@ def test_incremental_output_independent_of_chunk_boundaries(raw, expected):
         assert "ibuprofen" not in "".join(chunks)
 
 
-def test_ui_persists_authoritative_response():
-    import ast
+def test_ui_is_thin_client_over_authoritative_service():
     from pathlib import Path
-    tree = ast.parse((Path(__file__).resolve().parents[1] / "app.py").read_text())
-    assignments = [node for node in ast.walk(tree) if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "final_response" for target in node.targets)]
-    assert len(assignments) == 1
-    assert ast.unparse(assignments[0].value) == "initial_state['response_content']"
+    source = (Path(__file__).resolve().parents[1] / "app.py").read_text()
+    # No direct ledger, graph, or model access from the UI process.
+    for forbidden in ("DatabaseManager(", "stream_assistant_turn", "onboarding_graph", "generate_program_pipeline", "get_llm"):
+        assert forbidden not in source
+    # Dialogue renders from the service ledger and streams server tokens without reconstructing answers.
+    assert 'api("GET", "/chat/history")' in source
+    assert "/chat/messages" in source
+    assert "st.write_stream" in source
+    # Persistence lives server-side: the chat router saves the authoritative response.
+    server = (Path(__file__).resolve().parents[1] / "svc" / "routers" / "chat.py").read_text()
+    assert "persist_assistant_message" in server
