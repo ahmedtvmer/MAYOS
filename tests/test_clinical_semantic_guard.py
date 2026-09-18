@@ -53,3 +53,29 @@ def test_safe_biomechanics_do_not_trigger_false_positives(query: str):
     }
     result = router_node(state)
     assert result["intent"] != "clinical_intercept", f"False positive clinical intercept for '{query}'"
+
+
+from agent.clinical_guard import evaluate_clinical_semantic_guard
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "malak",
+        "hey",
+        "asdasd",
+        "hello there",
+        "yo",
+        "sup",
+    ],
+)
+def test_short_unknown_inputs_bypass_clinical_guard(query: str):
+    is_clinical, score = evaluate_clinical_semantic_guard(query)
+    assert not is_clinical, f"Short input '{query}' falsely triggered clinical guard (score={score:.3f})"
+    assert score == 0.0, f"Expected score 0.0 for pre-filtered '{query}', got {score:.3f}"
+
+
+def test_short_injury_token_still_triggers():
+    is_clinical, score = evaluate_clinical_semantic_guard("sharp pain")
+    assert score > 0.0, "Short query with injury token should still run embedding check"
+

@@ -1,3 +1,4 @@
+import threading
 import uuid
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
@@ -162,13 +163,31 @@ def test_output_scrubber():
 # ============================================================================
 
 
-def test_database_manager_operations(tmp_path):
-    catalog_path = tmp_path / "catalog.db"
-    users_dir = tmp_path / "users"
+@pytest.fixture
+def isolated_db(tmp_path, monkeypatch):
+    monkeypatch.setattr(DatabaseManager, "_instance", None)
+    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
+    db = DatabaseManager(
+        catalog_path=tmp_path / "catalog.db",
+        users_dir=tmp_path / "users",
+        backups_dir=tmp_path / "backups",
+        active_user="test_trainee",
+    )
+    try:
+        db.create_catalog_schema()
+        db.create_user_schema()
+        assert db.catalog_path == tmp_path / "catalog.db"
+        assert db.users_dir == tmp_path / "users"
+        assert db.backups_dir == tmp_path / "backups"
+        yield db
+    finally:
+        if db.user_conn is not None:
+            db.user_conn.close()
+        db.catalog_conn.close()
 
-    db = DatabaseManager(catalog_path=catalog_path, users_dir=users_dir, active_user="test_trainee")
-    db.create_catalog_schema()
-    db.create_user_schema()
+
+def test_database_manager_operations(isolated_db):
+    db = isolated_db
 
     # Verify active WAL mode on user ledger
     mode = db.user_conn.execute("PRAGMA journal_mode;").fetchone()[0]

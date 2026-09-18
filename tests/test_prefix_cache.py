@@ -1,43 +1,63 @@
-# tests/test_prefix_cache.py
-import sys
-import time
-from pathlib import Path
+from unittest.mock import MagicMock
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-sys.path.append(str(BASE_DIR))
+from langchain_community.chat_models import ChatLlamaCpp
+from llama_cpp import LlamaRAMCache
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from utils import model_downloader
 
-from agent.assistant_graph import STATIC_SYSTEM_CORE
-from database.database_manager import DatabaseManager
-from utils.logger import MyosLogger
-from utils.model_downloader import llm
 
-logger = MyosLogger().get_logger(__name__)
-db = DatabaseManager()
-db.switch_user("ahmed")
-telemetry = db.get_compact_telemetry()
+def test_production_attaches_bounded_cache_without_inference(monkeypatch):
+    constructor = MagicMock()
+    monkeypatch.setattr(model_downloader, "_llm_instance", None)
+    monkeypatch.setattr(model_downloader, "SafeChatLlamaCpp", constructor)
+    monkeypatch.setattr(model_downloader.Path, "is_file", lambda self: True)
+    monkeypatch.setattr(model_downloader, "get_or_download_model_path", lambda kind: "mock.gguf")
+    model = model_downloader.get_llm(n_gpu_layers=0)
+    assert model is constructor.return_value
+    kwargs = constructor.call_args.kwargs
+    assert "cache_prompt" not in kwargs
+    assert "n_threads_batch" not in ChatLlamaCpp.model_fields
+    assert kwargs["n_gpu_layers"] == 0
+    assert kwargs["model_kwargs"] == {"offload_kqv": False, "op_offload": False}
+    model.client.set_cache.assert_called_once()
+    cache = model.client.set_cache.call_args.args[0]
+    assert isinstance(cache, LlamaRAMCache)
+    assert cache.capacity_bytes == 256 * 1024 * 1024
+    assert model_downloader.get_llm() is model
+    constructor.assert_called_once()
+    model.invoke.assert_not_called()
+    model.stream.assert_not_called()
 
-system_prompt = f"{STATIC_SYSTEM_CORE}\n\n[COACHING DIRECTIVES]\nTone: Direct\n\n{telemetry}"
 
-# Turn 1: Cold Prefill
-msg1 = HumanMessage(content="What is the primary driver of hypertrophy?")
-t0 = time.perf_counter()
-res1 = llm.invoke([SystemMessage(content=system_prompt), msg1])
-t1 = time.perf_counter()
+def test_cpu_offload_flags_omitted_for_gpu_layers(monkeypatch):
+    constructor = MagicMock()
+    monkeypatch.setattr(model_downloader, "_llm_instance", None)
+    monkeypatch.setattr(model_downloader, "SafeChatLlamaCpp", constructor)
+    monkeypatch.setattr(model_downloader.Path, "is_file", lambda self: True)
+    monkeypatch.setattr(model_downloader, "get_or_download_model_path", lambda kind: "mock.gguf")
+    model_downloader.get_llm(n_gpu_layers=8)
+    assert constructor.call_args.kwargs["model_kwargs"] == {}
 
-logger.info("--- TURN 1 (COLD EVALUATION) ---")
-logger.info(f"Total Turn Time: {t1 - t0:.3f}s")
-logger.info(f"Token Metadata:  {res1.response_metadata.get('token_usage', {})}")
 
-# Turn 2: Warm Evaluation
-msg2_history = AIMessage(content=res1.content)
-msg2_new = HumanMessage(content="How does that apply to lengthened position squats?")
+def test_context_failure_on_gpu_retries_on_cpu(monkeypatch):
+    constructor = MagicMock(side_effect=[ValueError("Failed to create llama_context"), "cpu-instance"])
+    monkeypatch.setattr(model_downloader, "_judge_llm_instance", None)
+    monkeypatch.setattr(model_downloader, "ChatLlamaCpp", constructor)
+    monkeypatch.setattr(model_downloader, "get_or_download_model_path", lambda kind: "mock.gguf")
+    model = model_downloader.get_judge_llm(n_gpu_layers=4)
+    assert model == "cpu-instance"
+    first, retry = constructor.call_args_list
+    assert first.kwargs["n_gpu_layers"] == 4
+    assert retry.kwargs["n_gpu_layers"] == 0
+    assert retry.kwargs["model_kwargs"] == {"offload_kqv": False, "op_offload": False}
 
-t2 = time.perf_counter()
-res2 = llm.invoke([SystemMessage(content=system_prompt), msg1, msg2_history, msg2_new])
-t3 = time.perf_counter()
 
-logger.info("\n--- TURN 2 (WARM CACHE EVALUATION) ---")
-logger.info(f"Total Turn Time: {t3 - t2:.3f}s")
-logger.info(f"Token Metadata:  {res2.response_metadata.get('token_usage', {})}")
+def test_unrelated_failure_is_not_swallowed(monkeypatch):
+    constructor = MagicMock(side_effect=ValueError("Corrupt GGUF header"))
+    monkeypatch.setattr(model_downloader, "_judge_llm_instance", None)
+    monkeypatch.setattr(model_downloader, "ChatLlamaCpp", constructor)
+    monkeypatch.setattr(model_downloader, "get_or_download_model_path", lambda kind: "mock.gguf")
+    import pytest
+
+    with pytest.raises(ValueError, match="Corrupt GGUF header"):
+        model_downloader.get_judge_llm(n_gpu_layers=4)

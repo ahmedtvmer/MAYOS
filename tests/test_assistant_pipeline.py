@@ -31,8 +31,8 @@ def test_phase1_engine_configuration():
     )
 
     assert "Output Budget & Structural Constraints:" in STATIC_SYSTEM_CORE
-    assert "Strictly 40 to 90 words total" in STATIC_SYSTEM_CORE
-    assert "EXACTLY 2 to 3 concise, high-density bullet points" in STATIC_SYSTEM_CORE
+    assert "up to 90 words" in STATIC_SYSTEM_CORE
+    assert "brief natural prose for conversation or clarification" in STATIC_SYSTEM_CORE
     logger.info("✅ Phase 1 configuration & prompt budgeting verified.")
 
 def test_phase1_tier1_explicit_swaps():
@@ -143,11 +143,14 @@ def test_phase1_tier2_coaching_qa_passthrough():
 
 def test_phase2_streaming_generator_qa():
     """Validates token streaming, chunk yielding, and in-place state mutation for Q&A."""
-    mock_chunks = [
-        MagicMock(content="Keep your elbows "),
-        MagicMock(content="tucked at 45 degrees "),
-        MagicMock(content="to maximize tension on the triceps."),
-    ]
+    consumed = []
+
+    def produce():
+        consumed.append(1)
+        yield MagicMock(content="Keep your elbows tucked. ")
+        consumed.append(2)
+        yield MagicMock(content="Use controlled reps.")
+        consumed.append("exhausted")
 
     state = {
         "messages": [HumanMessage(content="How should I cue the close grip bench press?")],
@@ -161,15 +164,15 @@ def test_phase2_streaming_generator_qa():
         "response_content": None,
     }
 
-    with patch.object(SafeChatLlamaCpp, "stream", return_value=iter(mock_chunks)):
+    with patch.object(SafeChatLlamaCpp, "stream", return_value=produce()):
         generator = stream_assistant_turn(state)
-
-        yielded_tokens = []
-        for chunk in generator:
-            yielded_tokens.append(chunk)
-
-        assert len(yielded_tokens) == 3
-        assert "".join(yielded_tokens) == "Keep your elbows tucked at 45 degrees to maximize tension on the triceps."
+        first = next(generator)
+        assert first == "Keep your elbows tucked."
+        assert consumed == [1]
+        yielded_tokens = [first, *generator]
+        assert consumed == [1, 2, "exhausted"]
+        assert "".join(yielded_tokens) == "Keep your elbows tucked. Use controlled reps."
+        assert state["messages"][-1].content == "".join(yielded_tokens)
         assert state["intent"] == "coaching_qa"
         assert state["program_updated"] is False
         assert state["response_content"] == "".join(yielded_tokens)

@@ -114,14 +114,45 @@ def assemble_deterministic_day(
 def extract_frequency_from_text(text: str | None) -> int | None:
     if not text:
         return None
-    match = re.search(r"\b([1-5])\s*(?:days?|x|-day)\b", text.lower())
-    if match:
-        return int(match.group(1))
-    words = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5}
-    for word, num in words.items():
-        if re.search(rf"\b{word}\s*(?:days?|-day)\b", text.lower()):
-            return num
-    return None
+    words = {
+        "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+        "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+        "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
+        "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+        "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60,
+        "seventy": 70, "eighty": 80, "ninety": 90,
+    }
+    number_word = "|".join((*words, "hundred", "thousand", "million"))
+    match = re.search(
+        rf"(?<![\w.])(?P<number>[+-]?\d+|(?:minus\s+)?(?:{number_word})"
+        rf"(?:(?:[\s-]+(?:and\s+)?)(?:{number_word}))*)"
+        r"\s*(?:-\s*)?(?:days?|d/wk|x|times\s+(?:a|per)\s+week)\b",
+        text.lower(),
+    )
+    if not match:
+        return None
+    token = match.group("number")
+    if re.fullmatch(r"[+-]?\d+", token):
+        return int(token)
+    total, current = 0, 0
+    for word in re.findall(r"\w+", token):
+        if word == "hundred":
+            current = max(current, 1) * 100
+        elif word in ("thousand", "million"):
+            total += max(current, 1) * (1000 if word == "thousand" else 1000000)
+            current = 0
+        elif word in words:
+            current += words[word]
+    return (total + current) * (-1 if token.startswith("minus") else 1)
+
+
+def validate_frequency(value: int | str) -> int:
+    if isinstance(value, bool) or not re.fullmatch(r"[+-]?\d+", str(value).strip()):
+        raise ValueError("Weekly frequency must be an integer from 1 to 5 days (maximum 5).")
+    frequency = int(value)
+    if not 1 <= frequency <= 5:
+        raise ValueError("Weekly frequency must be from 1 to 5 days (maximum 5).")
+    return frequency
 
 
 def generate_program_pipeline(
@@ -133,9 +164,15 @@ def generate_program_pipeline(
     if not profile:
         raise ValueError("No user profile found in SQLite. Complete intake first.")
 
-    detected_freq = frequency_override or extract_frequency_from_text(user_split_override)
-    freq = detected_freq if detected_freq else profile.get("weekly_frequency", 4)
-    freq = min(max(int(freq), 1), 5)
+    text_frequency = extract_frequency_from_text(user_split_override)
+    if text_frequency is not None:
+        validate_frequency(text_frequency)
+    if frequency_override is not None:
+        freq = validate_frequency(frequency_override)
+    elif text_frequency is not None:
+        freq = validate_frequency(text_frequency)
+    else:
+        freq = validate_frequency(profile.get("weekly_frequency", 4))
 
     if freq != profile.get("weekly_frequency"):
         db.update_user_frequency(freq)

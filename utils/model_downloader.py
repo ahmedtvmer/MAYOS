@@ -1,3 +1,5 @@
+import gc
+import logging
 import multiprocessing
 import os
 import sys
@@ -12,14 +14,18 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGenerationChunk
 from pydantic import BaseModel
 
-DEFAULT_MODEL_DIR = Path("models")
+BASE_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_MODEL_DIR = BASE_DIR / "models"
+DEFAULT_MODEL_PATH = DEFAULT_MODEL_DIR / "Qwen3.5-4B-Q4_K_M.gguf"
 
+# Resolve absolute path string
+resolved_path = str(Path(os.getenv("MODEL_PATH", DEFAULT_MODEL_PATH)).resolve())
 # utils/model_downloader.py
 
 MODEL_REGISTRY = {
     "production": {
-        "repo_id": "Qwen/Qwen2.5-3B-Instruct-GGUF",
-        "filename": "qwen2.5-3b-instruct-q4_k_m.gguf",
+        "repo_id": "unsloth/Qwen3.5-4B-GGUF",
+        "filename": "Qwen3.5-4B-Q4_K_M.gguf",
         "env_var": "MODEL_PATH",
     },
     "judge": {
@@ -168,7 +174,25 @@ _llm_instance = None
 _judge_llm_instance = None
 
 
-def get_llm() -> Any:
+def _load_local_model(constructor, gpu_layers: int, **kwargs: Any) -> Any:
+    cpu_options = {"offload_kqv": False, "op_offload": False}
+    try:
+        return constructor(
+            **kwargs,
+            n_gpu_layers=gpu_layers,
+            model_kwargs=cpu_options if gpu_layers == 0 else {},
+        )
+    except ValueError as exc:
+        if gpu_layers == 0 or not any(error in str(exc) for error in (
+            "Failed to create llama_context", "Failed to load model from file",
+        )):
+            raise
+        logging.getLogger(__name__).warning("GPU model initialization failed; retrying once on CPU.")
+        gc.collect()
+        return constructor(**kwargs, n_gpu_layers=0, model_kwargs=cpu_options)
+
+
+def get_llm(n_gpu_layers: int | None = None) -> Any:
     global _llm_instance
     if _llm_instance is not None:
         return _llm_instance
@@ -184,21 +208,47 @@ def get_llm() -> Any:
 
     resolved_path = get_or_download_model_path("production")
     physical_cores = max(1, multiprocessing.cpu_count() // 2)
-    n_gpu_layers = int(os.getenv("N_GPU_LAYERS", "-1"))
+    gpu_layers = n_gpu_layers if n_gpu_layers is not None else int(os.getenv("N_GPU_LAYERS", "-1"))
 
-    _llm_instance = SafeChatLlamaCpp(
+    from llama_cpp import LlamaRAMCache
+
+    instance = _load_local_model(
+        SafeChatLlamaCpp, gpu_layers,
         model_path=resolved_path,
         temperature=0.0,
         n_ctx=2048,
         n_batch=512,
-        n_gpu_layers=n_gpu_layers,
         n_threads=physical_cores,
         n_threads_batch=physical_cores,
         max_tokens=200,
         streaming=True,
         verbose=False,
     )
+    instance.client.set_cache(LlamaRAMCache(capacity_bytes=256 * 1024 * 1024))
+    _llm_instance = instance
     return _llm_instance
+
+
+def unload_llm() -> None:
+    """Explicitly releases the production LLM client and reclaims CUDA VRAM."""
+    global _llm_instance
+    if _llm_instance is not None:
+        try:
+            client = getattr(_llm_instance, "client", None)
+            if client is not None:
+                if hasattr(client, "close"):
+                    client.close()
+                del client
+        except Exception:
+            pass
+        _llm_instance = None
+        gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass
 
 
 def get_judge_llm(n_gpu_layers: int | None = None) -> Any:
@@ -210,21 +260,42 @@ def get_judge_llm(n_gpu_layers: int | None = None) -> Any:
     physical_cores = max(1, multiprocessing.cpu_count() // 2)
     gpu_layers = n_gpu_layers if n_gpu_layers is not None else int(os.getenv("JUDGE_N_GPU_LAYERS", "18"))
 
-    _judge_llm_instance = ChatLlamaCpp(
+    _judge_llm_instance = _load_local_model(
+        ChatLlamaCpp, gpu_layers,
         model_path=resolved_path,
         temperature=0.0,
         n_ctx=4096,
         n_batch=512,
-        n_gpu_layers=gpu_layers,
         flash_attn=True,
         n_threads=physical_cores,
         n_threads_batch=physical_cores,
         max_tokens=280,
-        cache_prompt=True,
         streaming=False,
         verbose=False,
     )
     return _judge_llm_instance
+
+
+def unload_judge_llm() -> None:
+    """Explicitly releases the judge LLM client and reclaims CUDA VRAM."""
+    global _judge_llm_instance
+    if _judge_llm_instance is not None:
+        try:
+            client = getattr(_judge_llm_instance, "client", None)
+            if client is not None:
+                if hasattr(client, "close"):
+                    client.close()
+                del client
+        except Exception:
+            pass
+        _judge_llm_instance = None
+        gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass
 
 
 class _LazyLLMProxy:

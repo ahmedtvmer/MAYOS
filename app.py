@@ -872,8 +872,7 @@ else:
             with st.chat_message("user"):
                 st.markdown(user_input)
 
-            # 3. Clamped 6-message dialogue tail
-            recent_records = db.get_chat_history(limit=6)
+            recent_records = full_history + [{"role": "user", "content": user_input}]
             tail_messages = []
             for r in recent_records:
                 if r["role"] == "user":
@@ -881,7 +880,6 @@ else:
                 elif r["role"] == "assistant":
                     tail_messages.append(AIMessage(content=r["content"]))
 
-            # 4. Real-Time Token Streaming (No blocking spinner)
             with st.chat_message("assistant"):
                 initial_state = {
                     "messages": tail_messages,
@@ -895,12 +893,11 @@ else:
                     "response_content": None,
                 }
 
-                # Stream tokens iteratively into the active container
                 generator = stream_assistant_turn(initial_state)
-                streamed_output = st.write_stream(generator)
+                st.write_stream(generator)
 
                 # 5. Atomic persistence to SQLite post-completion
-                final_response = initial_state.get("response_content") or streamed_output
+                final_response = initial_state["response_content"]
                 if final_response:
                     db.add_chat_message("assistant", final_response)
 

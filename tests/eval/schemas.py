@@ -67,7 +67,7 @@ class DebriefEvalJudgment(BaseModel):
 
 class OnboardingExtractionJudgment(BaseModel):
     extraction_fidelity: DimensionScore = Field(
-        description="5 if extracted profile fields faithfully capture the trainee's stated metrics, goals, or injury details. 1 if data was hallucinated or critical details dropped."
+        description="5 if [EXTRACTED DELTA PROFILE] faithfully captures trainee-stated data. An unstated balanced rep_preference default is not an extracted fact. Penalize incorrect stated preferences, hallucinations, and dropped critical details."
     )
     off_topic_accuracy: DimensionScore = Field(
         description="5 if off-topic flags and reject reasons correctly identified deflections/missing data. 1 if it accepted gibberish or falsely rejected valid data."

@@ -83,9 +83,9 @@ jobs:
         env:
           OMP_NUM_THREADS: "2"
           MODEL_DEVICE: "cpu"
-          N_GPU_LAYERS: "0"
+          N_GPU_LAYERS: "-1"
         run: |
-          python tests/eval/run_evaluation.py --generalize --gpu-layers 0
+          python tests/eval/run_evaluation.py --generalize --gpu-layers -1
 
   docker-build:
     name: Docker Build Validation

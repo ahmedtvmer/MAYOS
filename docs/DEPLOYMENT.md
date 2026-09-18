@@ -103,7 +103,7 @@ CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0
 
 ---
 
-## 3. Production `docker-compose.yaml`
+## 3. Production `docker-compose.yaml` with GPU & Cloudflare Tunnel
 
 ```yaml
 services:
@@ -117,22 +117,46 @@ services:
       - "8501:8501"
     volumes:
       - ./models:/app/models
-      - ./db:/app/db
+      - ./database:/app/database
       - ./logs:/app/logs
     environment:
-      - MODEL_PATH=/app/models/qwen2.5-3b-instruct-q4_k_m.gguf
-      - MODEL_DIR=/app/models
+      - MODEL_PATH=/app/models/Qwen3.5-4B-Q4_K_M.gguf
       - EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
-      - OMP_NUM_THREADS=6
+      - N_GPU_LAYERS=16
+      - MODEL_DEVICE=cuda
+      - EMBEDDING_DEVICE=cuda
     deploy:
       resources:
-        limits:
-          cpus: '6.0'
-          memory: 8G
         reservations:
-          cpus: '4.0'
-          memory: 4G
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: myos_tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://myos-engine:8501
+    depends_on:
+      - myos-engine
 ```
+
+### Cloudflare Tunnel Operations
+
+- **Start Services**:
+  ```bash
+  docker compose up -d
+  ```
+- **Inspect Public HTTPS Tunnel Link**:
+  ```bash
+  docker compose logs cloudflared | grep -o 'https://.*\.trycloudflare\.com'
+  ```
+- **Stop Services**:
+  ```bash
+  docker compose down
+  ```
+
 
 
 ---

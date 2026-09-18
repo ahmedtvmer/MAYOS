@@ -50,8 +50,22 @@ CLINICAL_ANCHOR_VECTORS: list[list[float]] = [
 ]
 
 
+_CLINICAL_LEXICAL_TOKENS = re.compile(
+    r"\b(pain|hurt|ache|aching|sharp|pop|popping|tear|tearing|torn|tore|numb|numbness|tingling|"
+    r"joint|shoulder|knee|elbow|hip|wrist|pec|tendon|disc|spine|hernia|swollen|swell|swelling|"
+    r"shooting|radiating|grinding|clicking|pinch|pinched|crunch|crunching|dislocat|impingement|"
+    r"glass|giving\s+way|loose|slipping|electric|shock|ripping)\b",
+    re.IGNORECASE,
+)
+
+
 def evaluate_clinical_semantic_guard(query: str, threshold: float = 0.70) -> tuple[bool, float]:
     if RE_BENIGN_FATIGUE.search(query) and not RE_TRAUMA_SENSATIONS.search(query):
+        return False, 0.0
+
+    word_count = len(query.split())
+    has_clinical_token = bool(_CLINICAL_LEXICAL_TOKENS.search(query) or RE_TRAUMA_SENSATIONS.search(query))
+    if word_count < 6 and not has_clinical_token:
         return False, 0.0
 
     query_vec = EMBED_MODEL.embed_query(query)

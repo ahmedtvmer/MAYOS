@@ -26,17 +26,22 @@ def format_fatigue_cns_check(readiness: int, total_tonnage: float, session_notes
 def format_overload_deltas(exercise_summaries: List[Dict[str, Any]]) -> str:
     advancements = []
     for ex in exercise_summaries:
-        delta = ex.get("e1rm_delta", 0.0)
+        raw_delta = ex.get("e1rm_delta")
+        delta = float(raw_delta) if raw_delta is not None else None
         curr = ex.get("current_e1rm")
         name = ex.get("name", "Exercise")
-        if delta > 0 and curr:
+
+        if delta is not None and delta > 0 and curr:
             advancements.append(f"- {name}: e1RM advanced by +{delta:.1f} kg ({curr:.1f} kg). Load step-up (+2.5 kg).")
         elif curr:
-            advancements.append(f"- {name}: e1RM maintained at {curr:.1f} kg (+0.0 kg). Load held.")
-    
+            if delta is None:
+                advancements.append(f"- {name}: Baseline established at {curr:.1f} kg e1RM. Load held.")
+            else:
+                advancements.append(f"- {name}: e1RM maintained at {curr:.1f} kg (+0.0 kg). Load held.")
+
     if not advancements:
         return "- No e1RM advancements recorded; all loads maintained in current rep corridor."
-    
+
     return "\n".join(advancements)
 
 
@@ -47,12 +52,17 @@ def generate_session_debrief(
     exercise_summaries: list[dict[str, Any]],
     profile: dict[str, Any] | None = None,
     fatigue_info: dict[str, Any] | None = None,
+    total_tonnage: float | None = None,
+    total_sets: int | None = None,
+    **kwargs: Any,
 ) -> str:
     """Generates a structured post-workout debrief from raw telemetry."""
     is_deload = bool(fatigue_info and fatigue_info.get("deload_recommended", False))
 
     # 1. Deterministic Metrics & Fatigue Blocks
-    total_tonnage = sum(ex.get("volume_load", 0.0) for ex in exercise_summaries)
+    if total_tonnage is None:
+        total_tonnage = sum(ex.get("volume_load", 0.0) for ex in exercise_summaries)
+
     deltas_block = format_overload_deltas(exercise_summaries)
     fatigue_block = format_fatigue_cns_check(readiness, total_tonnage, session_notes)
 
@@ -69,7 +79,9 @@ def generate_session_debrief(
         for ex in exercise_summaries:
             action = ex.get("action", "hold")
             name = ex.get("name", "Exercise")
-            delta = ex.get("e1rm_delta", 0.0)
+            raw_delta = ex.get("e1rm_delta")
+            delta = float(raw_delta) if raw_delta is not None else 0.0
+
             if action == "increase" or delta > 0:
                 directives.append(f"- Advance load (+2.5 kg) for {name}.")
             else:
