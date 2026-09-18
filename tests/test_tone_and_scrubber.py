@@ -130,14 +130,62 @@ def test_incremental_output_independent_of_chunk_boundaries(raw, expected):
 
 def test_ui_is_thin_client_over_authoritative_service():
     from pathlib import Path
-    source = (Path(__file__).resolve().parents[1] / "app.py").read_text()
+    root = Path(__file__).resolve().parents[1]
+    app_source = (root / "app.py").read_text()
+    ui_sources = "".join(path.read_text() for path in sorted((root / "ui").rglob("*.py")))
+    client_sources = app_source + ui_sources
     # No direct ledger, graph, or model access from the UI process.
     for forbidden in ("DatabaseManager(", "stream_assistant_turn", "onboarding_graph", "generate_program_pipeline", "get_llm"):
-        assert forbidden not in source
+        assert forbidden not in client_sources
+    # app.py itself holds no transport: HTTP lives in ui/api_client.py and ui/views/.
+    for transport in ("httpx.request", "httpx.stream", "httpx.post", "httpx.get"):
+        assert transport not in app_source
+    api_client_source = (root / "ui" / "api_client.py").read_text()
+    for transport in ("httpx.request", "httpx.stream", "httpx.get"):
+        assert transport in api_client_source
+    # app.py is routing only: bounded size, no domain widgets beyond tabs.
+    assert len(app_source.splitlines()) < 150
     # Dialogue renders from the service ledger and streams server tokens without reconstructing answers.
-    assert 'api("GET", "/chat/history")' in source
-    assert "/chat/messages" in source
-    assert "st.write_stream" in source
+    assert 'api("GET", "/chat/history")' in client_sources
+    assert "/chat/messages" in client_sources
+    assert "st.write_stream" in client_sources
     # Persistence lives server-side: the chat router saves the authoritative response.
-    server = (Path(__file__).resolve().parents[1] / "svc" / "routers" / "chat.py").read_text()
+    server = (root / "svc" / "routers" / "chat.py").read_text()
     assert "persist_assistant_message" in server
+
+
+def test_ui_views_import_without_runtime():
+    import ui.views
+
+    assert set(ui.views.__all__) == {"auth", "chat", "dashboard", "debrief", "logger", "onboarding", "program", "sidebar"}
+
+
+def test_app_view_references_resolve():
+    """Every `<alias>.<callable>` used by app.py must resolve to a real ui.views member.
+
+    Guards against renames that string-matching tests cannot see (e.g. `auth_view`
+    vs the actual `auth` module): app.py is a Streamlit script, so it is never
+    imported by the suite and bare ImportErrors would otherwise reach runtime.
+    """
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse((Path(__file__).resolve().parents[1] / "app.py").read_text())
+    imported_aliases = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "ui.views":
+            for alias in node.names:
+                imported_aliases[alias.asname or alias.name] = alias.name
+    assert imported_aliases, "app.py must import its views from ui.views"
+
+    used = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in imported_aliases:
+            used.add((node.value.id, node.attr))
+    assert used, "expected view call sites in app.py"
+
+    import importlib
+
+    for alias, attr in sorted(used):
+        module = importlib.import_module(f"ui.views.{imported_aliases[alias]}")
+        assert callable(getattr(module, attr, None)), f"ui.views.{imported_aliases[alias]}.{attr} must exist"

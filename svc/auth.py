@@ -46,3 +46,18 @@ def token_claims(token: str) -> dict[str, Any]:
 def decode_access_token(token: str) -> str:
     """Returns the trainee ``sub`` or raises :class:`jwt.PyJWTError`."""
     return str(token_claims(token)["sub"])
+
+
+def revoke_token(db: Any, token: str) -> None:
+    """Revokes the token's ``jti`` in the trainee ledger; prunes expired entries."""
+    from datetime import UTC, datetime
+
+    claims = token_claims(token)
+    trainee = str(claims["sub"])
+    clean_id = db._sanitize_username(trainee)
+    if db.active_user != clean_id:
+        db.switch_user(clean_id)
+    exp = claims.get("exp")
+    expires_at = datetime.fromtimestamp(exp, UTC).isoformat() if isinstance(exp, (int, float)) else datetime.now(UTC).isoformat()
+    db.revoke_token(str(claims["jti"]), expires_at)
+    db.prune_revoked_tokens(datetime.now(UTC).isoformat())

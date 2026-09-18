@@ -27,6 +27,7 @@ __all__ = [
 
 class TraineeIn(BaseModel):
     trainee_id: str = Field(min_length=1, max_length=60)
+    password: str = Field(min_length=8, max_length=128)
 
 
 class TokenOut(BaseModel):

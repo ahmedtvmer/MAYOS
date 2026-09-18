@@ -105,19 +105,43 @@ def _creds(token: str | None):
     return HTTPAuthorizationCredentials(scheme="Bearer", credentials=token or "")
 
 
-def test_dependency_accepts_valid_bearer(monkeypatch):
+def test_dependency_accepts_valid_bearer(monkeypatch, temp_db_env):
     monkeypatch.setenv("JWT_SECRET", "test-secret")
     token = create_access_token("alice")
-    assert asyncio.run(get_current_trainee(_creds(token))) == "alice"
+    assert asyncio.run(get_current_trainee(_creds(token), temp_db_env)) == "alice"
 
 
-def test_dependency_rejects_missing_or_bad_token(monkeypatch):
+def test_dependency_rejects_missing_or_bad_token(monkeypatch, temp_db_env):
     from fastapi import HTTPException
 
     monkeypatch.setenv("JWT_SECRET", "test-secret")
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(get_current_trainee(None))
+        asyncio.run(get_current_trainee(None, temp_db_env))
     assert exc.value.status_code == 401
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(get_current_trainee(_creds("bogus")))
+        asyncio.run(get_current_trainee(_creds("bogus"), temp_db_env))
     assert exc.value.status_code == 401
+
+
+def test_dependency_rejects_revoked_token(monkeypatch, temp_db_env):
+    from fastapi import HTTPException
+
+    from svc.auth import revoke_token
+
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    token = create_access_token("alice")
+    assert asyncio.run(get_current_trainee(_creds(token), temp_db_env)) == "alice"
+    revoke_token(temp_db_env, token)
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(get_current_trainee(_creds(token), temp_db_env))
+    assert exc.value.status_code == 401
+    assert "revoked" in exc.value.detail
+
+
+def test_revoked_tokens_prune_expired(temp_db_env):
+    temp_db_env.switch_user("alice")
+    temp_db_env.revoke_token("old-jti", "2000-01-01T00:00:00+00:00")
+    temp_db_env.revoke_token("fresh-jti", "2999-01-01T00:00:00+00:00")
+    assert temp_db_env.prune_revoked_tokens("2026-01-01T00:00:00+00:00") == 1
+    assert temp_db_env.is_token_revoked("fresh-jti") is True
+    assert temp_db_env.is_token_revoked("old-jti") is False

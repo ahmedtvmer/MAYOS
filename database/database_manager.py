@@ -246,6 +246,11 @@ class DatabaseManager:
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS auth_credentials (
+                id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+                password_hash TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS training_programs (
                 id TEXT PRIMARY KEY,
                 program_name TEXT NOT NULL,
@@ -335,6 +340,12 @@ class DatabaseManager:
                 profile_data TEXT,
                 messages TEXT NOT NULL DEFAULT '[]',
                 updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS revoked_tokens (
+                jti TEXT PRIMARY KEY,
+                expires_at TEXT NOT NULL,
+                revoked_at TEXT NOT NULL
             );
         """)
         if get_user_schema_version(self.conn) < CURRENT_USER_SCHEMA_VERSION:
@@ -494,6 +505,28 @@ class DatabaseManager:
         cursor.execute("DELETE FROM onboarding_state WHERE id = 1")
         self.conn.commit()
 
+    def revoke_token(self, jti: str, expires_at: str) -> None:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO revoked_tokens (jti, expires_at, revoked_at) VALUES (?, ?, ?)
+            ON CONFLICT(jti) DO NOTHING
+            """,
+            (jti, expires_at, datetime.now(UTC).isoformat()),
+        )
+        self.conn.commit()
+
+    def is_token_revoked(self, jti: str) -> bool:
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT 1 FROM revoked_tokens WHERE jti = ?", (jti,))
+        return cursor.fetchone() is not None
+
+    def prune_revoked_tokens(self, now_iso: str) -> int:
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM revoked_tokens WHERE expires_at < ?", (now_iso,))
+        self.conn.commit()
+        return cursor.rowcount
+
     def set_assistant_memory(self, key: str, value: str) -> None:
         if key != "preferred_name":
             raise ValueError("Unsupported assistant memory key")
@@ -557,6 +590,26 @@ class DatabaseManager:
     def clear_user_profile(self, user_id: int = 1) -> None:
         cursor = self.conn.cursor()
         cursor.execute("DELETE FROM user_profile WHERE id = ?", (user_id,))
+        self.conn.commit()
+
+    def get_password_hash(self) -> str | None:
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("SELECT password_hash FROM auth_credentials WHERE id = 1")
+        except sqlite3.OperationalError:
+            return None
+        row = cursor.fetchone()
+        return row["password_hash"] if row and row["password_hash"] else None
+
+    def set_password_hash(self, password_hash: str) -> None:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO auth_credentials (id, password_hash, updated_at) VALUES (1, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET password_hash = excluded.password_hash, updated_at = excluded.updated_at
+            """,
+            (password_hash, datetime.now(UTC).isoformat()),
+        )
         self.conn.commit()
 
     def save_training_program(self, program_data: dict) -> str:
