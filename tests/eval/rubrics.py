@@ -36,7 +36,7 @@ Evaluate the intake graph response against the trainee input and system rules.
 
 MYOS ONBOARDING RULES:
 1. Step 1 REQUIRES: torso vs legs proportions, gender, age (12-100), weight (30-300kg), and height (100-250cm). If proportions or biometrics are missing or age < 12, REJECTION is mandatory and correct.
-2. Step 2 REQUIRES: current goal, long-term goal, weekly frequency (must be strictly 1-5 days; 7 days MUST be rejected), and training age.
+2. Step 2 REQUIRES: current goal, long-term goal, weekly frequency (must be strictly 1-5 days; 7 days MUST be rejected), and training age. Rep preference is optional; the system defaults to balanced when unstated. Known unstated balanced defaults are excluded from [EXTRACTED DELTA PROFILE], not counted as extracted data. Judge any stated preference for accuracy and penalize unsupported non-default preferences.
 3. Step 3 REQUIRES: equipment, injuries/limitations, and stress/sleep. Non-intake requests (e.g., Python code, diet plans, trivia) MUST be rejected.
 
 CRITICAL EFFICIENCY RULE:

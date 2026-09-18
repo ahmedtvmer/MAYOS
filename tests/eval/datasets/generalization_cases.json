@@ -199,7 +199,8 @@
       "id": "gen_onboard_03",
       "step": 2,
       "user_input": "Current focus is building a wider back taper and beefing up forearms. Long term is hitting a 200kg squat safely without injury. I can commit to 3 days weekly. Lifting for 4.5 years.",
-      "expected_action": "advance"
+      "expected_action": "advance",
+      "rep_preference_provided": false
     },
     {
       "id": "gen_onboard_04",

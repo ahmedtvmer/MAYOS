@@ -32,7 +32,7 @@ class UserProfileSchema(BaseModel):
     # Goals & Volume Capacity
     current_goal: str = Field(description="Immediate training objective")
     long_term_goal: str = Field(description="Longer-term strength/physique target")
-    weekly_frequency: int = Field(ge=1, le=7)
+    weekly_frequency: int = Field(ge=1, le=5)
     training_age_years: float = Field(ge=0.0)
 
     # Logistics & Systemic Recovery
@@ -52,7 +52,20 @@ class UserProfileSchema(BaseModel):
             return "long_torso"
         return "balanced"
 
-    @field_validator("age", "weekly_frequency", mode="before")
+    @field_validator("weekly_frequency", mode="before")
+    @classmethod
+    def sanitize_frequency(cls, v):
+        if isinstance(v, dict):
+            v = v.get("value", v)
+        if isinstance(v, bool):
+            raise ValueError("Weekly frequency must be an integer from 1 to 5.")
+        if isinstance(v, str):
+            match = re.fullmatch(r"\s*([+-]?\d+)\s*(?:days?(?:\s+(?:a|per)\s+week)?|d/wk)?\s*", v, re.I)
+            if match:
+                return int(match.group(1))
+        return v
+
+    @field_validator("age", mode="before")
     @classmethod
     def sanitize_int(cls, v):
         if isinstance(v, dict):

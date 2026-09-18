@@ -256,11 +256,12 @@ def get_progression_signals(db: DatabaseManager) -> str:
             elif len(history) >= 3 and history[-1]["e1rm"] <= history[-3]["e1rm"]:
                 signals.append(f"{name}: Stalled (3 exposures @ ~{last['weight_kg']}kg)")
 
-    return (
-        "Progression Targets: " + " | ".join(signals[:3])
-        if signals
-        else "Progression: Establishing baseline loads across routine."
-    )
+    if signals:
+        return "Progression Targets: " + " | ".join(signals[:3])
+    cursor.execute("SELECT 1 FROM workout_sessions LIMIT 1")
+    if cursor.fetchone() is None:
+        return "Progression: Establishing baseline loads across routine."
+    return "Progression: No progression or stall signals in the last 30 days."
 
 
 def evaluate_systemic_fatigue(db_manager) -> dict[str, Any]:

@@ -131,5 +131,79 @@ def test_onboarding_validation_workflow():
     logger.info("\n🎉 All 7 validation edge cases passed successfully.")
 
 
+import pytest
+from unittest.mock import MagicMock
+
+from agent import onboarding_graph as onboarding
+
+
+@pytest.mark.parametrize("frequency", ["0", "6", "7", "12", "zero", "six", "seven", "twenty-one", "one hundred", "-1"])
+@pytest.mark.parametrize("numbered", [True, False])
+def test_invalid_frequency_never_advances_or_writes(monkeypatch, frequency, numbered):
+    database = MagicMock()
+    extractor = MagicMock()
+    monkeypatch.setattr(onboarding, "db", database)
+    monkeypatch.setattr(onboarding, "step2_extractor", extractor)
+    query = (
+        f"3strength 4longevity 5: {frequency} days a week 63years"
+        if numbered else f"My goal is strength, long term longevity, {frequency} days a week, lifting for 3 years"
+    )
+    profile = {"gender": "male", "weekly_frequency": 4}
+    result = onboarding.intake_node({
+        "messages": [HumanMessage(content=query)], "intake_step": 2, "profile_data": profile,
+    })
+    assert result["intake_step"] == 2
+    assert result["is_complete"] is False
+    assert result["profile_data"] == profile
+    assert "1 to 5" in result["messages"][-1].content
+    assert database.mock_calls == []
+    extractor.invoke.assert_not_called()
+
+
+@pytest.mark.parametrize("frequency", [1, 5])
+def test_valid_frequency_boundaries_advance_without_writes(monkeypatch, frequency):
+    database = MagicMock()
+    monkeypatch.setattr(onboarding, "db", database)
+    result = onboarding.intake_node({
+        "messages": [HumanMessage(content=f"3strength 4longevity 5: {frequency} days a week 63years")],
+        "intake_step": 2, "profile_data": {},
+    })
+    assert result["intake_step"] == 3
+    assert result["profile_data"]["weekly_frequency"] == frequency
+    assert database.mock_calls == []
+
+
+@pytest.mark.parametrize("frequency", [0, 6, 7, 99, -1])
+def test_invalid_extracted_frequency_rejected(monkeypatch, frequency):
+    database = MagicMock()
+    extractor = MagicMock()
+    extractor.invoke.return_value = onboarding.Step2Extraction.model_construct(
+        current_goal="strength", long_term_goal="health", weekly_frequency=frequency,
+        training_age_years=3, rep_preference="balanced", is_off_topic=False,
+    )
+    monkeypatch.setattr(onboarding, "db", database)
+    monkeypatch.setattr(onboarding, "step2_extractor", extractor)
+    result = onboarding.intake_node({
+        "messages": [HumanMessage(content="My goal is strength and long term health")],
+        "intake_step": 2, "profile_data": {},
+    })
+    assert result["intake_step"] == 2
+    assert result["profile_data"] == {}
+    assert database.mock_calls == []
+
+
+@pytest.mark.parametrize("frequency", [0, 6, 7, 99, None])
+def test_completion_revalidates_frequency_before_database_access(monkeypatch, frequency):
+    database = MagicMock()
+    monkeypatch.setattr(onboarding, "db", database)
+    result = onboarding.intake_node({
+        "messages": [HumanMessage(content="7commercial gym 8no injuries 9medium stress, 8 hours sleep")],
+        "intake_step": 3, "profile_data": {"weekly_frequency": frequency},
+    })
+    assert result["intake_step"] == 2
+    assert result["is_complete"] is False
+    assert database.mock_calls == []
+
+
 if __name__ == "__main__":
     test_onboarding_validation_workflow()

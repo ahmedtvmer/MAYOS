@@ -5,8 +5,9 @@ from typing import Any, Literal, TypedDict
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, BaseMessage
 from langgraph.graph import END, StateGraph
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
+from agent.program_generator import extract_frequency_from_text, validate_frequency
 from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
 from utils.model_downloader import llm
@@ -87,7 +88,7 @@ class Step1Extraction(BaseModel):
 class Step2Extraction(BaseModel):
     current_goal: str | None = Field(default=None, description="Primary short-term goal.")
     long_term_goal: str | None = Field(default=None, description="Long-term physique/strength goal.")
-    weekly_frequency: int | None = Field(default=None, description="Integer days committed per week.")
+    weekly_frequency: int | None = Field(default=None, ge=1, le=5, description="Integer days committed per week (1–5).")
     training_age_years: float | None = Field(default=None, description="Years of lifting experience.")
     rep_preference: Literal["low", "balanced", "high"] | None = Field(default="balanced")
     is_off_topic: bool = Field(default=False, description="True ONLY if input is unrelated to workout goals.")
@@ -289,12 +290,20 @@ def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
         rep_pref = "balanced"
         is_off_topic = False
 
+        frequency_text = seg_match.group("q5") if seg_match else raw_input
+        raw_frequency = extract_frequency_from_text(frequency_text)
+        if raw_frequency is None and seg_match:
+            raw_frequency = extract_frequency_from_text(f"{frequency_text.strip()} days")
+        if raw_frequency is not None:
+            try:
+                validate_frequency(raw_frequency)
+            except ValueError:
+                return _reject(step, "Weekly frequency must be from 1 to 5 days (maximum 5).", profile)
+
         if seg_match:
             current_goal = seg_match.group("q3").strip()
             long_term_goal = seg_match.group("q4").strip()
-            raw_freq = parse_number_token(seg_match.group("q5"))
-            if raw_freq is not None:
-                weekly_frequency = int(raw_freq)
+            weekly_frequency = raw_frequency
             raw_age = parse_number_token(seg_match.group("q6"))
             if raw_age is not None:
                 training_age_years = float(raw_age)
@@ -304,11 +313,14 @@ def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
                 f"RULES:\n"
                 f"- current_goal: primary short-term focus.\n"
                 f"- long_term_goal: long-term outcome.\n"
-                f"- weekly_frequency: integer days per week (1-7).\n"
+                f"- weekly_frequency: integer days per week (1-5); never clamp unsupported requests.\n"
                 f"- training_age_years: lifting experience in years.\n"
                 f"- Flag is_off_topic=True ONLY if input is completely unrelated to lifting."
             )
-            ext: Step2Extraction = step2_extractor.invoke(prompt)
+            try:
+                ext: Step2Extraction = step2_extractor.invoke(prompt)
+            except ValidationError:
+                return _reject(step, "Provide valid goals and a weekly frequency from 1 to 5 days.", profile)
             current_goal, long_term_goal = ext.current_goal, ext.long_term_goal
             weekly_frequency, training_age_years = ext.weekly_frequency, ext.training_age_years
             rep_pref = ext.rep_preference or "balanced"
@@ -333,10 +345,13 @@ def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
             else:
                 long_term_goal = current_goal or "Maintain strength and hypertrophy progression"
 
-        if weekly_frequency is None:
-            freq_m = re.search(r"\b([1-7])\s*(?:days?\s*(?:weekly|a\s+week|per\s+week|\/wk)?)\b", raw_input, re.I)
-            if freq_m:
-                weekly_frequency = int(freq_m.group(1))
+        if raw_frequency is not None:
+            weekly_frequency = raw_frequency
+        if weekly_frequency is not None:
+            try:
+                weekly_frequency = validate_frequency(weekly_frequency)
+            except ValueError:
+                return _reject(step, "Weekly frequency must be from 1 to 5 days (maximum 5).", profile)
 
         if training_age_years is None:
             exp_m = re.search(r"(?:lifting|training)(?:\s+for)?\s*(\d+(?:\.\d+)?)\s*years?", raw_input, re.I)
@@ -446,6 +461,11 @@ def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
                 "stress_and_sleep": recovery.strip(),
             }
         )
+
+        try:
+            profile["weekly_frequency"] = validate_frequency(profile.get("weekly_frequency"))
+        except ValueError:
+            return _reject(2, "Weekly frequency must be from 1 to 5 days (maximum 5).", profile)
 
         trainee = state.get("trainee_id") or db.active_user or "default"
         db.switch_user(trainee)

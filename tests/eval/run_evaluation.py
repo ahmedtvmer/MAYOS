@@ -123,6 +123,22 @@ def generate_debrief_candidates(dataset_path: Path) -> list[dict[str, Any]]:
     return candidates
 
 
+def onboarding_delta_profile(profile: dict[str, Any], case: dict[str, Any]) -> dict[str, Any]:
+    step_fields = {
+        1: ["proportions", "gender", "age", "weight_kg", "height_cm"],
+        2: ["current_goal", "long_term_goal", "weekly_frequency", "training_age_years", "rep_preference"],
+        3: ["equipment_access", "injuries_or_limitations", "stress_and_sleep"],
+    }[case["step"]]
+    delta = {k: v for k, v in profile.items() if k in step_fields}
+    if (
+        case["step"] == 2
+        and case.get("rep_preference_provided") is False
+        and delta.get("rep_preference") == "balanced"
+    ):
+        del delta["rep_preference"]
+    return delta
+
+
 def generate_onboarding_candidates(dataset_path: Path) -> list[dict[str, Any]]:
     with open(dataset_path, "r", encoding="utf-8") as f:
         cases = json.load(f)
@@ -174,13 +190,7 @@ def generate_onboarding_candidates(dataset_path: Path) -> list[dict[str, Any]]:
         if not advanced and case["expected_action"] == "reject":
             structural_pass = "invalid response" in last_msg.lower() or "please provide" in last_msg.lower()
 
-        step_fields = {
-            1: ["proportions", "gender", "age", "weight_kg", "height_cm"],
-            2: ["current_goal", "long_term_goal", "weekly_frequency", "training_age_years", "rep_preference"],
-            3: ["equipment_access", "injuries_or_limitations", "stress_and_sleep"],
-        }[step]
-
-        delta_profile = {k: v for k, v in profile.items() if k in step_fields}
+        delta_profile = onboarding_delta_profile(profile, case)
         logger.info(f"  [Gen] Case {case['id']} ({gen_time:.2f}s) | Step {step} -> {new_step}")
 
         candidates.append({
@@ -402,7 +412,7 @@ def main():
         "--generalize", action="store_true", help="Run 15 unseen generalization cases across all modules"
     )
     parser.add_argument(
-        "--gpu-layers", type=int, default=10, help="Layers to offload to GPU for the Judge LLM (default: 10)"
+        "--gpu-layers", type=int, default=16, help="Layers to offload to GPU for the Judge LLM"
     )
     parser.add_argument(
         "--main-gpu-layers",
@@ -414,7 +424,7 @@ def main():
         "--phase",
         choices=["all", "generate", "judge"],
         default="all",
-        help="Evaluation phase to execute: 'generate', 'judge', or 'all' (default: all)",
+        help="Evaluation phase to execute: 'generate', 'judge', or 'all'",
     )
     args = parser.parse_args()
 

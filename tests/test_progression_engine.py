@@ -44,5 +44,44 @@ def run_tests():
     logger.info("\n🎉 Dynamic RPE Progression calculations verified successfully.")
 
 
+import sqlite3
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+
+import pytest
+
+from agent.progression_engine import get_progression_signals
+
+
+@pytest.mark.parametrize("days_ago,exposures,expected_baseline", [(None, 0, True), (0, 0, False), (0, 2, False), (90, 2, False)])
+def test_progression_baseline_requires_empty_all_time_ledger(days_ago, exposures, expected_baseline):
+    connection = sqlite3.connect(":memory:")
+    try:
+        connection.executescript("""
+            ATTACH DATABASE ':memory:' AS catalog;
+            CREATE TABLE catalog.exercises (id TEXT, name TEXT, equipment TEXT);
+            CREATE TABLE workout_sessions (id TEXT, session_date TEXT);
+            CREATE TABLE workout_sets (
+                session_id TEXT, exercise_id TEXT, weight_kg REAL, reps INTEGER,
+                rpe REAL, set_index INTEGER, is_warmup INTEGER
+            );
+            INSERT INTO catalog.exercises VALUES ('squat', 'Barbell Squat', 'barbell');
+        """)
+        if days_ago is not None:
+            for index in range(max(exposures, 1)):
+                date = (datetime.now(UTC) - timedelta(days=days_ago + index)).date().isoformat()
+                connection.execute("INSERT INTO workout_sessions VALUES (?, ?)", (str(index), date))
+                if exposures:
+                    connection.execute("INSERT INTO workout_sets VALUES (?, 'squat', 80, 8, 8.5, 1, 0)", (str(index),))
+        database = SimpleNamespace(user_conn=connection, conn=connection, get_active_program=lambda: None)
+        result = get_progression_signals(database)
+        if expected_baseline:
+            assert result == "Progression: Establishing baseline loads across routine."
+        else:
+            assert result == "Progression: No progression or stall signals in the last 30 days."
+    finally:
+        connection.close()
+
+
 if __name__ == "__main__":
     run_tests()

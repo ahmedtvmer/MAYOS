@@ -82,38 +82,36 @@ def reconcile_telemetry_query(query: str, telemetry: str) -> str | None:
     if not RE_HISTORICAL_INDICATORS.search(query):
         return None
 
-    t_clean = telemetry.strip() if telemetry else ""
-
-    if "baseline" in t_clean.lower() or "no recorded sessions" in t_clean.lower():
-        return "Baseline loads are currently being established; no historical comparison data exists in your ledger."
-
-    set_query_match = re.search(
-        r"complete(?:d)?\s+(?:all\s+)?(?P<claimed>\d+)?\s*(?:prescribed\s+)?sets",
+    set_query_match = re.fullmatch(
+        r"\s*did\s+i\s+complete\s+(?:all\s+)?(?:\d+\s+)?(?:prescribed\s+)?sets"
+        r"(?:\s+(?:for|on)\s+(?P<exercise>[\w -]+?))?"
+        r"\s+(?:in\s+)?(?:my\s+)?last\s+(?:session|workout)\s*[?.!]?\s*",
         query,
         re.IGNORECASE,
     )
-    if set_query_match:
-        logged_sets_match = re.search(r"(\d+)\s+sets?\s+logged", t_clean, re.IGNORECASE)
-        if logged_sets_match:
-            actual_count = logged_sets_match.group(1)
-            return f"Your session log records exactly {actual_count} completed sets for this movement."
+    if not set_query_match:
+        return None
 
-        set_count = len(re.findall(r"\bSet\s+\d+:", t_clean, re.IGNORECASE))
-        if set_count > 0:
-            return f"Your session log records exactly {set_count} completed sets for this movement."
+    last_sessions = re.findall(r"^Last Session:\s*([^\n]+)", telemetry or "", re.IGNORECASE | re.MULTILINE)
+    if len(last_sessions) != 1:
+        return None
 
-    extracted_target = None
-    for pattern in ENTITY_EXTRACTION_PATTERNS:
-        match = pattern.search(query)
-        if match:
-            candidate = match.group("ex").strip()
-            cleaned = clean_extracted_entity(candidate)
-            if cleaned:
-                extracted_target = cleaned
-                break
-
-    if extracted_target:
-        if not exercise_exists_in_telemetry(extracted_target, t_clean):
-            return f"No log entry exists for {extracted_target} in your logged session history."
-
-    return None
+    exercise = set_query_match.group("exercise")
+    target = " ".join(exercise.lower().split()) if exercise else None
+    counts = []
+    for field in last_sessions[0].split("|"):
+        count_match = re.fullmatch(
+            r"\s*(?:(?P<exercise>[\w -]+):\s*)?(?P<count>\d+)\s+sets?\s+logged\s*",
+            field,
+            re.IGNORECASE,
+        )
+        if not count_match:
+            continue
+        movement = count_match.group("exercise")
+        movement = " ".join(movement.lower().split()) if movement else None
+        if movement == target:
+            counts.append(int(count_match.group("count")))
+    if len(counts) != 1:
+        return None
+    scope = f"for {exercise} in your last session" if exercise else "across your last session"
+    return f"Your session log records exactly {counts[0]} completed sets {scope}."

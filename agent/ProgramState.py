@@ -28,7 +28,7 @@ class ProgramDaySchema(BaseModel):
 
 class ProgramSchema(BaseModel):
     program_name: str = Field(description="Display title of the generated split")
-    weekly_frequency: int = Field(ge=1, le=7, description="Number of training days per week")
+    weekly_frequency: int = Field(ge=1, le=5, description="Number of training days per week")
     split_type: str = Field(default="custom", description="Split categorization, e.g., 'Upper/Lower', 'PPL'")
     days: list[ProgramDaySchema] = Field(description="Ordered list of training day routines")
 

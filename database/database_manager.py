@@ -160,14 +160,13 @@ class DatabaseManager:
         if v == 0:
             cursor = new_conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_profile';")
-            if not cursor.fetchone():
-                self.create_user_schema()
-            else:
+            if cursor.fetchone():
                 set_user_schema_version(new_conn, CURRENT_USER_SCHEMA_VERSION)
                 new_conn.commit()
         else:
             apply_lazy_migrations(new_conn, sanitized, self.users_dir, self.backups_dir)
 
+        self.create_user_schema()
         prune_user_backups(self.backups_dir / sanitized, max_rolling=3)
         return True
     
@@ -290,6 +289,10 @@ class DatabaseManager:
                 content TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS assistant_memory (
+                key TEXT PRIMARY KEY CHECK (key = 'preferred_name'),
+                value TEXT NOT NULL CHECK (length(value) BETWEEN 1 AND 60 AND length(trim(value)) > 0)
+            );
             CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_history(created_at);
             CREATE INDEX IF NOT EXISTS idx_sets_session ON workout_sets(session_id);
             CREATE INDEX IF NOT EXISTS idx_sets_exercise ON workout_sets(exercise_id);
@@ -308,7 +311,8 @@ class DatabaseManager:
             );
             CREATE INDEX IF NOT EXISTS idx_telemetry_ts ON engine_telemetry(timestamp);
         """)
-        set_user_schema_version(self.conn, CURRENT_USER_SCHEMA_VERSION)
+        if get_user_schema_version(self.conn) < CURRENT_USER_SCHEMA_VERSION:
+            set_user_schema_version(self.conn, CURRENT_USER_SCHEMA_VERSION)
         self.conn.commit()
 
     def backup_active_user(self) -> Path:
@@ -418,6 +422,26 @@ class DatabaseManager:
         cursor.execute("SELECT * FROM user_profile WHERE id = ?", (user_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
+
+    def get_assistant_memory(self) -> dict[str, str]:
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT key, value FROM assistant_memory WHERE key = ?", ("preferred_name",))
+        return dict(cursor.fetchall())
+
+    def set_assistant_memory(self, key: str, value: str) -> None:
+        if key != "preferred_name":
+            raise ValueError("Unsupported assistant memory key")
+        if not isinstance(value, str) or not 1 <= len(value) <= 60 or not value.strip() or not value.isprintable():
+            raise ValueError("Preferred name must be a nonempty printable string of at most 60 characters")
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO assistant_memory (key, value) VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (key, value),
+        )
+        self.conn.commit()
 
     def upsert_user_profile(self, profile_data: dict, user_id: int = 1) -> None:
         now = datetime.now(UTC).isoformat()
@@ -674,6 +698,41 @@ class DatabaseManager:
         )
         self.conn.commit()
 
+    def get_latest_session_summary(self) -> dict[str, Any] | None:
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT id, session_date, split_name, readiness_score
+            FROM workout_sessions
+            ORDER BY session_date DESC, started_at DESC, rowid DESC
+            LIMIT 1
+        """)
+        session = cursor.fetchone()
+        if session is None:
+            return None
+
+        cursor.execute(
+            """
+            SELECT COALESCE(e.name, ws.exercise_id) AS name,
+                   COUNT(*) AS sets, SUM(ws.reps) AS reps,
+                   SUM(ws.weight_kg * ws.reps) AS volume_kg
+            FROM workout_sets ws
+            LEFT JOIN catalog.exercises e ON e.id = ws.exercise_id
+            WHERE ws.session_id = ? AND ws.is_warmup = 0
+            GROUP BY ws.exercise_id, e.name
+            ORDER BY name COLLATE NOCASE, ws.exercise_id
+            """,
+            (session["id"],),
+        )
+        exercises = [dict(row) for row in cursor.fetchall()]
+        return {
+            "session_date": session["session_date"],
+            "split_name": session["split_name"],
+            "readiness_score": session["readiness_score"],
+            "sets_count": sum(exercise["sets"] for exercise in exercises),
+            "total_volume_kg": sum((exercise["volume_kg"] for exercise in exercises), 0.0),
+            "exercises": exercises,
+        }
+
     def get_last_performance(self, exercise_id: str) -> list[dict[str, Any]]:
         cursor = self.conn.cursor()
         cursor.execute(
@@ -701,6 +760,178 @@ class DatabaseManager:
             (session_row[0], exercise_id),
         )
         return [dict(r) for r in cursor.fetchall()]
+
+    BEST_SET_CONVENTION = "heaviest weight, then most reps, then earliest set_index"
+    _SESSION_ORDER = "session_date DESC, started_at DESC, rowid DESC"
+
+    @staticmethod
+    def _session_metadata(row) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "session_date": row["session_date"],
+            "started_at": row["started_at"],
+            "split_name": row["split_name"],
+            "readiness_score": row["readiness_score"],
+            "session_notes": row["session_notes"],
+        }
+
+    @staticmethod
+    def _aggregate_sets(sets: list[dict[str, Any]]) -> dict[str, Any]:
+        if not sets:
+            return {
+                "sets": [],
+                "sets_count": 0,
+                "total_reps": 0,
+                "volume_kg": 0.0,
+                "best_set": None,
+                "e1rm": None,
+            }
+        best = max(sets, key=lambda s: (s["weight_kg"], s["reps"], -s["set_index"]))
+        e1rm = None
+        if best["rpe"] is not None and best["weight_kg"] > 0:
+            from agent.progression_engine import calculate_e1rm
+
+            e1rm = calculate_e1rm(best["weight_kg"], best["reps"], best["rpe"])
+        return {
+            "sets": [
+                {"set_index": s["set_index"], "weight_kg": s["weight_kg"], "reps": s["reps"], "rpe": s["rpe"]}
+                for s in sets
+            ],
+            "sets_count": len(sets),
+            "total_reps": sum(s["reps"] for s in sets),
+            "volume_kg": sum(s["weight_kg"] * s["reps"] for s in sets),
+            "best_set": {
+                "set_index": best["set_index"],
+                "weight_kg": best["weight_kg"],
+                "reps": best["reps"],
+                "rpe": best["rpe"],
+            },
+            "e1rm": e1rm,
+        }
+
+    @staticmethod
+    def _deltas(current: dict[str, Any], previous: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "load_kg": current["best_set"]["weight_kg"] - previous["best_set"]["weight_kg"],
+            "reps": current["best_set"]["reps"] - previous["best_set"]["reps"],
+            "sets": current["sets_count"] - previous["sets_count"],
+            "volume_kg": current["volume_kg"] - previous["volume_kg"],
+            "e1rm": (current["e1rm"] - previous["e1rm"]) if current["e1rm"] is not None and previous["e1rm"] is not None else None,
+        }
+
+    @staticmethod
+    def _status(current: dict[str, Any], previous: dict[str, Any]) -> str:
+        if current["best_set"]["rpe"] is None or previous["best_set"]["rpe"] is None:
+            return "insufficient_data"
+        deltas = DatabaseManager._deltas(current, previous)
+        signs = {
+            (delta > 0) - (delta < 0)
+            for key in ("load_kg", "reps", "e1rm")
+            if (delta := deltas[key]) is not None
+        }
+        signs.discard(0)
+        if not signs:
+            return "unchanged"
+        if signs == {1}:
+            return "improvement"
+        if signs == {-1}:
+            return "decline"
+        return "mixed"
+
+    def _fetch_session_sets(self, session_id: str, exercise_id: str) -> list[dict[str, Any]]:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT ws.set_index, ws.weight_kg, ws.reps, ws.rpe
+            FROM workout_sets ws
+            WHERE ws.session_id = ? AND ws.exercise_id = ? AND ws.is_warmup = 0
+            ORDER BY ws.set_index ASC
+        """,
+            (session_id, exercise_id),
+        )
+        return [dict(r) for r in cursor.fetchall()]
+
+    def _fetch_previous_session_for_exercise(
+        self, exercise_id: str, current_session: sqlite3.Row
+    ) -> sqlite3.Row | None:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT s.id, s.session_date, s.started_at, s.split_name,
+                   s.readiness_score, s.session_notes
+            FROM workout_sessions s
+            WHERE (s.session_date, s.started_at, s.rowid) < (?, ?, ?)
+              AND EXISTS (
+                  SELECT 1 FROM workout_sets ws
+                  WHERE ws.session_id = s.id AND ws.exercise_id = ? AND ws.is_warmup = 0
+              )
+            ORDER BY s.session_date DESC, s.started_at DESC, s.rowid DESC
+            LIMIT 1
+            """,
+            (current_session["session_date"], current_session["started_at"], current_session["session_rowid"], exercise_id),
+        )
+        return cursor.fetchone()
+
+    def get_session_comparison_context(self) -> dict[str, Any] | None:
+        cursor = self.conn.cursor()
+        cursor.execute(f"""
+            SELECT id, session_date, started_at, split_name, readiness_score,
+                   session_notes, rowid AS session_rowid
+            FROM workout_sessions ORDER BY {self._SESSION_ORDER} LIMIT 2
+        """)
+        sessions = cursor.fetchall()
+        if not sessions:
+            return None
+        latest = sessions[0]
+        metadata = self._session_metadata(latest)
+        prev_metadata = self._session_metadata(sessions[1]) if len(sessions) > 1 else None
+
+        cursor.execute(
+            """
+            SELECT DISTINCT ws.exercise_id, COALESCE(e.name, ws.exercise_id) AS name
+            FROM workout_sets ws
+            LEFT JOIN catalog.exercises e ON e.id = ws.exercise_id
+            WHERE ws.session_id = ? AND ws.is_warmup = 0
+            ORDER BY name COLLATE NOCASE, ws.exercise_id
+        """,
+            (latest["id"],),
+        )
+        exercise_rows = cursor.fetchall()
+
+        exercises = []
+        for ex_row in exercise_rows:
+            exercise_id, name = ex_row["exercise_id"], ex_row["name"]
+            current = self._aggregate_sets(self._fetch_session_sets(latest["id"], exercise_id))
+            previous_session = self._fetch_previous_session_for_exercise(exercise_id, latest)
+            previous = None
+            if previous_session is not None:
+                previous = self._aggregate_sets(self._fetch_session_sets(previous_session["id"], exercise_id))
+                previous["session"] = self._session_metadata(previous_session)
+
+            if previous is None:
+                deltas = {"load_kg": None, "reps": None, "sets": None, "volume_kg": None, "e1rm": None}
+                status = "insufficient_data"
+            else:
+                deltas = self._deltas(current, previous)
+                status = self._status(current, previous)
+
+            exercises.append(
+                {
+                    "exercise_id": exercise_id,
+                    "name": name,
+                    "current": current,
+                    "previous": previous,
+                    "deltas": deltas,
+                    "status": status,
+                }
+            )
+
+        return {
+            "best_set_convention": self.BEST_SET_CONVENTION,
+            "session": metadata,
+            "previous_session": prev_metadata,
+            "exercises": exercises,
+        }
 
     def update_user_persona(self, coach_tone: str, custom_instructions: str) -> None:
         cursor = self.conn.cursor()
