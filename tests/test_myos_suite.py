@@ -1,10 +1,10 @@
 import threading
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
-from langchain_community.chat_models import ChatLlamaCpp
 from langchain_core.messages import HumanMessage
 
 from agent.assistant_graph import (
@@ -228,11 +228,23 @@ def test_database_manager_operations(isolated_db):
 
 
 # ============================================================================
-# 5. STREAMING TURN RUNTIME (MOCKING ChatLlamaCpp)
+# 5. STREAMING TURN RUNTIME (STUBBING THE MODULE-LEVEL llm)
 # ============================================================================
 
 
-def test_stream_assistant_turn_mocked_llm():
+def _llm_stream_stub(chunks):
+    """Model-independent stub replacing the graph's lazy ``llm`` proxy.
+
+    Patching the class (ChatLlamaCpp.stream) is bypassed whenever the in-repo
+    mock model is active (model file absent), because the mock defines its own
+    ``stream``. Stubbing the module attribute works in every environment.
+    """
+    return SimpleNamespace(stream=lambda payload: iter(chunks))
+
+
+def test_stream_assistant_turn_mocked_llm(monkeypatch):
+    from agent import assistant_graph as graph_module
+
     mock_chunks = [
         MagicMock(content="Maintain "),
         MagicMock(content="scapular retraction "),
@@ -251,12 +263,11 @@ def test_stream_assistant_turn_mocked_llm():
         "response_content": None,
     }
 
-    # Patch ChatLlamaCpp.stream rather than ChatOllama
-    with patch.object(ChatLlamaCpp, "stream", return_value=iter(mock_chunks)):
-        tokens = list(stream_assistant_turn(state))
-        assert "".join(tokens) == "Maintain scapular retraction throughout the movement."
-        assert state["intent"] == "coaching_qa"
-        assert state["program_updated"] is False
+    monkeypatch.setattr(graph_module, "llm", _llm_stream_stub(mock_chunks))
+    tokens = list(stream_assistant_turn(state))
+    assert "".join(tokens) == "Maintain scapular retraction throughout the movement."
+    assert state["intent"] == "coaching_qa"
+    assert state["program_updated"] is False
 
 
 def test_stream_assistant_turn_records_generation_telemetry(monkeypatch):
@@ -280,8 +291,8 @@ def test_stream_assistant_turn_records_generation_telemetry(monkeypatch):
         captured.update({"intent": intent, "fast_path_ms": fast_path_ms, **kwargs})
 
     monkeypatch.setattr(graph_module, "_record_telemetry_event", fake_record)
-    with patch.object(ChatLlamaCpp, "stream", return_value=iter(mock_chunks)):
-        tokens = list(stream_assistant_turn(state))
+    monkeypatch.setattr(graph_module, "llm", _llm_stream_stub(mock_chunks))
+    tokens = list(stream_assistant_turn(state))
     assert "".join(tokens).startswith("Maintain scapular")
     assert captured["intent"] == "coaching_qa"
     assert captured["tokens"] >= 1

@@ -45,6 +45,8 @@ def test_context_failure_on_gpu_retries_on_cpu(monkeypatch):
     # Judge shares the SafeChatLlamaCpp constructor (tool-call dedup fix applies).
     monkeypatch.setattr(model_downloader, "SafeChatLlamaCpp", constructor)
     monkeypatch.setattr(model_downloader, "get_or_download_model_path", lambda kind: "mock.gguf")
+    # Force the real-loading branch: the model-absent mock would bypass the constructor.
+    monkeypatch.setattr(model_downloader.Path, "is_file", lambda self: True)
     model = model_downloader.get_judge_llm(n_gpu_layers=4)
     assert model == "cpu-instance"
     first, retry = constructor.call_args_list
@@ -58,6 +60,8 @@ def test_unrelated_failure_is_not_swallowed(monkeypatch):
     monkeypatch.setattr(model_downloader, "_judge_llm_instance", None)
     monkeypatch.setattr(model_downloader, "SafeChatLlamaCpp", constructor)
     monkeypatch.setattr(model_downloader, "get_or_download_model_path", lambda kind: "mock.gguf")
+    # Force the real-loading branch: the model-absent mock would bypass the constructor.
+    monkeypatch.setattr(model_downloader.Path, "is_file", lambda self: True)
     import pytest
 
     with pytest.raises(ValueError, match="Corrupt GGUF header"):

@@ -1,6 +1,7 @@
 # tests/test_assistant_pipeline.py
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -141,7 +142,7 @@ def test_phase1_tier2_coaching_qa_passthrough():
     logger.info("✅ Phase 1 Tier 2: Zero-LLM coaching Q&A pass-through verified.")
 
 
-def test_phase2_streaming_generator_qa():
+def test_phase2_streaming_generator_qa(monkeypatch):
     """Validates token streaming, chunk yielding, and in-place state mutation for Q&A."""
     consumed = []
 
@@ -164,18 +165,20 @@ def test_phase2_streaming_generator_qa():
         "response_content": None,
     }
 
-    with patch.object(SafeChatLlamaCpp, "stream", return_value=produce()):
-        generator = stream_assistant_turn(state)
-        first = next(generator)
-        assert first == "Keep your elbows tucked."
-        assert consumed == [1]
-        yielded_tokens = [first, *generator]
-        assert consumed == [1, 2, "exhausted"]
-        assert "".join(yielded_tokens) == "Keep your elbows tucked. Use controlled reps."
-        assert state["messages"][-1].content == "".join(yielded_tokens)
-        assert state["intent"] == "coaching_qa"
-        assert state["program_updated"] is False
-        assert state["response_content"] == "".join(yielded_tokens)
+    # Stub the module-level proxy: class patches are bypassed when the in-repo
+    # mock model is active. A fresh generator per call preserves lazy consumption.
+    monkeypatch.setattr("agent.assistant_graph.llm", SimpleNamespace(stream=lambda payload: produce()))
+    generator = stream_assistant_turn(state)
+    first = next(generator)
+    assert first == "Keep your elbows tucked."
+    assert consumed == [1]
+    yielded_tokens = [first, *generator]
+    assert consumed == [1, 2, "exhausted"]
+    assert "".join(yielded_tokens) == "Keep your elbows tucked. Use controlled reps."
+    assert state["messages"][-1].content == "".join(yielded_tokens)
+    assert state["intent"] == "coaching_qa"
+    assert state["program_updated"] is False
+    assert state["response_content"] == "".join(yielded_tokens)
 
     logger.info("✅ Phase 2: Conversational token streaming & state updates verified.")
 

@@ -1069,7 +1069,7 @@ def _count_display_tokens(text: str) -> int:
     try:
         tokenize = getattr(getattr(llm, "client", None), "tokenize", None)
         if callable(tokenize):
-            tokens = tokenize(text.encode("utf-8"))
+            tokens = tokenize(text.encode("utf-8"), add_bos=False)
             if isinstance(tokens, (list, tuple)):
                 return len(tokens)
     except Exception:
