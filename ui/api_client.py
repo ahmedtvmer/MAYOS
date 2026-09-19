@@ -1,6 +1,7 @@
 """HTTP transport for the Streamlit client: JSON calls, downloads, and SSE turns."""
 
 import os
+from typing import Any
 
 import httpx
 import streamlit as st
@@ -18,37 +19,78 @@ def auth_headers() -> dict:
     return {"Authorization": f"Bearer {token}"} if token else {}
 
 
-def api(method: str, path: str, allow_404: bool = False, **kwargs):
-    """JSON API call. Returns parsed body (None for 204, or for 404 when allow_404); reruns login on 401."""
+def request_json(
+    method: str, path: str, *, timeout: float = REQUEST_TIMEOUT, **kwargs: Any
+) -> tuple[int, Any | None, str | None]:
+    """JSON call that never raises and never touches Streamlit state.
+
+    Returns ``(status, body, detail)``:
+    - ``status``: HTTP status, or ``0`` on transport failure (timeout, refused).
+    - ``body``: parsed JSON of any shape (dict/list/None on empty or non-JSON).
+    - ``detail``: ready-to-display error string for 4xx/5xx/transport, else None.
+
+    Callers own the UX: streaming views may inline ``detail`` instead of a
+    full-page stop, so a malformed or failed response can never blank the app.
+
+    ``transport`` (optional) is a test seam: any other value must be an
+    ``httpx.BaseTransport`` (e.g. ``httpx.MockTransport``) used in place of
+    real networking.
+    """
+    transport = kwargs.pop("transport", None)
+    url = f"{API_BASE_URL}{path}"
     try:
-        response = httpx.request(method, f"{API_BASE_URL}{path}", headers=auth_headers(), timeout=REQUEST_TIMEOUT, **kwargs)
-    except httpx.ConnectError:
-        st.error(f"Cannot reach the training service at {API_BASE_URL}. Is it running?")
-        st.stop()
-    if response.status_code == 401:
-        st.session_state.clear()
-        st.error("Session expired. Please log in again.")
-        st.rerun()
-    if response.status_code == 204:
-        return None
-    if response.status_code == 404 and allow_404:
-        return None
+        if transport is None:
+            response = httpx.request(method, url, timeout=timeout, **kwargs)
+        else:
+            with httpx.Client(transport=transport) as client:
+                response = client.request(method, url, timeout=timeout, **kwargs)
+    except httpx.RequestError as exc:
+        return 0, None, f"Cannot reach the training service at {API_BASE_URL} ({exc.__class__.__name__})."
+    body: Any | None = None
+    if response.content:
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
     if response.status_code >= 400:
-        detail = response.json().get("detail", "Request failed.") if "application/json" in response.headers.get("content-type", "") else response.text
+        detail = None
+        if isinstance(body, dict):
+            detail = body.get("detail") or body.get("error")
+        return response.status_code, body, str(detail or f"Request failed ({response.status_code}).")[:300]
+    return response.status_code, body, None
+
+
+def api(method: str, path: str, allow_404: bool = False, **kwargs: Any):
+    """JSON API call. Returns parsed body (None for 204, or for 404 when allow_404); reruns login on 401."""
+    status, body, detail = request_json(method, path, headers=auth_headers(), **kwargs)
+    if status == 0:
+        st.error(detail)
+        st.stop()
+    if status == 401:
+        from ui import session  # local import breaks the module cycle
+
+        session.clear_and_flash("Session expired. Please log in again.", "error")
+        st.rerun()
+    if status == 204:
+        return None
+    if status == 404 and allow_404:
+        return None
+    if status >= 400:
         st.error(str(detail)[:300])
         st.stop()
-    return response.json()
+    return body
 
 
 def api_bytes(path: str, params: dict | None = None) -> tuple[str, bytes]:
     try:
         response = httpx.get(f"{API_BASE_URL}{path}", headers=auth_headers(), params=params, timeout=REQUEST_TIMEOUT)
-    except httpx.ConnectError:
-        st.error(f"Cannot reach the training service at {API_BASE_URL}. Is it running?")
+    except httpx.RequestError as exc:
+        st.error(f"Cannot reach the training service at {API_BASE_URL} ({exc.__class__.__name__}).")
         st.stop()
     if response.status_code == 401:
-        st.session_state.clear()
-        st.error("Session expired. Please log in again.")
+        from ui import session  # local import breaks the module cycle
+
+        session.clear_and_flash("Session expired. Please log in again.", "error")
         st.rerun()
     if response.status_code >= 400:
         st.error("Download failed.")
@@ -70,8 +112,9 @@ def sse_chat_turn(content: str, holder: dict):
             timeout=STREAM_TIMEOUT,
         ) as stream:
             if stream.status_code == 401:
-                st.session_state.clear()
-                st.error("Session expired. Please log in again.")
+                from ui import session  # local import breaks the module cycle
+
+                session.clear_and_flash("Session expired. Please log in again.", "error")
                 st.rerun()
             if stream.status_code == 429:
                 st.error("Too many messages. Please wait a moment and retry.")
@@ -99,6 +142,6 @@ def sse_chat_turn(content: str, holder: dict):
                 elif pending_error:
                     yield event.get("detail", "Assistant request failed.")
                     pending_error = False
-    except httpx.ConnectError:
-        st.error(f"Cannot reach the training service at {API_BASE_URL}. Is it running?")
+    except httpx.RequestError as exc:
+        st.error(f"Cannot reach the training service at {API_BASE_URL} ({exc.__class__.__name__}).")
         st.stop()

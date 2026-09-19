@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(BASE_DIR))
 
 from ui import present, session  # noqa: E402
-from ui.api_client import api  # noqa: E402
+from ui.api_client import api, auth_headers, request_json  # noqa: E402
 from ui.views import (  # noqa: E402
     auth as auth_view,
     chat as chat_view,
@@ -51,6 +51,24 @@ session.ensure_state()
 if not st.session_state.get("authenticated_user") or not st.session_state.get("jwt_token"):
     auth_view.render_gatekeeper()
     st.stop()
+
+# -------------------------------------------------------------------------
+# Account Recovery Gate: recovery email is mandatory before ledger access
+# -------------------------------------------------------------------------
+if not st.session_state.get("recovery_email"):
+    email_status, email_body, email_error = request_json("GET", "/auth/email", headers=auth_headers())
+    if email_status == 200 and email_body and email_body.get("email"):
+        st.session_state.recovery_email = email_body["email"]
+    elif email_status == 401:
+        session.clear_and_flash("Session expired. Please log in again.", "error")
+        st.rerun()
+    elif email_status == 404:
+        auth_view.render_email_gate(outdated=True)
+        st.stop()
+    else:
+        # Transport/5xx: still show the form with the error, never a silent blank stop.
+        auth_view.render_email_gate(error=email_error)
+        st.stop()
 
 # -------------------------------------------------------------------------
 # Authenticated Trainee Context Hydration

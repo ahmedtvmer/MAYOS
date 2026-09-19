@@ -257,3 +257,62 @@ def test_stream_assistant_turn_mocked_llm():
         assert "".join(tokens) == "Maintain scapular retraction throughout the movement."
         assert state["intent"] == "coaching_qa"
         assert state["program_updated"] is False
+
+
+def test_stream_assistant_turn_records_generation_telemetry(monkeypatch):
+    from agent import assistant_graph as graph_module
+
+    mock_chunks = [MagicMock(content="Maintain "), MagicMock(content="scapular retraction.")]
+    state = {
+        "messages": [HumanMessage(content="Cue machine chest press")],
+        "trainee_id": "test_trainee",
+        "coach_tone": "Direct",
+        "custom_instructions": "",
+        "telemetry_context": "None",
+        "intent": None,
+        "intent_metadata": {},
+        "program_updated": False,
+        "response_content": None,
+    }
+    captured: dict = {}
+
+    def fake_record(intent, fast_path_ms, **kwargs):
+        captured.update({"intent": intent, "fast_path_ms": fast_path_ms, **kwargs})
+
+    monkeypatch.setattr(graph_module, "_record_telemetry_event", fake_record)
+    with patch.object(ChatLlamaCpp, "stream", return_value=iter(mock_chunks)):
+        tokens = list(stream_assistant_turn(state))
+    assert "".join(tokens).startswith("Maintain scapular")
+    assert captured["intent"] == "coaching_qa"
+    assert captured["tokens"] >= 1
+    assert captured["ttft_ms"] >= 0.0
+    assert captured["gen_time_s"] >= 0.0
+    assert captured["tps"] >= 0.0
+
+
+def test_stream_assistant_turn_intercept_records_zero_tokens(monkeypatch):
+    from agent import assistant_graph as graph_module
+
+    state = {
+        "messages": [HumanMessage(content="I felt a sharp pop in my shoulder")],
+        "trainee_id": "test_trainee",
+        "coach_tone": "Direct",
+        "custom_instructions": "",
+        "telemetry_context": "None",
+        "intent": None,
+        "intent_metadata": {},
+        "program_updated": False,
+        "response_content": None,
+    }
+    captured: dict = {}
+
+    def fake_record(intent, fast_path_ms, **kwargs):
+        captured.update({"intent": intent, **kwargs})
+
+    monkeypatch.setattr(graph_module, "_record_telemetry_event", fake_record)
+    monkeypatch.setattr(graph_module, "evaluate_clinical_semantic_guard", lambda text, **kwargs: (False, 0.0))
+    tokens = list(stream_assistant_turn(state))
+    assert "".join(tokens)
+    assert captured["intent"] == "clinical_intercept"
+    # Intercept path records router timing only; generation fields stay defaulted.
+    assert "tokens" not in captured and "ttft_ms" not in captured

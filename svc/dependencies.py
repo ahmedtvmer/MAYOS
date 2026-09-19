@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from service._base import bind_user
-from svc.auth import token_claims
+from svc.auth import token_claims, token_version_of
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -32,6 +32,8 @@ async def get_current_trainee(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.") from None
     bind_user(db, trainee)
     if db.is_token_revoked(str(claims["jti"])):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked.")
+    if token_version_of(claims) != db.get_token_version():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked.")
     return trainee
 

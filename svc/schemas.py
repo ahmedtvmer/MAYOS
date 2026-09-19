@@ -9,15 +9,21 @@ from agent.ProgramState import GeneratedProgramSchema, ProgramExerciseSchema
 __all__ = [
     "ChatMessageIn",
     "ChatMessageOut",
+    "EmailUpdateIn",
     "ExerciseSetsIn",
+    "ForgotPasswordIn",
     "GeneratedProgramSchema",
+    "MessageOut",
     "OnboardingStartOut",
     "OnboardingStepIn",
     "OnboardingStepOut",
+    "PasswordChangeIn",
     "PersonaUpdate",
     "ProfileUpdate",
     "ProgramExerciseSchema",
     "ProgramGenerateIn",
+    "RecoveryEmailOut",
+    "ResetPasswordIn",
     "SessionCommitIn",
     "TraineeIn",
     "TokenOut",
@@ -34,6 +40,32 @@ class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     trainee_id: str
+
+
+class MessageOut(BaseModel):
+    message: str
+
+
+class PasswordChangeIn(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class EmailUpdateIn(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+
+class RecoveryEmailOut(BaseModel):
+    email: str | None = None
+
+
+class ForgotPasswordIn(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+
+class ResetPasswordIn(BaseModel):
+    token: str = Field(min_length=10, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class ProfileUpdate(BaseModel):

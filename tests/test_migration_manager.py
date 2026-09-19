@@ -52,7 +52,7 @@ def temp_db_env(tmp_path: Path, monkeypatch):
 def test_schema_version_stamping(temp_db_env):
     db, users_dir, _ = temp_db_env
     version = get_user_schema_version(db.conn)
-    assert version == CURRENT_USER_SCHEMA_VERSION == 2
+    assert version == CURRENT_USER_SCHEMA_VERSION == 3
 
 
 def test_atomic_backup_and_restore(temp_db_env):
@@ -101,6 +101,7 @@ def test_lazy_migration_execution_and_rollback(temp_db_env, monkeypatch):
         conn.execute("ALTER TABLE user_profile ADD COLUMN test_column TEXT DEFAULT 'migrated';")
 
     saved_entry = MIGRATION_REGISTRY.get(1)
+    saved_v2_entry = MIGRATION_REGISTRY.get(2)
     MIGRATION_REGISTRY[1] = mock_migrate_v1_to_v2
     try:
         # Reset version to 1 to simulate pending migration to v2
@@ -141,7 +142,10 @@ def test_lazy_migration_execution_and_rollback(temp_db_env, monkeypatch):
             MIGRATION_REGISTRY.pop(1, None)
         else:
             MIGRATION_REGISTRY[1] = saved_entry
-        MIGRATION_REGISTRY.pop(2, None)
+        if saved_v2_entry is None:
+            MIGRATION_REGISTRY.pop(2, None)
+        else:
+            MIGRATION_REGISTRY[2] = saved_v2_entry
 
 
 def test_assistant_memory_persistence_and_user_separation(temp_db_env):
@@ -466,7 +470,7 @@ def test_v1_to_v2_adds_password_hash_preserving_data(temp_db_env):
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
-    assert CURRENT_USER_SCHEMA_VERSION == 2
+    assert CURRENT_USER_SCHEMA_VERSION == 3
     db, users_dir, _ = temp_db_env
     # Craft a legacy v1 ledger: no password_hash column, stamped v1.
     legacy_path = users_dir / "legacy.db"
@@ -485,11 +489,52 @@ def test_v1_to_v2_adds_password_hash_preserving_data(temp_db_env):
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="legacy"
     )
     try:
-        assert get_user_schema_version(migrated.conn) == 2
+        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION
         tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         assert "auth_credentials" in tables
         assert migrated.get_user_profile()["current_goal"] == "Strength"
         assert migrated.get_password_hash() is None
+        assert migrated.get_token_version() == 1
+    finally:
+        if migrated.user_conn is not None:
+            migrated.user_conn.close()
+        migrated.catalog_conn.close()
+
+
+def test_v2_to_v3_adds_token_version_preserving_hash(temp_db_env):
+    import threading
+
+    from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
+
+    assert CURRENT_USER_SCHEMA_VERSION == 3
+    db, users_dir, _ = temp_db_env
+    # Craft a v2 ledger: auth_credentials without token_version, stamped v2.
+    legacy_path = users_dir / "v2user.db"
+    conn = sqlite3.connect(legacy_path)
+    conn.execute(
+        "CREATE TABLE user_profile (id INTEGER PRIMARY KEY, current_goal TEXT NOT NULL, updated_at TEXT NOT NULL)"
+    )
+    conn.execute("INSERT INTO user_profile VALUES (1, 'Strength', '2026-01-01T00:00:00+00:00')")
+    conn.execute(
+        "CREATE TABLE auth_credentials (id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),"
+        " password_hash TEXT NOT NULL, updated_at TEXT NOT NULL)"
+    )
+    conn.execute("INSERT INTO auth_credentials VALUES (1, '$2b$12$fakehash', '2026-01-01T00:00:00+00:00')")
+    conn.execute("PRAGMA user_version = 2")
+    conn.commit()
+    conn.close()
+    DatabaseManager._instance = None
+    DatabaseManager._local = threading.local()
+    migrated = DatabaseManager(
+        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v2user"
+    )
+    try:
+        assert get_user_schema_version(migrated.conn) == 3
+        assert migrated.get_password_hash() == "$2b$12$fakehash"
+        assert migrated.get_token_version() == 1
+        assert migrated.bump_token_version() == 2
+        assert migrated.get_token_version() == 2
+        assert migrated.get_password_hash() == "$2b$12$fakehash"
     finally:
         if migrated.user_conn is not None:
             migrated.user_conn.close()

@@ -123,3 +123,32 @@ def render_sidebar(profile: dict | None) -> None:
                 st.rerun()
         else:
             st.info("Onboarding in progress. Answer the intake questions in the chat.")
+
+        st.divider()
+        with st.expander("🔐 Password & Recovery", expanded=False):
+            with st.form("change_password_form"):
+                current_pw = st.text_input("Current password:", type="password")
+                new_pw = st.text_input("New password (8+ characters):", type="password")
+                change_btn = st.form_submit_button("Change Password (logs out everywhere)", use_container_width=True)
+                if change_btn and current_pw and new_pw:
+                    body = api(
+                        "POST",
+                        "/auth/change-password",
+                        json={"current_password": current_pw, "new_password": new_pw},
+                    )
+                    if body is not None:
+                        session.clear_and_flash(body.get("message", "Password updated."), "success")
+                        st.rerun()
+
+            st.markdown("**Recovery email** (for self-service password reset):")
+            current_email = api("GET", "/auth/email", allow_404=True)
+            with st.form("recovery_email_form"):
+                email_val = st.text_input(
+                    "Email:", value=(current_email or {}).get("email") or "", placeholder="you@example.com"
+                )
+                save_email_btn = st.form_submit_button("Save Recovery Email", use_container_width=True)
+                if save_email_btn and email_val.strip():
+                    saved = api("POST", "/auth/email", json={"email": email_val.strip()})
+                    if saved is not None:
+                        st.success(f"Recovery email set: {saved.get('email')}")
+                        st.rerun()

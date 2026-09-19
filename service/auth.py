@@ -82,3 +82,30 @@ def claim_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
         return {"ok": False, "error": INVALID_CREDENTIALS}
     db.set_password_hash(hash_password(password))
     return {"ok": True, "trainee_id": clean_id}
+
+
+def change_password(db: Any, trainee_id: str, current_password: str, new_password: str) -> dict[str, Any]:
+    """Authenticated password change. Revokes all sessions via token-version bump.
+
+    The caller is already JWT-authenticated, so a wrong current password is
+    reported plainly (400-class ``error``); route layers must NOT map this to
+    401 or clients will treat it as session expiry.
+    """
+    clean_id = db._sanitize_username(trainee_id)
+    if not clean_id or not db.user_exists(clean_id):
+        return {"ok": False, "error": "Trainee ledger not found."}
+    bind_user(db, clean_id)
+    stored = db.get_password_hash()
+    if stored is None:
+        return {"ok": False, "error": "No password set yet. Claim this ledger first.", "code": "claim_required"}
+    if not isinstance(current_password, str) or not verify_password(current_password, stored):
+        return {"ok": False, "error": "Current password is incorrect.", "code": "bad_current"}
+    try:
+        validate_password(new_password)
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc), "code": "weak_new"}
+    if verify_password(new_password, stored):
+        return {"ok": False, "error": "New password must differ from the current one.", "code": "same_as_current"}
+    db.set_password_hash(hash_password(new_password))
+    new_version = db.bump_token_version()
+    return {"ok": True, "trainee_id": clean_id, "token_version": new_version}

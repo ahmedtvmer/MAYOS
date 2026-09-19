@@ -24,11 +24,12 @@ def _secret() -> str:
     return secret
 
 
-def create_access_token(trainee_id: str, expires_hours: int | None = None) -> str:
+def create_access_token(trainee_id: str, expires_hours: int | None = None, token_version: int = 1) -> str:
     now = datetime.now(UTC)
     payload = {
         "sub": trainee_id,
         "jti": uuid.uuid4().hex,
+        "tv": max(1, int(token_version)),
         "iat": now,
         "exp": now + timedelta(hours=expires_hours if expires_hours is not None else expiry_hours()),
     }
@@ -40,7 +41,21 @@ def token_claims(token: str) -> dict[str, Any]:
     payload = jwt.decode(token, _secret(), algorithms=[ALGORITHM])
     if not payload.get("sub") or not payload.get("jti"):
         raise jwt.InvalidTokenError("Token is missing subject or id.")
+    if "tv" in payload:
+        try:
+            if int(payload["tv"]) < 1:
+                raise jwt.InvalidTokenError("Token has an invalid session version.")
+        except (TypeError, ValueError):
+            raise jwt.InvalidTokenError("Token has an invalid session version.")
     return payload
+
+
+def token_version_of(claims: dict[str, Any]) -> int:
+    """Session epoch carried by the token. Pre-v3 tokens predate versioning and read as 1."""
+    try:
+        return max(1, int(claims.get("tv", 1)))
+    except (TypeError, ValueError):
+        return 1
 
 
 def decode_access_token(token: str) -> str:

@@ -90,6 +90,10 @@ class DatabaseManager:
             sqlite_vec.load(self.catalog_conn)
             self.catalog_conn.enable_load_extension(False)
 
+            # Recovery identity tables must exist for the login/forgot gates.
+            # Called outside any held lock: ensure_account_schema takes _catalog_lock.
+            self.ensure_account_schema()
+
             self.switch_user(self._default_user)
 
             self._initialized = True
@@ -162,16 +166,9 @@ class DatabaseManager:
 
         self.user_conn = new_conn
 
-        # Check schema state and apply lazy migrations
-        v = get_user_schema_version(new_conn)
-        if v == 0:
-            cursor = new_conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_profile';")
-            if cursor.fetchone():
-                set_user_schema_version(new_conn, CURRENT_USER_SCHEMA_VERSION)
-                new_conn.commit()
-        else:
-            apply_lazy_migrations(new_conn, sanitized, self.users_dir, self.backups_dir)
+        # Lazily migrate the mounted ledger (fresh DBs return early; legacy
+        # v0 ledgers are stamped v1 then migrated step-by-step with snapshot).
+        apply_lazy_migrations(new_conn, sanitized, self.users_dir, self.backups_dir)
 
         self.create_user_schema()
         prune_user_backups(self.backups_dir / sanitized, max_rolling=3)
@@ -221,6 +218,8 @@ class DatabaseManager:
                 CREATE INDEX IF NOT EXISTS idx_secondary_muscles_ex ON exercise_secondary_muscles(exercise_id);
             """)
             self.catalog_conn.commit()
+        # Outside the lock block: ensure_account_schema acquires _catalog_lock itself.
+        self.ensure_account_schema()
 
     def create_user_schema(self) -> None:
         cursor = self.conn.cursor()
@@ -249,6 +248,7 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS auth_credentials (
                 id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
                 password_hash TEXT NOT NULL,
+                token_version INTEGER NOT NULL DEFAULT 1,
                 updated_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS training_programs (
@@ -611,6 +611,152 @@ class DatabaseManager:
             (password_hash, datetime.now(UTC).isoformat()),
         )
         self.conn.commit()
+
+    def get_token_version(self) -> int:
+        """Session epoch for the bound ledger. Bumped on every password change/reset."""
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("SELECT token_version FROM auth_credentials WHERE id = 1")
+        except sqlite3.OperationalError:
+            return 1
+        row = cursor.fetchone()
+        try:
+            return max(1, int((row["token_version"] if row else 1) or 1))
+        except (TypeError, ValueError, KeyError, IndexError):
+            return 1
+
+    def bump_token_version(self) -> int:
+        """Invalidates all previously issued JWTs for the bound ledger. Returns new version."""
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("SELECT token_version FROM auth_credentials WHERE id = 1")
+            row = cursor.fetchone()
+            current = max(1, int((row["token_version"] if row else 1) or 1))
+        except sqlite3.OperationalError:
+            # Pre-v3 ledger mounted without migration (defensive): add the column.
+            cursor.execute("ALTER TABLE auth_credentials ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1")
+            current = 1
+        except (TypeError, ValueError, KeyError, IndexError):
+            current = 1
+        new_version = current + 1
+        # NOTE: the conflict clause only touches token_version/updated_at, so an
+        # existing password_hash is preserved. A fresh '' placeholder row (no
+        # password ever set) stays falsy and reads back as "no password".
+        cursor.execute(
+            """
+            INSERT INTO auth_credentials (id, password_hash, token_version, updated_at)
+            VALUES (1, '', ?, ?)
+            ON CONFLICT(id) DO UPDATE SET token_version = excluded.token_version, updated_at = excluded.updated_at
+            """,
+            (new_version, datetime.now(UTC).isoformat()),
+        )
+        self.conn.commit()
+        return new_version
+
+    # ------------------------------------------------------------------
+    # Catalog-side account data: recovery emails + single-use reset tokens.
+    # Lives in the shared catalog (not per-user ledgers) because the
+    # logged-out forgot-password flow cannot know which ledger to open.
+    # ------------------------------------------------------------------
+
+    def ensure_account_schema(self) -> None:
+        with self._catalog_lock:
+            self.catalog_conn.executescript("""
+                CREATE TABLE IF NOT EXISTS trainee_emails (
+                    trainee_id TEXT PRIMARY KEY,
+                    email TEXT NOT NULL UNIQUE,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                    token_hash TEXT PRIMARY KEY,
+                    trainee_id TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    used_at TEXT,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_reset_tokens_trainee ON password_reset_tokens(trainee_id);
+            """)
+            self.catalog_conn.commit()
+
+    def set_trainee_email(self, trainee_id: str, email: str) -> None:
+        """Links a normalized email to a trainee. Raises ValueError if taken by another ledger."""
+        self.ensure_account_schema()
+        now = datetime.now(UTC).isoformat()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute("SELECT trainee_id FROM trainee_emails WHERE email = ?", (email,))
+            row = cursor.fetchone()
+            if row is not None and row[0] != trainee_id:
+                raise ValueError("This email is already linked to another ledger.")
+            cursor.execute(
+                """
+                INSERT INTO trainee_emails (trainee_id, email, updated_at) VALUES (?, ?, ?)
+                ON CONFLICT(trainee_id) DO UPDATE SET email = excluded.email, updated_at = excluded.updated_at
+                """,
+                (trainee_id, email, now),
+            )
+            self.catalog_conn.commit()
+
+    def get_trainee_email(self, trainee_id: str) -> str | None:
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute("SELECT email FROM trainee_emails WHERE trainee_id = ?", (trainee_id,))
+            row = cursor.fetchone()
+            return str(row[0]) if row and row[0] else None
+
+    def get_trainee_by_email(self, email: str) -> str | None:
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute("SELECT trainee_id FROM trainee_emails WHERE email = ?", (email,))
+            row = cursor.fetchone()
+            return str(row[0]) if row and row[0] else None
+
+    def store_reset_token(self, token_hash: str, trainee_id: str, expires_at: str) -> None:
+        self.ensure_account_schema()
+        now = datetime.now(UTC).isoformat()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "INSERT INTO password_reset_tokens (token_hash, trainee_id, expires_at, used_at, created_at)"
+                " VALUES (?, ?, ?, NULL, ?)",
+                (token_hash, trainee_id, expires_at, now),
+            )
+            self.catalog_conn.commit()
+
+    def consume_reset_token(self, token_hash: str, now_iso: str) -> str | None:
+        """Atomically marks a valid (unused, unexpired) token used. Returns trainee_id or None."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "SELECT trainee_id, expires_at, used_at FROM password_reset_tokens WHERE token_hash = ?",
+                (token_hash,),
+            )
+            row = cursor.fetchone()
+            if row is None or row[2] is not None or str(row[1]) <= now_iso:
+                return None
+            trainee_id = str(row[0])
+            cursor.execute(
+                "UPDATE password_reset_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL",
+                (now_iso, token_hash),
+            )
+            if cursor.rowcount != 1:
+                return None
+            self.catalog_conn.commit()
+            return trainee_id
+
+    def prune_reset_tokens(self, now_iso: str) -> int:
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "DELETE FROM password_reset_tokens WHERE expires_at < ? OR used_at IS NOT NULL",
+                (now_iso,),
+            )
+            self.catalog_conn.commit()
+            return cursor.rowcount
 
     def save_training_program(self, program_data: dict) -> str:
         cursor = self.conn.cursor()

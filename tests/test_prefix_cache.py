@@ -42,7 +42,8 @@ def test_cpu_offload_flags_omitted_for_gpu_layers(monkeypatch):
 def test_context_failure_on_gpu_retries_on_cpu(monkeypatch):
     constructor = MagicMock(side_effect=[ValueError("Failed to create llama_context"), "cpu-instance"])
     monkeypatch.setattr(model_downloader, "_judge_llm_instance", None)
-    monkeypatch.setattr(model_downloader, "ChatLlamaCpp", constructor)
+    # Judge shares the SafeChatLlamaCpp constructor (tool-call dedup fix applies).
+    monkeypatch.setattr(model_downloader, "SafeChatLlamaCpp", constructor)
     monkeypatch.setattr(model_downloader, "get_or_download_model_path", lambda kind: "mock.gguf")
     model = model_downloader.get_judge_llm(n_gpu_layers=4)
     assert model == "cpu-instance"
@@ -55,7 +56,7 @@ def test_context_failure_on_gpu_retries_on_cpu(monkeypatch):
 def test_unrelated_failure_is_not_swallowed(monkeypatch):
     constructor = MagicMock(side_effect=ValueError("Corrupt GGUF header"))
     monkeypatch.setattr(model_downloader, "_judge_llm_instance", None)
-    monkeypatch.setattr(model_downloader, "ChatLlamaCpp", constructor)
+    monkeypatch.setattr(model_downloader, "SafeChatLlamaCpp", constructor)
     monkeypatch.setattr(model_downloader, "get_or_download_model_path", lambda kind: "mock.gguf")
     import pytest
 
