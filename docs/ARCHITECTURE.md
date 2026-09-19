@@ -6,7 +6,7 @@ This document provides a comprehensive architectural specification of the Myos e
 
 ## 1. High-Level System Architecture
 
-The following diagram illustrates the lifecycle of a trainee interaction, showing how the Streamlit UI, LangGraph state engine, in-process vector database, and local quantized GGUF runtime interact:
+The following diagram illustrates the lifecycle of a trainee interaction, showing how the Streamlit UI reaches the engine through the FastAPI service layer (JWT auth, rate limiting, SSE delivery), and how the LangGraph state engine, in-process vector database, and local quantized GGUF runtime interact:
 
 ```mermaid
 flowchart TD
@@ -15,11 +15,16 @@ flowchart TD
         UI_Render["Token-by-Token Stream / Metric Dashboards"]
     end
 
+    subgraph Service_Layer ["Service Layer (FastAPI, single replica)"]
+        API_Auth["JWT Guard, Rate Limits, Ledger Binding"]
+        API_SSE["SSE Chat Stream (/chat/messages)"]
+    end
+
     subgraph LangGraph_Engine ["LangGraph Execution Graph"]
         State_Init["AssistantState Initialization & Hydration"]
         Fast_Router{"Deterministic Regex Fast-Path"}
-        
-        subgraph Deterministic_Nodes ["Zero-LLM Execution Nodes (<0.03ms)"]
+
+        subgraph Deterministic_Nodes ["Zero-LLM Execution Nodes (<0.03ms + Tier-1 guard)"]
             Node_Clinical["clinical_intercept_node"]
             Node_Sub["exercise_substitution_node"]
             Node_Mutation["program_mutation_node"]
@@ -27,10 +32,10 @@ flowchart TD
         end
 
         subgraph In_Process_LLM ["Local Inference Core (SafeChatLlamaCpp)"]
-            Context_Clamper["4-Message Context Tail Clamper"]
+            Context_Clamper["6-Message Context Tail Clamper"]
             Telemetry_Hydrator["5-Line Compact Telemetry Injection"]
             Prompt_Assembler["System Core + Coaching Directives"]
-            LLM_Stream["SafeChatLlamaCpp (Qwen 2.5 3B GGUF)"]
+            LLM_Stream["SafeChatLlamaCpp (Qwen3.5-4B GGUF)"]
             Chunk_Sanitizer["Tool Call Delta Deduplicator"]
         end
     end
@@ -38,11 +43,12 @@ flowchart TD
     subgraph Storage_Layer ["Dual-Database Topology"]
         DBM["DatabaseManager (threading.local Router)"]
         User_WAL[("Private User Ledger\n(db/users/<id>.db - WAL)")]
-        Catalog_RO[("Shared Static Catalog\n(db/catalog.db - Read-Only)")]
+        Catalog_Shared[("Shared Catalog\n(db/catalog.db - exercises + account tables)")]
         Vec_Index[("sqlite-vec Virtual Table\n(vec_exercises - 384d Cosine)")]
     end
 
-    UI_Input --> State_Init
+    UI_Input --> API_Auth
+    API_Auth --> State_Init
     State_Init --> Fast_Router
 
     %% Deterministic Fast Paths
@@ -58,19 +64,22 @@ flowchart TD
     Telemetry_Hydrator --> Prompt_Assembler
     Prompt_Assembler --> LLM_Stream
     LLM_Stream --> Chunk_Sanitizer
-    Chunk_Sanitizer --> UI_Render
+    Chunk_Sanitizer --> API_SSE
+    API_SSE --> UI_Render
 
     %% Deterministic Node Storage Operations
-    Node_Clinical --> UI_Render
+    Node_Clinical --> API_SSE
     Node_Sub <--> DBM
     Node_Mutation <--> DBM
     Node_Catalog <--> DBM
 
     %% Database Routing
     DBM --> User_WAL
-    DBM --> Catalog_RO
-    Catalog_RO --- Vec_Index
+    DBM --> Catalog_Shared
+    Catalog_Shared --- Vec_Index
 ```
+
+> The service layer owns identity and transport: bearer JWTs are verified against the ledger's revocation list and session epoch before any graph node runs, and graph output is re-streamed as Server-Sent Events. See §9 for the full request lifecycle and [`AUTHENTICATION.md`](AUTHENTICATION.md) for the auth specification.
 
 ---
 
@@ -88,6 +97,7 @@ IntentType = Literal[
     "program_mutation",
     "catalog_search",
     "coaching_qa",
+    "composite_intent",
 ]
 
 
@@ -96,11 +106,14 @@ class AssistantState(TypedDict):
   trainee_id: str
   coach_tone: str
   custom_instructions: str
+  preferred_name: str | None
   telemetry_context: str | None
   intent: IntentType | None
   intent_metadata: dict[str, Any]
+  active_intents: list[dict[str, Any]] | None
   program_updated: bool
   response_content: str | None
+  pipeline_error: str | None
 ```
 
 ### State Node Execution Lifecycle
@@ -112,7 +125,9 @@ stateDiagram-v2
     
     state RouterNode {
         [*] --> ClinicalCheck
-        ClinicalCheck --> ActionHintCheck: Negative
+        ClinicalCheck --> HistoryFollowupCheck: Negative
+        HistoryFollowupCheck --> ClauseSplitCheck: Not a follow-up
+        ClauseSplitCheck --> ActionHintCheck: Single clause
         ActionHintCheck --> CoachingQA: Negative (<0.02ms)
         ActionHintCheck --> SubRegexCheck: Positive
         ActionHintCheck --> MutationRegexCheck: Positive
@@ -120,19 +135,25 @@ stateDiagram-v2
     }
 
     RouterNode --> ClinicalInterceptNode: intent == clinical_intercept
+    RouterNode --> ExerciseHistoryNode: intent == exercise_history
     RouterNode --> SubstitutionNode: intent == exercise_substitution
     RouterNode --> ProgramMutationNode: intent == program_mutation
     RouterNode --> CatalogSearchNode: intent == catalog_search
+    RouterNode --> CompositeIntentNode: intent == composite_intent
     RouterNode --> LLMStreamingNode: intent == coaching_qa
 
     ClinicalInterceptNode --> SmoothStream: Yield Hardcoded Directive
+    ExerciseHistoryNode --> SmoothStream: Deterministic Ledger Read
     SubstitutionNode --> SmoothStream: Execute Ledger Mutation
     ProgramMutationNode --> SmoothStream: Rebuild Program Days
     CatalogSearchNode --> SmoothStream: Query sqlite-vec
+    CompositeIntentNode --> SmoothStream: Sequential Sub-Intent Dispatch
     LLMStreamingNode --> SmoothStream: Yield Quantized Delta Chunks
 
-    SmoothStream --> [*]: Stream to Streamlit UI
+    SmoothStream --> [*]: SSE Frames to FastAPI Client
 ```
+
+> Multi-clause turns (e.g. *"swap bench for incline press and how many reps for curls?"*) are split by `RE_CLAUSE_SPLIT` into per-clause sub-intents. `composite_intent_node` re-checks clinical safety across the whole turn, then dispatches each clause through its own handler with prior results injected as dialogue context.
 
 ---
 
@@ -141,31 +162,36 @@ stateDiagram-v2
 The fast-path router eliminates LLM classification latency on routine user queries through a multi-tiered hierarchy of compiled regular expressions:
 
 ```mermaid
-lowchart TD
-    Start(["Raw Trainee Query"]) --> Tier0{"Tier 0: Red Flag & Clinical Safety\nRE_ACUTE_INJURY | RE_DIAGNOSIS"}
-    
-    Tier0 -- "Acute Trauma / Diagnosis Request" --> ClinNode["clinical_intercept_node\n(Halt movement / Decline diagnosis in 0.005s)"]
-    Tier0 -- Safe --> Tier1{"Tier 1: Banned Biomechanics\nRE_BANNED_MOVEMENT"}
-    
-    Tier1 -- "Behind-Neck / Upright Row / Burn Sets" --> BannedNode["banned_movement_node\n(Deterministic VETO in 0.002s)"]
-    Tier1 -- Safe --> Tier2{"Tier 2: Dynamic Ledger Reconciler\nreconcile_telemetry_query()"}
-    
-    Tier2 -- "Historical Query on Unlogged Lift / Set Count" --> TelemetryNode["telemetry_intercept_node\n(Zero-data refusal / Audit in 0.002s)"]
-    Tier2 -- "Conceptual or Logged" --> Tier3{"Tier 3: Structured Mutations\nRE_PROGRAM_MUTATION | RE_EXPLICIT_SWAP"}
-    
-    Tier3 -- "Split Rebuild / Frequency Change" --> MutNode["program_mutation_node"]
-    Tier3 -- "Movement Swap / Candidate Lookup" --> SubNode["exercise_substitution_node"]
-    Tier3 -- "None" --> Tier4{"Tier 4: Catalog Search\nRE_SEARCH_TOKENS"}
-    
-    Tier4 -- "Search / Lookup Query" --> CatNode["catalog_search_node"]
-    Tier4 -- "General Coaching Question" --> GenNode["generation_node\n(Local Qwen 2.5 3B Inference)"]
+flowchart TD
+    Start(["Raw Trainee Query"]) --> Tier0{"Tier 0: Clinical Safety\n0a: unconditional trauma regex\n0b: context-gated ambiguous tokens\nSemantic guard: BGE cosine >= 0.70"}
+
+    Tier0 -- "Acute Trauma / Diagnosis Request" --> ClinNode["clinical_intercept_node\n(Halt movement / Decline diagnosis)"]
+    Tier0 -- Safe --> Banned{"Banned Biomechanics\nRE_BANNED_MOVEMENT"}
+
+    Banned -- "Behind-Neck / Upright Row / Burn Sets" --> BannedNode["banned_movement_node\n(Deterministic VETO)"]
+    Banned -- Safe --> Hist{"Exercise History\nWhole-session / performance / history patterns"}
+
+    Hist -- "History Lookup" --> HistNode["exercise_history_node\n(Deterministic ledger comparison)"]
+    Hist -- No --> Telemetry{"Dynamic Ledger Reconciler\nreconcile_telemetry_query()"}
+
+    Telemetry -- "Unlogged Lift / Set Count Audit" --> TelemetryNode["telemetry_intercept_node\n(Zero-data refusal / Audit)"]
+    Telemetry -- "Conceptual or Logged" --> Mutations{"Structured Mutations\nRE_PROGRAM_MUTATION | RE_EXPLICIT_SWAP"}
+
+    Mutations -- "Split Rebuild / Frequency Change" --> MutNode["program_mutation_node"]
+    Mutations -- "Movement Swap / Candidate Lookup" --> SubNode["exercise_substitution_node"]
+    Mutations -- "None" --> Search{"Catalog Search\nRE_SEARCH_TOKENS"}
+
+    Search -- "Search / Lookup Query" --> CatNode["catalog_search_node"]
+    Search -- "General Coaching Question" --> GenNode["generation_node\n(Local Qwen3.5-4B Inference)"]
 ```
+
+> Tier-0b is where DOMS slang is separated from genuine injury reports: ambiguous tokens (`swelling`, `tear/tore/torn`, `pop`, `tweaked`) only intercept with explicit injury context — mechanism perception (*"felt a pop"*), anatomical proximity (joints, tendons, pec/bicep/ACL…), or body-part objects. Fatigue idioms (*"torn up from leg day"*, *"tweaked my program"*, painless *"knees pop when"*) defer to the Tier-1 semantic guard. See ADR 002 in [`DECISIONS.md`](../DECISIONS.md).
 
 ---
 
 ## 4. Dual-Database Topology & Thread-Local Connection Model
 
-Myos combines a static, read-only exercise catalog (`catalog.db`) with dynamic, isolated per-user transaction ledgers (`db/users/<user_id>.db`). Cross-tenant leakage is physically impossible, and SQLite Write-Ahead Logging (`WAL`) prevents write contention:
+Myos combines a shared exercise catalog (`catalog.db` — seeded exercises, the `sqlite-vec` index, and the account-recovery identity tables) with dynamic, isolated per-user transaction ledgers (`db/users/<user_id>.db`). Cross-tenant leakage is physically impossible, and SQLite Write-Ahead Logging (`WAL`) prevents write contention:
 
 ```mermaid
 sequenceDiagram
@@ -173,7 +199,7 @@ sequenceDiagram
     actor Trainee as Streamlit Session (Thread A)
     participant DBM as DatabaseManager (_local)
     participant UserDB as User Ledger (WAL Mode)
-    participant CatalogDB as Attached Catalog (Read-Only)
+    participant CatalogDB as Attached Shared Catalog
     participant VecExt as sqlite-vec Virtual Table
 
     Trainee->>DBM: switch_user("ahmed")
@@ -198,6 +224,25 @@ sequenceDiagram
     DBM-->>Trainee: Return top 5 valid movements
 ```
 
+### Ledger Schema Evolution (ADR 005)
+
+User ledgers carry a schema version in `PRAGMA user_version` (current target: **v3**) and migrate **lazily** when mounted by `switch_user()`:
+
+* On upgrade, an atomic pre-migration snapshot is written with `sqlite3.Connection.backup()` (WAL-safe, online) into `db/backups/<user>/`, followed by sequential migration steps inside a transaction.
+* A 3+1 retention policy keeps three rolling snapshots plus immutable pre-migration backups; failure triggers rollback from the snapshot.
+* **v3** adds `auth_credentials.token_version` — the session epoch used to revoke every token on a password event (ADR 006). Legacy ledgers without a password hash are handled by the one-time claim flow rather than invented credentials.
+
+### Catalog Account Tables (ADR 007)
+
+Password recovery needs an email → ledger mapping while **logged out**, so recovery identity lives in the shared catalog (not per-user ledgers):
+
+| Table | Purpose |
+| :--- | :--- |
+| `trainee_emails` | Unique recovery address per trainee |
+| `password_reset_tokens` | SHA-256-hashed, single-use, TTL-clamped reset tokens |
+
+Both are provisioned idempotently at catalog boot. See [`AUTHENTICATION.md`](AUTHENTICATION.md) for the full specification.
+
 ---
 
 ## 5. Token Streaming & Tool-Call Sanitization Flow
@@ -210,7 +255,7 @@ sequenceDiagram
     participant Engine as SafeChatLlamaCpp
     participant CppCore as llama_cpp (C++ Runtime)
     participant Sanitizer as _filter_tool_chunks()
-    participant UI as Streamlit (st.write_stream)
+    participant UI as SSE Client (FastAPI /chat/messages)
 
     Engine->>CppCore: stream(prompt_payload)
     
@@ -282,21 +327,24 @@ To maintain flat inference latency and prevent token evaluation degradation acro
 ```mermaid
 flowchart LR
     subgraph Raw_History ["Persistent SQLite State"]
-        H1["Turn 1...N-5 (Archived)"]
-        H2["Turn N-4"]
-        H3["Turn N-3"]
-        H4["Turn N-2"]
-        H5["Turn N-1"]
-        H6["Turn N (Current User Query)"]
+        H1["Turn 1...N-6 (Archived)"]
+        H2["Turn N-5"]
+        H3["Turn N-4"]
+        H4["Turn N-3"]
+        H5["Turn N-2"]
+        H6["Turn N-1"]
+        H7["Turn N (Current User Query)"]
     end
 
-    subgraph Clamping_Pipeline ["Context Tail Clamper (TAIL_WINDOW_SIZE = 4)"]
+    subgraph Clamping_Pipeline ["Context Tail Clamper (TAIL_WINDOW_SIZE = 6)"]
         H1 -.->|Dropped from Prompt| Trash["Evicted from Active n_ctx"]
+        H2 --> Tail
         H3 --> Tail
         H4 --> Tail
         H5 --> Tail
         H6 --> Tail
-        Tail["4-Message Active Dialogue Tail"]
+        H7 --> Tail
+        Tail["6-Message Active Dialogue Tail"]
     end
 
     subgraph Telemetry_Synthesis ["Compact Telemetry Generator"]
@@ -311,17 +359,17 @@ flowchart LR
         SystemCore["STATIC_SYSTEM_CORE\n(Directives, Word Budgets, Scrubber Rules)"]
         TelemetryStr --> SystemBlock["System Message"]
         SystemCore --> SystemBlock
-        SystemBlock --> FinalPayload["Model Context Window (n_ctx <= 512 tokens)"]
+        SystemBlock --> FinalPayload["Model Context Window (n_ctx = 2048 by default via LLM_N_CTX)"]
         Tail --> FinalPayload
     end
 
-    FinalPayload --> Inference["SafeChatLlamaCpp (Flat ~7s CPU Invariant)"]
+    FinalPayload --> Inference["SafeChatLlamaCpp (flat clamped latency, ~4 s on GPU offload)"]
 
 ---
 
 ## 8. Hybrid Post-Workout Debrief Architecture
 
-To prevent small language models (3B) from hallucinating mathematical calculations or echoing bracketed prompt templates, session debriefs are assembled via a hybrid deterministic-generative pipeline:
+To prevent small quantized models (4B) from hallucinating mathematical calculations or echoing bracketed prompt templates, session debriefs are assembled via a hybrid deterministic-generative pipeline:
 
 1. **Deterministic Metrics Calculation (`format_overload_deltas`)**:
    Calculates e1RM deltas, load advancements (+2.5 kg), and rep-corridor holds directly in Python. If no load advancement occurred, yields an exact maintenance directive.
@@ -330,3 +378,42 @@ To prevent small language models (3B) from hallucinating mathematical calculatio
 3. **Bounded Directive Synthesis (`generate_session_debrief`)**:
    The LLM is tasked *exclusively* with generating 2 to 3 concise bullet points under `**Next Session Directives**:` adhering strictly to active deload RPE caps or progression directives.
 ```
+
+---
+
+## 9. Service-Layer Request Lifecycle
+
+The Streamlit client holds **no** database, model, or domain logic. Every operation is an HTTP call to the FastAPI service (`svc/`), which owns identity, thread affinity, and streaming:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor UI as Streamlit Client
+    participant API as FastAPI Route
+    participant Dep as get_current_trainee
+    participant Thread as Worker Thread (asyncio.to_thread)
+    participant Graph as Assistant Graph / Service Layer
+    participant DB as Thread-Local Ledger
+
+    UI->>API: POST /chat/messages (Bearer JWT) + SSE request
+    API->>Dep: token_claims -> bind_user -> revocation + token_version checks
+    Dep-->>API: verified trainee id (never from the body)
+    API->>Thread: _run_turn(db, trainee, content)
+    Thread->>DB: add user message, build tail (6-message window)
+    Thread->>Graph: stream_assistant_turn(state)
+    Graph-->>Thread: scrubbed token pieces
+    Thread-->>API: queue.put(("token", piece))
+    API-->>UI: data: {"token": ...} frames (SSE)
+    Thread->>DB: persist authoritative assistant message
+    API-->>UI: data: {"done": true, "program_updated": ...}
+```
+
+Key invariants:
+
+* **Identity is derived only from the verified JWT** — request bodies may carry a `trainee_id`, but it is ignored (schema-level rejection in most routes).
+* **Ledger binding happens per thread.** `DatabaseManager` routes connections through `threading.local`, and every worker thread re-binds the trainee before touching SQLite (`bind_request` / `_bind_trainee_connection`).
+* **Blocking work is isolated.** Sync DB and GGUF inference run on worker threads via `asyncio.to_thread`; llama-cpp calls are additionally serialized by an inference lock and a single-slot semaphore so overload fails fast instead of piling up.
+* **Errors never leak.** SSE error frames carry a fixed pipeline-error string; unhandled exceptions return a generic `502` detail.
+* **Auth endpoints are rate-limited** (`slowapi`), with strict buckets for login/register and per-token buckets for chat.
+
+> Full endpoint tables, JWT claims, and recovery flows: [`AUTHENTICATION.md`](AUTHENTICATION.md).

@@ -213,16 +213,34 @@ When `deload_recommended == True`, Tab 2 automatically adjusts training targets:
 
 ## 7. Clinical Red-Flag Interception Boundaries
 
-Myos strictly separates biomechanical auto-regulation from medical diagnosis. The clinical safeguard pattern set (`RE_ACUTE_INJURY`) bypasses all progression logic and halts generation in $<0.02\text{ ms}$:
+Myos strictly separates biomechanical auto-regulation from medical diagnosis. Clinical safety is evaluated in three tiers, and any positive tier bypasses all progression logic and halts generation:
+
+**Tier 0a — Unconditional trauma signals** (fast-path regex, ~0.02 ms). These intercept regardless of context:
 
 ```python
 RE_ACUTE_INJURY = re.compile(
-    r"\b(sharp pop|popped|tore|torn|snapped|shooting pain|numbness|tingling|joint swelling|severe pain)\b",
+    r"\b(sharp\s+(?:pain|pop|pull|twinge|pinch)|shooting\s+pain|radiat(?:ing|es|ed)?(?:\s+pain)?|"
+    r"numb(?:ness)?|tingling|pinched(?:\s+nerve)?|hernia|dislocat(?:ed|ion)|"
+    r"can['']t\s+move\s+my|joint\s+clicking\s+with\s+pain)\b",
     re.IGNORECASE,
 )
 ```
 
+**Tier 0b — Context-gated ambiguous tokens.** DOMS slang shares vocabulary with trauma reports (*swelling*, *tear/tore/torn*, *pop*, *tweaked*). These tokens only intercept with explicit injury context:
+
+* **Mechanism perception** — *"felt a pop"*, *"heard something tear"*, *"there was a tearing sensation"*
+* **Internal-location phrasing** — *"tear in my hamstring"*, *"pop in my knee"*
+* **Anatomical-structure proximity** — joints, tendons, pec/bicep, rotator cuff, meniscus, labrum, ACL, groin (within a short window of the trauma token)
+* **Body-part objects** — *"tweaked my back"*, *"tore my pectoral tendon"*
+
+Fatigue idioms deliberately **pass through** to normal routing and still face Tier 1: *"quads are swollen and torn up from leg day"*, *"chest torn to shreds after bench"*, *"I tweaked my program"*, painless *"knees pop when I squat"*. The DOMS exclusion set never includes the big muscle groups (quads, glutes, hamstrings, chest, lats) as trauma structures, and excludes the adverbial idioms `torn/tore up` and `pop when`.
+
+**Tier 1 — Semantic cosine guard** (`agent/clinical_guard.py`). Non-trivial queries are embedded with `bge-small-en-v1.5` and compared against eight clinical anchor descriptions (velcro-tearing, pins-and-needles, hot-glass-in-joint, joint instability, …) at a **0.70** similarity threshold. A benign-fatigue bypass (`fatigue|sore|burn|pump`, absent trauma sensations) short-circuits embedding entirely.
 
 ### Protocol Action
-* **Zero Model Invocation**: Queries containing these terms never reach `SafeChatLlamaCpp`.
-* **Immediate Cease Directive**: The system yields an immutable clinical stop directive instructing the trainee to immediately deload the bar, cease loading the affected kinetic chain, and consult a qualified medical professional.
+
+* **Zero Model Invocation**: Intercepted queries never reach `SafeChatLlamaCpp`; the response is an immutable hardcoded directive.
+* **Immediate Cease Directive**: The system instructs the trainee to deload the bar, cease loading the affected kinetic chain, and consult a qualified medical professional.
+* **No Progression Contamination**: Intercepts never mutate programs, never update memory, and are excluded from progression telemetry.
+
+> The exact pattern set, test matrix, and ADR rationale (ADR 002) live in [`DECISIONS.md`](../DECISIONS.md) and `tests/test_tier0_context_gating.py`.
