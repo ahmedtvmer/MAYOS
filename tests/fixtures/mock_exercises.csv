@@ -1,4 +1,33 @@
 bodyPart,equipment,id,name,target,secondaryMuscles/0,secondaryMuscles/1,secondaryMuscles/2,secondaryMuscles/3,secondaryMuscles/4,secondaryMuscles/5,image_path,gif_path,instructions
-waist,body weight,1,3/4 sit-up,abs,hip flexors,lower back,,,,,images/0001-2gPfomN.jpg,videos/0001-2gPfomN.gif,"Lie flat on your back with your knees bent and feet flat on the ground.
-Place your hands behind your head with your elbows pointing outwards.
-Engaging your abs, slowly lift your upper body off the ground, curling forward until your torso is at a 45-degree angle."
+waist,body weight,1,3/4 sit-up,abs,hip flexors,lower back,,,,,images/mock_1.jpg,videos/mock_1.gif,Lie flat on your back with your knees bent. Curl the torso up toward the knees under control.
+chest,leverage machine,2,machine chest press,pectorals,triceps,front delts,,,,,images/mock_2.jpg,videos/mock_2.gif,Press the handles forward until the arms are extended then return under control.
+chest,barbell,3,barbell bench press,pectorals,triceps,front delts,,,,,images/mock_3.jpg,videos/mock_3.gif,Lower the bar to mid-chest and press back to lockout keeping the elbows at forty-five degrees.
+chest,dumbbell,4,dumbbell bench press,pectorals,triceps,front delts,,,,,images/mock_4.jpg,videos/mock_4.gif,Press two dumbbells from chest level to full extension while keeping the scapula retracted.
+chest,dumbbell,5,dumbbell press,pectorals,triceps,front delts,,,,,images/mock_5.jpg,videos/mock_5.gif,Press dumbbells from shoulder level to lockout controlling the eccentric.
+chest,dumbbell,6,incline dumbbell press,pectorals,front delts,triceps,,,,,images/mock_6.jpg,videos/mock_6.gif,Press dumbbells on an incline bench to bias the upper chest.
+lats,body weight,7,pull-up,lats,biceps,upper back,,,,,images/mock_7.jpg,videos/mock_7.gif,Hang from a bar and pull the chest toward it by driving the elbows down.
+lats,cable,8,lat pulldown,lats,biceps,upper back,,,,,images/mock_8.jpg,videos/mock_8.gif,Pull the bar to the upper chest while keeping the torso upright.
+lats,cable,9,seated cable row,lats,upper back,biceps,,,,,images/mock_9.jpg,videos/mock_9.gif,Row the handle to the abdomen keeping the spine neutral.
+upper back,barbell,10,barbell row,upper back,lats,biceps,,,,,images/mock_10.jpg,videos/mock_10.gif,Hinge to forty-five degrees and row the bar to the lower ribs.
+upper back,leverage machine,11,chest supported machine row,upper back,lats,biceps,,,,,images/mock_11.jpg,videos/mock_11.gif,Row the handles while the chest pad removes lower back fatigue.
+shoulders,dumbbell,12,dumbbell lateral raise,delts,traps,,,,,,images/mock_12.jpg,videos/mock_12.gif,Raise the dumbbells to shoulder height with a slight elbow bend.
+shoulders,cable,13,cable lateral raise,delts,traps,,,,,,images/mock_13.jpg,videos/mock_13.gif,Raise the cable handle laterally to shoulder height.
+shoulders,cable,14,face pull,delts,upper back,traps,,,,,images/mock_14.jpg,videos/mock_14.gif,Pull the rope toward the face spreading the hands apart.
+shoulders,dumbbell,15,seated dumbbell shoulder press,delts,triceps,,,,,,images/mock_15.jpg,videos/mock_15.gif,Press the dumbbells overhead from shoulder height without arching the lower back.
+upper arms,cable,16,triceps pushdown,triceps,forearms,,,,,,images/mock_16.jpg,videos/mock_16.gif,Extend the elbows fully against cable resistance keeping the upper arms pinned.
+upper arms,dumbbell,17,overhead triceps extension,triceps,forearms,,,,,,images/mock_17.jpg,videos/mock_17.gif,Extend a dumbbell overhead by straightening the elbows.
+upper arms,barbell,18,barbell curl,biceps,forearms,,,,,,images/mock_18.jpg,videos/mock_18.gif,Curl the bar without swinging the torso.
+upper arms,dumbbell,19,dumbbell hammer curl,biceps,forearms,,,,,,images/mock_19.jpg,videos/mock_19.gif,Curl neutral-grip dumbbells while keeping the elbows pinned to the sides.
+upper legs,barbell,20,barbell squat,quads,glutes,hamstrings,,,,,images/mock_20.jpg,videos/mock_20.gif,Squat to depth keeping the bar over the mid-foot.
+upper legs,leverage machine,21,leg press,quads,glutes,hamstrings,,,,,images/mock_21.jpg,videos/mock_21.gif,Press the platform away without locking the knees.
+upper legs,smith machine,22,hack squat,quads,glutes,,,,,,images/mock_22.jpg,videos/mock_22.gif,Descend under control on the hack squat sled and drive back up.
+upper legs,leverage machine,23,lying leg curl,hamstrings,calves,,,,,,images/mock_23.jpg,videos/mock_23.gif,Curl the pad toward the glutes keeping the hips down.
+upper legs,leverage machine,30,seated leg curl,hamstrings,calves,,,,,,images/mock_30.jpg,videos/mock_30.gif,Curl the pad down and under the seat keeping the hips pinned.
+upper legs,barbell,25,barbell hip thrust,glutes,hamstrings,,,,,,images/mock_25.jpg,videos/mock_25.gif,Drive the bar upward by extending the hips at the top.
+upper legs,leverage machine,26,machine hip thrust,glutes,hamstrings,,,,,,images/mock_26.jpg,videos/mock_26.gif,Extend the hips against the machine pad and squeeze at the top.
+upper legs,barbell,85,barbell romanian deadlift,glutes,hamstrings,lower back,,,,,images/mock_85.jpg,videos/mock_85.gif,Hinge at the hips lowering the bar along the legs with a neutral spine until the hamstrings stretch.
+upper legs,dumbbell,1459,dumbbell romanian deadlift,glutes,hamstrings,lower back,,,,,images/mock_1459.jpg,videos/mock_1459.gif,Hinge at the hips lowering the dumbbells along the legs with a neutral spine until the hamstrings stretch.
+upper legs,leverage machine,3759,machine seated good morning,glutes,hamstrings,lower back,,,,,images/mock_3759.jpg,videos/mock_3759.gif,Hinge forward from the hips against the machine pad keeping the spine neutral.
+lower legs,leverage machine,27,standing calf raise,calves,,,,,,,images/mock_27.jpg,videos/mock_27.gif,Rise onto the toes then lower the heels under control.
+lower legs,leverage machine,28,seated calf raise,calves,,,,,,,images/mock_28.jpg,videos/mock_28.gif,Press through the balls of the feet from a seated position.
+waist,cable,29,cable crunch,abs,,,,,,,images/mock_29.jpg,videos/mock_29.gif,Crunch the torso down against cable resistance.
