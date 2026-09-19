@@ -66,12 +66,44 @@ IntentType = Literal[
     "composite_intent",
 ]
 
+# Tier-0a: unconditional acute-trauma signals (fail-closed; no fatigue bypass).
 RE_ACUTE_INJURY = re.compile(
     r"\b(sharp\s+(?:pain|pop|pull|twinge|pinch)|shooting\s+pain|radiat(?:ing|es|ed)?(?:\s+pain)?|"
-    r"numb(?:ness)?|tingling|pop(?:ped)?|tore|tear|torn|swell(?:ing)?|swollen|pinched(?:\s+nerve)?|"
-    r"tweak(?:ed)?|hernia|dislocat(?:ed|ion)|can['']t\s+move\s+my|joint\s+clicking\s+with\s+pain)\b",
+    r"numb(?:ness)?|tingling|pinched(?:\s+nerve)?|hernia|dislocat(?:ed|ion)|"
+    r"can['']t\s+move\s+my|joint\s+clicking\s+with\s+pain)\b",
     re.IGNORECASE,
 )
+
+#: Joints and tear-prone structures. Deliberately excludes the big DOMS muscle
+#: groups (quads, glutes, hamstrings, chest, lats...) whose slang
+#: ("torn up from leg day") must reach the Tier-1 semantic guard instead.
+_TRAUMA_STRUCTURES = (
+    r"(?:knees?|shoulders?|elbows?|wrists?|ankles?|hips?|backs?|necks?|joints?|tendons?|"
+    r"ligaments?|pec(?:toral)?s?|biceps?|rotator(?:\s+cuff)?|meniscus|labrum|acl|groin)"
+)
+
+# Tier-0b: DOMS-ambiguous tokens (swelling/tear/tore/torn/pop/tweaked) intercept
+# only with an explicit injury context; otherwise they fall through to Tier-1.
+RE_AMBIGUOUS_TRAUMA = re.compile(
+    r"\b("
+    r"(?:felt|heard|there\s+was|something)\s+(?:a\s+|something\s+)?(?:pop(?:ped)?|tear(?:ing)?|rip(?:ping)?)"
+    r"|(?:tear|tore|torn|pop(?:ped)?|swelling|swollen)\s+(?:in|inside)\s+(?:my\s+)?\w+"
+    r"|(?:tore|torn|tear(?:ing)?|tweak(?:ed)?|pop(?:ped)?)(?!\s+up)\s+(?:my\s+|the\s+|a\s+)?"
+    + _TRAUMA_STRUCTURES
+    + r"|"
+    + _TRAUMA_STRUCTURES
+    + r"\b[^.!?]{0,30}?\b(?:tore(?!\s+up)|torn(?!\s+up)|tear(?:ing)?|swollen|swelling|tweak(?:ed)?|popped|pop(?!\s+when))"
+    r"|(?:swollen|swelling)\s+" + _TRAUMA_STRUCTURES + r"\b"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _acute_injury_hit(text: str) -> bool:
+    """Tier-0: unconditional trauma OR DOMS-ambiguous tokens with injury context."""
+    return bool(RE_ACUTE_INJURY.search(text) or RE_AMBIGUOUS_TRAUMA.search(text))
+
+
 RE_DIAGNOSIS = re.compile(
     r"\b(diagnos(?:e|is|ing)|what(?:'s|\s+is)\s+wrong\s+with|why\s+does\s+my\s+\w+\s+(?:hurt|ache))\b",
     re.IGNORECASE,
@@ -172,10 +204,6 @@ def _valid_preferred_name(value: Any) -> str | None:
     return value
 
 
-def _social_query(query: str) -> bool:
-    return bool(re.fullmatch(r"(?:hi|hey|hello|thanks|thank you|fuck you|this sucks|i(?:'m| am) frustrated)[.!?]*", query.strip(), re.IGNORECASE))
-
-
 def _explicit_preferred_name(query: str) -> str | None:
     if len(query) > 90:
         return None
@@ -269,7 +297,7 @@ def _classify_single_clause(clause: str, telemetry: str = "", messages: Sequence
     if not c:
         return None
 
-    if RE_ACUTE_INJURY.search(c):
+    if _acute_injury_hit(c):
         return {"intent": "clinical_intercept", "intent_metadata": {"raw_query": c}, "query": c}
     if RE_DIAGNOSIS.search(c):
         return {"intent": "clinical_intercept", "intent_metadata": {"raw_query": c, "mode": "diagnosis"}, "query": c}
@@ -349,7 +377,7 @@ def _clinical_turn_metadata(query: str, sub_intents=()) -> dict[str, Any] | None
         if sub.get("query"):
             queries.append(sub["query"])
     for candidate in queries:
-        if RE_ACUTE_INJURY.search(candidate):
+        if _acute_injury_hit(candidate):
             return {"raw_query": query}
         if RE_DIAGNOSIS.search(candidate):
             return {"raw_query": query, "mode": "diagnosis"}
@@ -659,9 +687,10 @@ def _history_exercise_matches(target: str, entries: list[dict[str, Any]]) -> lis
 
 
 def _history_catalog_matches(target: str) -> list[dict[str, Any]]:
-    cursor = db.catalog_conn.cursor()
-    cursor.execute("SELECT id, name FROM exercises ORDER BY name COLLATE NOCASE, id")
-    entries = [{"exercise_id": str(row[0]), "name": row[1]} for row in cursor.fetchall()]
+    with db.catalog_locked() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name FROM exercises ORDER BY name COLLATE NOCASE, id")
+        entries = [{"exercise_id": str(row[0]), "name": row[1]} for row in cursor.fetchall()]
     return _history_exercise_matches(target, entries)
 
 
@@ -841,9 +870,10 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
         msg = f"Could not identify **'{raw_source or source_name or query}'** in your active split.\n\n**Active Movements:**\n" + "\n".join(routine_list)
         return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
-    cursor = db.catalog_conn.cursor()
-    cursor.execute("SELECT body_part, target_muscle, equipment FROM exercises WHERE id = ?", (matched_ex.exercise_id,))
-    target_meta = cursor.fetchone()
+    with db.catalog_locked() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT body_part, target_muscle, equipment FROM exercises WHERE id = ?", (matched_ex.exercise_id,))
+        target_meta = cursor.fetchone()
     body_part, target_muscle, _ = target_meta if target_meta else ("", "", "")
 
     if not target_desc:
@@ -967,6 +997,7 @@ def program_mutation_node(state: AssistantState) -> dict[str, Any]:
     freq = requested if requested is not None else supplied
     try:
         prog, _ = generate_program_pipeline(user_split_override=query, frequency_override=freq)
+        # Intentional fresh-start: a rebuilt split invalidates routine-specific dialogue context.
         db.clear_chat_history()
         msg = f"Rebuilt routine: **{prog.program_name}** ({prog.weekly_frequency} Days/Week). Context cleared for new routine."
         return {"program_updated": True, "response_content": msg, "messages": [AIMessage(content=msg)]}
@@ -1029,6 +1060,21 @@ def _prompt_token_count(messages: Sequence[BaseMessage]) -> int:
     except Exception:
         logger.warning("Local tokenizer unavailable; using conservative byte budget.")
     return len(rendered.encode("utf-8")) + 32 * len(messages) + 32
+
+
+def _count_display_tokens(text: str) -> int:
+    """Telemetry token count: exact when the local tokenizer is loaded, else chars/4."""
+    if not text:
+        return 0
+    try:
+        tokenize = getattr(getattr(llm, "client", None), "tokenize", None)
+        if callable(tokenize):
+            tokens = tokenize(text.encode("utf-8"), add_bos=False)
+            if isinstance(tokens, (list, tuple)):
+                return len(tokens)
+    except Exception:
+        logger.debug("Local tokenizer unavailable for telemetry; using char heuristic.")
+    return max(1, len(text) // 4)
 
 
 def _model_limit(name: str, default: int) -> int:
@@ -1304,13 +1350,25 @@ def stream_assistant_turn(state: dict[str, Any]) -> Generator[str, None, None]:
         }
         if intent in handlers:
             result = handlers[intent](state)
+            telemetry: dict[str, Any] = {}
         else:
             payload = build_prompt_payload(state)
             scrubber = CoachOutputScrubber()
             limited = False
+            contract_warned = False
+            raw_pieces: list[str] = []
+            gen_start = time.perf_counter()
+            ttft_s = 0.0
             for chunk in llm.stream(payload):
+                if ttft_s == 0.0:
+                    ttft_s = time.perf_counter() - gen_start
                 limited = limited or _finish_limited(chunk)
-                cleaned = scrubber.feed(chunk.content if hasattr(chunk, "content") else str(chunk))
+                if not hasattr(chunk, "content") and not contract_warned:
+                    logger.warning("LLM stream chunk %s lacks .content; coercing via str().", type(chunk).__name__)
+                    contract_warned = True
+                piece = chunk.content if hasattr(chunk, "content") else str(chunk)
+                raw_pieces.append(str(piece))
+                cleaned = scrubber.feed(piece)
                 if cleaned:
                     visible.append(cleaned)
                     yield cleaned
@@ -1325,7 +1383,17 @@ def stream_assistant_turn(state: dict[str, Any]) -> Generator[str, None, None]:
                 note = "\n\n" + OUTPUT_LIMIT_RESPONSE
                 visible.append(note)
                 yield note
-        _record_telemetry_event(intent, router_ms, user_id=state.get("trainee_id", "default"))
+            gen_time_s = max(0.0, (time.perf_counter() - gen_start) - ttft_s)
+            tokens = _count_display_tokens("".join(raw_pieces))
+            tps = tokens / gen_time_s if gen_time_s > 0 else 0.0
+            telemetry = {"ttft_ms": ttft_s * 1000.0, "gen_time_s": gen_time_s, "tokens": tokens, "tps": tps}
+            if tokens and gen_time_s >= 0.5 and tps < 8.0:
+                logger.warning(
+                    "[PERF DEGRADATION] Low inference throughput detected: %.2f TPS (Threshold: 8.0 TPS). "
+                    "Check CPU temperature or background processes.",
+                    tps,
+                )
+        _record_telemetry_event(intent, router_ms, user_id=state.get("trainee_id", "default"), **telemetry)
     except PromptBudgetError as exc:
         result = _response(str(exc))
     except Exception:

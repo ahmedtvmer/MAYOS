@@ -41,6 +41,8 @@ def graph(monkeypatch):
     module.llm = SimpleNamespace(n_ctx=2048, max_tokens=200, client=SimpleNamespace(tokenize=lambda data, **kwargs: list(range((len(data) + 3) // 4))), invoke=MagicMock(return_value=AIMessage(content="Use controlled reps.")))
     module.reconcile_telemetry_query = MagicMock(return_value=None)
     module._record_telemetry_event = MagicMock()
+    # Locked catalog reads yield the (mocked) shared connection, mirroring DatabaseManager.catalog_locked.
+    module.db.catalog_locked.return_value.__enter__.return_value = module.db.catalog_conn
     return module
 
 

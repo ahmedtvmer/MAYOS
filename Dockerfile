@@ -48,6 +48,10 @@ RUN uv pip install --system -r requirements.txt
 
 COPY . .
 
-EXPOSE 8501
+EXPOSE 8000 8501
+
+# Default CMD serves the Streamlit UI (compose overrides per service; healthchecks differ).
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=60s \
+  CMD curl -f http://localhost:8501/_stcore/health || exit 1
 
 CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.enableCORS=false", "--server.enableXsrfProtection=false"]

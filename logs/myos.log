@@ -287,3 +287,4 @@
 2026-09-17 21:38:02,977 - agent.assistant_graph - INFO - [TELEMETRY] User: malak | Intent: coaching_qa | Router: 3.518ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
 2026-09-17 21:38:17,693 - agent.assistant_graph - INFO - [TELEMETRY] User: malak | Intent: exercise_history | Router: 45.734ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
 2026-09-17 21:38:39,769 - agent.assistant_graph - INFO - [TELEMETRY] User: malak | Intent: coaching_qa | Router: 2.885ms | TTFT: 0.0ms | Tokens: 0 | GenTime: 0.00s | Speed: 0.00 TPS
+2026-09-19 18:50:42,991 - agent.assistant_graph - INFO - [TELEMETRY] User: test_trainee | Intent: coaching_qa | Router: 5.834ms | TTFT: 0.1ms | Tokens: 23 | GenTime: 0.00s | Speed: 32361.82 TPS

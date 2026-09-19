@@ -36,7 +36,7 @@ jobs:
           path: |
             models/
             ~/.cache/huggingface
-          key: myos-models-${{ runner.os }}-qwen2.5-3b-bge
+          key: myos-models-${{ runner.os }}-qwen3.5-4b-bge
           restore-keys: |
             myos-models-${{ runner.os }}-
 

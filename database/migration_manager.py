@@ -9,7 +9,25 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_USER_SCHEMA_VERSION: int = 1
+CURRENT_USER_SCHEMA_VERSION: int = 3
+
+
+def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
+    """Adds auth_credentials for password hashes (legacy ledgers stay unclaimed)."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS auth_credentials (
+            id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+            password_hash TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+
+
+def _migrate_v2_to_v3(conn: sqlite3.Connection) -> None:
+    """Adds per-ledger token_version so password changes/resets revoke all sessions."""
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(auth_credentials)").fetchall()}
+    if "token_version" not in columns:
+        conn.execute("ALTER TABLE auth_credentials ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1")
 
 
 def get_user_schema_version(conn: sqlite3.Connection) -> int:
@@ -97,7 +115,10 @@ MigrationCallable = Callable[[sqlite3.Connection], None]
 
 # Migration map: from_version -> migration function to reach (from_version + 1)
 # Example: 1: migrate_v1_to_v2
-MIGRATION_REGISTRY: dict[int, MigrationCallable] = {}
+MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
+    1: _migrate_v1_to_v2,
+    2: _migrate_v2_to_v3,
+}
 
 
 def apply_lazy_migrations(
