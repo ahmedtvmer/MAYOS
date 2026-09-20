@@ -3,7 +3,7 @@
 CLINICAL_SAFEGUARD_RESPONSE = (
     "⚠️ **Movement Discontinued & Clinical Safeguard Triggered**\n\n"
     "Acute, sharp, popping, or radiating neural sensations indicate potential soft-tissue "
-    "or joint injury. **Myos is an automated training ledger and biomechanics engine, not a physician.**\n\n"
+    "or joint injury. **Mayos is an automated training ledger and biomechanics engine, not a physician.**\n\n"
     "- **Cease training the affected movement immediately.**\n"
     "- Do not attempt to work through sharp or radiating pain.\n"
     "- Seek diagnostic evaluation from a licensed sports medicine physician or physical therapist."
@@ -11,7 +11,7 @@ CLINICAL_SAFEGUARD_RESPONSE = (
 
 DIAGNOSIS_SAFEGUARD_RESPONSE = (
     "I cannot diagnose musculoskeletal injuries, joint aches, or underlying pathology. "
-    "Myos is an automated training ledger and biomechanics engine, not a clinical physician. "
+    "Mayos is an automated training ledger and biomechanics engine, not a clinical physician. "
     "Immediately discontinue any exercise causing localized joint pain or aching, substitute with "
     "a pain-free movement that loads the target muscle in a stable, supported plane, and consult "
     "a licensed physical therapist for an accurate diagnostic evaluation."

@@ -38,7 +38,7 @@ def analyze_logs():
         return
 
     logger.info("=" * 50)
-    logger.info("⚡ MYOS INTERNAL ENGINE HEALTH REPORT")
+    logger.info("⚡ MAYOS INTERNAL ENGINE HEALTH REPORT")
     logger.info("=" * 50)
     logger.info(f"Total Evaluated Turns:   {len(tps_values)}")
     logger.info(f"Average TTFT:            {statistics.mean(ttft_values):.1f} ms")

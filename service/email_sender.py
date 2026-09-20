@@ -29,9 +29,9 @@ def _console_send(to_email: str, subject: str, body: str) -> bool:
 
 
 def send_password_reset_email(to_email: str, reset_link: str) -> bool:
-    subject = "Myos Engine password reset"
+    subject = "Mayos Engine password reset"
     body = (
-        "A password reset was requested for your Myos training ledger.\n\n"
+        "A password reset was requested for your Mayos training ledger.\n\n"
         f"Reset link (valid briefly, single-use):\n{reset_link}\n\n"
         "If you did not request this, ignore this message — your password is unchanged."
     )
@@ -41,7 +41,7 @@ def send_password_reset_email(to_email: str, reset_link: str) -> bool:
     try:
         message = EmailMessage()
         message["Subject"] = subject
-        message["From"] = os.getenv("SMTP_FROM", "no-reply@myos.local")
+        message["From"] = os.getenv("SMTP_FROM", "no-reply@mayos.local")
         message["To"] = to_email
         message.set_content(body)
         port = int(os.getenv("SMTP_PORT", "587"))

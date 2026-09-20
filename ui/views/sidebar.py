@@ -10,7 +10,7 @@ from ui.api_client import api
 
 def render_sidebar(profile: dict | None) -> None:
     with st.sidebar:
-        st.title("⚡ Myos Engine")
+        st.title("⚡ Mayos Engine")
         st.caption(f"Trainee: **{st.session_state.authenticated_user}**")
 
         if st.button("Logout", use_container_width=True):

@@ -28,7 +28,7 @@ def render_email_gate(error: str | None = None, outdated: bool = False) -> None:
     Intentionally minimal: no sidebar, no profile fetch, no dashboard access
     until an email is on file. Logout stays available as the escape hatch.
     """
-    st.title("⚡ Myos Engine")
+    st.title("⚡ Mayos Engine")
     st.caption("One last step: add a recovery email so you can reset your password if you lose it.")
     if outdated:
         st.error(SERVICE_OUTDATED)
@@ -114,7 +114,7 @@ def _preset_reset_token() -> str:
 
 
 def render_gatekeeper() -> None:
-    st.title("⚡ Myos Engine")
+    st.title("⚡ Mayos Engine")
     session.consume_flash()
 
     auth_tab, reg_tab, recover_tab = st.tabs(["🔑 Trainee Login", "✨ New Trainee Setup", "🔄 Recover Access"])

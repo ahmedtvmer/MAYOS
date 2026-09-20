@@ -18,7 +18,7 @@ db = DatabaseManager()
 
 STEP_PROMPTS: dict[int, str] = {
     1: (
-        "Welcome to Myos. Let's set up your profile.\n\n"
+        "Welcome to Mayos. Let's set up your profile.\n\n"
         "1. Who is taller/longer: your upper body or lower body?\n"
         "2. What is your gender (male/female), age, weight (kg), and height (cm)?"
     ),

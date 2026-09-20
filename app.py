@@ -1,4 +1,4 @@
-"""MYOS Streamlit client. Thin UI over the FastAPI service: no DB, LLM, or domain logic here."""
+"""Mayos Streamlit client. Thin UI over the FastAPI service: no DB, LLM, or domain logic here."""
 
 import sys
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 import streamlit as st
 
 # Streamlit Page Configuration MUST be the first command
-st.set_page_config(page_title="Myos | Training Engine", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Mayos | Training Engine", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
 
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(BASE_DIR))
