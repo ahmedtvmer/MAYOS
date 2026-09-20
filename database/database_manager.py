@@ -25,6 +25,7 @@ from agent.ProgramState import (
     GeneratedProgramSchema,
     ProgramDaySchema,
     ProgramExerciseSchema,
+    WarmupExerciseSchema,
 )
 from database.migration_manager import (
     CURRENT_USER_SCHEMA_VERSION,
@@ -262,6 +263,7 @@ class DatabaseManager:
                 name TEXT NOT NULL,
                 split_type TEXT NOT NULL,
                 weekly_frequency INTEGER NOT NULL,
+                instructions TEXT DEFAULT '',
                 is_active INTEGER DEFAULT 1,
                 created_at TEXT NOT NULL
             );
@@ -270,6 +272,8 @@ class DatabaseManager:
                 program_id TEXT NOT NULL,
                 day_name TEXT NOT NULL,
                 day_order INTEGER NOT NULL,
+                warmup_json TEXT,
+                cardio TEXT,
                 FOREIGN KEY(program_id) REFERENCES training_programs(id) ON DELETE CASCADE
             );
             CREATE TABLE IF NOT EXISTS program_exercises (
@@ -277,6 +281,8 @@ class DatabaseManager:
                 day_id TEXT NOT NULL,
                 exercise_id TEXT NOT NULL,
                 order_in_day INTEGER NOT NULL,
+                slot_key TEXT,
+                warmup_sets INTEGER DEFAULT 0,
                 target_sets INTEGER NOT NULL,
                 target_reps_min INTEGER NOT NULL,
                 target_reps_max INTEGER NOT NULL,
@@ -802,39 +808,58 @@ class DatabaseManager:
             if "program_name" in existing_cols:
                 cols.append("program_name")
                 vals.append(prog_name)
+            if "instructions" in existing_cols:
+                cols.append("instructions")
+                vals.append(program_data.get("instructions", ""))
 
             cursor.execute(
                 f"INSERT INTO training_programs ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(vals))})", vals
             )
 
+            cursor.execute("PRAGMA table_info(program_days)")
+            day_cols = {col[1] for col in cursor.fetchall()}
+            cursor.execute("PRAGMA table_info(program_exercises)")
+            exercise_cols = {col[1] for col in cursor.fetchall()}
+
             for day in program_data.get("days", []):
                 day_id = day.get("id") or str(uuid.uuid4())
+                day_values = {
+                    "id": day_id,
+                    "program_id": prog_id,
+                    "day_name": day["day_name"],
+                    "day_order": day["day_order"],
+                }
+                if "warmup_json" in day_cols:
+                    day_values["warmup_json"] = json.dumps(day.get("warmup_exercises", []), ensure_ascii=False)
+                if "cardio" in day_cols:
+                    day_values["cardio"] = day.get("cardio")
                 cursor.execute(
-                    "INSERT INTO program_days (id, program_id, day_name, day_order) VALUES (?, ?, ?, ?)",
-                    (day_id, prog_id, day["day_name"], day["day_order"]),
+                    f"INSERT INTO program_days ({', '.join(day_values)}) VALUES ({', '.join(['?'] * len(day_values))})",
+                    list(day_values.values()),
                 )
 
                 for order_idx, ex in enumerate(day.get("exercises", []), start=1):
                     pe_id = ex.get("id") or str(uuid.uuid4())
+                    exercise_values = {
+                        "id": pe_id,
+                        "day_id": day_id,
+                        "exercise_id": str(ex["exercise_id"]),
+                        "order_in_day": order_idx,
+                        "target_sets": ex.get("target_sets", 2),
+                        "target_reps_min": ex.get("target_reps_min", 8),
+                        "target_reps_max": ex.get("target_reps_max", 12),
+                        "target_rpe": ex.get("target_rpe", 8.5),
+                        "rest_seconds": ex.get("rest_seconds", 180),
+                        "notes": ex.get("notes", ""),
+                    }
+                    if "slot_key" in exercise_cols:
+                        exercise_values["slot_key"] = ex.get("slot_key")
+                    if "warmup_sets" in exercise_cols:
+                        exercise_values["warmup_sets"] = ex.get("warmup_sets", 0)
                     cursor.execute(
-                        """
-                        INSERT INTO program_exercises (
-                            id, day_id, exercise_id, order_in_day, target_sets,
-                            target_reps_min, target_reps_max, target_rpe, rest_seconds, notes
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                        (
-                            pe_id,
-                            day_id,
-                            str(ex["exercise_id"]),
-                            order_idx,
-                            ex.get("target_sets", 3),
-                            ex.get("target_reps_min", 8),
-                            ex.get("target_reps_max", 12),
-                            ex.get("target_rpe", 8.5),
-                            ex.get("rest_seconds", 120),
-                            ex.get("notes", ""),
-                        ),
+                        f"INSERT INTO program_exercises ({', '.join(exercise_values)}) "
+                        f"VALUES ({', '.join(['?'] * len(exercise_values))})",
+                        list(exercise_values.values()),
                     )
 
             self.conn.commit()
@@ -845,8 +870,11 @@ class DatabaseManager:
 
     def get_active_program(self) -> GeneratedProgramSchema | None:
         cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT id, COALESCE(program_name, name), weekly_frequency, split_type
+        cursor.execute("PRAGMA table_info(training_programs)")
+        program_cols = {col[1] for col in cursor.fetchall()}
+        instructions_expr = "instructions" if "instructions" in program_cols else "'' AS instructions"
+        cursor.execute(f"""
+            SELECT id, COALESCE(program_name, name), weekly_frequency, split_type, {instructions_expr}
             FROM training_programs
             WHERE is_active = 1
             ORDER BY created_at DESC
@@ -856,23 +884,47 @@ class DatabaseManager:
         if not row:
             return None
 
-        prog_id, prog_name, freq, split_type = row
+        prog_id, prog_name, freq, split_type, instructions = row
+
+        cursor.execute("PRAGMA table_info(program_days)")
+        day_cols = {col[1] for col in cursor.fetchall()}
+        day_extras = ""
+        if "warmup_json" in day_cols:
+            day_extras += ", warmup_json"
+        if "cardio" in day_cols:
+            day_extras += ", cardio"
         cursor.execute(
-            "SELECT id, day_name, day_order FROM program_days WHERE program_id = ? ORDER BY day_order ASC",
+            f"SELECT id, day_name, day_order{day_extras} FROM program_days WHERE program_id = ? ORDER BY day_order ASC",
             (prog_id,),
         )
         days_rows = cursor.fetchall()
         if not days_rows:
             return None
 
+        cursor.execute("PRAGMA table_info(program_exercises)")
+        exercise_cols = {col[1] for col in cursor.fetchall()}
+        has_slot_key = "slot_key" in exercise_cols
+        has_warmup_sets = "warmup_sets" in exercise_cols
+
         days = []
         try:
-            for d_id, d_name, d_order in days_rows:
+            for day_row in days_rows:
+                d_id, d_name, d_order = day_row[0], day_row[1], day_row[2]
+                warmup_json = day_row[3] if "warmup_json" in day_cols else None
+                cardio = day_row[4] if "cardio" in day_cols and len(day_row) > 4 else None
+
+                select_cols = (
+                    "pe.exercise_id, e.name, pe.target_sets, pe.target_reps_min, "
+                    "pe.target_reps_max, pe.target_rpe, pe.rest_seconds, pe.notes, "
+                    "e.image_path, e.gif_path"
+                )
+                if has_slot_key:
+                    select_cols += ", pe.slot_key"
+                if has_warmup_sets:
+                    select_cols += ", pe.warmup_sets"
                 cursor.execute(
-                    """
-                    SELECT pe.exercise_id, e.name, pe.target_sets, pe.target_reps_min,
-                           pe.target_reps_max, pe.target_rpe, pe.rest_seconds, pe.notes,
-                           e.image_path, e.gif_path
+                    f"""
+                    SELECT {select_cols}
                     FROM program_exercises pe
                     JOIN catalog.exercises e ON pe.exercise_id = e.id
                     WHERE pe.day_id = ?
@@ -880,27 +932,47 @@ class DatabaseManager:
                 """,
                     (d_id,),
                 )
-                exercises = [
-                    ProgramExerciseSchema(
-                        exercise_id=str(r[0]),
-                        exercise_name=r[1],
-                        target_sets=int(r[2]),
-                        target_reps_min=int(r[3]),
-                        target_reps_max=int(r[4]),
-                        target_rpe=float(r[5]) if r[5] is not None else 8.5,
-                        rest_seconds=int(r[6]) if r[6] is not None else 120,
-                        notes=r[7] or "",
-                        image_path=r[8],
-                        gif_path=r[9],
+                exercises = []
+                for r in cursor.fetchall():
+                    exercises.append(
+                        ProgramExerciseSchema(
+                            exercise_id=str(r[0]),
+                            exercise_name=r[1],
+                            target_sets=int(r[2]),
+                            target_reps_min=int(r[3]),
+                            target_reps_max=int(r[4]),
+                            target_rpe=float(r[5]) if r[5] is not None else 8.5,
+                            rest_seconds=int(r[6]) if r[6] is not None else 180,
+                            notes=r[7] or "",
+                            image_path=r[8],
+                            gif_path=r[9],
+                            slot_key=r[10] if has_slot_key else None,
+                            warmup_sets=int(r[11]) if has_warmup_sets and r[11] is not None else 0,
+                        )
                     )
-                    for r in cursor.fetchall()
-                ]
-                days.append(ProgramDaySchema(day_name=d_name, day_order=d_order, exercises=exercises))
+
+                warmup_exercises = []
+                if warmup_json:
+                    try:
+                        warmup_exercises = [WarmupExerciseSchema(**item) for item in json.loads(warmup_json)]
+                    except (TypeError, ValueError) as exc:
+                        logger.warning(f"Skipping malformed warm-up block on day '{d_name}': {exc}")
+
+                days.append(
+                    ProgramDaySchema(
+                        day_name=d_name,
+                        day_order=d_order,
+                        warmup_exercises=warmup_exercises,
+                        exercises=exercises,
+                        cardio=cardio,
+                    )
+                )
 
             return GeneratedProgramSchema(
                 program_name=prog_name,
                 weekly_frequency=int(freq),
                 split_type=split_type or "custom",
+                instructions=instructions or "",
                 days=days,
             )
         except Exception as exc:

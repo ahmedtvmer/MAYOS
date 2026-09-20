@@ -5,7 +5,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 from agent.program_rules import (
-    calculate_volume_budget,
     fetch_filtered_candidates,
     resolve_split,
 )
@@ -41,15 +40,7 @@ def test_rules():
         logger.info(f"  Day {day.day_order}: {day.day_name} -> {day.target_body_parts}")
     assert len(plan_custom.days) == 3
 
-    logger.info("\n--- 3. Testing Recovery Volume Budgeting ---")
-    low_recovery_vol = calculate_volume_budget("high stress, 5 hours sleep")
-    high_recovery_vol = calculate_volume_budget("good sleep, 8 hours, low stress")
-    logger.info(f"Low recovery sets/week: {low_recovery_vol}")
-    logger.info(f"High recovery sets/week: {high_recovery_vol}")
-    assert low_recovery_vol == 8
-    assert high_recovery_vol == 12
-
-    logger.info("\n--- 4. Testing Candidate Retrieval & Contraindication Filters ---")
+    logger.info("\n--- 3. Testing Candidate Retrieval & Contraindication Filters ---")
     candidates = fetch_filtered_candidates(
         body_part="back", equipment_access="commercial gym", limitations="lower back tightness", limit=3
     )

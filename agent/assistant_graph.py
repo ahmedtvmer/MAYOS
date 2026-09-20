@@ -1059,12 +1059,16 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
         return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
     is_compound = any(kw in replacement["name"].lower() for kw in COMPOUND_KEYWORDS) and "calf" not in replacement["name"].lower()
-    new_cue = get_biomechanical_cue(replacement["name"], "compound" if is_compound else "isolation")
+    # Prefer the catalog's own step-by-step execution text so the Form Demos panel
+    # stays populated after a swap; fall back to the generic biomechanical cue.
+    new_notes = replacement.get("instructions") or get_biomechanical_cue(
+        replacement["name"], "compound" if is_compound else "isolation"
+    )
 
     success = db.swap_program_exercise(
         old_exercise_id=matched_ex.exercise_id,
         new_exercise_id=str(replacement["id"]),
-        new_notes=new_cue,
+        new_notes=new_notes,
     )
     if success:
         note_suffix = ""
@@ -1083,7 +1087,7 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
             f"✅ **Routine Slot Updated ({target_day.day_name})**\n\n"
             f"- **Removed:** {matched_ex.exercise_name.title()}\n"
             f"- **Installed:** {replacement['name'].title()} (`{replacement['target_muscle']}` | `{replacement['equipment']}`)\n"
-            f"- **Execution Directive:** *{new_cue}*{note_suffix}"
+            f"- **Execution Directive:** *{new_notes}*{note_suffix}"
         )
         return {"program_updated": True, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
