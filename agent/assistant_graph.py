@@ -831,6 +831,12 @@ def _target_is_name_like(target_desc: str, candidates: list[dict[str, Any]]) -> 
     return False
 
 
+#: Bare number words reply to the numbered alternatives list rather than naming a movement
+#: ("one" substring-matches "one arm dip"/"one leg squat"). Whole-string equality only, so
+#: multi-word names containing them ("one arm pulldown") are unaffected.
+UNSPECIFIC_CHOICE_WORDS = {"one", "two", "three", "first", "second", "third"}
+
+
 def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
     meta = state.get("intent_metadata", {})
     source_name = (meta.get("source_exercise") or "").strip()
@@ -944,17 +950,30 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
     # resolve by name — it never silently falls through to its nearest embedding sibling.
     # Raw text is tried before abbreviation-expanded text: suffix rules like
     # "lat pulldown" → "cable lat pulldown" must not corrupt already-specific names.
-    name_matches = [
-        match
-        for match in db.find_exercises_by_name(raw_target or target_desc)
-        if str(match["id"]) != str(matched_ex.exercise_id)
-    ]
-    if not name_matches:
+    # Pronouns and ultra-short tokens ("it", "choice") are not names at all and must not
+    # junk-match the substring tier ("it" → "sit-up"/"smith squat") or the embedding fallback.
+    resolve_text = (
+        raw_target
+        if raw_target and len(raw_target) >= 3 and raw_target.lower() not in PRONOUNS
+        else target_desc
+    )
+    target_unspecific = (
+        not resolve_text or len(resolve_text) < 3 or resolve_text.lower() in PRONOUNS | UNSPECIFIC_CHOICE_WORDS
+    )
+
+    name_matches: list[dict[str, Any]] = []
+    if not target_unspecific:
         name_matches = [
             match
-            for match in db.find_exercises_by_name(target_desc)
+            for match in db.find_exercises_by_name(resolve_text)
             if str(match["id"]) != str(matched_ex.exercise_id)
         ]
+        if not name_matches and resolve_text != target_desc:
+            name_matches = [
+                match
+                for match in db.find_exercises_by_name(target_desc)
+                if str(match["id"]) != str(matched_ex.exercise_id)
+            ]
     compatible_name_match = next(
         (match for match in name_matches if _muscle_compatible(match, target_muscle, body_part)),
         None,
@@ -1001,11 +1020,12 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
                 and ("distance" not in c or c["distance"] <= 0.27)
             ]
 
-        valid_replacements = _semantic_replacements(raw_target or target_desc)
-        if not valid_replacements and target_desc != raw_target:
-            valid_replacements = _semantic_replacements(target_desc)
+        if not target_unspecific:
+            valid_replacements = _semantic_replacements(resolve_text)
+            if not valid_replacements and target_desc != resolve_text:
+                valid_replacements = _semantic_replacements(target_desc)
 
-        if valid_replacements and _target_is_name_like(raw_target or target_desc, valid_replacements):
+        if valid_replacements and _target_is_name_like(resolve_text, valid_replacements):
             # The trainee named an exercise we could not resolve — refuse rather than
             # install the closest lexical sibling.
             valid_replacements = []

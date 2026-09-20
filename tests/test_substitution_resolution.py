@@ -149,6 +149,15 @@ def test_self_swap_refuses(sub_db):
     assert _slot_name(db, 1) == "reverse grip machine lat pulldown"
 
 
+@pytest.mark.parametrize("target", ["it", "choice", "one", "two", "three", "first"])
+def test_unspecific_target_refuses_without_junk_match(sub_db, target):
+    db = sub_db
+    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", target))
+    assert res["program_updated"] is False
+    assert "could not find a biomechanically suitable match" in res["response_content"].lower()
+    assert _slot_name(db, 1) == "reverse grip machine lat pulldown"
+
+
 def test_followup_hint_uses_real_catalog_name(sub_db, monkeypatch):
     monkeypatch.setattr(DatabaseManager, "find_exercises_by_name", lambda self, query, limit=5: [])
     variants = [
