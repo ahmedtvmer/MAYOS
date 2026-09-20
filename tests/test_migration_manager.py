@@ -52,7 +52,7 @@ def temp_db_env(tmp_path: Path, monkeypatch):
 def test_schema_version_stamping(temp_db_env):
     db, users_dir, _ = temp_db_env
     version = get_user_schema_version(db.conn)
-    assert version == CURRENT_USER_SCHEMA_VERSION == 4
+    assert version == CURRENT_USER_SCHEMA_VERSION == 5
 
 
 def test_atomic_backup_and_restore(temp_db_env):
@@ -470,7 +470,7 @@ def test_v1_to_v2_adds_password_hash_preserving_data(temp_db_env):
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
-    assert CURRENT_USER_SCHEMA_VERSION == 4
+    assert CURRENT_USER_SCHEMA_VERSION == 5
     db, users_dir, _ = temp_db_env
     # Craft a legacy v1 ledger: no password_hash column, stamped v1.
     legacy_path = users_dir / "legacy.db"
@@ -506,7 +506,7 @@ def test_v2_to_v3_adds_token_version_preserving_hash(temp_db_env):
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
-    assert CURRENT_USER_SCHEMA_VERSION == 4
+    assert CURRENT_USER_SCHEMA_VERSION == 5
     db, users_dir, _ = temp_db_env
     # Craft a v2 ledger: auth_credentials without token_version, stamped v2.
     legacy_path = users_dir / "v2user.db"
@@ -546,7 +546,7 @@ def test_v3_to_v4_backfills_personal_records(temp_db_env):
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
-    assert CURRENT_USER_SCHEMA_VERSION == 4
+    assert CURRENT_USER_SCHEMA_VERSION == 5
     db, users_dir, _ = temp_db_env
     legacy_path = users_dir / "v3lifter.db"
     conn = sqlite3.connect(legacy_path)
@@ -579,7 +579,7 @@ def test_v3_to_v4_backfills_personal_records(temp_db_env):
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v3lifter"
     )
     try:
-        assert get_user_schema_version(migrated.conn) == 4
+        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION
         rows = migrated.conn.execute("""
             SELECT record_type, reps, value, prev_value, achieved_at, session_id
             FROM personal_records
@@ -601,6 +601,57 @@ def test_v3_to_v4_backfills_personal_records(temp_db_env):
         # Warmups never seed records.
         assert all(r["prev_value"] is None for r in rows)
         assert len(rows) == 3
+    finally:
+        if migrated.user_conn is not None:
+            migrated.user_conn.close()
+        migrated.catalog_conn.close()
+
+
+def test_v4_to_v5_adds_program_slot_and_warmup_columns(temp_db_env):
+    import threading
+
+    db, users_dir, _ = temp_db_env
+    legacy_path = users_dir / "v4lifter.db"
+    conn = sqlite3.connect(legacy_path)
+    conn.executescript("""
+        CREATE TABLE user_profile (id INTEGER PRIMARY KEY, current_goal TEXT NOT NULL, updated_at TEXT NOT NULL);
+        INSERT INTO user_profile VALUES (1, 'Strength', '2026-01-01T00:00:00+00:00');
+        CREATE TABLE training_programs (
+            id TEXT PRIMARY KEY, program_name TEXT NOT NULL, name TEXT NOT NULL,
+            split_type TEXT NOT NULL, weekly_frequency INTEGER NOT NULL,
+            is_active INTEGER DEFAULT 1, created_at TEXT NOT NULL
+        );
+        INSERT INTO training_programs VALUES ('p1', 'Legacy', 'Legacy', 'Upper/Lower', 4, 1, '2026-01-01T00:00:00+00:00');
+        CREATE TABLE program_days (
+            id TEXT PRIMARY KEY, program_id TEXT NOT NULL, day_name TEXT NOT NULL, day_order INTEGER NOT NULL
+        );
+        INSERT INTO program_days VALUES ('d1', 'p1', 'Upper', 1);
+        CREATE TABLE program_exercises (
+            id TEXT PRIMARY KEY, day_id TEXT NOT NULL, exercise_id TEXT NOT NULL, order_in_day INTEGER NOT NULL,
+            target_sets INTEGER NOT NULL, target_reps_min INTEGER NOT NULL, target_reps_max INTEGER NOT NULL,
+            target_rpe REAL, rest_seconds INTEGER DEFAULT 120, notes TEXT
+        );
+        INSERT INTO program_exercises VALUES ('e1', 'd1', 'bench', 1, 3, 6, 10, 8.5, 120, 'cue');
+    """)
+    conn.execute("PRAGMA user_version = 4")
+    conn.commit()
+    conn.close()
+
+    DatabaseManager._instance = None
+    DatabaseManager._local = threading.local()
+    migrated = DatabaseManager(
+        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v4lifter"
+    )
+    try:
+        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION
+        program_cols = {r[1] for r in migrated.conn.execute("PRAGMA table_info(training_programs)")}
+        assert "instructions" in program_cols
+        day_cols = {r[1] for r in migrated.conn.execute("PRAGMA table_info(program_days)")}
+        assert {"warmup_json", "cardio"}.issubset(day_cols)
+        exercise_cols = {r[1] for r in migrated.conn.execute("PRAGMA table_info(program_exercises)")}
+        assert {"slot_key", "warmup_sets"}.issubset(exercise_cols)
+        legacy = migrated.conn.execute("SELECT exercise_id, target_sets FROM program_exercises").fetchall()
+        assert legacy[0]["exercise_id"] == "bench"
     finally:
         if migrated.user_conn is not None:
             migrated.user_conn.close()

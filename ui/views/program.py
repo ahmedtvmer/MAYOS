@@ -16,6 +16,10 @@ def render_program_dashboard(program) -> None:
     st.subheader(f"📋 {program.program_name}")
     st.caption(f"**Split:** {program.split_type} | **Weekly Frequency:** {program.weekly_frequency} Days")
 
+    if getattr(program, "instructions", None):
+        with st.expander("📌 تعليمات البرنامج (Program Instructions)", expanded=False):
+            st.markdown(program.instructions)
+
     filename, excel_bytes = api_bytes("/programs/active.xlsx")
     st.download_button(
         label="📥 Download Program as Excel (.xlsx)",
@@ -30,13 +34,40 @@ def render_program_dashboard(program) -> None:
 
     for idx, day in enumerate(program.days):
         with tabs[idx]:
+            warmups = getattr(day, "warmup_exercises", None) or []
+            if warmups:
+                st.markdown("##### 🔥 Warm Up (تسخين)")
+                warmup_data = [
+                    {
+                        "Exercise": w.exercise_name,
+                        "Sets": w.sets,
+                        "Reps": w.reps,
+                        "Rest": f"{w.rest_seconds}s",
+                        "Cue": w.notes or "-",
+                    }
+                    for w in warmups
+                ]
+                st.dataframe(
+                    pd.DataFrame(warmup_data),
+                    hide_index=True,
+                    use_container_width=True,
+                    column_config={
+                        "Exercise": st.column_config.TextColumn(width="medium"),
+                        "Sets": st.column_config.NumberColumn(width="small"),
+                        "Reps": st.column_config.NumberColumn(width="small"),
+                        "Rest": st.column_config.TextColumn(width="small"),
+                        "Cue": st.column_config.TextColumn(width="large"),
+                    },
+                )
+
             data = [
                 {
                     "Order": i + 1,
                     "Exercise": ex.exercise_name,
+                    "Warm-up Sets": ex.warmup_sets if ex.warmup_sets else "-",
                     "Sets": ex.target_sets,
                     "Reps": f"{ex.target_reps_min}–{ex.target_reps_max}",
-                    "Target RPE": f"@{ex.target_rpe}",
+                    "RPE": f"@{ex.target_rpe}",
                     "Rest": f"{ex.rest_seconds}s",
                     "Notes & Cues": ex.notes or "-",
                 }
@@ -49,13 +80,17 @@ def render_program_dashboard(program) -> None:
                 column_config={
                     "Order": st.column_config.NumberColumn(width="small"),
                     "Exercise": st.column_config.TextColumn(width="medium"),
+                    "Warm-up Sets": st.column_config.NumberColumn(width="small"),
                     "Sets": st.column_config.NumberColumn(width="small"),
                     "Reps": st.column_config.TextColumn(width="small"),
-                    "Target RPE": st.column_config.TextColumn(width="small"),
+                    "RPE": st.column_config.TextColumn(width="small"),
                     "Rest": st.column_config.TextColumn(width="small"),
                     "Notes & Cues": st.column_config.TextColumn(width="large"),
                 },
             )
+
+            if getattr(day, "cardio", None):
+                st.info(day.cardio)
 
             st.markdown("##### 🎬 Biomechanical Execution & Form Demos")
             for i, ex in enumerate(day.exercises):
@@ -71,8 +106,9 @@ def render_program_dashboard(program) -> None:
                         else:
                             st.caption("No media asset found on disk.")
                     with col_details:
+                        warmup_line = f"+ {ex.warmup_sets} warm-up sets • " if ex.warmup_sets else ""
                         st.markdown(
-                            f"**Loading Parameters:** `{ex.target_sets} sets × {ex.target_reps_min}–{ex.target_reps_max} reps @ RPE {ex.target_rpe}`"
+                            f"**Loading Parameters:** `{warmup_line}{ex.target_sets} sets × {ex.target_reps_min}–{ex.target_reps_max} reps @ RPE {ex.target_rpe}`"
                         )
                         st.markdown(f"**Prescribed Rest:** `{ex.rest_seconds} seconds`")
                         st.markdown(

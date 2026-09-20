@@ -10,7 +10,7 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_USER_SCHEMA_VERSION: int = 4
+CURRENT_USER_SCHEMA_VERSION: int = 5
 
 
 def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
@@ -105,6 +105,37 @@ def _migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
         logger.info(f"Backfilled {len(payload)} personal records from historical sets.")
 
 
+def _migrate_v4_to_v5(conn: sqlite3.Connection) -> None:
+    """Adds Belghamdi-style program columns: warm-up blocks, cues and slot metadata.
+
+    Ledgers created before the program tables existed (auth-only fixtures, very old
+    profiles) are tolerated: each table is upgraded only when present.
+    """
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+
+    def _columns(table: str) -> set[str]:
+        return {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+    if "training_programs" in tables:
+        program_cols = _columns("training_programs")
+        if "instructions" not in program_cols:
+            conn.execute("ALTER TABLE training_programs ADD COLUMN instructions TEXT DEFAULT ''")
+
+    if "program_days" in tables:
+        day_cols = _columns("program_days")
+        if "warmup_json" not in day_cols:
+            conn.execute("ALTER TABLE program_days ADD COLUMN warmup_json TEXT")
+        if "cardio" not in day_cols:
+            conn.execute("ALTER TABLE program_days ADD COLUMN cardio TEXT")
+
+    if "program_exercises" in tables:
+        exercise_cols = _columns("program_exercises")
+        if "slot_key" not in exercise_cols:
+            conn.execute("ALTER TABLE program_exercises ADD COLUMN slot_key TEXT")
+        if "warmup_sets" not in exercise_cols:
+            conn.execute("ALTER TABLE program_exercises ADD COLUMN warmup_sets INTEGER DEFAULT 0")
+
+
 def get_user_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -194,6 +225,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
     3: _migrate_v3_to_v4,
+    4: _migrate_v4_to_v5,
 }
 
 
