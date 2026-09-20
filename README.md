@@ -197,6 +197,7 @@ Open **`http://localhost:8501`**, register a Trainee ID, set a recovery email wh
 Myos ships a complete self-hosted identity layer — no cloud IdP, no external auth service:
 
 * **JWT sessions (HS256)**: `sub` + `jti` + `tv` (session epoch) claims, 2-hour default expiry, per-token revocation on logout.
+* **Optional remember-me sessions**: with explicit consent, the browser stores a sign-in cookie; remembered tokens last 30 days (`JWT_REMEMBER_ME_HOURS`) so refreshes keep you logged in. Password changes and logout still revoke them instantly (ADR 010).
 * **Revoke-all password changes**: every password event (change, emailed reset, operator CLI) bumps the ledger's token version — every other device is logged out instantly (ADR 006).
 * **Mandatory recovery-email gate**: after login, trainees without a recovery address cannot reach the dashboard or onboarding until one is saved.
 * **Forgot / reset password**: single-use SHA-256-hashed tokens (30-min TTL, atomic consumption, weak passwords rejected before the token is burned), with identical responses for known and unknown emails.

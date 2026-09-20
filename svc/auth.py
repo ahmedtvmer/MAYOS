@@ -17,6 +17,14 @@ def expiry_hours() -> int:
         return 2
 
 
+def remember_me_hours() -> int:
+    """Lifetime for remembered sessions (default 30 days), clamped to 1 hour – 1 year."""
+    try:
+        return min(max(int(os.getenv("JWT_REMEMBER_ME_HOURS", "720")), 1), 8760)
+    except ValueError:
+        return 720
+
+
 def _secret() -> str:
     secret = os.getenv("JWT_SECRET", "")
     if not secret:

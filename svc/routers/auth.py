@@ -8,7 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from service import auth as auth_service
 from service import password_reset as reset_service
-from svc.auth import create_access_token, revoke_token
+from svc.auth import create_access_token, remember_me_hours, revoke_token
 from svc.dependencies import bind_request, get_current_trainee, get_db
 from svc.rate_limit import PASSWORD_LIMIT, REGISTER_LIMIT, LOGIN_LIMIT, RESET_LIMIT, limiter
 from svc.schemas import (
@@ -37,7 +37,14 @@ async def register(request: Request, body: TraineeIn, db: Annotated[Any, Depends
         return result["trainee_id"], db.get_token_version()
 
     trainee_id, token_version = await asyncio.to_thread(_run)
-    return TokenOut(access_token=create_access_token(trainee_id, token_version=token_version), trainee_id=trainee_id)
+    return TokenOut(
+        access_token=create_access_token(
+            trainee_id,
+            expires_hours=remember_me_hours() if body.remember_me else None,
+            token_version=token_version,
+        ),
+        trainee_id=trainee_id,
+    )
 
 
 @router.post("/login", response_model=TokenOut)
@@ -57,7 +64,11 @@ async def login(request: Request, body: TraineeIn, db: Annotated[Any, Depends(ge
 
     result = await asyncio.to_thread(_run)
     return TokenOut(
-        access_token=create_access_token(result["trainee_id"], token_version=result["token_version"]),
+        access_token=create_access_token(
+            result["trainee_id"],
+            expires_hours=remember_me_hours() if body.remember_me else None,
+            token_version=result["token_version"],
+        ),
         trainee_id=result["trainee_id"],
     )
 
@@ -75,7 +86,14 @@ async def claim(request: Request, body: TraineeIn, db: Annotated[Any, Depends(ge
         return result["trainee_id"], db.get_token_version()
 
     trainee_id, token_version = await asyncio.to_thread(_run)
-    return TokenOut(access_token=create_access_token(trainee_id, token_version=token_version), trainee_id=trainee_id)
+    return TokenOut(
+        access_token=create_access_token(
+            trainee_id,
+            expires_hours=remember_me_hours() if body.remember_me else None,
+            token_version=token_version,
+        ),
+        trainee_id=trainee_id,
+    )
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

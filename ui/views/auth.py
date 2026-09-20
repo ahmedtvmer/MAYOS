@@ -49,12 +49,14 @@ def render_email_gate(error: str | None = None, outdated: bool = False) -> None:
             _save_gate_email(email_val.strip())
 
 
-def _login(trainee_id: str, password: str) -> None:
+def _login(trainee_id: str, password: str, remember: bool = False) -> None:
     status, body, detail = request_json(
-        "POST", "/auth/login", json={"trainee_id": trainee_id, "password": password}
+        "POST",
+        "/auth/login",
+        json={"trainee_id": trainee_id, "password": password, "remember_me": remember},
     )
     if status == 200 and body and "access_token" in body:
-        session.establish_session(body)
+        session.establish_session(body, remember=remember)
         st.rerun()
     if status == 403:
         st.session_state.claim_user = trainee_id
@@ -73,12 +75,14 @@ def _claim(trainee_id: str, password: str) -> None:
     st.error(str(detail or "Claim failed.")[:200])
 
 
-def _register(trainee_id: str, password: str) -> None:
+def _register(trainee_id: str, password: str, remember: bool = False) -> None:
     status, body, detail = request_json(
-        "POST", "/auth/register", json={"trainee_id": trainee_id, "password": password}
+        "POST",
+        "/auth/register",
+        json={"trainee_id": trainee_id, "password": password, "remember_me": remember},
     )
     if status == 201 and body:
-        session.establish_session(body)
+        session.establish_session(body, remember=remember)
         st.success(f"Ledger initialized for {body['trainee_id']}.")
         st.rerun()
     st.error(str(detail or "Registration failed.")[:200])
@@ -123,10 +127,14 @@ def render_gatekeeper() -> None:
         with st.form("login_form"):
             trainee_id = st.text_input("Trainee ID / Username:").strip()
             password = st.text_input("Password:", type="password")
+            remember_me = st.checkbox(
+                "Remember me on this device",
+                key="login_remember",
+            )
             submit_login = st.form_submit_button("Access Ledger", use_container_width=True)
 
             if submit_login and trainee_id and password:
-                _login(trainee_id, password)
+                _login(trainee_id, password, remember=remember_me)
 
         if st.session_state.get("claim_user"):
             st.info("This ledger predates passwords. Set one now to continue.")
@@ -140,10 +148,14 @@ def render_gatekeeper() -> None:
         with st.form("register_form"):
             new_trainee_id = st.text_input("Choose Unique Trainee ID (letters and numbers only):").strip()
             new_password = st.text_input("Choose a password (8+ characters):", type="password")
+            register_remember = st.checkbox(
+                "Remember me on this device (stores a sign-in cookie)",
+                key="register_remember",
+            )
             submit_new = st.form_submit_button("Create Private Ledger", use_container_width=True)
 
             if submit_new and new_trainee_id and new_password:
-                _register(new_trainee_id, new_password)
+                _register(new_trainee_id, new_password, remember=register_remember)
 
     with recover_tab:
         st.caption("Forgot your password? Request a single-use reset link below.")

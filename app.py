@@ -11,7 +11,7 @@ st.set_page_config(page_title="Mayos | Training Engine", page_icon="⚡", layout
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(BASE_DIR))
 
-from ui import present, session  # noqa: E402
+from ui import cookies as cookie_store, present, session  # noqa: E402
 from ui.api_client import api, auth_headers, request_json  # noqa: E402
 from ui.views import (  # noqa: E402
     auth as auth_view,
@@ -41,9 +41,11 @@ st.markdown(
 )
 
 # -------------------------------------------------------------------------
-# Session State Hydration
+# Session State Hydration (consented cookie restores refresh persistence)
 # -------------------------------------------------------------------------
 session.ensure_state()
+cookie_manager = cookie_store.mount_cookies()
+session.hydrate_from_cookie(cookie_manager)
 
 # -------------------------------------------------------------------------
 # Gatekeeper: Login & Registration

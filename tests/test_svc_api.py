@@ -71,6 +71,35 @@ def test_register_login_roundtrip(client):
     assert ghost.json() == wrong.json()
 
 
+def test_remember_me_token_lifetime(client, monkeypatch):
+    import jwt as pyjwt
+
+    def lifetime_hours(token):
+        claims = pyjwt.decode(token, TEST_JWT_SECRET, algorithms=["HS256"])
+        return (claims["exp"] - claims["iat"]) / 3600
+
+    registered = client.post(
+        "/auth/register",
+        json={"trainee_id": "alice", "password": "correct-horse-1", "remember_me": True},
+    )
+    assert registered.status_code == 201
+    assert lifetime_hours(registered.json()["access_token"]) == 720  # 30 days remembered
+
+    default_login = client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"})
+    assert lifetime_hours(default_login.json()["access_token"]) == 2
+
+    remembered = client.post(
+        "/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1", "remember_me": True}
+    )
+    assert lifetime_hours(remembered.json()["access_token"]) == 720
+
+    monkeypatch.setenv("JWT_REMEMBER_ME_HOURS", "48")
+    overridden = client.post(
+        "/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1", "remember_me": True}
+    )
+    assert lifetime_hours(overridden.json()["access_token"]) == 48
+
+
 def test_legacy_claim_flow(client):
     from database.database_manager import DatabaseManager
 
