@@ -14,7 +14,7 @@ def _save_gate_email(email: str) -> None:
         st.session_state.recovery_email = body.get("email")
         st.rerun()
     if status == 401:
-        session.clear_and_flash("Session expired. Please log in again.", "error")
+        session.reject_session("Session expired. Please log in again.")
         st.rerun()
     if status == 404:
         st.error(SERVICE_OUTDATED)

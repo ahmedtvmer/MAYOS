@@ -2,9 +2,17 @@
 
 import base64
 import json
+import time
 
-from ui.cookies import COOKIE_NAME, apply_auth_cookie, parse_jwt_subject, remove_auth_cookie
-from ui.session import restore_auth_from_cookies
+from ui.cookies import (
+    COOKIE_NAME,
+    apply_auth_cookie,
+    parse_jwt_claims,
+    parse_jwt_subject,
+    remove_auth_cookie,
+    token_fingerprint,
+)
+from ui.session import REJECTED_TOKEN_KEY, restore_auth_from_cookies
 
 
 def _token(subject="alice", extra=None):
@@ -74,3 +82,43 @@ def test_cookie_helpers_tolerate_none_and_empty_values():
     apply_auth_cookie(empty, "")
     assert COOKIE_NAME not in empty
     assert empty.saved == 0
+
+
+def test_parse_jwt_claims_reads_subject_and_expiry():
+    subject, expires = parse_jwt_claims(_token("alice", {"exp": 123}))
+    assert subject == "alice"
+    assert expires == 123
+    assert parse_jwt_claims(_token("alice")) == ("alice", None)
+    assert parse_jwt_claims("not-a-jwt") == (None, None)
+    assert parse_jwt_claims("") == (None, None)
+
+
+def test_token_fingerprint_is_stable_short_and_distinct():
+    assert token_fingerprint("abc") == token_fingerprint("abc")
+    assert token_fingerprint("abc") != token_fingerprint("abd")
+    assert len(token_fingerprint("abc")) == 16
+
+
+def test_restore_skips_expired_tokens():
+    expired = _token("alice", {"exp": int(time.time()) - 60})
+    state = {"jwt_token": None}
+    assert restore_auth_from_cookies(state, FakeCookies({COOKIE_NAME: expired})) is False
+    assert state.get("jwt_token") is None
+
+
+def test_restore_allows_future_expiry_and_missing_expiry():
+    fresh = _token("alice", {"exp": int(time.time()) + 3600})
+    assert restore_auth_from_cookies({"jwt_token": None}, FakeCookies({COOKIE_NAME: fresh})) is True
+    assert restore_auth_from_cookies({"jwt_token": None}, FakeCookies({COOKIE_NAME: _token("alice")})) is True
+
+
+def test_restore_skips_session_rejected_fingerprint():
+    token = _token("alice")
+    state = {"jwt_token": None, REJECTED_TOKEN_KEY: token_fingerprint(token)}
+    assert restore_auth_from_cookies(state, FakeCookies({COOKIE_NAME: token})) is False
+    assert state.get("jwt_token") is None
+
+
+def test_rejected_fingerprint_does_not_block_other_tokens():
+    state = {"jwt_token": None, REJECTED_TOKEN_KEY: token_fingerprint("some-other-token")}
+    assert restore_auth_from_cookies(state, FakeCookies({COOKIE_NAME: _token("alice")})) is True

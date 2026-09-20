@@ -62,7 +62,7 @@ if not st.session_state.get("recovery_email"):
     if email_status == 200 and email_body and email_body.get("email"):
         st.session_state.recovery_email = email_body["email"]
     elif email_status == 401:
-        session.clear_and_flash("Session expired. Please log in again.", "error")
+        session.reject_session("Session expired. Please log in again.")
         st.rerun()
     elif email_status == 404:
         auth_view.render_email_gate(outdated=True)

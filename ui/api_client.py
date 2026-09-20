@@ -69,7 +69,7 @@ def api(method: str, path: str, allow_404: bool = False, **kwargs: Any):
     if status == 401:
         from ui import session  # local import breaks the module cycle
 
-        session.clear_and_flash("Session expired. Please log in again.", "error")
+        session.reject_session("Session expired. Please log in again.")
         st.rerun()
     if status == 204:
         return None
@@ -90,7 +90,7 @@ def api_bytes(path: str, params: dict | None = None) -> tuple[str, bytes]:
     if response.status_code == 401:
         from ui import session  # local import breaks the module cycle
 
-        session.clear_and_flash("Session expired. Please log in again.", "error")
+        session.reject_session("Session expired. Please log in again.")
         st.rerun()
     if response.status_code >= 400:
         st.error("Download failed.")
@@ -114,7 +114,7 @@ def sse_chat_turn(content: str, holder: dict):
             if stream.status_code == 401:
                 from ui import session  # local import breaks the module cycle
 
-                session.clear_and_flash("Session expired. Please log in again.", "error")
+                session.reject_session("Session expired. Please log in again.")
                 st.rerun()
             if stream.status_code == 429:
                 st.error("Too many messages. Please wait a moment and retry.")

@@ -6,6 +6,7 @@ is unavailable the app silently falls back to in-memory session state.
 """
 
 import base64
+import hashlib
 import json
 from typing import Any
 
@@ -15,19 +16,31 @@ COOKIE_NAME = "mayos_jwt"
 STATE_KEY = "cookie_manager"
 
 
-def parse_jwt_subject(token: str) -> str | None:
-    """Unverified read of the JWT ``sub`` claim for display/gating only.
+def parse_jwt_claims(token: str) -> tuple[str | None, int | None]:
+    """Unverified read of the JWT ``sub``/``exp`` claims for display/gating only.
 
     Every bearer call is verified server-side; this never grants access by itself.
+    Returns ``(subject, expires_at)`` with ``None`` values when unreadable.
     """
     try:
         payload = str(token).split(".")[1]
         padded = payload + "=" * (-len(payload) % 4)
         claims = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
         subject = claims.get("sub")
-        return str(subject) if subject else None
+        expires = claims.get("exp")
+        return (str(subject) if subject else None, int(expires) if expires is not None else None)
     except Exception:
-        return None
+        return None, None
+
+
+def parse_jwt_subject(token: str) -> str | None:
+    """Unverified read of the JWT ``sub`` claim (wrapper over :func:`parse_jwt_claims`)."""
+    return parse_jwt_claims(token)[0]
+
+
+def token_fingerprint(token: str) -> str:
+    """Stable short digest used to remember a rejected cookie token in-session."""
+    return hashlib.sha256(str(token).encode("utf-8", "ignore")).hexdigest()[:16]
 
 
 def mount_cookies() -> Any | None:
