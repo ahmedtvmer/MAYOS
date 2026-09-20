@@ -791,6 +791,46 @@ def resolve_coreference_with_llm(
         return None, None
 
 
+def _muscle_compatible(candidate: dict[str, Any], target_muscle: str, body_part: str) -> bool:
+    """True when a candidate fills the slot's muscle (containment either direction, or body part)."""
+    candidate_muscle = (candidate.get("target_muscle") or "").lower()
+    slot_muscle = (target_muscle or "").lower()
+    candidate_body = (candidate.get("body_part") or "").lower()
+    slot_body = (body_part or "").lower()
+    muscle_hit = bool(
+        slot_muscle and candidate_muscle and (slot_muscle in candidate_muscle or candidate_muscle in slot_muscle)
+    )
+    body_hit = bool(slot_body and candidate_body and candidate_body == slot_body)
+    return muscle_hit or body_hit
+
+
+def _slot_alternative_lines(db: Any, matched_ex: Any, target_muscle: str, body_part: str) -> list[str]:
+    alt_vec = EMBED_MODEL.embed_query(f"{target_muscle} {matched_ex.exercise_name}")
+    slot_candidates = db.search_similar_exercises(alt_vec, limit=6)
+    return [
+        f"- **{c['name'].title()}** (`{c.get('target_muscle', '').title()}` | `{c.get('equipment', '')}`)"
+        for c in slot_candidates
+        if str(c["id"]) != str(matched_ex.exercise_id)
+        and _muscle_compatible(c, target_muscle, body_part)
+    ][:3]
+
+
+def _target_is_name_like(target_desc: str, candidates: list[dict[str, Any]]) -> bool:
+    """True when the target reads like a specific exercise name that failed to resolve by name.
+
+    Guards the semantic fallback: a hallucinated or typo'd name must surface a refusal
+    (plus real alternatives) instead of installing its nearest lexical sibling.
+    """
+    target_tokens = {t for t in re.findall(r"[a-z0-9]+", target_desc.lower()) if len(t) > 2}
+    if len(target_tokens) < 2:
+        return False
+    for candidate in candidates[:5]:
+        candidate_tokens = set(re.findall(r"[a-z0-9]+", (candidate.get("name") or "").lower()))
+        if len(target_tokens & candidate_tokens) / len(target_tokens) >= 0.6:
+            return True
+    return False
+
+
 def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
     meta = state.get("intent_metadata", {})
     source_name = (meta.get("source_exercise") or "").strip()
@@ -900,50 +940,94 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
         lines.append(f"\n*To commit a swap, reply:* `swap {matched_ex.exercise_name} for [Choice]`")
         return {"program_updated": False, "response_content": "\n".join(lines), "messages": [AIMessage(content="\n".join(lines))]}
 
-    query_vec = EMBED_MODEL.embed_query(target_desc)
-    candidates = db.search_similar_exercises(query_vec, limit=20)
-
-    # Pre-commit Guard: Strict confidence threshold (distance <= 0.27)
-    valid_replacements = [
-        c for c in candidates
-        if str(c["id"]) != str(matched_ex.exercise_id)
-        and (
-            (target_muscle and (target_muscle.lower() in c.get("target_muscle", "").lower() or c.get("target_muscle", "").lower() in target_muscle.lower()))
-            or (body_part and body_part.lower() == c.get("body_part", "").lower())
-        )
-        and ("distance" not in c or c["distance"] <= 0.27)
+    # Layer 1: deterministic catalog name resolution. An explicitly named movement must
+    # resolve by name — it never silently falls through to its nearest embedding sibling.
+    # Raw text is tried before abbreviation-expanded text: suffix rules like
+    # "lat pulldown" → "cable lat pulldown" must not corrupt already-specific names.
+    name_matches = [
+        match
+        for match in db.find_exercises_by_name(raw_target or target_desc)
+        if str(match["id"]) != str(matched_ex.exercise_id)
     ]
+    if not name_matches:
+        name_matches = [
+            match
+            for match in db.find_exercises_by_name(target_desc)
+            if str(match["id"]) != str(matched_ex.exercise_id)
+        ]
+    compatible_name_match = next(
+        (match for match in name_matches if _muscle_compatible(match, target_muscle, body_part)),
+        None,
+    )
 
     replacement = None
-    if valid_replacements:
-        replacement = valid_replacements[0]
-        q_lower = query.lower()
-        if "dumbbell" in q_lower or "db" in q_lower:
-            db_cand = next((c for c in valid_replacements if "dumbbell" in c["name"].lower()), None)
-            if db_cand:
-                replacement = db_cand
-        elif "barbell" in q_lower or "bb" in q_lower:
-            bb_cand = next((c for c in valid_replacements if "barbell" in c["name"].lower()), None)
-            if bb_cand:
-                replacement = bb_cand
-        else:
-            # If tied within 0.02, prefer barbell for compound movements
-            bb_cand = next((c for c in valid_replacements if "barbell" in c["name"].lower()), None)
-            if bb_cand and abs(bb_cand.get("distance", 0) - replacement.get("distance", 0)) < 0.02:
-                replacement = bb_cand
+    valid_replacements: list[dict[str, Any]] = []
+
+    if compatible_name_match is not None:
+        replacement = compatible_name_match
+    elif name_matches:
+        potential = _slot_alternative_lines(db, matched_ex, target_muscle, body_part)
+        rejected = name_matches[0]
+        msg = (
+            f"**{rejected['name'].title()}** is in the exercise database, but it targets "
+            f"`{str(rejected.get('target_muscle') or 'a different muscle').title()}`, not your "
+            f"`{target_muscle.title()}` slot.\n\n"
+        )
+        if potential:
+            msg += "**Compatible alternatives for this slot:**\n" + "\n".join(potential)
+            msg += f"\n\n*To select one, reply:* `swap {matched_ex.exercise_name} for [Choice]`"
+        return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
+    else:
+        # Layer 2: semantic resolution for descriptive targets (e.g. "something easier on my elbows").
+        # Raw text is embedded first: abbreviation expansion may inject equipment ("lat pulldown"
+        # → "cable lat pulldown") and must not corrupt an already-specific name's ranking.
+        def _semantic_replacements(text: str) -> list[dict[str, Any]]:
+            candidates = db.search_similar_exercises(EMBED_MODEL.embed_query(text), limit=20)
+            # Pre-commit Guard: Strict confidence threshold (distance <= 0.27)
+            return [
+                c
+                for c in candidates
+                if str(c["id"]) != str(matched_ex.exercise_id)
+                and (
+                    (
+                        target_muscle
+                        and (
+                            target_muscle.lower() in c.get("target_muscle", "").lower()
+                            or c.get("target_muscle", "").lower() in target_muscle.lower()
+                        )
+                    )
+                    or (body_part and body_part.lower() == c.get("body_part", "").lower())
+                )
+                and ("distance" not in c or c["distance"] <= 0.27)
+            ]
+
+        valid_replacements = _semantic_replacements(raw_target or target_desc)
+        if not valid_replacements and target_desc != raw_target:
+            valid_replacements = _semantic_replacements(target_desc)
+
+        if valid_replacements and _target_is_name_like(raw_target or target_desc, valid_replacements):
+            # The trainee named an exercise we could not resolve — refuse rather than
+            # install the closest lexical sibling.
+            valid_replacements = []
+        elif valid_replacements:
+            replacement = valid_replacements[0]
+            q_lower = query.lower()
+            if "dumbbell" in q_lower or "db" in q_lower:
+                db_cand = next((c for c in valid_replacements if "dumbbell" in c["name"].lower()), None)
+                if db_cand:
+                    replacement = db_cand
+            elif "barbell" in q_lower or "bb" in q_lower:
+                bb_cand = next((c for c in valid_replacements if "barbell" in c["name"].lower()), None)
+                if bb_cand:
+                    replacement = bb_cand
+            else:
+                # If tied within 0.02, prefer barbell for compound movements
+                bb_cand = next((c for c in valid_replacements if "barbell" in c["name"].lower()), None)
+                if bb_cand and abs(bb_cand.get("distance", 0) - replacement.get("distance", 0)) < 0.02:
+                    replacement = bb_cand
 
     if not replacement:
-        alt_vec = EMBED_MODEL.embed_query(f"{target_muscle} {matched_ex.exercise_name}")
-        slot_candidates = db.search_similar_exercises(alt_vec, limit=6)
-        potential = [
-            f"- **{c['name'].title()}** (`{c.get('target_muscle', '').title()}` | `{c.get('equipment', '')}`)"
-            for c in slot_candidates
-            if str(c["id"]) != str(matched_ex.exercise_id)
-            and (
-                (target_muscle and target_muscle.lower() in c.get("target_muscle", "").lower())
-                or (body_part and body_part.lower() == c.get("body_part", "").lower())
-            )
-        ][:3]
+        potential = _slot_alternative_lines(db, matched_ex, target_muscle, body_part)
         msg = (
             f"Could not find a biomechanically suitable match for **'{raw_target or target_desc}'** "
             f"(I couldn't confidently identify it for your `{target_muscle.title()}` slot).\n\n"
@@ -969,7 +1053,11 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
             None,
         )
         if alt_variant and ("dumbbell" not in query.lower() and "barbell" not in query.lower()):
-            note_suffix = f"\n\n*(Installed the primary **{replacement['equipment'].title()}** variant. If you prefer **{alt_variant['name'].title()}**, reply: `swap for {alt_variant['equipment']} {raw_target}`.)*"
+            note_suffix = (
+                f"\n\n*(Installed the primary **{replacement['equipment'].title()}** variant. "
+                f"If you prefer **{alt_variant['name'].title()}**, reply: "
+                f"`swap {matched_ex.exercise_name} for {alt_variant['name']}`.)*"
+            )
 
         msg = (
             f"✅ **Routine Slot Updated ({target_day.day_name})**\n\n"

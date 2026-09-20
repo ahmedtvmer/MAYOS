@@ -7,6 +7,26 @@ from ui.api_client import api
 from ui.views.program import render_program_dashboard
 
 
+def _record_label(record: dict) -> str:
+    if record.get("record_type") == "max_weight":
+        return f"{record.get('reps')}-rep max"
+    return "e1RM"
+
+
+def _render_pr_table(records: list[dict], include_movement: bool = False) -> None:
+    rows = []
+    for record in records:
+        row = {}
+        if include_movement:
+            row["Movement"] = record.get("name", record.get("exercise_id", "—"))
+        row["Record"] = _record_label(record)
+        row["Value"] = f"{float(record['value']):g} kg"
+        row["Previous"] = f"{float(record['prev_value']):g} kg" if record.get("prev_value") is not None else "—"
+        row["Achieved"] = str(record.get("achieved_at", ""))[:10]
+        rows.append(row)
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
 def render_dashboard(profile: dict, program) -> None:
     if st.session_state.get("just_regenerated"):
         st.toast("✅ Routine recalibrated and saved to ledger!", icon="⚡")
@@ -38,6 +58,17 @@ def render_dashboard(profile: dict, program) -> None:
 
     st.divider()
 
+    # Personal Record Shelf (deterministic, no LLM involvement)
+    st.markdown("#### 🏆 Recent Personal Records")
+    st.caption("Heaviest set per exact rep count and best RPE-adjusted e1RM, newest first.")
+    recent_prs = api("GET", "/dashboard/personal-records", params={"limit": 10})
+    if recent_prs:
+        _render_pr_table(recent_prs, include_movement=True)
+    else:
+        st.info("No personal records yet. Finish a workout to set your first baseline.")
+
+    st.divider()
+
     # Longitudinal Overload Trajectory
     st.markdown("#### 🎯 Longitudinal Overload Trajectory")
     st.caption("Inspect RPE-adjusted estimated 1RM (e1RM) and top-set loads across recorded exposures.")
@@ -62,6 +93,15 @@ def render_dashboard(profile: dict, program) -> None:
                 st.line_chart(df_hist.set_index("date")["weight_kg"])
 
             st.caption(payload.get("caption", ""))
+
+            records = payload.get("records", [])
+            with st.expander(f"🏆 PR Shelf — {selected_name}", expanded=bool(records)):
+                if records:
+                    _render_pr_table(records[:10])
+                    if len(records) > 10:
+                        st.caption(f"Showing the 10 most recent of {len(records)} records.")
+                else:
+                    st.caption("No records logged for this movement yet.")
     else:
         st.info("Log workouts in Tab 2 to unlock movement overload charts.")
 

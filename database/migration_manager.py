@@ -1,5 +1,6 @@
 # database/migration_manager.py
 import sqlite3
+import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -9,7 +10,7 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_USER_SCHEMA_VERSION: int = 3
+CURRENT_USER_SCHEMA_VERSION: int = 4
 
 
 def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
@@ -28,6 +29,80 @@ def _migrate_v2_to_v3(conn: sqlite3.Connection) -> None:
     columns = {row[1] for row in conn.execute("PRAGMA table_info(auth_credentials)").fetchall()}
     if "token_version" not in columns:
         conn.execute("ALTER TABLE auth_credentials ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1")
+
+
+def _legacy_e1rm(weight_kg: float, reps: int, rpe: float | None) -> float:
+    """Mirrors ``agent.progression_engine.calculate_e1rm`` (importing it here would be circular)."""
+    effective_rpe = rpe if rpe is not None else 8.5
+    effective_reps = reps + (10.0 - min(max(effective_rpe, 6.0), 10.0))
+    return weight_kg * (1.0 + (effective_reps / 30.0))
+
+
+def _migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
+    """Adds personal_records and backfills historical PRs from workout_sets.
+
+    Backfill keeps first-achievement semantics: rows are walked chronologically and
+    a record is only written when it strictly beats the running max, so ``achieved_at``
+    points at the earliest set that reached the final value.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS personal_records (
+            id TEXT PRIMARY KEY,
+            exercise_id TEXT NOT NULL,
+            record_type TEXT NOT NULL CHECK (record_type IN ('max_weight', 'max_e1rm')),
+            reps INTEGER,
+            value REAL NOT NULL,
+            prev_value REAL,
+            achieved_at TEXT NOT NULL,
+            session_id TEXT,
+            FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pr_exercise ON personal_records(exercise_id, record_type)")
+
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    if not {"workout_sets", "workout_sessions"}.issubset(tables):
+        return
+
+    rows = conn.execute("""
+        SELECT ws.exercise_id, ws.weight_kg, ws.reps, ws.rpe, ws.set_index, ws.logged_at,
+               s.id AS session_id, s.started_at, s.session_date
+        FROM workout_sets ws
+        JOIN workout_sessions s ON ws.session_id = s.id
+        WHERE ws.is_warmup = 0 AND ws.weight_kg > 0 AND ws.reps > 0
+        ORDER BY COALESCE(s.started_at, s.session_date) ASC, ws.rowid ASC
+    """).fetchall()
+
+    best_weight: dict[tuple[str, int], float] = {}
+    best_e1rm: dict[str, float] = {}
+    payload: list[tuple] = []
+
+    for exercise_id, weight, reps, rpe, _set_index, logged_at, session_id, started_at, session_date in rows:
+        achieved_at = logged_at or started_at or session_date
+        weight_key = (exercise_id, int(reps))
+        if weight > best_weight.get(weight_key, 0.0):
+            best_weight[weight_key] = weight
+            payload.append(
+                (str(uuid.uuid4()), exercise_id, "max_weight", int(reps), weight, None, achieved_at, session_id)
+            )
+
+        e1rm = _legacy_e1rm(float(weight), int(reps), rpe)
+        if e1rm > best_e1rm.get(exercise_id, 0.0):
+            best_e1rm[exercise_id] = e1rm
+            payload.append(
+                (str(uuid.uuid4()), exercise_id, "max_e1rm", int(reps), round(e1rm, 2), None, achieved_at, session_id)
+            )
+
+    if payload:
+        conn.executemany(
+            """
+            INSERT INTO personal_records (
+                id, exercise_id, record_type, reps, value, prev_value, achieved_at, session_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            payload,
+        )
+        logger.info(f"Backfilled {len(payload)} personal records from historical sets.")
 
 
 def get_user_schema_version(conn: sqlite3.Connection) -> int:
@@ -118,6 +193,7 @@ MigrationCallable = Callable[[sqlite3.Connection], None]
 MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
+    3: _migrate_v3_to_v4,
 }
 
 

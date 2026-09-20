@@ -45,6 +45,37 @@ def format_overload_deltas(exercise_summaries: List[Dict[str, Any]]) -> str:
     return "\n".join(advancements)
 
 
+def _format_prev_value(prev_value: Any) -> str:
+    if prev_value is None:
+        return "first record"
+    return f"prev {float(prev_value):g} kg"
+
+
+def format_pr_events(pr_events: List[Dict[str, Any]]) -> str:
+    """Deterministic 🏆 lines for records beaten this session, grouped per movement."""
+    if not pr_events:
+        return ""
+
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for event in pr_events:
+        key = str(event.get("exercise_id") or event.get("name", "Exercise"))
+        grouped.setdefault(key, []).append(event)
+
+    lines = []
+    for events in grouped.values():
+        name = events[0].get("name") or events[0].get("exercise_id", "Exercise")
+        parts = []
+        for event in events:
+            prev = _format_prev_value(event.get("prev_value"))
+            if event.get("record_type") == "max_weight":
+                parts.append(f"{float(event['value']):g} kg × {int(event['reps'])} ({prev})")
+            elif event.get("record_type") == "max_e1rm":
+                parts.append(f"e1RM {float(event['value']):.1f} kg ({prev})")
+        if parts:
+            lines.append(f"- 🏆 New PR: {name} — " + " | ".join(parts))
+    return "\n".join(lines)
+
+
 def generate_session_debrief(
     split_name: str,
     readiness: int,
@@ -54,6 +85,7 @@ def generate_session_debrief(
     fatigue_info: dict[str, Any] | None = None,
     total_tonnage: float | None = None,
     total_sets: int | None = None,
+    pr_events: list[dict[str, Any]] | None = None,
     **kwargs: Any,
 ) -> str:
     """Generates a structured post-workout debrief from raw telemetry."""
@@ -64,6 +96,9 @@ def generate_session_debrief(
         total_tonnage = sum(ex.get("volume_load", 0.0) for ex in exercise_summaries)
 
     deltas_block = format_overload_deltas(exercise_summaries)
+    pr_block = format_pr_events(pr_events or [])
+    if pr_block:
+        deltas_block = f"{deltas_block}\n{pr_block}"
     fatigue_block = format_fatigue_cns_check(readiness, total_tonnage, session_notes)
 
     # 2. Deterministic Next Session Directives (Zero LLM Drift)

@@ -226,11 +226,12 @@ sequenceDiagram
 
 ### Ledger Schema Evolution (ADR 005)
 
-User ledgers carry a schema version in `PRAGMA user_version` (current target: **v3**) and migrate **lazily** when mounted by `switch_user()`:
+User ledgers carry a schema version in `PRAGMA user_version` (current target: **v4**) and migrate **lazily** when mounted by `switch_user()`:
 
 * On upgrade, an atomic pre-migration snapshot is written with `sqlite3.Connection.backup()` (WAL-safe, online) into `db/backups/<user>/`, followed by sequential migration steps inside a transaction.
 * A 3+1 retention policy keeps three rolling snapshots plus immutable pre-migration backups; failure triggers rollback from the snapshot.
 * **v3** adds `auth_credentials.token_version` — the session epoch used to revoke every token on a password event (ADR 006). Legacy ledgers without a password hash are handled by the one-time claim flow rather than invented credentials.
+* **v4** adds `personal_records` and backfills historical PRs (heaviest set per exact rep count + best e1RM) from `workout_sets` with first-achievement timestamps (ADR 009).
 
 ### Catalog Account Tables (ADR 007)
 
@@ -373,9 +374,11 @@ To prevent small quantized models (4B) from hallucinating mathematical calculati
 
 1. **Deterministic Metrics Calculation (`format_overload_deltas`)**:
    Calculates e1RM deltas, load advancements (+2.5 kg), and rep-corridor holds directly in Python. If no load advancement occurred, yields an exact maintenance directive.
-2. **Deterministic Fatigue Snapshot (`format_fatigue_cns_check`)**:
+2. **Deterministic PR Injection (`format_pr_events`)**:
+   `commit_session` runs `evaluate_session_prs` over the session's working sets after the batch insert. Sets that strictly exceed the trainee's historical max (heaviest set per exact rep count and best e1RM, backfilled on migration v4) are appended as `🏆 New PR` lines inside the Overload Deltas block (ADR 009).
+3. **Deterministic Fatigue Snapshot (`format_fatigue_cns_check`)**:
    Extracts logged readiness ($X/5$), volume load tonnage, and trainee notes into a pre-formatted markdown block.
-3. **Bounded Directive Synthesis (`generate_session_debrief`)**:
+4. **Bounded Directive Synthesis (`generate_session_debrief`)**:
    The LLM is tasked *exclusively* with generating 2 to 3 concise bullet points under `**Next Session Directives**:` adhering strictly to active deload RPE caps or progression directives.
 ```
 

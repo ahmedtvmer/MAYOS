@@ -306,9 +306,19 @@ def test_phase3_substitution_direct_swap():
     with (
         patch("database.database_manager.DatabaseManager.get_active_program", return_value=mock_prog),
         patch.object(assistant_db, "catalog_conn", mock_conn),
+        patch("database.database_manager.DatabaseManager.find_exercises_by_name") as mock_find,
         patch("database.database_manager.DatabaseManager.search_similar_exercises") as mock_search,
         patch("database.database_manager.DatabaseManager.swap_program_exercise", return_value=True) as mock_swap,
     ):
+        mock_find.return_value = [
+            {
+                "id": "ex_999",
+                "name": "Leg Press",
+                "target_muscle": "quadriceps",
+                "body_part": "quadriceps",
+                "equipment": "machine",
+            }
+        ]
         mock_search.return_value = [
             {
                 "id": "ex_999",

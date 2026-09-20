@@ -5,7 +5,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 from agent.debrief import generate_session_debrief
-from agent.progression_engine import calculate_e1rm, evaluate_systemic_fatigue, project_next_load
+from agent.progression_engine import (
+    calculate_e1rm,
+    evaluate_session_prs,
+    evaluate_systemic_fatigue,
+    project_next_load,
+)
 from core.warmup import calculate_warmup_sets
 from service._base import bind_user
 from utils.plate_calculator import calculate_barbell_plates
@@ -191,6 +196,21 @@ def commit_session(
         )
 
     db.log_workout_sets_batch(all_sets_to_batch)
+
+    pr_events: list[dict[str, Any]] = []
+    for item in sets_by_exercise:
+        ex_obj = item["exercise"]
+        pr_events.extend(
+            evaluate_session_prs(
+                db,
+                session_id,
+                str(ex_obj.exercise_id),
+                item["sets"],
+                exercise_name=ex_obj.exercise_name,
+                achieved_at=now_iso,
+            )
+        )
+
     fatigue_post = evaluate_systemic_fatigue(db)
     debrief_content = generate_session_debrief(
         split_name=day_plan.day_name,
@@ -201,6 +221,7 @@ def commit_session(
         total_tonnage=total_tonnage_kg,
         total_sets=total_working_sets,
         fatigue_info=fatigue_post,
+        pr_events=pr_events,
     )
     db.save_session_debrief(session_id, debrief_content)
     compact_pointer = (
@@ -218,4 +239,5 @@ def commit_session(
         "debrief": debrief_content,
         "pointer": compact_pointer,
         "fatigue_post": fatigue_post,
+        "new_prs": pr_events,
     }

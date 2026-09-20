@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -212,6 +213,178 @@ def get_exercise_progression_history(db: DatabaseManager, exercise_id: str) -> l
                 "e1rm": round(calculate_e1rm(weight, reps, rpe or 8.5), 2),
             }
     return list(history_by_date.values())
+
+
+def _set_e1rm(set_data: dict[str, Any]) -> float:
+    rpe = set_data.get("rpe")
+    return calculate_e1rm(
+        float(set_data["weight_kg"]),
+        int(set_data["reps"]),
+        float(rpe) if rpe is not None else 8.5,
+    )
+
+
+def _check_and_record(
+    db: DatabaseManager,
+    exercise_id: str,
+    weight_kg: float,
+    reps: int,
+    e1rm: float,
+    record_types: set[str],
+    session_id: str | None = None,
+    achieved_at: str | None = None,
+) -> list[dict[str, Any]]:
+    checks: list[tuple[str, float]] = []
+    if "max_weight" in record_types:
+        checks.append(("max_weight", round(float(weight_kg), 2)))
+    if "max_e1rm" in record_types:
+        checks.append(("max_e1rm", round(float(e1rm), 2)))
+
+    cursor = db.conn.cursor()
+    events: list[dict[str, Any]] = []
+    stamp = achieved_at or datetime.now(UTC).isoformat()
+
+    for record_type, value in checks:
+        if value <= 0:
+            continue
+        if record_type == "max_weight":
+            cursor.execute(
+                """
+                SELECT MAX(value) FROM personal_records
+                WHERE exercise_id = ? AND record_type = 'max_weight' AND reps = ?
+            """,
+                (exercise_id, reps),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT MAX(value) FROM personal_records
+                WHERE exercise_id = ? AND record_type = 'max_e1rm'
+            """,
+                (exercise_id,),
+            )
+        row = cursor.fetchone()
+        current = float(row[0]) if row and row[0] is not None else 0.0
+        if value <= current:
+            continue
+
+        cursor.execute(
+            """
+            INSERT INTO personal_records (
+                id, exercise_id, record_type, reps, value, prev_value, achieved_at, session_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                str(uuid.uuid4()),
+                exercise_id,
+                record_type,
+                reps,
+                value,
+                current if current > 0 else None,
+                stamp,
+                session_id,
+            ),
+        )
+        db.conn.commit()
+        events.append(
+            {
+                "exercise_id": exercise_id,
+                "record_type": record_type,
+                "reps": reps,
+                "value": value,
+                "prev_value": current if current > 0 else None,
+                "achieved_at": stamp,
+                "session_id": session_id,
+            }
+        )
+
+    return events
+
+
+def check_and_record_pr(
+    db: DatabaseManager,
+    exercise_id: str,
+    weight_kg: float,
+    reps: int,
+    e1rm: float,
+    session_id: str | None = None,
+    achieved_at: str | None = None,
+) -> list[dict[str, Any]]:
+    """Compares a single set against stored records; persists and returns any records beaten.
+
+    Records are strictly-greater only (ties are not PRs). Weight records are scoped to the
+    exact rep count, e1RM records are exercise-wide.
+    """
+    if float(weight_kg) <= 0 or int(reps) <= 0 or float(e1rm) <= 0:
+        return []
+    return _check_and_record(
+        db,
+        exercise_id,
+        weight_kg,
+        int(reps),
+        e1rm,
+        {"max_weight", "max_e1rm"},
+        session_id=session_id,
+        achieved_at=achieved_at,
+    )
+
+
+def evaluate_session_prs(
+    db: DatabaseManager,
+    session_id: str,
+    exercise_id: str,
+    sets: list[dict[str, Any]],
+    exercise_name: str | None = None,
+    achieved_at: str | None = None,
+) -> list[dict[str, Any]]:
+    """Records at most one PR per record type per movement per session.
+
+    Working sets are reduced to the heaviest set per rep count plus the best-e1RM set,
+    so transient in-session improvements do not spam the ledger.
+    """
+    working = [
+        s
+        for s in sets
+        if not s.get("is_warmup", False) and float(s.get("weight_kg", 0) or 0) > 0 and int(s.get("reps", 0) or 0) > 0
+    ]
+    if not working:
+        return []
+
+    stamp = achieved_at or datetime.now(UTC).isoformat()
+    best_e1rm_set = max(working, key=_set_e1rm)
+
+    groups: dict[int, list[dict[str, Any]]] = {}
+    for s in working:
+        groups.setdefault(int(s["reps"]), []).append(s)
+
+    candidates: list[tuple[dict[str, Any], set[str]]] = []
+    for _reps, group in sorted(groups.items()):
+        best_weight_set = max(group, key=lambda s: float(s["weight_kg"]))
+        record_types = {"max_weight"}
+        if best_weight_set is best_e1rm_set:
+            record_types.add("max_e1rm")
+        candidates.append((best_weight_set, record_types))
+    if all(candidate is not best_e1rm_set for candidate, _ in candidates):
+        candidates.append((best_e1rm_set, {"max_e1rm"}))
+
+    events: list[dict[str, Any]] = []
+    for candidate, record_types in candidates:
+        events.extend(
+            _check_and_record(
+                db,
+                exercise_id,
+                candidate["weight_kg"],
+                int(candidate["reps"]),
+                _set_e1rm(candidate),
+                record_types,
+                session_id=session_id,
+                achieved_at=stamp,
+            )
+        )
+
+    for event in events:
+        event["name"] = exercise_name or exercise_id
+    return events
 
 
 def get_progression_signals(db: DatabaseManager) -> str:

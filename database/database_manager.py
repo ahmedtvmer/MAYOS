@@ -39,6 +39,11 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 
+def _normalize_exercise_name(name: str) -> str:
+    """Lowercase and collapse punctuation so "push up" ≡ "push-up" and "two arm" ≡ "two-arm"."""
+    return re.sub(r"[^a-z0-9]+", " ", (name or "").lower()).strip()
+
+
 class DatabaseManager:
     _instance = None
     EMBEDDING_DIM = 384
@@ -305,6 +310,19 @@ class DatabaseManager:
                 logged_at TEXT NOT NULL,
                 FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS personal_records (
+                id TEXT PRIMARY KEY,
+                exercise_id TEXT NOT NULL,
+                record_type TEXT NOT NULL CHECK (record_type IN ('max_weight', 'max_e1rm')),
+                reps INTEGER,
+                value REAL NOT NULL,
+                prev_value REAL,
+                achieved_at TEXT NOT NULL,
+                session_id TEXT,
+                FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_pr_exercise ON personal_records(exercise_id, record_type);
+
             CREATE TABLE IF NOT EXISTS chat_history (
                 id TEXT PRIMARY KEY,
                 role TEXT CHECK(role IN ('user', 'assistant', 'system')) NOT NULL,
@@ -1345,56 +1363,80 @@ class DatabaseManager:
             f"{fatigue_line}"
         )
 
-    def find_exercise_by_name(self, query: str) -> dict[str, Any] | None:
+    def find_exercises_by_name(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Ranked catalog name matches: exact → punctuation-insensitive → substring → token-AND.
+
+        Each tier short-circuits: weaker-tier matches are only returned when every stronger
+        tier came up empty. The substitution resolver uses this so an explicitly named
+        exercise either resolves by name or refuses — it never falls through to semantic
+        (embedding) ranking and installs a lexical sibling.
+        """
         clean = query.strip().lower()
-        if not clean:
-            return None
+        if not clean or limit <= 0:
+            return []
+
+        columns = "id, name, body_part, target_muscle, equipment"
+        matches: list[dict[str, Any]] = []
+        seen: set[str] = set()
+
+        def _collect(row: sqlite3.Row | tuple | None) -> None:
+            if row is None:
+                return
+            match_id = str(row[0])
+            if match_id in seen:
+                return
+            seen.add(match_id)
+            matches.append(
+                {
+                    "id": match_id,
+                    "name": row[1],
+                    "body_part": row[2],
+                    "target_muscle": row[3],
+                    "equipment": row[4],
+                }
+            )
 
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
-            cursor.execute(
-                "SELECT id, name, body_part, target_muscle, equipment FROM exercises WHERE LOWER(name) = ? LIMIT 1",
-                (clean,),
-            )
-            row = cursor.fetchone()
-            if row:
-                return {
-                    "id": str(row[0]),
-                    "name": row[1],
-                    "body_part": row[2],
-                    "target_muscle": row[3],
-                    "equipment": row[4],
-                }
+            cursor.execute(f"SELECT {columns} FROM exercises WHERE LOWER(name) = ? LIMIT ?", (clean, limit))
+            for row in cursor.fetchall():
+                _collect(row)
+            if matches:
+                return matches
+
+            normalized = _normalize_exercise_name(clean)
+            if normalized:
+                cursor.execute(f"SELECT {columns} FROM exercises")
+                normalized_rows = [row for row in cursor.fetchall() if _normalize_exercise_name(row[1]) == normalized]
+                normalized_rows.sort(key=lambda row: len(row[1] or ""))
+                for row in normalized_rows[:limit]:
+                    _collect(row)
+                if matches:
+                    return matches
 
             cursor.execute(
-                "SELECT id, name, body_part, target_muscle, equipment FROM exercises WHERE LOWER(name) LIKE ? ORDER BY LENGTH(name) ASC LIMIT 1",
-                (f"%{clean}%",),
+                f"SELECT {columns} FROM exercises WHERE LOWER(name) LIKE ? ORDER BY LENGTH(name) ASC LIMIT ?",
+                (f"%{clean}%", limit),
             )
-            row = cursor.fetchone()
-            if row:
-                return {
-                    "id": str(row[0]),
-                    "name": row[1],
-                    "body_part": row[2],
-                    "target_muscle": row[3],
-                    "equipment": row[4],
-                }
+            for row in cursor.fetchall():
+                _collect(row)
+            if matches:
+                return matches
 
             tokens = [t for t in re.split(r"\s+", clean) if len(t) > 2]
             if tokens:
                 where_clauses = ["LOWER(name) LIKE ?" for _ in tokens]
                 cursor.execute(
-                    f"SELECT id, name, body_part, target_muscle, equipment FROM exercises WHERE {' AND '.join(where_clauses)} ORDER BY LENGTH(name) ASC LIMIT 1",
-                    [f"%{t}%" for t in tokens],
+                    f"SELECT {columns} FROM exercises WHERE {' AND '.join(where_clauses)}"
+                    " ORDER BY LENGTH(name) ASC LIMIT ?",
+                    [*[f"%{t}%" for t in tokens], limit],
                 )
-                row = cursor.fetchone()
-                if row:
-                    return {
-                        "id": str(row[0]),
-                        "name": row[1],
-                        "body_part": row[2],
-                        "target_muscle": row[3],
-                        "equipment": row[4],
-                    }
+                for row in cursor.fetchall():
+                    _collect(row)
 
-            return None
+        return matches
+
+    def find_exercise_by_name(self, query: str) -> dict[str, Any] | None:
+        """Best catalog name match (exact → punctuation-insensitive → substring → token-AND)."""
+        matches = self.find_exercises_by_name(query, limit=1)
+        return matches[0] if matches else None

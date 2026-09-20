@@ -22,9 +22,11 @@ def render_debrief(result: dict, readiness: int) -> None:
     st.divider()
 
     st.markdown("### 📊 Movement Analytics")
+    pr_names = {event.get("name") for event in result.get("new_prs", [])}
     for ex_stat in exercise_summaries:
         badge = ex_stat.get("status_badge", "LOGGED")
-        st.markdown(f"#### {ex_stat.get('name', 'Movement')} `{badge}`")
+        pr_badge = " `🏆 PR`" if ex_stat.get("name") in pr_names else ""
+        st.markdown(f"#### {ex_stat.get('name', 'Movement')} `{badge}`{pr_badge}")
 
         c_load, c_e1rm, c_target = st.columns([1.2, 1.2, 2.6])
         with c_load:

@@ -202,6 +202,79 @@ def test_active_program_served_for_returning_user(tmp_path, monkeypatch):
         db.catalog_conn.close()
 
 
+def test_workout_commit_detects_prs_and_dashboard_serves_them(tmp_path, monkeypatch):
+    app, db = _real_jwt_app(tmp_path, monkeypatch)
+    try:
+        with TestClient(app) as api:
+            token = api.post(
+                "/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"}
+            ).json()["access_token"]
+            headers = {"Authorization": f"Bearer {token}"}
+            db.switch_user("alice")
+            db.upsert_user_profile({"current_goal": "Strength"})
+            db.save_training_program(
+                {
+                    "program_name": "Saved Split",
+                    "weekly_frequency": 3,
+                    "split_type": "Full Body",
+                    "days": [
+                        {
+                            "day_name": "Full A",
+                            "day_order": 1,
+                            "exercises": [
+                                {"exercise_id": "sq", "target_sets": 3, "target_reps_min": 5, "target_reps_max": 8, "target_rpe": 8.5},
+                                {"exercise_id": "bp", "target_sets": 3, "target_reps_min": 5, "target_reps_max": 8, "target_rpe": 8.5},
+                                {"exercise_id": "row", "target_sets": 3, "target_reps_min": 5, "target_reps_max": 8, "target_rpe": 8.5},
+                            ],
+                        }
+                    ],
+                }
+            )
+
+            def exercise_payload(exercise_id, exercise_name):
+                return {
+                    "exercise_id": exercise_id,
+                    "exercise_name": exercise_name,
+                    "target_sets": 3,
+                    "target_reps_min": 5,
+                    "target_reps_max": 8,
+                    "target_rpe": 8.5,
+                    "rest_seconds": 120,
+                    "notes": None,
+                }
+
+            commit = api.post(
+                "/workouts/sessions",
+                headers=headers,
+                json={
+                    "day_order": 1,
+                    "readiness": 4,
+                    "session_notes": "",
+                    "sets": [
+                        {
+                            "exercise": exercise_payload("sq", "Squat"),
+                            "sets": [{"weight_kg": 100.0, "reps": 5, "rpe": 8.0}],
+                        }
+                    ],
+                },
+            )
+            assert commit.status_code == 201
+            body = commit.json()
+            assert {event["record_type"] for event in body["new_prs"]} == {"max_weight", "max_e1rm"}
+            assert "🏆 New PR: Squat" in body["debrief"]
+
+            shelf = api.get("/dashboard/personal-records", headers=headers)
+            assert shelf.status_code == 200
+            assert any(record["exercise_id"] == "sq" for record in shelf.json())
+
+            history = api.get("/dashboard/exercises/sq/history", headers=headers).json()
+            assert history["records"]
+    finally:
+        if db.user_conn is not None:
+            db.user_conn.close()
+        db.catalog_conn.close()
+
+
 def test_logout_revokes_token(tmp_path, monkeypatch):
     app, db = _real_jwt_app(tmp_path, monkeypatch)
     try:
@@ -259,7 +332,8 @@ def test_dashboard_empty_ledger(client):
     assert volume["Quads"] == 0.0
     assert client.get("/dashboard/exercises").json() == []
     history = client.get("/dashboard/exercises/sq/history").json()
-    assert history == {"history": [], "caption": None}
+    assert history == {"history": [], "caption": None, "records": []}
+    assert client.get("/dashboard/personal-records").json() == []
 
 
 def test_chat_history_and_turn(client, monkeypatch):

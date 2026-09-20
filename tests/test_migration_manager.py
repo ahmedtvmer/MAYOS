@@ -52,7 +52,7 @@ def temp_db_env(tmp_path: Path, monkeypatch):
 def test_schema_version_stamping(temp_db_env):
     db, users_dir, _ = temp_db_env
     version = get_user_schema_version(db.conn)
-    assert version == CURRENT_USER_SCHEMA_VERSION == 3
+    assert version == CURRENT_USER_SCHEMA_VERSION == 4
 
 
 def test_atomic_backup_and_restore(temp_db_env):
@@ -470,7 +470,7 @@ def test_v1_to_v2_adds_password_hash_preserving_data(temp_db_env):
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
-    assert CURRENT_USER_SCHEMA_VERSION == 3
+    assert CURRENT_USER_SCHEMA_VERSION == 4
     db, users_dir, _ = temp_db_env
     # Craft a legacy v1 ledger: no password_hash column, stamped v1.
     legacy_path = users_dir / "legacy.db"
@@ -506,7 +506,7 @@ def test_v2_to_v3_adds_token_version_preserving_hash(temp_db_env):
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
-    assert CURRENT_USER_SCHEMA_VERSION == 3
+    assert CURRENT_USER_SCHEMA_VERSION == 4
     db, users_dir, _ = temp_db_env
     # Craft a v2 ledger: auth_credentials without token_version, stamped v2.
     legacy_path = users_dir / "v2user.db"
@@ -529,12 +529,78 @@ def test_v2_to_v3_adds_token_version_preserving_hash(temp_db_env):
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v2user"
     )
     try:
-        assert get_user_schema_version(migrated.conn) == 3
+        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION
         assert migrated.get_password_hash() == "$2b$12$fakehash"
         assert migrated.get_token_version() == 1
         assert migrated.bump_token_version() == 2
         assert migrated.get_token_version() == 2
         assert migrated.get_password_hash() == "$2b$12$fakehash"
+    finally:
+        if migrated.user_conn is not None:
+            migrated.user_conn.close()
+        migrated.catalog_conn.close()
+
+
+def test_v3_to_v4_backfills_personal_records(temp_db_env):
+    import threading
+
+    from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
+
+    assert CURRENT_USER_SCHEMA_VERSION == 4
+    db, users_dir, _ = temp_db_env
+    legacy_path = users_dir / "v3lifter.db"
+    conn = sqlite3.connect(legacy_path)
+    conn.executescript("""
+        CREATE TABLE user_profile (id INTEGER PRIMARY KEY, current_goal TEXT NOT NULL, updated_at TEXT NOT NULL);
+        INSERT INTO user_profile VALUES (1, 'Strength', '2026-01-01T00:00:00+00:00');
+        CREATE TABLE auth_credentials (
+            id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1), password_hash TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        INSERT INTO auth_credentials VALUES (1, '$2b$12$fakehash', '2026-01-01T00:00:00+00:00');
+        CREATE TABLE workout_sessions (id TEXT PRIMARY KEY, session_date TEXT, started_at TEXT);
+        INSERT INTO workout_sessions VALUES ('s1', '2026-01-01', '2026-01-01T10:00:00+00:00');
+        INSERT INTO workout_sessions VALUES ('s2', '2026-02-01', '2026-02-01T10:00:00+00:00');
+        CREATE TABLE workout_sets (
+            id TEXT PRIMARY KEY, session_id TEXT, exercise_id TEXT, set_index INTEGER,
+            weight_kg REAL, reps INTEGER, rpe REAL, is_warmup INTEGER, logged_at TEXT
+        );
+        INSERT INTO workout_sets VALUES ('w1', 's1', 'squat', 1, 100, 5, 8.0, 0, '2026-01-01T10:05:00+00:00');
+        INSERT INTO workout_sets VALUES ('w2', 's2', 'squat', 1, 100, 5, 8.0, 0, '2026-02-01T10:05:00+00:00');
+        INSERT INTO workout_sets VALUES ('w3', 's2', 'squat', 2, 105, 3, 9.0, 0, '2026-02-01T10:10:00+00:00');
+        INSERT INTO workout_sets VALUES ('w4', 's1', 'squat', 0, 60, 5, 8.0, 1, '2026-01-01T10:00:00+00:00');
+    """)
+    conn.execute("PRAGMA user_version = 3")
+    conn.commit()
+    conn.close()
+
+    DatabaseManager._instance = None
+    DatabaseManager._local = threading.local()
+    migrated = DatabaseManager(
+        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v3lifter"
+    )
+    try:
+        assert get_user_schema_version(migrated.conn) == 4
+        rows = migrated.conn.execute("""
+            SELECT record_type, reps, value, prev_value, achieved_at, session_id
+            FROM personal_records
+            ORDER BY record_type, reps
+        """).fetchall()
+        assert [(r["record_type"], r["reps"]) for r in rows] == [
+            ("max_e1rm", 5),
+            ("max_weight", 3),
+            ("max_weight", 5),
+        ]
+        # Oldest e1RM/5-rep exposure wins the tie: first-achievement semantics at s1.
+        e1rm_row = rows[0]
+        assert e1rm_row["value"] == pytest.approx(100 * (1 + 7.0 / 30), abs=0.01)
+        assert e1rm_row["session_id"] == "s1"
+        assert e1rm_row["achieved_at"] == "2026-01-01T10:05:00+00:00"
+        three_rep = rows[1]
+        assert three_rep["value"] == 105
+        assert three_rep["session_id"] == "s2"
+        # Warmups never seed records.
+        assert all(r["prev_value"] is None for r in rows)
+        assert len(rows) == 3
     finally:
         if migrated.user_conn is not None:
             migrated.user_conn.close()
