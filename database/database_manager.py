@@ -1016,6 +1016,24 @@ class DatabaseManager:
             "exercises": exercises,
         }
 
+    def get_session_log(self) -> list[dict[str, Any]]:
+        """Chronological session→set rows (exercise names resolved) for ledger export.
+
+        Returns a flat, one-row-per-set list; grouping/nesting happens in the service layer.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT s.id AS session_id, s.session_date, s.split_name, s.readiness_score,
+                   s.session_notes, s.started_at, s.completed_at,
+                   ws.exercise_id, COALESCE(e.name, ws.exercise_id) AS exercise_name,
+                   ws.set_index, ws.weight_kg, ws.reps, ws.rpe, ws.is_warmup, ws.logged_at
+            FROM workout_sets ws
+            JOIN workout_sessions s ON ws.session_id = s.id
+            LEFT JOIN catalog.exercises e ON e.id = ws.exercise_id
+            ORDER BY s.session_date ASC, s.started_at ASC, s.rowid ASC, ws.rowid ASC
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
     def get_last_performance(self, exercise_id: str) -> list[dict[str, Any]]:
         cursor = self.conn.cursor()
         cursor.execute(

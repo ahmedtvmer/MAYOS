@@ -1,15 +1,20 @@
-"""Workout prescription and session commit."""
+"""Workout prescription, session commit, and ledger export."""
 
 import asyncio
+import io
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 
+from service import sessions as sessions_service
 from service import workouts as workouts_service
 from svc.dependencies import bind_request, get_current_trainee, get_db
 from svc.schemas import SessionCommitIn
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
+
+EXPORT_MEDIA_TYPES = {"csv": "text/csv", "json": "application/json"}
 
 
 def _day_plan(db: Any, trainee: str, day_order: int) -> Any:
@@ -58,3 +63,33 @@ async def commit_session(
         )
 
     return await asyncio.to_thread(_run)
+
+
+async def _stream_session_log(trainee: str, db: Any, fmt: str) -> StreamingResponse:
+    def _run():
+        bind_request(db, trainee)
+        return sessions_service.export_session_log(db, trainee, fmt)
+
+    result = await asyncio.to_thread(_run)
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No sessions logged yet.")
+    filename, payload = result
+    return StreamingResponse(
+        io.BytesIO(payload),
+        media_type=EXPORT_MEDIA_TYPES[fmt],
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/sessions/export.csv")
+async def export_sessions_csv(
+    trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
+):
+    return await _stream_session_log(trainee, db, "csv")
+
+
+@router.get("/sessions/export.json")
+async def export_sessions_json(
+    trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
+):
+    return await _stream_session_log(trainee, db, "json")

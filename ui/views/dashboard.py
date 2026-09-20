@@ -3,7 +3,7 @@
 import pandas as pd
 import streamlit as st
 
-from ui.api_client import api
+from ui.api_client import api, api_bytes
 from ui.views.program import render_program_dashboard
 
 
@@ -113,3 +113,31 @@ def render_dashboard(profile: dict, program) -> None:
         render_program_dashboard(program)
     else:
         st.info("No active program loaded.")
+
+    st.divider()
+
+    # Session Ledger Export (CSV / JSON)
+    st.markdown("#### 📤 Export Session Ledger")
+    st.caption("Download your full training history as a flat CSV or a nested JSON exchange file.")
+    if logged_exercises:
+        c_csv, c_json = st.columns(2)
+        with c_csv:
+            filename, csv_bytes = api_bytes("/workouts/sessions/export.csv")
+            st.download_button(
+                label="📥 Download CSV",
+                data=csv_bytes,
+                file_name=filename,
+                mime="text/csv",
+                use_container_width=True,
+            )
+        with c_json:
+            filename, json_bytes = api_bytes("/workouts/sessions/export.json")
+            st.download_button(
+                label="📥 Download JSON",
+                data=json_bytes,
+                file_name=filename,
+                mime="application/json",
+                use_container_width=True,
+            )
+    else:
+        st.info("No sessions logged yet. Finish a workout in Tab 2 to enable ledger export.")

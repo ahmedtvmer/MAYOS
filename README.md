@@ -253,7 +253,7 @@ docker compose exec myos-api python scripts/check_engine_health.py
 - [x] Self-service password recovery, mandatory recovery-email gate, and operator reset CLI.
 - [x] Context-gated Tier-0b clinical safety (DOMS slang vs. genuine trauma reports).
 - [x] Qwen 3.5 4B model refresh with GPU offload and restored streaming telemetry.
-- [ ] Export session logs to standardized CSV / JSON fitness exchange formats.
+- [x] Export session logs to standardized CSV / JSON fitness exchange formats.
 - [ ] Direct Apple HealthKit and Google Health Connect local synchronization.
 - [ ] Email ownership verification (double opt-in) for recovery addresses.
 

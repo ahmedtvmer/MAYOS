@@ -202,6 +202,38 @@ def test_active_program_served_for_returning_user(tmp_path, monkeypatch):
         db.catalog_conn.close()
 
 
+def _exercise_payload(exercise_id, exercise_name):
+    return {
+        "exercise_id": exercise_id,
+        "exercise_name": exercise_name,
+        "target_sets": 3,
+        "target_reps_min": 5,
+        "target_reps_max": 8,
+        "target_rpe": 8.5,
+        "rest_seconds": 120,
+        "notes": None,
+    }
+
+
+def _saved_split_payload():
+    return {
+        "program_name": "Saved Split",
+        "weekly_frequency": 3,
+        "split_type": "Full Body",
+        "days": [
+            {
+                "day_name": "Full A",
+                "day_order": 1,
+                "exercises": [
+                    {"exercise_id": "sq", "target_sets": 3, "target_reps_min": 5, "target_reps_max": 8, "target_rpe": 8.5},
+                    {"exercise_id": "bp", "target_sets": 3, "target_reps_min": 5, "target_reps_max": 8, "target_rpe": 8.5},
+                    {"exercise_id": "row", "target_sets": 3, "target_reps_min": 5, "target_reps_max": 8, "target_rpe": 8.5},
+                ],
+            }
+        ],
+    }
+
+
 def test_workout_commit_detects_prs_and_dashboard_serves_them(tmp_path, monkeypatch):
     app, db = _real_jwt_app(tmp_path, monkeypatch)
     try:
@@ -212,36 +244,7 @@ def test_workout_commit_detects_prs_and_dashboard_serves_them(tmp_path, monkeypa
             headers = {"Authorization": f"Bearer {token}"}
             db.switch_user("alice")
             db.upsert_user_profile({"current_goal": "Strength"})
-            db.save_training_program(
-                {
-                    "program_name": "Saved Split",
-                    "weekly_frequency": 3,
-                    "split_type": "Full Body",
-                    "days": [
-                        {
-                            "day_name": "Full A",
-                            "day_order": 1,
-                            "exercises": [
-                                {"exercise_id": "sq", "target_sets": 3, "target_reps_min": 5, "target_reps_max": 8, "target_rpe": 8.5},
-                                {"exercise_id": "bp", "target_sets": 3, "target_reps_min": 5, "target_reps_max": 8, "target_rpe": 8.5},
-                                {"exercise_id": "row", "target_sets": 3, "target_reps_min": 5, "target_reps_max": 8, "target_rpe": 8.5},
-                            ],
-                        }
-                    ],
-                }
-            )
-
-            def exercise_payload(exercise_id, exercise_name):
-                return {
-                    "exercise_id": exercise_id,
-                    "exercise_name": exercise_name,
-                    "target_sets": 3,
-                    "target_reps_min": 5,
-                    "target_reps_max": 8,
-                    "target_rpe": 8.5,
-                    "rest_seconds": 120,
-                    "notes": None,
-                }
+            db.save_training_program(_saved_split_payload())
 
             commit = api.post(
                 "/workouts/sessions",
@@ -252,7 +255,7 @@ def test_workout_commit_detects_prs_and_dashboard_serves_them(tmp_path, monkeypa
                     "session_notes": "",
                     "sets": [
                         {
-                            "exercise": exercise_payload("sq", "Squat"),
+                            "exercise": _exercise_payload("sq", "Squat"),
                             "sets": [{"weight_kg": 100.0, "reps": 5, "rpe": 8.0}],
                         }
                     ],
@@ -269,6 +272,62 @@ def test_workout_commit_detects_prs_and_dashboard_serves_them(tmp_path, monkeypa
 
             history = api.get("/dashboard/exercises/sq/history", headers=headers).json()
             assert history["records"]
+    finally:
+        if db.user_conn is not None:
+            db.user_conn.close()
+        db.catalog_conn.close()
+
+
+def test_session_export_csv_json_and_404(tmp_path, monkeypatch):
+    app, db = _real_jwt_app(tmp_path, monkeypatch)
+    try:
+        with TestClient(app) as api:
+            token = api.post(
+                "/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"}
+            ).json()["access_token"]
+            headers = {"Authorization": f"Bearer {token}"}
+
+            assert api.get("/workouts/sessions/export.csv", headers=headers).status_code == 404
+            assert api.get("/workouts/sessions/export.json", headers=headers).status_code == 404
+
+            db.switch_user("alice")
+            db.upsert_user_profile({"current_goal": "Strength"})
+            db.save_training_program(_saved_split_payload())
+            commit = api.post(
+                "/workouts/sessions",
+                headers=headers,
+                json={
+                    "day_order": 1,
+                    "readiness": 4,
+                    "session_notes": "",
+                    "sets": [
+                        {
+                            "exercise": _exercise_payload("sq", "Squat"),
+                            "sets": [{"weight_kg": 100.0, "reps": 8, "rpe": 8.5}],
+                        }
+                    ],
+                },
+            )
+            assert commit.status_code == 201
+
+            csv_response = api.get("/workouts/sessions/export.csv", headers=headers)
+            assert csv_response.status_code == 200
+            assert csv_response.headers["content-type"].startswith("text/csv")
+            assert "attachment" in csv_response.headers["content-disposition"]
+            csv_text = csv_response.text
+            assert csv_text.splitlines()[0].split(",")[0] == "session_date"
+            assert "Squat" in csv_text
+            assert "131.67" in csv_text  # 100 kg x 8 @ RPE 8.5 e1RM
+            assert "800.0" in csv_text
+
+            json_response = api.get("/workouts/sessions/export.json", headers=headers)
+            assert json_response.status_code == 200
+            payload = json_response.json()
+            assert payload["schema_version"] == 1
+            session = payload["sessions"][0]
+            assert session["coach_debrief"]
+            assert session["exercises"][0]["exercise_name"] == "Squat"
+            assert session["exercises"][0]["sets"][0]["e1rm_kg"] == 131.67
     finally:
         if db.user_conn is not None:
             db.user_conn.close()
