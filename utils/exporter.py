@@ -5,7 +5,6 @@ from typing import Any
 
 import pandas as pd
 
-from agent.program_blueprints import WARMUP_PROTOCOL_AR
 from agent.ProgramState import GeneratedProgramSchema
 
 SESSION_CSV_COLUMNS = [
@@ -25,30 +24,29 @@ SESSION_CSV_COLUMNS = [
     "session_id",
 ]
 
-PROGRAM_COLUMNS_AR = [
-    "اليوم",
-    "التمرين",
-    "مجاميع التسخين",
-    "المجاميع الفعلية",
-    "العدات",
+PROGRAM_COLUMNS = [
+    "Day",
+    "Exercise",
+    "Warm-up Sets",
+    "Working Sets",
+    "Reps",
     "RPE",
-    "الراحة",
-    "ملحوظات",
-    "أسبوع 1 وزن",
-    "أسبوع 1 عدات",
-    "أسبوع 2 وزن",
-    "أسبوع 2 عدات",
-    "أسبوع 3 وزن",
-    "أسبوع 3 عدات",
-    "أسبوع 4 وزن",
-    "أسبوع 4 عدات",
+    "Rest",
+    "W1 Load (kg)",
+    "W1 Reps",
+    "W2 Load (kg)",
+    "W2 Reps",
+    "W3 Load (kg)",
+    "W3 Reps",
+    "W4 Load (kg)",
+    "W4 Reps",
 ]
 
 
-def format_rest_ar(seconds: int) -> str:
+def format_rest(seconds: int) -> str:
     if seconds < 60:
-        return f"{seconds} ثانيه"
-    return f"{seconds / 60:g} دقايق"
+        return f"{seconds}s"
+    return f"{seconds / 60:g} min"
 
 
 def sanitize_sheet_title(title: str) -> str:
@@ -62,49 +60,42 @@ def sanitize_sheet_title(title: str) -> str:
 def export_program_to_excel(program: GeneratedProgramSchema) -> bytes:
     """
     Exports a GeneratedProgramSchema into an in-memory Excel workbook (.xlsx)
-    using the Belghamdi sheet layout: Arabic instructions, a warm-up block per
-    day and a movement table with warm-up sets, working sets, reps and rest.
+    with one sheet per training day: a warm-up block, followed by the movement
+    table (warm-up sets, working sets, reps, RPE, rest) and 4-week load logging.
     """
     output = io.BytesIO()
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        instruction_lines = [["تعليمات البرنامج"], ["",], *[[line] for line in (program.instructions or "").splitlines() if line]]
-        instruction_lines.append(["",])
-        instruction_lines.extend([[line] for line in WARMUP_PROTOCOL_AR.splitlines() if line])
-        pd.DataFrame(instruction_lines).to_excel(writer, sheet_name="التعليمات", header=False, index=False)
-
         for day in program.days:
             rows: list[dict[str, Any]] = []
             for warmup in day.warmup_exercises:
                 rows.append(
                     {
-                        "اليوم": "WARM UPS",
-                        "التمرين": warmup.exercise_name,
-                        "مجاميع التسخين": "-",
-                        "المجاميع الفعلية": warmup.sets,
-                        "العدات": warmup.reps,
+                        "Day": "WARM UPS",
+                        "Exercise": warmup.exercise_name,
+                        "Warm-up Sets": "-",
+                        "Working Sets": warmup.sets,
+                        "Reps": warmup.reps,
                         "RPE": "",
-                        "الراحة": format_rest_ar(warmup.rest_seconds),
-                        "ملحوظات": warmup.notes or "",
+                        "Rest": format_rest(warmup.rest_seconds),
                     }
                 )
             for ex in day.exercises:
                 rows.append(
                     {
-                        "اليوم": "",
-                        "التمرين": ex.exercise_name,
-                        "مجاميع التسخين": ex.warmup_sets if ex.warmup_sets else "-",
-                        "المجاميع الفعلية": ex.target_sets,
-                        "العدات": f"{ex.target_reps_min}~{ex.target_reps_max}",
+                        "Day": "",
+                        "Exercise": ex.exercise_name,
+                        "Warm-up Sets": ex.warmup_sets if ex.warmup_sets else "-",
+                        "Working Sets": ex.target_sets,
+                        "Reps": f"{ex.target_reps_min}~{ex.target_reps_max}",
                         "RPE": ex.target_rpe,
-                        "الراحة": format_rest_ar(ex.rest_seconds),
-                        "ملحوظات": ex.notes or "",
+                        "Rest": format_rest(ex.rest_seconds),
                     }
                 )
-                if day.cardio:
-                    rows.append({"اليوم": "", "التمرين": day.cardio})
+            if day.cardio:
+                rows.append({"Day": "", "Exercise": day.cardio})
 
-            df = pd.DataFrame(rows, columns=PROGRAM_COLUMNS_AR).fillna("")
+            df = pd.DataFrame(rows, columns=PROGRAM_COLUMNS).fillna("")
             raw_title = f"Day {day.day_order} - {day.day_name}"
             sheet_name = sanitize_sheet_title(raw_title)
             df.to_excel(writer, sheet_name=sheet_name, index=False)

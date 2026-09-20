@@ -21,6 +21,7 @@ from agent.program_blueprints import (
     UL_DAYS,
     WARMUP_FAMILIES,
     WARMUP_SPECS,
+    match_split_keyword,
 )
 from agent.program_rules import fetch_slot_candidates, fetch_warmup_candidates, get_split_plan, resolve_split
 from database.database_manager import DatabaseManager
@@ -119,16 +120,17 @@ def test_no_duplicate_exercises_within_a_day():
         assert len(ids) == len(set(ids)), f"Duplicate exercise inside {day.day_name}"
 
 
-def test_arabic_notes_and_instructions_are_present():
+def test_program_output_is_english_only_with_catalog_steps():
     program = _generate("male", 4)
-    assert "الفشل العضلي" in program.instructions
+    assert program.instructions == ""
     for day in program.days:
         for exercise in day.exercises:
-            assert exercise.notes, f"Missing Arabic cue on {exercise.exercise_name}"
-            assert any("\u0600" <= char <= "\u06ff" for char in exercise.notes)
+            assert exercise.notes, f"Missing catalog execution steps on {exercise.exercise_name}"
+            assert not any("\u0600" <= char <= "\u06ff" for char in exercise.notes)
+            assert exercise.notes != "-"
 
 
-def test_prescriptions_follow_belghamdi_scheme():
+def test_prescriptions_follow_reference_scheme():
     program = _generate("male", 4)
     for day in program.days:
         for exercise in day.exercises:
@@ -141,6 +143,37 @@ def test_prescriptions_follow_belghamdi_scheme():
                 assert exercise.rest_seconds >= 240, "Heavy compounds need 4+ minute rests"
             if exercise.slot_key in {"quad_compound", "ham_hinge", "horizontal_row", "incline_press", "flat_press"}:
                 assert exercise.warmup_sets >= 1, "Heavy compounds need a ramp-up set"
+
+
+def test_day_working_set_totals_match_reference_profiles():
+    """Guardrails for the 22-sets-per-day regression: sessions stay in sample ranges."""
+    expected_ranges = {
+        ("male", 3): (12, 16),
+        ("male", 4): (12, 17),
+        ("male", 5): (10, 15),
+        ("female", 3): (12, 17),
+    }
+    for (gender, frequency), (low, high) in expected_ranges.items():
+        program = _generate(gender, frequency)
+        totals = [sum(exercise.target_sets for exercise in day.exercises) for day in program.days]
+        for total, day in zip(totals, program.days, strict=True):
+            assert low <= total <= high, f"{gender} {frequency}d {day.day_name}: {total} working sets"
+        weekly = sum(totals)
+        assert weekly <= 70, f"{gender} {frequency}d weekly working sets too high: {weekly}"
+
+
+def test_full_body_days_use_minimal_profiles():
+    program = _generate("male", 3)
+    for day in program.days:
+        plan = next(plan_day for plan_day in get_split_plan("full_body", 3, "male").days if plan_day.day_name == day.day_name)
+        double_slots = set(plan.double_slots)
+        for exercise in day.exercises:
+            if exercise.slot_key == "calf":
+                assert exercise.target_sets == 2
+            elif exercise.slot_key in double_slots:
+                assert exercise.target_sets == 2
+            else:
+                assert exercise.target_sets == 1, f"{day.day_name}/{exercise.slot_key} should carry 1 set"
 
 
 def test_anterior_posterior_split_preset_exists():
@@ -167,6 +200,49 @@ def test_arnold_x_ul_matches_belghamdi_day_sizes():
     assert [len(day.target_slots) for day in plan.days] == [7, 7, 6, 7, 6]
 
 
+def test_arnold_keyword_routes_to_hybrid_at_high_frequency():
+    plan_5 = get_split_plan("arnold", 5, "male")
+    assert plan_5.split_name == "Arnold x Upper/Lower"
+    assert [day.day_name for day in plan_5.days] == ["Chest & Back", "Shoulders & Arms", "Lower A", "Upper", "Lower B"]
+    assert [len(day.target_slots) for day in plan_5.days] == [7, 7, 6, 7, 6]
+
+    plan_4 = get_split_plan("arnold", 4, "male")
+    assert plan_4.split_name == "Arnold x Upper/Lower (4-Day)"
+    assert [day.day_name for day in plan_4.days] == ["Chest & Back", "Shoulders & Arms", "Lower A", "Upper"]
+
+    plan_3 = get_split_plan("arnold", 3, "male")
+    assert [day.day_name for day in plan_3.days] == ["Chest & Back", "Shoulders & Arms", "Legs"]
+
+
+def test_anterior_posterior_five_day_has_unique_day_names():
+    plan = get_split_plan("anterior_posterior", 5, "male")
+    assert plan is not None
+    names = [day.day_name for day in plan.days]
+    assert names == ["Anterior", "Posterior", "Anterior 2", "Posterior 2", "Anterior 3"]
+    assert len(names) == len(set(names))
+    assert all(len(day.target_slots) >= 6 for day in plan.days)
+
+
+def test_keyword_matching_is_not_hijacked_by_body_part_phrases():
+    assert match_split_keyword("I have lower back pain, keep the program easy") is None
+    assert match_split_keyword("focus on upper chest please") is None
+    assert match_split_keyword("posterior chain focus with more back volume") is None
+    assert match_split_keyword("give me an upper lower split") == "upper_lower"
+    assert match_split_keyword("I want Upper, Lower, and an isolated Arms & Shoulders day") == "upper_lower"
+    assert match_split_keyword("push/pull/legs") == "ppl"
+    assert match_split_keyword("PPL") == "ppl"
+    assert match_split_keyword("fullbody please") == "full_body"
+    assert match_split_keyword("total body") == "full_body"
+    assert match_split_keyword("anterior posterior") == "anterior_posterior"
+    assert match_split_keyword("arnold style") == "arnold"
+
+
+def test_unsupported_keyword_frequency_falls_back_to_default():
+    assert resolve_split(1, "arnold split").split_name == resolve_split(1).split_name
+    assert resolve_split(1, "ppl").split_name == resolve_split(1).split_name
+    assert resolve_split(1, "upper lower").split_name == resolve_split(1).split_name
+
+
 def test_resolve_split_routes_preferences_deterministically():
     assert resolve_split(3, "give me an arnold split").split_name.startswith("Arnold")
     assert "Anterior" in resolve_split(2, "anterior posterior").split_name
@@ -188,7 +264,7 @@ def test_schema_round_trip_persists_warmups_and_slots():
             assert stored_ex.notes == generated_ex.notes
 
 
-def test_excel_export_uses_arabic_sheet_layout():
+def test_excel_export_uses_english_sheet_layout():
     program = _generate("male", 3)
     payload = export_program_to_excel(program)
     assert payload[:2] == b"PK"
@@ -197,10 +273,30 @@ def test_excel_export_uses_arabic_sheet_layout():
     import openpyxl
 
     workbook = openpyxl.load_workbook(io.BytesIO(payload))
-    assert "التعليمات" in workbook.sheetnames
-    day_sheet = workbook[workbook.sheetnames[1]]
+    assert workbook.sheetnames[0].startswith("Day 1")
+    day_sheet = workbook[workbook.sheetnames[0]]
     headers = [cell.value for cell in day_sheet[1]]
-    assert headers[:4] == ["اليوم", "التمرين", "مجاميع التسخين", "المجاميع الفعلية"]
+    assert headers[:7] == ["Day", "Exercise", "Warm-up Sets", "Working Sets", "Reps", "RPE", "Rest"]
+
+
+def test_excel_export_renders_cardio_once():
+    program = _generate("male", 4)
+    assert any(day.cardio for day in program.days), "UL blueprint should include cardio notes"
+    payload = export_program_to_excel(program)
+    import io
+
+    import openpyxl
+
+    workbook = openpyxl.load_workbook(io.BytesIO(payload))
+    for day, sheet_name in zip(program.days, workbook.sheetnames, strict=True):
+        sheet = workbook[sheet_name]
+        cardio_rows = sum(
+            1
+            for row in sheet.iter_rows(min_row=2, values_only=True)
+            if day.cardio and row[1] == day.cardio
+        )
+        expected = 1 if day.cardio else 0
+        assert cardio_rows == expected, f"{day.day_name}: expected {expected} cardio row(s), got {cardio_rows}"
 
 
 def test_split_day_pools_cover_all_defined_days():

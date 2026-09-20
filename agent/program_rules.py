@@ -13,6 +13,7 @@ from agent.program_blueprints import (
     body_parts_to_slots,
     build_split_days,
     match_split_keyword,
+    resolve_split_type,
 )
 from agent.ProgramState import CustomDayPlan, DynamicSplitPlan
 from database.database_manager import DatabaseManager
@@ -130,6 +131,8 @@ def _plan_from_blueprint_days(split_name: str, days: list) -> DynamicSplitPlan:
                 day_name=day.name,
                 target_slots=list(day.slots),
                 warmup_family=day.family,
+                sets_family=day.sets_family,
+                double_slots=list(day.double_slots),
                 cardio=day.cardio,
             )
             for index, day in enumerate(days, start=1)
@@ -157,7 +160,7 @@ SPLIT_FREQUENCY_NAMES: dict[tuple[str, int], str] = {
     ("female_upper_lower", 5): "Glute & Upper Hypertrophy 5-Day",
     ("arnold", 2): "Arnold Split (Condensed)",
     ("arnold", 3): "Arnold Split (Chest & Back / Shoulders & Arms / Legs)",
-    ("arnold", 4): "Arnold x Upper/Lower (4-Day)",
+    ("arnold_x_ul", 4): "Arnold x Upper/Lower (4-Day)",
     ("arnold_x_ul", 5): "Arnold x Upper/Lower",
     ("anterior_posterior", 2): "Anterior / Posterior Split",
     ("anterior_posterior", 3): "Anterior / Posterior Split",
@@ -172,6 +175,7 @@ SPLIT_FREQUENCY_NAMES: dict[tuple[str, int], str] = {
 
 def get_split_plan(split_type: str, frequency: int, gender: str = "male") -> DynamicSplitPlan | None:
     """Builds a blueprint-backed split plan, or None when unsupported for the frequency."""
+    split_type = resolve_split_type(split_type, frequency)
     days = build_split_days(split_type, frequency, gender)
     if not days:
         return None
@@ -217,6 +221,9 @@ def resolve_split(frequency: int, preference: str | None = None, gender: str = "
         plan = get_split_plan(split_type, clamped_freq, gender)
         if plan is not None:
             return plan
+        # Recognized request at an unsupported frequency (e.g. "arnold" at 1 day):
+        # stay deterministic and fall back to the frequency default rather than the LLM.
+        return get_default_split(clamped_freq, gender=gender)
 
     structured_llm = llm.with_structured_output(DynamicSplitPlan)
     gender_context = (
@@ -374,8 +381,6 @@ def fetch_warmup_candidates(
     )
     for item in candidates:
         item["warmup_key"] = warmup_key
-        item["label_ar"] = spec["label_ar"]
-        item["cue_ar"] = spec["cue_ar"]
     return candidates
 
 

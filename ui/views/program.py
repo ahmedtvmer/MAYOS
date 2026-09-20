@@ -16,10 +16,6 @@ def render_program_dashboard(program) -> None:
     st.subheader(f"📋 {program.program_name}")
     st.caption(f"**Split:** {program.split_type} | **Weekly Frequency:** {program.weekly_frequency} Days")
 
-    if getattr(program, "instructions", None):
-        with st.expander("📌 تعليمات البرنامج (Program Instructions)", expanded=False):
-            st.markdown(program.instructions)
-
     filename, excel_bytes = api_bytes("/programs/active.xlsx")
     st.download_button(
         label="📥 Download Program as Excel (.xlsx)",
@@ -36,14 +32,13 @@ def render_program_dashboard(program) -> None:
         with tabs[idx]:
             warmups = getattr(day, "warmup_exercises", None) or []
             if warmups:
-                st.markdown("##### 🔥 Warm Up (تسخين)")
+                st.markdown("##### 🔥 Warm Up")
                 warmup_data = [
                     {
                         "Exercise": w.exercise_name,
                         "Sets": w.sets,
                         "Reps": w.reps,
                         "Rest": f"{w.rest_seconds}s",
-                        "Cue": w.notes or "-",
                     }
                     for w in warmups
                 ]
@@ -56,7 +51,6 @@ def render_program_dashboard(program) -> None:
                         "Sets": st.column_config.NumberColumn(width="small"),
                         "Reps": st.column_config.NumberColumn(width="small"),
                         "Rest": st.column_config.TextColumn(width="small"),
-                        "Cue": st.column_config.TextColumn(width="large"),
                     },
                 )
 
@@ -69,7 +63,6 @@ def render_program_dashboard(program) -> None:
                     "Reps": f"{ex.target_reps_min}–{ex.target_reps_max}",
                     "RPE": f"@{ex.target_rpe}",
                     "Rest": f"{ex.rest_seconds}s",
-                    "Notes & Cues": ex.notes or "-",
                 }
                 for i, ex in enumerate(day.exercises)
             ]
@@ -85,7 +78,6 @@ def render_program_dashboard(program) -> None:
                     "Reps": st.column_config.TextColumn(width="small"),
                     "RPE": st.column_config.TextColumn(width="small"),
                     "Rest": st.column_config.TextColumn(width="small"),
-                    "Notes & Cues": st.column_config.TextColumn(width="large"),
                 },
             )
 
@@ -94,7 +86,7 @@ def render_program_dashboard(program) -> None:
 
             st.markdown("##### 🎬 Biomechanical Execution & Form Demos")
             for i, ex in enumerate(day.exercises):
-                with st.expander(f"#{i + 1} • {ex.exercise_name.title()} (Visual Demo & Cues)"):
+                with st.expander(f"#{i + 1} • {ex.exercise_name.title()} (Visual Demo & Steps)"):
                     col_demo, col_details = st.columns([1, 3])
                     with col_demo:
                         media = present.resolve_media_path(ex.gif_path, BASE_DIR) or present.resolve_media_path(ex.image_path, BASE_DIR)
@@ -111,6 +103,8 @@ def render_program_dashboard(program) -> None:
                             f"**Loading Parameters:** `{warmup_line}{ex.target_sets} sets × {ex.target_reps_min}–{ex.target_reps_max} reps @ RPE {ex.target_rpe}`"
                         )
                         st.markdown(f"**Prescribed Rest:** `{ex.rest_seconds} seconds`")
-                        st.markdown(
-                            f"**Execution Cue:**\n> {ex.notes or 'Maintain maximum tension through full active range of motion.'}"
-                        )
+                        if ex.notes:
+                            steps = "\n".join(f"- {line.strip()}" for line in str(ex.notes).splitlines() if line.strip())
+                            st.markdown(f"**Execution Steps:**\n{steps}")
+                        else:
+                            st.markdown("**Execution Steps:** consult the training assistant for form cues.")

@@ -4,12 +4,13 @@ import re
 from dotenv import load_dotenv
 
 from agent.program_blueprints import (
-    PROGRAM_INSTRUCTIONS_AR,
     SLOT_SPECS,
     WARMUP_FAMILIES,
     WARMUP_REPS,
     WARMUP_REST_SECONDS,
     WARMUP_SETS,
+    resolve_sets_family,
+    slot_working_sets,
 )
 from agent.program_rules import (
     apply_rep_preference,
@@ -60,10 +61,10 @@ def get_biomechanical_cue(name: str, mechanic: str) -> str:
     return MECHANIC_CUES["isolation"]
 
 
-def format_rest_ar(seconds: int) -> str:
+def format_rest(seconds: int) -> str:
     if seconds < 60:
-        return f"{seconds} ثانيه"
-    return f"{seconds / 60:g} دقايق"
+        return f"{seconds}s"
+    return f"{seconds / 60:g} min"
 
 
 def build_warmup_block(
@@ -88,7 +89,6 @@ def build_warmup_block(
                     sets=WARMUP_SETS,
                     reps=WARMUP_REPS,
                     rest_seconds=WARMUP_REST_SECONDS,
-                    notes=str(candidate.get("cue_ar") or ""),
                     image_path=candidate.get("image_path"),
                     gif_path=candidate.get("gif_path"),
                 )
@@ -115,6 +115,8 @@ def assemble_deterministic_day(
 ) -> ProgramDaySchema:
     """Fills every blueprint slot with one catalog movement, honouring slot prescriptions."""
     selected_exercises: list[ProgramExerciseSchema] = []
+    sets_family = resolve_sets_family(day.warmup_family, getattr(day, "sets_family", None))
+    double_slots = tuple(getattr(day, "double_slots", ()) or ())
 
     for slot_key in day.target_slots:
         spec = SLOT_SPECS.get(slot_key)
@@ -137,12 +139,12 @@ def assemble_deterministic_day(
                 exercise_name=chosen["name"],
                 slot_key=slot_key,
                 warmup_sets=spec.warmup_sets,
-                target_sets=spec.sets,
+                target_sets=slot_working_sets(slot_key, spec.archetype, sets_family, double_slots),
                 target_reps_min=rep_min,
                 target_reps_max=rep_max,
                 target_rpe=RPE_BY_ARCHETYPE.get(spec.archetype, 9.0),
                 rest_seconds=spec.rest_seconds,
-                notes=spec.cue_ar,
+                notes=chosen.get("instructions") or None,
                 image_path=chosen.get("image_path"),
                 gif_path=chosen.get("gif_path"),
             )
@@ -166,12 +168,12 @@ def assemble_deterministic_day(
                         exercise_name=candidate["name"],
                         slot_key=slot_key,
                         warmup_sets=spec.warmup_sets,
-                        target_sets=spec.sets,
+                        target_sets=slot_working_sets(slot_key, spec.archetype, sets_family, double_slots),
                         target_reps_min=rep_min,
                         target_reps_max=rep_max,
                         target_rpe=RPE_BY_ARCHETYPE.get(spec.archetype, 9.0),
                         rest_seconds=spec.rest_seconds,
-                        notes=spec.cue_ar,
+                        notes=candidate.get("instructions") or None,
                         image_path=candidate.get("image_path"),
                         gif_path=candidate.get("gif_path"),
                     )
@@ -235,26 +237,23 @@ def render_program_markdown(program: GeneratedProgramSchema) -> str:
     lines = [
         f"# {program.program_name}",
         f"**Split:** {program.split_type} | **Frequency:** {program.weekly_frequency} Days/Week\n",
-        "## تعليمات البرنامج",
-        program.instructions or "",
-        "",
     ]
     for day in program.days:
         lines.append(f"### Day {day.day_order}: {day.day_name}")
         if day.warmup_exercises:
             warmup_text = " | ".join(
-                f"**{w.exercise_name}** {w.sets}×{w.reps} ({format_rest_ar(w.rest_seconds)} راحه)"
+                f"**{w.exercise_name}** {w.sets}×{w.reps} ({format_rest(w.rest_seconds)} rest)"
                 for w in day.warmup_exercises
             )
             lines.append(f"**WARM UPS:** {warmup_text}")
-        lines.append("| # | التمرين | تسخين | مجموعات | عدات | RPE | راحه | ملحوظات |")
-        lines.append("| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :--- |")
+        lines.append("| # | Exercise | Warm-up | Sets | Reps | RPE | Rest |")
+        lines.append("| :---: | :--- | :---: | :---: | :---: | :---: | :---: |")
         for idx, ex in enumerate(day.exercises, start=1):
-            rest = format_rest_ar(ex.rest_seconds)
+            rest = format_rest(ex.rest_seconds)
             warmup = f"{ex.warmup_sets}" if ex.warmup_sets else "-"
             lines.append(
                 f"| {idx} | **{ex.exercise_name}** | {warmup} | {ex.target_sets} | "
-                f"{ex.target_reps_min}~{ex.target_reps_max} | @{ex.target_rpe} | {rest} | {ex.notes or '-'} |"
+                f"{ex.target_reps_min}~{ex.target_reps_max} | @{ex.target_rpe} | {rest} |"
             )
         if day.cardio:
             lines.append(f"**{day.cardio}**")
@@ -325,7 +324,6 @@ def generate_program_pipeline(
         program_name=split_plan.split_name,
         split_type=split_plan.split_name,
         weekly_frequency=len(split_plan.days),
-        instructions=PROGRAM_INSTRUCTIONS_AR,
         days=generated_days,
     )
 

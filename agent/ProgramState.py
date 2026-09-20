@@ -15,7 +15,7 @@ class ProgramExerciseSchema(BaseModel):
     target_reps_max: int = Field(ge=4, le=30, description="Upper bound of rep window")
     target_rpe: float = Field(default=8.5, ge=7.0, le=10.0, description="Proximity to failure (7.0 to 10.0)")
     rest_seconds: int = Field(default=180, description="Rest period in seconds")
-    notes: str | None = Field(default=None, description="Arabic execution cue")
+    notes: str | None = Field(default=None, description="Execution steps from the exercise catalog (or a chat-supplied cue)")
     image_path: str | None = Field(default=None, description="Local path or URL to demonstration image")
     gif_path: str | None = Field(default=None, description="Local path or URL to demonstration animated GIF")
 
@@ -26,7 +26,7 @@ class WarmupExerciseSchema(BaseModel):
     sets: int = Field(default=2, ge=1, le=3)
     reps: int = Field(default=10, ge=5, le=20)
     rest_seconds: int = Field(default=45)
-    notes: str | None = Field(default=None, description="Arabic warm-up cue")
+    notes: str | None = Field(default=None, description="Optional warm-up note")
     image_path: str | None = Field(default=None)
     gif_path: str | None = Field(default=None)
 
@@ -40,14 +40,14 @@ class ProgramDaySchema(BaseModel):
     exercises: list[ProgramExerciseSchema] = Field(
         min_length=3, max_length=14, description="6 to 12 high-yield movement slots per session"
     )
-    cardio: str | None = Field(default=None, description="Optional Arabic cardio finisher note")
+    cardio: str | None = Field(default=None, description="Optional cardio finisher note")
 
 
 class ProgramSchema(BaseModel):
     program_name: str = Field(description="Display title of the generated split")
     weekly_frequency: int = Field(ge=1, le=5, description="Number of training days per week")
     split_type: str = Field(default="custom", description="Split categorization, e.g., 'Upper/Lower', 'PPL'")
-    instructions: str = Field(default="", description="Arabic program-level instructions block")
+    instructions: str = Field(default="", description="Reserved program-level notes (currently unused)")
     days: list[ProgramDaySchema] = Field(description="Ordered list of training day routines")
 
 
@@ -55,7 +55,7 @@ class GeneratedProgramSchema(BaseModel):
     program_name: str = Field(description="Descriptive title of the program")
     split_type: str = Field(description="Resolved split architecture")
     weekly_frequency: int = Field(ge=1, le=5)
-    instructions: str = Field(default="", description="Arabic program-level instructions block")
+    instructions: str = Field(default="", description="Reserved program-level notes (currently unused)")
     days: list[ProgramDaySchema]
 
 
@@ -88,6 +88,12 @@ class CustomDayPlan(BaseModel):
         description="Legacy muscle targets; only used as a fallback when target_slots is empty",
     )
     warmup_family: str = Field(default="full", description="Warm-up block family: upper, lower, full or arms")
+    sets_family: str | None = Field(
+        default=None, description="Working-set profile: standard, leg, arms or full (defaults from warmup_family)"
+    )
+    double_slots: list[str] = Field(
+        default_factory=list, description="Full-body priority slots that earn a second working set"
+    )
     cardio: str | None = Field(default=None, description="Optional cardio note")
 
 
