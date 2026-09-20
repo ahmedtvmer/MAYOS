@@ -243,24 +243,6 @@ def resolve_split(frequency: int, preference: str | None = None, gender: str = "
     return _sanitize_llm_plan(plan, clamped_freq, gender)
 
 
-def calculate_volume_budget(stress_and_sleep: str) -> int:
-    text = stress_and_sleep.lower()
-    poor_indicators = [
-        "poor",
-        "bad",
-        "terrible",
-        "low sleep",
-        "lack of sleep",
-        "insomnia",
-        "high stress",
-        "stressed",
-        "4 hours",
-        "5 hours",
-        "6 hours",
-    ]
-    return 8 if any(phrase in text for phrase in poor_indicators) else 12
-
-
 def clean_exercise_name(name: str, replace_with_machine: bool = True) -> str:
     replacement = "machine " if replace_with_machine else ""
     cleaned = re.sub(r"^lever\s+", replacement, name, flags=re.IGNORECASE)

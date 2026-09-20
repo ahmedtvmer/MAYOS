@@ -4,11 +4,17 @@ import re
 from dotenv import load_dotenv
 
 from agent.program_blueprints import (
+    FAT_LOSS_CARDIO_NOTE,
+    MAX_RECOVERY_CUTS_PER_DAY,
+    SLOT_FALLBACKS,
     SLOT_SPECS,
     WARMUP_FAMILIES,
     WARMUP_REPS,
     WARMUP_REST_SECONDS,
     WARMUP_SETS,
+    is_escalated_isolation,
+    is_fat_loss_goal,
+    is_poor_recovery,
     resolve_sets_family,
     slot_working_sets,
 )
@@ -112,11 +118,13 @@ def assemble_deterministic_day(
     limitations: str,
     rep_preference: str,
     excluded_ids: set[str],
+    recovery_cut: bool = False,
 ) -> ProgramDaySchema:
     """Fills every blueprint slot with one catalog movement, honouring slot prescriptions."""
     selected_exercises: list[ProgramExerciseSchema] = []
     sets_family = resolve_sets_family(day.warmup_family, getattr(day, "sets_family", None))
     double_slots = tuple(getattr(day, "double_slots", ()) or ())
+    cuts_used = 0
 
     for slot_key in day.target_slots:
         spec = SLOT_SPECS.get(slot_key)
@@ -126,12 +134,30 @@ def assemble_deterministic_day(
         candidates = fetch_slot_candidates(slot_key, equipment_access, limitations, limit=8)
         chosen = _pick_candidate(candidates, excluded_ids)
         if chosen is None:
+            # A limitation filter can empty the whole pool (back rule vs hinges):
+            # fall back to a safe substitute slot instead of silently shrinking the day.
+            for fallback_key in SLOT_FALLBACKS.get(slot_key, ()):
+                fallback_spec = SLOT_SPECS.get(fallback_key)
+                if fallback_spec is None:
+                    continue
+                fallback_candidates = fetch_slot_candidates(fallback_key, equipment_access, limitations, limit=8)
+                fallback_chosen = _pick_candidate(fallback_candidates, excluded_ids)
+                if fallback_chosen is not None:
+                    logger.info(f"Substituted '{fallback_key}' for limited slot '{slot_key}' (day '{day.day_name}').")
+                    chosen, slot_key, spec = fallback_chosen, fallback_key, fallback_spec
+                    break
+        if chosen is None:
             logger.warning(f"No catalog candidate for slot '{slot_key}' (day '{day.day_name}').")
             continue
 
         candidate_id = str(chosen["id"])
         excluded_ids.add(candidate_id)
         rep_min, rep_max = apply_rep_preference(spec.reps, rep_preference)
+        apply_cut = (
+            recovery_cut and cuts_used < MAX_RECOVERY_CUTS_PER_DAY and is_escalated_isolation(slot_key, sets_family)
+        )
+        if apply_cut:
+            cuts_used += 1
 
         selected_exercises.append(
             ProgramExerciseSchema(
@@ -139,7 +165,7 @@ def assemble_deterministic_day(
                 exercise_name=chosen["name"],
                 slot_key=slot_key,
                 warmup_sets=spec.warmup_sets,
-                target_sets=slot_working_sets(slot_key, spec.archetype, sets_family, double_slots),
+                target_sets=slot_working_sets(slot_key, spec.archetype, sets_family, double_slots, recovery_cut=apply_cut),
                 target_reps_min=rep_min,
                 target_reps_max=rep_max,
                 target_rpe=RPE_BY_ARCHETYPE.get(spec.archetype, 9.0),
@@ -309,6 +335,7 @@ def generate_program_pipeline(
     rep_pref = rep_preference_override or profile.get("rep_preference", "balanced")
 
     generated_days: list[ProgramDaySchema] = []
+    recovery_cut = is_poor_recovery(profile.get("stress_and_sleep"))
 
     for day in split_plan.days:
         day_plan = assemble_deterministic_day(
@@ -317,8 +344,14 @@ def generate_program_pipeline(
             limitations=profile.get("injuries_or_limitations", "None"),
             rep_preference=rep_pref,
             excluded_ids=set(),
+            recovery_cut=recovery_cut,
         )
         generated_days.append(day_plan)
+
+    # Goals modulate only the cardio layer; the lifting program is goal-agnostic.
+    if is_fat_loss_goal(profile.get("current_goal"), profile.get("long_term_goal")):
+        for day_plan in generated_days:
+            day_plan.cardio = FAT_LOSS_CARDIO_NOTE
 
     program = GeneratedProgramSchema(
         program_name=split_plan.split_name,

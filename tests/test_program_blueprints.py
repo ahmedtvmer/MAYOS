@@ -13,14 +13,18 @@ from agent.program_blueprints import (
     ANTERIOR_POSTERIOR_DAYS,
     ARNOLD_DAYS,
     ARNOLD_X_UL_DAYS,
+    FAT_LOSS_CARDIO_NOTE,
     FB_DAYS,
     FEMALE_FB_DAYS,
+    MAX_RECOVERY_CUTS_PER_DAY,
     PPL_DAYS,
     SLOT_SPECS,
     SPLIT_DAY_POOLS,
     UL_DAYS,
     WARMUP_FAMILIES,
     WARMUP_SPECS,
+    is_fat_loss_goal,
+    is_poor_recovery,
     match_split_keyword,
 )
 from agent.program_rules import fetch_slot_candidates, fetch_warmup_candidates, get_split_plan, resolve_split
@@ -58,8 +62,22 @@ def test_warmup_families_reference_known_specs():
             assert key in WARMUP_SPECS
 
 
-def _generate(gender, frequency, preference=None):
-    user = f"test_blueprint_{gender}_{frequency}_{(preference or 'default').replace(' ', '_').replace('/', '_')}"
+def _generate(
+    gender,
+    frequency,
+    preference=None,
+    goal="hypertrophy",
+    long_term_goal="progressive overload",
+    recovery="normal",
+    limitations="None",
+):
+    suffix = (preference or "default").replace(" ", "_").replace("/", "_")
+    tags = "".join(
+        f"_{value.replace(' ', '_').replace(',', '')}"
+        for value in (goal, recovery if recovery != "normal" else "", limitations if limitations != "None" else "")
+        if value
+    )
+    user = f"test_blueprint_{gender}_{frequency}{tags}_{suffix}"
     db.switch_user(user)
     db.upsert_user_profile(
         {
@@ -69,13 +87,13 @@ def _generate(gender, frequency, preference=None):
             "weight_kg": 80.0,
             "height_cm": 175.0,
             "rep_preference": "balanced",
-            "current_goal": "hypertrophy",
-            "long_term_goal": "progressive overload",
+            "current_goal": goal,
+            "long_term_goal": long_term_goal,
             "weekly_frequency": frequency,
             "training_age_years": 3.0,
             "equipment_access": "commercial gym",
-            "injuries_or_limitations": "None",
-            "stress_and_sleep": "normal",
+            "injuries_or_limitations": limitations,
+            "stress_and_sleep": recovery,
         }
     )
     return program_generator.generate_program_pipeline(user_split_override=preference)[0]
@@ -304,3 +322,167 @@ def test_split_day_pools_cover_all_defined_days():
         for day in pool:
             assert day.slots, f"{split_type}/{day.name} has no slots"
             assert all(slot in SLOT_SPECS for slot in day.slots)
+
+
+def test_is_fat_loss_goal_patterns():
+    assert is_fat_loss_goal("fat loss")
+    assert is_fat_loss_goal("Losing weight")
+    assert is_fat_loss_goal("lose weight for summer")
+    assert is_fat_loss_goal("lose some weight")
+    assert is_fat_loss_goal("losing a bit of weight")
+    assert is_fat_loss_goal("weight loss")
+    assert is_fat_loss_goal("cutting phase")
+    assert is_fat_loss_goal("cut")
+    assert is_fat_loss_goal("get lean")
+    assert is_fat_loss_goal("shredding")
+    assert is_fat_loss_goal("burn fat")
+    assert is_fat_loss_goal("burning body fat")
+    assert is_fat_loss_goal("reduce my body fat")
+    assert is_fat_loss_goal("drop some fat")
+    assert is_fat_loss_goal("lower body fat percentage")
+    assert is_fat_loss_goal("fat reduction")
+    assert is_fat_loss_goal("slim down")
+    assert is_fat_loss_goal("slimming down")
+    assert is_fat_loss_goal("get more defined")
+    assert is_fat_loss_goal("look defined")
+    assert is_fat_loss_goal("recomp")
+    assert is_fat_loss_goal("recomposition")
+    assert is_fat_loss_goal("tone up")
+    assert is_fat_loss_goal("get toned")
+    assert is_fat_loss_goal("toning")
+    assert is_fat_loss_goal(None, "reach 12% body fat and lose weight")
+    assert not is_fat_loss_goal("hypertrophy")
+    assert not is_fat_loss_goal("bulking")
+    assert not is_fat_loss_goal("muscle gain")
+    assert not is_fat_loss_goal("gain weight")
+    assert not is_fat_loss_goal("strength")
+    assert not is_fat_loss_goal("progressive overload")
+    assert not is_fat_loss_goal("get healthy")
+    assert not is_fat_loss_goal("build more defined arms")
+    assert not is_fat_loss_goal("well-defined shoulders")
+    assert not is_fat_loss_goal("a ton of muscle")
+    assert not is_fat_loss_goal(None, None)
+
+
+@pytest.mark.parametrize("gender,frequency", [("male", 3), ("female", 3)])
+def test_fat_loss_goal_adds_cardio_finisher_to_every_day(gender, frequency):
+    program = _generate(gender, frequency, goal="fat loss")
+    for day in program.days:
+        assert day.cardio == FAT_LOSS_CARDIO_NOTE, day.day_name
+        assert "Fat-loss finisher" in (day.cardio or "")
+    loaded = db.get_active_program()
+    assert loaded is not None
+    assert [day.cardio for day in loaded.days] == [FAT_LOSS_CARDIO_NOTE] * len(program.days)
+
+
+def test_other_goals_keep_default_cardio():
+    for goal in ("hypertrophy", "bulking", "strength"):
+        program = _generate("male", 4, goal=goal)
+        for day in program.days:
+            assert day.cardio and day.cardio.startswith("Light cardio:"), f"{goal}/{day.day_name}: {day.cardio}"
+    full_body = _generate("male", 3, goal="bulking")
+    assert all(day.cardio is None for day in full_body.days)
+
+
+def test_goal_changes_only_the_cardio_layer():
+    fat_loss = _generate("male", 4, goal="fat loss")
+    hypertrophy = _generate("male", 4, goal="hypertrophy")
+    assert [day.day_name for day in fat_loss.days] == [day.day_name for day in hypertrophy.days]
+    for fl_day, hy_day in zip(fat_loss.days, hypertrophy.days, strict=True):
+        fl_shape = [
+            (ex.slot_key, ex.target_sets, ex.warmup_sets, ex.target_reps_min, ex.target_reps_max, ex.rest_seconds)
+            for ex in fl_day.exercises
+        ]
+        hy_shape = [
+            (ex.slot_key, ex.target_sets, ex.warmup_sets, ex.target_reps_min, ex.target_reps_max, ex.rest_seconds)
+            for ex in hy_day.exercises
+        ]
+        assert fl_shape == hy_shape, f"Lifting program changed for {fl_day.day_name}"
+        assert fl_day.cardio == FAT_LOSS_CARDIO_NOTE
+        assert hy_day.cardio != FAT_LOSS_CARDIO_NOTE
+
+
+def test_is_poor_recovery_patterns():
+    assert is_poor_recovery("high stress, 5 hours sleep")
+    assert is_poor_recovery("poor sleep")
+    assert is_poor_recovery("I get 4 hours most nights")
+    assert is_poor_recovery("insomnia lately")
+    assert is_poor_recovery("sleep deprivation")
+    assert is_poor_recovery("stressed")
+    assert is_poor_recovery("lots of stress at work")
+    assert not is_poor_recovery("good sleep, 8 hours, low stress")
+    assert not is_poor_recovery("normal")
+    assert not is_poor_recovery("7 hours sleep, low stress")
+    assert not is_poor_recovery("well rested")
+    assert not is_poor_recovery(None)
+
+
+def test_poor_recovery_cuts_escalated_sets_only():
+    normal = _generate("male", 4)
+    poor = _generate("male", 4, recovery="high stress, 5 hours sleep")
+    compound_slots = {
+        "quad_compound",
+        "ham_hinge",
+        "horizontal_row",
+        "upper_back_pull",
+        "flat_press",
+        "incline_press",
+        "vertical_pull",
+        "shoulder_press",
+        "glute_thrust",
+    }
+    for n_day, p_day in zip(normal.days, poor.days, strict=True):
+        assert [e.slot_key for e in n_day.exercises] == [e.slot_key for e in p_day.exercises]
+        cuts = 0
+        for n_ex, p_ex in zip(n_day.exercises, p_day.exercises, strict=True):
+            if n_ex.target_sets != p_ex.target_sets:
+                assert p_ex.target_sets == 1, f"{p_day.day_name}/{p_ex.slot_key} dropped below 1 set"
+                cuts += 1
+            if n_ex.slot_key in compound_slots or n_ex.slot_key == "calf":
+                assert p_ex.target_sets == n_ex.target_sets, f"{p_day.day_name}/{p_ex.slot_key} lost a set"
+        assert cuts <= MAX_RECOVERY_CUTS_PER_DAY, f"{p_day.day_name} cut {cuts} sets"
+    normal_weekly = sum(e.target_sets for d in normal.days for e in d.exercises)
+    poor_weekly = sum(e.target_sets for d in poor.days for e in d.exercises)
+    reduction = (normal_weekly - poor_weekly) / normal_weekly
+    assert 0.10 <= reduction <= 0.18, f"Recovery cut {reduction:.0%} outside the designed dose"
+
+
+def test_recovery_cut_composes_with_fat_loss_goal():
+    program = _generate("male", 4, goal="fat loss", recovery="poor sleep")
+    normal_weekly = sum(
+        e.target_sets for d in _generate("male", 4).days for e in d.exercises
+    )
+    weekly = sum(e.target_sets for d in program.days for e in d.exercises)
+    assert weekly < normal_weekly
+    for day in program.days:
+        assert day.cardio == FAT_LOSS_CARDIO_NOTE
+
+
+def test_back_limitation_substitutes_hamstring_alternative():
+    program = _generate("male", 4, limitations="lower back tightness")
+    names = [e.exercise_name.lower() for d in program.days for e in d.exercises]
+    assert not any("deadlift" in name or "good morning" in name for name in names)
+    for day in program.days:
+        assert len(day.exercises) >= 10, f"{day.day_name} shrank to {len(day.exercises)} exercises"
+    lower2 = next(d for d in program.days if d.day_name == "Lower 2")
+    ham_curls = [e for e in lower2.exercises if e.slot_key == "ham_curl"]
+    assert len(ham_curls) >= 2, "ham_hinge fallback did not add a second leg-curl variant"
+
+    full_body = _generate("male", 3, limitations="lower back tightness")
+    for day in full_body.days:
+        assert len(day.exercises) == 11, f"{day.day_name} lost an exercise to the back rule"
+
+
+def test_mobility_limitations_leave_program_unchanged():
+    baseline = _generate("male", 4)
+    mobility = _generate("male", 4, limitations="shoulder lack of flexibility, lower body stiffness")
+    for b_day, m_day in zip(baseline.days, mobility.days, strict=True):
+        b_shape = [
+            (ex.slot_key, ex.target_sets, ex.warmup_sets, ex.target_reps_min, ex.target_reps_max, ex.rest_seconds)
+            for ex in b_day.exercises
+        ]
+        m_shape = [
+            (ex.slot_key, ex.target_sets, ex.warmup_sets, ex.target_reps_min, ex.target_reps_max, ex.rest_seconds)
+            for ex in m_day.exercises
+        ]
+        assert b_shape == m_shape, f"Mobility limitation changed the lifting plan for {b_day.day_name}"

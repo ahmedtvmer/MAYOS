@@ -70,7 +70,6 @@ class ProgramState(TypedDict):
     resolved_frequency: int
     resolved_split: str
     target_days: list[str]
-    volume_budget: dict[str, int]
     candidate_pool: dict[str, list[dict[str, Any]]]
     generated_program: GeneratedProgramSchema | None
     error: str | None

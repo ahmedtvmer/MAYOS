@@ -414,7 +414,8 @@ class DayBlueprint:
 COMPOUND_ARCHETYPES = {"heavy_compound", "medium_compound"}
 
 #: Leg-focused movements that earn a second working set on lower-body days.
-LEG_STAPLE_SLOTS = frozenset({"quad_iso", "ham_curl", "adductors", "glute_iso", "glute_thrust", "abs"})
+#: Isolations only — compounds always carry 2 and never consume a recovery cut.
+LEG_STAPLE_SLOTS = frozenset({"quad_iso", "ham_curl", "adductors", "glute_iso", "abs"})
 
 #: Isolation slots that earn a second working set on dedicated arm/push/pull days.
 ARM_ISOLATION_SLOTS = frozenset(
@@ -435,14 +436,34 @@ ARM_ISOLATION_SLOTS = frozenset(
 
 SETS_FAMILY_BY_DAY_FAMILY = {"lower": "leg", "arms": "arms", "upper": "standard", "full": "full"}
 
+#: Upper bound on escalated-set reductions applied per day under poor recovery,
+#: so fatigue management shaves accessory volume without gutting dense splits.
+MAX_RECOVERY_CUTS_PER_DAY = 4
+
+#: Safe substitutes when a limitation filter empties a slot's candidate pool.
+#: ham_hinge is the only slot whose entire pool is deadlift/good-morning named,
+#: i.e. the only one the back rule can empty; leg curls are low-back friendly.
+SLOT_FALLBACKS: dict[str, tuple[str, ...]] = {"ham_hinge": ("ham_curl",)}
+
 
 def resolve_sets_family(day_family: str, explicit: str | None = None) -> str:
     """Resolves the working-set profile for a session (explicit value wins)."""
     return explicit or SETS_FAMILY_BY_DAY_FAMILY.get(day_family, "standard")
 
 
+def is_escalated_isolation(slot_key: str, sets_family: str) -> bool:
+    """True when the slot earns its second set purely through a family escalation."""
+    if sets_family == "leg" and slot_key in LEG_STAPLE_SLOTS:
+        return True
+    return sets_family == "arms" and slot_key in ARM_ISOLATION_SLOTS
+
+
 def slot_working_sets(
-    slot_key: str, archetype: str, sets_family: str, double_slots: tuple[str, ...] = ()
+    slot_key: str,
+    archetype: str,
+    sets_family: str,
+    double_slots: tuple[str, ...] = (),
+    recovery_cut: bool = False,
 ) -> int:
     """Working sets for one slot occurrence, matching the reference-program profiles.
 
@@ -450,7 +471,9 @@ def slot_working_sets(
     the contexts where the reference programs escalated them: leg staples on
     lower days and arm/delt isolations on dedicated arm days. Full-body days run
     a minimal profile (``double_slots`` = the day's priority lifts at 2 sets)
-    plus calves.
+    plus calves. With ``recovery_cut`` (poor stress/sleep) escalated isolations
+    drop back to a single set while compounds, priority lifts and calves keep
+    theirs — exercise selection, order and frequency never change.
     """
     if slot_key == "calf":
         return 2
@@ -458,10 +481,8 @@ def slot_working_sets(
         return 2 if slot_key in double_slots else 1
     if archetype in COMPOUND_ARCHETYPES:
         return 2
-    if sets_family == "leg" and slot_key in LEG_STAPLE_SLOTS:
-        return 2
-    if sets_family == "arms" and slot_key in ARM_ISOLATION_SLOTS:
-        return 2
+    if is_escalated_isolation(slot_key, sets_family):
+        return 1 if recovery_cut else 2
     return 1
 
 
@@ -1187,6 +1208,73 @@ def match_split_keyword(preference: str | None) -> str | None:
         if any(pattern.search(text) for pattern in patterns):
             return split_type
     return None
+
+
+# Goals modulate ONLY the cardio layer: lifting blueprints, exercise selection
+# and prescriptions stay identical for every goal (cutting must not dilute the
+# training that preserves muscle). Word-boundary patterns keep "hypertrophy",
+# "bulking", "muscle gain", "strength" and "progressive overload" inert.
+FAT_LOSS_GOAL_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"\bfat\s*loss\b",
+        r"\blos(?:e|ing)\s+(?:\w+\s+){0,3}weight\b",
+        r"\bweight\s*loss\b",
+        r"\bcut(?:ting)?\b",
+        r"\bget\s+lean\b",
+        r"\blean\s+(?:out|down)\b",
+        r"\bshred(?:ding)?\b",
+        r"\b(?:burn(?:ing)?|reduc(?:e|ing)|drop(?:ping)?|lower(?:ing)?|los(?:e|ing))\s+"
+        r"(?:\w+\s+){0,2}(?:body\s*)?fat\b",
+        r"\bfat\s*reduction\b",
+        r"\bslim(?:ming)?\s*down\b",
+        r"\b(?:get|look)(?:ing|s)?\s+(?:more\s+)?defined\b",
+        r"\brecomp(?:osition)?\b",
+        r"\bton(?:e|es|ed|ing)(?:\s*up)?\b",
+    )
+)
+
+FAT_LOSS_CARDIO_NOTE = (
+    "Fat-loss finisher: 20-30 min incline treadmill walk (8-12% incline, brisk ~4-5 km/h) "
+    "or moderate cycling, after the session"
+)
+
+
+def is_fat_loss_goal(current_goal: str | None, long_term_goal: str | None = None) -> bool:
+    """True when the trainee's stated goal is fat loss (checks both goal fields)."""
+    for goal in (current_goal, long_term_goal):
+        if not goal:
+            continue
+        text = goal.lower()
+        if any(pattern.search(text) for pattern in FAT_LOSS_GOAL_PATTERNS):
+            return True
+    return False
+
+
+# Recovery signals modulate ONLY escalated-accessory volume (see
+# ``slot_working_sets``): poor stress/sleep never changes exercise selection,
+# order or frequency. Word-boundary patterns keep neutral narratives
+# ("good sleep, 8 hours, low stress") inert.
+POOR_RECOVERY_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"\b(?:poor|bad|terrible|low)\s+(?:sleep|recovery)\b",
+        r"\black\s+of\s+sleep\b",
+        r"\binsomnia\b",
+        r"\bsleep\s+depriv(?:ed|ation)\b",
+        r"\b(?:high|heavy|lots?\s+of)\s+stress\b",
+        r"\bstressed\b",
+        r"\b(?:4|5|6|four|five|six)\s*(?:-|to)?\s*hours\b",
+    )
+)
+
+
+def is_poor_recovery(stress_and_sleep: str | None) -> bool:
+    """True when the stress/sleep narrative signals reduced recovery capacity."""
+    if not stress_and_sleep:
+        return False
+    text = stress_and_sleep.lower()
+    return any(pattern.search(text) for pattern in POOR_RECOVERY_PATTERNS)
 
 
 # Fallback used when the LLM returns legacy muscle targets instead of slot keys.
