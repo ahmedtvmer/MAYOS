@@ -24,4 +24,4 @@ mayos.txt
 tests/eval/datasets/_tmp_gen_deb.json
 tests/eval/datasets/_tmp_gen_onb.json
 tests/eval/datasets/_tmp_gen_qa.json
-logs/myos.log
+logs/
