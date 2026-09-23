@@ -109,3 +109,51 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Rationale**: **Contained, reversible, eval-gated.** Keeping `local` the default preserves the offline product and zero-regression guarantee, while isolating cloud-specific behaviour (model IDs, thinking toggle, key handling) in one module. Fail-fast key validation converts a per-request 401 into a startup/readiness failure that operators can actually see. The `conftest.py` guard makes the suite deterministic against developer `.env` drift. The existing eval harness uses the same factories, so the local→cloud transition is gated by the same 65-case/15-case suite rather than a hand-wave.
 * **Hosted trial gate (2026-09-23)**: Qwen3.5-9B passed the provider smoke, scored 62/65 standard and 15/15 generalization with the Qwen3.5-27B function-calling judge, and had no clinical-safety failures. The accepted hosted standard threshold is 62/65; the local 63/65 result remains a historical baseline.
 * **Code References**: `utils/model_downloader.py` (`SafeChatOpenAI`, `CLOUD_MODEL_REGISTRY`, `DEFAULT_CLOUD_API_BASE`, `_llm_backend`, `uses_cloud_backend`, `_should_use_cloud_mock`, `_build_cloud_llm`, `get_llm`, `get_judge_llm`, `get_coach_llm`, `coach_llm`, `unload_coach_llm`), `svc/llm.py` (`_max_concurrent`, `_SEMAPHORE`, `_uses_serial_lock`, `is_coach_loaded`, `unload_all`), `tests/conftest.py`, `tests/test_cloud_backend.py`, `.env.example`, `ANDROID-PLAN.md` (Phase 0).
+
+---
+
+### ADR 013: One account for training and coaching
+* **Status**: Accepted
+* **Decision**: A person may train and coach through one account. Player and coach are capabilities of that account, rather than exclusive identities. This avoids duplicate accounts and training histories for coaches who also train, while requiring authorization to check the current capability and coaching assignment for each action. An account cannot assign itself as its own coach. During the closed trial, only owner-invited accounts may gain the coach capability. A person may later disable coaching, ending their assignments while retaining their own training account.
+
+---
+
+### ADR 014: Consented assignment controls training-history access
+* **Status**: Accepted
+* **Decision**: A coach can read a player's training history only during an active, mutually consented assignment. Before accepting an invite, the player sees the access it grants. Every invite code is single-use and acts as the coach's advance authorization for its first redeemer; the code is not tied to a named recipient, so forwarding it can change who redeems it. The player must explicitly accept before immediate binding. Codes expire quickly, the coach receives an in-app and email notice on redemption, and the coach may immediately revoke the assignment. The email contains no training data. Revocation ends access to both current and earlier history. This avoids recipient verification for invites while limiting each code to one assignment.
+
+---
+
+### ADR 015: Durable account identity and deletion
+* **Status**: Accepted
+* **Decision**: Each account has an immutable identity distinct from its reusable username. JWT subjects identify the immutable account, while current capabilities and the session epoch are checked in the durable registry before any ledger is opened; a missing or deleted account fails closed. Account deletion invalidates sessions there, removes the live ledger and user-specific backup copies, and prevents an old token or restored backup from recreating the deleted identity. A former username may be registered again only as a new account. Fly volume snapshots are disabled; restricted whole-catalog recovery backups may retain deleted rows for up to 30 days, as disclosed to users. Every restore reapplies a durable deletion record kept outside the restored snapshot. This separates identity and revocation from the ledger being deleted while preserving username reuse and bounded disaster recovery.
+
+---
+
+### ADR 016: Minimize data sent to hosted models
+* **Status**: Accepted
+* **Decision**: The closed trial discloses hosted AI processing before use. Player inference receives the user's message and only the context needed to answer it; coach inference receives only the selected player's necessary telemetry, without account names or contact details, and never receives player-assistant chat. Coach-assistant exchanges are kept in memory for one selected player and are cleared on player switch, revocation, logout, or app close; the service does not persist a coach-assistant transcript in the trial. This permits hosted inference for the Android service while limiting unnecessary disclosure and cross-player context. User-written free text may still contain identifying information and must be described honestly in the privacy notice.
+
+---
+
+### ADR 017: Flutter is the product client
+* **Status**: Accepted
+* **Decision**: MAYOS is migrating to a mobile application, beginning with Android only for the closed trial. The Flutter app is the product client, backed by the FastAPI service; the Streamlit interface is legacy migration reference and serves no users. Delete it after the four-week trial passes its exit gates and opted-in real-user imports finish, before public launch. The local GGUF backend remains available for development and evaluation. This concentrates delivery and design work on one user experience while retaining useful engine test paths.
+
+---
+
+### ADR 018: Coach applies substitutions to coach-controlled programs
+* **Status**: Accepted
+* **Decision**: After a coach publishes a player's program, the player requests an exercise substitution and the coach applies any replacement. Existing player-side substitution paths must become requests for coach-controlled programs; the coach owns the resulting program change. A request can be applied, declined with a short player-visible reason, or cancelled. Recording a skipped or unplanned exercise truthfully in a workout is allowed and does not change the program; the coach sees that divergence while assigned. This preserves the coach's responsibility for the program without falsifying the player's workout history. Self-service remains available before coach publication and after assignment revocation.
+
+---
+
+### ADR 019: Opt-in import of existing training history
+* **Status**: Accepted
+* **Decision**: The mobile service does not bulk-import every local ledger. Existing real users may explicitly opt into an audited import of their histories, receive new immutable account IDs, and complete a secure account-claim path. Local ledgers include development and test data, mixed schema versions, and mostly lack password credentials, so automatic import would risk creating unwanted or insecure cloud accounts. The import uses consistent SQLite snapshots and verifies record counts before cutover.
+
+---
+
+### ADR 020: Offline workout drafts with idempotent sync
+* **Status**: Accepted
+* **Decision**: The Android player may capture workout drafts without connectivity and sync them when connected. Chat and program changes remain online. Each draft carries a stable client session ID, performed date and timezone, and the program version used while logging; server commit must be idempotent so retries cannot create duplicate workouts. If a coach publishes a newer program before sync, the workout remains a historical record against the captured version and does not change the new program; both parties see the version difference. Unsynced drafts survive app restart and logout in protected storage isolated to that account, with a logout warning and explicit discard action. Account deletion erases drafts on the deleting device; another offline device erases them when it next checks account status. Performed dates may be entered or corrected up to three days back, while upload/edit timestamps remain available for audit and affected absence alerts are recalculated. This adds a sync contract to the current online-only workout endpoint because workout logging is a core mobile task even when connectivity is interrupted.
