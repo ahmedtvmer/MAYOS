@@ -22,7 +22,12 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
-from database.database_manager import DatabaseManager  # noqa: E402
+from database.database_manager import (  # noqa: E402
+    DEFAULT_BACKUPS_DIR,
+    DEFAULT_CATALOG_PATH,
+    DEFAULT_USERS_DIR,
+    DatabaseManager,
+)
 from service import auth as auth_service  # noqa: E402
 from service._base import bind_user  # noqa: E402
 from utils.logger import MyosLogger  # noqa: E402
@@ -66,9 +71,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Admin reset of a trainee password (revokes all sessions).")
     parser.add_argument("trainee_id", help="Trainee ID / username of the ledger.")
     parser.add_argument("--password", default=None, help="New password (otherwise prompted securely).")
-    parser.add_argument("--catalog", default=os.getenv("CATALOG_PATH", str(BASE_DIR / "db" / "catalog.db")))
-    parser.add_argument("--users-dir", default=os.getenv("USERS_DIR", str(BASE_DIR / "db" / "users")))
-    parser.add_argument("--backups-dir", default=os.getenv("BACKUPS_DIR", str(BASE_DIR / "db" / "backups")))
+    parser.add_argument("--catalog", default=os.getenv("CATALOG_PATH", str(DEFAULT_CATALOG_PATH)))
+    parser.add_argument("--users-dir", default=os.getenv("USERS_DIR", str(DEFAULT_USERS_DIR)))
+    parser.add_argument("--backups-dir", default=os.getenv("BACKUPS_DIR", str(DEFAULT_BACKUPS_DIR)))
     args = parser.parse_args(argv)
 
     new_password = args.password or getpass.getpass("New password (8-128 chars): ")

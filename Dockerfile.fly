@@ -1,0 +1,55 @@
+# Fly.io production image for the MAYOS API (hosted LLM backend).
+#
+# FastAPI only: no GGUF/CUDA/llama-cpp-python and no Streamlit. Inference is
+# served by the hosted OpenAI-compatible endpoint selected with LLM_BACKEND=openai.
+# The catalog, ledgers, and backup work area live on the mounted /data volume via
+# MAYOS_DATA_DIR (see fly.toml and docs/DEPLOYMENT.md).
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/app/.cache/huggingface \
+    LLM_BACKEND=openai \
+    MODEL_DEVICE=cpu \
+    EMBEDDING_DEVICE=cpu
+
+WORKDIR /app
+
+# curl: container healthcheck. sqlite3: operator inspection/verification.
+# libgomp1: OpenMP runtime required by the CPU PyTorch build.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    sqlite3 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
+COPY requirements-fly.txt .
+
+# CPU-only PyTorch from the official CPU index, installed first so the hosted
+# manifest never pulls CUDA wheels.
+RUN uv pip install --system --index-url https://download.pytorch.org/whl/cpu "torch>=2.0" \
+    && uv pip install --system -r requirements-fly.txt
+
+# Bake the embedding model into the image so boot and the one-time vector seed
+# do not depend on a cold Hugging Face fetch.
+RUN python -c "from langchain_huggingface import HuggingFaceEmbeddings; \
+    HuggingFaceEmbeddings(model_name='BAAI/bge-small-en-v1.5', model_kwargs={'device': 'cpu'}, \
+    encode_kwargs={'normalize_embeddings': True})"
+
+# The production catalog seed CSV is operator-provided and is not tracked in
+# this repository. Copying it explicitly fails the build fast when it is absent,
+# instead of producing an image that cannot seed the catalog.
+COPY data/processed_exercises.csv /app/data/processed_exercises.csv
+
+COPY . .
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=90s \
+  CMD curl -f http://localhost:8000/healthz || exit 1
+
+# One Uvicorn worker: SQLite is a single writer and the API Machine owns the volume.
+CMD ["uvicorn", "svc.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

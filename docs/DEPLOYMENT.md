@@ -2,6 +2,12 @@
 
 This document details production deployment procedures, container orchestration, host hardware tuning, database provisioning, and disaster recovery protocols for the Myos training engine.
 
+> **Android closed trial (Fly.io, FastAPI only):** the §10 runbook targets the
+> API service alone on one always-on Machine with a durable volume. See
+> [§10 Fly.io Closed-Trial API Deployment](#10-flyio-closed-trial-api-deployment-fastapi-only).
+> The GPU/`docker-compose` topology below remains the local-development and
+> engine-evaluation reference; it is not the trial topology.
+
 ---
 
 ## 1. Host Hardware & Runtime Prerequisites
@@ -365,3 +371,174 @@ Lazy schema migrations already produce **atomic online snapshots** via `sqlite3.
    rm -f ./db/users/<username>.db-wal ./db/users/<username>.db-shm
    ```
 4. Restart: `docker compose up -d`. A ledger newer than the engine's target schema is refused with a clear upgrade message; an older one migrates automatically with a snapshot taken first.
+
+---
+
+## 10. Fly.io Closed-Trial API Deployment (FastAPI only)
+
+> **Status:** configuration and runbook only. This repository has not deployed or
+> verified a live Fly.io account. Treat the steps below as the procedure to
+> execute and the checks that prove it worked; do not describe the trial as live
+> until they pass.
+
+The closed Android trial is designed to run **one always-on FastAPI writer** in
+Frankfurt (`fra`) on a `shared-cpu-1x` Machine with a **10 GB volume** mounted at
+`/data`. Streamlit is legacy and is not deployed as a product service
+(retirement: #46); the image is FastAPI only.
+
+### 10.1 Topology
+
+| Piece | Setting | Why |
+| :--- | :--- | :--- |
+| Image | `Dockerfile.fly` + `requirements-fly.txt` | `python:3.12-slim`, CPU-only PyTorch, no `llama-cpp-python`/CUDA/Streamlit |
+| Inference | `LLM_BACKEND=openai` | hosted OpenAI-compatible endpoint (ADR 012); no GGUF in the image |
+| Process | `uvicorn svc.app:app --workers 1` | SQLite is a single writer and the Machine owns the volume |
+| Region/VM | `primary_region = "fra"`, `shared-cpu-1x`, 2 GB | within the locked trial size (ANDROID-PLAN §1); 2 GB is chosen to leave headroom for the CPU BGE embedding model, which measured near 1 GB RSS in local development — confirm headroom on the deployed Machine |
+| Volume | `[[mounts]]` `mayos_data` → `/data`, `initial_size = "10gb"` | catalog, ledgers, and the migration/backup work area |
+| Snapshots | `scheduled_snapshots = false` | ADR 015: Fly snapshots disabled; backups are owned by #41 |
+| Availability | `auto_stop_machines = "off"`, `auto_start_machines = false`, `[[restart]] policy = "always"` | idle periods must not stop the always-on writer |
+| Probes | `[[http_service.checks]]` on `/healthz` and `/readyz`, `force_https = true` | Fly TLS plus liveness/readiness |
+| No release Machine | no `[deploy] release_command` | the release Machine cannot mount the volume |
+
+### 10.2 Persistent data root
+
+`MAYOS_DATA_DIR=/data` is set in `fly.toml`. Every storage default in
+`database/database_manager.py` derives from it, so boot, seeding, the reset CLI,
+and normal requests all use the volume:
+
+```
+/data/catalog.db      # shared catalog + account/recovery identity
+/data/users/<id>.db   # per-account ledgers (WAL)
+/data/backups/<id>/   # migration/rolling snapshots
+```
+
+`MAYOS_REQUIRE_PERSISTENT_DATA=true` makes `validate_data_root()` fail closed when
+`/data` is missing, not a directory, not writable, or not a real mount, and
+`DatabaseManager.__init__` runs the same check before any `mkdir` or SQLite open.
+Because several `agent/*` modules construct `DatabaseManager` at import time,
+there are two possible failure modes when the volume is not ready:
+
+- **Import/startup failure:** the process may fail while importing `svc.app`,
+  before the FastAPI lifespan runs. The Machine then crash-loops and never serves
+  `/readyz` at all.
+- **Running but not ready:** if the process does reach the lifespan, storage
+  validation marks it not-ready; `/readyz` returns 503 and any request that
+  lazily builds the manager fails instead of creating the catalog or ledgers.
+
+Either way, no catalog or ledger is written to the container's ephemeral
+filesystem. Unset in local development, so the repo `./db` layout is unchanged.
+
+### 10.3 One-time setup
+
+```bash
+# Run this block from the repository root (the directory containing fly.toml
+# and data/).
+# Set this to the globally unique app name declared in fly.toml; the commands
+# below reuse it.
+APP=mayos-api
+
+# The production catalog CSV is operator-provided and is not tracked in this
+# repo (its licensing/provenance is unknown and this runbook invents none).
+# Dockerfile.fly copies it explicitly, so a build without it fails. Stop before
+# launching/deploying if it is absent:
+test -f data/processed_exercises.csv \
+  || { echo "seed CSV MISSING: provide data/processed_exercises.csv before fly deploy" >&2; exit 1; }
+
+fly launch --no-deploy --copy-config
+fly volumes create mayos_data -r fra -s 10 --scheduled-snapshots=false
+
+# Generate the JWT secret locally, set it, and drop the shell variable.
+JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+fly secrets set JWT_SECRET="$JWT_SECRET"
+unset JWT_SECRET
+
+# Hosted-provider and SMTP secrets. Quote every value so the shell cannot treat
+# it as a redirection; prefer `fly secrets import` from a private file when
+# shell history matters. Never commit these values.
+fly secrets set LLM_API_KEY="<hosted-provider-key>"
+fly secrets set SMTP_HOST="<smtp-host>" SMTP_USER="<smtp-user>" \
+  SMTP_PASSWORD="<smtp-password>" SMTP_FROM="<from-address>"
+
+# Deploy a single Machine (no HA pair) so only one writer mounts the volume.
+fly deploy --ha=false
+```
+
+The operator must place the real processed exercise catalog at
+`data/processed_exercises.csv` in the working tree before building; run the
+setup block from the repository root. This repository does not track the file
+and provides no download step; `Dockerfile.fly` copies it explicitly so the
+build fails when it is absent. `SEED_CSV_PATH` is a deliberate initializer
+override, not a build input.
+
+`JWT_SECRET` and `LLM_API_KEY` are mandatory: without the JWT secret the service
+refuses to mint tokens, and without the hosted key readiness fails loudly
+(ADR 012) instead of 401ing every request.
+
+### 10.4 One-time catalog init + vector seed (inside the API Machine)
+
+The volume is mounted only on the running API Machine, so seed through it — not
+via a release command or a separate scheduled Machine:
+
+```bash
+fly ssh console -C "python scripts/intialize_db.py --seed-only"
+fly ssh console -C "python scripts/seed_vectors.py"
+```
+
+`--seed-only` honors `MAYOS_DATA_DIR` and skips the script's local self-test
+rows (no `test_user` ledger or throwaway session/set/vector). The initializer
+defaults to `data/processed_exercises.csv` and exits with an error before any
+database work when that file is missing; it never falls back to the
+`tests/fixtures` catalog. `SEED_CSV_PATH` is the only override and exists for
+deliberate input. Constructing `DatabaseManager` still provisions the engine's
+empty `default` ledger, exactly as a normal boot does; that is expected.
+`seed_vectors.py` uses the BGE model baked into the image. Re-running the
+initializer is safe: a populated catalog is skipped.
+
+`/readyz` checks the running process, model, and writable volume; it does not
+check exercise or vector row counts. Finish both seed commands and verify the
+catalog before giving the Fly hostname to trial users.
+
+### 10.5 Verification (run these before calling it live)
+
+1. **Machine + checks:** `fly status` shows one Machine in `fra`, and
+   `fly checks list` shows both `/healthz` and `/readyz` passing.
+2. **Volume mounted:** `fly ssh console -C df` shows the 10 GB volume on `/data`.
+3. **HTTPS health:** `curl -fsS "https://${APP}.fly.dev/healthz"` and
+   `curl -fsS "https://${APP}.fly.dev/readyz"` return 200; `/readyz` details
+   report `storage: true`. (`APP` is set in §10.3.)
+4. **Catalog seeded:** `fly ssh console -C "sqlite3 /data/catalog.db 'SELECT COUNT(*) FROM exercises;'"` is non-zero.
+5. **App round-trip over HTTPS:** register → login → chat SSE against the Fly
+   hostname from the Android client.
+6. **Restart persistence:** record the counts below, restart the app, and
+   confirm they are unchanged.
+
+```bash
+# APP is set in §10.3 and must match `app` in fly.toml.
+fly ssh console -C "sqlite3 /data/catalog.db 'SELECT COUNT(*) FROM exercises;'"
+fly ssh console -C "ls -la /data/users"
+fly apps restart "$APP"
+fly ssh console -C "sqlite3 /data/catalog.db 'SELECT COUNT(*) FROM exercises;'"
+fly ssh console -C "ls -la /data/users"
+```
+
+If `/readyz` returns 503, or the Machine never becomes healthy, inspect
+`fly logs` for the actual cause, including storage validation failures and LLM
+warmup failures.
+
+### 10.6 Operator password reset
+
+```bash
+fly ssh console -C "python scripts/reset_password.py <trainee_id>"
+```
+
+The CLI inherits `MAYOS_DATA_DIR` from the Machine and writes to `/data`, so the
+reset lands on the same catalog/ledger the API uses.
+
+### 10.7 Deferred to later tickets
+
+- **Daily backups/restore (#41) and spend/alert jobs (#39):** not part of this
+  baseline. When they land they must run inside this always-on API Machine,
+  because a detached scheduled Machine cannot mount `/data`.
+- **Exercise demo media:** `data/images` and `data/videos` are large, gitignored
+  local artifacts and are excluded from the build context, so `/media/*` does
+  not serve them in this deployment yet.

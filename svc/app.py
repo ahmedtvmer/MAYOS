@@ -12,27 +12,37 @@ from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from database.storage import storage_status
 from svc.rate_limit import limiter
 from svc.routers import auth, chat, dashboard, media, onboarding, profile, programs, workouts
 from svc.schemas import HealthOut
 
 logger = logging.getLogger(__name__)
 
-_ready = {"model": False, "catalog": False, "draining": False}
+_ready = {"model": False, "catalog": False, "storage": False, "draining": False}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from database.database_manager import DatabaseManager
+    from database.storage import StorageNotReady, validate_data_root
     from svc.llm import warmup_llm
 
+    _ready.update(model=False, catalog=False, storage=False, draining=False)
     if os.getenv("SKIP_LLM_LOAD") == "true":
         logger.info("SKIP_LLM_LOAD set; skipping catalog init and LLM warmup (unit-test mode).")
         _ready["catalog"] = True
+        _ready["storage"] = True
     else:
         try:
+            validate_data_root()
+            _ready["storage"] = True
             DatabaseManager()
             _ready["catalog"] = True
+        except StorageNotReady:
+            logger.exception(
+                "Persistent data root is not ready; refusing to create the catalog/ledgers on ephemeral storage."
+            )
         except Exception:
             logger.exception("Catalog initialization failed during lifespan startup")
         try:
@@ -40,7 +50,13 @@ async def lifespan(app: FastAPI):
             _ready["model"] = True
         except Exception:
             logger.exception("LLM warmup failed during lifespan startup")
-    logger.info("Lifespan startup complete (model=%s catalog=%s).", _ready["model"], _ready["catalog"])
+
+    logger.info(
+        "Lifespan startup complete (model=%s catalog=%s storage=%s).",
+        _ready["model"],
+        _ready["catalog"],
+        _ready["storage"],
+    )
     yield
     _ready["draining"] = True
     from svc.llm import unload_all
@@ -84,9 +100,11 @@ def create_app() -> FastAPI:
 
     @app.get("/readyz", response_model=HealthOut, tags=["ops"])
     async def readyz():
-        if _ready["draining"] or not (_ready["model"] and _ready["catalog"]):
-            return JSONResponse(status_code=503, content={"status": "not_ready", "details": dict(_ready)})
-        return {"status": "ready", "details": dict(_ready)}
+        storage_ok, storage_detail = storage_status()
+        details = {**_ready, "storage": storage_ok, "storage_detail": storage_detail}
+        if _ready["draining"] or not (_ready["model"] and _ready["catalog"] and storage_ok):
+            return JSONResponse(status_code=503, content={"status": "not_ready", "details": details})
+        return {"status": "ready", "details": details}
 
     return app
 

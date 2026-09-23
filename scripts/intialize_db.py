@@ -1,32 +1,81 @@
+import argparse
+import os
 import sys
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-
-import os
 
 import sqlite_vec
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
+from database.database_manager import (  # noqa: E402
+    DEFAULT_BACKUPS_DIR,
+    DEFAULT_CATALOG_PATH,
+    DEFAULT_USERS_DIR,
+    DatabaseManager,
+)
+from utils.logger import MyosLogger  # noqa: E402
+
 DEFAULT_PROCESSED_PATH = BASE_DIR / "data" / "processed_exercises.csv"
-CATALOG_PATH = BASE_DIR / "db" / "catalog.db"
-USERS_DIR = BASE_DIR / "db" / "users"
-
-FIXTURE_PATH = Path("tests/fixtures/mock_exercises.csv")
-
-csv_path = Path(os.getenv("SEED_CSV_PATH", DEFAULT_PROCESSED_PATH if DEFAULT_PROCESSED_PATH.exists() else FIXTURE_PATH))
-
-from database.database_manager import DatabaseManager
-from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
 
 
-def run_tests():
+def resolve_csv_path() -> Path:
+    """Resolve the catalog seed CSV.
+
+    Defaults to the real processed catalog CSV the operator supplies to the
+    build. ``SEED_CSV_PATH`` is the only override and exists for deliberate
+    input; there is no silent fallback to a test fixture.
+    """
+    override = os.getenv("SEED_CSV_PATH", "").strip()
+    return Path(override) if override else DEFAULT_PROCESSED_PATH
+
+
+def require_csv_path() -> Path:
+    """Resolve the seed CSV and fail clearly before any database work."""
+    csv_path = resolve_csv_path()
+    if not csv_path.is_file():
+        raise SystemExit(
+            f"error: catalog seed CSV not found at '{csv_path}'.\n"
+            "Provide the real processed exercise catalog at that path, or set "
+            "SEED_CSV_PATH deliberately for a local self-test. There is no silent "
+            "fallback to any test fixture."
+        )
+    return csv_path
+
+
+def seed_only(csv_path: Path) -> None:
+    """Seed schema + relational catalog data onto the configured data root.
+
+    This is the production one-time path: it honors ``MAYOS_DATA_DIR`` (via the
+    ``DEFAULT_*`` paths) and writes no test ledgers or throwaway rows.
+    """
+    logger.info("Seeding catalog on data root '%s' from '%s'...", DEFAULT_CATALOG_PATH.parent, csv_path)
+    db = DatabaseManager(
+        catalog_path=DEFAULT_CATALOG_PATH,
+        users_dir=DEFAULT_USERS_DIR,
+        backups_dir=DEFAULT_BACKUPS_DIR,
+    )
+    try:
+        db.initialize_and_seed(csv_path=csv_path)
+        exercise_count = db.catalog_conn.execute("SELECT COUNT(*) FROM exercises").fetchone()[0]
+        muscles_count = db.catalog_conn.execute("SELECT COUNT(*) FROM exercise_secondary_muscles").fetchone()[0]
+        if exercise_count <= 0:
+            raise SystemExit("error: catalog seed produced zero exercises; check SEED_CSV_PATH.")
+        logger.info("Catalog seed complete: %s exercises, %s muscle mappings.", exercise_count, muscles_count)
+        print(f"Catalog seed complete: {exercise_count} exercises, {muscles_count} muscle mappings.")
+    finally:
+        if db.user_conn is not None:
+            db.user_conn.close()
+        db.catalog_conn.close()
+
+
+def run_tests(csv_path: Path) -> None:
     logger.info("Initializing DatabaseManager singleton...")
-    db = DatabaseManager(catalog_path=CATALOG_PATH, users_dir=USERS_DIR, active_user="test_user")
+    db = DatabaseManager(catalog_path=DEFAULT_CATALOG_PATH, users_dir=DEFAULT_USERS_DIR, active_user="test_user")
 
     cat_cursor = db.catalog_conn.cursor()
     user_cursor = db.user_conn.cursor()
@@ -115,5 +164,22 @@ def run_tests():
     logger.info("All DatabaseManager checks passed successfully.")
 
 
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Initialize/seed the MAYOS catalog on the configured data root.")
+    parser.add_argument(
+        "--seed-only",
+        action="store_true",
+        help="Production seed: schema + CSV data only, without the local self-test writes.",
+    )
+    args = parser.parse_args(argv)
+
+    csv_path = require_csv_path()
+    if args.seed_only:
+        seed_only(csv_path)
+    else:
+        run_tests(csv_path)
+    return 0
+
+
 if __name__ == "__main__":
-    run_tests()
+    raise SystemExit(main())

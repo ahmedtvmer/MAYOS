@@ -16,9 +16,15 @@ import sqlite_vec
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
-DEFAULT_CATALOG_PATH = BASE_DIR / "db" / "catalog.db"
-DEFAULT_USERS_DIR = BASE_DIR / "db" / "users"
-DEFAULT_BACKUPS_DIR = BASE_DIR / "db" / "backups"
+from database.storage import configured_data_root, resolve_data_root, validate_data_root
+
+#: Catalog, ledgers, and migration/backup work area all hang off one data root.
+#: Local development keeps ``<repo>/db``; containers set ``MAYOS_DATA_DIR`` to
+#: the mounted volume (``/data``) so every path below is durable from boot.
+_DATA_ROOT = resolve_data_root()
+DEFAULT_CATALOG_PATH = _DATA_ROOT / "catalog.db"
+DEFAULT_USERS_DIR = _DATA_ROOT / "users"
+DEFAULT_BACKUPS_DIR = _DATA_ROOT / "backups"
 DEFAULT_CSV_PATH = BASE_DIR / "data" / "processed_exercises.csv"
 
 from agent.ProgramState import (
@@ -61,9 +67,9 @@ class DatabaseManager:
 
     def __init__(
         self,
-        catalog_path=DEFAULT_CATALOG_PATH,
-        users_dir=DEFAULT_USERS_DIR,
-        backups_dir=DEFAULT_BACKUPS_DIR,
+        catalog_path=None,
+        users_dir=None,
+        backups_dir=None,
         active_user: str | None = None,
     ):
         if getattr(self, "_initialized", False):
@@ -77,9 +83,20 @@ class DatabaseManager:
             if getattr(self, "_initialized", False):
                 return
 
-            self.catalog_path = Path(catalog_path)
-            self.users_dir = Path(users_dir)
-            self.backups_dir = Path(backups_dir)
+            # Resolve the data root at construction time so MAYOS_DATA_DIR is
+            # honored even when the env is set after this module was imported.
+            # When a data root is configured, validate it *before* any mkdir or
+            # SQLite open so a missing/unwritable volume fails closed — including
+            # when a route lazily constructs the manager after startup failed.
+            # Local no-env runs and explicit-path construction (tests, operator
+            # overrides) keep working unchanged.
+            if configured_data_root() is not None:
+                root = validate_data_root()
+            else:
+                root = resolve_data_root()
+            self.catalog_path = Path(catalog_path) if catalog_path is not None else root / "catalog.db"
+            self.users_dir = Path(users_dir) if users_dir is not None else root / "users"
+            self.backups_dir = Path(backups_dir) if backups_dir is not None else root / "backups"
             self._default_user = self._sanitize_username(active_user) if active_user else "default"
             self._catalog_lock = threading.Lock()
 

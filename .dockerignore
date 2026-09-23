@@ -3,10 +3,33 @@
 venv/
 ENV/
 
+# Secrets and local environment (never bake .env or key material)
+.env
+.env.*
+*.pem
+*.key
+
 # Model weights (mounted via volume, never copied)
 models/
 *.gguf
 *.bin
+
+# Local runtime state: catalog, ledgers, backups, logs
+db/
+database/*.db
+*.db
+*.db-wal
+*.db-shm
+logs/
+programs/
+
+# Local dataset artifacts. Only the catalog seed CSV is a build input; the raw
+# JSON dump and demo media stay local (they are large and gitignored).
+data/*
+!data/processed_exercises.csv
+
+# Future Flutter client (not part of the API image)
+mobile/
 
 # Local caches & artifacts
 __pycache__/
@@ -21,6 +44,3 @@ __pycache__/
 .gitignore
 .vscode/
 .idea/
-
-# Database mounts (prevent baking local test states)
-database/*.db

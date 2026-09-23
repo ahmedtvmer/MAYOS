@@ -1,0 +1,26 @@
+# Hosted-only production dependencies for the Fly.io API image (Dockerfile.fly).
+#
+# Derived from requirements.txt minus the local-inference stack:
+#   - llama-cpp-python  (GGUF inference; hosted LLM_BACKEND=openai instead)
+#   - streamlit         (legacy UI; not deployed as a product service, see #46)
+#   - langchain-ollama  (unused in the service)
+# The PyTorch CPU wheel is installed separately in Dockerfile.fly so the image
+# carries no CUDA libraries.
+
+bcrypt>=4.1
+pandas>=3.0.5
+sqlite-vec>=0.1.9
+python-dotenv>=1.2.3
+langchain-community>=0.4.2
+langchain-core>=1.6.1
+langchain-openai>=1.0
+langchain-huggingface>=1.2.2
+sentence-transformers>=6.0.1
+langgraph>=1.2.11
+openpyxl>=3.1.5
+huggingface-hub>=1.30.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+PyJWT>=2.10.0
+httpx>=0.28.0
+slowapi>=0.1.9

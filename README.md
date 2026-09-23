@@ -60,7 +60,7 @@ Detailed architectural specifications, benchmarks, and mathematical proofs are m
 | [**Authentication & Recovery**](docs/AUTHENTICATION.md) | JWT claims and verification, registry session epochs, revocation ledgers, recovery email, single-use reset tokens, and operator runbooks. |
 | [**Empirical Benchmarks**](docs/ARCHITECTURAL_BENCHMARKS.md) | Routing latency matrices, context-clamping scaling curves, WAL concurrency stress tests, and the Qwen 2.5 3B → Qwen 3.5 4B model-refresh comparison. |
 | [**Progression & Biomechanics**](docs/PROGRESSION_RULES.md) | Mathematical formulations for effective 1RMs, Olympic plate quantization, warmup ramps, deload rules, and clinical interception boundaries. |
-| [**Deployment Runbook**](docs/DEPLOYMENT.md) | Two-service Docker orchestration, GPU memory planning, the two-phase evaluation lifecycle, auth ops, and disaster recovery checkpointing. |
+| [**Deployment Runbook**](docs/DEPLOYMENT.md) | Fly.io closed-trial API topology (single always-on writer, durable `/data` volume, hosted inference), local Docker Compose orchestration, GPU memory planning, the two-phase evaluation lifecycle, auth ops, and disaster recovery checkpointing. |
 | [**Decision Records**](DECISIONS.md) | ADRs 001–020: engine safeguards, account and coaching rules, hosted inference, mobile migration, and offline sync. |
 
 ---
