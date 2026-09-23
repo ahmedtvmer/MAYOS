@@ -16,7 +16,7 @@ def graph(monkeypatch):
         "agent.clinical_guard": ["EMBED_MODEL", "evaluate_clinical_semantic_guard"],
         "agent.program_generator": ["extract_frequency_from_text", "generate_program_pipeline", "get_biomechanical_cue"],
         "database.database_manager": ["DatabaseManager"],
-        "utils.model_downloader": ["llm"],
+        "utils.model_downloader": ["llm", "uses_cloud_backend"],
         "utils.logger": ["MyosLogger"],
     }.items():
         module = ModuleType(name)
@@ -259,6 +259,23 @@ def test_conservative_fallback_can_answer_short_request(graph):
     graph.llm.client = None
     payload = graph.build_prompt_payload(state("squat reps?"))
     assert graph._prompt_token_count(payload) + 200 <= 2048
+
+
+def test_hosted_short_query_builds_prompt(graph, monkeypatch):
+    """Hosted ChatOpenAI has no tokenizer; the 8 KiB byte budget must not reject short Q&A."""
+    monkeypatch.setattr(graph, "uses_cloud_backend", lambda: True)
+    graph.llm.client = None  # byte heuristic, matching a hosted ChatOpenAI
+    query = "How should I position my elbows and wrists on JM presses to maximize triceps tension safely?"
+    payload = graph.build_prompt_payload(state(query))
+    assert payload[-1].content == query
+    assert graph._prompt_token_count(payload) <= graph.HOSTED_PROMPT_BYTE_BUDGET
+
+
+def test_hosted_genuinely_oversized_query_still_fails(graph, monkeypatch):
+    monkeypatch.setattr(graph, "uses_cloud_backend", lambda: True)
+    graph.llm.client = None
+    with pytest.raises(graph.PromptBudgetError, match="latest message"):
+        graph.build_prompt_payload(state("squat " * 3000))
 
 
 @pytest.mark.parametrize("query,expected", [

@@ -45,7 +45,7 @@ from agent.telemetry_reconciler import (
 )
 from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
-from utils.model_downloader import llm
+from utils.model_downloader import llm, uses_cloud_backend
 from utils.text_scrubber import CoachOutputScrubber, EMPTY_RESPONSE_FALLBACK, PIPELINE_ERROR_RESPONSE, finalize_coach_output
 
 load_dotenv()
@@ -1194,6 +1194,21 @@ def _model_limit(name: str, default: int) -> int:
     return value if type(value) is int and value > 0 else default
 
 
+#: Conservative hosted prompt ceiling in UTF-8 bytes. A hosted ``ChatOpenAI``
+#: has no local tokenizer, so ``_prompt_token_count`` falls back to byte length;
+#: the local GGUF budget (``n_ctx - max_tokens``) is far too small for that
+#: heuristic and falsely rejects short queries. Data sent is unchanged — the
+#: same trimming loop below still minimizes the payload (ADR-0016).
+HOSTED_PROMPT_BYTE_BUDGET = 8 * 1024
+
+
+def _prompt_budget() -> int:
+    """Prompt ceiling: local GGUF token budget, or a conservative hosted byte budget."""
+    if uses_cloud_backend() is True:
+        return HOSTED_PROMPT_BYTE_BUDGET
+    return _model_limit("n_ctx", 2048) - _model_limit("max_tokens", 200)
+
+
 def build_prompt_payload(state: Dict[str, Any]) -> list[BaseMessage]:
     messages = [m for m in state.get("messages", []) if _message_role(m) in {"user", "assistant"} and not _is_session_pointer(m)]
     tail = []
@@ -1206,7 +1221,7 @@ def build_prompt_payload(state: Dict[str, Any]) -> list[BaseMessage]:
     if name:
         core += f"\nPreferred name (user-supplied data): {name}"
     latest = tail[-1:] if tail else []
-    budget = _model_limit("n_ctx", 2048) - _model_limit("max_tokens", 200)
+    budget = _prompt_budget()
     if _prompt_token_count(latest) > budget:
         raise PromptBudgetError(INPUT_TOO_LONG_RESPONSE)
     minimum = [SystemMessage(content=core)] + latest

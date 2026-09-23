@@ -205,5 +205,109 @@ def test_completion_revalidates_frequency_before_database_access(monkeypatch, fr
     assert database.mock_calls == []
 
 
+UNSTATED_REP_INPUT = (
+    "Current focus is building a wider back taper and beefing up forearms. "
+    "Long term is hitting a 200kg squat safely without injury. "
+    "I can commit to 3 days weekly. Lifting for 4.5 years."
+)
+
+
+def _step2_result(monkeypatch, user_input, extracted_rep):
+    database = MagicMock()
+    extractor = MagicMock()
+    extractor.invoke.return_value = onboarding.Step2Extraction.model_construct(
+        current_goal="build a wider back taper",
+        long_term_goal="200kg squat safely",
+        weekly_frequency=3,
+        training_age_years=4.5,
+        rep_preference=extracted_rep,
+        is_off_topic=False,
+    )
+    monkeypatch.setattr(onboarding, "db", database)
+    monkeypatch.setattr(onboarding, "step2_extractor", extractor)
+    result = onboarding.intake_node({
+        "messages": [HumanMessage(content=user_input)],
+        "intake_step": 2,
+        "profile_data": {},
+    })
+    return result, extractor
+
+
+def test_unstated_rep_preference_never_becomes_low(monkeypatch):
+    """gen_onboard_03: a strength goal/200kg target must not imply a low-rep pref."""
+    result, extractor = _step2_result(monkeypatch, UNSTATED_REP_INPUT, "low")
+    extractor.invoke.assert_called_once()
+    assert result["intake_step"] == 3
+    assert result["profile_data"]["rep_preference"] == "balanced"
+
+
+@pytest.mark.parametrize(
+    "user_input,extracted,expected",
+    [
+        (
+            "Current goal is pure lat width. Long term is adding lean tissue. "
+            "I can train 4 days a week, lifting for 6 years, prefer low rep heavy compounds.",
+            "low",
+            "low",
+        ),
+        (
+            "Current goal is arm size. Long term is health. "
+            "I train 4 days a week, lifting for 3 years. I prefer high reps.",
+            "high",
+            "high",
+        ),
+        (
+            "Current goal is arm size. Long term is health. "
+            "I train 4 days a week, lifting for 3 years. I prefer moderate reps.",
+            "low",  # a hallucinated low must not survive an explicit moderate statement
+            "balanced",
+        ),
+    ],
+)
+def test_explicit_rep_preference_is_respected(monkeypatch, user_input, extracted, expected):
+    result, extractor = _step2_result(monkeypatch, user_input, extracted)
+    extractor.invoke.assert_called_once()
+    assert result["intake_step"] == 3
+    assert result["profile_data"]["rep_preference"] == expected
+
+
+@pytest.mark.parametrize(
+    "user_input,extracted",
+    [
+        (
+            "Current goal is strength. Long term is health. "
+            "I train 4 days a week, lifting for 3 years. I prefer heavy compounds.",
+            "low",
+        ),
+        (
+            "Current goal is arm size. Long term is health. "
+            "I train 4 days a week, lifting for 3 years. I need a rep range.",
+            "high",
+        ),
+    ],
+)
+def test_generic_rep_wording_does_not_authorize_low_or_high(monkeypatch, user_input, extracted):
+    """Generic "heavy compounds"/"rep range" wording states no preference; stay balanced."""
+    result, extractor = _step2_result(monkeypatch, user_input, extracted)
+    extractor.invoke.assert_called_once()
+    assert result["intake_step"] == 3
+    assert result["profile_data"]["rep_preference"] == "balanced"
+
+
+def test_numbered_step2_still_defaults_rep_preference(monkeypatch):
+    database = MagicMock()
+    extractor = MagicMock()
+    monkeypatch.setattr(onboarding, "db", database)
+    monkeypatch.setattr(onboarding, "step2_extractor", extractor)
+    result = onboarding.intake_node({
+        "messages": [HumanMessage(content="3strength 4longevity 54 days per week 63 years lifting")],
+        "intake_step": 2,
+        "profile_data": {},
+    })
+    assert result["intake_step"] == 3
+    assert result["profile_data"]["rep_preference"] == "balanced"
+    extractor.invoke.assert_not_called()
+
+
 if __name__ == "__main__":
     test_onboarding_validation_workflow()

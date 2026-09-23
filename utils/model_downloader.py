@@ -1,15 +1,23 @@
-"""Local GGUF resolution, download, and singleton lifecycle.
+"""Local GGUF + cloud (OpenAI-compatible) model resolution and lifecycle.
+
+Backend selection is ``LLM_BACKEND`` (``local`` default, ``openai`` for a
+hosted OpenAI-compatible endpoint such as DeepInfra). The local path is
+unchanged; the cloud path optionally imports ``langchain-openai`` (ignored on
+local-only installs) so a local-only install never requires the cloud SDK.
 
 Public surface (stable):
-``MODEL_REGISTRY``, ``get_or_download_model_path``, ``SafeChatLlamaCpp``,
-``MockSafeChatLlamaCpp``, ``get_llm``, ``get_judge_llm``, ``unload_llm``,
-``unload_judge_llm``, ``llm``, ``judge_llm``.
+``MODEL_REGISTRY``, ``CLOUD_MODEL_REGISTRY``, ``get_or_download_model_path``,
+``SafeChatLlamaCpp``, ``SafeChatOpenAI``, ``MockSafeChatLlamaCpp``,
+``get_llm``, ``get_judge_llm``, ``get_coach_llm``, ``unload_llm``,
+``unload_judge_llm``, ``unload_coach_llm``, ``llm``, ``judge_llm``,
+``coach_llm``, ``uses_cloud_backend``.
 """
 
 import errno
 import gc
 import hashlib
 import logging
+import math
 import multiprocessing
 import os
 import sys
@@ -26,6 +34,11 @@ from langchain_community.chat_models import ChatLlamaCpp
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk
 from pydantic import BaseModel
+
+try:  # Optional: only required when LLM_BACKEND=openai.
+    from langchain_openai import ChatOpenAI
+except ImportError:  # pragma: no cover - local-only installs
+    ChatOpenAI = None  # type: ignore[assignment,misc]
 
 try:  # POSIX advisory locks; released by the OS if the holder process dies.
     import fcntl
@@ -56,6 +69,47 @@ MODEL_REGISTRY = {
     },
 }
 
+#: Cloud (OpenAI-compatible) model configuration, used only when
+#: ``LLM_BACKEND=openai``. Model IDs are env-overridable because the exact
+#: hosted variant (e.g. a non-reasoning Qwen3.5 build) is provider-specific.
+CLOUD_MODEL_REGISTRY = {
+    "production": {
+        "model_env": "LLM_MODEL",
+        "default_model": "Qwen/Qwen3.5-9B",
+        "max_tokens_env": "LLM_MAX_TOKENS",
+        "default_max_tokens": 200,
+        "streaming": True,
+    },
+    "judge": {
+        "model_env": "JUDGE_MODEL",
+        "default_model": "Qwen/Qwen3.5-27B",
+        "max_tokens_env": "JUDGE_MAX_TOKENS",
+        # 280 truncated hosted 9B structured judgments (all 5 onboarding cases
+        # were unparseable). 700 leaves room for the schema JSON. Local judge
+        # stays at 280 in get_judge_llm; only the hosted default changes.
+        "default_max_tokens": 700,
+        "streaming": False,
+    },
+    "coach": {
+        "model_env": "COACH_MODEL",
+        "default_model": "Qwen/Qwen3.5-27B",
+        "max_tokens_env": "COACH_MAX_TOKENS",
+        "default_max_tokens": 512,
+        "streaming": True,
+    },
+}
+
+#: DeepInfra's OpenAI-compatible endpoint is the reference cloud base URL.
+DEFAULT_CLOUD_API_BASE = "https://api.deepinfra.com/v1/openai"
+
+#: Cloud request bounds. A stalled hosted provider must fail fast rather than
+#: hang a chat turn or an eval run. ``request`` caps the whole call,
+#: ``stream_chunk`` caps the gap between streamed chunks, and ``retries`` is kept
+#: minimal so a bad endpoint is not hammered. Override via the ``LLM_*`` env.
+DEFAULT_CLOUD_REQUEST_TIMEOUT = 60.0
+DEFAULT_CLOUD_MAX_RETRIES = 1
+DEFAULT_CLOUD_STREAM_CHUNK_TIMEOUT = 30.0
+
 # ``TESTING=1`` is the only explicit mock switch. ``CI`` and a live pytest
 # process are fallbacks: they mock only when the model file is genuinely
 # absent, so a test run can never trigger a multi-GB download. Note that
@@ -81,11 +135,68 @@ def _should_use_mock(model_type: str) -> bool:
         return True
 
 
+def _llm_backend() -> str:
+    """Active inference backend: ``local`` (default) or ``openai``."""
+    return os.getenv("LLM_BACKEND", "local").strip().lower()
+
+
+def uses_cloud_backend() -> bool:
+    """True when a hosted OpenAI-compatible endpoint serves inference."""
+    return _llm_backend() == "openai"
+
+
+def _cloud_api_key() -> str:
+    return os.getenv("LLM_API_KEY", "").strip()
+
+
+def _cloud_api_base() -> str:
+    return os.getenv("LLM_API_BASE", DEFAULT_CLOUD_API_BASE).strip()
+
+
+def _should_use_cloud_mock() -> bool:
+    """Mock the cloud backend in explicit test mode or when CI/pytest has no key.
+
+    Mirrors ``_should_use_mock`` semantics, but the trigger is a missing API
+    key rather than a missing GGUF file (there is no local artifact to check).
+    """
+    if any(_env_truthy(var) for var in _MOCK_ENV_VARS):
+        return True
+    fallback_context = "pytest" in sys.modules or any(_env_truthy(var) for var in _MOCK_FALLBACK_ENV_VARS)
+    if not fallback_context:
+        return False
+    return not _cloud_api_key()
+
+
 def _int_env(name: str, default: int) -> int:
     try:
         return int(os.getenv(name, str(default)))
     except (TypeError, ValueError):
         return default
+
+
+def _float_env(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _positive_float_env(name: str, default: float) -> float:
+    """Finite positive float from env; non-finite, non-positive, or unparseable falls back."""
+    try:
+        value = float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+    return value if math.isfinite(value) and value > 0 else default
+
+
+def _non_negative_int_env(name: str, default: int) -> int:
+    """Non-negative int from env; negative or unparseable falls back to ``default``."""
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+    return value if value >= 0 else default
 
 
 def _thread_count() -> int:
@@ -264,6 +375,20 @@ class SafeChatLlamaCpp(ChatLlamaCpp):
             yield chunk
 
 
+if ChatOpenAI is not None:
+
+    class SafeChatOpenAI(ChatOpenAI):
+        """Thin cloud chat model exposing the same surface as ``SafeChatLlamaCpp``.
+
+        ``ChatOpenAI`` already streams well-formed tool-call chunks, so the
+        llama.cpp dedup override is unnecessary. The class exists to keep a
+        stable public name and a single home for future output-safety hooks.
+        """
+
+else:  # pragma: no cover - local-only installs without langchain-openai
+    SafeChatOpenAI = None  # type: ignore[assignment,misc]
+
+
 class MockSafeChatLlamaCpp(SafeChatLlamaCpp):
     """Testing double that satisfies CI requirements without loading GGUF binaries."""
 
@@ -379,6 +504,7 @@ class MockSafeChatLlamaCpp(SafeChatLlamaCpp):
 
 _llm_instance = None
 _judge_llm_instance = None
+_coach_llm_instance = None
 #: Serializes singleton construction within this process. NOTE: this cannot
 #: stop concurrent *processes* (uvicorn workers) from each loading the GGUF;
 #: run a single model-owning replica or warm up behind a file lock.
@@ -466,6 +592,59 @@ def _release_instance(instance: Any) -> None:
         logger.debug("CUDA cache release failed.", exc_info=True)
 
 
+def _build_cloud_llm(model_type: str) -> Any:
+    """Builds a ``SafeChatOpenAI`` for ``model_type`` from cloud env config.
+
+    Thinking mode is disabled by default using the DeepInfra reference shape
+    ``chat_template_kwargs.enable_thinking = false`` so the tight output budgets
+    are never consumed by chain-of-thought; set ``LLM_ENABLE_THINKING=true`` to
+    opt back in. Provider-specific quirks can override the whole body via
+    ``LLM_EXTRA_BODY`` (JSON object).
+    """
+    if SafeChatOpenAI is None:
+        raise RuntimeError(
+            "LLM_BACKEND=openai requires the 'langchain-openai' package; "
+            "install it or use LLM_BACKEND=local."
+        )
+    if model_type not in CLOUD_MODEL_REGISTRY:
+        raise ValueError(f"Unknown cloud model_type '{model_type}'. Choose from {list(CLOUD_MODEL_REGISTRY)}")
+    if not _cloud_api_key():
+        raise RuntimeError(
+            "LLM_BACKEND=openai requires LLM_API_KEY; set it via the environment "
+            "(or `fly secrets set`) before starting the service."
+        )
+    config = CLOUD_MODEL_REGISTRY[model_type]
+    extra_body: dict[str, Any] | None = None
+    raw_extra_body = os.getenv("LLM_EXTRA_BODY", "").strip()
+    if raw_extra_body:
+        import json
+
+        try:
+            parsed = json.loads(raw_extra_body)
+        except ValueError as exc:
+            raise ValueError(f"LLM_EXTRA_BODY must be valid JSON: {exc}") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("LLM_EXTRA_BODY must be a JSON object.")
+        extra_body = parsed
+    elif not _env_truthy("LLM_ENABLE_THINKING"):
+        # DeepInfra's documented Qwen example nests the toggle under
+        # chat_template_kwargs; other providers can override via LLM_EXTRA_BODY.
+        extra_body = {"chat_template_kwargs": {"enable_thinking": False}}
+    return SafeChatOpenAI(
+        model=os.getenv(config["model_env"], config["default_model"]).strip(),
+        api_key=_cloud_api_key(),
+        base_url=_cloud_api_base(),
+        temperature=_float_env("LLM_TEMPERATURE", 0.0),
+        max_tokens=_int_env(config["max_tokens_env"], config["default_max_tokens"]),
+        streaming=bool(config["streaming"]),
+        extra_body=extra_body,
+        # Finite, configurable bounds so a stalled provider cannot hang a turn.
+        timeout=_positive_float_env("LLM_REQUEST_TIMEOUT", DEFAULT_CLOUD_REQUEST_TIMEOUT),
+        max_retries=_non_negative_int_env("LLM_MAX_RETRIES", DEFAULT_CLOUD_MAX_RETRIES),
+        stream_chunk_timeout=_positive_float_env("LLM_STREAM_CHUNK_TIMEOUT", DEFAULT_CLOUD_STREAM_CHUNK_TIMEOUT),
+    )
+
+
 def get_llm(n_gpu_layers: int | None = None) -> Any:
     global _llm_instance
     if _llm_instance is not None:
@@ -473,6 +652,10 @@ def get_llm(n_gpu_layers: int | None = None) -> Any:
 
     with _load_lock:
         if _llm_instance is not None:
+            return _llm_instance
+
+        if uses_cloud_backend():
+            _llm_instance = MockSafeChatLlamaCpp() if _should_use_cloud_mock() else _build_cloud_llm("production")
             return _llm_instance
 
         if _should_use_mock("production"):
@@ -512,6 +695,12 @@ def get_judge_llm(n_gpu_layers: int | None = None) -> Any:
         if _judge_llm_instance is not None:
             return _judge_llm_instance
 
+        if uses_cloud_backend():
+            _judge_llm_instance = (
+                MockSafeChatLlamaCpp(streaming=False) if _should_use_cloud_mock() else _build_cloud_llm("judge")
+            )
+            return _judge_llm_instance
+
         if _should_use_mock("judge"):
             _judge_llm_instance = MockSafeChatLlamaCpp(streaming=False)
             return _judge_llm_instance
@@ -535,6 +724,34 @@ def unload_judge_llm() -> None:
     global _judge_llm_instance
     with _load_lock:
         instance, _judge_llm_instance = _judge_llm_instance, None
+    _release_instance(instance)
+
+
+def get_coach_llm(n_gpu_layers: int | None = None) -> Any:
+    """Returns the coach-role model.
+
+    Cloud backend: the dedicated ``COACH_MODEL`` (Qwen3.5-27B by default).
+    Local backend: there is no separate coach GGUF, so the production model is
+    reused — local-first development keeps the stronger model as an opt-in.
+    """
+    global _coach_llm_instance
+    if not uses_cloud_backend():
+        return get_llm(n_gpu_layers)
+    if _coach_llm_instance is not None:
+        return _coach_llm_instance
+
+    with _load_lock:
+        if _coach_llm_instance is not None:
+            return _coach_llm_instance
+        _coach_llm_instance = MockSafeChatLlamaCpp() if _should_use_cloud_mock() else _build_cloud_llm("coach")
+        return _coach_llm_instance
+
+
+def unload_coach_llm() -> None:
+    """Explicitly releases a cloud coach LLM client (local never caches one)."""
+    global _coach_llm_instance
+    with _load_lock:
+        instance, _coach_llm_instance = _coach_llm_instance, None
     _release_instance(instance)
 
 
@@ -574,22 +791,43 @@ class _LazyJudgeProxy:
         return f"<lazy judge llm loaded={loaded}>"
 
 
+class _LazyCoachProxy:
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("__") and name.endswith("__"):
+            raise AttributeError(name)
+        return getattr(get_coach_llm(), name)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return get_coach_llm()(*args, **kwargs)
+
+    def __repr__(self) -> str:
+        loaded = _coach_llm_instance is not None
+        return f"<lazy coach llm loaded={loaded}>"
+
+
 llm = _LazyLLMProxy()
 judge_llm = _LazyJudgeProxy()
+coach_llm = _LazyCoachProxy()
 
 
 __all__ = [
     "BASE_DIR",
+    "CLOUD_MODEL_REGISTRY",
     "DEFAULT_MODEL_DIR",
     "MODEL_REGISTRY",
     "MockSafeChatLlamaCpp",
     "SafeChatLlamaCpp",
+    "SafeChatOpenAI",
+    "coach_llm",
+    "get_coach_llm",
     "get_judge_llm",
     "get_llm",
     "get_or_download_model_path",
     "judge_llm",
     "llm",
     "resolve_model_path",
+    "unload_coach_llm",
     "unload_judge_llm",
     "unload_llm",
+    "uses_cloud_backend",
 ]

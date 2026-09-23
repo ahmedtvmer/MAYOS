@@ -16,6 +16,7 @@ from fastapi.responses import StreamingResponse
 from agent.assistant_graph import stream_assistant_turn
 from service import chat as chat_service
 from svc.dependencies import bind_request, get_current_trainee, get_db
+from svc.llm import bound_stream
 from svc.rate_limit import CHAT_LIMIT, limiter
 from svc.schemas import ChatMessageIn
 from utils.text_scrubber import PIPELINE_ERROR_RESPONSE
@@ -61,7 +62,7 @@ def _run_turn(db: Any, trainee: str, content: str, out: "queue.Queue[tuple[str, 
             coach_tone=profile.get("coach_tone", "Direct, grounded, and pragmatic"),
             custom_instructions=profile.get("custom_instructions", ""),
         )
-        for piece in stream_assistant_turn(state):
+        for piece in bound_stream(stream_assistant_turn, state):
             out.put(("token", piece))
         chat_service.persist_assistant_message(db, state.get("response_content"))
         out.put(("done", {"response_content": state.get("response_content") or "", "program_updated": bool(state.get("program_updated"))}))

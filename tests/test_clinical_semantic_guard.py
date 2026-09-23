@@ -79,3 +79,33 @@ def test_short_injury_token_still_triggers():
     is_clinical, score = evaluate_clinical_semantic_guard("sharp pain")
     assert score > 0.0, "Short query with injury token should still run embedding check"
 
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "My rolling readiness is 1/5 and every joint feels cold and sluggish. Should I still push to an RPE 10 top set today?",
+        "I'm feeling sluggish and low readiness today, should I still train?",
+        "Systemic fatigue is high and my whole body feels drained",
+    ],
+)
+def test_benign_systemic_fatigue_bypasses_clinical_guard(query: str):
+    is_clinical, score = evaluate_clinical_semantic_guard(query)
+    assert not is_clinical, f"Benign fatigue '{query}' falsely triggered clinical guard (score={score:.3f})"
+    assert score == 0.0
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "I'm fatigued and my shoulder has sharp pain",
+        "My legs are tired but my fingers are numb and tingling",
+        "I feel drained and have radiating pain down my arm",
+        "Systemic fatigue but my knee popped and is swollen",
+    ],
+)
+def test_fatigue_with_acute_signals_stays_fail_closed(query: str):
+    is_clinical, score = evaluate_clinical_semantic_guard(query)
+    assert is_clinical, f"Acute signal in '{query}' must stay clinical (score={score:.3f})"
+    result = router_node({"messages": [HumanMessage(content=query)], "telemetry_context": ""})
+    assert result["intent"] == "clinical_intercept"
+

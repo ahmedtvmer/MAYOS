@@ -63,6 +63,15 @@ STEP3_SEGMENT_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 
+#: Explicit rep-preference language. The LLM must not infer low/high from a
+#: strength goal, a heavy target weight, or generic "rep range"/"heavy compounds"
+#: wording — only wording that states *which* rep preference was chosen counts.
+RE_EXPLICIT_REP_PREFERENCE = re.compile(
+    r"\b(?:low[\s-]?reps?|high[\s-]?reps?|higher[\s-]?reps?|lower[\s-]?reps?|"
+    r"moderate[\s-]?reps?|medium[\s-]?reps?)\b",
+    re.IGNORECASE,
+)
+
 
 def parse_number_token(text: str) -> float | None:
     t = text.lower().strip()
@@ -71,6 +80,19 @@ def parse_number_token(text: str) -> float | None:
             return float(val)
     m = re.search(r"(\d+(?:\.\d+)?)", t)
     return float(m.group(1)) if m else None
+
+
+def _resolve_rep_preference(extracted: str | None, raw_input: str) -> str:
+    """Only an explicitly stated rep preference may set low/high.
+
+    A strength goal or heavy target (e.g. "200kg squat") is not a rep
+    preference; absent explicit wording the default is "balanced".
+    """
+    if re.search(r"\b(moderate|medium)[\s-]?reps?\b", raw_input, re.IGNORECASE):
+        return "balanced"
+    if extracted in {"low", "high"} and RE_EXPLICIT_REP_PREFERENCE.search(raw_input):
+        return extracted
+    return "balanced"
 
 
 class Step1Extraction(BaseModel):
@@ -315,6 +337,9 @@ def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
                 f"- long_term_goal: long-term outcome.\n"
                 f"- weekly_frequency: integer days per week (1-5); never clamp unsupported requests.\n"
                 f"- training_age_years: lifting experience in years.\n"
+                f"- rep_preference: set 'low' or 'high' ONLY when the user explicitly states a rep "
+                f"preference (e.g. 'low rep heavy compounds', 'high reps'). If it is not stated, use "
+                f"'balanced' — never infer it from a strength goal or a heavy target weight.\n"
                 f"- Flag is_off_topic=True ONLY if input is completely unrelated to lifting."
             )
             try:
@@ -323,7 +348,9 @@ def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
                 return _reject(step, "Provide valid goals and a weekly frequency from 1 to 5 days.", profile)
             current_goal, long_term_goal = ext.current_goal, ext.long_term_goal
             weekly_frequency, training_age_years = ext.weekly_frequency, ext.training_age_years
-            rep_pref = ext.rep_preference or "balanced"
+            # Deterministic guard: a low/high guess is only trusted when the user
+            # actually stated a rep preference; otherwise it is an unstated default.
+            rep_pref = _resolve_rep_preference(ext.rep_preference, raw_input)
             has_step2_data = any([current_goal, long_term_goal, weekly_frequency is not None, training_age_years is not None])
             is_off_topic = ext.is_off_topic and not has_step2_data
 

@@ -19,6 +19,21 @@ Output format:
 - [Directive 2]
 """
 
+def _deload_volume_cut(fatigue_info: dict[str, Any]) -> str | None:
+    """Renders the exact volume-cut percentage from ``volume_multiplier``.
+
+    A multiplier of ``0.5`` means a 50% cut, ``0.6`` a 40% cut. Missing or
+    invalid values return ``None`` so the caller never fabricates a number.
+    """
+    try:
+        multiplier = float(fatigue_info.get("volume_multiplier"))
+    except (TypeError, ValueError):
+        return None
+    if not 0.0 < multiplier < 1.0:
+        return None
+    return f"{(1.0 - multiplier) * 100.0:g}%"
+
+
 def format_fatigue_cns_check(readiness: int, total_tonnage: float, session_notes: str) -> str:
     notes_str = f" Notes: {session_notes}." if session_notes else ""
     return f"- Readiness: {readiness}/5 | Volume Load: {total_tonnage:,.1f} kg.{notes_str}"
@@ -106,7 +121,11 @@ def generate_session_debrief(
 
     if is_deload:
         rpe_cap = fatigue_info.get("intensity_cap_rpe", 7.0)
-        directives.append(f"- DELOAD: Reduce sets, cap at RPE {rpe_cap:.1f}.")
+        volume_cut = _deload_volume_cut(fatigue_info)
+        if volume_cut:
+            directives.append(f"- DELOAD: Cut sets by {volume_cut}, cap at RPE {rpe_cap:.1f}.")
+        else:
+            directives.append(f"- DELOAD: Reduce sets, cap at RPE {rpe_cap:.1f}.")
         directives.append("- Hold current progression and prepare for deload adjustments.")
         if fatigue_info.get("severity") == "HIGH" or "readiness" in fatigue_info.get("reason", "").lower():
             directives.append("- Monitor readiness closely and adjust volume cuts as necessary.")

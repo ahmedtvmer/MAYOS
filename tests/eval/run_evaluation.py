@@ -13,12 +13,35 @@ os.environ.setdefault("EMBEDDING_DEVICE", "cpu")
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(BASE_DIR))
 
+#: Lightweight modes must not import the model-heavy modules below. Short-circuit
+#: here so `--check-report` (and a missing generalization dataset) stays instant.
+if __name__ == "__main__" and "--check-report" in sys.argv:
+    from tests.eval.parity_gate import _report_main
+
+    sys.exit(_report_main(sys.argv[1:]))
+
+if __name__ == "__main__" and "--generalize" in sys.argv:
+    from tests.eval.parity_gate import generalization_dataset_path
+
+    _gen_dataset = generalization_dataset_path()
+    if not _gen_dataset.exists():
+        print(f"Generalization dataset not found at: {_gen_dataset}", file=sys.stderr)
+        sys.exit(1)
+
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
 from agent.assistant_graph import assistant_graph
 from agent.debrief import generate_session_debrief
 from agent.onboarding_graph import onboarding_graph
+from tests.eval.parity_gate import (
+    GENERALIZATION_MODULE_COUNTS,
+    GENERALIZATION_THRESHOLD,
+    STANDARD_MODULE_COUNTS,
+    STANDARD_THRESHOLD,
+    datasets_dir,
+    evaluate_parity_gate,
+)
 from tests.eval.rubrics import COACHING_QA_RUBRIC, DEBRIEF_RUBRIC, ONBOARDING_RUBRIC
 from tests.eval.schemas import (
     CoachingQAEvalJudgment,
@@ -30,6 +53,7 @@ from utils.model_downloader import (
     get_judge_llm,
     unload_judge_llm,
     unload_llm,
+    uses_cloud_backend,
 )
 from utils.text_scrubber import scrub_coach_output
 
@@ -42,7 +66,12 @@ T = TypeVar("T", bound=BaseModel)
 
 
 def safe_invoke_judge(judge: Any, system_prompt: str, user_payload: str, schema: type[T]) -> T | None:
-    structured_judge = judge.with_structured_output(schema)
+    # The hosted judge uses function calling for reliable structured output.
+    # The local GGUF judge keeps its default method.
+    if uses_cloud_backend() is True:
+        structured_judge = judge.with_structured_output(schema, method="function_calling")
+    else:
+        structured_judge = judge.with_structured_output(schema)
     try:
         return structured_judge.invoke([
             SystemMessage(content=system_prompt),
@@ -210,7 +239,7 @@ def generate_onboarding_candidates(dataset_path: Path) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# Phase 2: Evaluation / Judgment (GPU/CPU: Qwen 2.5 9B)
+# Phase 2: Evaluation / Judgment
 # ---------------------------------------------------------------------------
 
 
@@ -435,17 +464,18 @@ def main():
         os.environ["N_GPU_LAYERS"] = "-1"
 
     report_payload = {"timestamp": datetime.now().isoformat(), "runs": {}}
-    datasets_dir = BASE_DIR / "tests" / "eval" / "datasets"
+    eval_datasets = datasets_dir()
 
     cached_qa: list[dict[str, Any]] = []
     cached_debrief: list[dict[str, Any]] = []
     cached_onboarding: list[dict[str, Any]] = []
 
     if args.generalize:
-        gen_file = datasets_dir / "generalization_cases.json"
+        gen_file = eval_datasets / "generalization_cases.json"
         if not gen_file.exists():
+            # Never report success when the gate cannot run.
             logger.error(f"Generalization dataset not found at: {gen_file}")
-            return
+            sys.exit(1)
 
         with open(gen_file, "r", encoding="utf-8") as f:
             gen_data = json.load(f)
@@ -454,9 +484,9 @@ def main():
         logger.info("🚀 RUNNING GENERALIZATION EVALUATION (15 UNSEEN CASES - TWO-PHASE GPU)")
         logger.info("=" * 75)
 
-        qa_tmp = datasets_dir / "_tmp_gen_qa.json"
-        deb_tmp = datasets_dir / "_tmp_gen_deb.json"
-        onb_tmp = datasets_dir / "_tmp_gen_onb.json"
+        qa_tmp = eval_datasets / "_tmp_gen_qa.json"
+        deb_tmp = eval_datasets / "_tmp_gen_deb.json"
+        onb_tmp = eval_datasets / "_tmp_gen_onb.json"
 
         try:
             qa_tmp.write_text(json.dumps(gen_data.get("coaching_qa", [])), encoding="utf-8")
@@ -531,15 +561,15 @@ def main():
         # --- PHASE 1: GENERATION ---
         if args.phase in ("all", "generate"):
             if args.target in ("qa", "all"):
-                qa_data = datasets_dir / "coaching_qa_cases.json"
+                qa_data = eval_datasets / "coaching_qa_cases.json"
                 cached_qa = generate_qa_candidates(qa_data)
 
             if args.target in ("debrief", "all"):
-                debrief_data = datasets_dir / "debrief_cases.json"
+                debrief_data = eval_datasets / "debrief_cases.json"
                 cached_debrief = generate_debrief_candidates(debrief_data)
 
             if args.target in ("onboarding", "all"):
-                onboarding_data = datasets_dir / "onboarding_cases.json"
+                onboarding_data = eval_datasets / "onboarding_cases.json"
                 cached_onboarding = generate_onboarding_candidates(onboarding_data)
 
             logger.info("\n🧹 Releasing Main LLM from VRAM before initializing Judge...")
@@ -586,11 +616,50 @@ def main():
 
             unload_judge_llm()
 
+    gate_ok = True
+    if args.phase in ("all", "judge"):
+        if args.generalize:
+            expected_counts, threshold = GENERALIZATION_MODULE_COUNTS, GENERALIZATION_THRESHOLD
+        elif args.target == "all":
+            expected_counts, threshold = STANDARD_MODULE_COUNTS, STANDARD_THRESHOLD
+        else:
+            # A partial --target run is a development slice, not the parity gate.
+            expected_counts, threshold = None, None
+            logger.info("ℹ️ Parity gate not evaluated for partial --target '%s'.", args.target)
+
+        if expected_counts is not None:
+            gate_ok, reasons, stats = evaluate_parity_gate(
+                report_payload.get("runs", {}), expected_counts, threshold
+            )
+            report_payload["gate"] = {
+                "passed": gate_ok,
+                "threshold": threshold,
+                "expected": stats["expected"],
+                "total_judged": stats["total"],
+                "passed_cases": stats["passed"],
+                "clinical_safety_failures": stats["clinical_safety_failures"],
+                "unparseable": stats["unparseable"],
+                "counts": stats["counts"],
+                "reasons": reasons,
+            }
+            logger.info("\n" + "=" * 75)
+            logger.info(
+                f"🚦 PARITY GATE: {'PASSED' if gate_ok else 'FAILED'} "
+                f"({stats['passed']}/{stats['expected']}, required {threshold}/{stats['expected']}); "
+                f"clinical_safety failures={len(stats['clinical_safety_failures'])}"
+            )
+            for reason in reasons:
+                logger.error(f"  ✗ {reason}")
+            logger.info("=" * 75)
+
     if args.phase in ("all", "judge") and report_payload.get("runs"):
         prefix = "gen_" if args.generalize else ""
         out_file = REPORTS_DIR / f"{prefix}eval_run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         out_file.write_text(json.dumps(report_payload, indent=2), encoding="utf-8")
         logger.info(f"\n📁 Benchmark artifact written to: {out_file}")
+
+    if not gate_ok:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

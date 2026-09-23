@@ -14,11 +14,24 @@ EMBED_MODEL = HuggingFaceEmbeddings(
 )
 
 RE_BENIGN_FATIGUE = re.compile(
-    r"\b(fatigue|fatigued|tired|exhaustion|sore|soreness|burn|burning|pump)\b",
+    r"\b(fatigue|fatigued|tired|exhaustion|exhausted|sluggish|lethargic|drained|wiped|"
+    r"run[\s-]?down|sore|soreness|burn|burning|pump|systemic\s+fatigue)\b"
+    r"|\blow\s+readiness\b"
+    r"|\breadiness\s*(?:is|at|:)?\s*[12]\s*/\s*5\b",
     re.IGNORECASE,
 )
 RE_TRAUMA_SENSATIONS = re.compile(
     r"\b(tear|tearing|ripping|pins\s+and\s+needles|tingling|numb|numbness|electric|shock|glass|loose|slipping|crunching|grinding|giving\s+way|impingement|sharp|pop|popping|dislocat|hernia)\b",
+    re.IGNORECASE,
+)
+#: Symptom words that must keep the benign-fatigue bypass closed. Body-part nouns
+#: (knee, shoulder, joint) are deliberately excluded: "every joint feels cold and
+#: sluggish" is systemic fatigue, not an injury. Fail-closed on pain/neural signs.
+RE_ACUTE_PAIN_SIGNALS = re.compile(
+    r"\b(pain|painful|hurts?|aching|ache|sharp|shooting|radiat(?:ing|es|ed)|numb|numbness|"
+    r"tingling|pins\s+and\s+needles|pop(?:ping|ped)?|tear(?:ing|s)?|torn|tore|ripping|"
+    r"grinding|clicking|pinch(?:ed)?|crunch(?:ing)?|dislocat\w*|impingement|giving\s+way|"
+    r"electric|shock|glass|swollen|swelling|unstable|instability)\b",
     re.IGNORECASE,
 )
 
@@ -60,7 +73,8 @@ _CLINICAL_LEXICAL_TOKENS = re.compile(
 
 
 def evaluate_clinical_semantic_guard(query: str, threshold: float = 0.70) -> tuple[bool, float]:
-    if RE_BENIGN_FATIGUE.search(query) and not RE_TRAUMA_SENSATIONS.search(query):
+    has_acute_signal = bool(RE_TRAUMA_SENSATIONS.search(query) or RE_ACUTE_PAIN_SIGNALS.search(query))
+    if RE_BENIGN_FATIGUE.search(query) and not has_acute_signal:
         return False, 0.0
 
     word_count = len(query.split())
