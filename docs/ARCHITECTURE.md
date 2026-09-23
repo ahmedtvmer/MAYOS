@@ -6,11 +6,11 @@ This document provides a comprehensive architectural specification of the Myos e
 
 ## 1. High-Level System Architecture
 
-The following diagram illustrates the lifecycle of a trainee interaction, showing how the Streamlit UI reaches the engine through the FastAPI service layer (JWT auth, rate limiting, SSE delivery), and how the LangGraph state engine, in-process vector database, and local quantized GGUF runtime interact:
+The following diagram illustrates the lifecycle of a trainee interaction, showing how the Flutter app (the product client; the legacy Streamlit interface serves no users per ADR 017) reaches the engine through the FastAPI service layer (JWT auth, rate limiting, SSE delivery), and how the LangGraph state engine, in-process vector database, and local quantized GGUF runtime interact:
 
 ```mermaid
 flowchart TD
-    subgraph UI_Layer ["Presentation Layer (Streamlit)"]
+    subgraph UI_Layer ["Presentation Layer (Flutter app)"]
         UI_Input["User Turn (Chat / Set Log / Split Mutation)"]
         UI_Render["Token-by-Token Stream / Metric Dashboards"]
     end
@@ -79,7 +79,7 @@ flowchart TD
     Catalog_Shared --- Vec_Index
 ```
 
-> The service layer owns identity and transport: bearer JWTs are verified against the ledger's revocation list and session epoch before any graph node runs, and graph output is re-streamed as Server-Sent Events. See §9 for the full request lifecycle and [`AUTHENTICATION.md`](AUTHENTICATION.md) for the auth specification.
+> The service layer owns identity and transport: bearer JWTs are verified against the catalog account registry (status, capability, session epoch) and the ledger's revocation list before any graph node runs, and graph output is re-streamed as Server-Sent Events. See §9 for the full request lifecycle and [`AUTHENTICATION.md`](AUTHENTICATION.md) for the auth specification.
 
 ---
 
@@ -191,37 +191,37 @@ flowchart TD
 
 ## 4. Dual-Database Topology & Thread-Local Connection Model
 
-Myos combines a shared exercise catalog (`catalog.db` — seeded exercises, the `sqlite-vec` index, and the account-recovery identity tables) with dynamic, isolated per-user transaction ledgers (`db/users/<user_id>.db`). Cross-tenant leakage is physically impossible, and SQLite Write-Ahead Logging (`WAL`) prevents write contention:
+Myos combines a shared exercise catalog (`catalog.db` — seeded exercises, the `sqlite-vec` index, and the account-recovery identity tables) with dynamic, isolated per-user transaction ledgers (`db/users/<user_id>.db`). The Flutter client never touches these directly: it calls the FastAPI service, and each API worker thread binds the ledger for the verified account through `DatabaseManager`'s `threading.local` routing. Cross-tenant leakage is physically impossible, and SQLite Write-Ahead Logging (`WAL`) prevents write contention:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Trainee as Streamlit Session (Thread A)
+    actor Worker as API Worker Thread (Thread A)
     participant DBM as DatabaseManager (_local)
     participant UserDB as User Ledger (WAL Mode)
     participant CatalogDB as Attached Shared Catalog
     participant VecExt as sqlite-vec Virtual Table
 
-    Trainee->>DBM: switch_user("ahmed")
+    Worker->>DBM: switch_user("ahmed")
     DBM->>UserDB: sqlite3.connect("db/users/ahmed.db")
     DBM->>UserDB: PRAGMA journal_mode = WAL;
     DBM->>UserDB: PRAGMA foreign_keys = ON;
     DBM->>UserDB: ATTACH DATABASE 'catalog.db' AS catalog;
     DBM->>UserDB: CREATE TEMP VIEW exercises AS SELECT * FROM catalog.exercises;
     
-    Note over Trainee,UserDB: Batch Set Logging Transaction
-    Trainee->>DBM: log_workout_sets_batch(15 sets)
+    Note over Worker,UserDB: Batch Set Logging Transaction
+    Worker->>DBM: log_workout_sets_batch(15 sets)
     DBM->>UserDB: BEGIN IMMEDIATE TRANSACTION;
     DBM->>UserDB: executemany(INSERT INTO workout_sets ...)
     DBM->>UserDB: COMMIT;
     
-    Note over Trainee,VecExt: Biomechanical Vector Alternative Lookup
-    Trainee->>DBM: search_similar_exercises(vector, limit=5)
+    Note over Worker,VecExt: Biomechanical Vector Alternative Lookup
+    Worker->>DBM: search_similar_exercises(vector, limit=5)
     DBM->>CatalogDB: SELECT candidate rows
     CatalogDB->>VecExt: MATCH embedding AND k = 15
     VecExt-->>CatalogDB: Cosine KNN results
     CatalogDB-->>DBM: Filter EXCLUDED_BIOMECHANICAL_PATTERNS
-    DBM-->>Trainee: Return top 5 valid movements
+    DBM-->>Worker: Return top 5 valid movements
 ```
 
 ### Ledger Schema Evolution (ADR 005)
@@ -230,17 +230,17 @@ User ledgers carry a schema version in `PRAGMA user_version` (current target: **
 
 * On upgrade, an atomic pre-migration snapshot is written with `sqlite3.Connection.backup()` (WAL-safe, online) into `db/backups/<user>/`, followed by sequential migration steps inside a transaction.
 * A 3+1 retention policy keeps three rolling snapshots plus immutable pre-migration backups; failure triggers rollback from the snapshot.
-* **v3** adds `auth_credentials.token_version` — the session epoch used to revoke every token on a password event (ADR 006). Legacy ledgers without a password hash are handled by the one-time claim flow rather than invented credentials.
+* **v3** adds `auth_credentials.token_version`; for enrolled accounts, the authoritative session epoch now lives in the catalog account registry (`accounts.session_epoch`) and is bumped on password changes and resets (ADR 006/015). An enrolled ledger without a password hash uses the one-time claim flow; a bare local ledger requires the opted-in import path (ADR 019).
 * **v4** adds `personal_records` and backfills historical PRs (heaviest set per exact rep count + best e1RM) from `workout_sets` with first-achievement timestamps (ADR 009).
 
 ### Catalog Account Tables (ADR 007)
 
-Password recovery needs an email → ledger mapping while **logged out**, so recovery identity lives in the shared catalog (not per-user ledgers):
+Password recovery needs an email → account mapping while **logged out**, so recovery identity lives in the shared catalog (not per-user ledgers):
 
 | Table | Purpose |
 | :--- | :--- |
-| `trainee_emails` | Unique recovery address per trainee |
-| `password_reset_tokens` | SHA-256-hashed, single-use, TTL-clamped reset tokens |
+| `trainee_emails` | Unique recovery address per account (keyed by immutable account id) |
+| `password_reset_tokens` | SHA-256-hashed, single-use, TTL-clamped reset tokens (keyed by immutable account id) |
 
 Both are provisioned idempotently at catalog boot. See [`AUTHENTICATION.md`](AUTHENTICATION.md) for the full specification.
 
@@ -386,12 +386,12 @@ To prevent small quantized models (4B) from hallucinating mathematical calculati
 
 ## 9. Service-Layer Request Lifecycle
 
-The Streamlit client holds **no** database, model, or domain logic. Every operation is an HTTP call to the FastAPI service (`svc/`), which owns identity, thread affinity, and streaming:
+The Flutter client holds **no** server database, model, or domain logic. Chat and program changes are HTTP calls to the FastAPI service (`svc/`), which owns identity, thread affinity, and streaming; the client may capture workout drafts locally for offline logging and sync them idempotently when connected (ADR 020):
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor UI as Streamlit Client
+    actor UI as Flutter Client
     participant API as FastAPI Route
     participant Dep as get_current_trainee
     participant Thread as Worker Thread (asyncio.to_thread)
@@ -399,7 +399,7 @@ sequenceDiagram
     participant DB as Thread-Local Ledger
 
     UI->>API: POST /chat/messages (Bearer JWT) + SSE request
-    API->>Dep: token_claims -> bind_user -> revocation + token_version checks
+    API->>Dep: token_claims -> registry status/capability/epoch -> bind_user -> revocation check
     Dep-->>API: verified trainee id (never from the body)
     API->>Thread: _run_turn(db, trainee, content)
     Thread->>DB: add user message, build tail (6-message window)
@@ -414,7 +414,7 @@ sequenceDiagram
 Key invariants:
 
 * **Identity is derived only from the verified JWT** — request bodies may carry a `trainee_id`, but it is ignored (schema-level rejection in most routes).
-* **Ledger binding happens per thread.** `DatabaseManager` routes connections through `threading.local`, and every worker thread re-binds the trainee before touching SQLite (`bind_request` / `_bind_trainee_connection`).
+* **Ledger binding happens per thread.** `DatabaseManager` routes connections through `threading.local`, and every worker thread re-runs the registry live/capability/epoch check and re-binds the trainee before touching SQLite (`bind_request` / `_bind_trainee_connection`). This worker-side recheck closes the gap between request-scoped verification and the thread that performs ledger work.
 * **Blocking work is isolated.** Sync DB and GGUF inference run on worker threads via `asyncio.to_thread`; llama-cpp calls are additionally serialized by an inference lock and a single-slot semaphore so overload fails fast instead of piling up.
 * **Errors never leak.** SSE error frames carry a fixed pipeline-error string; unhandled exceptions return a generic `502` detail.
 * **Auth endpoints are rate-limited** (`slowapi`), with strict buckets for login/register and per-token buckets for chat.

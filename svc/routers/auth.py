@@ -9,7 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from service import auth as auth_service
 from service import password_reset as reset_service
 from svc.auth import create_access_token, remember_me_hours, revoke_token
-from svc.dependencies import bind_request, get_current_trainee, get_db
+from svc.dependencies import VerifiedPlayer, bind_request, get_current_trainee, get_db
 from svc.rate_limit import PASSWORD_LIMIT, REGISTER_LIMIT, LOGIN_LIMIT, RESET_LIMIT, limiter
 from svc.schemas import (
     EmailUpdateIn,
@@ -34,16 +34,16 @@ async def register(request: Request, body: TraineeIn, db: Annotated[Any, Depends
         if not result["ok"]:
             status_code = status.HTTP_409_CONFLICT if "already exists" in result["error"] else status.HTTP_400_BAD_REQUEST
             raise HTTPException(status_code=status_code, detail=result["error"])
-        return result["trainee_id"], db.get_token_version()
+        return result
 
-    trainee_id, token_version = await asyncio.to_thread(_run)
+    result = await asyncio.to_thread(_run)
     return TokenOut(
         access_token=create_access_token(
-            trainee_id,
+            result["account_id"],
             expires_hours=remember_me_hours() if body.remember_me else None,
-            token_version=token_version,
+            token_version=result["session_epoch"],
         ),
-        trainee_id=trainee_id,
+        trainee_id=result["trainee_id"],
     )
 
 
@@ -59,15 +59,14 @@ async def login(request: Request, body: TraineeIn, db: Annotated[Any, Depends(ge
                     detail="This ledger predates passwords. Set one to continue.",
                 )
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=result["error"])
-        result["token_version"] = db.get_token_version()
         return result
 
     result = await asyncio.to_thread(_run)
     return TokenOut(
         access_token=create_access_token(
-            result["trainee_id"],
+            result["account_id"],
             expires_hours=remember_me_hours() if body.remember_me else None,
-            token_version=result["token_version"],
+            token_version=result["session_epoch"],
         ),
         trainee_id=result["trainee_id"],
     )
@@ -76,23 +75,23 @@ async def login(request: Request, body: TraineeIn, db: Annotated[Any, Depends(ge
 @router.post("/claim", response_model=TokenOut)
 @limiter.limit(REGISTER_LIMIT)
 async def claim(request: Request, body: TraineeIn, db: Annotated[Any, Depends(get_db)]):
-    """One-time password claim for pre-password ledgers."""
+    """One-time password claim for enrolled accounts whose ledger has no password yet."""
 
     def _run():
         result = auth_service.claim_trainee(db, body.trainee_id, body.password)
         if not result["ok"]:
             status_code = status.HTTP_400_BAD_REQUEST if "must be" in result["error"] else status.HTTP_401_UNAUTHORIZED
             raise HTTPException(status_code=status_code, detail=result["error"])
-        return result["trainee_id"], db.get_token_version()
+        return result
 
-    trainee_id, token_version = await asyncio.to_thread(_run)
+    result = await asyncio.to_thread(_run)
     return TokenOut(
         access_token=create_access_token(
-            trainee_id,
+            result["account_id"],
             expires_hours=remember_me_hours() if body.remember_me else None,
-            token_version=token_version,
+            token_version=result["session_epoch"],
         ),
-        trainee_id=trainee_id,
+        trainee_id=result["trainee_id"],
     )
 
 
@@ -101,17 +100,22 @@ async def logout(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     db: Annotated[Any, Depends(get_db)],
 ):
-    """Revokes the presenting token; the client must discard its copy."""
+    """Revokes the presenting token; the client must discard its copy.
+
+    A request without credentials is an idempotent no-op (204). A request that
+    presents a bearer token must pass the same registry checks as any other
+    authenticated request — live account, player capability, and current session
+    epoch — before its ``jti`` is revoked. Unknown, deleted, capability-less, or
+    stale-epoch tokens fail closed with 401 and never mount a ledger.
+    """
     if credentials is None or not credentials.credentials:
         return None
 
-    def _run():
-        import jwt as pyjwt
+    trainee = await get_current_trainee(credentials, db)
 
-        try:
-            revoke_token(db, credentials.credentials)
-        except pyjwt.PyJWTError:
-            pass
+    def _run():
+        bind_request(db, trainee)
+        revoke_token(db, credentials.credentials)
 
     await asyncio.to_thread(_run)
     return None
@@ -122,14 +126,14 @@ async def logout(
 async def change_password(
     request: Request,
     body: PasswordChangeIn,
-    trainee: Annotated[str, Depends(get_current_trainee)],
+    trainee: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Authenticated password change. Revokes ALL sessions; the client must re-login."""
 
     def _run():
         bind_request(db, trainee)
-        result = auth_service.change_password(db, trainee, body.current_password, body.new_password)
+        result = auth_service.change_password(db, trainee.account_id, body.current_password, body.new_password)
         if not result["ok"]:
             # Deliberately 400 (never 401): 401 means "session expired" to clients.
             status_code = status.HTTP_400_BAD_REQUEST
@@ -142,11 +146,11 @@ async def change_password(
 
 @router.get("/email", response_model=RecoveryEmailOut)
 async def read_recovery_email(
-    trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
+    trainee: Annotated[VerifiedPlayer, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
 ):
     def _run():
         bind_request(db, trainee)
-        return db.get_trainee_email(trainee)
+        return reset_service.get_recovery_email(db, trainee.account_id)
 
     email = await asyncio.to_thread(_run)
     return RecoveryEmailOut(email=email)
@@ -157,12 +161,12 @@ async def read_recovery_email(
 async def set_recovery_email(
     request: Request,
     body: EmailUpdateIn,
-    trainee: Annotated[str, Depends(get_current_trainee)],
+    trainee: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
     db: Annotated[Any, Depends(get_db)],
 ):
     def _run():
         bind_request(db, trainee)
-        result = reset_service.set_recovery_email(db, trainee, body.email)
+        result = reset_service.set_recovery_email(db, trainee.account_id, body.email)
         if not result["ok"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
         return result["email"]

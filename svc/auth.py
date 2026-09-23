@@ -32,10 +32,11 @@ def _secret() -> str:
     return secret
 
 
-def create_access_token(trainee_id: str, expires_hours: int | None = None, token_version: int = 1) -> str:
+def create_access_token(subject: str, expires_hours: int | None = None, token_version: int = 1) -> str:
+    """Signs a JWT whose ``sub`` is the immutable account id (never the username)."""
     now = datetime.now(UTC)
     payload = {
-        "sub": trainee_id,
+        "sub": subject,
         "jti": uuid.uuid4().hex,
         "tv": max(1, int(token_version)),
         "iat": now,
@@ -72,15 +73,30 @@ def decode_access_token(token: str) -> str:
 
 
 def revoke_token(db: Any, token: str) -> None:
-    """Revokes the token's ``jti`` in the trainee ledger; prunes expired entries."""
+    """Revokes the token's ``jti`` in the account's ledger; prunes expired entries.
+
+    Rechecks the immutable account in the registry before writing: a token whose
+    account is unknown, deleted, missing the player capability, has a stale
+    session epoch, or whose ledger no longer exists revokes nothing and never
+    mounts a ledger.
+    """
     from datetime import UTC, datetime
 
     claims = token_claims(token)
-    trainee = str(claims["sub"])
-    clean_id = db._sanitize_username(trainee)
-    if db.active_user != clean_id:
-        db.switch_user(clean_id)
+    account = db.get_account(str(claims["sub"]))
+    if not db.is_live_account(account) or not account["is_player"]:
+        # Unknown, inactive, deleted, or capability-less account: never create a ledger.
+        return
+    if token_version_of(claims) != account["session_epoch"]:
+        return
+    ledger_id = account["ledger_id"]
+    if not db.user_exists(ledger_id):
+        return
+    if db.active_user != ledger_id:
+        db.switch_user(ledger_id)
     exp = claims.get("exp")
-    expires_at = datetime.fromtimestamp(exp, UTC).isoformat() if isinstance(exp, (int, float)) else datetime.now(UTC).isoformat()
+    expires_at = (
+        datetime.fromtimestamp(exp, UTC).isoformat() if isinstance(exp, (int, float)) else datetime.now(UTC).isoformat()
+    )
     db.revoke_token(str(claims["jti"]), expires_at)
     db.prune_revoked_tokens(datetime.now(UTC).isoformat())

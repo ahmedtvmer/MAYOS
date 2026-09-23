@@ -34,25 +34,41 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def register_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
+    """Creates an immutable account identity plus its ledger.
+
+    A username that already has a live account, or an unenrolled local ledger,
+    is refused so existing local ledgers are never silently adopted (issue #42
+    owns opted-in import).
+    """
     clean_id = db._sanitize_username(trainee_id)
     if not clean_id:
         return {"ok": False, "error": "Trainee ID is empty after sanitization."}
-    if db.user_exists(clean_id):
+    if db.get_active_account_by_username(clean_id) is not None or db.user_exists(clean_id):
         return {"ok": False, "error": "This Trainee ID already exists. Please log in."}
     try:
         validate_password(password)
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
+    account_id = db.create_account(clean_id)
+    if account_id is None:
+        return {"ok": False, "error": "This Trainee ID already exists. Please log in."}
     bind_user(db, clean_id)
     db.set_password_hash(hash_password(password))
-    return {"ok": True, "trainee_id": clean_id}
+    account = db.get_account(account_id) or {}
+    return {
+        "ok": True,
+        "trainee_id": clean_id,
+        "account_id": account_id,
+        "session_epoch": account.get("session_epoch", 1),
+    }
 
 
 def login_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
     clean_id = db._sanitize_username(trainee_id)
-    if not clean_id or not db.user_exists(clean_id):
+    account = db.get_active_account_by_username(clean_id) if clean_id else None
+    if account is None or not db.user_exists(account["ledger_id"]):
         return {"ok": False, "error": INVALID_CREDENTIALS}
-    bind_user(db, clean_id)
+    bind_user(db, account["ledger_id"])
     stored = db.get_password_hash()
     if stored is None:
         return {"ok": False, "error": INVALID_CREDENTIALS, "code": "claim_required"}
@@ -61,7 +77,9 @@ def login_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
     profile = db.get_user_profile()
     return {
         "ok": True,
-        "trainee_id": clean_id,
+        "trainee_id": account["ledger_id"],
+        "account_id": account["account_id"],
+        "session_epoch": account["session_epoch"],
         "has_profile": bool(profile),
         "profile": profile,
         "active_program": db.get_active_program() if profile else None,
@@ -69,32 +87,47 @@ def login_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
 
 
 def claim_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
-    """One-time password claim for pre-password ledgers. Single-use per ledger."""
+    """One-time password claim for an account whose ledger has no password yet.
+
+    Only an enrolled account can be claimed; a bare local ledger is refused so
+    it is never silently adopted into a cloud account.
+    """
     clean_id = db._sanitize_username(trainee_id)
-    if not clean_id or not db.user_exists(clean_id):
+    account = db.get_active_account_by_username(clean_id) if clean_id else None
+    if account is None or not db.user_exists(account["ledger_id"]):
         return {"ok": False, "error": INVALID_CREDENTIALS}
     try:
         validate_password(password)
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
-    bind_user(db, clean_id)
+    bind_user(db, account["ledger_id"])
     if db.get_password_hash() is not None:
         return {"ok": False, "error": INVALID_CREDENTIALS}
     db.set_password_hash(hash_password(password))
-    return {"ok": True, "trainee_id": clean_id}
+    return {
+        "ok": True,
+        "trainee_id": account["ledger_id"],
+        "account_id": account["account_id"],
+        "session_epoch": account["session_epoch"],
+    }
 
 
-def change_password(db: Any, trainee_id: str, current_password: str, new_password: str) -> dict[str, Any]:
-    """Authenticated password change. Revokes all sessions via token-version bump.
+def change_password(db: Any, account_id: str, current_password: str, new_password: str) -> dict[str, Any]:
+    """Authenticated password change. Revokes all sessions via the registry epoch.
+
+    ``account_id`` is the immutable id verified from the caller's JWT, never a
+    reusable username: resolving by id means a request that raced a delete and
+    username reuse cannot touch the new account that inherited the name. The
+    account must still be a live player whose ledger exists.
 
     The caller is already JWT-authenticated, so a wrong current password is
     reported plainly (400-class ``error``); route layers must NOT map this to
     401 or clients will treat it as session expiry.
     """
-    clean_id = db._sanitize_username(trainee_id)
-    if not clean_id or not db.user_exists(clean_id):
+    account = db.get_account(account_id)
+    if not db.is_live_account(account) or not account["is_player"] or not db.user_exists(account["ledger_id"]):
         return {"ok": False, "error": "Trainee ledger not found."}
-    bind_user(db, clean_id)
+    bind_user(db, account["ledger_id"])
     stored = db.get_password_hash()
     if stored is None:
         return {"ok": False, "error": "No password set yet. Claim this ledger first.", "code": "claim_required"}
@@ -107,5 +140,10 @@ def change_password(db: Any, trainee_id: str, current_password: str, new_passwor
     if verify_password(new_password, stored):
         return {"ok": False, "error": "New password must differ from the current one.", "code": "same_as_current"}
     db.set_password_hash(hash_password(new_password))
-    new_version = db.bump_token_version()
-    return {"ok": True, "trainee_id": clean_id, "token_version": new_version}
+    new_version = db.bump_account_session_epoch(account["account_id"])
+    return {
+        "ok": True,
+        "trainee_id": account["ledger_id"],
+        "account_id": account["account_id"],
+        "token_version": new_version,
+    }

@@ -178,10 +178,14 @@ def test_reset_token_single_use_expiry_and_generic_errors(api):
     assert garbage.status_code == 400
     assert garbage.json() == reuse.json()
 
-    # Expired token: backdate the stored expiry, then redeem.
+    # Expired token: backdate the stored expiry, then redeem. Tokens are keyed by account id.
     reset_service.request_password_reset(db, "alice@example.com", mailer=lambda to, link: True, token_factory=lambda: "stale-token-abcdef1234")
+    account_id = db.get_active_account_by_username("alice")["account_id"]
     with db._catalog_lock:
-        db.catalog_conn.execute("UPDATE password_reset_tokens SET expires_at = ? WHERE trainee_id = ?", ("2000-01-01T00:00:00+00:00", "alice"))
+        db.catalog_conn.execute(
+            "UPDATE password_reset_tokens SET expires_at = ? WHERE trainee_id = ?",
+            ("2000-01-01T00:00:00+00:00", account_id),
+        )
         db.catalog_conn.commit()
     from svc.rate_limit import limiter
 
@@ -211,8 +215,9 @@ def test_pre_version_tokens_work_until_password_change(api):
 
     client, _ = api
     fresh_token = _register(client, "alice")
-    # Hand-craft a legacy token without the "tv" claim.
-    legacy = pyjwt.encode({"sub": "alice", "jti": "legacy-jti-1"}, TEST_JWT_SECRET, algorithm="HS256")
+    account_id = pyjwt.decode(fresh_token, TEST_JWT_SECRET, algorithms=["HS256"])["sub"]
+    # Hand-craft a legacy token without the "tv" claim, for the immutable subject.
+    legacy = pyjwt.encode({"sub": account_id, "jti": "legacy-jti-1"}, TEST_JWT_SECRET, algorithm="HS256")
     assert client.get("/dashboard/exercises", headers=_authed(legacy)).status_code == 200
     client.post(
         "/auth/change-password",
@@ -277,6 +282,46 @@ def test_admin_cli_resets_password_and_revokes_sessions(tmp_path: Path):
     assert row[1] == 2
 
 
+def test_admin_cli_revokes_enrolled_account_sessions(api):
+    """CLI reset of an enrolled account must revoke its live registry API token."""
+    import jwt as pyjwt
+    import subprocess
+    import sys
+
+    client, db = api
+    token = _register(client, "alice")
+    account_id = pyjwt.decode(token, TEST_JWT_SECRET, algorithms=["HS256"])["sub"]
+    assert client.get("/dashboard/exercises", headers=_authed(token)).status_code == 200
+
+    script = Path(__file__).resolve().parent.parent / "scripts" / "reset_password.py"
+    env = dict(os.environ)
+    env["SKIP_LLM_LOAD"] = "true"
+    proc = subprocess.run(
+        [
+            sys.executable, str(script), "alice",
+            "--password", "admin-set-horse-9",
+            "--catalog", str(db.catalog_path),
+            "--users-dir", str(db.users_dir),
+            "--backups-dir", str(db.backups_dir),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=180,
+        env=env,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "all sessions revoked" in proc.stdout.lower()
+
+    # The enrolled account's registry epoch advanced, so the old token is dead.
+    assert db.get_account(account_id)["session_epoch"] == 2
+    assert client.get("/dashboard/exercises", headers=_authed(token)).status_code == 401
+
+    # The new password works and reissues a token for the same immutable account.
+    relogin = client.post("/auth/login", json={"trainee_id": "alice", "password": "admin-set-horse-9"})
+    assert relogin.status_code == 200, relogin.text
+    assert pyjwt.decode(relogin.json()["access_token"], TEST_JWT_SECRET, algorithms=["HS256"])["sub"] == account_id
+
+
 def test_fresh_catalog_boot_creates_account_tables(tmp_path: Path, monkeypatch):
     """A brand-new DatabaseManager() boot must provision recovery tables up front."""
     catalog_path = tmp_path / "catalog.db"
@@ -297,7 +342,7 @@ def test_fresh_catalog_boot_creates_account_tables(tmp_path: Path, monkeypatch):
         tables = {
             row[0] for row in db.catalog_conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
-        assert {"trainee_emails", "password_reset_tokens"} <= tables
+        assert {"trainee_emails", "password_reset_tokens", "accounts"} <= tables
     finally:
         if db.user_conn is not None:
             db.user_conn.close()

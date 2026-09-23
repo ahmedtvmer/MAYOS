@@ -1,6 +1,6 @@
 # Myos: Authentication, Session Security & Account Recovery
 
-This document specifies the Myos identity layer: credential storage, JWT session tokens, the revoke-all session-epoch model, the mandatory recovery-email gate, and the self-service plus operator-driven password recovery flows.
+This document specifies the Myos identity layer: credential storage, JWT session tokens, the revoke-all session-epoch model, recovery email, and the self-service plus operator-driven password recovery flows.
 
 ---
 
@@ -8,9 +8,9 @@ This document specifies the Myos identity layer: credential storage, JWT session
 
 Myos is a **local-first, single-replica** engine. The identity layer is designed around three realities:
 
-* **No cloud identity provider.** Accounts live inside per-user SQLite ledgers (`db/users/<trainee_id>.db`); there is no external IdP, email service, or directory.
+* **No cloud identity provider.** Account identity is an immutable id in the shared catalog registry (`accounts`); each account maps to a per-user SQLite ledger (`db/users/<ledger_id>.db`). There is no external identity provider or directory; email delivery is an optional, self-hosted SMTP backend (Section 9).
 * **No account enumeration.** Unknown users and wrong passwords are indistinguishable, and password-recovery requests answer identically whether or not an email is linked.
-* **Local GGUF inference is the only heavy dependency.** The auth surface is pure Python: bcrypt hashing and HS256 JWT verification cost single-digit milliseconds even on CPU.
+* **Authentication is separate from inference.** Password hashing and JWT verification do not require a model to be loaded.
 
 The attack surface considered here: credential stuffing (mitigated by strict login rate limits), token replay after theft (mitigated by per-token revocation and the session-epoch model), reset-token interception/replay (mitigated by hashed, single-use, short-TTL tokens), and account enumeration (mitigated by constant-shape responses).
 
@@ -28,20 +28,20 @@ Credentials are stored per-ledger, never globally:
 | Password policy | 8–128 characters (`service/auth.py::validate_password`) |
 | Plaintext | Never stored, never logged |
 
-Per-user password changes and recovery are pure ledger operations; the shared catalog participates only in account **recovery** identity (Section 6) and not in day-to-day authentication.
+Password changes update the ledger credential and advance the account's session epoch in the shared catalog. The catalog also holds immutable ids, status, capabilities, and recovery identity (Section 6).
 
 ---
 
 ## 3. Registration, Login & the Legacy Claim Flow
 
-`POST /auth/register` creates the ledger, stores the bcrypt hash, and immediately issues a JWT. `POST /auth/login` proves possession of the password and issues a JWT.
+`POST /auth/register` creates an immutable account id in the catalog registry, creates the account's ledger, stores the bcrypt hash, and immediately issues a JWT. `POST /auth/login` proves possession of the password and issues a JWT whose subject is that immutable account id.
 
-Ledgers created **before** schema v2 (pre-password era) have no `auth_credentials` row. These are handled by a one-time claim flow rather than a migration-time password invention:
+An enrolled account whose ledger predates schema v2 may have no `auth_credentials` row. It uses a one-time claim flow. A bare local ledger without an account registry entry cannot be claimed through the API (see ADR 015 and the opted-in import in ADR 019):
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant UI as Streamlit UI
+    participant UI as Flutter app
     participant API as FastAPI /auth
     participant SVC as service/auth.py
     participant DB as User Ledger
@@ -76,69 +76,73 @@ Tokens are stateless HS256 JWTs issued by `svc/auth.py`:
 
 | Claim | Meaning |
 | :--- | :--- |
-| `sub` | Sanitized trainee id (ledger key) |
+| `sub` | **Immutable account id** (never the reusable username) |
 | `jti` | Unique token id — the unit of individual revocation |
-| `tv` | **Token version** — the ledger's session epoch (Section 5) |
+| `tv` | **Session epoch** from the catalog account registry (Section 5) |
 | `iat` / `exp` | Issued-at and expiry; lifetime `JWT_EXPIRY_HOURS` (default **2h**) |
 
 `JWT_SECRET` is mandatory: the service refuses to sign or verify if it is unset (no insecure fallback). Verification (`svc/dependencies.py::get_current_trainee`) enforces, in order:
 
 1. Bearer token present and syntactically valid (`token_claims`: `sub`, `jti`, `tv ≥ 1`).
-2. Ledger mounted on the worker thread for the `sub` (`bind_user`) — identity comes **only** from the verified token, never from request bodies.
-3. `jti` not present in the ledger's `revoked_tokens` table.
-4. `tv` equals the ledger's current `token_version`.
+2. Catalog registry lookup by `sub`: the account must exist, be live (a non-NULL `deleted_at` wins over a stale `status='active'`), and have the player capability. Missing, deleted, or inactive accounts fail closed **before any ledger is mounted**, so a bad token can never create a ledger as a side effect.
+3. `tv` equals the account's current registry session epoch.
+4. The account's ledger exists, then is mounted to check its token revocation list — identity comes **only** from the verified token, never from request bodies.
+5. `jti` not present in the ledger's `revoked_tokens` table.
+6. **Worker bind recheck.** Each route calls `bind_request` on the worker thread that will touch SQLite, which re-runs the registry live/capability/epoch check for the same immutable account before mounting. This closes the gap between the request-scoped checks above and the actual ledger work, so a deletion or epoch bump landing in between still fails closed.
 
 Any failure yields a generic `401 Invalid or expired token.` / `Token has been revoked.`
 
-**Backwards compatibility:** tokens issued before schema v3 carry no `tv` claim and are treated as version 1 — they remain valid until the first password event bumps the epoch.
+**Backwards compatibility:** legacy tokens whose `sub` is a username are rejected, because only immutable account ids resolve in the registry. Tokens issued before schema v3 carry no `tv` claim and read as version 1 — they remain valid for an enrolled account until the first password event bumps the registry epoch.
 
 ---
 
 ## 5. Session Invalidation: The Token-Version Epoch (ADR 006)
 
-Per-`jti` revocation (the `revoked_tokens` ledger, written by `POST /auth/logout`) can only kill **known** tokens. A password change must kill **all** sessions — including any held by an attacker — which is inexpressible per-`jti` without a session table. Myos instead uses a single monotonic counter per ledger:
+Per-`jti` revocation (the `revoked_tokens` ledger, written by `POST /auth/logout`) can only kill **known** tokens. A password change must kill **all** sessions — including any held by an attacker — which is inexpressible per-`jti` without a session table. Myos instead uses a single monotonic counter per **account in the catalog registry**, so revocation survives independently of the deletable ledger:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant UI as Streamlit UI
+    participant UI as Flutter app
     participant API as FastAPI
     participant SVC as service/auth.py
-    participant DB as User Ledger
+    participant DB as Catalog Registry
 
     UI->>API: POST /auth/change-password {current, new} (Bearer tv=1)
     API->>SVC: change_password()
-    SVC->>DB: verify current_password (bcrypt)
+    SVC->>DB: verify current_password (bcrypt, ledger)
     SVC->>DB: set_password_hash(bcrypt(new))
-    SVC->>DB: bump_token_version() -> tv=2
+    SVC->>DB: bump_account_session_epoch() -> tv=2
     SVC-->>UI: 200 "All sessions revoked; log in again."
-    Note over UI,DB: Every token stamped tv=1 now fails step 4 — all devices logged out
+    Note over UI,DB: Every token stamped tv=1 now fails verification step 3 — all devices logged out
 ```
 
-`bump_token_version()` is invoked by **every** password event:
+`bump_account_session_epoch()` is invoked by **every** password event:
 
 | Event | Path |
 | :--- | :--- |
 | Authenticated change | `POST /auth/change-password` |
 | Reset via emailed token | `POST /auth/reset-password` |
-| Operator CLI reset | `scripts/reset_password.py` |
+| Operator CLI reset | `scripts/reset_password.py` (mandatory registry epoch when enrolled; ledger `token_version` fallback for a bare local ledger) |
 
 Change-password failures return **400, never 401** — so a wrong current password is not misread by clients as session expiry.
 
 ---
 
-## 6. Mandatory Recovery-Email Gate (ADR 007)
+## 6. Recovery Email and Legacy Client Gate (ADR 007)
 
 Recovery identity lives in the **shared catalog** (`db/catalog.db`), not in per-user ledgers, because the logged-out forgot-password flow cannot know which ledger to open:
 
 | Table | Columns | Purpose |
 | :--- | :--- | :--- |
-| `trainee_emails` | `trainee_id` (PK), `email` (UNIQUE), `updated_at` | Email ↔ ledger mapping |
-| `password_reset_tokens` | `token_hash` (PK), `trainee_id`, `expires_at`, `used_at`, `created_at` | Single-use reset tokens |
+| `trainee_emails` | `trainee_id` (PK, **immutable account id** for live rows), `email` (UNIQUE), `updated_at` | Email ↔ account mapping |
+| `password_reset_tokens` | `token_hash` (PK), `trainee_id` (**immutable account id** for live rows), `expires_at`, `used_at`, `created_at` | Single-use reset tokens |
 
 Both tables are provisioned idempotently at catalog boot (`ensure_account_schema()` outside any held lock).
 
-The gate is **mandatory**: after login, a trainee without a recovery email sees a minimal gate page (with a Logout escape hatch) and cannot reach the dashboard or onboarding until an email is saved. This guarantees every active account can self-recover without the operator CLI.
+Live recovery rows are keyed by the immutable account id; **legacy username-keyed rows are ignored by lookup**. A stale email mapping or unredeemed token therefore cannot target a new account that reuses a deleted account's username (Section 7).
+
+The legacy Streamlit client gates its dashboard and onboarding on a saved recovery email. The API provides `GET /auth/email` and `POST /auth/email`; it does not enforce that client gate. The Flutter client is the product client under development (ADR 017).
 
 ```mermaid
 flowchart LR
@@ -150,7 +154,7 @@ flowchart LR
     Check -- "404 stale service" --> Ops["'Restart service' message"]
 ```
 
-The sidebar's "Password & Recovery" panel remains as the post-gate editor for changing the linked email.
+In the legacy client, the sidebar's "Password & Recovery" panel edits the linked email after the gate.
 
 ---
 
@@ -167,14 +171,14 @@ sequenceDiagram
     participant Mail as SMTP / console-dev
 
     User->>API: POST /auth/forgot-password {email}
-    API->>DB: lookup trainee_emails (may miss)
+    API->>DB: lookup trainee_emails -> account_id (live accounts only)
     Note over API: ALWAYS 202 + identical generic message (anti-enumeration)
-    API->>DB: store SHA-256(token), expires_at, used_at=NULL
+    API->>DB: store SHA-256(token) keyed by account_id, expires_at, used_at=NULL
     API->>Mail: send reset link (or log it in console-dev mode)
     User->>API: POST /auth/reset-password {token, new_password}
     API->>API: validate password policy BEFORE consuming
     API->>DB: atomic consume (unused AND unexpired)
-    API->>DB: set_password_hash + bump_token_version + prune tokens
+    API->>DB: set_password_hash + bump_account_session_epoch + prune tokens
     API-->>User: 200 "Please log in with the new password."
 ```
 
@@ -203,7 +207,7 @@ python scripts/reset_password.py <trainee_id> \
   --catalog db/catalog.db --users-dir db/users --backups-dir db/backups
 ```
 
-The CLI validates the password policy, writes a fresh bcrypt hash, bumps `token_version` (all sessions revoked), and prunes the revocation ledger. It never prints or logs the hash.
+The CLI validates the password policy, writes a fresh bcrypt hash, and bumps the ledger `token_version`. When the ledger is **enrolled** in the registry it then mandatorily advances the account's registry session epoch — failing loudly rather than reporting success if that cannot be done — so every registry-verified API session is revoked, and it reports the real registry epoch. A bare local ledger with no registry account keeps the legacy behavior and reports its ledger `token_version`. It prunes the revocation ledger and never prints or logs the hash.
 
 ---
 

@@ -45,8 +45,8 @@ Mayos bridges this gap:
 * **Zero-Cloud Architecture**: Runs entirely offline on local hardware using quantized GGUF inference (**Qwen3.5-4B** production + an optional **Qwen3.5-9B** offline judge), with full GPU offload on a 4 GB card or pure-CPU operation.
 * **Deterministic Fast-Path Router**: Clinical trauma halts, movement swaps, and split mutations are resolved by compiled regex and ledger logic in **0.014–0.075 ms** — up to **375,000× faster** than an LLM classification call — while a Tier-1 semantic guard keeps colloquial injury reports safe.
 * **Biomechanical Auto-Regulation**: Quantizes weights to 2.5 kg Olympic increments, calculates dynamic RPE-adjusted effective 1RMs, and tracks synergists fractionally (0.5 sets).
-* **JWT-Secured Multi-Tenant Ledgers**: A FastAPI service layer verifies HS256 tokens against per-ledger revocation lists and a session epoch; every user gets an isolated SQLite ledger in WAL mode with an in-process `sqlite-vec` semantic catalog.
-* **Self-Service Account Recovery**: Mandatory recovery-email gate, single-use hashed reset tokens with anti-enumeration responses, revoke-all password changes, and an operator CLI backstop.
+* **JWT-Secured Multi-Tenant Ledgers**: The FastAPI service checks HS256 tokens against a durable account registry for status, player capability, and session epoch, then checks the ledger revocation list. Each user has an isolated SQLite ledger in WAL mode with an in-process `sqlite-vec` semantic catalog.
+* **Self-Service Account Recovery**: Recovery-email endpoints, single-use hashed reset tokens with anti-enumeration responses, revoke-all password changes, and an operator CLI backstop. The legacy Streamlit client requires a recovery email before dashboard access.
 
 ---
 
@@ -57,7 +57,7 @@ Detailed architectural specifications, benchmarks, and mathematical proofs are m
 | Document | Focus & Contents |
 | :--- | :--- |
 | [**Architecture Specification**](docs/ARCHITECTURE.md) | Mermaid state graphs, deterministic fast-path routing tiers, service-layer request lifecycle, chunk sanitization, and connection topologies. |
-| [**Authentication & Recovery**](docs/AUTHENTICATION.md) | JWT claims and verification, token-version session epochs, revocation ledgers, the recovery-email gate, single-use reset tokens, and operator runbooks. |
+| [**Authentication & Recovery**](docs/AUTHENTICATION.md) | JWT claims and verification, registry session epochs, revocation ledgers, recovery email, single-use reset tokens, and operator runbooks. |
 | [**Empirical Benchmarks**](docs/ARCHITECTURAL_BENCHMARKS.md) | Routing latency matrices, context-clamping scaling curves, WAL concurrency stress tests, and the Qwen 2.5 3B → Qwen 3.5 4B model-refresh comparison. |
 | [**Progression & Biomechanics**](docs/PROGRESSION_RULES.md) | Mathematical formulations for effective 1RMs, Olympic plate quantization, warmup ramps, deload rules, and clinical interception boundaries. |
 | [**Deployment Runbook**](docs/DEPLOYMENT.md) | Two-service Docker orchestration, GPU memory planning, the two-phase evaluation lifecycle, auth ops, and disaster recovery checkpointing. |
@@ -198,8 +198,8 @@ Mayos ships a complete self-hosted identity layer — no cloud IdP, no external 
 
 * **JWT sessions (HS256)**: `sub` + `jti` + `tv` (session epoch) claims, 2-hour default expiry, per-token revocation on logout.
 * **Optional remember-me sessions**: with explicit consent, the browser stores a sign-in cookie; remembered tokens last 30 days (`JWT_REMEMBER_ME_HOURS`) so refreshes keep you logged in. Password changes and logout still revoke them instantly (ADR 010).
-* **Revoke-all password changes**: every password event (change, emailed reset, operator CLI) bumps the ledger's token version — every other device is logged out instantly (ADR 006).
-* **Mandatory recovery-email gate**: after login, trainees without a recovery address cannot reach the dashboard or onboarding until one is saved.
+* **Revoke-all password changes**: for enrolled accounts, password changes and resets advance the catalog registry session epoch, invalidating existing sessions (ADR 006/015). The operator CLI also supports bare local ledgers through their ledger token version.
+* **Recovery-email gate**: the legacy Streamlit client requires a recovery address before dashboard or onboarding access; the API exposes recovery-email endpoints without enforcing that client gate.
 * **Forgot / reset password**: single-use SHA-256-hashed tokens (30-min TTL, atomic consumption, weak passwords rejected before the token is burned), with identical responses for known and unknown emails.
 * **Anti-enumeration posture**: unknown users and wrong passwords are indistinguishable; recovery requests never reveal whether an address is linked.
 * **Strict rate limits**: 5/min login & register, 3/hour recovery, 10/min password operations, 30/min chat.
@@ -251,7 +251,7 @@ docker compose exec myos-api python scripts/check_engine_health.py
 - [x] In-process `sqlite-vec` semantic exercise catalog search.
 - [x] Fractional synergist volume attribution (1.0 direct / 0.5 synergist).
 - [x] FastAPI service layer with JWT authentication, rate limiting, and SSE streaming.
-- [x] Self-service password recovery, mandatory recovery-email gate, and operator reset CLI.
+- [x] Self-service password recovery, recovery-email endpoints, and operator reset CLI.
 - [x] Context-gated Tier-0b clinical safety (DOMS slang vs. genuine trauma reports).
 - [x] Qwen 3.5 4B model refresh with GPU offload and restored streaming telemetry.
 - [x] Export session logs to standardized CSV / JSON fitness exchange formats.

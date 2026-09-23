@@ -107,7 +107,8 @@ def _creds(token: str | None):
 
 def test_dependency_accepts_valid_bearer(monkeypatch, temp_db_env):
     monkeypatch.setenv("JWT_SECRET", "test-secret")
-    token = create_access_token("alice")
+    account_id = temp_db_env.create_account("alice")
+    token = create_access_token(account_id)
     assert asyncio.run(get_current_trainee(_creds(token), temp_db_env)) == "alice"
 
 
@@ -129,7 +130,8 @@ def test_dependency_rejects_revoked_token(monkeypatch, temp_db_env):
     from svc.auth import revoke_token
 
     monkeypatch.setenv("JWT_SECRET", "test-secret")
-    token = create_access_token("alice")
+    account_id = temp_db_env.create_account("alice")
+    token = create_access_token(account_id)
     assert asyncio.run(get_current_trainee(_creds(token), temp_db_env)) == "alice"
     revoke_token(temp_db_env, token)
     with pytest.raises(HTTPException) as exc:

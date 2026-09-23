@@ -1,7 +1,9 @@
 """Admin password reset: set a new password for a trainee ledger from the ops console.
 
-Revokes ALL sessions for the ledger (token-version bump). Use when a trainee
-loses access and self-service email recovery is unavailable.
+For an enrolled account, revokes ALL sessions by mandatorily advancing the
+catalog registry session epoch (a bare local ledger falls back to the ledger
+token version). Use when a trainee loses access and self-service email recovery
+is unavailable.
 
 Usage:
     python scripts/reset_password.py <trainee_id> [--password NEWPASS]
@@ -28,7 +30,15 @@ from utils.logger import MyosLogger  # noqa: E402
 logger = MyosLogger().get_logger(__name__)
 
 
-def reset_password(db: DatabaseManager, trainee_id: str, new_password: str) -> str:
+def reset_password(db: DatabaseManager, trainee_id: str, new_password: str) -> tuple[str, int, bool]:
+    """Set a fresh password and revoke the account's sessions.
+
+    Returns ``(ledger_id, epoch, enrolled)``. For an enrolled account, ``epoch``
+    is the new registry session epoch and advancing it is mandatory: registry
+    verification is what actually revokes live API sessions. For a bare local
+    ledger with no registry account, ``epoch`` is the ledger ``token_version``
+    and ``enrolled`` is ``False`` (legacy behavior preserved).
+    """
     clean_id = db._sanitize_username(trainee_id)
     if not clean_id or not db.user_exists(clean_id):
         raise SystemExit(f"error: unknown trainee ledger '{trainee_id}'.")
@@ -36,11 +46,20 @@ def reset_password(db: DatabaseManager, trainee_id: str, new_password: str) -> s
         auth_service.validate_password(new_password)
     except ValueError as exc:
         raise SystemExit(f"error: {exc}")
+    account = db.get_active_account_by_username(clean_id)
     bind_user(db, clean_id)
     db.set_password_hash(auth_service.hash_password(new_password))
-    new_version = db.bump_token_version()
+    ledger_epoch = db.bump_token_version()
+    if account is not None:
+        epoch = db.bump_account_session_epoch(account["account_id"])
+        if epoch is None:
+            raise SystemExit(
+                "error: could not advance the account registry epoch; sessions were NOT revoked."
+            )
+    else:
+        epoch = ledger_epoch
     db.prune_revoked_tokens(datetime.now(UTC).isoformat())
-    return clean_id, new_version
+    return clean_id, epoch, account is not None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -66,13 +85,17 @@ def main(argv: list[str] | None = None) -> int:
     DatabaseManager._local = threading.local()
     db = DatabaseManager(catalog_path=args.catalog, users_dir=args.users_dir, backups_dir=args.backups_dir)
     try:
-        clean_id, new_version = reset_password(db, args.trainee_id, new_password)
+        clean_id, epoch, enrolled = reset_password(db, args.trainee_id, new_password)
     finally:
         if db.user_conn is not None:
             db.user_conn.close()
         db.catalog_conn.close()
-    logger.info("Password reset for '%s' (session epoch now v%s). All sessions revoked.", clean_id, new_version)
-    print(f"Password reset for '{clean_id}'. All sessions revoked; the trainee must log in again.")
+    if enrolled:
+        logger.info("Password reset for '%s' (registry session epoch now v%s). All sessions revoked.", clean_id, epoch)
+        print(f"Password reset for '{clean_id}'. Registry session epoch now v{epoch}; all sessions revoked.")
+    else:
+        logger.info("Password reset for '%s' (legacy ledger token version now v%s). All sessions revoked.", clean_id, epoch)
+        print(f"Password reset for '{clean_id}'. Legacy ledger token version now v{epoch}; all sessions revoked.")
     return 0
 
 

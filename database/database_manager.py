@@ -684,7 +684,12 @@ class DatabaseManager:
     # ------------------------------------------------------------------
 
     def ensure_account_schema(self) -> None:
+        # Provisioned once at boot; guarded so the auth hot path never re-runs DDL.
+        if getattr(self, "_account_schema_ready", False):
+            return
         with self._catalog_lock:
+            if getattr(self, "_account_schema_ready", False):
+                return
             self.catalog_conn.executescript("""
                 CREATE TABLE IF NOT EXISTS trainee_emails (
                     trainee_id TEXT PRIMARY KEY,
@@ -699,8 +704,131 @@ class DatabaseManager:
                     created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_reset_tokens_trainee ON password_reset_tokens(trainee_id);
+
+                CREATE TABLE IF NOT EXISTS accounts (
+                    account_id TEXT PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    ledger_id TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    is_player INTEGER NOT NULL DEFAULT 1,
+                    is_coach INTEGER NOT NULL DEFAULT 0,
+                    session_epoch INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    deleted_at TEXT
+                );
+                -- Partial unique index: a username is unique among live accounts, so a
+                -- deleted username can later be registered under a new immutable id.
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_active_username
+                    ON accounts(username) WHERE deleted_at IS NULL;
+                CREATE INDEX IF NOT EXISTS idx_accounts_ledger ON accounts(ledger_id);
             """)
             self.catalog_conn.commit()
+            self._account_schema_ready = True
+
+    _ACCOUNT_COLUMNS = (
+        "account_id, username, ledger_id, status, is_player, is_coach, session_epoch, created_at, deleted_at"
+    )
+
+    @staticmethod
+    def _account_from_row(row: Any) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        return {
+            "account_id": str(row[0]),
+            "username": str(row[1]),
+            "ledger_id": str(row[2]),
+            "status": str(row[3]),
+            "is_player": bool(row[4]),
+            "is_coach": bool(row[5]),
+            "session_epoch": max(1, int(row[6] or 1)),
+            "created_at": str(row[7]),
+            "deleted_at": row[8],
+        }
+
+    @staticmethod
+    def is_live_account(account: dict[str, Any] | None) -> bool:
+        """True only when an account row is live.
+
+        Deletion is authoritative: a non-NULL ``deleted_at`` makes the row dead
+        even if ``status`` was left as ``'active'`` by an interrupted deletion.
+        Callers use this to fail closed before mounting a ledger.
+        """
+        return bool(account) and account["status"] == "active" and account["deleted_at"] is None
+
+    def create_account(self, username: str) -> str | None:
+        """Atomically reserves ``username`` and returns a new immutable account id.
+
+        Returns ``None`` when a live account already owns the username. The
+        uniqueness is enforced by a partial unique index, so concurrent
+        registrations cannot both succeed; deleted rows keep their old id, which
+        lets the username be reused later under a new id.
+        """
+        clean_id = self._sanitize_username(username)
+        if not clean_id:
+            return None
+        self.ensure_account_schema()
+        account_id = uuid.uuid4().hex
+        now = datetime.now(UTC).isoformat()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            try:
+                cursor.execute(
+                    "INSERT INTO accounts"
+                    " (account_id, username, ledger_id, status, is_player, is_coach, session_epoch, created_at, deleted_at)"
+                    " VALUES (?, ?, ?, 'active', 1, 0, 1, ?, NULL)",
+                    (account_id, clean_id, clean_id, now),
+                )
+                self.catalog_conn.commit()
+            except sqlite3.IntegrityError:
+                self.catalog_conn.rollback()
+                return None
+        return account_id
+
+    def get_account(self, account_id: str) -> dict[str, Any] | None:
+        """Reads an account by immutable id. Returns ``None`` when absent (fail closed)."""
+        if not account_id:
+            return None
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(f"SELECT {self._ACCOUNT_COLUMNS} FROM accounts WHERE account_id = ?", (str(account_id),))
+            return self._account_from_row(cursor.fetchone())
+
+    def get_active_account_by_username(self, username: str) -> dict[str, Any] | None:
+        """Reads the live account owning ``username``.
+
+        Requires both ``status = 'active'`` and ``deleted_at IS NULL`` so an
+        inactive row with an unset deletion timestamp can never be treated as
+        live by login, claim, or recovery.
+        """
+        clean_id = self._sanitize_username(username)
+        if not clean_id:
+            return None
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                f"SELECT {self._ACCOUNT_COLUMNS} FROM accounts"
+                " WHERE username = ? AND status = 'active' AND deleted_at IS NULL",
+                (clean_id,),
+            )
+            return self._account_from_row(cursor.fetchone())
+
+    def bump_account_session_epoch(self, account_id: str) -> int | None:
+        """Advances the registry session epoch, invalidating every prior token. Returns the new epoch."""
+        if not account_id:
+            return None
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute("SELECT session_epoch FROM accounts WHERE account_id = ?", (str(account_id),))
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            new_epoch = max(1, int(row[0] or 1)) + 1
+            cursor.execute("UPDATE accounts SET session_epoch = ? WHERE account_id = ?", (new_epoch, str(account_id)))
+            self.catalog_conn.commit()
+            return new_epoch
 
     def set_trainee_email(self, trainee_id: str, email: str) -> None:
         """Links a normalized email to a trainee. Raises ValueError if taken by another ledger."""
