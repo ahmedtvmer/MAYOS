@@ -514,6 +514,23 @@ def test_onboarding_state_is_server_side(client, monkeypatch):
     assert calls[1] == ("alice", "25")
 
 
+def test_onboarding_answer_keeps_assistant_reply_when_prior_messages_exist(client):
+    """Regression: Fly onboarding advanced but returned no assistant replies."""
+    assert client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"}).status_code == 201
+    assert client.post("/onboarding/start").status_code == 200
+
+    for answer, next_step, is_complete in (
+        ("1: lower body 2: male, 30 years, 80 kg, 180 cm", 2, False),
+        ("3: build muscle 4: stay strong 5: 3 days 6: 2 years", 3, False),
+        ("7: full gym 8: no injuries 9: low stress, 8 hours sleep", 3, True),
+    ):
+        response = client.post("/onboarding/step", json={"content": answer})
+        assert response.status_code == 200
+        assert response.json()["intake_step"] == next_step
+        assert response.json()["is_complete"] is is_complete
+        assert response.json()["messages"]
+
+
 def test_onboarding_state_survives_restart(client, monkeypatch):
     from service import onboarding as onboarding_service
 

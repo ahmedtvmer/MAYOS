@@ -1,10 +1,11 @@
 # agent/onboarding_graph.py
 import re
-from typing import Any, Literal, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, BaseMessage
 from langgraph.graph import END, StateGraph
+from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field, ValidationError
 
 from agent.program_generator import extract_frequency_from_text, validate_frequency
@@ -127,7 +128,7 @@ class Step3Extraction(BaseModel):
 
 
 class OnboardingGraphState(TypedDict):
-    messages: list[BaseMessage]
+    messages: Annotated[list[BaseMessage], add_messages]
     trainee_id: str | None
     intake_step: int
     is_complete: bool
