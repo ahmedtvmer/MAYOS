@@ -176,6 +176,100 @@ class ApiClient {
     return CoachProfile.fromJson(response.data as Map<String, dynamic>);
   }
 
+  /// Previews a coach assignment invite. The code is sent in the body and is not consumed.
+  Future<AssignmentInvitePreview> previewAssignmentInvite(String token) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/assignments/invites/preview',
+        data: {'token': token},
+      ),
+    );
+    return AssignmentInvitePreview.fromJson(
+        response.data as Map<String, dynamic>);
+  }
+
+  /// Explicitly consents to and redeems a single-use assignment invite.
+  Future<Assignment> redeemAssignmentInvite(String token) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/assignments/invites/redeem',
+        data: {'token': token, 'consent': true},
+      ),
+    );
+    final Map<String, dynamic> body = response.data as Map<String, dynamic>;
+    return Assignment.fromJson(body['assignment'] as Map<String, dynamic>);
+  }
+
+  /// The caller's active assignment, or null when none is active.
+  Future<Assignment?> myAssignment() async {
+    final response = await _send(() => _dio.get<dynamic>('/assignments/me'));
+    final dynamic data = response.data;
+    if (data == null || data == '') {
+      return null;
+    }
+    return Assignment.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Ends the caller's active assignment; access is revoked immediately.
+  Future<void> endMyAssignment() async {
+    await _send(() => _dio.post<dynamic>('/assignments/me/end'));
+  }
+
+  /// Coach issues a single-use, capacity-bound assignment invite.
+  Future<AssignmentInvite> issueAssignmentInvite() async {
+    final response =
+        await _send(() => _dio.post<dynamic>('/coach/assignments/invites'));
+    return AssignmentInvite.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Lists the coach's active assignments (identity only, no training history).
+  Future<List<CoachRosterEntry>> coachAssignments() async {
+    final response = await _send(() => _dio.get<dynamic>('/coach/assignments'));
+    final List<dynamic> data =
+        (response.data as Map<String, dynamic>)['assignments'] as List<dynamic>;
+    return data
+        .map((dynamic item) =>
+            CoachRosterEntry.fromJson(item as Map<String, dynamic>))
+        .toList(growable: false);
+  }
+
+  /// Lists the coach's assignment notices, newest-first.
+  Future<List<AssignmentNotice>> coachNotices() async {
+    final response =
+        await _send(() => _dio.get<dynamic>('/coach/assignments/notices'));
+    final List<dynamic> data =
+        (response.data as Map<String, dynamic>)['notices'] as List<dynamic>;
+    return data
+        .map((dynamic item) =>
+            AssignmentNotice.fromJson(item as Map<String, dynamic>))
+        .toList(growable: false);
+  }
+
+  /// Marks all of the coach's notices read.
+  Future<int> markCoachNoticesRead() async {
+    final response = await _send(
+        () => _dio.post<dynamic>('/coach/assignments/notices/read'));
+    return ((response.data as Map<String, dynamic>)['marked_read'] as num?)
+            ?.toInt() ??
+        0;
+  }
+
+  /// Coach revokes an assignment; access is revoked immediately.
+  Future<void> revokeAssignment(String assignmentId) async {
+    await _send(
+        () => _dio.post<dynamic>('/coach/assignments/$assignmentId/revoke'));
+  }
+
+  /// Ends every assignment and disables the coach capability, preserving player data.
+  Future<int> disableCoachCapability() async {
+    final response = await _send(
+        () => _dio.post<dynamic>('/coach/capability/disable'));
+    return ((response.data as Map<String, dynamic>)['ended_assignments']
+                as num?)
+            ?.toInt() ??
+        0;
+  }
+
   Future<void> logout() async {
     await _send(() => _dio.post<dynamic>('/auth/logout'));
   }

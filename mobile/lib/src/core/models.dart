@@ -64,6 +64,172 @@ class CoachProfile {
   final int capacity;
 }
 
+/// The coach's current, product-facing identity shown before consent.
+class CoachIdentity {
+  const CoachIdentity({
+    required this.displayName,
+    required this.bio,
+    required this.specialization,
+  });
+
+  factory CoachIdentity.fromJson(Map<String, dynamic> json) => CoachIdentity(
+        displayName: json['display_name'] as String? ?? '',
+        bio: json['bio'] as String? ?? '',
+        specialization: json['specialization'] as String? ?? '',
+      );
+
+  final String displayName;
+  final String bio;
+  final String specialization;
+}
+
+/// The exact training-data access an active assignment grants (ADR 014).
+class AssignmentAccess {
+  const AssignmentAccess({
+    required this.scope,
+    required this.includesCurrentHistory,
+    required this.includesHistoricalHistory,
+    required this.activeWhileAssigned,
+    required this.description,
+  });
+
+  factory AssignmentAccess.fromJson(Map<String, dynamic> json) =>
+      AssignmentAccess(
+        scope: json['scope'] as String? ?? '',
+        includesCurrentHistory:
+            json['includes_current_history'] as bool? ?? false,
+        includesHistoricalHistory:
+            json['includes_historical_history'] as bool? ?? false,
+        activeWhileAssigned: json['active_while_assigned'] as bool? ?? false,
+        description: json['description'] as String? ?? '',
+      );
+
+  final String scope;
+  final bool includesCurrentHistory;
+  final bool includesHistoricalHistory;
+  final bool activeWhileAssigned;
+  final String description;
+}
+
+/// `POST /assignments/invites/preview`: identity and access, code not consumed.
+class AssignmentInvitePreview {
+  const AssignmentInvitePreview({
+    required this.coach,
+    required this.access,
+    required this.expiresAt,
+  });
+
+  factory AssignmentInvitePreview.fromJson(Map<String, dynamic> json) =>
+      AssignmentInvitePreview(
+        coach: CoachIdentity.fromJson(json['coach'] as Map<String, dynamic>),
+        access:
+            AssignmentAccess.fromJson(json['access'] as Map<String, dynamic>),
+        expiresAt: json['expires_at'] as String? ?? '',
+      );
+
+  final CoachIdentity coach;
+  final AssignmentAccess access;
+  final String expiresAt;
+}
+
+/// `GET /assignments/me`: a mutually consented coaching assignment.
+class Assignment {
+  const Assignment({
+    required this.assignmentId,
+    required this.coach,
+    required this.startedAt,
+    required this.status,
+  });
+
+  factory Assignment.fromJson(Map<String, dynamic> json) => Assignment(
+        assignmentId: json['assignment_id'] as String,
+        coach: CoachIdentity.fromJson(json['coach'] as Map<String, dynamic>),
+        startedAt: json['started_at'] as String? ?? '',
+        status: json['status'] as String? ?? 'active',
+      );
+
+  final String assignmentId;
+  final CoachIdentity coach;
+  final String startedAt;
+  final String status;
+}
+
+/// `POST /coach/assignments/invites`: the one-time code and remaining capacity.
+class AssignmentInvite {
+  const AssignmentInvite({
+    required this.token,
+    required this.expiresAt,
+    required this.activeAssignments,
+    required this.capacity,
+  });
+
+  factory AssignmentInvite.fromJson(Map<String, dynamic> json) =>
+      AssignmentInvite(
+        token: json['token'] as String,
+        expiresAt: json['expires_at'] as String? ?? '',
+        activeAssignments: (json['active_assignments'] as num?)?.toInt() ?? 0,
+        capacity: (json['capacity'] as num?)?.toInt() ?? 0,
+      );
+
+  final String token;
+  final String expiresAt;
+  final int activeAssignments;
+  final int capacity;
+
+  int get remaining => capacity - activeAssignments;
+}
+
+/// An in-app assignment notice for the coach.
+class AssignmentNotice {
+  const AssignmentNotice({
+    required this.noticeId,
+    required this.kind,
+    required this.message,
+    required this.createdAt,
+    this.readAt,
+  });
+
+  factory AssignmentNotice.fromJson(Map<String, dynamic> json) =>
+      AssignmentNotice(
+        noticeId: json['notice_id'] as String,
+        kind: json['kind'] as String? ?? '',
+        message: json['message'] as String? ?? '',
+        createdAt: json['created_at'] as String? ?? '',
+        readAt: json['read_at'] as String?,
+      );
+
+  final String noticeId;
+  final String kind;
+  final String message;
+  final String createdAt;
+  final String? readAt;
+
+  bool get isUnread => readAt == null || readAt!.isEmpty;
+}
+
+/// `GET /coach/assignments`: active assignment identity for the coach console.
+class CoachRosterEntry {
+  const CoachRosterEntry({
+    required this.assignmentId,
+    required this.playerUsername,
+    required this.startedAt,
+    required this.status,
+  });
+
+  factory CoachRosterEntry.fromJson(Map<String, dynamic> json) =>
+      CoachRosterEntry(
+        assignmentId: json['assignment_id'] as String,
+        playerUsername: json['player_username'] as String? ?? '',
+        startedAt: json['started_at'] as String? ?? '',
+        status: json['status'] as String? ?? 'active',
+      );
+
+  final String assignmentId;
+  final String playerUsername;
+  final String startedAt;
+  final String status;
+}
+
 /// An authenticated account plus onboarding and recovery-email state.
 class AccountSession {
   const AccountSession({

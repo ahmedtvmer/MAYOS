@@ -56,6 +56,17 @@ class _PlayerHomeScreenState extends ConsumerState<PlayerHomeScreen> {
       appBar: AppBar(
         title: Text(titles[_index.clamp(0, titles.length - 1)]),
         actions: <Widget>[
+          IconButton(
+            tooltip: 'Coaching assignment',
+            onPressed: () => context.go(assignmentPath),
+            icon: const Icon(Icons.badge_outlined),
+          ),
+          if (isCoach)
+            IconButton(
+              tooltip: 'Player invites',
+              onPressed: () => context.go(coachAssignmentsPath),
+              icon: const Icon(Icons.handshake_outlined),
+            ),
           if (!isCoach)
             IconButton(
               tooltip: 'Redeem coach invite',

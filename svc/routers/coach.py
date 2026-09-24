@@ -11,12 +11,14 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+from service import assignments as assignment_service
 from service import coach as coach_service
 from svc.dependencies import VerifiedPlayer, get_current_coach, get_current_trainee, get_db
-from svc.rate_limit import COACH_INVITE_LIMIT, limiter
+from svc.rate_limit import ASSIGNMENT_MUTATE_LIMIT, COACH_INVITE_LIMIT, limiter
 from svc.schemas import (
     AccountCapabilitiesOut,
     AccountOut,
+    CoachCapabilityDisableOut,
     CoachInviteRedeemIn,
     CoachProfileOut,
     CoachProfileUpdate,
@@ -80,3 +82,22 @@ async def update_coach_profile(
         return result["profile"]
 
     return CoachProfileOut(**await asyncio.to_thread(_run))
+
+
+@router.post("/capability/disable", response_model=CoachCapabilityDisableOut)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def disable_coach_capability(
+    request: Request,
+    trainee: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Ends every assignment and clears the coach capability, preserving the player ledger."""
+
+    def _run():
+        result = assignment_service.disable_coach_capability(db, trainee.account_id)
+        if not result["ok"]:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
+        return result
+
+    result = await asyncio.to_thread(_run)
+    return CoachCapabilityDisableOut(coach=False, ended_assignments=result["ended_assignments"])

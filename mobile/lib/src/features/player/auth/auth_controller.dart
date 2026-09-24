@@ -139,6 +139,27 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
+  /// Applies a successful coach disable immediately, even if a later account read fails.
+  void markCoachDisabled() {
+    final AccountSession? current = state.session;
+    if (!state.isAuthenticated || current == null) return;
+    final Account account = current.account;
+    state = AuthState.authenticated(
+      AccountSession(
+        account: Account(
+          accountId: account.accountId,
+          traineeId: account.traineeId,
+          capabilities: Capabilities(
+            player: account.capabilities.player,
+            coach: false,
+          ),
+        ),
+        onboarded: current.onboarded,
+        hasRecoveryEmail: current.hasRecoveryEmail,
+      ),
+    );
+  }
+
   /// Saves the mandatory recovery email, then releases the ADR 007 gate.
   Future<void> setRecoveryEmail(String email) async {
     await _repository.setRecoveryEmail(email);

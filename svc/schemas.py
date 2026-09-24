@@ -9,11 +9,25 @@ from agent.ProgramState import GeneratedProgramSchema, ProgramExerciseSchema
 __all__ = [
     "AccountCapabilitiesOut",
     "AccountOut",
+    "AssignmentAccessOut",
+    "AssignmentEndOut",
+    "AssignmentInviteIssueOut",
+    "AssignmentInvitePreviewOut",
+    "AssignmentInviteTokenIn",
+    "AssignmentNoticeOut",
+    "AssignmentOut",
+    "AssignmentRedeemIn",
+    "AssignmentRedeemOut",
     "ChatMessageIn",
     "ChatMessageOut",
+    "CoachAssignmentsOut",
+    "CoachCapabilityDisableOut",
+    "CoachIdentityOut",
     "CoachInviteRedeemIn",
+    "CoachNoticeListOut",
     "CoachProfileOut",
     "CoachProfileUpdate",
+    "CoachRosterEntryOut",
     "EmailUpdateIn",
     "ExerciseSetsIn",
     "ForgotPasswordIn",
@@ -86,6 +100,103 @@ class CoachProfileUpdate(BaseModel):
     bio: str = Field(default="", max_length=1000)
     specialization: str = Field(default="", max_length=200)
     capacity: int = Field(ge=1, le=200)
+
+
+class CoachIdentityOut(BaseModel):
+    """The coach's current, product-facing identity shown to a prospective player."""
+
+    display_name: str
+    bio: str
+    specialization: str
+
+
+class AssignmentAccessOut(BaseModel):
+    """The exact training-data access an active assignment grants (ADR 014)."""
+
+    scope: str
+    includes_current_history: bool
+    includes_historical_history: bool
+    active_while_assigned: bool
+    description: str
+
+
+class AssignmentInvitePreviewOut(BaseModel):
+    """Preview returned before consent. Reading it never consumes the code."""
+
+    coach: CoachIdentityOut
+    access: AssignmentAccessOut
+    expires_at: str
+
+
+class AssignmentOut(BaseModel):
+    assignment_id: str
+    coach: CoachIdentityOut
+    started_at: str
+    status: str
+
+
+class AssignmentInviteIssueOut(BaseModel):
+    """The one-time code and remaining capacity for the issuing coach."""
+
+    token: str
+    expires_at: str
+    active_assignments: int
+    capacity: int
+
+
+class AssignmentInviteTokenIn(BaseModel):
+    """Secret invite code carried in the body so it never lands in access logs."""
+
+    token: str = Field(min_length=10, max_length=128)
+
+
+class AssignmentRedeemIn(BaseModel):
+    """Consent is explicit; the player identity is the JWT, never the body."""
+
+    token: str = Field(min_length=10, max_length=128)
+    consent: bool
+
+
+class AssignmentRedeemOut(BaseModel):
+    assignment: AssignmentOut
+    notices_created: int
+    email_sent: bool
+
+
+class AssignmentEndOut(BaseModel):
+    assignment_id: str
+    status: str
+    ended_at: str
+
+
+class CoachRosterEntryOut(BaseModel):
+    """Active assignment identity for the coach console; contains no training history."""
+
+    assignment_id: str
+    player_username: str
+    started_at: str
+    status: str
+
+
+class CoachAssignmentsOut(BaseModel):
+    assignments: list[CoachRosterEntryOut]
+
+
+class AssignmentNoticeOut(BaseModel):
+    notice_id: str
+    kind: str
+    message: str
+    created_at: str
+    read_at: str | None = None
+
+
+class CoachNoticeListOut(BaseModel):
+    notices: list[AssignmentNoticeOut]
+
+
+class CoachCapabilityDisableOut(BaseModel):
+    coach: bool
+    ended_assignments: int
 
 
 class PasswordChangeIn(BaseModel):

@@ -24,6 +24,18 @@ class FakeMayosApi {
   String? validCoachInviteToken;
   bool coachProfileLoadFails = false;
 
+  // Assignment lifecycle (#24).
+  String? pendingAssignmentToken;
+  String pendingCoachDisplayName = 'Coach Alice';
+  String pendingCoachSpecialization = 'Powerlifting';
+  String? issuedAssignmentToken;
+  String? activeAssignmentId;
+  String? activeCoachDisplayName;
+  String? activeCoachSpecialization;
+  bool myAssignmentFails = false;
+  final List<Map<String, dynamic>> assignmentNotices = <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> assignments = <Map<String, dynamic>>[];
+
   /// When true, `GET /auth/me` fails with a transient 500 (token still valid).
   bool meFails = false;
   int _answeredSteps = 0;
@@ -32,6 +44,9 @@ class FakeMayosApi {
 
   FakeResponse _handle(FakeRequest request) {
     final String path = request.path;
+    if (path.startsWith('/coach/assignments/') && path.endsWith('/revoke')) {
+      return _revokeAssignment(request);
+    }
     switch (path) {
       case '/auth/register':
         return _register(request);
@@ -50,6 +65,24 @@ class FakeMayosApi {
         return _redeemCoachInvite(request);
       case '/coach/profile':
         return _coachProfile(request);
+      case '/coach/assignments':
+        return _coachAssignments(request);
+      case '/coach/assignments/invites':
+        return _issueAssignmentInvite(request);
+      case '/coach/assignments/notices':
+        return _coachNotices(request);
+      case '/coach/assignments/notices/read':
+        return _markNoticesRead(request);
+      case '/coach/capability/disable':
+        return _disableCoach(request);
+      case '/assignments/invites/preview':
+        return _previewAssignment(request);
+      case '/assignments/invites/redeem':
+        return _redeemAssignment(request);
+      case '/assignments/me':
+        return _myAssignment(request);
+      case '/assignments/me/end':
+        return _endMyAssignment(request);
       case '/profile':
         return _profile(request);
       case '/onboarding/start':
@@ -184,6 +217,214 @@ class FakeMayosApi {
     coachSpecialization = request.body['specialization'] as String? ?? '';
     coachCapacity = (request.body['capacity'] as num?)?.toInt() ?? 1;
     return FakeResponse(200, _coachProfileBody());
+  }
+
+  Map<String, dynamic> _identity(String name, String specialization) =>
+      <String, dynamic>{
+        'display_name': name,
+        'bio': 'Strength coach.',
+        'specialization': specialization,
+      };
+
+  Map<String, dynamic> _assignmentBody() => <String, dynamic>{
+        'assignment_id': activeAssignmentId,
+        'coach': _identity(
+          activeCoachDisplayName ?? 'Coach Alice',
+          activeCoachSpecialization ?? 'Powerlifting',
+        ),
+        'started_at': '2026-09-24T10:00:00Z',
+        'status': 'active',
+      };
+
+  FakeResponse _issueAssignmentInvite(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    if (assignments.length >= coachCapacity) {
+      return const FakeResponse(400, <String, dynamic>{
+        'detail': 'Your roster is full. End an assignment before issuing another invite.'
+      });
+    }
+    issuedAssignmentToken = 'assignment-invite-token-123456';
+    return FakeResponse(200, <String, dynamic>{
+      'token': issuedAssignmentToken,
+      'expires_at': '2026-09-27T10:00:00Z',
+      'active_assignments': assignments.length,
+      'capacity': coachCapacity,
+    });
+  }
+
+  FakeResponse _coachAssignments(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    return FakeResponse(
+        200, <String, dynamic>{'assignments': List<Map<String, dynamic>>.from(assignments)});
+  }
+
+  FakeResponse _coachNotices(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    return FakeResponse(
+        200, <String, dynamic>{'notices': List<Map<String, dynamic>>.from(assignmentNotices)});
+  }
+
+  FakeResponse _markNoticesRead(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    int marked = 0;
+    for (final Map<String, dynamic> notice in assignmentNotices) {
+      if (notice['read_at'] == null) {
+        notice['read_at'] = '2026-09-24T11:00:00Z';
+        marked++;
+      }
+    }
+    return FakeResponse(200, <String, dynamic>{'marked_read': marked});
+  }
+
+  FakeResponse _revokeAssignment(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    final String id = request.path
+        .replaceFirst('/coach/assignments/', '')
+        .replaceFirst('/revoke', '');
+    assignments.removeWhere((Map<String, dynamic> entry) =>
+        entry['assignment_id'] == id);
+    return FakeResponse(200, <String, dynamic>{
+      'assignment_id': id,
+      'status': 'ended',
+      'ended_at': '2026-09-24T11:00:00Z',
+    });
+  }
+
+  FakeResponse _disableCoach(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    final int ended = assignments.length;
+    assignments.clear();
+    coach = false;
+    return FakeResponse(
+        200, <String, dynamic>{'coach': false, 'ended_assignments': ended});
+  }
+
+  Map<String, dynamic> _accessBody() => <String, dynamic>{
+        'scope': 'current_and_historical_training_data',
+        'includes_current_history': true,
+        'includes_historical_history': true,
+        'active_while_assigned': true,
+        'description':
+            'While this assignment is active, your coach can view all of your training data.',
+      };
+
+  FakeResponse _previewAssignment(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    final String? token = request.body['token'] as String?;
+    if (pendingAssignmentToken == null || token != pendingAssignmentToken) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'Invalid or expired invite code.'});
+    }
+    return FakeResponse(200, <String, dynamic>{
+      'coach': _identity(pendingCoachDisplayName, pendingCoachSpecialization),
+      'access': _accessBody(),
+      'expires_at': '2026-09-27T10:00:00Z',
+    });
+  }
+
+  FakeResponse _redeemAssignment(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    final String? token = request.body['token'] as String?;
+    if (request.body['consent'] != true) {
+      return const FakeResponse(400, <String, dynamic>{
+        'detail': 'You must explicitly accept the assignment to redeem this invite.'
+      });
+    }
+    if (pendingAssignmentToken == null || token != pendingAssignmentToken) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'Invalid or expired invite code.'});
+    }
+    activeAssignmentId = 'assignment-1';
+    activeCoachDisplayName = pendingCoachDisplayName;
+    activeCoachSpecialization = pendingCoachSpecialization;
+    pendingAssignmentToken = null;
+    return FakeResponse(200, <String, dynamic>{
+      'assignment': _assignmentBody(),
+      'notices_created': 1,
+      'email_sent': true,
+    });
+  }
+
+  FakeResponse _myAssignment(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (myAssignmentFails) {
+      return const FakeResponse(
+          500, <String, dynamic>{'detail': 'The service is unavailable.'});
+    }
+    if (activeAssignmentId == null) {
+      return const FakeResponse(200);
+    }
+    return FakeResponse(200, _assignmentBody());
+  }
+
+  FakeResponse _endMyAssignment(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (activeAssignmentId == null) {
+      return const FakeResponse(400, <String, dynamic>{
+        'detail': 'You have no active coaching assignment.'
+      });
+    }
+    final String endedId = activeAssignmentId!;
+    activeAssignmentId = null;
+    return FakeResponse(200, <String, dynamic>{
+      'assignment_id': endedId,
+      'status': 'ended',
+      'ended_at': '2026-09-24T11:00:00Z',
+    });
   }
 
   FakeResponse _profile(FakeRequest request) {
@@ -368,6 +609,16 @@ class FakeMayosApi {
       coachCapacity = 10;
       validCoachInviteToken = null;
       coachProfileLoadFails = false;
+      pendingAssignmentToken = null;
+      pendingCoachDisplayName = 'Coach Alice';
+      pendingCoachSpecialization = 'Powerlifting';
+      issuedAssignmentToken = null;
+      activeAssignmentId = null;
+      activeCoachDisplayName = null;
+      activeCoachSpecialization = null;
+      myAssignmentFails = false;
+      assignmentNotices.clear();
+      assignments.clear();
       _answeredSteps = 0;
       _assistantMessages = <String>[];
       _onboardingComplete = false;

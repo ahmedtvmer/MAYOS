@@ -14,7 +14,18 @@ from slowapi.errors import RateLimitExceeded
 
 from database.storage import storage_status
 from svc.rate_limit import limiter
-from svc.routers import auth, chat, coach, dashboard, media, onboarding, profile, programs, workouts
+from svc.routers import (
+    assignments,
+    auth,
+    chat,
+    coach,
+    dashboard,
+    media,
+    onboarding,
+    profile,
+    programs,
+    workouts,
+)
 from svc.schemas import HealthOut
 
 logger = logging.getLogger(__name__)
@@ -87,6 +98,8 @@ def create_app() -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(coach.router)
+    app.include_router(assignments.coach_router)
+    app.include_router(assignments.player_router)
     app.include_router(media.router)
     app.include_router(profile.router)
     app.include_router(programs.router)

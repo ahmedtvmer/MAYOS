@@ -75,6 +75,29 @@ void main() {
     );
   });
 
+  test('coach console and assignment routes are capability gated', () {
+    // Any onboarded player may manage their own coaching assignment.
+    expect(
+      redirectFor(_authenticated(coach: false, onboarded: true), assignmentPath),
+      isNull,
+    );
+    expect(
+      redirectFor(_authenticated(coach: true, onboarded: true), assignmentPath),
+      isNull,
+    );
+    // The coach console requires the coach capability.
+    expect(
+      redirectFor(
+          _authenticated(coach: false, onboarded: true), coachAssignmentsPath),
+      homePath,
+    );
+    expect(
+      redirectFor(
+          _authenticated(coach: true, onboarded: true), coachAssignmentsPath),
+      isNull,
+    );
+  });
+
   test('coach invite route is open to authenticated players', () {
     // Any onboarded account may redeem an owner invite, coach or not.
     expect(

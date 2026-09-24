@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/models.dart';
+import 'features/coach/coach_assignments_screen.dart';
 import 'features/coach/coach_invite_screen.dart';
 import 'features/coach/coach_profile_screen.dart';
+import 'features/player/assignment/player_assignment_screen.dart';
 import 'features/player/auth/auth_controller.dart';
 import 'features/player/auth/login_screen.dart';
 import 'features/player/auth/recovery_email_screen.dart';
@@ -21,6 +23,8 @@ const String onboardingPath = '/onboarding';
 const String homePath = '/home';
 const String coachPath = '/coach';
 const String coachInvitePath = '/coach-invite';
+const String coachAssignmentsPath = '/coach/assignments';
+const String assignmentPath = '/assignment';
 const String splashPath = '/splash';
 
 /// Pure routing decision, kept separate so capability gating is unit-testable.
@@ -54,8 +58,10 @@ String? redirectFor(AuthState auth, String location) {
       if (onboarded && location == onboardingPath) {
         return homePath;
       }
-      // Coach capability gates the coach surface (#23 hosts the module).
-      if (location == coachPath && !accountSession.account.isCoach) {
+      // Coach capability gates the coach surfaces (#23 hosts the module).
+      final bool atCoachSurface =
+          location == coachPath || location == coachAssignmentsPath;
+      if (atCoachSurface && !accountSession.account.isCoach) {
         return homePath;
       }
       return null;
@@ -115,6 +121,20 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         builder: (BuildContext context, GoRouterState state) => Scaffold(
           appBar: AppBar(title: const Text('Coach')),
           body: const CoachProfileScreen(),
+        ),
+      ),
+      GoRoute(
+        path: coachAssignmentsPath,
+        builder: (BuildContext context, GoRouterState state) => Scaffold(
+          appBar: AppBar(title: const Text('Assignments')),
+          body: const CoachAssignmentsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: assignmentPath,
+        builder: (BuildContext context, GoRouterState state) => Scaffold(
+          appBar: AppBar(title: const Text('Coaching')),
+          body: const PlayerAssignmentScreen(),
         ),
       ),
     ],
