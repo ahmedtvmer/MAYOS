@@ -357,6 +357,44 @@ def test_username_uniqueness_is_atomic(api):
     assert sum(1 for result in results if result is not None) == 1
 
 
+def test_current_account_reports_capabilities_from_durable_registry(api):
+    client, db, _ = api
+    registered = _register(client, "alice")
+    token = registered["access_token"]
+    account_id = _subject(token)
+
+    me = client.get("/auth/me", headers=_authed(token))
+    assert me.status_code == 200, me.text
+    assert me.json() == {
+        "account_id": account_id,
+        "trainee_id": "alice",
+        "capabilities": {"player": True, "coach": False},
+    }
+
+    # Capabilities come from the durable registry, not the token: flipping the
+    # coach flag is visible on the next request without reissuing a token.
+    with db._catalog_lock:
+        db.catalog_conn.execute("UPDATE accounts SET is_coach = 1 WHERE account_id = ?", (account_id,))
+        db.catalog_conn.commit()
+    promoted = client.get("/auth/me", headers=_authed(token))
+    assert promoted.status_code == 200
+    assert promoted.json()["capabilities"] == {"player": True, "coach": True}
+
+
+def test_current_account_fails_closed_without_bearer_or_player_capability(api):
+    client, db, _ = api
+    registered = _register(client, "alice")
+    token = registered["access_token"]
+    account_id = _subject(token)
+
+    assert client.get("/auth/me").status_code == 401
+
+    with db._catalog_lock:
+        db.catalog_conn.execute("UPDATE accounts SET is_player = 0 WHERE account_id = ?", (account_id,))
+        db.catalog_conn.commit()
+    assert client.get("/auth/me", headers=_authed(token)).status_code == 401
+
+
 def test_authenticated_route_roundtrip(api):
     client, _, _ = api
     registered = _register(client, "alice")

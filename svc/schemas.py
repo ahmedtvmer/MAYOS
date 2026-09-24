@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 from agent.ProgramState import GeneratedProgramSchema, ProgramExerciseSchema
 
 __all__ = [
+    "AccountCapabilitiesOut",
+    "AccountOut",
     "ChatMessageIn",
     "ChatMessageOut",
     "EmailUpdateIn",
@@ -45,6 +47,19 @@ class TokenOut(BaseModel):
 
 class MessageOut(BaseModel):
     message: str
+
+
+class AccountCapabilitiesOut(BaseModel):
+    player: bool
+    coach: bool
+
+
+class AccountOut(BaseModel):
+    """Current account identity and capabilities, read from the durable registry."""
+
+    account_id: str
+    trainee_id: str
+    capabilities: AccountCapabilitiesOut
 
 
 class PasswordChangeIn(BaseModel):

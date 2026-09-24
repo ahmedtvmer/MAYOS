@@ -58,9 +58,15 @@ def _load_or_start(db: Any, trainee: str) -> dict[str, Any]:
 async def start_onboarding(
     trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
 ):
+    """Starts intake, or resumes saved progress with the assistant prompts so far.
+
+    A client that restarts mid-intake calls this again; it must not discard the
+    saved state. Explicit reset stays on ``/onboarding/step`` with ``reset=true``.
+    """
+
     def _run():
         bind_request(db, trainee)
-        state = onboarding_service.start_onboarding(db, trainee)
+        state = _load_or_start(db, trainee)
         db.save_onboarding_state(_serialize(state))
         return _public_view(state)
 

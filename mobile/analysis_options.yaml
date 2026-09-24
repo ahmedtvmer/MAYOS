@@ -1,0 +1,16 @@
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # Correctness-oriented rules stay on. The const/sorting style preferences
+    # are relaxed because they are mechanical and do not affect behavior.
+    avoid_print: true
+    prefer_const_constructors: false
+    prefer_const_constructors_in_immutables: false
+    prefer_const_declarations: false
+    prefer_const_literals_to_create_immutables: false
+    sort_child_properties_last: false

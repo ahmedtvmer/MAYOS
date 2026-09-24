@@ -12,6 +12,8 @@ from svc.auth import create_access_token, remember_me_hours, revoke_token
 from svc.dependencies import VerifiedPlayer, bind_request, get_current_trainee, get_db
 from svc.rate_limit import PASSWORD_LIMIT, REGISTER_LIMIT, LOGIN_LIMIT, RESET_LIMIT, limiter
 from svc.schemas import (
+    AccountCapabilitiesOut,
+    AccountOut,
     EmailUpdateIn,
     ForgotPasswordIn,
     MessageOut,
@@ -69,6 +71,33 @@ async def login(request: Request, body: TraineeIn, db: Annotated[Any, Depends(ge
             token_version=result["session_epoch"],
         ),
         trainee_id=result["trainee_id"],
+    )
+
+
+@router.get("/me", response_model=AccountOut)
+async def read_current_account(
+    trainee: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Returns the authenticated account's identity and current capabilities.
+
+    Capabilities are read from the durable registry on every call, so a change
+    (for example, a granted coach capability) is visible without reissuing the
+    token. The endpoint fails closed for unknown/deleted/capability-less accounts
+    via the shared auth dependency.
+    """
+
+    def _run():
+        account = db.get_account(trainee.account_id)
+        if not db.is_live_account(account):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
+        return account
+
+    account = await asyncio.to_thread(_run)
+    return AccountOut(
+        account_id=account["account_id"],
+        trainee_id=account["username"],
+        capabilities=AccountCapabilitiesOut(player=account["is_player"], coach=account["is_coach"]),
     )
 
 

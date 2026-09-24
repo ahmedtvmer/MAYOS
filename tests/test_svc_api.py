@@ -537,3 +537,42 @@ def test_onboarding_state_survives_restart(client, monkeypatch):
     assert client.post("/onboarding/step", json={"content": "male"}).json()["messages"] == ["Q2?"]
     assert seen_states[1][1] == ["Q1?", "25", "Q2?"]
     assert seen_states[1][2] == "male"
+
+
+def test_onboarding_start_resumes_persisted_progress(client, monkeypatch):
+    """An app restart calls /onboarding/start again: it must resume, not reset."""
+    from service import onboarding as onboarding_service
+
+    client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
+    answered_from = []
+
+    def fake_start(db, trainee_id):
+        return {
+            "messages": [AIMessage(content="Q1?")],
+            "trainee_id": trainee_id,
+            "intake_step": 1,
+            "is_complete": False,
+            "profile_data": None,
+        }
+
+    def fake_answer(db, trainee_id, state, user_input):
+        answered_from.append([m.content for m in state["messages"]])
+        state["messages"].append(HumanMessage(content=user_input))
+        state["messages"].append(AIMessage(content="Q2?"))
+        return state
+
+    monkeypatch.setattr(onboarding_service, "start_onboarding", fake_start)
+    monkeypatch.setattr(onboarding_service, "answer_intake", fake_answer)
+
+    assert client.post("/onboarding/step", json={"content": "25"}).json()["messages"] == ["Q2?"]
+
+    # A fresh /onboarding/start, as after an app restart mid-intake, returns the
+    # full assistant conversation instead of discarding saved progress.
+    resumed = client.post("/onboarding/start")
+    assert resumed.status_code == 200
+    assert resumed.json()["messages"] == ["Q1?", "Q2?"]
+
+    # Explicit reset on /onboarding/step still clears saved progress before answering.
+    reset = client.post("/onboarding/step", json={"content": "restart", "reset": True}).json()
+    assert reset["messages"] == ["Q2?"]
+    assert answered_from[-1] == ["Q1?"]
