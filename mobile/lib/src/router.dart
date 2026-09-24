@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/models.dart';
-import 'features/coach/coach_placeholder_screen.dart';
+import 'features/coach/coach_invite_screen.dart';
+import 'features/coach/coach_profile_screen.dart';
 import 'features/player/auth/auth_controller.dart';
 import 'features/player/auth/login_screen.dart';
 import 'features/player/auth/recovery_email_screen.dart';
@@ -19,6 +20,7 @@ const String recoveryEmailPath = '/recovery-email';
 const String onboardingPath = '/onboarding';
 const String homePath = '/home';
 const String coachPath = '/coach';
+const String coachInvitePath = '/coach-invite';
 const String splashPath = '/splash';
 
 /// Pure routing decision, kept separate so capability gating is unit-testable.
@@ -104,9 +106,16 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
             const PlayerHomeScreen(),
       ),
       GoRoute(
-        path: coachPath,
+        path: coachInvitePath,
         builder: (BuildContext context, GoRouterState state) =>
-            const CoachPlaceholderScreen(),
+            const CoachInviteScreen(),
+      ),
+      GoRoute(
+        path: coachPath,
+        builder: (BuildContext context, GoRouterState state) => Scaffold(
+          appBar: AppBar(title: const Text('Coach')),
+          body: const CoachProfileScreen(),
+        ),
       ),
     ],
   );

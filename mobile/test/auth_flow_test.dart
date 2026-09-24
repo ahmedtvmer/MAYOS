@@ -26,6 +26,17 @@ ProviderContainer _containerFor(FakeMayosApi fake, InMemoryTokenStore tokens) {
   );
 }
 
+/// Seeds a persisted, onboarded player session with a recovery email.
+Future<void> _seedSignedIn(
+    FakeMayosApi fake, InMemoryTokenStore tokens) async {
+  await tokens.save('token-alice');
+  fake.issuedToken = 'token-alice';
+  fake.currentUsername = 'alice';
+  fake.tokenValid = true;
+  fake.profileExists = true;
+  fake.recoveryEmail = 'alice@example.com';
+}
+
 void main() {
   test('player journey against the service contract, with 401 re-login',
       () async {
@@ -141,6 +152,68 @@ void main() {
     expect(state.status, AuthStatus.authenticated);
     expect(state.session!.onboarded, isTrue);
     expect(state.session!.hasRecoveryEmail, isTrue);
+  });
+
+  test('resume refresh adopts live capabilities and keeps session flags',
+      () async {
+    final FakeMayosApi fake = FakeMayosApi();
+    final InMemoryTokenStore tokens = InMemoryTokenStore();
+    final ProviderContainer container = _containerFor(fake, tokens);
+    addTearDown(container.dispose);
+    await _seedSignedIn(fake, tokens);
+
+    final AuthController auth = container.read(authControllerProvider.notifier);
+    await auth.initialize();
+    final AccountSession before = container.read(authControllerProvider).session!;
+    expect(before.account.isCoach, isFalse);
+    expect(before.onboarded, isTrue);
+    expect(before.hasRecoveryEmail, isTrue);
+
+    // A grant happened elsewhere while the app was backgrounded.
+    fake.coach = true;
+    await auth.refreshAccount();
+
+    final AccountSession after = container.read(authControllerProvider).session!;
+    expect(after.account.isCoach, isTrue);
+    expect(after.onboarded, isTrue);
+    expect(after.hasRecoveryEmail, isTrue);
+  });
+
+  test('resume refresh keeps the session on a transient failure', () async {
+    final FakeMayosApi fake = FakeMayosApi();
+    final InMemoryTokenStore tokens = InMemoryTokenStore();
+    final ProviderContainer container = _containerFor(fake, tokens);
+    addTearDown(container.dispose);
+    await _seedSignedIn(fake, tokens);
+
+    final AuthController auth = container.read(authControllerProvider.notifier);
+    await auth.initialize();
+    fake.meFails = true;
+    await auth.refreshAccount();
+
+    final AuthState state = container.read(authControllerProvider);
+    expect(state.status, AuthStatus.authenticated);
+    expect(state.session!.account.isCoach, isFalse);
+    expect(await tokens.read(), isNotNull);
+  });
+
+  test('resume refresh with a revoked token defers to the auth interceptor',
+      () async {
+    final FakeMayosApi fake = FakeMayosApi();
+    final InMemoryTokenStore tokens = InMemoryTokenStore();
+    final ProviderContainer container = _containerFor(fake, tokens);
+    addTearDown(container.dispose);
+    await _seedSignedIn(fake, tokens);
+
+    final AuthController auth = container.read(authControllerProvider.notifier);
+    await auth.initialize();
+    fake.tokenValid = false;
+    await auth.refreshAccount();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(container.read(authControllerProvider).status,
+        AuthStatus.unauthenticated);
+    expect(await tokens.read(), isNull);
   });
 
   test('restore clears a stale token and keeps a valid session', () async {

@@ -11,6 +11,9 @@ __all__ = [
     "AccountOut",
     "ChatMessageIn",
     "ChatMessageOut",
+    "CoachInviteRedeemIn",
+    "CoachProfileOut",
+    "CoachProfileUpdate",
     "EmailUpdateIn",
     "ExerciseSetsIn",
     "ForgotPasswordIn",
@@ -60,6 +63,29 @@ class AccountOut(BaseModel):
     account_id: str
     trainee_id: str
     capabilities: AccountCapabilitiesOut
+
+
+class CoachInviteRedeemIn(BaseModel):
+    """Body for authenticated coach-invite redemption. The identity is the JWT, never the body."""
+
+    token: str = Field(min_length=10, max_length=128)
+
+
+class CoachProfileOut(BaseModel):
+    """Coach-authored profile fields, keyed by the immutable account id."""
+
+    account_id: str
+    display_name: str
+    bio: str
+    specialization: str
+    capacity: int
+
+
+class CoachProfileUpdate(BaseModel):
+    display_name: str = Field(min_length=1, max_length=60)
+    bio: str = Field(default="", max_length=1000)
+    specialization: str = Field(default="", max_length=200)
+    capacity: int = Field(ge=1, le=200)
 
 
 class PasswordChangeIn(BaseModel):

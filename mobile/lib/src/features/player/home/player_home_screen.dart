@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../providers.dart';
-import '../../coach/coach_placeholder_screen.dart';
+import '../../../router.dart';
+import '../../coach/coach_profile_screen.dart';
 import '../dashboard/dashboard_tab.dart';
 import '../program/program_tab.dart';
 
@@ -24,7 +26,7 @@ class _PlayerHomeScreenState extends ConsumerState<PlayerHomeScreen> {
     final List<Widget> tabs = <Widget>[
       const DashboardTab(),
       const ProgramTab(),
-      if (isCoach) const CoachPlaceholderScreen(),
+      if (isCoach) const CoachProfileScreen(),
     ];
     final List<String> titles = <String>[
       'Dashboard',
@@ -54,6 +56,12 @@ class _PlayerHomeScreenState extends ConsumerState<PlayerHomeScreen> {
       appBar: AppBar(
         title: Text(titles[_index.clamp(0, titles.length - 1)]),
         actions: <Widget>[
+          if (!isCoach)
+            IconButton(
+              tooltip: 'Redeem coach invite',
+              onPressed: () => context.go(coachInvitePath),
+              icon: const Icon(Icons.workspace_premium_outlined),
+            ),
           IconButton(
             tooltip: 'Log out',
             onPressed: () => ref.read(authControllerProvider.notifier).logout(),

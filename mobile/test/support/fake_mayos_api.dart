@@ -17,6 +17,15 @@ class FakeMayosApi {
   bool coach = false;
   bool profileExists = false;
   String? recoveryEmail;
+  String coachDisplayName = '';
+  String coachBio = '';
+  String coachSpecialization = '';
+  int coachCapacity = 10;
+  String? validCoachInviteToken;
+  bool coachProfileLoadFails = false;
+
+  /// When true, `GET /auth/me` fails with a transient 500 (token still valid).
+  bool meFails = false;
   int _answeredSteps = 0;
   List<String> _assistantMessages = <String>[];
   bool _onboardingComplete = false;
@@ -37,6 +46,10 @@ class FakeMayosApi {
         return _me(request);
       case '/auth/email':
         return _recoveryEmail(request);
+      case '/coach/invite/redeem':
+        return _redeemCoachInvite(request);
+      case '/coach/profile':
+        return _coachProfile(request);
       case '/profile':
         return _profile(request);
       case '/onboarding/start':
@@ -87,6 +100,10 @@ class FakeMayosApi {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
     }
+    if (meFails) {
+      return const FakeResponse(
+          500, <String, dynamic>{'detail': 'The service is unavailable.'});
+    }
     return FakeResponse(200, <String, dynamic>{
       'account_id': 'account-$currentUsername',
       'trainee_id': currentUsername,
@@ -113,6 +130,60 @@ class FakeMayosApi {
     }
     recoveryEmail = normalized;
     return FakeResponse(200, <String, dynamic>{'email': normalized});
+  }
+
+  FakeResponse _redeemCoachInvite(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    final String? token = request.body['token'] as String?;
+    if (validCoachInviteToken == null || token != validCoachInviteToken) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'Invalid or expired invite code.'});
+    }
+    coach = true;
+    coachDisplayName = currentUsername ?? '';
+    coachBio = '';
+    coachSpecialization = '';
+    coachCapacity = 10;
+    validCoachInviteToken = null;
+    return FakeResponse(200, <String, dynamic>{
+      'account_id': 'account-$currentUsername',
+      'trainee_id': currentUsername,
+      'capabilities': <String, dynamic>{'player': true, 'coach': true},
+    });
+  }
+
+  Map<String, dynamic> _coachProfileBody() => <String, dynamic>{
+        'account_id': 'account-$currentUsername',
+        'display_name': coachDisplayName,
+        'bio': coachBio,
+        'specialization': coachSpecialization,
+        'capacity': coachCapacity,
+      };
+
+  FakeResponse _coachProfile(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    if (request.method == 'GET') {
+      if (coachProfileLoadFails) {
+        return const FakeResponse(
+            500, <String, dynamic>{'detail': 'The service is unavailable.'});
+      }
+      return FakeResponse(200, _coachProfileBody());
+    }
+    coachDisplayName = (request.body['display_name'] as String?)?.trim() ?? '';
+    coachBio = request.body['bio'] as String? ?? '';
+    coachSpecialization = request.body['specialization'] as String? ?? '';
+    coachCapacity = (request.body['capacity'] as num?)?.toInt() ?? 1;
+    return FakeResponse(200, _coachProfileBody());
   }
 
   FakeResponse _profile(FakeRequest request) {
@@ -291,6 +362,12 @@ class FakeMayosApi {
       coach = false;
       profileExists = false;
       recoveryEmail = null;
+      coachDisplayName = '';
+      coachBio = '';
+      coachSpecialization = '';
+      coachCapacity = 10;
+      validCoachInviteToken = null;
+      coachProfileLoadFails = false;
       _answeredSteps = 0;
       _assistantMessages = <String>[];
       _onboardingComplete = false;

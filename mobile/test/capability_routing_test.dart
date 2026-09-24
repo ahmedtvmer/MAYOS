@@ -74,4 +74,22 @@ void main() {
       isNull,
     );
   });
+
+  test('coach invite route is open to authenticated players', () {
+    // Any onboarded account may redeem an owner invite, coach or not.
+    expect(
+      redirectFor(_authenticated(coach: false, onboarded: true), coachInvitePath),
+      isNull,
+    );
+    expect(
+      redirectFor(_authenticated(coach: true, onboarded: true), coachInvitePath),
+      isNull,
+    );
+    // Onboarding still gates it, like every authenticated surface.
+    expect(
+      redirectFor(
+          _authenticated(coach: false, onboarded: false), coachInvitePath),
+      onboardingPath,
+    );
+  });
 }

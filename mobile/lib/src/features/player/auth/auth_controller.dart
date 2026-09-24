@@ -87,6 +87,58 @@ class AuthController extends StateNotifier<AuthState> {
     state = const AuthState.unauthenticated();
   }
 
+  /// Redeems an owner-issued coach invite and applies the returned account.
+  ///
+  /// The grant response is authoritative: onboarding and recovery-email flags
+  /// are carried over from the current session, and no follow-up read is issued,
+  /// so a transient later failure cannot make a committed grant look failed.
+  Future<void> redeemCoachInvite(String token) async {
+    final AccountSession? current = state.session;
+    if (current == null) {
+      return;
+    }
+    final Account account = await _repository.redeemCoachInvite(token);
+    if (!state.isAuthenticated ||
+        state.session?.account.accountId != current.account.accountId) {
+      return;
+    }
+    state = AuthState.authenticated(
+      AccountSession(
+        account: account,
+        onboarded: current.onboarded,
+        hasRecoveryEmail: current.hasRecoveryEmail,
+      ),
+    );
+  }
+
+  /// Re-reads live capabilities on app resume; grants/revocations can happen
+  /// elsewhere. Onboarding and recovery-email flags are preserved.
+  ///
+  /// A transient network failure leaves the current session untouched. A 401 is
+  /// handled by the auth interceptor's unauthorized event, not here.
+  Future<void> refreshAccount() async {
+    final AccountSession? current = state.session;
+    if (!state.isAuthenticated || current == null) {
+      return;
+    }
+    try {
+      final Account account = await _repository.currentAccount();
+      if (!state.isAuthenticated ||
+          state.session?.account.accountId != current.account.accountId) {
+        return;
+      }
+      state = AuthState.authenticated(
+        AccountSession(
+          account: account,
+          onboarded: current.onboarded,
+          hasRecoveryEmail: current.hasRecoveryEmail,
+        ),
+      );
+    } on ApiException {
+      // Transient failure: keep the current session and capabilities.
+    }
+  }
+
   /// Saves the mandatory recovery email, then releases the ADR 007 gate.
   Future<void> setRecoveryEmail(String email) async {
     await _repository.setRecoveryEmail(email);

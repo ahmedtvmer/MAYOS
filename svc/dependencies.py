@@ -1,6 +1,6 @@
 """FastAPI dependencies: database handle and verified trainee identity."""
 
-from typing import Annotated, Any
+from typing import Annotated, Any, NamedTuple
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -44,14 +44,22 @@ def _authorize_account(db: Any, account_id: str, token_epoch: int) -> dict[str, 
     return account
 
 
-async def get_current_trainee(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
-    db: Annotated[Any, Depends(get_db)],
-) -> str:
-    """Resolves a verified, active account to its ledger id. Never trusts the body.
+class _RegistryIdentity(NamedTuple):
+    """A verified token plus its durable registry account, before any ledger mount."""
 
-    The JWT ``sub`` is the immutable account id; the registry is checked before
-    the ledger is mounted, so a bad token cannot create a ledger as a side effect.
+    claims: dict[str, Any]
+    account: dict[str, Any]
+
+
+def _resolve_registry_identity(
+    credentials: HTTPAuthorizationCredentials | None, db: Any
+) -> _RegistryIdentity:
+    """Verifies the bearer signature and registry account without mounting a ledger.
+
+    Every registry check — live account, player capability, session epoch, and
+    ledger existence — runs here, before any ledger is opened (ADR 015). Raises
+    401 for a missing/invalid/expired token, an unknown/deleted account, a
+    missing player capability, a stale epoch, or a missing ledger.
     """
     if credentials is None or credentials.scheme.lower() != "bearer" or not credentials.credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token.")
@@ -60,12 +68,41 @@ async def get_current_trainee(
         account_id = str(claims["sub"])
     except jwt.PyJWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.") from None
-
     account = _authorize_account(db, account_id, token_version_of(claims))
+    return _RegistryIdentity(claims, account)
+
+
+def _mount_verified_identity(db: Any, identity: _RegistryIdentity) -> VerifiedPlayer:
+    """Mounts the ledger and applies the ledger-side ``jti`` revocation check."""
+    claims, account = identity
     bind_user(db, account["ledger_id"])
     if db.is_token_revoked(str(claims["jti"])):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked.")
-    return VerifiedPlayer(account["ledger_id"], account_id, token_version_of(claims))
+    return VerifiedPlayer(account["ledger_id"], account["account_id"], token_version_of(claims))
+
+
+async def get_current_trainee(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    db: Annotated[Any, Depends(get_db)],
+) -> str:
+    """Resolves a verified, active player account to its ledger id. Never trusts the body."""
+    return _mount_verified_identity(db, _resolve_registry_identity(credentials, db))
+
+
+async def get_current_coach(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    db: Annotated[Any, Depends(get_db)],
+) -> VerifiedPlayer:
+    """Resolves a verified account that currently holds the coach capability.
+
+    The capability is read from the durable registry before the ledger is
+    mounted, so a valid player without coaching is refused 403 without opening a
+    ledger. A grant or revocation takes effect without reissuing the token.
+    """
+    identity = _resolve_registry_identity(credentials, db)
+    if not identity.account["is_coach"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Coach capability required.")
+    return _mount_verified_identity(db, identity)
 
 
 def bind_request(db: Any, trainee_id: str) -> str:

@@ -55,6 +55,17 @@ class AuthRepository {
 
   Future<String> setRecoveryEmail(String email) => _api.setRecoveryEmail(email);
 
+  /// Redeems an owner-issued coach invite and returns the updated account.
+  ///
+  /// The redeem response already carries the new capabilities, so no follow-up
+  /// reads are issued: a transient failure after a committed grant must never
+  /// make the one-use code look unredeemed.
+  Future<Account> redeemCoachInvite(String token) =>
+      _api.redeemCoachInvite(token);
+
+  /// Re-reads the current account (live capabilities) for a resume refresh.
+  Future<Account> currentAccount() => _api.currentAccount();
+
   Future<void> clearToken() => _tokens.clear();
 
   Future<void> logout() async {

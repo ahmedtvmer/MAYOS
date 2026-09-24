@@ -144,6 +144,38 @@ class ApiClient {
     return Account.fromJson(response.data as Map<String, dynamic>);
   }
 
+  /// Redeems an owner-issued, single-use coach invite and returns the updated account.
+  Future<Account> redeemCoachInvite(String token) async {
+    final response = await _send(
+      () => _dio.post<dynamic>('/coach/invite/redeem', data: {'token': token}),
+    );
+    return Account.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// The authenticated coach's profile.
+  Future<CoachProfile> coachProfile() async {
+    final response = await _send(() => _dio.get<dynamic>('/coach/profile'));
+    return CoachProfile.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Updates and returns the authenticated coach's profile.
+  Future<CoachProfile> updateCoachProfile({
+    required String displayName,
+    required String bio,
+    required String specialization,
+    required int capacity,
+  }) async {
+    final response = await _send(
+      () => _dio.put<dynamic>('/coach/profile', data: {
+        'display_name': displayName,
+        'bio': bio,
+        'specialization': specialization,
+        'capacity': capacity,
+      }),
+    );
+    return CoachProfile.fromJson(response.data as Map<String, dynamic>);
+  }
+
   Future<void> logout() async {
     await _send(() => _dio.post<dynamic>('/auth/logout'));
   }

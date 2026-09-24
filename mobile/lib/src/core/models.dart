@@ -39,6 +39,31 @@ class Account {
   bool get isCoach => capabilities.coach;
 }
 
+/// `GET`/`PUT /coach/profile`: coach-authored fields keyed by immutable account id.
+class CoachProfile {
+  const CoachProfile({
+    required this.accountId,
+    required this.displayName,
+    required this.bio,
+    required this.specialization,
+    required this.capacity,
+  });
+
+  factory CoachProfile.fromJson(Map<String, dynamic> json) => CoachProfile(
+        accountId: json['account_id'] as String,
+        displayName: json['display_name'] as String? ?? '',
+        bio: json['bio'] as String? ?? '',
+        specialization: json['specialization'] as String? ?? '',
+        capacity: (json['capacity'] as num?)?.toInt() ?? 1,
+      );
+
+  final String accountId;
+  final String displayName;
+  final String bio;
+  final String specialization;
+  final int capacity;
+}
+
 /// An authenticated account plus onboarding and recovery-email state.
 class AccountSession {
   const AccountSession({
