@@ -67,13 +67,13 @@ def _assignment_out(assignment: dict[str, Any]) -> AssignmentOut:
 @limiter.limit(ASSIGNMENT_INVITE_LIMIT)
 async def issue_assignment_invite(
     request: Request,
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Issues a single-use, capacity-bound assignment invite for the authenticated coach."""
 
     def _run():
-        result = assignment_service.issue_assignment_invite(db, trainee.account_id)
+        result = assignment_service.issue_assignment_invite(db, coach.account_id)
         if not result["ok"]:
             raise _bad_request(result["error"])
         return result
@@ -84,23 +84,23 @@ async def issue_assignment_invite(
 
 @coach_router.get("", response_model=CoachAssignmentsOut)
 async def list_coach_assignments(
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Lists the coach's active assignments (identity only; no training history)."""
 
-    rows = await asyncio.to_thread(assignment_service.list_coach_assignments, db, trainee.account_id)
+    rows = await asyncio.to_thread(assignment_service.list_coach_assignments, db, coach.account_id)
     return CoachAssignmentsOut(assignments=[CoachRosterEntryOut(**row) for row in rows])
 
 
 @coach_router.get("/notices", response_model=CoachNoticeListOut)
 async def list_coach_notices(
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Lists the coach's assignment notices newest-first."""
 
-    rows = await asyncio.to_thread(assignment_service.list_coach_notices, db, trainee.account_id)
+    rows = await asyncio.to_thread(assignment_service.list_coach_notices, db, coach.account_id)
     return CoachNoticeListOut(notices=[AssignmentNoticeOut(**row) for row in rows])
 
 
@@ -108,12 +108,12 @@ async def list_coach_notices(
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def mark_coach_notices_read(
     request: Request,
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Marks all of the coach's notices read."""
 
-    count = await asyncio.to_thread(assignment_service.mark_coach_notices_read, db, trainee.account_id)
+    count = await asyncio.to_thread(assignment_service.mark_coach_notices_read, db, coach.account_id)
     return {"marked_read": count}
 
 
@@ -122,13 +122,13 @@ async def mark_coach_notices_read(
 async def revoke_assignment(
     request: Request,
     assignment_id: str,
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Coach ends one of their assignments; access is revoked immediately."""
 
     def _run():
-        result = assignment_service.end_assignment(db, trainee.account_id, assignment_id, "coach")
+        result = assignment_service.end_assignment(db, coach.account_id, assignment_id, "coach")
         if not result["ok"]:
             if "not part of this assignment" in result["error"]:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=result["error"])
@@ -149,7 +149,7 @@ async def revoke_assignment(
 async def preview_assignment_invite(
     request: Request,
     body: AssignmentInviteTokenIn,
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Shows the coach identity and exact access without consuming the code.
@@ -158,7 +158,7 @@ async def preview_assignment_invite(
     """
 
     def _run():
-        result = assignment_service.preview_assignment_invite(db, body.token, trainee.account_id)
+        result = assignment_service.preview_assignment_invite(db, body.token, player.account_id)
         if not result["ok"]:
             raise _bad_request(result["error"])
         return result
@@ -176,13 +176,13 @@ async def preview_assignment_invite(
 async def redeem_assignment_invite(
     request: Request,
     body: AssignmentRedeemIn,
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Explicitly consents to and atomically redeems an assignment invite."""
 
     def _run():
-        result = assignment_service.redeem_assignment_invite(db, body.token, trainee.account_id, body.consent)
+        result = assignment_service.redeem_assignment_invite(db, body.token, player.account_id, body.consent)
         if not result["ok"]:
             raise _bad_request(result["error"])
         return result
@@ -197,12 +197,12 @@ async def redeem_assignment_invite(
 
 @player_router.get("/me", response_model=AssignmentOut | None)
 async def read_my_assignment(
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """The caller's active assignment, or ``null`` when none is active."""
 
-    assignment = await asyncio.to_thread(assignment_service.get_player_assignment, db, trainee.account_id)
+    assignment = await asyncio.to_thread(assignment_service.get_player_assignment, db, player.account_id)
     return _assignment_out(assignment) if assignment is not None else None
 
 
@@ -210,17 +210,17 @@ async def read_my_assignment(
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def end_my_assignment(
     request: Request,
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Player ends their active assignment; coach access is revoked immediately."""
 
     def _run():
-        assignment = assignment_service.get_player_assignment(db, trainee.account_id)
+        assignment = assignment_service.get_player_assignment(db, player.account_id)
         if assignment is None:
             raise _bad_request("You have no active coaching assignment.")
         result = assignment_service.end_assignment(
-            db, trainee.account_id, assignment["assignment_id"], "player"
+            db, player.account_id, assignment["assignment_id"], "player"
         )
         if not result["ok"]:
             raise _bad_request(result["error"])
