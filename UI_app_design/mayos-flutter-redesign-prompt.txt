@@ -1,0 +1,1522 @@
+You are working on the **MAYOS Flutter mobile application**.
+
+Your task is to redesign and implement the frontend of MAYOS as a **high-end, distinctive, production-quality mobile application**.
+
+I have attached a UI reference image:
+
+`UI_app_design/mayos-ui-reference.png`
+
+Treat this image as the primary visual reference for the new MAYOS design language.
+
+Before modifying code, inspect:
+
+1. the attached reference image,
+2. the existing Flutter project structure,
+3. the current screens,
+4. navigation,
+5. theme implementation,
+6. existing MAYOS logo/assets,
+7. typography configuration,
+8. onboarding implementation,
+9. domain/application boundaries.
+
+Do not immediately rewrite the entire application blindly.
+
+First understand the existing frontend and preserve all working application behavior.
+
+## Confirmed first-pass scope
+
+Redesign the working Android player flows: authentication, recovery email,
+onboarding, Home, Program, a read-only exercise detail view backed by existing
+exercise data, and Settings for theme choice. Show Home and Program in bottom
+navigation; open Settings from the header. Expose Coach, Workout, and Progress
+destinations only when their respective flows work. Track workout logging,
+progress analytics, and the coach experience as separate GitHub Issues:
+workout logging is #34, Progress is #48, and coach capability/views are #23–#25.
+The first redesign pass is #47.
+
+Use real account, program, volume, and personal-record data. Until a weekly
+schedule and timezone exist, label the upcoming program day **Next session**.
+Do not show a computed readiness score, fabricated chart, or a Start Workout
+action before its real flow exists.
+
+The onboarding redesign requires a structured intake API: save named answers
+to the account after each step, allow back navigation and edits before program
+creation, and prefill available answers from incomplete legacy intakes. Preserve
+the current program rules and the hosted-processing disclosure. Body
+proportions describe relative leg and torso length and provide coaching context;
+they do not change program selection or volume.
+
+Offer System, Light, and Dark, defaulting to System for new installations and
+persisting the choice on the device. Use a licensed editorial serif and clean
+sans font pair, recorded as an approximation to the reference. Use the supplied
+MAYOS logo variants in `assets/`; inspect their backgrounds and choose a variant
+that remains legible in each theme. Use original, simple proportion silhouettes until dedicated artwork
+is supplied. Exercise layouts must work without images; review the provenance
+of the existing ExerciseDB-derived media before showing it in the product.
+
+---
+
+# 1. Product identity
+
+MAYOS is an intelligent training and fitness coaching application.
+
+It should NOT look like:
+
+* Hevy
+* Strong
+* a generic bodybuilding tracker
+* a generic Material Design demo
+* a Bootstrap-style dashboard
+* a generic AI-generated SaaS application
+* a chatbot wrapped inside a mobile app
+* a neon cyberpunk fitness interface
+
+I specifically want to move away from the conventional fitness-app visual language.
+
+The interface should feel intentionally designed by a strong product designer.
+
+The desired identity combines:
+
+* premium fitness
+* editorial design
+* sophisticated training analytics
+* elegant typography
+* modern mobile interaction
+* subtle athletic imagery
+* intelligent coaching
+* restrained technical details
+* excellent spacing
+* strong hierarchy
+
+The emotional qualities should be:
+
+* disciplined
+* strong
+* calm
+* intelligent
+* refined
+* premium
+* deliberate
+
+MAYOS should have its own recognizable identity.
+
+---
+
+# 2. The attached design is the visual direction
+
+Study `UI_app_design/mayos-ui-reference.png` carefully.
+
+Do not merely copy the layout literally because the reference contains desktop-like composition in places.
+
+Instead, extract its **design language** and translate it properly into a mobile Flutter application.
+
+Preserve the qualities that make the reference successful:
+
+* strong typography
+* dark navy visual identity
+* elegant light mode
+* restrained blue accents
+* sophisticated spacing
+* subtle imagery
+* premium cards
+* thin borders
+* layered surfaces
+* strong information hierarchy
+* editorial composition
+* athletic character
+* subtle charts
+* tasteful status colors
+* intentional use of whitespace
+
+The reference is inspiration for the design system, not permission to squeeze a desktop dashboard into a phone.
+
+---
+
+# 3. This is strictly a MOBILE APP
+
+This point is non-negotiable.
+
+MAYOS is a **mobile application built in Flutter**.
+
+Do not design desktop dashboard screens.
+
+Do not create a left sidebar like the reference image.
+
+Do not shrink the reference desktop composition down to phone dimensions.
+
+Translate the visual language into true mobile UX.
+
+Design primarily for modern phones.
+
+The application should work gracefully across common phone dimensions and should remain usable on smaller screens.
+
+Use responsive Flutter layout techniques rather than hard-coded pixel layouts.
+
+Appropriate Flutter tools may include:
+
+* `SafeArea`
+* `LayoutBuilder`
+* `MediaQuery`
+* flexible constraints
+* `Expanded`
+* `Flexible`
+* slivers where useful
+* responsive padding
+* responsive typography
+* scrollable layouts
+
+Avoid arbitrary fixed widths/heights unless the component genuinely requires them.
+
+The result should feel native to a phone.
+
+---
+
+# 4. Flutter implementation expectations
+
+Use idiomatic Flutter.
+
+Do not build the application as one giant widget tree.
+
+Establish or improve a reusable design system.
+
+Prefer reusable primitives such as:
+
+* `MayosTheme`
+* `MayosColors`
+* `MayosTypography`
+* `MayosSpacing`
+* `MayosRadii`
+* `MayosShadows`
+* `MayosCard`
+* `MayosButton`
+* `MayosChoiceCard`
+* `MayosStatCard`
+* `MayosSectionHeader`
+* `MayosProgressIndicator`
+* `MayosBottomNavigation`
+* `MayosScaffold`
+
+The exact naming may be adapted to the project's existing conventions.
+
+Do not introduce unnecessary abstraction purely for abstraction's sake.
+
+Reuse existing architecture if it is already clean.
+
+---
+
+# 5. Preserve the MAYOS logo
+
+The MAYOS logo and its brand identity are important.
+
+The supplied logo variants are `assets/mayos-logo-white.png`,
+`assets/mayos-logo-blue.png`, and `assets/mayos-logo-black.png`. Reuse these
+assets without changing the mark or wordmark proportions. Inspect the actual
+image backgrounds before placing them on light or dark surfaces.
+
+Do not:
+
+* redraw it,
+* substitute another mountain icon,
+* regenerate it,
+* change its proportions,
+* change the wordmark,
+* replace it with a Material icon.
+
+The attached reference demonstrates how the MAYOS branding should feel within the UI.
+
+Do not crop the reference screenshot into a substitute logo. If these raster
+variants do not work in a required placement, retain a clean text treatment
+there and record the asset limitation for design review.
+
+If multiple logo variants exist, support versions appropriate for dark and light backgrounds without modifying the core identity.
+
+If the only available version of the logo is unsuitable for a specific background, structure the asset handling cleanly rather than inventing a new logo.
+
+---
+
+# 6. Typography is part of the identity
+
+Typography is one of the most important aspects of this redesign.
+
+The typography in the attached reference is intentional.
+
+The distinctive editorial headings combined with clean supporting text are a major part of what prevents MAYOS from looking like another generic fitness app.
+
+Inspect the project first for existing custom font files and typography configuration.
+
+If the exact font used by the project/reference already exists:
+
+**preserve and use it.**
+
+Do not silently replace it with Roboto.
+
+Do not let Flutter's default Material typography define the brand.
+
+No custom font files are currently present. Bundle a licensed editorial serif
+for headings and a clean sans font for interface text. Do not claim they are
+the exact fonts in the screenshot.
+
+Instead:
+
+1. identify the closest suitable typography direction,
+2. centralize the typography behind MAYOS typography tokens,
+3. make replacing the font later trivial,
+4. document the approximation.
+
+The hierarchy should likely contain at least:
+
+* display / hero heading
+* page heading
+* section heading
+* exercise title
+* body
+* secondary body
+* labels
+* numeric/stat typography
+* captions
+
+Typography should remain consistent in both themes.
+
+---
+
+# 7. Dark and light mode are FIRST-CLASS requirements
+
+MAYOS must support both:
+
+* Dark Mode
+* Light Mode
+
+This is not cosmetic and is not optional.
+
+Theme switching is a fundamental product requirement.
+
+Neither theme may be treated as an afterthought.
+
+Dark mode should feel:
+
+* deep
+* focused
+* premium
+* athletic
+* cinematic without becoming theatrical
+
+Light mode should feel:
+
+* sophisticated
+* spacious
+* clean
+* warm enough to avoid looking sterile
+* clearly related to the dark design
+
+Do not simply invert colors.
+
+Create semantic theme tokens.
+
+For example:
+
+```dart
+abstract final class MayosColors {
+  // semantic tokens / palettes rather than screen-specific colors
+}
+```
+
+Use Flutter's `ThemeData` / `ColorScheme` appropriately, while allowing MAYOS-specific semantic extensions if necessary.
+
+Strongly consider a `ThemeExtension` for MAYOS-specific colors that don't belong naturally in Material's default color scheme.
+
+For example:
+
+```dart
+@immutable
+class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
+  // surface layers
+  // success
+  // warning
+  // training states
+  // muted text
+  // chart colors
+}
+```
+
+Do not scatter literal hex colors throughout widgets.
+
+---
+
+# 8. Theme switching behavior
+
+Users must be able to switch explicitly between dark and light modes.
+
+Preserve the choice persistently using the application's existing state/persistence architecture.
+
+If theme persistence already exists, reuse it.
+
+Do not introduce a second competing theme-state mechanism.
+
+Support System, Light, and Dark. Use System by default and persist the explicit
+choice on the device.
+
+Changing the theme should update the entire application consistently.
+
+There should be no screens left with hard-coded light or dark colors.
+
+The toggle itself should feel polished and deliberate rather than like a debug setting.
+
+---
+
+# 9. Color philosophy
+
+The main MAYOS brand should revolve around:
+
+* midnight / deep navy
+* refined neutral surfaces
+* crisp light surfaces
+* strong restrained blue
+* cool slate neutrals
+
+Blue is the primary brand/action color.
+
+Do NOT use blue everywhere.
+
+Blue should carry meaning.
+
+Use it primarily for:
+
+* primary actions
+* active navigation
+* selections
+* highlighted metrics
+* progress
+* focused states
+* important chart series
+
+Semantic states should remain distinct.
+
+For example:
+
+* blue → action/progression/selection
+* green → success/positive training state
+* amber → caution/readiness/recovery issue
+* red → safety/error/destructive action
+* neutral slate → normal information
+
+Do not use semantic colors decoratively.
+
+---
+
+# 10. Avoid generic card overload
+
+One major problem with AI-generated interfaces is excessive card usage.
+
+Do NOT put every text block inside a rounded rectangle.
+
+Cards should communicate actual grouping or hierarchy.
+
+Use:
+
+* whitespace
+* typography
+* dividers
+* alignment
+* subtle surfaces
+* imagery
+* section composition
+
+to establish structure where cards are unnecessary.
+
+The interface should not look like:
+
+card
+inside card
+inside card
+inside another card.
+
+Use restraint.
+
+---
+
+# 11. Onboarding must be completely redesigned
+
+The existing onboarding must **NOT feel like a chat conversation**.
+
+This is one of the most important requirements.
+
+Do not show:
+
+* assistant bubbles
+* user bubbles
+* typing indicators
+* chat history
+* bot avatars
+* conversational message streams
+
+MAYOS may use AI internally, but onboarding should feel like a beautifully designed product setup flow.
+
+Keep the existing hosted-processing disclosure before any onboarding answer
+leaves the device. The new intake API stores named, validated fields and returns
+saved values and progress so the player can resume and revise earlier answers
+before creating a program. Prefill fields already captured in an incomplete
+three-step intake; ask only for missing values. Preserve the current program
+generation rules, including the required male/female specialization choice,
+and explain that choice's current training effect accurately.
+
+---
+
+# 12. One major onboarding decision per screen
+
+Onboarding should become a sequence of focused, full-screen mobile experiences.
+
+Each important decision gets its own screen.
+
+Think of the onboarding as a guided journey rather than a form.
+
+Each screen should typically contain:
+
+* subtle progress indication
+* one strong question
+* optional concise explanation
+* a carefully designed interaction
+* primary continue action where appropriate
+* back navigation
+* generous vertical spacing
+* tasteful animation
+
+There should be a sense of progression from screen to screen.
+
+Avoid asking ten things simultaneously.
+
+Save each completed decision to the account. Back navigation permits edits
+until the player confirms program creation.
+
+---
+
+# 13. Body / limb proportions screen
+
+This screen is particularly important and should demonstrate the onboarding design philosophy.
+
+Create a full-screen onboarding step asking about body proportions.
+
+Ask about relative leg and torso length. This answer is coaching context under
+ADR 011; the screen must not claim it changes exercise selection or volume.
+
+The three choices are:
+
+1. **Legs longer than torso**
+2. **Balanced**
+3. **Torso longer than legs**
+
+Do NOT render these as basic `RadioListTile`s.
+
+Do NOT render them as a boring dropdown.
+
+Do NOT render them as chat responses.
+
+Each choice should feel like a designed object.
+
+Create three visually rich choices using simple original proportion silhouettes
+until dedicated artwork is supplied.
+
+The differences should be visually understandable without becoming cartoonish.
+
+Each card should include:
+
+* visual cue
+* title
+* subtle supporting description if useful
+* selected/unselected state
+* polished touch feedback
+* accessible semantics
+
+Selection should animate elegantly.
+
+Possible effects:
+
+* subtle border illumination
+* tiny scale response
+* background transition
+* check indicator
+* blue accent movement
+
+Keep the effect restrained.
+
+Do not turn it into a gaming UI.
+
+---
+
+# 14. Other onboarding interactions
+
+Choose interaction patterns according to the question rather than using the same component for everything.
+
+Examples:
+
+### Gender
+
+Use refined selectable options.
+
+### Age
+
+Use an elegant number selector / wheel / stepper appropriate for mobile.
+
+### Height
+
+Use a polished numeric interaction with units.
+
+### Weight
+
+Same principle.
+
+### Training age
+
+Use visually understandable ranges or a carefully designed selector.
+
+### Current goal
+
+Use large visual cards for goals such as hypertrophy, strength, etc., according to the actual domain values supported by MAYOS.
+
+### Long-term goal
+
+Use focused cards or selection patterns appropriate to the domain.
+
+### Weekly frequency
+
+A visually satisfying 1–5 day selector could work well.
+
+### Equipment access
+
+Use selectable cards representing actual supported equipment environments.
+
+### Injuries / limitations
+
+Use an appropriate text/input experience because this information doesn't reduce naturally to decorative choices.
+
+### Sleep / stress / recovery
+
+Use controls that make the answer intuitive rather than presenting a dense form.
+
+Always use the existing domain model as the source of truth.
+
+Do not invent unsupported domain values merely because they look good visually.
+
+---
+
+# 15. Onboarding visual continuity
+
+Although each onboarding question owns the screen, all screens must clearly belong to the same MAYOS system.
+
+Maintain consistent:
+
+* progress presentation
+* typography
+* background
+* controls
+* transitions
+* padding
+* back navigation
+* CTA placement
+* selection behavior
+
+Consider subtle changing visual elements between steps without sacrificing consistency.
+
+---
+
+# 16. Onboarding animation
+
+Use animation deliberately.
+
+Flutter gives us excellent animation capabilities.
+
+Use tasteful motion for:
+
+* screen transitions
+* selection states
+* progress changes
+* expanding information
+* button feedback
+* charts
+* readiness values
+
+Prefer subtle animations around approximately 150–350 ms for most micro-interactions unless a different duration is justified.
+
+Potential Flutter tools:
+
+* `AnimatedContainer`
+* `AnimatedSwitcher`
+* `TweenAnimationBuilder`
+* `AnimatedOpacity`
+* `Hero`
+* custom `AnimationController` when actually justified
+
+Avoid animation for animation's sake.
+
+No flashy bouncing UI.
+
+No excessive gradients moving around.
+
+No particle effects.
+
+---
+
+# 17. Main app navigation
+
+The main application is mobile.
+
+Use an appropriate mobile navigation model.
+
+A bottom navigation bar is likely appropriate for the highest-priority areas.
+
+Do not blindly expose every existing section as a bottom navigation item.
+
+Prioritize the most frequent actions.
+
+For this pass, bottom navigation contains Home and Program. Settings is
+reachable from the header. Add Workout, Progress, and Coach destinations as
+their functional flows ship; a placeholder does not count as a destination.
+
+Do not remove existing functionality.
+
+Navigation should be simple enough to operate during a workout.
+
+---
+
+# 18. Home screen
+
+The mobile home screen should not be an analytics dashboard crammed onto a phone.
+
+It should immediately communicate:
+
+1. the player's current program,
+2. the next ordered session,
+3. what the player can do now,
+4. meaningful real training data.
+
+Possible hierarchy:
+
+* MAYOS header / greeting
+* current program and next session
+* seven-day weighted volume, where available
+* recent personal records, where available
+
+An ordered program day is not a calendar appointment. Use **Next session**
+until the player has a weekly schedule and timezone. Do not add a Start Workout
+action or readiness score before those flows have a real data source.
+
+Do not display every available metric just because it exists.
+
+Prioritize.
+
+Use progressive disclosure.
+
+---
+
+# 19. Later workout experience
+
+Workout logging is a separate feature ticket and is outside this first UI
+redesign pass. Apply the following principles when that flow is built.
+
+The workout flow is one of the highest-priority experiences in the entire application.
+
+It must be exceptionally usable.
+
+The user may be:
+
+* holding a phone between sets
+* tired
+* standing
+* using one hand
+* glancing quickly at information
+
+Therefore prioritize:
+
+* large touch targets
+* obvious current exercise
+* obvious current set
+* rapid logging
+* minimal taps
+* strong number legibility
+* easy RIR/RPE input
+* straightforward weight/reps input
+* clear progression recommendation
+* rest state clarity
+
+Do not sacrifice workout usability for visual complexity.
+
+Premium design here means **clarity**, not decoration.
+
+---
+
+# 20. Exercise presentation
+
+The first pass includes a read-only exercise detail view from existing program
+and prescription data. It should feel distinctively MAYOS. Logging,
+substitution, and unsupported metrics wait for their functional flows.
+
+Potential elements include:
+
+* exercise imagery where available
+* exercise name
+* target muscle(s)
+* equipment
+* programming role
+* sets/reps target
+* RIR/RPE target
+* last performance
+* progression
+* substitutions
+* instructions
+* notes
+
+Use mobile information architecture.
+
+Do not display all of this simultaneously if that hurts usability.
+
+Tabs, expandable sections, sheets, or progressive disclosure may be appropriate.
+
+---
+
+# 21. Exercise imagery
+
+The reference design uses athletic/exercise imagery effectively.
+
+The repo contains ExerciseDB-derived media, but its usage provenance is not
+documented. Keep the layout useful without an image and review provenance
+before using that media in the product.
+
+Do not invent file paths.
+
+Do not silently download arbitrary copyrighted imagery.
+
+If image assets are unavailable, create the UI architecture with appropriate placeholders and clearly document what assets are missing.
+
+Exercise imagery should support understanding and identity without dominating the interface.
+
+---
+
+# 22. Readiness and analytics
+
+The current mobile dashboard has no overall readiness score. Omit one in this
+pass; use actual volume and personal-record data. Revisit readiness with its
+data source and interpretation in a later feature ticket.
+
+When analytics are built, readiness should look sophisticated without becoming a dashboard gimmick.
+
+Use excellent numeric typography.
+
+Data visualization should be:
+
+* minimal
+* legible
+* useful
+* consistent
+* visually calm
+
+Avoid charts that exist solely to make the app appear advanced.
+
+When appropriate, include:
+
+* readiness score
+* sleep
+* fatigue
+* soreness
+* stress
+* training volume
+* progression
+* estimated strength trends
+
+But always respect the actual MAYOS domain and available data.
+
+Do not fabricate metrics.
+
+---
+
+# 23. Later charts
+
+Progress charts belong to the later analytics flow. Do not add mock charts to
+the first redesign pass.
+
+Charts must support both themes.
+
+If the project already uses a charting package, inspect and reuse it where reasonable.
+
+Do not add a heavy dependency unnecessarily.
+
+Use:
+
+* restrained grid lines
+* minimal labels
+* brand blue for the principal series
+* semantic secondary colors only when needed
+* smooth but subtle animation
+
+Charts must remain legible on small screens.
+
+---
+
+# 24. Premium details
+
+Pay attention to details that distinguish professional mobile software from generated mockups.
+
+Examples:
+
+* consistent optical spacing
+* baseline alignment
+* touch-state feedback
+* proper truncation
+* keyboard behavior
+* safe areas
+* scroll behavior
+* skeleton/loading states
+* empty states
+* error states
+* haptics where appropriate
+* focus behavior
+* accessibility
+* semantic labels
+* contrast
+* text scaling
+* state restoration where appropriate
+
+Do not concentrate exclusively on the happy path.
+
+---
+
+# 25. Material 3
+
+Flutter's Material system may be used as infrastructure, but MAYOS must not look like an untouched Material 3 template.
+
+Override visual defaults intentionally where required.
+
+Material components are implementation primitives.
+
+They are not the MAYOS identity.
+
+Do not let default:
+
+* cards
+* buttons
+* navigation
+* AppBars
+* typography
+* list tiles
+
+define the final appearance.
+
+---
+
+# 26. Design tokens
+
+Create or consolidate a proper design token system.
+
+At minimum consider tokens for:
+
+### Color
+
+* background
+* surface
+* elevated surface
+* secondary surface
+* border
+* primary text
+* secondary text
+* disabled text
+* brand blue
+* success
+* warning
+* error
+
+### Spacing
+
+Use a coherent scale such as:
+
+* 4
+* 8
+* 12
+* 16
+* 20
+* 24
+* 32
+* 40
+
+Adapt if the project already uses another coherent system.
+
+### Radius
+
+Use only a small number of intentional radius levels.
+
+Avoid randomly assigning rounded corners.
+
+### Typography
+
+Use named text roles.
+
+### Animation
+
+Centralize common durations/curves where useful.
+
+---
+
+# 27. Light mode
+
+The light theme must retain the MAYOS personality.
+
+Do not turn it into plain:
+
+`Colors.white + Colors.blue`.
+
+Use subtle warm/cool neutral layering.
+
+Think:
+
+* refined off-white canvas
+* white / slightly elevated surfaces
+* soft borders
+* dark navy text
+* restrained blue
+* subtle gray-blue supporting text
+
+The reference image's light mode is a strong guide.
+
+---
+
+# 28. Dark mode
+
+Dark mode should avoid pure black everywhere.
+
+Use layered deep navy / blue-black surfaces.
+
+Allow subtle differentiation between:
+
+* page background
+* component background
+* elevated component
+* selected component
+* border
+
+This makes the interface feel substantially more premium than a flat `#000000` background.
+
+---
+
+# 29. Accessibility
+
+The redesign must remain accessible.
+
+Pay attention to:
+
+* sufficient contrast
+* text scaling
+* minimum touch targets
+* semantics
+* icon meaning
+* color-independent communication
+* screen-reader labels
+
+Do not encode states purely by color.
+
+For example, progression status should have an icon/text cue as well as color.
+
+---
+
+# 30. State management
+
+Do not rewrite application state management solely because you are redesigning the UI.
+
+Inspect the existing architecture.
+
+Preserve the current state-management solution unless there is a concrete reason to change it.
+
+UI redesign should not create business-logic regressions.
+
+Keep domain logic outside presentation widgets.
+
+---
+
+# 31. Preserve existing functionality
+
+This is a frontend redesign.
+
+Do not accidentally rewrite:
+
+* domain rules
+* workout calculations
+* AI orchestration
+* persistence
+* progression logic
+* database behavior
+* existing application contracts
+
+unless a frontend integration genuinely requires a small, justified change.
+
+The objective is to make the UI excellent while preserving MAYOS behavior.
+
+---
+
+# 32. Do not invent functionality
+
+If something shown in the reference mockup does not exist in the actual application, do not silently pretend the backend supports it.
+
+For example:
+
+if the reference contains a metric that MAYOS does not calculate, either:
+
+* omit it,
+* map it to a genuine MAYOS capability,
+* or implement only the presentation placeholder when specifically appropriate and clearly identify it.
+
+The UI must represent the real product.
+
+---
+
+# 33. Architecture
+
+Keep presentation concerns separated.
+
+A reasonable structure may resemble:
+
+```text
+lib/
+  core/
+    theme/
+      mayos_theme.dart
+      mayos_colors.dart
+      mayos_typography.dart
+      mayos_spacing.dart
+      mayos_radii.dart
+
+  shared/
+    widgets/
+      mayos_button.dart
+      mayos_card.dart
+      mayos_choice_card.dart
+      mayos_stat.dart
+      mayos_progress.dart
+
+  features/
+    onboarding/
+      presentation/
+        screens/
+        widgets/
+
+    home/
+      presentation/
+
+    workout/
+      presentation/
+
+    progress/
+      presentation/
+
+    settings/
+      presentation/
+```
+
+Do NOT force this structure if the existing project already has a clean architecture with different conventions.
+
+Fit the redesign into the project instead of creating duplicate architectural systems.
+
+---
+
+# 34. Performance
+
+The UI should remain smooth on normal consumer mobile hardware.
+
+Avoid:
+
+* expensive blur everywhere
+* huge images decoded at full resolution unnecessarily
+* deeply nested repaint-heavy animations
+* excessive shadows
+* unnecessary rebuilds
+* rebuilding entire pages for tiny state changes
+
+Use `const` widgets appropriately.
+
+Use image caching appropriately.
+
+Keep animation smooth.
+
+---
+
+# 35. The interface must not scream "AI generated"
+
+This requirement is important.
+
+Common AI-generated design patterns to avoid:
+
+* enormous hero cards
+* gradient blobs everywhere
+* excessive rounded rectangles
+* glowing borders everywhere
+* dozens of meaningless analytics
+* generic "Your AI Coach" marketing copy
+* sparkles everywhere
+* arbitrary purple gradients
+* excessive pills
+* random charts
+* perfectly symmetrical dashboard grids
+* repeated card templates
+* overuse of emojis
+* robotic explanatory text
+
+The design should have restraint and asymmetry where appropriate.
+
+Not everything needs decoration.
+
+---
+
+# 36. MAYOS should not look like Hevy
+
+Do not reproduce Hevy's visual identity.
+
+Avoid making the app primarily look like:
+
+* a workout list tracker
+* dark background + generic colored workout cards
+* conventional gym-social UI
+* standard exercise log app navigation
+
+MAYOS has a larger coaching and intelligent-programming identity.
+
+The design should communicate that difference.
+
+---
+
+# 37. Human-designed details
+
+Use deliberate composition.
+
+For example:
+
+A large editorial heading may coexist with very restrained metadata.
+
+A full-width exercise hero can transition into compact set logging.
+
+A readiness number can have plenty of breathing room instead of sitting inside a dashboard grid.
+
+An onboarding screen may use a large silhouette occupying part of the screen rather than three identical generic cards.
+
+Think like a product designer, not a component generator.
+
+---
+
+# 38. Copy
+
+Keep UI copy concise and natural.
+
+Avoid generic AI language.
+
+Don't write things like:
+
+* "Unlock your potential with AI!"
+* "Your intelligent fitness journey begins here!"
+* "Harness the power of artificial intelligence!"
+
+MAYOS does not need to constantly announce that it contains AI.
+
+The intelligence should be demonstrated through the product.
+
+Prefer:
+
+* "Today's training"
+* "Ready to progress"
+* "Hold this load"
+* "Recovery is lower than usual"
+* "Upper A"
+* "3 × 6–8"
+* "2 RIR"
+
+The product should speak like an excellent coach, not marketing copy.
+
+---
+
+# 39. Onboarding progress
+
+Provide a subtle progress mechanism.
+
+Avoid something ugly like:
+
+`Question 4 of 13`
+
+as the dominant UI element.
+
+A minimal progress bar, dots, or segmented indicator may work better.
+
+Users should know they are making progress without feeling as though they are completing paperwork.
+
+---
+
+# 40. Buttons
+
+Primary actions should have strong visual presence.
+
+The MAYOS blue CTA from the reference is appropriate.
+
+Buttons should have:
+
+* proper pressed states
+* disabled states
+* loading states
+* adequate touch targets
+* sensible haptics if supported
+* strong text contrast
+
+Do not make every action a filled blue button.
+
+Use secondary/tertiary actions appropriately.
+
+---
+
+# 41. Navigation transitions
+
+Navigation should reinforce quality.
+
+Transitions should be smooth and understated.
+
+Onboarding may use a slight horizontal progression feeling.
+
+Workout navigation should prioritize speed.
+
+Do not add slow cinematic animations that delay interaction.
+
+---
+
+# 42. Theme toggle
+
+Make theme switching discoverable in Settings/Profile, and optionally provide a tasteful shortcut where appropriate.
+
+Theme switching must work throughout every shipped surface, including:
+
+* onboarding
+* authentication if present
+* home
+* exercise details
+* settings
+* modal sheets
+* dialogs
+
+Apply the same tokens to Workout, Progress, and charts when those features ship.
+
+No partial theme implementation is acceptable.
+
+---
+
+# 43. System UI
+
+Make status bar and navigation bar/icon brightness follow the selected theme properly.
+
+Use Flutter APIs such as `SystemUiOverlayStyle` appropriately.
+
+The experience should feel complete from edge to edge.
+
+---
+
+# 44. Testing
+
+Do not finish after merely rendering the screens.
+
+Run the existing Flutter tests.
+
+Add targeted widget tests where the redesign introduces important behavior.
+
+At minimum verify:
+
+* System/Light/Dark switching
+* theme persistence
+* onboarding selection behavior
+* onboarding progression
+* navigation
+* read-only exercise detail navigation and content
+* no overflow at representative phone sizes
+
+Inspect Flutter logs for:
+
+* RenderFlex overflow
+* layout exceptions
+* asset errors
+* font errors
+
+Resolve them.
+
+---
+
+# 45. Visual verification
+
+After implementation, compare the running app against:
+
+`UI_app_design/mayos-ui-reference.png`
+
+Do not compare literal desktop geometry.
+
+Compare:
+
+* character
+* hierarchy
+* typography
+* surface treatment
+* spacing
+* blue usage
+* premium feeling
+* dark/light consistency
+* brand identity
+
+Where possible, run the app or tests and inspect actual rendered screens rather than assuming the widgets look correct from source code.
+
+---
+
+# 46. Implementation order
+
+Work systematically.
+
+Recommended order:
+
+### Phase 1 — Audit
+
+Inspect current UI architecture, assets, typography, routing, theme and onboarding.
+
+### Phase 2 — Foundations
+
+Build/refine:
+
+* theme
+* colors
+* typography
+* spacing
+* radii
+* core UI primitives
+
+### Phase 3 — Navigation shell
+
+Create the mobile navigation and common scaffold.
+
+### Phase 4 — Onboarding
+
+Add the structured intake API, migrate available incomplete answers, and
+replace chat-based onboarding with the new full-screen guided flow.
+
+The body-proportion screen should establish the quality bar.
+
+### Phase 5 — Main experience
+
+Redesign:
+
+* Home
+* Program
+* read-only exercise details
+* authentication and recovery email
+* Settings and theme choice
+
+Create separate GitHub Issues for workout logging, progress analytics, and
+the coach experience. Do not fill their destinations with mock screens.
+
+### Phase 6 — Polish
+
+Implement:
+
+* motion
+* theme details
+* loading states
+* error states
+* empty states
+* responsive fixes
+* accessibility
+
+### Phase 7 — Verification
+
+Run analysis/tests, inspect the UI, fix regressions and remove dead presentation code.
+
+---
+
+# 47. Do not preserve poor UI merely because it already exists
+
+Preserve functionality and architecture where appropriate.
+
+You are allowed to significantly redesign presentation widgets.
+
+If an existing widget prevents the desired MAYOS visual language, replace/refactor it cleanly.
+
+Do not preserve bad presentation purely for minimal diff size.
+
+At the same time, don't unnecessarily rewrite working domain/application code.
+
+---
+
+# 48. Quality bar
+
+I do not want a quick reskin.
+
+Changing:
+
+* background color,
+* button color,
+* border radius,
+
+is not enough.
+
+This is a serious redesign.
+
+The finished frontend should look believable as a polished commercial fitness product.
+
+It should feel like the design was considered screen-by-screen rather than generated from one universal card component.
+
+---
+
+# 49. Non-negotiable checklist
+
+Before declaring the redesign complete, verify every one of these:
+
+* [ ] MAYOS remains a Flutter mobile app.
+* [ ] The attached UI reference has been inspected.
+* [ ] The supplied MAYOS logo variants are used where legible without changing their proportions.
+* [ ] Licensed serif/sans typography is centralized and documented as an approximation.
+* [ ] Dark mode is fully implemented.
+* [ ] Light mode is fully implemented.
+* [ ] System/Light/Dark choice works and persists on the device.
+* [ ] No major screen ignores the current theme.
+* [ ] Onboarding no longer resembles chat.
+* [ ] Major onboarding questions use focused full-screen steps.
+* [ ] Structured answers save to the account and remain editable before program creation.
+* [ ] Existing incomplete intake answers prefill the new screens where available.
+* [ ] Hosted-processing disclosure appears before relevant data is sent.
+* [ ] Body proportions has three premium visual selections:
+  - Legs longer than torso
+  - Balanced
+  - Torso longer than legs
+* [ ] The onboarding experience feels designed, not form-generated.
+* [ ] Main navigation is truly mobile.
+* [ ] Home labels the unscheduled program day “Next session.”
+* [ ] Read-only exercise details use real program data and work without imagery.
+* [ ] No unsupported readiness score, chart, workout action, or dead-end destination appears.
+* [ ] Existing business/domain behavior remains intact.
+* [ ] Design tokens are centralized.
+* [ ] Hard-coded random colors are eliminated.
+* [ ] The app does not look like Hevy.
+* [ ] The app does not look like a generic AI product.
+* [ ] Light mode is not an afterthought.
+* [ ] UI works on realistic phone dimensions.
+* [ ] No obvious overflow/layout errors remain.
+* [ ] Existing tests still pass.
+* [ ] Relevant new widget tests are added.
+* [ ] Static analysis passes or remaining unrelated issues are documented.
+* [ ] Dead UI code from the previous implementation is removed where safe.
+
+---
+
+# Final instruction
+
+Treat `UI_app_design/mayos-ui-reference.png` as the **visual north star**, but design MAYOS properly for mobile rather than reproducing the screenshot literally.
+
+Preserve MAYOS's underlying functionality.
+
+Take ownership of the frontend design details necessary to make the application coherent.
+
+The final result should feel:
+
+**editorial + athletic + intelligent + premium + unmistakably MAYOS.**
+
+The strongest indicator of success is that somebody looking at the finished app should think:
+
+> "This looks like MAYOS."
+
+—not:
+
+> "This looks like another Flutter fitness template."
+
+Do the work systematically, inspect the existing implementation before changing it, implement the redesign, run the relevant verification, and report the architectural/UI changes and any remaining limitations when finished.
