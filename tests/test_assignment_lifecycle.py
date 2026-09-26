@@ -382,6 +382,55 @@ def test_email_transport_failure_does_not_roll_back_assignment(api, monkeypatch)
     assert client.get("/assignments/me", headers=headers).json()["status"] == "active"
 
 
+def test_email_lookup_fault_is_non_fatal_after_commit(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, _, _ = _make_coach(client, db, "coach", capacity=5, email="coach@example.com")
+    token = _issue(client, coach_headers)["token"]
+    player = _register(client, "p1")
+    headers = _authed(player["access_token"])
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("email lookup down")
+
+    monkeypatch.setattr(db, "get_trainee_email", _boom)
+
+    redeemed = _redeem(client, headers, token)
+    assert redeemed.status_code == 200, redeemed.text
+    body = redeemed.json()
+    assert body["assignment"]["status"] == "active"
+    assert body["email_sent"] is False
+    assert client.get("/assignments/me", headers=headers).json()["status"] == "active"
+
+
+def test_identity_fault_degrades_username_and_email_still_sent(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, _, _ = _make_coach(client, db, "coach", capacity=5, email="coach@example.com")
+    token = _issue(client, coach_headers)["token"]
+    player = _register(client, "p1")
+    headers = _authed(player["access_token"])
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("profile lookup down")
+
+    monkeypatch.setattr(db, "get_coach_profile", _boom)
+
+    calls = []
+
+    def _record(to_email, coach_display_name, player_username):
+        calls.append((to_email, coach_display_name, player_username))
+        return True
+
+    monkeypatch.setattr(assignment_service, "send_assignment_redemption_email", _record)
+
+    redeemed = _redeem(client, headers, token)
+    assert redeemed.status_code == 200, redeemed.text
+    body = redeemed.json()
+    assert body["assignment"]["status"] == "active"
+    assert body["assignment"]["coach"]["display_name"] == "coach"
+    assert body["email_sent"] is True
+    assert calls == [("coach@example.com", "coach", "p1")]
+
+
 def test_email_notice_is_generic_and_contains_no_training_data(caplog):
     from service.email_sender import send_assignment_redemption_email
 

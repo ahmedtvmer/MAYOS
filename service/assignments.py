@@ -77,7 +77,12 @@ def _access_disclosure() -> dict[str, Any]:
 
 
 def _coach_identity(db: Any, coach_account_id: str, account: dict[str, Any]) -> dict[str, str]:
-    profile = db.get_coach_profile(coach_account_id)
+    """Current coach identity, degrading to the username when the profile lookup faults."""
+    try:
+        profile = db.get_coach_profile(coach_account_id)
+    except Exception:
+        logger.exception("Coach profile lookup raised unexpectedly")
+        profile = None
     if profile is None:
         return {"display_name": account["username"], "bio": "", "specialization": ""}
     return {
@@ -105,8 +110,10 @@ def issue_assignment_invite(
 ) -> dict[str, Any]:
     """Coach issues a single-use, capacity-bound assignment invite.
 
-    Refuses when the coach capability is absent or the roster is already at capacity,
-    so a code can never be minted that could not be redeemed.
+    Refuses when the coach capability is absent, or as a best-effort check when the
+    roster is already at capacity against currently active assignments. This check
+    does not reserve a slot and outstanding invites are not counted, so several codes
+    may be minted for one free slot; capacity is enforced atomically at redemption.
     """
     account = db.get_account(coach_account_id)
     if not db.is_live_account(account) or not account["is_coach"]:
@@ -198,14 +205,22 @@ def redeem_assignment_invite(db: Any, token: Any, player_account_id: str, consen
     if not result["ok"]:
         return {"ok": False, "error": _reason_error(result["reason"])}
 
-    db.prune_assignment_invites(now_iso)
-    coach_account = db.get_account(result["coach_account_id"])
-    identity = _coach_identity(db, result["coach_account_id"], coach_account) if coach_account else {
-        "display_name": "",
-        "bio": "",
-        "specialization": "",
-    }
-    email_sent = _send_redemption_email(db, coach_account, identity["display_name"], result["player_username"])
+    identity = {"display_name": "", "bio": "", "specialization": ""}
+    email_sent = False
+    coach_account = None
+    try:
+        db.prune_assignment_invites(now_iso)
+        coach_account = db.get_account(result["coach_account_id"])
+        if coach_account:
+            identity = _coach_identity(db, result["coach_account_id"], coach_account)
+    except Exception:
+        logger.exception("Post-commit assignment side effects raised unexpectedly")
+    try:
+        email_sent = _send_redemption_email(
+            db, coach_account, identity["display_name"], result["player_username"]
+        )
+    except Exception:
+        logger.exception("Post-commit assignment notice email raised unexpectedly")
     return {
         "ok": True,
         "assignment": {

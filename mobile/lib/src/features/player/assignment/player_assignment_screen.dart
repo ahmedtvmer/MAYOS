@@ -285,6 +285,10 @@ class _PlayerAssignmentScreenState
             const SizedBox(height: 4),
             Text(preview.coach.bio),
           ],
+          if (preview.coach.specialization.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 4),
+            Text(preview.coach.specialization),
+          ],
           const SizedBox(height: 12),
           Text(preview.access.description),
           const SizedBox(height: 16),

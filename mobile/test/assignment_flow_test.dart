@@ -92,6 +92,7 @@ void main() {
     await tester.tap(find.text('Preview access'));
     await _pumpUntilFound(tester, find.text('Accept assignment'));
     expect(find.text('Your coach will be Coach Bob'), findsOneWidget);
+    expect(find.text('Strength'), findsOneWidget);
     expect(fake.activeAssignmentId, isNull);
 
     // Explicit consent binds immediately and shows the active coach.
