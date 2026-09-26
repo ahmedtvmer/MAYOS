@@ -77,6 +77,42 @@ def day_plan_from(program: Any, day_order: int) -> Any:
     raise DayPlanNotFoundError(day_order)
 
 
+def is_historical_program(
+    program_version: int | None, active_program_version_at_sync: int | None
+) -> bool:
+    """True when a session was captured against a program older than the one active at sync (ADR 034).
+
+    Single source of truth for the derived flag. The database layer returns only
+    the raw stored versions; callers in the service layer derive the flag.
+    """
+    return (
+        program_version is not None
+        and active_program_version_at_sync is not None
+        and int(program_version) < int(active_program_version_at_sync)
+    )
+
+
+def resolve_sync_program(db: Any, active_program: Any, captured_version: int | None) -> Any:
+    """The program to commit a draft against, or raise ``ProgramVersionMismatchError`` (ADR 034).
+
+    The captured version must exist in the player's ledger and be no newer than
+    the active version. An equal version resolves to the active program; an
+    older version resolves to the historical (inactive) program row, which is
+    never reactivated or rewritten. An unknown, newer, or missing version is
+    refused.
+    """
+    active_version = active_program.version
+    if captured_version is None or active_version is None:
+        raise ProgramVersionMismatchError(active_version)
+    if captured_version == active_version:
+        return active_program
+    if captured_version < active_version:
+        historical = db.get_program_by_version(captured_version)
+        if historical is not None:
+            return historical
+    raise ProgramVersionMismatchError(active_version)
+
+
 def _now() -> datetime:
     """The single clock seam for sync validation; tests monkeypatch this."""
     return datetime.now(UTC)
@@ -252,11 +288,15 @@ def _persist_session(
     now_iso: str,
     today_date: str,
     sync: SyncMetadata,
+    active_program_version_at_sync: int | None = None,
 ) -> dict[str, Any]:
     """Writes one session and all of its derived records; the caller owns the transaction.
 
     Returns the response body. No ledger commit happens here, so the whole
     commit (session, sets, divergences, PRs, debrief, chat pointer) is atomic.
+    ``active_program_version_at_sync`` is the version active when the commit
+    landed, which may be newer than the captured ``sync.program_version`` for a
+    historical-sync session (ADR 034).
     """
     profile = db.get_user_profile() or {}
 
@@ -271,6 +311,7 @@ def _persist_session(
         client_session_id=sync.client_session_id,
         performed_timezone=sync.performed_timezone,
         program_version=sync.program_version,
+        active_program_version_at_sync=active_program_version_at_sync,
         captured_at=sync.captured_at,
         uploaded_at=now_iso,
     )
@@ -453,6 +494,14 @@ def _persist_session(
         "fatigue_post": fatigue_post,
         "new_prs": pr_events,
         "divergences": divergences,
+        # Version visibility (ADR 034): what the draft was logged against vs.
+        # the program active when the commit landed. ``is_historical_program``
+        # is the explicit flag both the player and assigned coach render.
+        "program_version": sync.program_version,
+        "active_program_version_at_sync": active_program_version_at_sync,
+        "is_historical_program": is_historical_program(
+            sync.program_version, active_program_version_at_sync
+        ),
     }
 
 
@@ -536,16 +585,20 @@ def commit_logged_session(
     account_id: str | None = None,
     now_iso: str | None = None,
 ) -> CommitOutcome:
-    """Idempotently commits one offline-captured workout (ADR 020/033).
+    """Idempotently commits one offline-captured workout (ADR 020/033/034).
 
     If ``client_session_id`` was already committed, the exact stored response is
-    replayed and nothing is written. The active program is re-resolved and its
-    version re-checked against ``sync.program_version`` inside the same ledger
-    transaction (after ``BEGIN IMMEDIATE``), so a concurrent program change is
-    caught rather than racing an earlier, outside-the-transaction check.
-    Concurrent duplicates are serialised by the unique index plus one
-    transaction: the loser replays the winner's response. Post-commit hooks run
-    only when this call performed the commit.
+    replayed and nothing is written. The active program is re-resolved inside
+    the same ledger transaction (after ``BEGIN IMMEDIATE``), so a concurrent
+    program change is caught rather than racing an earlier, outside-the-
+    transaction check. A draft captured against the active version, or against
+    an older version that still exists in the ledger, commits against the exact
+    day plan it trained against; the active program is never rewritten. A
+    captured version that is newer than the active one or absent from the
+    ledger is refused with ``ProgramVersionMismatchError``. Concurrent
+    duplicates are serialised by the unique index plus one transaction: the
+    loser replays the winner's response. Post-commit hooks run only when this
+    call performed the commit, for historical sessions too (ADR 034).
     """
     bind_user(db, trainee_id)
     client_session_id = sync.client_session_id
@@ -564,9 +617,9 @@ def commit_logged_session(
             program = db.get_active_program()
             if program is None:
                 raise DayPlanNotFoundError(day_order)
-            if program.version != sync.program_version:
-                raise ProgramVersionMismatchError(program.version)
-            day_plan = day_plan_from(program, day_order)
+            active_version = program.version
+            resolved = resolve_sync_program(db, program, sync.program_version)
+            day_plan = day_plan_from(resolved, day_order)
 
             body = _persist_session(
                 db,
@@ -579,6 +632,7 @@ def commit_logged_session(
                 now_iso=now_iso,
                 today_date=sync.performed_date,
                 sync=sync,
+                active_program_version_at_sync=active_version,
             )
             db.record_session_commit(client_session_id, session_id, json.dumps(body), now_iso)
             outcome = CommitOutcome(body, created=True)

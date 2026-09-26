@@ -459,12 +459,15 @@ class _CoachPlayerHistoryScreenState
       return _section(context, 'Latest session',
           <Widget>[const Text('No sessions logged yet.')]);
     }
+    final String? versionNote = historicalProgramLabel(latest.programVersion,
+        latest.activeProgramVersionAtSync, latest.isHistoricalProgram);
     return _section(context, 'Latest session', <Widget>[
       Text('${latest.splitName} · ${latest.sessionDate}'),
       Text(
           '${latest.setsCount} sets · ${latest.totalVolumeKg.toStringAsFixed(1)} kg'),
       if (latest.readinessScore != null)
         Text('Readiness ${latest.readinessScore}/5'),
+      if (versionNote != null) Text(versionNote),
       const SizedBox(height: 8),
       for (final CoachPlayerSessionExercise exercise in latest.exercises)
         Text(
@@ -492,22 +495,28 @@ class _CoachPlayerHistoryScreenState
           ? <Widget>[const Text('No sessions logged yet.')]
           : <Widget>[
               for (final CoachPlayerRecentSession session in sessions)
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('${session.splitName} · ${session.sessionDate}'),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                          '${session.setsCount} sets · ${session.totalVolumeKg.toStringAsFixed(1)} kg'),
-                      for (final CoachPlayerDivergence divergence
-                          in session.divergences)
-                        Text(_divergenceLabel(divergence)),
-                    ],
-                  ),
-                ),
+                _recentSessionTile(session),
             ],
+    );
+  }
+
+  Widget _recentSessionTile(CoachPlayerRecentSession session) {
+    final String? versionNote = historicalProgramLabel(session.programVersion,
+        session.activeProgramVersionAtSync, session.isHistoricalProgram);
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      title: Text('${session.splitName} · ${session.sessionDate}'),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+              '${session.setsCount} sets · ${session.totalVolumeKg.toStringAsFixed(1)} kg'),
+          if (versionNote != null) Text(versionNote),
+          for (final CoachPlayerDivergence divergence in session.divergences)
+            Text(_divergenceLabel(divergence)),
+        ],
+      ),
     );
   }
 

@@ -219,7 +219,8 @@ void main() {
       expect(fake.commitRequests, 0);
     });
 
-    test('program version mismatch becomes needs-attention', () async {
+    test('an older program version syncs as history with a version difference',
+        () async {
       final FakeMayosApi fake = FakeMayosApi()..programVersion = 2;
       final TokenStore tokens = await _authedTokens(fake);
       final InMemoryDraftStore store = InMemoryDraftStore();
@@ -228,6 +229,25 @@ void main() {
       service.startFor(_accountA, syncImmediately: false);
 
       await service.saveDraft(_draft(accountId: _accountA, programVersion: 1));
+
+      final WorkoutDraft reloaded = (await store.read(_accountA)).single;
+      expect(reloaded.status, DraftStatus.synced);
+      expect(reloaded.isHistoricalProgram, isTrue);
+      expect(reloaded.activeProgramVersionAtSync, 2);
+      expect(reloaded.versionDifferenceLabel,
+          'Logged against program v1 (current v2)');
+      expect(fake.committedSessions, hasLength(1));
+    });
+
+    test('a newer program version stays needs-attention', () async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 2;
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+      service.startFor(_accountA, syncImmediately: false);
+
+      await service.saveDraft(_draft(accountId: _accountA, programVersion: 3));
 
       final WorkoutDraft reloaded = (await store.read(_accountA)).single;
       expect(reloaded.status, DraftStatus.needsReconciliation);
@@ -252,6 +272,32 @@ void main() {
       expect(reloaded.statusLabel, 'Synced');
       expect(reloaded.serverResponse?['session_id'], isNotNull);
       expect(fake.committedSessions, hasLength(1));
+    });
+
+    testWidgets('a synced historical entry shows the version difference',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 2;
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      await store.write(_accountA, <WorkoutDraft>[
+        _draft(accountId: _accountA, programVersion: 1).copyWith(
+          status: DraftStatus.synced,
+          updatedAt: DateTime.now().toIso8601String(),
+          serverResponse: <String, dynamic>{
+            'session_id': 'session-1',
+            'program_version': 1,
+            'active_program_version_at_sync': 2,
+            'is_historical_program': true,
+          },
+        ),
+      ]);
+
+      await _pumpApp(tester, fake, draftStore: store);
+      await tester.tap(find.byTooltip('Workouts'));
+      await _pumpUntilFound(
+          tester, find.text('Logged against program v1 (current v2)'));
+
+      expect(
+          find.text('Logged against program v1 (current v2)'), findsOneWidget);
     });
   });
 

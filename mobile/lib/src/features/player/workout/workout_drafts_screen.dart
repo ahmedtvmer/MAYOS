@@ -88,6 +88,11 @@ class _DraftTile extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text('${draft.workingSetCount} working sets · ${draft.statusLabel}'),
+            if (draft.versionDifferenceLabel != null)
+              Text(
+                draft.versionDifferenceLabel!,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             if (draft.lastError != null && draft.needsAttention)
               Text(
                 draft.lastError!,

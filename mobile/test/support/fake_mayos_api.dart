@@ -1469,11 +1469,15 @@ class FakeMayosApi {
       if (stored != null) {
         return FakeResponse(200, stored);
       }
+      // ADR 034: a captured version at or below the active one (and present in
+      // the ledger, emulated as >= 1) is accepted; a newer or unknown version
+      // is refused.
       final int requested = (body['program_version'] as num?)?.toInt() ?? -1;
-      if (requested != (programVersion ?? 0)) {
+      final int active = programVersion ?? 0;
+      if (requested < 1 || requested > active) {
         return FakeResponse(409, <String, dynamic>{
           'error': 'program_version_mismatch',
-          'active_version': programVersion ?? 0,
+          'active_version': active,
         });
       }
     }
@@ -1491,6 +1495,8 @@ class FakeMayosApi {
     for (final dynamic entry in sets) {
       working += ((entry as Map<String, dynamic>)['sets'] as List<dynamic>).length;
     }
+    final int requested = (body['program_version'] as num?)?.toInt() ?? 0;
+    final int active = programVersion ?? 0;
     _sessionSeq++;
     return <String, dynamic>{
       'session_id': 'session-$_sessionSeq',
@@ -1502,6 +1508,9 @@ class FakeMayosApi {
       'fatigue_post': <String, dynamic>{'deload_recommended': false},
       'new_prs': <dynamic>[],
       'divergences': <dynamic>[],
+      'program_version': requested,
+      'active_program_version_at_sync': active,
+      'is_historical_program': requested > 0 && requested < active,
     };
   }
 

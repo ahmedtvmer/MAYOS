@@ -11,6 +11,7 @@ from typing import Any
 from service import dashboard as dashboard_service
 from service.assignments import DENIED_ERROR, bind_assigned_player  # noqa: F401  (DENIED_ERROR re-exported for routers)
 from service.schedule import current_schedule
+from service.workouts import is_historical_program
 
 DEFAULT_RECENT_SESSIONS = 10
 
@@ -35,15 +36,23 @@ def _schedule_and_pauses(db: Any, ledger_id: str) -> tuple[dict[str, Any] | None
 def _recent_sessions(db: Any, limit: int) -> list[dict[str, Any]]:
     """Newest-first working-set summaries grouped from the ledger session log."""
     divergences_by_session = db.list_divergences_by_session()
+    version_by_session = db.get_session_program_versions()
     sessions: dict[str, dict[str, Any]] = {}
     for row in db.get_session_log():
         summary = sessions.get(row["session_id"])
         if summary is None:
+            version_info = version_by_session.get(row["session_id"], {})
             summary = {
                 "session_id": row["session_id"],
                 "session_date": row["session_date"],
                 "split_name": row["split_name"],
                 "readiness_score": row["readiness_score"],
+                "program_version": version_info.get("program_version"),
+                "active_program_version_at_sync": version_info.get("active_program_version_at_sync"),
+                "is_historical_program": is_historical_program(
+                    version_info.get("program_version"),
+                    version_info.get("active_program_version_at_sync"),
+                ),
                 "sets_count": 0,
                 "total_volume_kg": 0.0,
                 "divergences": divergences_by_session.get(row["session_id"], []),
@@ -66,12 +75,18 @@ def player_summary(
         return None
     ledger_id = context["player"]["ledger_id"]
     schedule, pauses = _schedule_and_pauses(db, ledger_id)
+    latest_session = db.get_latest_session_summary()
+    if latest_session is not None:
+        latest_session["is_historical_program"] = is_historical_program(
+            latest_session.get("program_version"),
+            latest_session.get("active_program_version_at_sync"),
+        )
     return {
         "player_username": context["player"]["username"],
         "started_at": context["assignment"]["started_at"],
         "status": context["assignment"]["status"],
         "volume": dashboard_service.volume_attribution(db, ledger_id, days_lookback=days_lookback),
-        "latest_session": db.get_latest_session_summary(),
+        "latest_session": latest_session,
         "recent_sessions": _recent_sessions(db, DEFAULT_RECENT_SESSIONS),
         "schedule": schedule,
         "pauses": pauses,

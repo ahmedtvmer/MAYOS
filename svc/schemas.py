@@ -342,6 +342,9 @@ class CoachPlayerLatestSessionOut(BaseModel):
     readiness_score: int | None = None
     sets_count: int
     total_volume_kg: float
+    program_version: int | None = None
+    active_program_version_at_sync: int | None = None
+    is_historical_program: bool = False
     exercises: list[CoachPlayerSessionExerciseOut] = []
     divergences: list[CoachPlayerDivergenceOut] = []
 
@@ -355,6 +358,9 @@ class CoachPlayerRecentSessionOut(BaseModel):
     readiness_score: int | None = None
     sets_count: int
     total_volume_kg: float
+    program_version: int | None = None
+    active_program_version_at_sync: int | None = None
+    is_historical_program: bool = False
     divergences: list[CoachPlayerDivergenceOut] = []
 
 

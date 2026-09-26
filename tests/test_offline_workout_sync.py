@@ -2,9 +2,12 @@
 
 A draft captured on the device commits idempotently: a retry or a reconciled
 lost response produces exactly one session with its sets and derived records,
-all in one ledger transaction. Validation is timezone-correct and time-bounded,
-and a captured program version that no longer matches the active program is
-refused with 409 pending ticket #35.
+all in one ledger transaction. Validation is timezone-correct and time-bounded.
+A draft captured against the current program commits against it; a draft
+captured against an older version that still exists in the ledger commits as
+history without rewriting the newer active program, and both the player and the
+active coach see the version difference (ADR 034). A captured version that is
+newer than the active one or absent from the ledger is refused with 409.
 """
 
 import sqlite3
@@ -17,6 +20,8 @@ from fastapi.testclient import TestClient
 
 from agent.ProgramState import ProgramDaySchema, ProgramExerciseSchema
 from database.database_manager import DatabaseManager
+from service import coach as coach_service
+from service import coach_history as coach_history_service
 from service import workouts as workouts_service
 from svc.app import create_app
 from svc.dependencies import get_db
@@ -112,6 +117,44 @@ def _program_payload():
     }
 
 
+def _program_payload_v2():
+    """A structurally different newer program: another day name, exercises, and targets."""
+    return {
+        "program_name": "Assigned Split v2",
+        "weekly_frequency": 3,
+        "split_type": "Full Body",
+        "days": [
+            {
+                "day_name": "Full B",
+                "day_order": 1,
+                "exercises": [
+                    {"exercise_id": "ohp", "target_sets": 4, "target_reps_min": 4, "target_reps_max": 6, "target_rpe": 8.0},
+                    {"exercise_id": "bp", "target_sets": 2, "target_reps_min": 6, "target_reps_max": 10, "target_rpe": 8.0},
+                    {"exercise_id": "sq", "target_sets": 4, "target_reps_min": 4, "target_reps_max": 6, "target_rpe": 8.0},
+                ],
+            }
+        ],
+    }
+
+
+def _program_row_snapshot(db, program_id):
+    """Every persisted day and exercise row for one program, for an unchanged check."""
+    days = db.conn.execute(
+        "SELECT id, day_name, day_order, warmup_json, cardio FROM program_days"
+        " WHERE program_id = ? ORDER BY day_order, id",
+        (program_id,),
+    ).fetchall()
+    exercises = db.conn.execute(
+        "SELECT pe.id, pe.day_id, pe.exercise_id, pe.order_in_day, pe.target_sets,"
+        " pe.target_reps_min, pe.target_reps_max, pe.target_rpe, pe.rest_seconds, pe.notes,"
+        " pe.slot_key, pe.warmup_sets"
+        " FROM program_exercises pe JOIN program_days pd ON pe.day_id = pd.id"
+        " WHERE pd.program_id = ? ORDER BY pe.day_id, pe.order_in_day, pe.id",
+        (program_id,),
+    ).fetchall()
+    return [tuple(row) for row in days], [tuple(row) for row in exercises]
+
+
 def _sets_body():
     return [
         {"exercise": _exercise_payload("sq", "Squat"), "sets": [{"weight_kg": 100.0, "reps": 5, "rpe": 8.0}]},
@@ -128,6 +171,40 @@ def _prepare_player(client, db, username="p1"):
     db.save_training_program(_program_payload())
     version = db.get_active_program().version
     return headers, version
+
+
+def _make_coach(client, db, username, capacity=5):
+    """Registers a player, grants the coach capability, and sets roster capacity."""
+    registered = _register(client, username)
+    headers = _authed(registered["access_token"])
+    issued = coach_service.issue_coach_invite(db, username)
+    assert issued["ok"], issued
+    assert (
+        client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]}).status_code
+        == 200
+    )
+    assert (
+        client.put(
+            "/coach/profile",
+            headers=headers,
+            json={"display_name": f"Coach {username}", "bio": "b", "specialization": "s", "capacity": capacity},
+        ).status_code
+        == 200
+    )
+    return headers
+
+
+def _assign(client, coach_headers, player_headers):
+    """Issues an invite and has the player accept it; returns the assignment id."""
+    invite = client.post("/coach/assignments/invites", headers=coach_headers)
+    assert invite.status_code == 200, invite.text
+    redeemed = client.post(
+        "/assignments/invites/redeem",
+        headers=player_headers,
+        json={"token": invite.json()["token"], "consent": True},
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    return redeemed.json()["assignment"]["assignment_id"]
 
 
 def _sync_body(*, client_session_id=CLIENT_ID, version, day_order=1, performed_date="2026-09-26",
@@ -153,10 +230,14 @@ def test_first_commit_returns_201_and_records_sync_fields(api):
     assert resp.status_code == 201, resp.text
     body = resp.json()
     assert body["session_id"]
+    assert body["program_version"] == version
+    assert body["active_program_version_at_sync"] == version
+    assert body["is_historical_program"] is False
 
     db.switch_user("p1")
     row = db.conn.execute(
-        "SELECT client_session_id, session_date, performed_timezone, program_version, captured_at, uploaded_at"
+        "SELECT client_session_id, session_date, performed_timezone, program_version,"
+        " active_program_version_at_sync, captured_at, uploaded_at"
         " FROM workout_sessions WHERE id = ?",
         (body["session_id"],),
     ).fetchone()
@@ -164,6 +245,7 @@ def test_first_commit_returns_201_and_records_sync_fields(api):
     assert row["session_date"] == "2026-09-26"
     assert row["performed_timezone"] == "UTC"
     assert row["program_version"] == version
+    assert row["active_program_version_at_sync"] == version
     assert row["captured_at"] == "2026-09-26T11:30:00+00:00"
     assert row["uploaded_at"] == FIXED_NOW.isoformat()
 
@@ -276,7 +358,7 @@ def test_legacy_commit_without_client_session_id_still_works(api):
     assert row["client_session_id"] is None
 
 
-def test_program_version_mismatch_returns_409_and_writes_nothing(api):
+def test_newer_program_version_is_refused_and_writes_nothing(api):
     client, db = api
     headers, version = _prepare_player(client, db)
 
@@ -286,6 +368,142 @@ def test_program_version_mismatch_returns_409_and_writes_nothing(api):
     db.switch_user("p1")
     assert db.conn.execute("SELECT COUNT(*) FROM workout_sessions").fetchone()[0] == 0
     assert db.conn.execute("SELECT COUNT(*) FROM session_commits").fetchone()[0] == 0
+
+
+def test_unknown_older_program_version_is_refused(api):
+    """An older version that is not in the ledger cannot be resolved as history."""
+    client, db = api
+    headers, version = _prepare_player(client, db)
+
+    # Version 0 predates every stored program row.
+    resp = client.post("/workouts/sessions", headers=headers, json=_sync_body(version=0))
+    assert resp.status_code == 409, resp.text
+    assert resp.json() == {"error": "program_version_mismatch", "active_version": version}
+    db.switch_user("p1")
+    assert db.conn.execute("SELECT COUNT(*) FROM workout_sessions").fetchone()[0] == 0
+
+
+def test_older_program_version_syncs_as_history_without_rewriting_active_program(api):
+    client, db = api
+    headers, captured_version = _prepare_player(client, db)
+
+    db.switch_user("p1")
+    active_program_id = db.save_training_program(_program_payload_v2())
+    active_version = db.get_active_program().version
+    assert active_version == captured_version + 1
+    v2_rows_before = _program_row_snapshot(db, active_program_id)
+
+    resp = client.post("/workouts/sessions", headers=headers, json=_sync_body(version=captured_version))
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["program_version"] == captured_version
+    assert body["active_program_version_at_sync"] == active_version
+    assert body["is_historical_program"] is True
+    # Resolved against v1's day plan, not the active v2 plan: v1 prescribed
+    # exactly the three performed movements, while v2 prescribes OHP and drops Row.
+    assert [summary["name"] for summary in body["exercise_summaries"]] == ["Squat", "Bench Press", "Row"]
+    assert body["divergences"] == []
+
+    db.switch_user("p1")
+    row = db.conn.execute(
+        "SELECT split_name, program_version, active_program_version_at_sync"
+        " FROM workout_sessions WHERE id = ?",
+        (body["session_id"],),
+    ).fetchone()
+    assert row["split_name"] == "Full A"
+    assert row["program_version"] == captured_version
+    assert row["active_program_version_at_sync"] == active_version
+    # The captured prescription is retained and the newer program stays active,
+    # with every v2 program row byte-for-byte unchanged.
+    assert db.get_program_by_version(captured_version) is not None
+    assert db.get_active_program().version == active_version
+    assert _program_row_snapshot(db, active_program_id) == v2_rows_before
+    assert (
+        db.conn.execute("SELECT COUNT(*) FROM training_programs WHERE is_active = 1").fetchone()[0] == 1
+    )
+
+
+def test_older_program_version_replay_is_unchanged(api):
+    """Idempotent replay behaviour is identical for a historical-version commit (#34)."""
+    client, db = api
+    headers, captured_version = _prepare_player(client, db)
+    db.switch_user("p1")
+    db.save_training_program(_program_payload())
+
+    first = client.post("/workouts/sessions", headers=headers, json=_sync_body(version=captured_version))
+    assert first.status_code == 201, first.text
+    assert first.json()["is_historical_program"] is True
+
+    retry = client.post("/workouts/sessions", headers=headers, json=_sync_body(version=captured_version))
+    assert retry.status_code == 200, retry.text
+    assert retry.json() == first.json()
+
+    db.switch_user("p1")
+    assert db.conn.execute("SELECT COUNT(*) FROM workout_sessions").fetchone()[0] == 1
+    assert db.conn.execute("SELECT COUNT(*) FROM session_commits").fetchone()[0] == 1
+
+
+#: Every coach read that can expose the assigned player's sessions or exercise history.
+COACH_SESSION_READS = (
+    "/player/summary",
+    "/player/personal-records",
+    "/player/exercises",
+    "/player/exercises/sq/history",
+    "/check-ins",
+)
+
+
+def test_revoked_coach_cannot_read_a_workout_synced_after_revocation(api):
+    client, db = api
+    headers, captured_version = _prepare_player(client, db, username="p1")
+
+    coach_a = _make_coach(client, db, "coachA")
+    assignment_a = _assign(client, coach_a, headers)
+    revoked = client.post(f"/coach/assignments/{assignment_a}/revoke", headers=coach_a)
+    assert revoked.status_code == 200, revoked.text
+
+    # A newer program is published after the coach is revoked but before the
+    # captured draft syncs; the sync still commits as history.
+    db.switch_user("p1")
+    db.save_training_program(_program_payload())
+    synced = client.post("/workouts/sessions", headers=headers, json=_sync_body(version=captured_version))
+    assert synced.status_code == 201, synced.text
+
+    # The revoked coach is denied on every session-exposing coach read.
+    for suffix in COACH_SESSION_READS:
+        denied = client.get(f"/coach/assignments/{assignment_a}{suffix}", headers=coach_a)
+        assert denied.status_code == 403, (suffix, denied.text)
+        assert denied.json()["detail"] == coach_history_service.DENIED_ERROR
+
+    # A coach currently assigned can read the same workout and sees the difference.
+    coach_b = _make_coach(client, db, "coachB")
+    assignment_b = _assign(client, coach_b, headers)
+    summary = client.get(f"/coach/assignments/{assignment_b}/player/summary", headers=coach_b)
+    assert summary.status_code == 200, summary.text
+    latest = summary.json()["latest_session"]
+    assert latest["program_version"] == captured_version
+    assert latest["active_program_version_at_sync"] == captured_version + 1
+    assert latest["is_historical_program"] is True
+    recent = summary.json()["recent_sessions"][0]
+    assert recent["program_version"] == captured_version
+    assert recent["active_program_version_at_sync"] == captured_version + 1
+    assert recent["is_historical_program"] is True
+    # The other session-exposing reads the active coach is allowed to make still work.
+    records = client.get(
+        f"/coach/assignments/{assignment_b}/player/personal-records", headers=coach_b
+    )
+    assert records.status_code == 200, records.text
+    assert any(record["exercise_id"] == "sq" for record in records.json())
+    exercises = client.get(f"/coach/assignments/{assignment_b}/player/exercises", headers=coach_b)
+    assert exercises.status_code == 200, exercises.text
+    assert {entry["id"] for entry in exercises.json()["exercises"]} >= {"sq", "bp", "row"}
+    history = client.get(
+        f"/coach/assignments/{assignment_b}/player/exercises/sq/history", headers=coach_b
+    )
+    assert history.status_code == 200, history.text
+    assert history.json()["history"]
+    check_ins = client.get(f"/coach/assignments/{assignment_b}/check-ins", headers=coach_b)
+    assert check_ins.status_code == 200, check_ins.text
 
 
 @pytest.mark.parametrize(

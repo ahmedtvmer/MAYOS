@@ -681,6 +681,9 @@ class CoachPlayerLatestSession {
     required this.setsCount,
     required this.totalVolumeKg,
     this.readinessScore,
+    this.programVersion,
+    this.activeProgramVersionAtSync,
+    this.isHistoricalProgram = false,
     this.exercises = const <CoachPlayerSessionExercise>[],
     this.divergences = const <CoachPlayerDivergence>[],
   });
@@ -690,6 +693,10 @@ class CoachPlayerLatestSession {
         sessionDate: json['session_date'] as String,
         splitName: json['split_name'] as String,
         readinessScore: (json['readiness_score'] as num?)?.toInt(),
+        programVersion: (json['program_version'] as num?)?.toInt(),
+        activeProgramVersionAtSync:
+            (json['active_program_version_at_sync'] as num?)?.toInt(),
+        isHistoricalProgram: json['is_historical_program'] == true,
         setsCount: (json['sets_count'] as num).toInt(),
         totalVolumeKg: (json['total_volume_kg'] as num).toDouble(),
         exercises: (json['exercises'] as List<dynamic>? ?? const [])
@@ -705,6 +712,9 @@ class CoachPlayerLatestSession {
   final String sessionDate;
   final String splitName;
   final int? readinessScore;
+  final int? programVersion;
+  final int? activeProgramVersionAtSync;
+  final bool isHistoricalProgram;
   final int setsCount;
   final double totalVolumeKg;
   final List<CoachPlayerSessionExercise> exercises;
@@ -720,6 +730,9 @@ class CoachPlayerRecentSession {
     required this.setsCount,
     required this.totalVolumeKg,
     this.readinessScore,
+    this.programVersion,
+    this.activeProgramVersionAtSync,
+    this.isHistoricalProgram = false,
     this.divergences = const <CoachPlayerDivergence>[],
   });
 
@@ -729,6 +742,10 @@ class CoachPlayerRecentSession {
         sessionDate: json['session_date'] as String,
         splitName: json['split_name'] as String,
         readinessScore: (json['readiness_score'] as num?)?.toInt(),
+        programVersion: (json['program_version'] as num?)?.toInt(),
+        activeProgramVersionAtSync:
+            (json['active_program_version_at_sync'] as num?)?.toInt(),
+        isHistoricalProgram: json['is_historical_program'] == true,
         setsCount: (json['sets_count'] as num).toInt(),
         totalVolumeKg: (json['total_volume_kg'] as num).toDouble(),
         divergences: (json['divergences'] as List<dynamic>? ?? const [])
@@ -741,9 +758,28 @@ class CoachPlayerRecentSession {
   final String sessionDate;
   final String splitName;
   final int? readinessScore;
+  final int? programVersion;
+  final int? activeProgramVersionAtSync;
+  final bool isHistoricalProgram;
   final int setsCount;
   final double totalVolumeKg;
   final List<CoachPlayerDivergence> divergences;
+}
+
+/// "Logged against program vN (current vM)" for a session captured against an
+/// older program, or null when it was logged against the then-current program
+/// (ADR 034).
+String? historicalProgramLabel(
+  int? programVersion,
+  int? activeProgramVersionAtSync,
+  bool isHistorical,
+) {
+  if (!isHistorical ||
+      programVersion == null ||
+      activeProgramVersionAtSync == null) {
+    return null;
+  }
+  return 'Logged against program v$programVersion (current v$activeProgramVersionAtSync)';
 }
 
 /// `GET /coach/assignments/{id}/player/summary` for an actively assigned player.
@@ -1547,6 +1583,22 @@ class WorkoutDraft {
   bool get needsAttention => status == DraftStatus.needsReconciliation;
 
   bool get inFlight => status == DraftStatus.syncing;
+
+  /// The program version active on the server when this draft synced (ADR 034),
+  /// or null before a commit response is stored.
+  int? get activeProgramVersionAtSync =>
+      (serverResponse?['active_program_version_at_sync'] as num?)?.toInt();
+
+  /// True when the server committed this draft against a now-superseded program.
+  bool get isHistoricalProgram =>
+      serverResponse?['is_historical_program'] == true;
+
+  /// Player-facing version-difference note for a historical-program sync, else null.
+  String? get versionDifferenceLabel => historicalProgramLabel(
+        programVersion,
+        activeProgramVersionAtSync,
+        isHistoricalProgram,
+      );
 
   /// True for a draft that is not yet committed (pending, syncing, or failed).
   bool get isUnsynced => !isSynced;

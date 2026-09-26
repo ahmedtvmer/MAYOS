@@ -348,6 +348,7 @@ class DatabaseManager:
                 client_session_id TEXT,
                 performed_timezone TEXT,
                 program_version INTEGER,
+                active_program_version_at_sync INTEGER,
                 captured_at TEXT,
                 uploaded_at TEXT
             );
@@ -2793,7 +2794,12 @@ class DatabaseManager:
             self.conn.rollback()
             raise RuntimeError(f"Database error while saving program: {e}")
 
-    def get_active_program(self) -> GeneratedProgramSchema | None:
+    def _load_program(self, where_sql: str, params: tuple = ()) -> GeneratedProgramSchema | None:
+        """Loads one stored program, its days and exercises, by an arbitrary predicate.
+
+        Shared by ``get_active_program`` and ``get_program_by_version`` so the
+        historical-program path can never drift from the active one (ADR 034).
+        """
         cursor = self.conn.cursor()
         cursor.execute("PRAGMA table_info(training_programs)")
         program_cols = {col[1] for col in cursor.fetchall()}
@@ -2809,10 +2815,10 @@ class DatabaseManager:
             SELECT id, COALESCE(program_name, name), weekly_frequency, split_type, {instructions_expr},
                    {version_expr}, {provenance_expr}, {created_at_expr}
             FROM training_programs
-            WHERE is_active = 1
+            WHERE {where_sql}
             ORDER BY created_at DESC
             LIMIT 1
-        """)
+        """, params)
         row = cursor.fetchone()
         if not row:
             return None
@@ -2912,8 +2918,20 @@ class DatabaseManager:
                 created_at=created_at,
             )
         except Exception as exc:
-            logger.warning(f"Active program '{prog_id}' is malformed or incomplete: {exc}")
+            logger.warning(f"Program '{prog_id}' is malformed or incomplete: {exc}")
             return None
+
+    def get_active_program(self) -> GeneratedProgramSchema | None:
+        return self._load_program("is_active = 1")
+
+    def get_program_by_version(self, version: int) -> GeneratedProgramSchema | None:
+        """The player's program with this stable version, active or historical (ADR 034).
+
+        Publishing a new program only flips ``is_active``; older rows and their
+        days/exercises are kept, so an offline draft captured against an older
+        version resolves to the exact prescription it trained against.
+        """
+        return self._load_program("version = ?", (int(version),))
 
     def update_user_frequency(self, frequency: int) -> None:
         cursor = self.conn.cursor()
@@ -2935,6 +2953,7 @@ class DatabaseManager:
         client_session_id: str | None = None,
         performed_timezone: str | None = None,
         program_version: int | None = None,
+        active_program_version_at_sync: int | None = None,
         captured_at: str | None = None,
         uploaded_at: str | None = None,
     ) -> None:
@@ -2943,8 +2962,9 @@ class DatabaseManager:
             """
             INSERT INTO workout_sessions (
                 id, session_date, split_name, started_at, completed_at, session_notes, readiness_score,
-                client_session_id, performed_timezone, program_version, captured_at, uploaded_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                client_session_id, performed_timezone, program_version, active_program_version_at_sync,
+                captured_at, uploaded_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 session_id,
@@ -2957,6 +2977,7 @@ class DatabaseManager:
                 client_session_id,
                 performed_timezone,
                 program_version,
+                active_program_version_at_sync,
                 captured_at,
                 uploaded_at,
             ),
@@ -3011,7 +3032,8 @@ class DatabaseManager:
     def get_latest_session_summary(self) -> dict[str, Any] | None:
         cursor = self.conn.cursor()
         cursor.execute("""
-            SELECT id, session_date, split_name, readiness_score
+            SELECT id, session_date, split_name, readiness_score,
+                   program_version, active_program_version_at_sync
             FROM workout_sessions
             ORDER BY session_date DESC, started_at DESC, rowid DESC
             LIMIT 1
@@ -3038,6 +3060,8 @@ class DatabaseManager:
             "session_date": session["session_date"],
             "split_name": session["split_name"],
             "readiness_score": session["readiness_score"],
+            "program_version": session["program_version"],
+            "active_program_version_at_sync": session["active_program_version_at_sync"],
             "sets_count": sum(exercise["sets"] for exercise in exercises),
             "total_volume_kg": sum((exercise["volume_kg"] for exercise in exercises), 0.0),
             "exercises": exercises,
@@ -3049,6 +3073,24 @@ class DatabaseManager:
                 }
                 for row in self.list_session_divergences(session["id"])
             ],
+        }
+
+    def get_session_program_versions(self) -> dict[str, dict[str, Any]]:
+        """Per-session program version and the active version at sync, keyed by session id (ADR 034).
+
+        Kept separate from ``get_session_log`` so the ledger export shape is
+        unchanged while the coach history can annotate version differences. The
+        derived ``is_historical_program`` flag is computed in the service layer,
+        not here.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT id, program_version, active_program_version_at_sync FROM workout_sessions")
+        return {
+            row["id"]: {
+                "program_version": row["program_version"],
+                "active_program_version_at_sync": row["active_program_version_at_sync"],
+            }
+            for row in cursor.fetchall()
         }
 
     def list_performed_dates(self) -> list[str]:

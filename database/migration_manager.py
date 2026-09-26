@@ -10,7 +10,7 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_USER_SCHEMA_VERSION: int = 9
+CURRENT_USER_SCHEMA_VERSION: int = 10
 
 
 def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
@@ -255,6 +255,22 @@ def _migrate_v8_to_v9(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migrate_v9_to_v10(conn: sqlite3.Connection) -> None:
+    """Records the active program version a workout synced against (ADR 020/034).
+
+    A draft captured against an older program may be accepted later as history
+    (#35). Storing the version that was active when it synced lets every reader
+    show the version difference without replaying program history. Legacy and
+    online-only sessions keep NULL.
+    """
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    if "workout_sessions" not in tables:
+        return
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(workout_sessions)").fetchall()}
+    if "active_program_version_at_sync" not in columns:
+        conn.execute("ALTER TABLE workout_sessions ADD COLUMN active_program_version_at_sync INTEGER")
+
+
 def get_user_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -349,6 +365,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     6: _migrate_v6_to_v7,
     7: _migrate_v7_to_v8,
     8: _migrate_v8_to_v9,
+    9: _migrate_v9_to_v10,
 }
 
 
