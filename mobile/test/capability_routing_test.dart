@@ -32,6 +32,29 @@ void main() {
         redirectFor(const AuthState.unauthenticated(), registerPath), isNull);
   });
 
+  test('password-recovery pages stay public through startup and login', () {
+    // A deep link must survive the loading→unauthenticated startup resolution.
+    expect(redirectFor(const AuthState.loading(), resetPasswordPath), isNull);
+    expect(redirectFor(const AuthState.loading(), forgotPasswordPath), isNull);
+    expect(redirectFor(const AuthState.unauthenticated(), resetPasswordPath),
+        isNull);
+    expect(redirectFor(const AuthState.unauthenticated(), forgotPasswordPath),
+        isNull);
+    // And it remains reachable for a signed-in device (success clears session).
+    expect(
+      redirectFor(
+          _authenticated(coach: true, onboarded: true), resetPasswordPath),
+      isNull,
+    );
+    expect(
+      redirectFor(
+          _authenticated(
+              coach: false, onboarded: false, hasRecoveryEmail: false),
+          forgotPasswordPath),
+      isNull,
+    );
+  });
+
   test('recovery email gates the authenticated area (ADR 007)', () {
     final AuthState gated =
         _authenticated(coach: false, onboarded: false, hasRecoveryEmail: false);
@@ -78,7 +101,8 @@ void main() {
   test('coach console and assignment routes are capability gated', () {
     // Any onboarded player may manage their own coaching assignment.
     expect(
-      redirectFor(_authenticated(coach: false, onboarded: true), assignmentPath),
+      redirectFor(
+          _authenticated(coach: false, onboarded: true), assignmentPath),
       isNull,
     );
     expect(
@@ -101,11 +125,13 @@ void main() {
   test('coach invite route is open to authenticated players', () {
     // Any onboarded account may redeem an owner invite, coach or not.
     expect(
-      redirectFor(_authenticated(coach: false, onboarded: true), coachInvitePath),
+      redirectFor(
+          _authenticated(coach: false, onboarded: true), coachInvitePath),
       isNull,
     );
     expect(
-      redirectFor(_authenticated(coach: true, onboarded: true), coachInvitePath),
+      redirectFor(
+          _authenticated(coach: true, onboarded: true), coachInvitePath),
       isNull,
     );
     // Onboarding still gates it, like every authenticated surface.

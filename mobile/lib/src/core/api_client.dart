@@ -669,6 +669,39 @@ class ApiClient {
     return persistedEmail;
   }
 
+  /// Requests a reset link for [email].
+  ///
+  /// Always resolves to the service's constant confirmation message
+  /// (anti-enumeration): nothing is disclosed about whether the email is linked.
+  Future<String> forgotPassword(String email) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/auth/forgot-password',
+        data: <String, dynamic>{'email': email},
+        options: Options(extra: {_skipAuth: true}),
+      ),
+    );
+    final dynamic message = (response.data as Map<String, dynamic>)['message'];
+    return message is String ? message : '';
+  }
+
+  /// Redeems a single-use reset token for a new password.
+  ///
+  /// An unknown, expired, or reused token surfaces the service's one generic
+  /// 400 message; a success revokes every prior session server-side.
+  Future<void> resetPassword({
+    required String token,
+    required String newPassword,
+  }) async {
+    await _send(
+      () => _dio.post<dynamic>(
+        '/auth/reset-password',
+        data: <String, dynamic>{'token': token, 'new_password': newPassword},
+        options: Options(extra: {_skipAuth: true}),
+      ),
+    );
+  }
+
   /// True when the account has completed onboarding (a profile exists).
   Future<bool> hasProfile() async {
     try {

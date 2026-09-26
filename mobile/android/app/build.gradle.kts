@@ -27,6 +27,11 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Host for the App Link reset intent-filter. Override per deployment
+        // with -PappLinkHost=api.example.com; defaults to the fly.toml app host.
+        manifestPlaceholders["appLinkHost"] =
+            (project.findProperty("appLinkHost") as String?) ?: "mayos-api.fly.dev"
     }
 
     buildTypes {

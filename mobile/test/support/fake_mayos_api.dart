@@ -19,6 +19,12 @@ class FakeMayosApi {
   String coachPlan = 'free';
   bool profileExists = false;
   String? recoveryEmail;
+  // Password recovery (#38).
+  String resetConfirmation =
+      'If this email is linked to a ledger, a reset link is on its way.';
+  String? validResetToken;
+  int forgotRequests = 0;
+  String? lastForgotEmail;
   // Player profile fields written through `PUT /profile` (#27).
   String repPreference = 'balanced';
   int weeklyFrequency = 4;
@@ -192,6 +198,10 @@ class FakeMayosApi {
         return _me(request);
       case '/auth/email':
         return _recoveryEmail(request);
+      case '/auth/forgot-password':
+        return _forgotPassword(request);
+      case '/auth/reset-password':
+        return _resetPassword(request);
       case '/coach/invite/redeem':
         return _redeemCoachInvite(request);
       case '/coach/profile':
@@ -313,6 +323,32 @@ class FakeMayosApi {
     }
     recoveryEmail = normalized;
     return FakeResponse(200, <String, dynamic>{'email': normalized});
+  }
+
+  FakeResponse _forgotPassword(FakeRequest request) {
+    forgotRequests++;
+    lastForgotEmail = request.body['email'] as String?;
+    // Anti-enumeration: always the same constant message, known or unknown.
+    return FakeResponse(202, <String, dynamic>{'message': resetConfirmation});
+  }
+
+  FakeResponse _resetPassword(FakeRequest request) {
+    final String? token = request.body['token'] as String?;
+    final String? password = request.body['new_password'] as String?;
+    if (password == null || password.length < 8) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'Password is too short.'});
+    }
+    if (validResetToken == null || token != validResetToken) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'Invalid or expired reset code.'});
+    }
+    validResetToken = null;
+    // A successful reset revokes every prior session.
+    tokenValid = false;
+    issuedToken = null;
+    return FakeResponse(
+        200, <String, dynamic>{'message': 'Password reset. Please log in.'});
   }
 
   FakeResponse _redeemCoachInvite(FakeRequest request) {

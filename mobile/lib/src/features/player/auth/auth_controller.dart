@@ -88,6 +88,27 @@ class AuthController extends StateNotifier<AuthState> {
     state = const AuthState.unauthenticated();
   }
 
+  /// Requests a reset link and returns the service's constant confirmation.
+  Future<String> requestPasswordReset(String email) =>
+      _repository.forgotPassword(email);
+
+  /// Completes a logged-out password reset and drops any local session.
+  ///
+  /// The reset revokes every prior session server-side (ADR 006), so the
+  /// in-memory state is cleared as well as the stored token.
+  Future<void> completePasswordReset({
+    required String token,
+    required String newPassword,
+  }) async {
+    final String? accountId = state.session?.account.accountId;
+    await _repository.resetPassword(
+      token: token,
+      newPassword: newPassword,
+      accountId: accountId,
+    );
+    state = const AuthState.unauthenticated();
+  }
+
   /// Redeems an owner-issued coach invite and applies the returned account.
   ///
   /// The grant response is authoritative: onboarding and recovery-email flags

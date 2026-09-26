@@ -61,6 +61,23 @@ class AuthRepository {
 
   Future<String> setRecoveryEmail(String email) => _api.setRecoveryEmail(email);
 
+  /// Requests a reset link, returning the service's constant confirmation.
+  Future<String> forgotPassword(String email) => _api.forgotPassword(email);
+
+  /// Redeems a single-use reset token, then drops the local session.
+  ///
+  /// The server revokes every prior session on success; clearing the device's
+  /// stored token (and cached chat) keeps a bearer that is now invalid from
+  /// lingering, so the next launch starts logged out.
+  Future<void> resetPassword({
+    required String token,
+    required String newPassword,
+    String? accountId,
+  }) async {
+    await _api.resetPassword(token: token, newPassword: newPassword);
+    await clearSession(accountId: accountId);
+  }
+
   /// Redeems an owner-issued coach invite and returns the updated account.
   ///
   /// The redeem response already carries the new capabilities, so no follow-up

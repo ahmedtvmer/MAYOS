@@ -26,8 +26,19 @@ primary_region = "fra"
   MODEL_DEVICE = "cpu"
   EMBEDDING_DEVICE = "cpu"
   HF_HOME = "/app/.cache/huggingface"
-  # Password-reset / App Link base for the Android client. Set per deployment.
-  # UI_BASE_URL = "https://mayos-api.fly.dev"
+  # Password-reset / App Link base: this app's public host. It must be identical
+  # in RESET_LINK_BASE_URL, the Android App Link intent-filter host
+  # (-PappLinkHost, default mayos-api.fly.dev) and where
+  # /.well-known/assetlinks.json is served. Read by service/email_sender.py.
+  RESET_LINK_BASE_URL = "https://mayos-api.fly.dev"
+  # CORS origin for the (legacy) web client; not used for reset links.
+  # UI_BASE_URL = "https://<web-app-host>"
+  # Android App Link association. Set the signing-cert SHA-256 fingerprint(s)
+  # (comma-separated; case/colons optional, normalised to uppercase
+  # colon-separated). Include both the upload key and the Play App Signing cert
+  # when distributing via Play. No valid fingerprint => the endpoint 404s.
+  # ANDROID_APP_PACKAGE = "com.mayos.mayos_mobile"
+  # ANDROID_APP_SHA256_CERT_FINGERPRINTS = "AA:BB:CC:..."
 
 [http_service]
   internal_port = 8000

@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -25,6 +26,7 @@ from svc.routers import (
     onboarding,
     profile,
     programs,
+    recovery,
     workouts,
 )
 from svc.schemas import HealthOut
@@ -32,6 +34,40 @@ from svc.schemas import HealthOut
 logger = logging.getLogger(__name__)
 
 _ready = {"model": False, "catalog": False, "storage": False, "draining": False}
+
+
+class RedactResetTokenFilter(logging.Filter):
+    """Redacts a ``token=…`` query value from log records.
+
+    Installed on ``uvicorn.access`` so the reset link's single-use token never
+    lands in access logs, regardless of the uvicorn CLI flags a deployment uses
+    (ADR 037). Applies to the message template and to every string argument, so
+    both pre-rendered and arg-formatted records are covered.
+    """
+
+    _TOKEN_QUERY = re.compile(r"(?i)(token=)[^&\s\"']+")
+
+    @classmethod
+    def _redact(cls, value: object) -> object:
+        return cls._TOKEN_QUERY.sub(r"\1[REDACTED]", value) if isinstance(value, str) else value
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = self._redact(record.msg)
+        if isinstance(record.args, tuple):
+            record.args = tuple(self._redact(arg) for arg in record.args)
+        elif isinstance(record.args, dict):
+            record.args = {key: self._redact(value) for key, value in record.args.items()}
+        return True
+
+
+def _install_access_log_redaction() -> None:
+    access_logger = logging.getLogger("uvicorn.access")
+    if not any(isinstance(existing, RedactResetTokenFilter) for existing in access_logger.filters):
+        access_logger.addFilter(RedactResetTokenFilter())
+
+
+_install_access_log_redaction()
 
 DEFAULT_ALERT_SWEEP_INTERVAL_SECONDS = 3600.0
 
@@ -143,6 +179,7 @@ def create_app() -> FastAPI:
         return JSONResponse(status_code=502, content={"detail": "Request failed. Please try again."})
 
     app.include_router(auth.router)
+    app.include_router(recovery.router)
     app.include_router(coach.router)
     app.include_router(assignments.coach_router)
     app.include_router(assignments.player_router)

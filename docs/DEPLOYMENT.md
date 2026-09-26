@@ -129,7 +129,10 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | :--- | :--- | :--- |
 | `JWT_SECRET` | **required** | HS256 token signing/verification; the service refuses to operate without it |
 | `JWT_EXPIRY_HOURS` | `2` | Access-token lifetime |
-| `UI_BASE_URL` | `http://localhost:8501` | CORS origin **and** password-reset link base |
+| `UI_BASE_URL` | `http://localhost:8501` | CORS origin (not used for reset links) |
+| `RESET_LINK_BASE_URL` | `http://localhost:8000` | Reset-link / App Link base; must match the App Link host |
+| `ANDROID_APP_PACKAGE` | `com.mayos.mayos_mobile` | App Link `assetlinks.json` package |
+| `ANDROID_APP_SHA256_CERT_FINGERPRINTS` | unset (⇒ 404) | App Link signing-cert SHA-256 fingerprints (case/colons optional; normalised) |
 | `API_BASE_URL` | `http://localhost:8000` | Streamlit → API base (compose sets `http://myos-api:8000`) |
 | `RESET_TOKEN_TTL_MINUTES` | `30` | Reset-link lifetime (clamped 5–120) |
 | `SMTP_HOST` | unset | **Unset ⇒ console-dev backend** (reset links logged, not sent). Configure for real deployments |
@@ -542,3 +545,112 @@ reset lands on the same catalog/ledger the API uses.
 - **Exercise demo media:** `data/images` and `data/videos` are large, gitignored
   local artifacts and are excluded from the build context, so `/media/*` does
   not serve them in this deployment yet.
+
+### 10.8 Password reset: App Link and hosted fallback (issue #38, ADR 037)
+
+The reset email links to `<RESET_LINK_BASE_URL>/reset-password?token=…`. When the
+app is installed, Android opens that https URL as an **App Link** directly in the
+app; otherwise the API's hosted page at the same path completes the reset in a
+browser.
+
+**One host, three places.** In production the hostname must be identical in:
+
+1. `RESET_LINK_BASE_URL` (the link the API emails),
+2. the Android App Link intent-filter host (`-PappLinkHost`, default
+   `mayos-api.fly.dev`), and
+3. the host serving `/.well-known/assetlinks.json` (the same API).
+
+A mismatch (for example an `app` redirect, www, or a different region hostname)
+breaks verification or the link.
+
+**Required configuration/secrets on the API Machine** (`${APP}` is the app name
+from `fly.toml`; the first two are configuration and may live in `[env]`):
+
+| Name | Value | Notes |
+| :--- | :--- | :--- |
+| `RESET_LINK_BASE_URL` | `https://${APP}.fly.dev` | Reset-link / App Link base. No `UI_BASE_URL` fallback; unset ⇒ localhost dev base |
+| `ANDROID_APP_PACKAGE` | `com.mayos.mayos_mobile` | Defaults if unset |
+| `ANDROID_APP_SHA256_CERT_FINGERPRINTS` | comma-separated SHA-256 | Upload key **and** Play App Signing cert; case/colons optional, normalised; none ⇒ 404 |
+| `SMTP_HOST` | SMTP relay host | **Unset ⇒ console-dev** (reset links only logged; unsafe on a shared host) |
+| `SMTP_PORT` | `587` | |
+| `SMTP_USE_TLS` | `true` | `false` uses implicit TLS |
+| `SMTP_USER` / `SMTP_PASSWORD` | relay credentials | Optional for an unauthenticated relay |
+| `SMTP_FROM` | from address | Defaults to `no-reply@mayos.local` |
+
+```bash
+# Reset-link base (must equal the -PappLinkHost used for the Android build).
+fly secrets set RESET_LINK_BASE_URL="https://${APP}.fly.dev"
+
+# App Link association (no fingerprint => assetlinks.json returns 404).
+fly secrets set ANDROID_APP_SHA256_CERT_FINGERPRINTS="AA:BB:CC:…,DD:EE:FF:…"
+
+# Outbound email (required for the reset mail to actually send).
+fly secrets set SMTP_HOST="<smtp-host>" SMTP_USER="<smtp-user>" \
+  SMTP_PASSWORD="<smtp-password>" SMTP_FROM="<from-address>"
+# Optional: SMTP_PORT, SMTP_USE_TLS.
+```
+
+**Get the signing-cert SHA-256 fingerprint(s):**
+
+```bash
+# Debug/local upload key:
+keytool -list -v -keystore ~/.android/debug.keystore \
+  -alias androiddebugkey -storepass android -keypass android | grep SHA256
+
+# Release/upload keystore:
+keytool -list -v -keystore <upload-keystore.jks> -alias <alias> | grep SHA256
+
+# Play App Signing (the cert Play re-signs with for installs):
+# Play Console -> your app -> Release -> Setup -> App signing -> SHA-256
+```
+
+Include **both** the upload key and the Play App Signing certificate when
+distributing through Play, so debug/CI installs and Play installs both verify.
+
+**Android build:** the App Link host is injected at build time (default
+`mayos-api.fly.dev`, matching `fly.toml`). Build with the same host:
+
+```bash
+cd mobile
+flutter build appbundle --release -PappLinkHost=mayos-api.fly.dev
+# or: flutter build apk --debug -PappLinkHost=mayos-api.fly.dev
+```
+
+**Verify the association** (after the app is installed on a device/emulator):
+
+```bash
+# The API must serve the statement with the configured fingerprints:
+curl -fsS "https://${APP}.fly.dev/.well-known/assetlinks.json"
+
+# Android must list and have verified the domain:
+adb shell pm get-app-links com.mayos.mayos_mobile
+adb shell pm verify-app-links --re-verify com.mayos.mayos_mobile
+# To clear a cached failure after fixing fingerprints:
+adb shell pm set-app-links --package com.mayos.mayos_mobile 0 all
+```
+
+**Manual round-trip checklist (deployed configuration — not yet run).** Run it
+once for a **player account** and once for a **coach account** (an account with
+both player and coach capabilities; the same app/login serves both):
+
+1. From the app, choose **Forgot password?**, enter the account's recovery email,
+   and submit. The same confirmation appears for any address (anti-enumeration).
+2. Confirm the email arrives. The body must say the link opens the MAYOS app if
+   installed, otherwise a secure web page, is single-use, and expires in the
+   configured `RESET_TOKEN_TTL_MINUTES`; the link is
+   `https://${APP}.fly.dev/reset-password?token=…`.
+3. Sign in to the account on a device first (tick **Keep me signed in** to cover
+   the remember-me session) so there is a live session to revoke.
+4. With the app installed, open the link: it opens **Reset password** with the
+   code prefilled. Uninstall the app and open the same link to check the hosted
+   page instead (the URL bar must drop the `token` query immediately, and the
+   page must never log/show the token).
+5. Set a new password. The old password is rejected; the pre-reset sessions are
+   rejected `401` — both the normal bearer token **and** the remember-me token
+   (ADR 010); login with the new password succeeds and the account keeps its
+   capabilities (a coach still shows the coach console).
+6. Re-open the same link (or reuse the token via `POST /auth/reset-password`):
+   it fails with the single generic error and changes nothing.
+7. Confirm no access-log line contains the token
+   (`fly logs | grep reset-password` shows `token=[REDACTED]`), and the hosted
+   response carries `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.

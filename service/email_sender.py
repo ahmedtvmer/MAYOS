@@ -15,12 +15,25 @@ from email.message import EmailMessage
 logger = logging.getLogger(__name__)
 
 
-def _ui_base_url() -> str:
-    return os.getenv("UI_BASE_URL", "http://localhost:8501").rstrip("/")
+def _reset_link_base_url() -> str:
+    """The base for reset links, defaulting to the API's own local base.
+
+    ``RESET_LINK_BASE_URL`` must be the public host that serves both
+    ``/reset-password`` and ``/.well-known/assetlinks.json``. There is no
+    ``UI_BASE_URL`` fallback: the legacy Streamlit UI does not serve the reset
+    path (ADR 037). The localhost default is for development only.
+    """
+    return os.getenv("RESET_LINK_BASE_URL", "http://localhost:8000").rstrip("/")
 
 
 def build_reset_link(token: str) -> str:
-    return f"{_ui_base_url()}/?reset_token={token}"
+    """Builds the reset link as ``<base>/reset-password?token=<token>``.
+
+    The path is an https Android App Link when installed, and the API's hosted
+    fallback page otherwise. The legacy ``?reset_token=`` Streamlit link was
+    retired with the Streamlit client (ADR 017/022/037).
+    """
+    return f"{_reset_link_base_url()}/reset-password?token={token}"
 
 
 def _console_send(to_email: str, subject: str, body: str) -> bool:
@@ -100,10 +113,18 @@ def send_program_request_email(to_email: str, coach_display_name: str, player_us
 
 
 def send_password_reset_email(to_email: str, reset_link: str) -> bool:
+    # Local import: password_reset imports this module, so a top-level import
+    # here would be circular. The TTL stays defined in one place.
+    from service.password_reset import reset_ttl
+
+    minutes = max(1, int(reset_ttl().total_seconds() // 60))
     subject = "Mayos Engine password reset"
     body = (
         "A password reset was requested for your Mayos training ledger.\n\n"
-        f"Reset link (valid briefly, single-use):\n{reset_link}\n\n"
+        "Open this link to set a new password. If the MAYOS app is installed it "
+        "opens the app; otherwise it opens a secure web page.\n\n"
+        f"{reset_link}\n\n"
+        f"This link is single-use and expires in {minutes} minutes.\n\n"
         "If you did not request this, ignore this message — your password is unchanged."
     )
     return _deliver(to_email, subject, body)

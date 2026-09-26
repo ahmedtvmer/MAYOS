@@ -51,6 +51,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool resetJustCompleted =
+        GoRouterState.of(context).uri.queryParameters['reset'] == '1';
     return Scaffold(
       appBar: AppBar(title: const Text('Log in')),
       body: SafeArea(
@@ -59,6 +61,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
+              if (resetJustCompleted)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    'Password changed. Sign in with your new password.',
+                  ),
+                ),
               TextField(
                 controller: _username,
                 textInputAction: TextInputAction.next,
@@ -103,6 +112,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               TextButton(
                 onPressed: _busy ? null : () => context.go(registerPath),
                 child: const Text('Create an account'),
+              ),
+              TextButton(
+                onPressed: _busy ? null : () => context.go(forgotPasswordPath),
+                child: const Text('Forgot password?'),
               ),
             ],
           ),

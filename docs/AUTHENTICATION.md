@@ -187,7 +187,11 @@ Defensive details:
 * Weak new passwords are rejected **before** token consumption — a failed attempt does not burn the link.
 * Unknown, expired, reused, and fabricated tokens all share one generic `400 Invalid or expired reset code.`
 * Expired and consumed tokens are pruned on each request.
-* The reset link points at `UI_BASE_URL/?reset_token=…`; the Recover Access tab prefills the code from the query string.
+* The reset link is `RESET_LINK_BASE_URL/reset-password?token=…`. There is no `UI_BASE_URL` fallback: the retired Streamlit UI does not serve `/reset-password`, so an unset `RESET_LINK_BASE_URL` defaults to the API's own local base (`http://localhost:8000`) for development only. The path is an **Android App Link** when the app is installed and a **hosted fallback page** otherwise. In production the host must be identical in all three places: `RESET_LINK_BASE_URL`, the Android App Link intent-filter host (`-PappLinkHost`), and where `/.well-known/assetlinks.json` is served.
+  * `GET /reset-password` on the API serves a self-contained HTML page (strict nonce CSP, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`) that reads the token from `location`, immediately scrubs it from the URL with `history.replaceState(null, '', location.pathname)`, and POSTs to `/auth/reset-password`; the token is never reflected into the HTML. A non-string error body (for example a 422 validation list) falls back to the generic message.
+  * `GET /.well-known/assetlinks.json` serves the Digital Asset Links statement (`ANDROID_APP_PACKAGE`, `ANDROID_APP_SHA256_CERT_FINGERPRINTS`). Each fingerprint may use upper/lower case and colons or not; it is normalised to the uppercase colon-separated 32-byte form, invalid entries are skipped with a logged warning, and no valid fingerprint returns 404 rather than an invalid file.
+  * The API installs an `uvicorn.access` log filter (`svc/app.py::RedactResetTokenFilter`) that rewrites any `token=…` query value to `token=[REDACTED]`, so the single-use token never lands in access logs regardless of the uvicorn CLI flags.
+* The legacy `UI_BASE_URL/?reset_token=…` link for the retired Streamlit Recover Access tab is no longer emitted (ADR 037).
 
 ---
 
@@ -237,6 +241,8 @@ Delivery failures are logged and swallowed; the client response stays generic. T
 | `POST /auth/email` | Bearer | 10/min | Normalizes; 400 on invalid/conflict |
 | `POST /auth/forgot-password` | — | 3/hour | Always 202 with generic message |
 | `POST /auth/reset-password` | — | 3/hour | Single-use token; bumps epoch |
+| `GET /reset-password` | — | — | Hosted fallback reset page (no-store, no-referrer, strict CSP) |
+| `GET /.well-known/assetlinks.json` | — | — | Android App Link statement; 404 when no fingerprint configured |
 
 Rate-limit keys combine the client IP with a bearer-token suffix when present, so authenticated clients do not share a bucket. All limits are overridable via `RATE_LIMIT_*` environment variables.
 
@@ -246,7 +252,10 @@ Rate-limit keys combine the client IP with a bearer-token suffix when present, s
 | :--- | :--- | :--- |
 | `JWT_SECRET` | **required** | HS256 signing/verification key; service refuses to start signing without it |
 | `JWT_EXPIRY_HOURS` | `2` | Access-token lifetime |
-| `UI_BASE_URL` | `http://localhost:8501` | CORS origin **and** reset-link base |
+| `UI_BASE_URL` | `http://localhost:8501` | CORS origin (not used for reset links) |
+| `RESET_LINK_BASE_URL` | `http://localhost:8000` | Reset-link / App Link base (`<base>/reset-password?token=…`) |
+| `ANDROID_APP_PACKAGE` | `com.mayos.mayos_mobile` | Package name in `assetlinks.json` |
+| `ANDROID_APP_SHA256_CERT_FINGERPRINTS` | unset (⇒ 404) | Comma-separated signing-cert SHA-256 fingerprints (case/colons optional; normalised) |
 | `RESET_TOKEN_TTL_MINUTES` | `30` | Clamped to 5–120 |
 | `SMTP_HOST` | unset | Unset ⇒ console-dev backend |
 | `SMTP_PORT` / `SMTP_USE_TLS` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | `587` / `true` / — / — / `no-reply@myos.local` | SMTP transport |
