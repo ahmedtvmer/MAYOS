@@ -54,6 +54,9 @@ class FakeMayosApi {
   int _publishedVersion = 0;
   int? programVersion;
   String? programPublishedByCoachAccountId;
+  // When true, `GET /programs/active` fails with a transient 500 (offline
+  // simulation for the Program tab's cache fallback, ADR 020/033).
+  bool activeProgramFails = false;
   bool coachControlsProgram = false;
   final List<Map<String, dynamic>> playerNotices = <Map<String, dynamic>>[];
 
@@ -61,6 +64,15 @@ class FakeMayosApi {
   final List<Map<String, dynamic>> programRequests = <Map<String, dynamic>>[];
   bool staleProgramRequest = false;
   int _programRequestSeq = 0;
+
+  // Offline workout sync (#34). ``sessionCommits`` is the idempotency record;
+  // ``committedSessions`` excludes replayed retries.
+  final List<Map<String, dynamic>> committedSessions = <Map<String, dynamic>>[];
+  final Map<String, Map<String, dynamic>> sessionCommits =
+      <String, Map<String, dynamic>>{};
+  int commitRequests = 0;
+  bool commitFails = false;
+  int _sessionSeq = 0;
 
   // Player training schedule and pauses (#30).
   List<Map<String, dynamic>> scheduleVersions = _defaultScheduleVersions();
@@ -90,6 +102,18 @@ class FakeMayosApi {
 
   FakeResponse _handle(FakeRequest request) {
     final String path = request.path;
+    if (path.startsWith('/workouts/sessions/by-client-id/')) {
+      return _sessionByClientId(request);
+    }
+    if (path == '/workouts/prescription') {
+      return _prescription(request);
+    }
+    if (path == '/workouts/exercises') {
+      return _searchExercises(request);
+    }
+    if (path == '/workouts/sessions') {
+      return _commitSession(request);
+    }
     if (path == '/assignments/me/check-ins') {
       return _playerCheckIns(request);
     }
@@ -1361,7 +1385,140 @@ class FakeMayosApi {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
     }
+    if (activeProgramFails) {
+      return const FakeResponse(
+          500, <String, dynamic>{'detail': 'The service is unavailable.'});
+    }
     return FakeResponse(200, _activeProgramBody());
+  }
+
+  FakeResponse _prescription(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    final int dayOrder =
+        int.tryParse('${request.query['day_order']}') ?? 1;
+    final List<dynamic> days =
+        _activeProgramBody()['days'] as List<dynamic>;
+    final Map<String, dynamic> day = days.firstWhere(
+      (dynamic entry) => (entry as Map<String, dynamic>)['day_order'] == dayOrder,
+      orElse: () => days.first as Map<String, dynamic>,
+    ) as Map<String, dynamic>;
+    final List<dynamic> exercises = day['exercises'] as List<dynamic>;
+    return FakeResponse(200, <String, dynamic>{
+      'fatigue_info': <String, dynamic>{
+        'deload_recommended': false,
+        'severity': 'NORMAL',
+        'volume_multiplier': 1.0,
+        'intensity_cap_rpe': null,
+        'recent_readiness_avg': null,
+      },
+      'targets': <Map<String, dynamic>>[
+        for (final dynamic entry in exercises)
+          <String, dynamic>{
+            'exercise_id': (entry as Map<String, dynamic>)['exercise_id'],
+            'exercise_name': entry['exercise_name'],
+            'is_barbell': (entry['exercise_name'] as String)
+                .toLowerCase()
+                .contains('barbell'),
+            'effective_sets': entry['target_sets'],
+            'target_rpe_cap': entry['target_rpe'],
+            'projected_weight': 60.0,
+            'last_perf': <dynamic>[],
+          },
+      ],
+    });
+  }
+
+  FakeResponse _searchExercises(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    final String query = '${request.query['query'] ?? ''}'.trim().toLowerCase();
+    const List<Map<String, dynamic>> catalog = <Map<String, dynamic>>[
+      <String, dynamic>{'id': 'bicep_curl', 'name': 'Bicep Curl'},
+      <String, dynamic>{'id': 'cable_fly', 'name': 'Cable Fly'},
+      <String, dynamic>{'id': 'bench_press', 'name': 'Bench Press'},
+    ];
+    final List<Map<String, dynamic>> matches = query.isEmpty
+        ? const <Map<String, dynamic>>[]
+        : catalog
+            .where((Map<String, dynamic> entry) =>
+                (entry['name'] as String).toLowerCase().contains(query))
+            .toList(growable: false);
+    return FakeResponse(
+        200, <String, dynamic>{'exercises': List<Map<String, dynamic>>.from(matches)});
+  }
+
+  FakeResponse _commitSession(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    commitRequests++;
+    if (commitFails) {
+      return const FakeResponse(
+          500, <String, dynamic>{'detail': 'The service is unavailable.'});
+    }
+    final Map<String, dynamic> body = request.body;
+    final String? clientId = body['client_session_id'] as String?;
+    if (clientId != null) {
+      final Map<String, dynamic>? stored = sessionCommits[clientId];
+      if (stored != null) {
+        return FakeResponse(200, stored);
+      }
+      final int requested = (body['program_version'] as num?)?.toInt() ?? -1;
+      if (requested != (programVersion ?? 0)) {
+        return FakeResponse(409, <String, dynamic>{
+          'error': 'program_version_mismatch',
+          'active_version': programVersion ?? 0,
+        });
+      }
+    }
+    final Map<String, dynamic> session = _sessionResponse(body);
+    if (clientId != null) {
+      sessionCommits[clientId] = session;
+      committedSessions.add(session);
+    }
+    return FakeResponse(201, session);
+  }
+
+  Map<String, dynamic> _sessionResponse(Map<String, dynamic> body) {
+    final List<dynamic> sets = body['sets'] as List<dynamic>? ?? const <dynamic>[];
+    int working = 0;
+    for (final dynamic entry in sets) {
+      working += ((entry as Map<String, dynamic>)['sets'] as List<dynamic>).length;
+    }
+    _sessionSeq++;
+    return <String, dynamic>{
+      'session_id': 'session-$_sessionSeq',
+      'total_tonnage_kg': 1000.0,
+      'total_working_sets': working,
+      'exercise_summaries': <dynamic>[],
+      'debrief': 'Great work!',
+      'pointer': 'Session logged.',
+      'fatigue_post': <String, dynamic>{'deload_recommended': false},
+      'new_prs': <dynamic>[],
+      'divergences': <dynamic>[],
+    };
+  }
+
+  FakeResponse _sessionByClientId(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    final String id = request.path
+        .replaceFirst('/workouts/sessions/by-client-id/', '');
+    final Map<String, dynamic>? stored = sessionCommits[id];
+    if (stored == null) {
+      return const FakeResponse(404, <String, dynamic>{
+        'detail': 'No committed session for this client session id.'
+      });
+    }
+    return FakeResponse(200, stored);
   }
 
   FakeResponse _volume(FakeRequest request) {
@@ -1428,6 +1585,7 @@ class FakeMayosApi {
       _publishedVersion = 0;
       programVersion = null;
       programPublishedByCoachAccountId = null;
+      activeProgramFails = false;
       coachControlsProgram = false;
       playerNotices.clear();
       programRequests.clear();
@@ -1447,6 +1605,11 @@ class FakeMayosApi {
       _assistantMessages = <String>[];
       _onboardingComplete = false;
       nullOnboardingProgram = false;
+      committedSessions.clear();
+      sessionCommits.clear();
+      commitRequests = 0;
+      commitFails = false;
+      _sessionSeq = 0;
     }
   }
 

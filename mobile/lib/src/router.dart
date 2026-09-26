@@ -16,6 +16,8 @@ import 'features/player/home/player_home_screen.dart';
 import 'features/player/onboarding/onboarding_screen.dart';
 import 'features/player/plan/plan_screen.dart';
 import 'features/player/profile/profile_screen.dart';
+import 'features/player/workout/workout_drafts_screen.dart';
+import 'features/player/workout/workout_logger_screen.dart';
 import 'features/shared/splash_screen.dart';
 import 'providers.dart';
 
@@ -31,6 +33,8 @@ const String coachInvitePath = '/coach-invite';
 const String coachAssignmentsPath = '/coach/assignments';
 const String coachAlertsPath = '/coach/alerts';
 const String assignmentPath = '/assignment';
+const String workoutsPath = '/workouts';
+const String logWorkoutPath = '/log-workout';
 const String splashPath = '/splash';
 
 /// Pure routing decision, kept separate so capability gating is unit-testable.
@@ -164,6 +168,22 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         builder: (BuildContext context, GoRouterState state) => Scaffold(
           appBar: AppBar(title: const Text('Coaching')),
           body: const PlayerAssignmentScreen(),
+        ),
+      ),
+      GoRoute(
+        path: workoutsPath,
+        builder: (BuildContext context, GoRouterState state) => Scaffold(
+          appBar: AppBar(title: const Text('Workouts')),
+          body: const WorkoutDraftsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '$logWorkoutPath/:day',
+        builder: (BuildContext context, GoRouterState state) => Scaffold(
+          appBar: AppBar(title: const Text('Log workout')),
+          body: WorkoutLoggerScreen(
+            dayOrder: int.tryParse(state.pathParameters['day'] ?? '') ?? 1,
+          ),
         ),
       ),
     ],

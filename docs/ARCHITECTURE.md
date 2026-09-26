@@ -227,7 +227,7 @@ sequenceDiagram
 
 ### Ledger Schema Evolution (ADR 005)
 
-User ledgers carry a schema version in `PRAGMA user_version` (current target: **v8**) and migrate **lazily** when mounted by `switch_user()`:
+User ledgers carry a schema version in `PRAGMA user_version` (current target: **v9**) and migrate **lazily** when mounted by `switch_user()`:
 
 * On upgrade, an atomic pre-migration snapshot is written with `sqlite3.Connection.backup()` (WAL-safe, online) into `db/backups/<user>/`, followed by sequential migration steps inside a transaction.
 * A 3+1 retention policy keeps three rolling snapshots plus immutable pre-migration backups; failure triggers rollback from the snapshot.
@@ -235,6 +235,7 @@ User ledgers carry a schema version in `PRAGMA user_version` (current target: **
 * **v4** adds `personal_records` and backfills historical PRs (heaviest set per exact rep count + best e1RM) from `workout_sets` with first-achievement timestamps (ADR 009).
 * **v7** adds `session_divergences`: factual skipped/unplanned rows on workout history, cascading with their session (ADR 018/028).
 * **v8** adds `training_schedules` and `training_pauses`: the player's effective-dated expected weekdays/timezone and prospective pauses, separate from program state (ADR 029).
+* **v9** adds the offline-sync contract: `workout_sessions` gains the client session id (unique where present), performed timezone, captured program version, and capture/upload timestamps, and `session_commits` stores the exact response for a client session id so retries replay it (ADR 020/033).
 
 ### Catalog Account Tables (ADR 007)
 

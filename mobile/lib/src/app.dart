@@ -20,6 +20,10 @@ class _MayosAppState extends ConsumerState<MayosApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Eagerly build the draft sync service so its auth listener is attached
+    // before any screen reads it, so a stored session starts syncing at app
+    // start rather than only once the home screen mounts (ADR 020/033).
+    ref.read(draftSyncServiceProvider);
     // Resolve any persisted session once, off the first frame.
     Future<void>.microtask(
       () => ref.read(authControllerProvider.notifier).initialize(),
@@ -37,6 +41,10 @@ class _MayosAppState extends ConsumerState<MayosApp>
     if (state == AppLifecycleState.resumed) {
       // Grants/revocations can happen elsewhere; refresh live capabilities.
       unawaited(ref.read(authControllerProvider.notifier).refreshAccount());
+      ref.read(draftSyncServiceProvider).resumeForeground();
+    } else if (state == AppLifecycleState.paused) {
+      // Offline drafts sync only while the app is in the foreground (ADR 020/033).
+      ref.read(draftSyncServiceProvider).pauseForeground();
     }
   }
 

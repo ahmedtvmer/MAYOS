@@ -1191,6 +1191,18 @@ class ProgramExercise {
       '$targetSets × $targetRepsMin–$targetRepsMax @ RPE ${targetRpe.toStringAsFixed(1)}';
 
   String get restLabel => 'rest ${restSeconds}s';
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'exercise_id': exerciseId,
+        'exercise_name': exerciseName,
+        'target_sets': targetSets,
+        'target_reps_min': targetRepsMin,
+        'target_reps_max': targetRepsMax,
+        'target_rpe': targetRpe,
+        'warmup_sets': warmupSets,
+        'rest_seconds': restSeconds,
+        'notes': notes,
+      };
 }
 
 /// `WarmupExerciseSchema`: a general preparation movement for a training day.
@@ -1223,6 +1235,15 @@ class WarmupExercise {
   bool get hasNotes => notes != null && notes!.isNotEmpty;
 
   String get prescription => '$sets × $reps · rest ${restSeconds}s';
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'exercise_id': exerciseId,
+        'exercise_name': exerciseName,
+        'sets': sets,
+        'reps': reps,
+        'rest_seconds': restSeconds,
+        'notes': notes,
+      };
 }
 
 class ProgramDay {
@@ -1258,6 +1279,18 @@ class ProgramDay {
   bool get hasWarmup => warmupExercises.isNotEmpty;
 
   bool get hasCardio => cardio != null && cardio!.isNotEmpty;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'day_name': dayName,
+        'day_order': dayOrder,
+        'warmup_exercises': <Map<String, dynamic>>[
+          for (final WarmupExercise warmup in warmupExercises) warmup.toJson(),
+        ],
+        'exercises': <Map<String, dynamic>>[
+          for (final ProgramExercise exercise in exercises) exercise.toJson(),
+        ],
+        'cardio': cardio,
+      };
 }
 
 /// `GeneratedProgramSchema` from `GET /programs/active`.
@@ -1296,6 +1329,17 @@ class TrainingProgram {
   final String? publishedByCoachAccountId;
 
   bool get isCoachPublished => publishedByCoachAccountId != null;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'program_name': programName,
+        'split_type': splitType,
+        'weekly_frequency': weeklyFrequency,
+        'days': <Map<String, dynamic>>[
+          for (final ProgramDay day in days) day.toJson(),
+        ],
+        'version': version,
+        'published_by_coach_account_id': publishedByCoachAccountId,
+      };
 }
 
 /// `GET /dashboard/personal-records` entry.
@@ -1324,4 +1368,371 @@ class PersonalRecord {
   final int reps;
   final double value;
   final String achievedAt;
+}
+
+/// One entered set in the offline workout logger (ADR 020/033).
+class WorkoutSetLog {
+  const WorkoutSetLog({
+    required this.weightKg,
+    required this.reps,
+    required this.rpe,
+    this.isWarmup = false,
+  });
+
+  factory WorkoutSetLog.fromJson(Map<String, dynamic> json) => WorkoutSetLog(
+        weightKg: (json['weight_kg'] as num?)?.toDouble() ?? 0,
+        reps: (json['reps'] as num?)?.toInt() ?? 0,
+        rpe: (json['rpe'] as num?)?.toDouble() ?? 8.5,
+        isWarmup: json['is_warmup'] as bool? ?? false,
+      );
+
+  final double weightKg;
+  final int reps;
+  final double rpe;
+  final bool isWarmup;
+
+  WorkoutSetLog copyWith({
+    double? weightKg,
+    int? reps,
+    double? rpe,
+    bool? isWarmup,
+  }) =>
+      WorkoutSetLog(
+        weightKg: weightKg ?? this.weightKg,
+        reps: reps ?? this.reps,
+        rpe: rpe ?? this.rpe,
+        isWarmup: isWarmup ?? this.isWarmup,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'weight_kg': weightKg,
+        'reps': reps,
+        'rpe': rpe,
+        'is_warmup': isWarmup,
+      };
+}
+
+/// One exercise (prescribed or unplanned) captured in a workout draft.
+///
+/// [exercise] is the exact `ProgramExerciseSchema` payload the service expects,
+/// so an offline draft can be replayed later without the program being present.
+class DraftExercise {
+  const DraftExercise({
+    required this.exercise,
+    required this.sets,
+    this.skipped = false,
+  });
+
+  factory DraftExercise.fromJson(Map<String, dynamic> json) => DraftExercise(
+        exercise: Map<String, dynamic>.from(
+            json['exercise'] as Map<String, dynamic>),
+        sets: (json['sets'] as List<dynamic>? ?? const <dynamic>[])
+            .map((dynamic s) =>
+                WorkoutSetLog.fromJson(s as Map<String, dynamic>))
+            .toList(growable: false),
+        skipped: json['skipped'] as bool? ?? false,
+      );
+
+  final Map<String, dynamic> exercise;
+  final List<WorkoutSetLog> sets;
+  final bool skipped;
+
+  String get exerciseId => exercise['exercise_id'] as String;
+  String get exerciseName => exercise['exercise_name'] as String;
+  bool get hasWorkingSets =>
+      !skipped && sets.any((WorkoutSetLog s) => !s.isWarmup);
+
+  DraftExercise copyWith({
+    List<WorkoutSetLog>? sets,
+    bool? skipped,
+  }) =>
+      DraftExercise(
+        exercise: exercise,
+        sets: sets ?? this.sets,
+        skipped: skipped ?? this.skipped,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'exercise': exercise,
+        'sets': <Map<String, dynamic>>[
+          for (final WorkoutSetLog set in sets) set.toJson(),
+        ],
+        'skipped': skipped,
+      };
+}
+
+/// Draft sync states (ADR 020/033). Wire strings match the storage contract.
+abstract final class DraftStatus {
+  static const String pending = 'pending';
+  static const String syncing = 'syncing';
+  static const String synced = 'synced';
+  static const String needsReconciliation = 'needs_reconciliation';
+}
+
+/// A workout recorded on the device but not yet committed to history (ADR 020).
+///
+/// The [clientSessionId] is generated once at creation and never changes, so a
+/// lost response can be reconciled and a retry can never create a second
+/// session.
+class WorkoutDraft {
+  const WorkoutDraft({
+    required this.clientSessionId,
+    required this.accountId,
+    required this.performedDate,
+    required this.performedTimezone,
+    required this.programVersion,
+    required this.dayOrder,
+    required this.dayName,
+    required this.capturedAt,
+    required this.exercises,
+    required this.readiness,
+    this.notes = '',
+    this.status = DraftStatus.pending,
+    this.lastError,
+    this.serverResponse,
+    required this.updatedAt,
+    this.attempt = 0,
+    this.nextAttemptAt,
+  });
+
+  factory WorkoutDraft.fromJson(Map<String, dynamic> json) => WorkoutDraft(
+        clientSessionId: json['client_session_id'] as String,
+        accountId: json['account_id'] as String,
+        performedDate: json['performed_date'] as String,
+        performedTimezone: json['performed_timezone'] as String,
+        programVersion: (json['program_version'] as num).toInt(),
+        dayOrder: (json['day_order'] as num).toInt(),
+        dayName: json['day_name'] as String? ?? 'Day',
+        capturedAt: json['captured_at'] as String,
+        exercises: (json['exercises'] as List<dynamic>? ?? const <dynamic>[])
+            .map((dynamic e) =>
+                DraftExercise.fromJson(e as Map<String, dynamic>))
+            .toList(growable: false),
+        readiness: (json['readiness'] as num?)?.toInt() ?? 4,
+        notes: json['notes'] as String? ?? '',
+        status: json['status'] as String? ?? DraftStatus.pending,
+        lastError: json['last_error'] as String?,
+        serverResponse: json['server_response'] as Map<String, dynamic>?,
+        updatedAt: json['updated_at'] as String? ?? '',
+        attempt: (json['attempt'] as num?)?.toInt() ?? 0,
+        nextAttemptAt: json['next_attempt_at'] as String?,
+      );
+
+  final String clientSessionId;
+  final String accountId;
+  final String performedDate;
+  final String performedTimezone;
+  final int programVersion;
+  final int dayOrder;
+  final String dayName;
+  final String capturedAt;
+  final List<DraftExercise> exercises;
+  final int readiness;
+  final String notes;
+  final String status;
+  final String? lastError;
+  final Map<String, dynamic>? serverResponse;
+  final String updatedAt;
+
+  /// Consecutive network/timeout/5xx failures since the last success or
+  /// manual retry, driving the exponential backoff delay (ADR 020/033).
+  final int attempt;
+
+  /// The earliest instant (ISO, same clock as [capturedAt]/[updatedAt]) a
+  /// backed-off draft may be retried; null when due immediately.
+  final String? nextAttemptAt;
+
+  bool get isSynced => status == DraftStatus.synced;
+
+  bool get needsAttention => status == DraftStatus.needsReconciliation;
+
+  bool get inFlight => status == DraftStatus.syncing;
+
+  /// True for a draft that is not yet committed (pending, syncing, or failed).
+  bool get isUnsynced => !isSynced;
+
+  int get workingSetCount => exercises.fold<int>(
+      0,
+      (int total, DraftExercise exercise) =>
+          total +
+          (exercise.skipped
+              ? 0
+              : exercise.sets
+                  .where((WorkoutSetLog s) => !s.isWarmup)
+                  .length));
+
+  String get statusLabel => switch (status) {
+        DraftStatus.pending || DraftStatus.syncing => 'Pending',
+        DraftStatus.synced => 'Synced',
+        DraftStatus.needsReconciliation => 'Needs attention',
+        _ => status,
+      };
+
+  WorkoutDraft copyWith({
+    String? status,
+    String? lastError,
+    Map<String, dynamic>? serverResponse,
+    String? updatedAt,
+    int? attempt,
+    String? nextAttemptAt,
+    bool clearNextAttempt = false,
+    bool clearLastError = false,
+  }) =>
+      WorkoutDraft(
+        clientSessionId: clientSessionId,
+        accountId: accountId,
+        performedDate: performedDate,
+        performedTimezone: performedTimezone,
+        programVersion: programVersion,
+        dayOrder: dayOrder,
+        dayName: dayName,
+        capturedAt: capturedAt,
+        exercises: exercises,
+        readiness: readiness,
+        notes: notes,
+        status: status ?? this.status,
+        lastError: clearLastError ? null : (lastError ?? this.lastError),
+        serverResponse: serverResponse ?? this.serverResponse,
+        updatedAt: updatedAt ?? this.updatedAt,
+        attempt: attempt ?? this.attempt,
+        nextAttemptAt:
+            clearNextAttempt ? null : (nextAttemptAt ?? this.nextAttemptAt),
+      );
+
+  /// The `POST /workouts/sessions` body for this draft.
+  Map<String, dynamic> toCommitBody() => <String, dynamic>{
+        'day_order': dayOrder,
+        'readiness': readiness,
+        'session_notes': notes,
+        'sets': <Map<String, dynamic>>[
+          for (final DraftExercise exercise in exercises)
+            if (!exercise.skipped && exercise.sets.isNotEmpty)
+              <String, dynamic>{
+                'exercise': exercise.exercise,
+                'sets': <Map<String, dynamic>>[
+                  for (final WorkoutSetLog set in exercise.sets) set.toJson(),
+                ],
+              },
+        ],
+        'client_session_id': clientSessionId,
+        'performed_date': performedDate,
+        'performed_timezone': performedTimezone,
+        'program_version': programVersion,
+        'captured_at': capturedAt,
+      };
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'client_session_id': clientSessionId,
+        'account_id': accountId,
+        'performed_date': performedDate,
+        'performed_timezone': performedTimezone,
+        'program_version': programVersion,
+        'day_order': dayOrder,
+        'day_name': dayName,
+        'captured_at': capturedAt,
+        'exercises': <Map<String, dynamic>>[
+          for (final DraftExercise exercise in exercises) exercise.toJson(),
+        ],
+        'readiness': readiness,
+        'notes': notes,
+        'status': status,
+        'last_error': lastError,
+        'server_response': serverResponse,
+        'updated_at': updatedAt,
+        'attempt': attempt,
+        'next_attempt_at': nextAttemptAt,
+      };
+}
+
+/// One auto-regulated target from `GET /workouts/prescription`.
+class PrescriptionTarget {
+  const PrescriptionTarget({
+    required this.exerciseId,
+    required this.exerciseName,
+    required this.isBarbell,
+    required this.effectiveSets,
+    required this.targetRpeCap,
+    required this.projectedWeight,
+    this.lastPerf = const <Map<String, dynamic>>[],
+  });
+
+  factory PrescriptionTarget.fromJson(Map<String, dynamic> json) =>
+      PrescriptionTarget(
+        exerciseId: json['exercise_id'] as String,
+        exerciseName: json['exercise_name'] as String? ?? '',
+        isBarbell: json['is_barbell'] as bool? ?? false,
+        effectiveSets: (json['effective_sets'] as num?)?.toInt() ?? 3,
+        targetRpeCap: (json['target_rpe_cap'] as num?)?.toDouble() ?? 8.5,
+        projectedWeight: (json['projected_weight'] as num?)?.toDouble() ?? 0,
+        lastPerf: (json['last_perf'] as List<dynamic>? ?? const <dynamic>[])
+            .map((dynamic s) => Map<String, dynamic>.from(s as Map<String, dynamic>))
+            .toList(growable: false),
+      );
+
+  final String exerciseId;
+  final String exerciseName;
+  final bool isBarbell;
+  final int effectiveSets;
+  final double targetRpeCap;
+  final double projectedWeight;
+  final List<Map<String, dynamic>> lastPerf;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'exercise_id': exerciseId,
+        'exercise_name': exerciseName,
+        'is_barbell': isBarbell,
+        'effective_sets': effectiveSets,
+        'target_rpe_cap': targetRpeCap,
+        'projected_weight': projectedWeight,
+        'last_perf': lastPerf,
+      };
+}
+
+/// `GET /workouts/prescription`: fatigue state and auto-regulated targets.
+class Prescription {
+  const Prescription({this.fatigueInfo = const <String, dynamic>{}, required this.targets});
+
+  factory Prescription.fromJson(Map<String, dynamic> json) => Prescription(
+        fatigueInfo: Map<String, dynamic>.from(
+            (json['fatigue_info'] as Map<String, dynamic>?) ??
+                const <String, dynamic>{}),
+        targets: (json['targets'] as List<dynamic>? ?? const <dynamic>[])
+            .map((dynamic t) =>
+                PrescriptionTarget.fromJson(t as Map<String, dynamic>))
+            .toList(growable: false),
+      );
+
+  final Map<String, dynamic> fatigueInfo;
+  final List<PrescriptionTarget> targets;
+
+  PrescriptionTarget? forExercise(String exerciseId) {
+    for (final PrescriptionTarget target in targets) {
+      if (target.exerciseId == exerciseId) {
+        return target;
+      }
+    }
+    return null;
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'fatigue_info': fatigueInfo,
+        'targets': <Map<String, dynamic>>[
+          for (final PrescriptionTarget target in targets) target.toJson(),
+        ],
+      };
+}
+
+/// One catalog exercise from `GET /workouts/exercises?query=`, used to pick a
+/// real unplanned exercise instead of inventing an id (ADR 020/033, #34).
+class ExerciseCatalogEntry {
+  const ExerciseCatalogEntry({required this.id, required this.name});
+
+  factory ExerciseCatalogEntry.fromJson(Map<String, dynamic> json) =>
+      ExerciseCatalogEntry(
+        id: json['id'] as String,
+        name: json['name'] as String,
+      );
+
+  final String id;
+  final String name;
 }

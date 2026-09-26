@@ -344,7 +344,20 @@ class DatabaseManager:
                 completed_at TEXT,
                 session_notes TEXT,
                 readiness_score INTEGER CHECK(readiness_score BETWEEN 1 AND 5),
-                coach_debrief TEXT
+                coach_debrief TEXT,
+                client_session_id TEXT,
+                performed_timezone TEXT,
+                program_version INTEGER,
+                captured_at TEXT,
+                uploaded_at TEXT
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_workout_sessions_client
+                ON workout_sessions(client_session_id) WHERE client_session_id IS NOT NULL;
+            CREATE TABLE IF NOT EXISTS session_commits (
+                client_session_id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                response_json TEXT NOT NULL,
+                committed_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS workout_sets (
                 id TEXT PRIMARY KEY,
@@ -999,6 +1012,90 @@ class DatabaseManager:
         """Commits a standalone catalog write, or defers to the active transaction."""
         if getattr(self._local, "catalog_tx_depth", 0) == 0:
             self.catalog_conn.commit()
+
+    # ------------------------------------------------------------------
+    # Ledger transactions. All writes for one workout commit run inside a
+    # single explicit transaction on this thread's mounted ledger connection
+    # (ADR 020/033). Ledger write helpers detect the active transaction and
+    # skip their own commit, so a failure anywhere rolls the whole commit back.
+    # ------------------------------------------------------------------
+
+    @contextmanager
+    def ledger_transaction(self) -> Iterator[None]:
+        """Runs a group of ledger writes atomically.
+
+        Re-entrant: nested calls join the outermost transaction. On error the
+        whole group is rolled back and the exception re-raised.
+        """
+        conn = self.conn
+        depth = getattr(self._local, "ledger_tx_depth", 0)
+        self._local.ledger_tx_depth = depth + 1
+        outermost = depth == 0
+        original_isolation = conn.isolation_level
+        if outermost:
+            conn.isolation_level = None
+            conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield
+        except Exception:
+            if outermost:
+                conn.execute("ROLLBACK")
+            raise
+        else:
+            if outermost:
+                conn.execute("COMMIT")
+        finally:
+            self._local.ledger_tx_depth = depth
+            if outermost:
+                conn.isolation_level = original_isolation
+
+    def _commit_ledger(self) -> None:
+        """Commits a standalone ledger write, or defers to the active transaction."""
+        if getattr(self._local, "ledger_tx_depth", 0) == 0:
+            self.conn.commit()
+
+    def commit_ledger(self) -> None:
+        """Public seam for ledger writers outside this module (e.g. ``agent.progression_engine``)."""
+        self._commit_ledger()
+
+    # ------------------------------------------------------------------
+    # Idempotent offline-session commits (ADR 020/033, #34). The exact
+    # response stored against the client session id is replayed on retry.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _session_commit_from_row(row: Any) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        return {
+            "client_session_id": str(row[0]),
+            "session_id": str(row[1]),
+            "response_json": str(row[2]),
+            "committed_at": str(row[3]),
+        }
+
+    def get_session_commit(self, client_session_id: str) -> dict[str, Any] | None:
+        """The stored commit for a client session id, or None when never committed."""
+        if not client_session_id:
+            return None
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT client_session_id, session_id, response_json, committed_at"
+            " FROM session_commits WHERE client_session_id = ?",
+            (str(client_session_id),),
+        )
+        return self._session_commit_from_row(cursor.fetchone())
+
+    def record_session_commit(
+        self, client_session_id: str, session_id: str, response_json: str, committed_at: str
+    ) -> None:
+        """Stores the exact response for a client session id (idempotency record)."""
+        self.conn.execute(
+            "INSERT INTO session_commits (client_session_id, session_id, response_json, committed_at)"
+            " VALUES (?, ?, ?, ?)",
+            (str(client_session_id), str(session_id), response_json, committed_at),
+        )
+        self._commit_ledger()
 
     # ------------------------------------------------------------------
     # coach_alerts generalised shape (ADR 031). The table + index DDL lives
@@ -2835,17 +2932,36 @@ class DatabaseManager:
         completed_at: str,
         readiness_score: int = 4,
         notes: str = "",
+        client_session_id: str | None = None,
+        performed_timezone: str | None = None,
+        program_version: int | None = None,
+        captured_at: str | None = None,
+        uploaded_at: str | None = None,
     ) -> None:
         cursor = self.conn.cursor()
         cursor.execute(
             """
             INSERT INTO workout_sessions (
-                id, session_date, split_name, started_at, completed_at, session_notes, readiness_score
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                id, session_date, split_name, started_at, completed_at, session_notes, readiness_score,
+                client_session_id, performed_timezone, program_version, captured_at, uploaded_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-            (session_id, session_date, split_name, started_at, completed_at, notes, readiness_score),
+            (
+                session_id,
+                session_date,
+                split_name,
+                started_at,
+                completed_at,
+                notes,
+                readiness_score,
+                client_session_id,
+                performed_timezone,
+                program_version,
+                captured_at,
+                uploaded_at,
+            ),
         )
-        self.conn.commit()
+        self._commit_ledger()
 
     def log_workout_set(
         self,
@@ -2890,7 +3006,7 @@ class DatabaseManager:
         """,
             sets_payload,
         )
-        self.conn.commit()
+        self._commit_ledger()
 
     def get_latest_session_summary(self) -> dict[str, Any] | None:
         cursor = self.conn.cursor()
@@ -2994,7 +3110,7 @@ class DatabaseManager:
         """,
             payload,
         )
-        self.conn.commit()
+        self._commit_ledger()
 
     def list_session_divergences(self, session_id: str) -> list[dict[str, Any]]:
         cursor = self.conn.cursor()
@@ -3395,7 +3511,7 @@ class DatabaseManager:
     def save_session_debrief(self, session_id: str, debrief: str) -> None:
         cursor = self.conn.cursor()
         cursor.execute("UPDATE workout_sessions SET coach_debrief = ? WHERE id = ?", (debrief.strip(), session_id))
-        self.conn.commit()
+        self._commit_ledger()
 
     def get_session_debrief(self, session_id: str) -> str | None:
         cursor = self.conn.cursor()
@@ -3410,7 +3526,7 @@ class DatabaseManager:
             "INSERT INTO chat_history (id, role, content, created_at) VALUES (?, ?, ?, ?)",
             (msg_id, role, content, datetime.now(UTC).isoformat()),
         )
-        self.conn.commit()
+        self._commit_ledger()
         return msg_id
 
     def get_chat_history(self, limit: int | None = None) -> list[dict[str, Any]]:

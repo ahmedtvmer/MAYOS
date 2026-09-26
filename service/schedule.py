@@ -79,7 +79,7 @@ def current_schedule(
     return db.get_schedule_effective_on(trainee_id, today.isoformat()), today
 
 
-def _parse_date(value: Any, field: str) -> date:
+def parse_iso_date(value: Any, field: str) -> date:
     """A strict ``YYYY-MM-DD`` date; basic ISO forms (``20260901``) are refused."""
     if not isinstance(value, str) or len(value) != 10:
         raise ValueError(f"{field} must be an ISO date (YYYY-MM-DD).")
@@ -137,7 +137,7 @@ def set_schedule(db: Any, trainee_id: str, payload: dict[str, Any]) -> dict[str,
     today = local_today(db, trainee_id, fallback_timezone=timezone)
     raw_effective_from = payload.get("effective_from")
     if raw_effective_from:
-        effective_from = _parse_date(raw_effective_from, "effective_from")
+        effective_from = parse_iso_date(raw_effective_from, "effective_from")
         if effective_from < today:
             raise ValueError("A schedule cannot take effect in the past.")
     else:
@@ -162,8 +162,8 @@ def schedule_pause(
     rejected for starting on their own local today.
     """
     now_iso = _now_iso()
-    starts_on = _parse_date(payload.get("starts_on"), "starts_on")
-    ends_on = _parse_date(payload.get("ends_on"), "ends_on")
+    starts_on = parse_iso_date(payload.get("starts_on"), "starts_on")
+    ends_on = parse_iso_date(payload.get("ends_on"), "ends_on")
     _, today = current_schedule(db, trainee_id)
     if starts_on < today:
         raise ValueError("A pause must start today or later.")

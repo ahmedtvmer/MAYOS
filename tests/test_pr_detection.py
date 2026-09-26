@@ -31,7 +31,7 @@ def pr_db():
             FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE
         );
     """)
-    database = SimpleNamespace(conn=conn, user_conn=conn)
+    database = SimpleNamespace(conn=conn, user_conn=conn, commit_ledger=conn.commit)
     try:
         yield database, conn
     finally:

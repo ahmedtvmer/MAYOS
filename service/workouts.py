@@ -1,9 +1,13 @@
 """Workout prescription and session-commit logic (moved verbatim from the UI layer)."""
 
+import json
 import logging
+import sqlite3
 import uuid
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from agent.debrief import generate_session_debrief
 from agent.progression_engine import (
@@ -14,10 +18,122 @@ from agent.progression_engine import (
 )
 from core.warmup import calculate_warmup_sets
 from service._base import bind_user
-from service.schedule import local_today
+from service.schedule import local_today, parse_iso_date
 from utils.plate_calculator import calculate_barbell_plates
 
 logger = logging.getLogger(__name__)
+
+#: Performed dates may be entered or corrected up to three days back (ADR 020).
+MAX_BACKDATE_DAYS = 3
+
+#: Device clocks drift; a capture timestamp within this window of "now" is fine.
+CLOCK_SKEW = timedelta(minutes=10)
+
+
+class SessionSyncValidationError(ValueError):
+    """Raised for an invalid commit request (mapped to HTTP 400 by the router)."""
+
+
+class ProgramVersionMismatchError(Exception):
+    """The captured program version no longer matches the player's active program."""
+
+    def __init__(self, active_version: int | None):
+        self.active_version = active_version
+        super().__init__("program_version_mismatch")
+
+
+class DayPlanNotFoundError(Exception):
+    """No training day with the requested order exists on the active program."""
+
+    def __init__(self, day_order: int):
+        self.day_order = day_order
+        super().__init__(f"No day with order {day_order}.")
+
+
+@dataclass(frozen=True)
+class CommitOutcome:
+    """A session commit's response body and whether this call performed the commit."""
+
+    body: dict[str, Any]
+    created: bool
+
+
+@dataclass(frozen=True)
+class SyncMetadata:
+    """Offline-sync identity for one commit (ADR 020/033); all-``None`` for the legacy path."""
+
+    client_session_id: str | None = None
+    performed_date: str | None = None
+    performed_timezone: str | None = None
+    program_version: int | None = None
+    captured_at: str | None = None
+
+
+def day_plan_from(program: Any, day_order: int) -> Any:
+    """The requested training day, or ``DayPlanNotFoundError`` (shared by service and router)."""
+    for day in program.days:
+        if day.day_order == day_order:
+            return day
+    raise DayPlanNotFoundError(day_order)
+
+
+def _now() -> datetime:
+    """The single clock seam for sync validation; tests monkeypatch this."""
+    return datetime.now(UTC)
+
+
+def _parse_captured_at(value: Any) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise SessionSyncValidationError("captured_at must be an ISO instant.")
+    raw = value.strip()
+    try:
+        parsed = datetime.fromisoformat(raw[:-1] + "+00:00" if raw.endswith("Z") else raw)
+    except ValueError:
+        raise SessionSyncValidationError("captured_at must be an ISO instant.") from None
+    if parsed.tzinfo is None:
+        raise SessionSyncValidationError("captured_at must include a timezone offset.")
+    return parsed
+
+
+def validate_sync_fields(
+    performed_date: Any,
+    performed_timezone: Any,
+    captured_at: Any,
+    *,
+    now: datetime | None = None,
+) -> tuple[date, str, datetime]:
+    """Validates the offline-sync fields (ADR 020/033).
+
+    ``performed_date`` must be a strict ``YYYY-MM-DD`` not later than the
+    player's local today in ``performed_timezone`` and not more than three days
+    before the local date of ``captured_at``. ``captured_at`` must be a
+    timezone-aware ISO instant that is not in the future beyond a small clock
+    skew. An unknown timezone is refused rather than guessed.
+    """
+    if not isinstance(performed_timezone, str) or not performed_timezone.strip():
+        raise SessionSyncValidationError("A performed timezone is required.")
+    try:
+        zone = ZoneInfo(performed_timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise SessionSyncValidationError(f"Unknown timezone: {performed_timezone}.") from None
+
+    try:
+        performed = parse_iso_date(performed_date, "performed_date")
+    except ValueError as exc:
+        raise SessionSyncValidationError(str(exc)) from None
+    captured = _parse_captured_at(captured_at)
+    current = now or _now()
+
+    if performed > current.astimezone(zone).date():
+        raise SessionSyncValidationError("performed_date cannot be in the future.")
+    captured_local = captured.astimezone(zone).date()
+    if performed < captured_local - timedelta(days=MAX_BACKDATE_DAYS):
+        raise SessionSyncValidationError(
+            f"performed_date cannot be more than {MAX_BACKDATE_DAYS} days before the workout was captured."
+        )
+    if captured > current + CLOCK_SKEW:
+        raise SessionSyncValidationError("captured_at cannot be in the future.")
+    return performed, performed_timezone, captured
 
 
 def _evaluate_missed_days(db: Any, account_id: str) -> None:
@@ -51,6 +167,21 @@ def _evaluate_progression_alerts(
         )
     except Exception:
         logger.exception("Progression alert evaluation raised unexpectedly after session commit")
+
+
+def _run_post_commit_hooks(
+    db: Any,
+    account_id: str | None,
+    session_id: str,
+    session_date: str,
+    exercise_summaries: list[dict[str, Any]],
+    fatigue_post: dict[str, Any],
+) -> None:
+    """Catalog hooks that run after the ledger transaction commits (ADR 030/032)."""
+    if not account_id:
+        return
+    _evaluate_missed_days(db, account_id)
+    _evaluate_progression_alerts(db, account_id, session_id, session_date, exercise_summaries, fatigue_post)
 
 
 def _is_barbell(exercise: Any) -> bool:
@@ -109,29 +240,25 @@ def build_prescription(db: Any, trainee_id: str, day_plan: Any) -> dict[str, Any
     return {"fatigue_info": fatigue_info, "targets": targets}
 
 
-def commit_session(
+def _persist_session(
     db: Any,
     trainee_id: str,
     day_plan: Any,
     readiness: int,
     session_notes: str,
     sets_by_exercise: list[dict[str, Any]],
-    session_id: str | None = None,
-    now_iso: str | None = None,
-    today_date: str | None = None,
-    account_id: str | None = None,
+    *,
+    session_id: str,
+    now_iso: str,
+    today_date: str,
+    sync: SyncMetadata,
 ) -> dict[str, Any]:
-    """Persists a logged session and returns totals, per-movement analytics, debrief, and pointer.
+    """Writes one session and all of its derived records; the caller owns the transaction.
 
-    When the caller does not pin ``today_date``, the performed date is the
-    player's local today from their schedule timezone (ADR 029/030), not the
-    server clock, so attendance matches what the player experienced.
+    Returns the response body. No ledger commit happens here, so the whole
+    commit (session, sets, divergences, PRs, debrief, chat pointer) is atomic.
     """
-    bind_user(db, trainee_id)
     profile = db.get_user_profile() or {}
-    session_id = session_id or str(uuid.uuid4())
-    now_iso = now_iso or datetime.now(UTC).isoformat()
-    today_date = today_date or local_today(db, trainee_id).isoformat()
 
     db.log_workout_session(
         session_id=session_id,
@@ -141,6 +268,11 @@ def commit_session(
         completed_at=now_iso,
         readiness_score=readiness,
         notes=session_notes,
+        client_session_id=sync.client_session_id,
+        performed_timezone=sync.performed_timezone,
+        program_version=sync.program_version,
+        captured_at=sync.captured_at,
+        uploaded_at=now_iso,
     )
 
     total_tonnage_kg = 0.0
@@ -174,7 +306,7 @@ def commit_session(
                     "weight_kg": float(s["weight_kg"]),
                     "reps": int(s["reps"]),
                     "rpe": float(s["rpe"]),
-                    "is_warmup": 0,
+                    "is_warmup": 1 if s.get("is_warmup") else 0,
                     "logged_at": now_iso,
                 }
             )
@@ -311,12 +443,6 @@ def commit_session(
     )
     db.add_chat_message("assistant", compact_pointer)
 
-    if account_id:
-        _evaluate_missed_days(db, account_id)
-        _evaluate_progression_alerts(
-            db, account_id, session_id, today_date, exercise_summaries, fatigue_post
-        )
-
     return {
         "session_id": session_id,
         "total_tonnage_kg": total_tonnage_kg,
@@ -328,3 +454,142 @@ def commit_session(
         "new_prs": pr_events,
         "divergences": divergences,
     }
+
+
+def _commit_outcome_from_row(row: dict[str, Any]) -> CommitOutcome:
+    """Turns a stored ``session_commits`` row into the response it recorded."""
+    return CommitOutcome(json.loads(row["response_json"]), created=False)
+
+
+def committed_session(db: Any, client_session_id: str | None) -> CommitOutcome | None:
+    """The exact stored outcome for a client session id, if one exists (ADR 020/033).
+
+    Callers must use this to replay *before* any mutable catalog, day, or
+    program validation: the stored response is the truth for a committed
+    client session id, and a catalog or program change must never turn a retry
+    into a 400/404/409.
+    """
+    if not client_session_id:
+        return None
+    existing = db.get_session_commit(client_session_id)
+    return _commit_outcome_from_row(existing) if existing is not None else None
+
+
+def commit_session(
+    db: Any,
+    trainee_id: str,
+    day_plan: Any,
+    readiness: int,
+    session_notes: str,
+    sets_by_exercise: list[dict[str, Any]],
+    session_id: str | None = None,
+    now_iso: str | None = None,
+    today_date: str | None = None,
+    account_id: str | None = None,
+    sync: SyncMetadata | None = None,
+) -> CommitOutcome:
+    """Persists a logged session and returns totals, per-movement analytics, debrief, and pointer.
+
+    When the caller does not pin ``today_date``, the performed date is the
+    player's local today from their schedule timezone (ADR 029/030), not the
+    server clock, so attendance matches what the player experienced.
+
+    All ledger writes happen in one transaction; post-commit catalog hooks run
+    afterwards and are best-effort (ADR 030/032/033). This is the legacy,
+    always-creates path (no idempotency record); ``created`` is always ``True``.
+    """
+    bind_user(db, trainee_id)
+    sync = sync or SyncMetadata()
+    session_id = session_id or str(uuid.uuid4())
+    now_iso = now_iso or _now().isoformat()
+    today_date = today_date or local_today(db, trainee_id).isoformat()
+
+    with db.ledger_transaction():
+        body = _persist_session(
+            db,
+            trainee_id,
+            day_plan,
+            readiness,
+            session_notes,
+            sets_by_exercise,
+            session_id=session_id,
+            now_iso=now_iso,
+            today_date=today_date,
+            sync=sync,
+        )
+
+    _run_post_commit_hooks(
+        db, account_id, session_id, today_date, body["exercise_summaries"], body["fatigue_post"]
+    )
+    return CommitOutcome(body, created=True)
+
+
+def commit_logged_session(
+    db: Any,
+    trainee_id: str,
+    day_order: int,
+    readiness: int,
+    session_notes: str,
+    sets_by_exercise: list[dict[str, Any]],
+    *,
+    sync: SyncMetadata,
+    account_id: str | None = None,
+    now_iso: str | None = None,
+) -> CommitOutcome:
+    """Idempotently commits one offline-captured workout (ADR 020/033).
+
+    If ``client_session_id`` was already committed, the exact stored response is
+    replayed and nothing is written. The active program is re-resolved and its
+    version re-checked against ``sync.program_version`` inside the same ledger
+    transaction (after ``BEGIN IMMEDIATE``), so a concurrent program change is
+    caught rather than racing an earlier, outside-the-transaction check.
+    Concurrent duplicates are serialised by the unique index plus one
+    transaction: the loser replays the winner's response. Post-commit hooks run
+    only when this call performed the commit.
+    """
+    bind_user(db, trainee_id)
+    client_session_id = sync.client_session_id
+    replayed = committed_session(db, client_session_id)
+    if replayed is not None:
+        return replayed
+
+    now_iso = now_iso or _now().isoformat()
+    session_id = str(uuid.uuid4())
+    try:
+        with db.ledger_transaction():
+            replayed = committed_session(db, client_session_id)
+            if replayed is not None:
+                return replayed
+
+            program = db.get_active_program()
+            if program is None:
+                raise DayPlanNotFoundError(day_order)
+            if program.version != sync.program_version:
+                raise ProgramVersionMismatchError(program.version)
+            day_plan = day_plan_from(program, day_order)
+
+            body = _persist_session(
+                db,
+                trainee_id,
+                day_plan,
+                readiness,
+                session_notes,
+                sets_by_exercise,
+                session_id=session_id,
+                now_iso=now_iso,
+                today_date=sync.performed_date,
+                sync=sync,
+            )
+            db.record_session_commit(client_session_id, session_id, json.dumps(body), now_iso)
+            outcome = CommitOutcome(body, created=True)
+    except sqlite3.IntegrityError:
+        # A concurrent duplicate won the unique index; replay its response.
+        existing = db.get_session_commit(client_session_id)
+        if existing is None:
+            raise
+        return _commit_outcome_from_row(existing)
+
+    _run_post_commit_hooks(
+        db, account_id, session_id, sync.performed_date, outcome.body["exercise_summaries"], outcome.body["fatigue_post"]
+    )
+    return outcome

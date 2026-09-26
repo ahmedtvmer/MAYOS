@@ -6,13 +6,27 @@ import 'token_store.dart';
 /// Raised for any failed service call, carrying the HTTP status when there was
 /// a response and a human-readable message from the service `detail` field.
 class ApiException implements Exception {
-  const ApiException(this.message, {this.statusCode});
+  const ApiException(this.message, {this.statusCode, this.errorCode});
 
   final String message;
   final int? statusCode;
 
+  /// A machine-readable `error` code from the service, when it sent one.
+  final String? errorCode;
+
   @override
   String toString() => 'ApiException($statusCode): $message';
+}
+
+/// The result of `POST /workouts/sessions`, carrying whether this call created
+/// the session (201) or replayed an already-committed one (200).
+class WorkoutCommitResult {
+  const WorkoutCommitResult({required this.statusCode, required this.body});
+
+  final int statusCode;
+  final Map<String, dynamic> body;
+
+  bool get created => statusCode == 201;
 }
 
 /// Thin typed wrapper over the FastAPI service.
@@ -103,8 +117,18 @@ class ApiClient {
   static ApiException _toApiException(DioException error) {
     final int? status = error.response?.statusCode;
     final dynamic data = error.response?.data;
-    if (data is Map && data['detail'] is String) {
-      return ApiException(data['detail'] as String, statusCode: status);
+    if (data is Map) {
+      final Map<String, dynamic> body = Map<String, dynamic>.from(data);
+      if (body['detail'] is String) {
+        return ApiException(body['detail'] as String, statusCode: status);
+      }
+      if (body['error'] is String) {
+        return ApiException(
+          _messageForError(body['error'] as String),
+          statusCode: status,
+          errorCode: body['error'] as String,
+        );
+      }
     }
     if (status == null) {
       return const ApiException(
@@ -116,6 +140,12 @@ class ApiClient {
     }
     return ApiException('Request failed ($status).', statusCode: status);
   }
+
+  static String _messageForError(String code) => switch (code) {
+        'program_version_mismatch' =>
+          'This workout was logged against an older program version.',
+        _ => 'The service rejected this request.',
+      };
 
   Future<AuthTokens> register({
     required String traineeId,
@@ -779,5 +809,76 @@ class ApiClient {
         .map((dynamic item) =>
             PersonalRecord.fromJson(item as Map<String, dynamic>))
         .toList(growable: false);
+  }
+
+  /// Auto-regulated targets for one training day (`GET /workouts/prescription`).
+  Future<Prescription> prescription(int dayOrder) async {
+    final response = await _send(
+      () => _dio.get<dynamic>('/workouts/prescription',
+          queryParameters: <String, dynamic>{'day_order': dayOrder}),
+    );
+    return _parseBody(
+        response.data,
+        Prescription.fromJson,
+        'The service returned invalid prescription data.');
+  }
+
+  /// Catalog exercises matching [query], for picking a real unplanned
+  /// exercise (`GET /workouts/exercises?query=`, ADR 020/033, #34).
+  Future<List<ExerciseCatalogEntry>> searchExercises(String query) async {
+    final response = await _send(
+      () => _dio.get<dynamic>('/workouts/exercises',
+          queryParameters: <String, dynamic>{'query': query}),
+    );
+    final dynamic data = response.data;
+    if (data is! Map<String, dynamic> || data['exercises'] is! List) {
+      throw const ApiException('The service returned invalid exercise data.');
+    }
+    return _parseBodyList(
+        data['exercises'],
+        ExerciseCatalogEntry.fromJson,
+        'The service returned invalid exercise data.');
+  }
+
+  /// Commits one workout, creating it (201) or replaying a stored commit (200).
+  ///
+  /// The body may carry the offline-sync fields; the service is idempotent on
+  /// `client_session_id`.
+  Future<WorkoutCommitResult> commitWorkoutSession(
+      Map<String, dynamic> body) async {
+    final response = await _send(
+      () => _dio.post<dynamic>('/workouts/sessions', data: body),
+    );
+    final dynamic data = response.data;
+    if (data is! Map<String, dynamic>) {
+      throw const ApiException('The service returned invalid session data.');
+    }
+    return WorkoutCommitResult(
+      statusCode: response.statusCode ?? 201,
+      body: data,
+    );
+  }
+
+  /// The stored commit for a client session id, or null when never committed.
+  ///
+  /// Used to reconcile a lost response before retrying so a committed workout
+  /// is never sent twice.
+  Future<Map<String, dynamic>?> sessionByClientId(String clientSessionId) async {
+    try {
+      final response = await _send(
+        () => _dio
+            .get<dynamic>('/workouts/sessions/by-client-id/$clientSessionId'),
+      );
+      final dynamic data = response.data;
+      if (data is! Map<String, dynamic>) {
+        throw const ApiException('The service returned invalid session data.');
+      }
+      return data;
+    } on ApiException catch (error) {
+      if (error.statusCode == 404) {
+        return null;
+      }
+      rethrow;
+    }
   }
 }

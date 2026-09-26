@@ -38,6 +38,11 @@ class FakeApiAdapter implements HttpClientAdapter {
   final FakeHandler _handler;
   final List<FakeRequest> requests = <FakeRequest>[];
 
+  /// Test hook: awaited after a request is recorded but before it is
+  /// answered, so a test can pause one in-flight request (e.g. to race a
+  /// discard against it) and then let it proceed.
+  Future<void> Function(FakeRequest request)? beforeRespond;
+
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
@@ -61,6 +66,10 @@ class FakeApiAdapter implements HttpClientAdapter {
       query: Map<String, dynamic>.from(options.queryParameters),
     );
     requests.add(request);
+    final Future<void> Function(FakeRequest request)? hook = beforeRespond;
+    if (hook != null) {
+      await hook(request);
+    }
 
     final FakeResponse response = _handler(request);
     return ResponseBody.fromString(

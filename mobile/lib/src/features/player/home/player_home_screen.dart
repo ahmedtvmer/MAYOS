@@ -7,6 +7,9 @@ import '../../../router.dart';
 import '../../coach/coach_profile_screen.dart';
 import '../dashboard/dashboard_tab.dart';
 import '../program/program_tab.dart';
+import '../workout/draft_sync_service.dart';
+
+enum _LogoutChoice { keep, discard }
 
 class PlayerHomeScreen extends ConsumerStatefulWidget {
   const PlayerHomeScreen({super.key});
@@ -17,6 +20,54 @@ class PlayerHomeScreen extends ConsumerStatefulWidget {
 
 class _PlayerHomeScreenState extends ConsumerState<PlayerHomeScreen> {
   int _index = 0;
+
+  /// Logout must never silently destroy unsynced drafts: warn, and let the
+  /// player explicitly keep or discard them (ADR 020/033).
+  Future<void> _confirmLogout() async {
+    final String? accountId =
+        ref.read(authControllerProvider).session?.account.accountId;
+    final DraftSyncService sync = ref.read(draftSyncServiceProvider);
+    final int unsynced =
+        accountId == null ? 0 : await sync.unsyncedCountFor(accountId);
+    if (!mounted) return;
+
+    if (unsynced > 0) {
+      final _LogoutChoice? choice = await showDialog<_LogoutChoice>(
+        context: context,
+        builder: (BuildContext context) => AlertDialog(
+          title: const Text('Unsynced workouts'),
+          content: Text(
+            'You have $unsynced unsynced workout '
+            '${unsynced == 1 ? 'draft' : 'drafts'}. '
+            'They stay on this device until they sync; logging out will not delete them.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(_LogoutChoice.discard),
+              child: const Text('Discard drafts and log out'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(_LogoutChoice.keep),
+              child: const Text('Keep drafts and log out'),
+            ),
+          ],
+        ),
+      );
+      if (choice == null) {
+        return;
+      }
+      if (choice == _LogoutChoice.discard && accountId != null) {
+        await sync.discardAllForAccount(accountId);
+      }
+    }
+    if (!mounted) return;
+    await ref.read(authControllerProvider.notifier).logout();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -73,6 +124,12 @@ class _PlayerHomeScreenState extends ConsumerState<PlayerHomeScreen> {
               onPressed: () => context.go(coachInvitePath),
               icon: const Icon(Icons.workspace_premium_outlined),
             ),
+          if (ref.watch(offlineWorkoutDraftsEnabledProvider))
+            IconButton(
+              tooltip: 'Workouts',
+              onPressed: () => context.go(workoutsPath),
+              icon: const Icon(Icons.cloud_upload_outlined),
+            ),
           IconButton(
             tooltip: 'Profile',
             onPressed: () => context.go(profilePath),
@@ -85,7 +142,7 @@ class _PlayerHomeScreenState extends ConsumerState<PlayerHomeScreen> {
           ),
           IconButton(
             tooltip: 'Log out',
-            onPressed: () => ref.read(authControllerProvider.notifier).logout(),
+            onPressed: _confirmLogout,
             icon: const Icon(Icons.logout),
           ),
         ],

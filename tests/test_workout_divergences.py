@@ -263,12 +263,12 @@ def test_exercise_with_only_warmup_sets_counts_as_skipped(api):
         ],
         now_iso="2026-09-26T10:00:00+00:00",
     )
-    assert _divergence_tuples(result["divergences"]) == [
+    assert _divergence_tuples(result.body["divergences"]) == [
         ("skipped", "row", "Row"),
         ("skipped", "sq", "Squat"),
     ]
-    rows = db.list_session_divergences(result["session_id"])
-    assert _divergence_tuples(rows) == _divergence_tuples(result["divergences"])
+    rows = db.list_session_divergences(result.body["session_id"])
+    assert _divergence_tuples(rows) == _divergence_tuples(result.body["divergences"])
 
 
 def test_duplicate_prescribed_skipped_exercise_records_one_divergence(api):

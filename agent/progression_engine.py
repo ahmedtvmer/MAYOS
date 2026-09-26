@@ -285,7 +285,8 @@ def _check_and_record(
                 session_id,
             ),
         )
-        db.conn.commit()
+        # ``commit_ledger`` defers to an enclosing ledger transaction.
+        db.commit_ledger()
         events.append(
             {
                 "exercise_id": exercise_id,

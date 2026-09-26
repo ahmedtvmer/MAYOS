@@ -329,7 +329,7 @@ def test_commit_session_defaults_to_the_player_local_today(api, monkeypatch):
     )
 
     row = db.conn.execute(
-        "SELECT session_date FROM workout_sessions WHERE id = ?", (result["session_id"],)
+        "SELECT session_date FROM workout_sessions WHERE id = ?", (result.body["session_id"],)
     ).fetchone()
     assert row[0] == local_day.isoformat()
 

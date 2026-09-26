@@ -1,0 +1,781 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mayos_mobile/src/app.dart';
+import 'package:mayos_mobile/src/core/api_client.dart';
+import 'package:mayos_mobile/src/core/device_timezone.dart';
+import 'package:mayos_mobile/src/core/models.dart';
+import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/core/workout_storage.dart';
+import 'package:mayos_mobile/src/features/player/workout/draft_sync_service.dart';
+import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
+import 'package:mayos_mobile/src/providers.dart';
+
+import 'support/fake_api_adapter.dart';
+import 'support/fake_mayos_api.dart';
+
+const String _accountA = 'account-alice';
+const String _accountB = 'account-bob';
+
+WorkoutDraft _draft({
+  required String accountId,
+  int programVersion = 1,
+  String? clientSessionId,
+  String capturedAt = '2026-09-26T11:00:00.000Z',
+}) =>
+    WorkoutDraft(
+      clientSessionId: clientSessionId ?? generateUuidV4(),
+      accountId: accountId,
+      performedDate: '2026-09-26',
+      performedTimezone: 'UTC',
+      programVersion: programVersion,
+      dayOrder: 1,
+      dayName: 'Upper 1',
+      capturedAt: capturedAt,
+      exercises: <DraftExercise>[
+        DraftExercise(
+          exercise: <String, dynamic>{
+            'exercise_id': 'bench_press',
+            'exercise_name': 'Bench Press',
+            'target_sets': 3,
+            'target_reps_min': 5,
+            'target_reps_max': 8,
+            'target_rpe': 8.5,
+            'rest_seconds': 180,
+            'notes': null,
+          },
+          sets: const <WorkoutSetLog>[
+            WorkoutSetLog(weightKg: 100, reps: 5, rpe: 8),
+          ],
+        ),
+      ],
+      readiness: 4,
+      updatedAt: '2026-09-26T11:00:00.000Z',
+    );
+
+TrainingProgram _cachedProgram() => const TrainingProgram(
+      programName: 'Cached Split',
+      splitType: 'Full Body',
+      weeklyFrequency: 3,
+      days: <ProgramDay>[
+        ProgramDay(
+          dayName: 'Full A',
+          dayOrder: 1,
+          exercises: <ProgramExercise>[
+            ProgramExercise(
+              exerciseId: 'bench_press',
+              exerciseName: 'Bench Press',
+              targetSets: 3,
+              targetRepsMin: 5,
+              targetRepsMax: 8,
+              targetRpe: 8.5,
+            ),
+          ],
+        ),
+      ],
+    );
+
+ApiClient _client(FakeMayosApi fake, TokenStore tokens) => ApiClient(
+      tokens: tokens,
+      baseUrl: 'http://test.local',
+      adapter: fake.adapter,
+    );
+
+final DateTime _fixedNow = DateTime.parse('2026-09-26T12:00:00.000Z');
+
+DraftSyncService _service({
+  required FakeMayosApi fake,
+  required TokenStore tokens,
+  required DraftStore store,
+  DateTime Function()? now,
+}) =>
+    DraftSyncService(
+      api: _client(fake, tokens),
+      store: store,
+      retryInterval: null,
+      now: now ?? (() => _fixedNow),
+    );
+
+Future<TokenStore> _authedTokens(FakeMayosApi fake) async {
+  fake.issuedToken = 'token-a';
+  fake.currentUsername = 'alice';
+  fake.tokenValid = true;
+  final InMemoryTokenStore tokens = InMemoryTokenStore();
+  await tokens.save('token-a');
+  return tokens;
+}
+
+void main() {
+  group('draft storage', () {
+    test('persists across a simulated restart (new service, same storage)', () async {
+      final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+
+      final DraftSyncService first = _service(fake: fake, tokens: tokens, store: store);
+      final WorkoutDraft draft = _draft(accountId: _accountA);
+      first.startFor(_accountA, syncImmediately: false);
+      await first.saveDraft(draft);
+
+      final DraftSyncService restarted =
+          _service(fake: fake, tokens: tokens, store: store);
+      restarted.startFor(_accountA, syncImmediately: false);
+      await restarted.refresh();
+      final List<WorkoutDraft> reloaded = restarted.drafts;
+      expect(reloaded, hasLength(1));
+      expect(reloaded.single.clientSessionId, draft.clientSessionId);
+      expect(reloaded.single.status, DraftStatus.pending);
+    });
+
+    test('survives logout and is never visible to another account', () async {
+      final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+      service.startFor(_accountA, syncImmediately: false);
+      await service.saveDraft(_draft(accountId: _accountA));
+
+      service.stop(); // logout clears the session, never the drafts.
+      expect(await service.unsyncedCountFor(_accountA), 1);
+      expect(await store.read(_accountB), isEmpty);
+    });
+
+    test('explicit discard removes the draft while keep does not', () async {
+      final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+      service.startFor(_accountA, syncImmediately: false);
+      await service.saveDraft(_draft(accountId: _accountA));
+
+      expect(await service.unsyncedCountFor(_accountA), 1);
+      await service.discardAllForAccount(_accountA);
+      expect(await store.read(_accountA), isEmpty);
+    });
+  });
+
+  group('sync engine', () {
+    test('network failure stays pending; retry sends the same client session id',
+        () async {
+      final FakeMayosApi fake = FakeMayosApi()
+        ..commitFails = true
+        ..programVersion = 1;
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+      service.startFor(_accountA, syncImmediately: false);
+
+      final WorkoutDraft draft = _draft(accountId: _accountA);
+      await service.saveDraft(draft);
+      expect((await store.read(_accountA)).single.status, DraftStatus.pending);
+      expect(fake.committedSessions, isEmpty);
+
+      fake.commitFails = false;
+      await service.retryDraft(draft.clientSessionId);
+
+      final List<WorkoutDraft> reloaded = await store.read(_accountA);
+      expect(reloaded.single.status, DraftStatus.synced);
+      expect(reloaded.single.serverResponse, isNotNull);
+      // A recovered draft must not retain the stale failure message.
+      expect(reloaded.single.lastError, isNull);
+      expect(fake.committedSessions, hasLength(1));
+
+      final List<FakeRequest> commits = fake.adapter.requests
+          .where((FakeRequest r) =>
+              r.method == 'POST' && r.path == '/workouts/sessions')
+          .toList(growable: false);
+      expect(commits, isNotEmpty);
+      expect(commits.last.body['client_session_id'], draft.clientSessionId);
+    });
+
+    test('lost response is reconciled via the status endpoint without a second POST',
+        () async {
+      final FakeMayosApi fake = FakeMayosApi();
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+
+      final WorkoutDraft draft = _draft(accountId: _accountA);
+      // The commit reached the server (response lost), so it is stored.
+      fake.sessionCommits[draft.clientSessionId] = <String, dynamic>{
+        'session_id': 'session-lost',
+        'total_working_sets': 1,
+      };
+      fake.committedSessions.add(<String, dynamic>{'session_id': 'session-lost'});
+      await store.write(_accountA, <WorkoutDraft>[draft]);
+
+      service.startFor(_accountA, syncImmediately: false);
+      await service.syncNow();
+
+      final List<WorkoutDraft> reloaded = await store.read(_accountA);
+      expect(reloaded.single.status, DraftStatus.synced);
+      expect(reloaded.single.serverResponse?['session_id'], 'session-lost');
+      expect(fake.commitRequests, 0);
+    });
+
+    test('program version mismatch becomes needs-attention', () async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 2;
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+      service.startFor(_accountA, syncImmediately: false);
+
+      await service.saveDraft(_draft(accountId: _accountA, programVersion: 1));
+
+      final WorkoutDraft reloaded = (await store.read(_accountA)).single;
+      expect(reloaded.status, DraftStatus.needsReconciliation);
+      expect(reloaded.statusLabel, 'Needs attention');
+      expect(reloaded.lastError, isNotNull);
+      expect(fake.committedSessions, isEmpty);
+    });
+
+    test('successful commit shows the synced state and keeps the response',
+        () async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+      service.startFor(_accountA, syncImmediately: false);
+
+      await service.saveDraft(_draft(accountId: _accountA));
+
+      final WorkoutDraft reloaded = (await store.read(_accountA)).single;
+      expect(reloaded.status, DraftStatus.synced);
+      expect(reloaded.statusLabel, 'Synced');
+      expect(reloaded.serverResponse?['session_id'], isNotNull);
+      expect(fake.committedSessions, hasLength(1));
+    });
+  });
+
+  group('concurrency and account safety', () {
+    test('a draft saved during an in-flight sync is never lost', () async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final Completer<void> gate = Completer<void>();
+      fake.adapter.beforeRespond = (FakeRequest request) async {
+        if (request.path.startsWith('/workouts/sessions/by-client-id/')) {
+          await gate.future;
+        }
+      };
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+      service.startFor(_accountA, syncImmediately: false);
+
+      final WorkoutDraft first = _draft(accountId: _accountA);
+      await store.write(_accountA, <WorkoutDraft>[first]);
+      final Future<void> sync = service.syncNow();
+      await pumpEventQueue();
+
+      final WorkoutDraft second = _draft(accountId: _accountA);
+      await service.saveDraft(second);
+
+      gate.complete();
+      await sync;
+
+      final List<WorkoutDraft> drafts = await store.read(_accountA);
+      expect(
+        drafts.map((WorkoutDraft d) => d.clientSessionId),
+        containsAll(<String>[first.clientSessionId, second.clientSessionId]),
+      );
+    });
+
+    test('a draft discarded during an in-flight sync stays discarded and is never posted',
+        () async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final Completer<void> gate = Completer<void>();
+      fake.adapter.beforeRespond = (FakeRequest request) async {
+        if (request.path.startsWith('/workouts/sessions/by-client-id/')) {
+          await gate.future;
+        }
+      };
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+      service.startFor(_accountA, syncImmediately: false);
+
+      final WorkoutDraft draft = _draft(accountId: _accountA);
+      await store.write(_accountA, <WorkoutDraft>[draft]);
+      final Future<void> sync = service.syncNow();
+      await pumpEventQueue();
+
+      await service.discardDraft(draft.clientSessionId);
+      gate.complete();
+      await sync;
+
+      expect(await store.read(_accountA), isEmpty);
+      expect(fake.commitRequests, 0);
+      expect(fake.committedSessions, isEmpty);
+    });
+
+    test('logout abandons an in-flight pass: no post lands under the next account',
+        () async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final Completer<void> gate = Completer<void>();
+      fake.adapter.beforeRespond = (FakeRequest request) async {
+        if (request.path.startsWith('/workouts/sessions/by-client-id/')) {
+          await gate.future;
+        }
+      };
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+      service.startFor(_accountA, syncImmediately: false);
+
+      final WorkoutDraft draft = _draft(accountId: _accountA);
+      await store.write(_accountA, <WorkoutDraft>[draft]);
+      final Future<void> sync = service.syncNow();
+      await pumpEventQueue();
+
+      // Logout mid-flight, then a different account logs in on the same device.
+      service.stop();
+      service.startFor(_accountB, syncImmediately: false);
+      gate.complete();
+      await sync;
+
+      expect(fake.commitRequests, 0);
+      expect(await store.read(_accountB), isEmpty);
+      // A's draft is untouched (still unsynced) in A's own storage.
+      expect((await store.read(_accountA)).single.isSynced, isFalse);
+    });
+
+    test('a login during an in-flight pass still syncs the new account', () async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final Completer<void> gate = Completer<void>();
+      fake.adapter.beforeRespond = (FakeRequest request) async {
+        if (request.path.startsWith('/workouts/sessions/by-client-id/')) {
+          await gate.future;
+        }
+      };
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+      service.startFor(_accountA, syncImmediately: false);
+
+      await store.write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
+      final Future<void> sync = service.syncNow();
+      await pumpEventQueue();
+
+      // B logs in while A's pass is still blocked on the status lookup; B's
+      // immediate login sync must not be dropped waiting for the timer.
+      await store.write(_accountB, <WorkoutDraft>[_draft(accountId: _accountB)]);
+      service.startFor(_accountB);
+      await pumpEventQueue();
+
+      gate.complete();
+      await sync;
+      for (int i = 0;
+          i < 50 && (await store.read(_accountB)).single.isSynced == false;
+          i++) {
+        await pumpEventQueue();
+      }
+
+      expect((await store.read(_accountB)).single.isSynced, isTrue);
+      expect(fake.committedSessions, hasLength(1));
+    });
+
+    test('unreadable storage is quarantined, not silently wiped', () async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore()
+        ..simulateCorruptStorage(_accountA, raw: '{not valid json');
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+      service.startFor(_accountA, syncImmediately: false);
+      await service.refresh();
+
+      expect(service.drafts, isEmpty);
+      expect(service.storageQuarantined, isTrue);
+      expect(store.quarantinedRaw.values, contains('{not valid json'));
+
+      // A later write starts a fresh list; the quarantine flag clears.
+      await service.saveDraft(_draft(accountId: _accountA));
+      expect(service.storageQuarantined, isFalse);
+    });
+
+    test('network failures back off exponentially and reset on manual retry',
+        () async {
+      final FakeMayosApi fake = FakeMayosApi()
+        ..commitFails = true
+        ..programVersion = 1;
+      DateTime now = DateTime.parse('2026-09-26T12:00:00.000Z');
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service = _service(
+        fake: fake,
+        tokens: tokens,
+        store: store,
+        now: () => now,
+      );
+      service.startFor(_accountA, syncImmediately: false);
+
+      final WorkoutDraft draft = _draft(accountId: _accountA);
+      await service.saveDraft(draft);
+      WorkoutDraft reloaded = (await store.read(_accountA)).single;
+      expect(reloaded.attempt, 1);
+      expect(reloaded.nextAttemptAt, isNotNull);
+      final DateTime firstNextAttempt = DateTime.parse(reloaded.nextAttemptAt!);
+      expect(firstNextAttempt.difference(now), const Duration(seconds: 30));
+
+      // Before the backoff window elapses, a plain sync pass skips it.
+      await service.syncNow();
+      reloaded = (await store.read(_accountA)).single;
+      expect(reloaded.attempt, 1);
+
+      // Once due, the next failure doubles the delay.
+      now = firstNextAttempt.add(const Duration(seconds: 1));
+      await service.syncNow();
+      reloaded = (await store.read(_accountA)).single;
+      expect(reloaded.attempt, 2);
+      final DateTime secondNextAttempt = DateTime.parse(reloaded.nextAttemptAt!);
+      expect(secondNextAttempt.difference(now), const Duration(seconds: 60));
+
+      // A manual retry resets the backoff regardless of success.
+      await service.retryDraft(draft.clientSessionId);
+      reloaded = (await store.read(_accountA)).single;
+      expect(reloaded.attempt, 1);
+    });
+
+    test('pauseForeground stops the timer; resumeForeground runs an immediate pass',
+        () async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service = DraftSyncService(
+        api: _client(fake, tokens),
+        store: store,
+        retryInterval: const Duration(seconds: 60),
+        now: () => _fixedNow,
+      );
+      service.startFor(_accountA, syncImmediately: false);
+      await store.write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
+
+      service.pauseForeground();
+      service.resumeForeground();
+      await pumpEventQueue();
+
+      expect(fake.commitRequests, 1);
+      final WorkoutDraft reloaded = (await store.read(_accountA)).single;
+      expect(reloaded.isSynced, isTrue);
+    });
+  });
+
+  group('program tab offline fallback', () {
+    testWidgets(
+        'falls back to the cached program when offline, with a banner shown only then',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi()..activeProgramFails = true;
+      final InMemoryDraftStore draftStore = InMemoryDraftStore();
+      final InMemoryWorkoutCacheStore cacheStore = InMemoryWorkoutCacheStore();
+      const TrainingProgram cached = TrainingProgram(
+        programName: 'Cached Split',
+        splitType: 'Full Body',
+        weeklyFrequency: 3,
+        days: <ProgramDay>[
+          ProgramDay(
+            dayName: 'Full A',
+            dayOrder: 1,
+            exercises: <ProgramExercise>[
+              ProgramExercise(
+                exerciseId: 'sq',
+                exerciseName: 'Squat',
+                targetSets: 3,
+                targetRepsMin: 5,
+                targetRepsMax: 8,
+                targetRpe: 8.5,
+              ),
+            ],
+          ),
+        ],
+      );
+      await cacheStore.writeProgram(_accountA, cached);
+      await _pumpApp(tester, fake, draftStore: draftStore, cacheStore: cacheStore);
+
+      await tester.tap(find.text('Program'));
+      await _pumpUntilFound(tester, find.text('Cached Split'));
+
+      expect(find.text('Offline — showing saved program'), findsOneWidget);
+      expect(find.text('Cached Split'), findsOneWidget);
+    });
+
+    testWidgets('shows no offline banner once the online fetch succeeds',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final InMemoryDraftStore draftStore = InMemoryDraftStore();
+      await _pumpApp(tester, fake, draftStore: draftStore);
+
+      await tester.tap(find.text('Program'));
+      await _pumpUntilFound(tester, find.text('Upper/Lower 4x'));
+
+      expect(find.text('Offline — showing saved program'), findsNothing);
+    });
+  });
+
+  group('workout logger offline banner', () {
+    testWidgets('no offline banner when the cached program is refreshed online',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final InMemoryDraftStore draftStore = InMemoryDraftStore();
+      final InMemoryWorkoutCacheStore cacheStore = InMemoryWorkoutCacheStore();
+      await cacheStore.writeProgram(_accountA, _cachedProgram());
+
+      await _pumpApp(tester, fake, draftStore: draftStore, cacheStore: cacheStore);
+      await tester.tap(find.text('Program'));
+      await _pumpUntilFound(tester, find.text('Log workout'));
+      await tester.tap(find.text('Log workout'));
+      await _pumpUntilFound(tester, find.text('Bench Press'));
+
+      expect(find.text('Offline: showing your cached program.'), findsNothing);
+    });
+
+    testWidgets('offline banner when the program can only be served from cache',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi()
+        ..programVersion = 1
+        ..activeProgramFails = true;
+      final InMemoryDraftStore draftStore = InMemoryDraftStore();
+      final InMemoryWorkoutCacheStore cacheStore = InMemoryWorkoutCacheStore();
+      await cacheStore.writeProgram(_accountA, _cachedProgram());
+
+      await _pumpApp(tester, fake, draftStore: draftStore, cacheStore: cacheStore);
+      await tester.tap(find.text('Program'));
+      await _pumpUntilFound(tester, find.text('Cached Split'));
+      await tester.ensureVisible(find.text('Log workout'));
+      await tester.tap(find.text('Log workout'));
+      await _pumpUntilFound(tester, find.text('Bench Press'));
+
+      expect(find.text('Offline: showing your cached program.'), findsOneWidget);
+    });
+  });
+
+  group('workout logger timezone', () {
+    testWidgets('blocks Finish rather than record a date against an unknown zone',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final InMemoryDraftStore draftStore = InMemoryDraftStore();
+      final InMemoryWorkoutCacheStore cacheStore = InMemoryWorkoutCacheStore();
+      await cacheStore.writeProgram(_accountA, _cachedProgram());
+
+      await _pumpApp(tester, fake,
+          draftStore: draftStore,
+          cacheStore: cacheStore,
+          deviceTimezone: null);
+      await tester.tap(find.text('Program'));
+      await _pumpUntilFound(tester, find.text('Log workout'));
+      await tester.tap(find.text('Log workout'));
+      await _pumpUntilFound(tester, find.text('Bench Press'));
+
+      final Finder finish =
+          find.widgetWithText(FilledButton, 'Finish and save draft');
+      expect(finish, findsOneWidget);
+      expect(tester.widget<FilledButton>(finish).onPressed, isNull);
+      expect(
+        find.textContaining('device timezone could not be determined'),
+        findsOneWidget,
+      );
+    });
+  });
+
+  group('web online-only boundary', () {
+    testWidgets('hides offline workout entry points when disabled',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      await _pumpApp(tester, fake,
+          draftStore: InMemoryDraftStore(), offlineDraftsEnabled: false);
+
+      expect(find.byTooltip('Workouts'), findsNothing);
+      await tester.tap(find.text('Program'));
+      await _pumpUntilFound(tester, find.text('Upper/Lower 4x'));
+      expect(find.text('Log workout'), findsNothing);
+    });
+
+    testWidgets('the logger refuses to capture drafts when disabled',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: <Override>[
+            offlineWorkoutDraftsEnabledProvider.overrideWithValue(false),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: WorkoutLoggerScreen(dayOrder: 1)),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.textContaining('available in the Android app'), findsOneWidget);
+    });
+  });
+
+  group('logout warning', () {
+    testWidgets('keep drafts and log out preserves the draft', (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      await store.write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
+
+      await _pumpApp(tester, fake, draftStore: store);
+      await tester.tap(find.byTooltip('Log out'));
+      await _pumpUntilFound(tester, find.text('Unsynced workouts'));
+
+      expect(find.text('Keep drafts and log out'), findsOneWidget);
+      expect(find.text('Discard drafts and log out'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+
+      await tester.tap(find.text('Keep drafts and log out'));
+      await _pumpUntilFound(tester, find.text('Log in'));
+      expect(await store.read(_accountA), hasLength(1));
+    });
+
+    testWidgets('discard drafts and log out erases them', (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      await store.write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
+
+      await _pumpApp(tester, fake, draftStore: store);
+      await tester.tap(find.byTooltip('Log out'));
+      await _pumpUntilFound(tester, find.text('Unsynced workouts'));
+
+      await tester.tap(find.text('Discard drafts and log out'));
+      await _pumpUntilFound(tester, find.text('Log in'));
+      expect(await store.read(_accountA), isEmpty);
+    });
+  });
+
+  testWidgets('logging a workout saves a draft and shows the workouts screen',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+    final InMemoryDraftStore store = InMemoryDraftStore();
+    await _pumpApp(tester, fake, draftStore: store);
+
+    await tester.tap(find.byIcon(Icons.fitness_center_outlined));
+    await _pumpUntilFound(tester, find.text('Log workout'));
+    await tester.tap(find.text('Log workout'));
+    await _pumpUntilFound(tester, find.text('Bench Press'));
+
+    final Finder finish = find.text('Finish and save draft');
+    await tester.ensureVisible(finish);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(finish);
+    await _pumpUntilFound(tester, find.text('Workouts'));
+
+    final List<WorkoutDraft> drafts = await store.read(_accountA);
+    expect(drafts, hasLength(1));
+    expect(drafts.single.exercises, isNotEmpty);
+    expect(fake.commitRequests, 1);
+  });
+
+  testWidgets('an unplanned exercise is picked from the catalog with a real id',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+    final InMemoryDraftStore store = InMemoryDraftStore();
+    await _pumpApp(tester, fake, draftStore: store);
+
+    await tester.tap(find.byIcon(Icons.fitness_center_outlined));
+    await _pumpUntilFound(tester, find.text('Log workout'));
+    await tester.tap(find.text('Log workout'));
+    await _pumpUntilFound(tester, find.text('Performed date'));
+
+    final Finder addUnplanned = find.text('Add unplanned exercise');
+    await tester.ensureVisible(addUnplanned);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(addUnplanned);
+    await _pumpUntilFound(tester, find.text('Search the exercise catalog'));
+
+    await tester.enterText(find.byType(TextField).last, 'curl');
+    await tester.tap(find.text('Search'));
+    await _pumpUntilFound(tester, find.text('Bicep Curl'));
+    await tester.tap(find.text('Bicep Curl'));
+    await _pumpUntilFound(tester, find.text('Unplanned'));
+
+    final Finder finish = find.text('Finish and save draft');
+    await tester.ensureVisible(finish);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(finish);
+    await _pumpUntilFound(tester, find.text('Workouts'));
+
+    final List<WorkoutDraft> drafts = await store.read(_accountA);
+    expect(drafts, hasLength(1));
+    expect(
+      drafts.single.exercises.map((DraftExercise e) => e.exerciseId),
+      contains('bicep_curl'),
+    );
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Widget harness
+// ---------------------------------------------------------------------------
+
+Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
+    {int attempts = 50}) async {
+  for (int i = 0; i < attempts; i++) {
+    if (finder.evaluate().isNotEmpty) {
+      for (int j = 0; j < 4; j++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      return;
+    }
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
+Future<void> _pumpApp(
+  WidgetTester tester,
+  FakeMayosApi fake, {
+  required InMemoryDraftStore draftStore,
+  InMemoryWorkoutCacheStore? cacheStore,
+  String? deviceTimezone = 'UTC',
+  bool offlineDraftsEnabled = true,
+}) async {
+  tester.view.physicalSize = const Size(1080, 2400);
+  tester.view.devicePixelRatio = 2.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+
+  final InMemoryTokenStore tokens = InMemoryTokenStore();
+  await tokens.save('token-alice');
+  fake.issuedToken = 'token-alice';
+  fake.currentUsername = 'alice';
+  fake.tokenValid = true;
+  fake.profileExists = true;
+  fake.recoveryEmail = 'alice@example.com';
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: <Override>[
+        tokenStoreProvider.overrideWithValue(tokens),
+        draftStoreProvider.overrideWithValue(draftStore),
+        workoutCacheStoreProvider
+            .overrideWithValue(cacheStore ?? InMemoryWorkoutCacheStore()),
+        apiClientProvider.overrideWith((ref) {
+          final ApiClient client = ApiClient(
+            tokens: ref.watch(tokenStoreProvider),
+            baseUrl: 'http://test.local',
+            adapter: fake.adapter,
+          );
+          client.onUnauthorized =
+              ref.watch(unauthorizedEventsProvider).signal;
+          return client;
+        }),
+        deviceTimezoneProvider
+            .overrideWithValue(Future<String>.value(deviceTimezone ?? 'UTC')),
+        deviceTimezoneOrNullProvider
+            .overrideWithValue(Future<String?>.value(deviceTimezone)),
+        offlineWorkoutDraftsEnabledProvider
+            .overrideWithValue(offlineDraftsEnabled),
+      ],
+      child: const MayosApp(),
+    ),
+  );
+  await _pumpUntilFound(tester, find.text('Dashboard'));
+}

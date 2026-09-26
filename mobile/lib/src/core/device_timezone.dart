@@ -19,3 +19,21 @@ Future<String> deviceTimezone() async {
     return 'UTC';
   }
 }
+
+/// The device's IANA timezone, or null when it genuinely could not be
+/// determined — unlike [deviceTimezoneProvider], this never guesses `'UTC'`
+/// as a fallback, so a caller that must not invent a timezone (the offline
+/// workout logger, ADR 020/033) can tell "unknown" apart from an actual UTC
+/// device.
+final Provider<Future<String?>> deviceTimezoneOrNullProvider =
+    Provider<Future<String?>>((ref) => deviceTimezoneOrNull());
+
+Future<String?> deviceTimezoneOrNull() async {
+  try {
+    final TimezoneInfo info = await FlutterTimezone.getLocalTimezone();
+    final String identifier = info.identifier.trim();
+    return identifier.isEmpty ? null : identifier;
+  } catch (_) {
+    return null;
+  }
+}

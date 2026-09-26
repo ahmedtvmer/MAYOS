@@ -10,7 +10,7 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_USER_SCHEMA_VERSION: int = 8
+CURRENT_USER_SCHEMA_VERSION: int = 9
 
 
 def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
@@ -215,6 +215,46 @@ def _migrate_v7_to_v8(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_v8_to_v9(conn: sqlite3.Connection) -> None:
+    """Adds the offline-sync contract to committed workouts (ADR 020/033, #34).
+
+    ``workout_sessions`` gains the client-generated session identity, the
+    performed timezone, the captured program version, and capture/upload audit
+    timestamps. ``session_commits`` stores the exact response returned for a
+    client session id so a retry (or a lost response reconciled through the
+    status lookup) never commits a second workout. The unique index is partial
+    so already-committed legacy sessions keep a NULL client session id.
+    """
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    if "workout_sessions" in tables:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(workout_sessions)").fetchall()}
+        if "client_session_id" not in columns:
+            conn.execute("ALTER TABLE workout_sessions ADD COLUMN client_session_id TEXT")
+        if "performed_timezone" not in columns:
+            conn.execute("ALTER TABLE workout_sessions ADD COLUMN performed_timezone TEXT")
+        if "program_version" not in columns:
+            conn.execute("ALTER TABLE workout_sessions ADD COLUMN program_version INTEGER")
+        if "captured_at" not in columns:
+            conn.execute("ALTER TABLE workout_sessions ADD COLUMN captured_at TEXT")
+        if "uploaded_at" not in columns:
+            conn.execute("ALTER TABLE workout_sessions ADD COLUMN uploaded_at TEXT")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_workout_sessions_client"
+            " ON workout_sessions(client_session_id) WHERE client_session_id IS NOT NULL"
+        )
+
+    # Independent of whether a workout_sessions table exists yet; a fresh
+    # ``create_user_schema`` create is idempotent with this.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS session_commits (
+            client_session_id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            response_json TEXT NOT NULL,
+            committed_at TEXT NOT NULL
+        )
+    """)
+
+
 def get_user_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -308,6 +348,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     5: _migrate_v5_to_v6,
     6: _migrate_v6_to_v7,
     7: _migrate_v7_to_v8,
+    8: _migrate_v8_to_v9,
 }
 
 

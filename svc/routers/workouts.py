@@ -2,10 +2,12 @@
 
 import asyncio
 import io
+import json
+import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from service import sessions as sessions_service
 from service import workouts as workouts_service
@@ -17,14 +19,45 @@ router = APIRouter(prefix="/workouts", tags=["workouts"])
 EXPORT_MEDIA_TYPES = {"csv": "text/csv", "json": "application/json"}
 
 
-def _day_plan(db: Any, trainee: str, day_order: int) -> Any:
+def _day_plan(db: Any, player: str, day_order: int) -> Any:
     program = db.get_active_program()
     if program is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active program.")
-    for day in program.days:
-        if day.day_order == day_order:
-            return day
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No day with order {day_order}.")
+    try:
+        return workouts_service.day_plan_from(program, day_order)
+    except workouts_service.DayPlanNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+def _sets_payload(db: Any, body: SessionCommitIn) -> list[dict[str, Any]]:
+    payload = []
+    for item in body.sets:
+        exercise_id = item.exercise.exercise_id
+        if db.get_exercise_catalog_entry(exercise_id) is None:
+            raise workouts_service.SessionSyncValidationError(f"Unknown exercise id: {exercise_id}.")
+        payload.append(
+            {
+                "exercise": item.exercise,
+                "sets": [s.model_dump() for s in item.sets],
+                "previous_perf": db.get_last_performance(exercise_id),
+            }
+        )
+    return payload
+
+
+@router.get("/exercises")
+async def search_exercises(
+    query: str,
+    player: Annotated[str, Depends(get_current_trainee)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Catalog exercises matching ``query``, for picking a real unplanned exercise (#34)."""
+
+    def _run():
+        bind_request(db, player)
+        return {"exercises": db.find_exercises_by_name(query, limit=10)}
+
+    return await asyncio.to_thread(_run)
 
 
 @router.get("/prescription")
@@ -43,27 +76,93 @@ async def read_prescription(
 @router.post("/sessions", status_code=status.HTTP_201_CREATED)
 async def commit_session(
     body: SessionCommitIn,
-    trainee: Annotated[str, Depends(get_current_trainee)],
+    player: Annotated[str, Depends(get_current_trainee)],
     db: Annotated[Any, Depends(get_db)],
 ):
-    def _run():
-        bind_request(db, trainee)
-        day_plan = _day_plan(db, trainee, body.day_order)
-        payload = []
-        for item in body.sets:
-            payload.append(
-                {
-                    "exercise": item.exercise,
-                    "sets": [s.model_dump() for s in item.sets],
-                    "previous_perf": db.get_last_performance(item.exercise.exercise_id),
-                }
+    def _run() -> workouts_service.CommitOutcome:
+        bind_request(db, player)
+        if body.client_session_id is None:
+            # Legacy online-only contract, unchanged.
+            day_plan = _day_plan(db, player, body.day_order)
+            return workouts_service.commit_session(
+                db, player, day_plan, body.readiness, body.session_notes, _sets_payload(db, body),
+                account_id=account_id_of(player),
             )
-        return workouts_service.commit_session(
-            db, trainee, day_plan, body.readiness, body.session_notes, payload,
-            account_id=account_id_of(trainee),
+
+        try:
+            uuid.UUID(body.client_session_id)
+        except (AttributeError, TypeError, ValueError):
+            raise workouts_service.SessionSyncValidationError("client_session_id must be a UUID.") from None
+
+        # ADR 033: an existing commit replays its exact stored response before
+        # any mutable catalog, day, or program validation, and writes nothing.
+        # The player's ledger is already bound and authenticated above, so a
+        # foreign client session id is never visible here.
+        replayed = workouts_service.committed_session(db, body.client_session_id)
+        if replayed is not None:
+            return replayed
+
+        if body.program_version is None:
+            raise workouts_service.SessionSyncValidationError("program_version is required.")
+        workouts_service.validate_sync_fields(
+            body.performed_date, body.performed_timezone, body.captured_at
         )
 
-    return await asyncio.to_thread(_run)
+        sync = workouts_service.SyncMetadata(
+            client_session_id=body.client_session_id,
+            performed_date=body.performed_date,
+            performed_timezone=body.performed_timezone,
+            program_version=body.program_version,
+            captured_at=body.captured_at,
+        )
+        return workouts_service.commit_logged_session(
+            db,
+            player,
+            body.day_order,
+            body.readiness,
+            body.session_notes,
+            _sets_payload(db, body),
+            sync=sync,
+            account_id=account_id_of(player),
+        )
+
+    try:
+        result = await asyncio.to_thread(_run)
+    except workouts_service.SessionSyncValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except workouts_service.DayPlanNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except workouts_service.ProgramVersionMismatchError as exc:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={"error": "program_version_mismatch", "active_version": exc.active_version},
+        )
+
+    if not result.created:
+        return JSONResponse(status_code=status.HTTP_200_OK, content=result.body)
+    return result.body
+
+
+@router.get("/sessions/by-client-id/{client_session_id}")
+async def read_session_by_client_id(
+    client_session_id: str,
+    player: Annotated[str, Depends(get_current_trainee)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """The stored commit response for a client session id, or 404 when never committed."""
+
+    def _run():
+        bind_request(db, player)
+        commit = db.get_session_commit(client_session_id)
+        return json.loads(commit["response_json"]) if commit is not None else None
+
+    result = await asyncio.to_thread(_run)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No committed session for this client session id.",
+        )
+    return result
 
 
 async def _stream_session_log(trainee: str, db: Any, fmt: str) -> StreamingResponse:

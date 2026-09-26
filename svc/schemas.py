@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from agent.ProgramState import GeneratedProgramSchema, ProgramExerciseSchema
 
@@ -606,6 +606,7 @@ class WorkoutSetIn(BaseModel):
     weight_kg: float = Field(ge=0.0, le=500.0)
     reps: int = Field(ge=0, le=50)
     rpe: float = Field(ge=6.0, le=10.0)
+    is_warmup: bool = False
 
 
 class ExerciseSetsIn(BaseModel):
@@ -618,6 +619,27 @@ class SessionCommitIn(BaseModel):
     readiness: int = Field(ge=1, le=5)
     session_notes: str = Field(default="", max_length=2000)
     sets: list[ExerciseSetsIn] = Field(min_length=1)
+
+    # Offline-sync contract (ADR 020/033). When ``client_session_id`` is absent
+    # the request keeps the legacy online-only behaviour; when present the
+    # performed date/timezone, captured program version, and capture instant are
+    # required and validated by the service.
+    client_session_id: str | None = Field(default=None, max_length=64)
+    performed_date: str | None = Field(default=None, max_length=10)
+    performed_timezone: str | None = Field(default=None, max_length=64)
+    program_version: int | None = Field(default=None, ge=0)
+    captured_at: str | None = Field(default=None, max_length=64)
+
+    @model_validator(mode="after")
+    def _sync_fields_require_client_session_id(self) -> "SessionCommitIn":
+        if self.client_session_id is None and (
+            self.performed_date is not None
+            or self.performed_timezone is not None
+            or self.program_version is not None
+            or self.captured_at is not None
+        ):
+            raise ValueError("performed_date/performed_timezone/program_version/captured_at require client_session_id.")
+        return self
 
 
 class ChatMessageIn(BaseModel):

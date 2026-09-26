@@ -1,10 +1,13 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/api_client.dart';
 import 'core/config.dart';
 import 'core/token_store.dart';
+import 'core/workout_storage.dart';
 import 'features/player/auth/auth_controller.dart';
 import 'features/player/auth/auth_repository.dart';
+import 'features/player/workout/draft_sync_service.dart';
 
 final Provider<TokenStore> tokenStoreProvider = Provider<TokenStore>(
   (ref) => SecureTokenStore(),
@@ -38,4 +41,45 @@ final StateNotifierProvider<AuthController, AuthState> authControllerProvider =
     ref.watch(authRepositoryProvider),
     ref.watch(unauthorizedEventsProvider),
   );
+});
+
+/// Whether this client captures protected offline workout drafts (ADR 020).
+///
+/// Offline drafts are Android-only (ADR 022): the web client stays online-only
+/// and must never write training data to browser storage. The web target
+/// therefore falls back to in-memory stores and hides the offline entry points.
+final Provider<bool> offlineWorkoutDraftsEnabledProvider =
+    Provider<bool>((ref) => !kIsWeb);
+
+/// Protected, account-separated storage for offline workout drafts.
+final Provider<DraftStore> draftStoreProvider = Provider<DraftStore>((ref) =>
+    ref.watch(offlineWorkoutDraftsEnabledProvider)
+        ? SecureDraftStore()
+        : InMemoryDraftStore());
+
+/// Protected cache of the active program and its prescription for offline logging.
+final Provider<WorkoutCacheStore> workoutCacheStoreProvider =
+    Provider<WorkoutCacheStore>((ref) =>
+        ref.watch(offlineWorkoutDraftsEnabledProvider)
+            ? SecureWorkoutCacheStore()
+            : InMemoryWorkoutCacheStore());
+
+/// Processes the logged-in account's drafts on login, after a save, on demand,
+/// and periodically while the app is in the foreground (ADR 020/033).
+final ChangeNotifierProvider<DraftSyncService> draftSyncServiceProvider =
+    ChangeNotifierProvider<DraftSyncService>((ref) {
+  final DraftSyncService service = DraftSyncService(
+    api: ref.watch(apiClientProvider),
+    store: ref.watch(draftStoreProvider),
+  );
+  ref.listen<AuthState>(authControllerProvider,
+      (AuthState? previous, AuthState next) {
+    final String? accountId = next.session?.account.accountId;
+    if (next.isAuthenticated && accountId != null) {
+      service.startFor(accountId);
+    } else {
+      service.stop();
+    }
+  }, fireImmediately: true);
+  return service;
 });

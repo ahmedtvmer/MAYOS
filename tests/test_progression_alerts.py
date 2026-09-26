@@ -595,10 +595,10 @@ def test_commit_session_hook_creates_a_deload_alert(api):
         today_date="2026-09-20",
     )
 
-    assert result["fatigue_post"]["deload_recommended"] is True
+    assert result.body["fatigue_post"]["deload_recommended"] is True
     alerts = _deload_alerts(db, coach_account_id)
     assert len(alerts) == 1
-    assert alerts[0]["details"]["session_id"] == result["session_id"]
+    assert alerts[0]["details"]["session_id"] == result.body["session_id"]
 
 
 def test_commit_session_hook_creates_a_regression_alert(api):
@@ -636,12 +636,12 @@ def test_commit_session_hook_creates_a_regression_alert(api):
         today_date="2026-09-20",
     )
 
-    summary = result["exercise_summaries"][0]
+    summary = result.body["exercise_summaries"][0]
     assert summary["exercise_id"] == "bp"
     assert summary["action"] == "deload"
     alerts = _regression_alert(db, coach_account_id)
     assert len(alerts) == 1
-    assert alerts[0]["dedupe_key"] == f"bp:{result['session_id']}"
+    assert alerts[0]["dedupe_key"] == f"bp:{result.body['session_id']}"
     assert alerts[0]["details"]["exercise_id"] == "bp"
 
 
