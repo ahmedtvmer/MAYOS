@@ -7,6 +7,7 @@ import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
+import 'support/fake_api_adapter.dart';
 import 'support/fake_mayos_api.dart';
 
 /// Pumps finite frames until [finder] matches, then a few more so route
@@ -97,6 +98,29 @@ void main() {
     // Dropping the coach capability drops only the Coach plan.
     expect(account.plans.withoutCoach().coach, isNull);
     expect(account.plans.withoutCoach().lifter!.isPro, isTrue);
+  });
+
+  test('valid plans with malformed capabilities surfaces ApiException', () async {
+    final FakeApiAdapter adapter = FakeApiAdapter((FakeRequest request) {
+      return FakeResponse(200, <String, dynamic>{
+        'account_id': 'account-alice',
+        'trainee_id': 'alice',
+        'capabilities': 'not-a-map',
+        'plans': <String, dynamic>{
+          'lifter': <String, dynamic>{'plan': 'free', 'status': 'active'},
+        },
+      });
+    });
+    final ApiClient client = ApiClient(
+      tokens: InMemoryTokenStore(),
+      baseUrl: 'http://test.local',
+      adapter: adapter,
+    );
+
+    await expectLater(
+      client.currentAccount(),
+      throwsA(isA<ApiException>()),
+    );
   });
 
   testWidgets('single-capability player sees Lifter Free and honest benefits',

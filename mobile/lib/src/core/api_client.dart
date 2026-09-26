@@ -153,13 +153,16 @@ class ApiClient {
   }
 
   Account _parseAccount(dynamic responseData) {
+    const String invalidAccountStatus = 'The service returned invalid account status.';
     if (responseData is! Map<String, dynamic>) {
-      throw const ApiException('The service returned invalid account status.');
+      throw const ApiException(invalidAccountStatus);
     }
     try {
       return Account.fromJson(responseData);
     } on FormatException {
-      throw const ApiException('The service returned invalid account status.');
+      throw const ApiException(invalidAccountStatus);
+    } on TypeError {
+      throw const ApiException(invalidAccountStatus);
     }
   }
 
