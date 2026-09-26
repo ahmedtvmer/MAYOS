@@ -1,6 +1,6 @@
 """Pydantic request/response contracts for the FastAPI service."""
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -76,7 +76,7 @@ class AccountCapabilitiesOut(BaseModel):
 class PlanStateOut(BaseModel):
     """One capability's server-owned plan. A status field leaves room for later lifecycle states."""
 
-    plan: str
+    plan: Literal["free", "pro"]
     status: str
 
 

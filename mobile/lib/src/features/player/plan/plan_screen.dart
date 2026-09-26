@@ -8,13 +8,13 @@ import '../../../providers.dart';
 /// excludes not-yet-working features (workout logging, complete history,
 /// alerts, coach publishing) and any paid/Pro claim, so the display never
 /// over-promises what the app can do today.
-const List<String> lifterFreeBenefits = <String>[
+const List<String> _lifterFreeBenefits = <String>[
   'Automatic training program',
   'Weekly volume and personal-record dashboard',
   'Coaching assignment with your coach',
 ];
 
-const List<String> coachFreeBenefits = <String>[
+const List<String> _coachFreeBenefits = <String>[
   'Coach profile and player invite codes',
   'Active roster with assignment status',
   'End or revoke assignments at any time',
@@ -37,13 +37,13 @@ class PlanScreen extends ConsumerWidget {
         _PlanCard(
           capability: 'Lifter',
           plan: plans.lifter!,
-          benefits: lifterFreeBenefits,
+          benefits: _lifterFreeBenefits,
         ),
       if (plans.coach != null)
         _PlanCard(
           capability: 'Coach',
           plan: plans.coach!,
-          benefits: coachFreeBenefits,
+          benefits: _coachFreeBenefits,
         ),
     ];
     if (cards.isEmpty) {
