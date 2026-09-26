@@ -340,7 +340,14 @@ def test_status_lookup_404_then_200(api):
 
     found = client.get(f"/workouts/sessions/by-client-id/{CLIENT_ID}", headers=headers)
     assert found.status_code == 200
-    assert found.json() == committed.json()
+    # The stored response is overlaid with the live session date and correction
+    # history (ADR 035); every original field is unchanged.
+    body = found.json()
+    assert {key: value for key, value in body.items() if key in committed.json()} == committed.json()
+    assert body["session_id"] == committed.json()["session_id"]
+    assert body["session_date"] == "2026-09-26"
+    assert body["edited_at"] is None
+    assert body["corrections"] == []
 
 
 def test_legacy_commit_without_client_session_id_still_works(api):
@@ -591,6 +598,24 @@ def test_backdate_window_uses_local_capture_date(api, timezone):
     resp = client.post("/workouts/sessions", headers=headers, json=rejected)
     assert resp.status_code == 400
     assert "3 days" in resp.json()["detail"]
+
+
+def test_performed_date_after_the_capture_date_is_refused(api):
+    """A draft can never claim a performed date later than when it was captured."""
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    # Captured yesterday (2026-09-25); the ceiling is the capture's local date.
+    body = _sync_body(
+        client_session_id="55555555-5555-4555-8555-555555555555",
+        version=version,
+        performed_date="2026-09-26",
+        captured_at="2026-09-25T11:00:00+00:00",
+    )
+    resp = client.post("/workouts/sessions", headers=headers, json=body)
+    assert resp.status_code == 400, resp.text
+    assert "capture" in resp.json()["detail"].lower()
+    db.switch_user("p1")
+    assert db.conn.execute("SELECT COUNT(*) FROM workout_sessions").fetchone()[0] == 0
 
 
 def test_captured_at_within_clock_skew_is_accepted(api):

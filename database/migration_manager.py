@@ -10,7 +10,23 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_USER_SCHEMA_VERSION: int = 10
+CURRENT_USER_SCHEMA_VERSION: int = 11
+
+#: Performed-date correction DDL (ADR 035). Kept in one place so the
+#: fresh-create path (``DatabaseManager.create_user_schema``) and the v10->v11
+#: migration cannot drift apart.
+PERFORMED_DATE_CORRECTIONS_DDL: tuple[str, ...] = (
+    "CREATE TABLE IF NOT EXISTS performed_date_corrections ("
+    " id TEXT PRIMARY KEY,"
+    " session_id TEXT NOT NULL,"
+    " previous_date TEXT NOT NULL,"
+    " corrected_date TEXT NOT NULL,"
+    " corrected_at TEXT NOT NULL,"
+    " FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE"
+    ")",
+    "CREATE INDEX IF NOT EXISTS idx_performed_date_corrections_session"
+    " ON performed_date_corrections(session_id)",
+)
 
 
 def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
@@ -271,6 +287,25 @@ def _migrate_v9_to_v10(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE workout_sessions ADD COLUMN active_program_version_at_sync INTEGER")
 
 
+def _migrate_v10_to_v11(conn: sqlite3.Connection) -> None:
+    """Adds performed-date corrections to committed workouts (ADR 020/035).
+
+    ``workout_sessions`` gains ``edited_at`` so a correction is auditable while
+    the original capture/upload timestamps stay untouched. Every correction is
+    an immutable ``performed_date_corrections`` row (previous date, corrected
+    date, and time); the rows cascade with their session so deleting a workout
+    drops its correction history too.
+    """
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    if "workout_sessions" in tables:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(workout_sessions)").fetchall()}
+        if "edited_at" not in columns:
+            conn.execute("ALTER TABLE workout_sessions ADD COLUMN edited_at TEXT")
+
+    for statement in PERFORMED_DATE_CORRECTIONS_DDL:
+        conn.execute(statement)
+
+
 def get_user_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -366,6 +401,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     7: _migrate_v7_to_v8,
     8: _migrate_v8_to_v9,
     9: _migrate_v9_to_v10,
+    10: _migrate_v10_to_v11,
 }
 
 

@@ -72,6 +72,11 @@ class FakeMayosApi {
       <String, Map<String, dynamic>>{};
   int commitRequests = 0;
   bool commitFails = false;
+  // Performed-date corrections (#36): when true every correction is refused 409,
+  // emulating a session outside the window.
+  bool correctionRefused = false;
+  final Map<String, Map<String, dynamic>> correctedSessions =
+      <String, Map<String, dynamic>>{};
   int _sessionSeq = 0;
 
   // Player training schedule and pauses (#30).
@@ -85,10 +90,8 @@ class FakeMayosApi {
   // Coach drill-down (#25). Denied mirrors a revoked/foreign assignment.
   bool coachHistoryDenied = false;
   Map<String, dynamic> coachPlayerSummary = _defaultCoachSummary();
-  List<Map<String, dynamic>> coachPlayerRecords =
-      _defaultCoachRecords();
-  List<Map<String, dynamic>> coachPlayerExercises =
-      _defaultCoachExercises();
+  List<Map<String, dynamic>> coachPlayerRecords = _defaultCoachRecords();
+  List<Map<String, dynamic>> coachPlayerExercises = _defaultCoachExercises();
   Map<String, Map<String, dynamic>> coachPlayerHistories =
       _defaultCoachHistories();
 
@@ -104,6 +107,10 @@ class FakeMayosApi {
     final String path = request.path;
     if (path.startsWith('/workouts/sessions/by-client-id/')) {
       return _sessionByClientId(request);
+    }
+    if (path.startsWith('/workouts/sessions/') &&
+        path.endsWith('/performed-date')) {
+      return _correctPerformedDate(request);
     }
     if (path == '/workouts/prescription') {
       return _prescription(request);
@@ -251,7 +258,8 @@ class FakeMayosApi {
 
   Map<String, dynamic> _plansBody() => <String, dynamic>{
         'lifter': <String, dynamic>{'plan': lifterPlan, 'status': 'active'},
-        if (coach) 'coach': <String, dynamic>{'plan': coachPlan, 'status': 'active'},
+        if (coach)
+          'coach': <String, dynamic>{'plan': coachPlan, 'status': 'active'},
       };
 
   FakeResponse _recoveryEmail(FakeRequest request) {
@@ -358,7 +366,8 @@ class FakeMayosApi {
     }
     if (assignments.length >= coachCapacity) {
       return const FakeResponse(400, <String, dynamic>{
-        'detail': 'Your roster is full. End an assignment before issuing another invite.'
+        'detail':
+            'Your roster is full. End an assignment before issuing another invite.'
       });
     }
     issuedAssignmentToken = 'assignment-invite-token-123456';
@@ -379,8 +388,9 @@ class FakeMayosApi {
       return const FakeResponse(
           403, <String, dynamic>{'detail': 'Coach capability required.'});
     }
-    return FakeResponse(
-        200, <String, dynamic>{'assignments': List<Map<String, dynamic>>.from(assignments)});
+    return FakeResponse(200, <String, dynamic>{
+      'assignments': List<Map<String, dynamic>>.from(assignments)
+    });
   }
 
   FakeResponse _coachNotices(FakeRequest request) {
@@ -392,8 +402,9 @@ class FakeMayosApi {
       return const FakeResponse(
           403, <String, dynamic>{'detail': 'Coach capability required.'});
     }
-    return FakeResponse(
-        200, <String, dynamic>{'notices': List<Map<String, dynamic>>.from(assignmentNotices)});
+    return FakeResponse(200, <String, dynamic>{
+      'notices': List<Map<String, dynamic>>.from(assignmentNotices)
+    });
   }
 
   FakeResponse _markNoticesRead(FakeRequest request) {
@@ -450,8 +461,8 @@ class FakeMayosApi {
     final String id = request.path
         .replaceFirst('/coach/alerts/', '')
         .replaceFirst(RegExp(r'/(acknowledge|resolve)$'), '');
-    final int index = coachAlerts.indexWhere(
-        (Map<String, dynamic> alert) => alert['alert_id'] == id);
+    final int index = coachAlerts
+        .indexWhere((Map<String, dynamic> alert) => alert['alert_id'] == id);
     if (index < 0) {
       return const FakeResponse(
           403, <String, dynamic>{'detail': 'No active assignment.'});
@@ -480,8 +491,8 @@ class FakeMayosApi {
     final String id = request.path
         .replaceFirst('/coach/assignments/', '')
         .replaceFirst('/revoke', '');
-    assignments.removeWhere((Map<String, dynamic> entry) =>
-        entry['assignment_id'] == id);
+    assignments.removeWhere(
+        (Map<String, dynamic> entry) => entry['assignment_id'] == id);
     return FakeResponse(200, <String, dynamic>{
       'assignment_id': id,
       'status': 'ended',
@@ -507,7 +518,8 @@ class FakeMayosApi {
       return FakeResponse(200, coachPlayerSummary);
     }
     if (path.endsWith('/player/personal-records')) {
-      return FakeResponse(200, List<Map<String, dynamic>>.from(coachPlayerRecords));
+      return FakeResponse(
+          200, List<Map<String, dynamic>>.from(coachPlayerRecords));
     }
     if (path.endsWith('/player/exercises')) {
       return FakeResponse(
@@ -519,10 +531,13 @@ class FakeMayosApi {
       return FakeResponse(
           200,
           coachPlayerHistories[exerciseId] ??
-              <String, dynamic>{'history': <dynamic>[], 'caption': null, 'records': <dynamic>[]});
+              <String, dynamic>{
+                'history': <dynamic>[],
+                'caption': null,
+                'records': <dynamic>[]
+              });
     }
-    return const FakeResponse(
-        404, <String, dynamic>{'detail': 'Not found.'});
+    return const FakeResponse(404, <String, dynamic>{'detail': 'Not found.'});
   }
 
   FakeResponse _coachCheckIns(FakeRequest request) {
@@ -567,21 +582,26 @@ class FakeMayosApi {
       'other',
     ];
     if (channel == null || !channels.contains(channel)) {
-      return const FakeResponse(
-          400, <String, dynamic>{'detail': 'channel is not a recognized contact method.'});
+      return const FakeResponse(400, <String, dynamic>{
+        'detail': 'channel is not a recognized contact method.'
+      });
     }
-    final DateTime? date = checkedInOn == null ? null : DateTime.tryParse(checkedInOn);
+    final DateTime? date =
+        checkedInOn == null ? null : DateTime.tryParse(checkedInOn);
     if (date == null) {
-      return const FakeResponse(
-          400, <String, dynamic>{'detail': 'checked_in_on must be an ISO date (YYYY-MM-DD).'});
+      return const FakeResponse(400, <String, dynamic>{
+        'detail': 'checked_in_on must be an ISO date (YYYY-MM-DD).'
+      });
     }
     if (checkedInOn!.compareTo(_todayIso()) > 0) {
-      return const FakeResponse(
-          400, <String, dynamic>{'detail': 'A check-in cannot be dated in the future.'});
+      return const FakeResponse(400, <String, dynamic>{
+        'detail': 'A check-in cannot be dated in the future.'
+      });
     }
     if (note != null && note.length > 500) {
-      return const FakeResponse(
-          400, <String, dynamic>{'detail': 'A check-in note can be at most 500 characters.'});
+      return const FakeResponse(400, <String, dynamic>{
+        'detail': 'A check-in note can be at most 500 characters.'
+      });
     }
     final Map<String, dynamic> row = <String, dynamic>{
       'check_in_id': 'check-in-${++_checkInSeq}',
@@ -806,7 +826,8 @@ class FakeMayosApi {
     final String? token = request.body['token'] as String?;
     if (request.body['consent'] != true) {
       return const FakeResponse(400, <String, dynamic>{
-        'detail': 'You must explicitly accept the assignment to redeem this invite.'
+        'detail':
+            'You must explicitly accept the assignment to redeem this invite.'
       });
     }
     if (pendingAssignmentToken == null || token != pendingAssignmentToken) {
@@ -993,9 +1014,8 @@ class FakeMayosApi {
       return const FakeResponse(
           403, <String, dynamic>{'detail': 'Coach capability required.'});
     }
-    final List<String> parts = request.path
-        .replaceFirst('/coach/assignments/', '')
-        .split('/');
+    final List<String> parts =
+        request.path.replaceFirst('/coach/assignments/', '').split('/');
     final String assignmentId = parts.isNotEmpty ? parts[0] : '';
     final bool owned = assignments.any(
         (Map<String, dynamic> entry) => entry['assignment_id'] == assignmentId);
@@ -1080,7 +1100,8 @@ class FakeMayosApi {
     }
     if (coachControlsProgram) {
       return const FakeResponse(403, <String, dynamic>{
-        'detail': 'Your assigned coach controls your program. Ask your coach for changes.'
+        'detail':
+            'Your assigned coach controls your program. Ask your coach for changes.'
       });
     }
     return FakeResponse(200, _activeProgramBody());
@@ -1111,8 +1132,9 @@ class FakeMayosApi {
   FakeResponse _updateProfile(FakeRequest request) {
     final int? frequency = (request.body['weekly_frequency'] as num?)?.toInt();
     final String? preference = request.body['rep_preference'] as String?;
-    final bool rebuildWarranted = (frequency != null && frequency != weeklyFrequency) ||
-        (preference != null && preference != repPreference);
+    final bool rebuildWarranted =
+        (frequency != null && frequency != weeklyFrequency) ||
+            (preference != null && preference != repPreference);
     if (frequency != null) weeklyFrequency = frequency;
     if (preference != null) repPreference = preference;
 
@@ -1144,7 +1166,9 @@ class FakeMayosApi {
       return _setSchedule(request);
     }
     final Map<String, dynamic>? current =
-        (scheduleEmpty || scheduleVersions.isEmpty) ? null : scheduleVersions.first;
+        (scheduleEmpty || scheduleVersions.isEmpty)
+            ? null
+            : scheduleVersions.first;
     return FakeResponse(200, <String, dynamic>{
       'current': current,
       'versions': scheduleEmpty
@@ -1158,21 +1182,24 @@ class FakeMayosApi {
     final dynamic raw = request.body['weekdays'];
     final String timezone = (request.body['timezone'] as String?)?.trim() ?? '';
     if (raw is! List<dynamic> || raw.isEmpty) {
-      return const FakeResponse(
-          400, <String, dynamic>{'detail': 'Pick at least one expected training weekday.'});
+      return const FakeResponse(400, <String, dynamic>{
+        'detail': 'Pick at least one expected training weekday.'
+      });
     }
     final List<int> weekdays = <int>[];
     for (final dynamic day in raw) {
       if (day is! int || day < 1 || day > 7) {
         return const FakeResponse(400, <String, dynamic>{
-          'detail': 'Expected training weekdays must be integers from 1 (Mon) to 7 (Sun).'
+          'detail':
+              'Expected training weekdays must be integers from 1 (Mon) to 7 (Sun).'
         });
       }
       weekdays.add(day);
     }
     if (weekdays.toSet().length != weekdays.length) {
-      return const FakeResponse(400,
-          <String, dynamic>{'detail': 'Expected training weekdays must be unique.'});
+      return const FakeResponse(400, <String, dynamic>{
+        'detail': 'Expected training weekdays must be unique.'
+      });
     }
     if (timezone.isEmpty) {
       return const FakeResponse(
@@ -1213,23 +1240,23 @@ class FakeMayosApi {
         startsOn == null ? null : DateTime.tryParse(startsOn);
     final DateTime? end = endsOn == null ? null : DateTime.tryParse(endsOn);
     if (start == null || end == null) {
-      return const FakeResponse(400, <String, dynamic>{
-        'detail': 'Dates must be ISO dates (YYYY-MM-DD).'
-      });
+      return const FakeResponse(400,
+          <String, dynamic>{'detail': 'Dates must be ISO dates (YYYY-MM-DD).'});
     }
     final DateTime now = DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
     if (start.isBefore(today)) {
-      return const FakeResponse(
-          400, <String, dynamic>{'detail': 'A pause must start today or later.'});
+      return const FakeResponse(400,
+          <String, dynamic>{'detail': 'A pause must start today or later.'});
     }
     if (end.isBefore(start)) {
-      return const FakeResponse(400,
-          <String, dynamic>{'detail': 'A pause must end on or after it starts.'});
+      return const FakeResponse(400, <String, dynamic>{
+        'detail': 'A pause must end on or after it starts.'
+      });
     }
     if (end.difference(start).inDays + 1 > 14) {
-      return const FakeResponse(
-          400, <String, dynamic>{'detail': 'A pause can last at most 14 days.'});
+      return const FakeResponse(400,
+          <String, dynamic>{'detail': 'A pause can last at most 14 days.'});
     }
     final Map<String, dynamic> pause = <String, dynamic>{
       'pause_id': 'pause-new-${++_pauseSeq}',
@@ -1308,77 +1335,77 @@ class FakeMayosApi {
   }
 
   Map<String, dynamic> _activeProgramBody() => <String, dynamic>{
-      'program_name': 'Upper/Lower 4x',
-      'split_type': 'Upper/Lower',
-      'weekly_frequency': 4,
-      'instructions': '',
-      'days': <Map<String, dynamic>>[
-        <String, dynamic>{
-          'day_name': 'Upper 1',
-          'day_order': 1,
-          'warmup_exercises': <Map<String, dynamic>>[
-            <String, dynamic>{
-              'exercise_id': 'band_pull_apart',
-              'exercise_name': 'Band Pull-Apart',
-              'sets': 2,
-              'reps': 15,
-              'rest_seconds': 45,
-              'notes': 'Squeeze at the top.',
-            },
-          ],
-          'exercises': <Map<String, dynamic>>[
-            <String, dynamic>{
-              'exercise_id': 'bench_press',
-              'exercise_name': 'Bench Press',
-              'warmup_sets': 2,
-              'target_sets': 3,
-              'target_reps_min': 5,
-              'target_reps_max': 8,
-              'target_rpe': 8.5,
-              'rest_seconds': 180,
-              'notes': 'Pause on the chest.',
-            },
-            <String, dynamic>{
-              'exercise_id': 'overhead_press',
-              'exercise_name': 'Overhead Press',
-              'warmup_sets': 1,
-              'target_sets': 3,
-              'target_reps_min': 6,
-              'target_reps_max': 10,
-              'target_rpe': 8.0,
-              'rest_seconds': 150,
-              'notes': null,
-            },
-            <String, dynamic>{
-              'exercise_id': 'barbell_row',
-              'exercise_name': 'Barbell Row',
-              'warmup_sets': 1,
-              'target_sets': 3,
-              'target_reps_min': 6,
-              'target_reps_max': 10,
-              'target_rpe': 8.0,
-              'rest_seconds': 150,
-              'notes': null,
-            },
-            <String, dynamic>{
-              'exercise_id': 'lat_pulldown',
-              'exercise_name': 'Lat Pulldown',
-              'warmup_sets': 0,
-              'target_sets': 3,
-              'target_reps_min': 8,
-              'target_reps_max': 12,
-              'target_rpe': 8.0,
-              'rest_seconds': 120,
-              'notes': null,
-            },
-          ],
-          'cardio': '10 min incline walk',
-        },
-      ],
-      if (programVersion != null) 'version': programVersion,
-      if (programPublishedByCoachAccountId != null)
-        'published_by_coach_account_id': programPublishedByCoachAccountId,
-    };
+        'program_name': 'Upper/Lower 4x',
+        'split_type': 'Upper/Lower',
+        'weekly_frequency': 4,
+        'instructions': '',
+        'days': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'day_name': 'Upper 1',
+            'day_order': 1,
+            'warmup_exercises': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'exercise_id': 'band_pull_apart',
+                'exercise_name': 'Band Pull-Apart',
+                'sets': 2,
+                'reps': 15,
+                'rest_seconds': 45,
+                'notes': 'Squeeze at the top.',
+              },
+            ],
+            'exercises': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'exercise_id': 'bench_press',
+                'exercise_name': 'Bench Press',
+                'warmup_sets': 2,
+                'target_sets': 3,
+                'target_reps_min': 5,
+                'target_reps_max': 8,
+                'target_rpe': 8.5,
+                'rest_seconds': 180,
+                'notes': 'Pause on the chest.',
+              },
+              <String, dynamic>{
+                'exercise_id': 'overhead_press',
+                'exercise_name': 'Overhead Press',
+                'warmup_sets': 1,
+                'target_sets': 3,
+                'target_reps_min': 6,
+                'target_reps_max': 10,
+                'target_rpe': 8.0,
+                'rest_seconds': 150,
+                'notes': null,
+              },
+              <String, dynamic>{
+                'exercise_id': 'barbell_row',
+                'exercise_name': 'Barbell Row',
+                'warmup_sets': 1,
+                'target_sets': 3,
+                'target_reps_min': 6,
+                'target_reps_max': 10,
+                'target_rpe': 8.0,
+                'rest_seconds': 150,
+                'notes': null,
+              },
+              <String, dynamic>{
+                'exercise_id': 'lat_pulldown',
+                'exercise_name': 'Lat Pulldown',
+                'warmup_sets': 0,
+                'target_sets': 3,
+                'target_reps_min': 8,
+                'target_reps_max': 12,
+                'target_rpe': 8.0,
+                'rest_seconds': 120,
+                'notes': null,
+              },
+            ],
+            'cardio': '10 min incline walk',
+          },
+        ],
+        if (programVersion != null) 'version': programVersion,
+        if (programPublishedByCoachAccountId != null)
+          'published_by_coach_account_id': programPublishedByCoachAccountId,
+      };
 
   FakeResponse _activeProgram(FakeRequest request) {
     if (!_authorized(request)) {
@@ -1397,12 +1424,11 @@ class FakeMayosApi {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
     }
-    final int dayOrder =
-        int.tryParse('${request.query['day_order']}') ?? 1;
-    final List<dynamic> days =
-        _activeProgramBody()['days'] as List<dynamic>;
+    final int dayOrder = int.tryParse('${request.query['day_order']}') ?? 1;
+    final List<dynamic> days = _activeProgramBody()['days'] as List<dynamic>;
     final Map<String, dynamic> day = days.firstWhere(
-      (dynamic entry) => (entry as Map<String, dynamic>)['day_order'] == dayOrder,
+      (dynamic entry) =>
+          (entry as Map<String, dynamic>)['day_order'] == dayOrder,
       orElse: () => days.first as Map<String, dynamic>,
     ) as Map<String, dynamic>;
     final List<dynamic> exercises = day['exercises'] as List<dynamic>;
@@ -1448,8 +1474,9 @@ class FakeMayosApi {
             .where((Map<String, dynamic> entry) =>
                 (entry['name'] as String).toLowerCase().contains(query))
             .toList(growable: false);
-    return FakeResponse(
-        200, <String, dynamic>{'exercises': List<Map<String, dynamic>>.from(matches)});
+    return FakeResponse(200, <String, dynamic>{
+      'exercises': List<Map<String, dynamic>>.from(matches)
+    });
   }
 
   FakeResponse _commitSession(FakeRequest request) {
@@ -1490,16 +1517,19 @@ class FakeMayosApi {
   }
 
   Map<String, dynamic> _sessionResponse(Map<String, dynamic> body) {
-    final List<dynamic> sets = body['sets'] as List<dynamic>? ?? const <dynamic>[];
+    final List<dynamic> sets =
+        body['sets'] as List<dynamic>? ?? const <dynamic>[];
     int working = 0;
     for (final dynamic entry in sets) {
-      working += ((entry as Map<String, dynamic>)['sets'] as List<dynamic>).length;
+      working +=
+          ((entry as Map<String, dynamic>)['sets'] as List<dynamic>).length;
     }
     final int requested = (body['program_version'] as num?)?.toInt() ?? 0;
     final int active = programVersion ?? 0;
     _sessionSeq++;
     return <String, dynamic>{
       'session_id': 'session-$_sessionSeq',
+      'session_date': body['performed_date'],
       'total_tonnage_kg': 1000.0,
       'total_working_sets': working,
       'exercise_summaries': <dynamic>[],
@@ -1519,15 +1549,91 @@ class FakeMayosApi {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
     }
-    final String id = request.path
-        .replaceFirst('/workouts/sessions/by-client-id/', '');
+    final String id =
+        request.path.replaceFirst('/workouts/sessions/by-client-id/', '');
     final Map<String, dynamic>? stored = sessionCommits[id];
     if (stored == null) {
       return const FakeResponse(404, <String, dynamic>{
         'detail': 'No committed session for this client session id.'
       });
     }
-    return FakeResponse(200, stored);
+    final Map<String, dynamic>? correction =
+        correctedSessions[stored['session_id']];
+    if (correction == null) {
+      return FakeResponse(200, stored);
+    }
+    return FakeResponse(200, <String, dynamic>{
+      ...stored,
+      'session_date': correction['session_date'],
+      'edited_at': correction['edited_at'],
+      'performed_date_corrections': correction['corrections'],
+    });
+  }
+
+  FakeResponse _correctPerformedDate(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (commitFails) {
+      return const FakeResponse(
+          500, <String, dynamic>{'detail': 'The service is unavailable.'});
+    }
+    if (correctionRefused) {
+      return const FakeResponse(409, <String, dynamic>{
+        'detail':
+            'A performed date can be corrected only within 3 days of the workout.'
+      });
+    }
+    final String id = request.path
+        .replaceFirst('/workouts/sessions/', '')
+        .replaceFirst('/performed-date', '');
+    Map<String, dynamic>? session;
+    for (final Map<String, dynamic> row in committedSessions) {
+      if (row['session_id'] == id) {
+        session = row;
+        break;
+      }
+    }
+    final String? performed = request.body['performed_date'] as String?;
+    if (session == null) {
+      return const FakeResponse(
+          404, <String, dynamic>{'detail': 'No such session.'});
+    }
+    if (performed == null ||
+        !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(performed)) {
+      return const FakeResponse(400, <String, dynamic>{
+        'detail': 'performed_date must be an ISO date (YYYY-MM-DD).'
+      });
+    }
+    final String previous = session['session_date'] as String? ?? performed;
+    final bool changed = previous != performed;
+    final String? editedAt = changed
+        ? (session['edited_at'] as String? ?? '2026-09-26T12:00:00Z')
+        : session['edited_at'] as String?;
+    final List<dynamic> corrections = changed
+        ? <dynamic>[
+            ...(correctedSessions[id]?['corrections'] as List<dynamic>? ??
+                const <dynamic>[]),
+            <String, dynamic>{
+              'previous_date': previous,
+              'corrected_date': performed,
+              'corrected_at': editedAt,
+            },
+          ]
+        : <dynamic>[];
+    session['session_date'] = performed;
+    session['edited_at'] = editedAt;
+    final Map<String, dynamic> result = <String, dynamic>{
+      'session_id': id,
+      'session_date': performed,
+      'previous_date': previous,
+      'edited_at': editedAt,
+      'changed': changed,
+      'corrections': corrections,
+    };
+    correctedSessions[id] = result;
+    return FakeResponse(200, result);
   }
 
   FakeResponse _volume(FakeRequest request) {
@@ -1618,6 +1724,8 @@ class FakeMayosApi {
       sessionCommits.clear();
       commitRequests = 0;
       commitFails = false;
+      correctionRefused = false;
+      correctedSessions.clear();
       _sessionSeq = 0;
     }
   }

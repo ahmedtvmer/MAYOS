@@ -415,8 +415,7 @@ class ApiClient {
     if (data is! Map<String, dynamic> || data['alerts'] is! List<dynamic>) {
       throw const ApiException(_invalidAlerts);
     }
-    return _parseBodyList(
-        data['alerts'], CoachAlert.fromJson, _invalidAlerts);
+    return _parseBodyList(data['alerts'], CoachAlert.fromJson, _invalidAlerts);
   }
 
   /// Acknowledges one missed-day alert; already acknowledged is idempotent.
@@ -428,8 +427,8 @@ class ApiClient {
 
   /// Resolves one missed-day alert; already resolved is idempotent.
   Future<CoachAlert> resolveCoachAlert(String alertId) async {
-    final response = await _send(
-        () => _dio.post<dynamic>('/coach/alerts/$alertId/resolve'));
+    final response =
+        await _send(() => _dio.post<dynamic>('/coach/alerts/$alertId/resolve'));
     return _parseBody(response.data, CoachAlert.fromJson, _invalidAlerts);
   }
 
@@ -509,8 +508,7 @@ class ApiClient {
     final response =
         await _send(() => _dio.get<dynamic>('/assignments/notices'));
     final dynamic data = response.data;
-    if (data is! Map<String, dynamic> ||
-        data['notices'] is! List<dynamic>) {
+    if (data is! Map<String, dynamic> || data['notices'] is! List<dynamic>) {
       throw const ApiException(_invalidNotices);
     }
     return _parseBodyList(
@@ -519,8 +517,8 @@ class ApiClient {
 
   /// Marks all of the player's notices read, returning how many were marked.
   Future<int> markPlayerNoticesRead() async {
-    final response = await _send(
-        () => _dio.post<dynamic>('/assignments/notices/read'));
+    final response =
+        await _send(() => _dio.post<dynamic>('/assignments/notices/read'));
     final dynamic data = response.data;
     if (data is! Map<String, dynamic> || data['marked_read'] is! num) {
       throw const ApiException(_invalidNotices);
@@ -620,8 +618,8 @@ class ApiClient {
   /// Regenerates the player's own program (self-service), refused 403 while an
   /// assigned coach's published program is active.
   Future<TrainingProgram> playerGenerateProgram() async {
-    final response = await _send(
-        () => _dio.post<dynamic>('/programs/generate', data: const <String, dynamic>{}));
+    final response = await _send(() => _dio
+        .post<dynamic>('/programs/generate', data: const <String, dynamic>{}));
     return _parseBody(response.data, TrainingProgram.fromJson, _invalidProgram);
   }
 
@@ -633,8 +631,8 @@ class ApiClient {
 
   /// Ends every assignment and disables the coach capability, preserving player data.
   Future<int> disableCoachCapability() async {
-    final response = await _send(
-        () => _dio.post<dynamic>('/coach/capability/disable'));
+    final response =
+        await _send(() => _dio.post<dynamic>('/coach/capability/disable'));
     return ((response.data as Map<String, dynamic>)['ended_assignments']
                 as num?)
             ?.toInt() ??
@@ -817,9 +815,7 @@ class ApiClient {
       () => _dio.get<dynamic>('/workouts/prescription',
           queryParameters: <String, dynamic>{'day_order': dayOrder}),
     );
-    return _parseBody(
-        response.data,
-        Prescription.fromJson,
+    return _parseBody(response.data, Prescription.fromJson,
         'The service returned invalid prescription data.');
   }
 
@@ -834,9 +830,7 @@ class ApiClient {
     if (data is! Map<String, dynamic> || data['exercises'] is! List) {
       throw const ApiException('The service returned invalid exercise data.');
     }
-    return _parseBodyList(
-        data['exercises'],
-        ExerciseCatalogEntry.fromJson,
+    return _parseBodyList(data['exercises'], ExerciseCatalogEntry.fromJson,
         'The service returned invalid exercise data.');
   }
 
@@ -863,7 +857,8 @@ class ApiClient {
   ///
   /// Used to reconcile a lost response before retrying so a committed workout
   /// is never sent twice.
-  Future<Map<String, dynamic>?> sessionByClientId(String clientSessionId) async {
+  Future<Map<String, dynamic>?> sessionByClientId(
+      String clientSessionId) async {
     try {
       final response = await _send(
         () => _dio
@@ -880,5 +875,25 @@ class ApiClient {
       }
       rethrow;
     }
+  }
+
+  /// Corrects a recent committed session's performed date (`PATCH
+  /// /workouts/sessions/{id}/performed-date`, ADR 020/035).
+  ///
+  /// Requires connectivity and raises [ApiException] on refusal (400 out of
+  /// window, 409 too old, 404 unknown) so the UI can surface a clear error.
+  Future<Map<String, dynamic>> correctSessionPerformedDate(
+      String sessionId, String performedDate) async {
+    final response = await _send(
+      () => _dio.patch<dynamic>(
+        '/workouts/sessions/$sessionId/performed-date',
+        data: <String, dynamic>{'performed_date': performedDate},
+      ),
+    );
+    final dynamic data = response.data;
+    if (data is! Map<String, dynamic>) {
+      throw const ApiException('The service returned invalid session data.');
+    }
+    return data;
   }
 }

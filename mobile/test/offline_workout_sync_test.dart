@@ -7,6 +7,7 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
+import 'package:mayos_mobile/src/core/performed_date_window.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/workout/draft_sync_service.dart';
@@ -109,12 +110,14 @@ Future<TokenStore> _authedTokens(FakeMayosApi fake) async {
 
 void main() {
   group('draft storage', () {
-    test('persists across a simulated restart (new service, same storage)', () async {
+    test('persists across a simulated restart (new service, same storage)',
+        () async {
       final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
       final TokenStore tokens = await _authedTokens(fake);
       final InMemoryDraftStore store = InMemoryDraftStore();
 
-      final DraftSyncService first = _service(fake: fake, tokens: tokens, store: store);
+      final DraftSyncService first =
+          _service(fake: fake, tokens: tokens, store: store);
       final WorkoutDraft draft = _draft(accountId: _accountA);
       first.startFor(_accountA, syncImmediately: false);
       await first.saveDraft(draft);
@@ -159,7 +162,8 @@ void main() {
   });
 
   group('sync engine', () {
-    test('network failure stays pending; retry sends the same client session id',
+    test(
+        'network failure stays pending; retry sends the same client session id',
         () async {
       final FakeMayosApi fake = FakeMayosApi()
         ..commitFails = true
@@ -193,7 +197,8 @@ void main() {
       expect(commits.last.body['client_session_id'], draft.clientSessionId);
     });
 
-    test('lost response is reconciled via the status endpoint without a second POST',
+    test(
+        'lost response is reconciled via the status endpoint without a second POST',
         () async {
       final FakeMayosApi fake = FakeMayosApi();
       final TokenStore tokens = await _authedTokens(fake);
@@ -207,7 +212,8 @@ void main() {
         'session_id': 'session-lost',
         'total_working_sets': 1,
       };
-      fake.committedSessions.add(<String, dynamic>{'session_id': 'session-lost'});
+      fake.committedSessions
+          .add(<String, dynamic>{'session_id': 'session-lost'});
       await store.write(_accountA, <WorkoutDraft>[draft]);
 
       service.startFor(_accountA, syncImmediately: false);
@@ -334,7 +340,8 @@ void main() {
       );
     });
 
-    test('a draft discarded during an in-flight sync stays discarded and is never posted',
+    test(
+        'a draft discarded during an in-flight sync stays discarded and is never posted',
         () async {
       final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
       final Completer<void> gate = Completer<void>();
@@ -363,7 +370,8 @@ void main() {
       expect(fake.committedSessions, isEmpty);
     });
 
-    test('logout abandons an in-flight pass: no post lands under the next account',
+    test(
+        'logout abandons an in-flight pass: no post lands under the next account',
         () async {
       final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
       final Completer<void> gate = Completer<void>();
@@ -395,7 +403,8 @@ void main() {
       expect((await store.read(_accountA)).single.isSynced, isFalse);
     });
 
-    test('a login during an in-flight pass still syncs the new account', () async {
+    test('a login during an in-flight pass still syncs the new account',
+        () async {
       final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
       final Completer<void> gate = Completer<void>();
       fake.adapter.beforeRespond = (FakeRequest request) async {
@@ -409,13 +418,15 @@ void main() {
           _service(fake: fake, tokens: tokens, store: store);
       service.startFor(_accountA, syncImmediately: false);
 
-      await store.write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
+      await store
+          .write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
       final Future<void> sync = service.syncNow();
       await pumpEventQueue();
 
       // B logs in while A's pass is still blocked on the status lookup; B's
       // immediate login sync must not be dropped waiting for the timer.
-      await store.write(_accountB, <WorkoutDraft>[_draft(accountId: _accountB)]);
+      await store
+          .write(_accountB, <WorkoutDraft>[_draft(accountId: _accountB)]);
       service.startFor(_accountB);
       await pumpEventQueue();
 
@@ -484,7 +495,8 @@ void main() {
       await service.syncNow();
       reloaded = (await store.read(_accountA)).single;
       expect(reloaded.attempt, 2);
-      final DateTime secondNextAttempt = DateTime.parse(reloaded.nextAttemptAt!);
+      final DateTime secondNextAttempt =
+          DateTime.parse(reloaded.nextAttemptAt!);
       expect(secondNextAttempt.difference(now), const Duration(seconds: 60));
 
       // A manual retry resets the backoff regardless of success.
@@ -493,7 +505,8 @@ void main() {
       expect(reloaded.attempt, 1);
     });
 
-    test('pauseForeground stops the timer; resumeForeground runs an immediate pass',
+    test(
+        'pauseForeground stops the timer; resumeForeground runs an immediate pass',
         () async {
       final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
       final TokenStore tokens = await _authedTokens(fake);
@@ -505,7 +518,8 @@ void main() {
         now: () => _fixedNow,
       );
       service.startFor(_accountA, syncImmediately: false);
-      await store.write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
+      await store
+          .write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
 
       service.pauseForeground();
       service.resumeForeground();
@@ -546,7 +560,8 @@ void main() {
         ],
       );
       await cacheStore.writeProgram(_accountA, cached);
-      await _pumpApp(tester, fake, draftStore: draftStore, cacheStore: cacheStore);
+      await _pumpApp(tester, fake,
+          draftStore: draftStore, cacheStore: cacheStore);
 
       await tester.tap(find.text('Program'));
       await _pumpUntilFound(tester, find.text('Cached Split'));
@@ -576,7 +591,8 @@ void main() {
       final InMemoryWorkoutCacheStore cacheStore = InMemoryWorkoutCacheStore();
       await cacheStore.writeProgram(_accountA, _cachedProgram());
 
-      await _pumpApp(tester, fake, draftStore: draftStore, cacheStore: cacheStore);
+      await _pumpApp(tester, fake,
+          draftStore: draftStore, cacheStore: cacheStore);
       await tester.tap(find.text('Program'));
       await _pumpUntilFound(tester, find.text('Log workout'));
       await tester.tap(find.text('Log workout'));
@@ -594,19 +610,22 @@ void main() {
       final InMemoryWorkoutCacheStore cacheStore = InMemoryWorkoutCacheStore();
       await cacheStore.writeProgram(_accountA, _cachedProgram());
 
-      await _pumpApp(tester, fake, draftStore: draftStore, cacheStore: cacheStore);
+      await _pumpApp(tester, fake,
+          draftStore: draftStore, cacheStore: cacheStore);
       await tester.tap(find.text('Program'));
       await _pumpUntilFound(tester, find.text('Cached Split'));
       await tester.ensureVisible(find.text('Log workout'));
       await tester.tap(find.text('Log workout'));
       await _pumpUntilFound(tester, find.text('Bench Press'));
 
-      expect(find.text('Offline: showing your cached program.'), findsOneWidget);
+      expect(
+          find.text('Offline: showing your cached program.'), findsOneWidget);
     });
   });
 
   group('workout logger timezone', () {
-    testWidgets('blocks Finish rather than record a date against an unknown zone',
+    testWidgets(
+        'blocks Finish rather than record a date against an unknown zone',
         (WidgetTester tester) async {
       final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
       final InMemoryDraftStore draftStore = InMemoryDraftStore();
@@ -614,9 +633,7 @@ void main() {
       await cacheStore.writeProgram(_accountA, _cachedProgram());
 
       await _pumpApp(tester, fake,
-          draftStore: draftStore,
-          cacheStore: cacheStore,
-          deviceTimezone: null);
+          draftStore: draftStore, cacheStore: cacheStore, deviceTimezone: null);
       await tester.tap(find.text('Program'));
       await _pumpUntilFound(tester, find.text('Log workout'));
       await tester.tap(find.text('Log workout'));
@@ -659,15 +676,18 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.textContaining('available in the Android app'), findsOneWidget);
+      expect(
+          find.textContaining('available in the Android app'), findsOneWidget);
     });
   });
 
   group('logout warning', () {
-    testWidgets('keep drafts and log out preserves the draft', (WidgetTester tester) async {
+    testWidgets('keep drafts and log out preserves the draft',
+        (WidgetTester tester) async {
       final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
       final InMemoryDraftStore store = InMemoryDraftStore();
-      await store.write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
+      await store
+          .write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
 
       await _pumpApp(tester, fake, draftStore: store);
       await tester.tap(find.byTooltip('Log out'));
@@ -682,10 +702,12 @@ void main() {
       expect(await store.read(_accountA), hasLength(1));
     });
 
-    testWidgets('discard drafts and log out erases them', (WidgetTester tester) async {
+    testWidgets('discard drafts and log out erases them',
+        (WidgetTester tester) async {
       final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
       final InMemoryDraftStore store = InMemoryDraftStore();
-      await store.write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
+      await store
+          .write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
 
       await _pumpApp(tester, fake, draftStore: store);
       await tester.tap(find.byTooltip('Log out'));
@@ -756,6 +778,232 @@ void main() {
       contains('bicep_curl'),
     );
   });
+
+  group('performed-date corrections', () {
+    test('the shared window is the local today bounded three days back', () {
+      final DateTime now = DateTime(2026, 9, 26, 15, 30);
+      final PerformedDateWindow window = performedDateWindow(now: now);
+      expect(formatPerformedDate(window.last), '2026-09-26');
+      expect(formatPerformedDate(window.first), '2026-09-23');
+      expect(window.contains(DateTime(2026, 9, 25)), isTrue);
+      expect(window.contains(DateTime(2026, 9, 22)), isFalse);
+      // An out-of-window value clamps to the nearest bound.
+      expect(formatPerformedDate(window.clamp(DateTime(2026, 9, 30))),
+          '2026-09-26');
+      expect(formatPerformedDate(window.clamp(DateTime(2026, 9, 1))),
+          '2026-09-23');
+    });
+
+    test('a window for an older draft is anchored on its capture date', () {
+      final DateTime now = DateTime(2026, 9, 26, 15, 30);
+      // Captured 2026-09-23: the window ends at the capture date, not today.
+      final PerformedDateWindow window = performedDateWindow(
+        now: now,
+        captureAt: DateTime(2026, 9, 23, 8, 0),
+      );
+      expect(formatPerformedDate(window.last), '2026-09-23');
+      expect(formatPerformedDate(window.first), '2026-09-20');
+      // A later date is past the post-capture ceiling.
+      expect(window.contains(DateTime(2026, 9, 24)), isFalse);
+      expect(formatPerformedDate(window.clamp(DateTime(2026, 9, 26))),
+          '2026-09-23');
+    });
+
+    test('a toLocale capture instant folds to its local capture date', () {
+      final DateTime now = DateTime(2026, 9, 26, 15, 30);
+      final DateTime capture = DateTime.utc(2026, 9, 24, 23, 0);
+      final DateTime localCapture = capture.toLocal();
+      final PerformedDateWindow window =
+          performedDateWindow(now: now, captureAt: capture);
+      expect(
+          formatPerformedDate(window.last), formatPerformedDate(localCapture));
+      final DateTime expectedFirst =
+          DateTime(localCapture.year, localCapture.month, localCapture.day - 3);
+      expect(formatPerformedDate(window.first),
+          formatPerformedDate(expectedFirst));
+    });
+
+    test('an unsynced draft edited locally keeps the new date', () async {
+      final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+      service.startFor(_accountA, syncImmediately: false);
+      final WorkoutDraft draft = _draft(accountId: _accountA);
+      await store.write(_accountA, <WorkoutDraft>[draft]);
+
+      final bool edited = await service.updatePendingPerformedDate(
+          draft.clientSessionId, '2026-09-24');
+
+      expect(edited, isTrue);
+      expect((await store.read(_accountA)).single.performedDate, '2026-09-24');
+    });
+
+    test('a synced draft is never edited locally', () async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+      service.startFor(_accountA, syncImmediately: false);
+      final WorkoutDraft synced = _draft(accountId: _accountA).copyWith(
+        status: DraftStatus.synced,
+        serverResponse: <String, dynamic>{'session_id': 'session-1'},
+      );
+      await store.write(_accountA, <WorkoutDraft>[synced]);
+
+      final bool edited = await service.updatePendingPerformedDate(
+          synced.clientSessionId, '2026-09-24');
+
+      expect(edited, isFalse);
+      expect((await store.read(_accountA)).single.performedDate, '2026-09-26');
+    });
+
+    test('correcting a synced draft updates the local date from the response',
+        () async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      fake.committedSessions.add(<String, dynamic>{
+        'session_id': 'session-1',
+        'session_date': '2026-09-26',
+      });
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+      service.startFor(_accountA, syncImmediately: false);
+      final WorkoutDraft synced = _draft(accountId: _accountA).copyWith(
+        status: DraftStatus.synced,
+        serverResponse: <String, dynamic>{'session_id': 'session-1'},
+      );
+      await store.write(_accountA, <WorkoutDraft>[synced]);
+
+      await service.correctSyncedPerformedDate(
+          synced.clientSessionId, '2026-09-25');
+
+      final WorkoutDraft reloaded = (await store.read(_accountA)).single;
+      expect(reloaded.performedDate, '2026-09-25');
+      expect(reloaded.isSynced, isTrue);
+
+      final List<FakeRequest> patches = fake.adapter.requests
+          .where((FakeRequest r) =>
+              r.method == 'PATCH' &&
+              r.path == '/workouts/sessions/session-1/performed-date')
+          .toList(growable: false);
+      expect(patches, hasLength(1));
+      expect(patches.single.body['performed_date'], '2026-09-25');
+    });
+
+    test('reconciling a committed draft adopts the corrected server date',
+        () async {
+      final FakeMayosApi fake = FakeMayosApi();
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+
+      final WorkoutDraft draft = _draft(accountId: _accountA);
+      // The commit reached the server and was later corrected to 2026-09-24.
+      fake.sessionCommits[draft.clientSessionId] = <String, dynamic>{
+        'session_id': 'session-lost',
+        'session_date': '2026-09-24',
+      };
+      await store.write(_accountA, <WorkoutDraft>[draft]);
+
+      service.startFor(_accountA, syncImmediately: false);
+      await service.syncNow();
+
+      final WorkoutDraft reloaded = (await store.read(_accountA)).single;
+      expect(reloaded.isSynced, isTrue);
+      expect(reloaded.performedDate, '2026-09-24');
+      expect(fake.commitRequests, 0);
+    });
+
+    test('a refused correction surfaces the service error unchanged', () async {
+      final FakeMayosApi fake = FakeMayosApi()..correctionRefused = true;
+      fake.committedSessions.add(<String, dynamic>{
+        'session_id': 'session-1',
+        'session_date': '2026-09-26',
+      });
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+      service.startFor(_accountA, syncImmediately: false);
+      final WorkoutDraft synced = _draft(accountId: _accountA).copyWith(
+        status: DraftStatus.synced,
+        serverResponse: <String, dynamic>{'session_id': 'session-1'},
+      );
+      await store.write(_accountA, <WorkoutDraft>[synced]);
+
+      await expectLater(
+        service.correctSyncedPerformedDate(
+            synced.clientSessionId, '2026-09-25'),
+        throwsA(isA<ApiException>()),
+      );
+      expect((await store.read(_accountA)).single.performedDate, '2026-09-26');
+    });
+
+    test('an offline correction surfaces the network error', () async {
+      final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
+      fake.committedSessions.add(<String, dynamic>{
+        'session_id': 'session-1',
+        'session_date': '2026-09-26',
+      });
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store);
+      service.startFor(_accountA, syncImmediately: false);
+      final WorkoutDraft synced = _draft(accountId: _accountA).copyWith(
+        status: DraftStatus.synced,
+        serverResponse: <String, dynamic>{'session_id': 'session-1'},
+      );
+      await store.write(_accountA, <WorkoutDraft>[synced]);
+
+      await expectLater(
+        service.correctSyncedPerformedDate(
+            synced.clientSessionId, '2026-09-25'),
+        throwsA(isA<ApiException>()),
+      );
+    });
+
+    testWidgets('an unsynced draft offers a bounded local date edit',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      await store
+          .write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
+
+      await _pumpApp(tester, fake, draftStore: store);
+      await tester.tap(find.byTooltip('Workouts'));
+      await _pumpUntilFound(tester, find.byTooltip('Edit date'));
+
+      await tester.tap(find.byTooltip('Edit date'));
+      await _pumpUntilFound(tester, find.byType(DatePickerDialog));
+
+      expect(find.byType(DatePickerDialog), findsOneWidget);
+    });
+
+    testWidgets('a synced draft offers "Correct date"',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      await store.write(_accountA, <WorkoutDraft>[
+        _draft(accountId: _accountA).copyWith(
+          status: DraftStatus.synced,
+          serverResponse: <String, dynamic>{'session_id': 'session-1'},
+        ),
+      ]);
+
+      await _pumpApp(tester, fake, draftStore: store);
+      await tester.tap(find.byTooltip('Workouts'));
+      await _pumpUntilFound(tester, find.byTooltip('Correct date'));
+
+      expect(find.byTooltip('Correct date'), findsOneWidget);
+      expect(find.byTooltip('Edit date'), findsNothing);
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -809,8 +1057,7 @@ Future<void> _pumpApp(
             baseUrl: 'http://test.local',
             adapter: fake.adapter,
           );
-          client.onUnauthorized =
-              ref.watch(unauthorizedEventsProvider).signal;
+          client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
           return client;
         }),
         deviceTimezoneProvider

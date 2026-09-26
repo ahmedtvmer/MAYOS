@@ -37,11 +37,13 @@ def _recent_sessions(db: Any, limit: int) -> list[dict[str, Any]]:
     """Newest-first working-set summaries grouped from the ledger session log."""
     divergences_by_session = db.list_divergences_by_session()
     version_by_session = db.get_session_program_versions()
+    audit_by_session = db.get_session_audit_metadata()
     sessions: dict[str, dict[str, Any]] = {}
     for row in db.get_session_log():
         summary = sessions.get(row["session_id"])
         if summary is None:
             version_info = version_by_session.get(row["session_id"], {})
+            audit = audit_by_session.get(row["session_id"], {})
             summary = {
                 "session_id": row["session_id"],
                 "session_date": row["session_date"],
@@ -53,6 +55,9 @@ def _recent_sessions(db: Any, limit: int) -> list[dict[str, Any]]:
                     version_info.get("program_version"),
                     version_info.get("active_program_version_at_sync"),
                 ),
+                "uploaded_at": audit.get("uploaded_at"),
+                "edited_at": audit.get("edited_at"),
+                "corrections": audit.get("corrections", []),
                 "sets_count": 0,
                 "total_volume_kg": 0.0,
                 "divergences": divergences_by_session.get(row["session_id"], []),

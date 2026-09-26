@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from service import sessions as sessions_service
 from service import workouts as workouts_service
 from svc.dependencies import account_id_of, bind_request, get_current_trainee, get_db
-from svc.schemas import SessionCommitIn
+from svc.schemas import SessionCommitIn, SessionPerformedDateCorrectIn, SessionPerformedDateCorrectOut
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
 
@@ -149,12 +149,20 @@ async def read_session_by_client_id(
     player: Annotated[str, Depends(get_current_trainee)],
     db: Annotated[Any, Depends(get_db)],
 ):
-    """The stored commit response for a client session id, or 404 when never committed."""
+    """The stored commit response for a client session id, or 404 when never committed.
+
+    The idempotency record itself is immutable (ADR 033), but this read reflects
+    the session's live state: a performed-date correction (ADR 035) is overlaid so
+    the client's reconciliation view shows the corrected date and history.
+    """
 
     def _run():
         bind_request(db, player)
         commit = db.get_session_commit(client_session_id)
-        return json.loads(commit["response_json"]) if commit is not None else None
+        if commit is None:
+            return None
+        body = json.loads(commit["response_json"])
+        return workouts_service.session_state(db, body.get("session_id"), body)
 
     result = await asyncio.to_thread(_run)
     if result is None:
@@ -163,6 +171,48 @@ async def read_session_by_client_id(
             detail="No committed session for this client session id.",
         )
     return result
+
+
+@router.patch(
+    "/sessions/{session_id}/performed-date",
+    response_model=SessionPerformedDateCorrectOut,
+)
+async def correct_session_performed_date(
+    session_id: str,
+    body: SessionPerformedDateCorrectIn,
+    player: Annotated[str, Depends(get_current_trainee)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Corrects a recent committed session's performed date (ADR 020/035).
+
+    Only the player's own ledger is bound, so another player's session id is a
+    404. A session older than the three-day correction window is a 409; an
+    invalid or out-of-window date is a 400. Correcting to the current date is an
+    idempotent no-op. A successful correction re-runs the missed-day attendance
+    evaluation so affected alerts reflect the corrected history.
+    """
+
+    def _run():
+        result = workouts_service.correct_performed_date(
+            db,
+            player,
+            session_id,
+            body.performed_date,
+            account_id=account_id_of(player),
+        )
+        if result is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No such session.",
+            )
+        return result
+
+    try:
+        return await asyncio.to_thread(_run)
+    except workouts_service.SessionSyncValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except workouts_service.SessionCorrectionNotAllowedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 async def _stream_session_log(trainee: str, db: Any, fmt: str) -> StreamingResponse:

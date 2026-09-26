@@ -35,6 +35,7 @@ from agent.ProgramState import (
 )
 from database.migration_manager import (
     CURRENT_USER_SCHEMA_VERSION,
+    PERFORMED_DATE_CORRECTIONS_DDL,
     apply_lazy_migrations,
     create_atomic_backup,
     get_user_schema_version,
@@ -350,7 +351,8 @@ class DatabaseManager:
                 program_version INTEGER,
                 active_program_version_at_sync INTEGER,
                 captured_at TEXT,
-                uploaded_at TEXT
+                uploaded_at TEXT,
+                edited_at TEXT
             );
             CREATE UNIQUE INDEX IF NOT EXISTS idx_workout_sessions_client
                 ON workout_sessions(client_session_id) WHERE client_session_id IS NOT NULL;
@@ -455,7 +457,7 @@ class DatabaseManager:
                 expires_at TEXT NOT NULL,
                 revoked_at TEXT NOT NULL
             );
-        """)
+        """ + "\n".join(f"{statement};" for statement in PERFORMED_DATE_CORRECTIONS_DDL))
         if get_user_schema_version(self.conn) < CURRENT_USER_SCHEMA_VERSION:
             set_user_schema_version(self.conn, CURRENT_USER_SCHEMA_VERSION)
         self.conn.commit()
@@ -1097,6 +1099,104 @@ class DatabaseManager:
             (str(client_session_id), str(session_id), response_json, committed_at),
         )
         self._commit_ledger()
+
+    # ------------------------------------------------------------------
+    # Performed-date corrections (ADR 020/035). A correction rewrites only
+    # the session's performed date and appends an immutable audit row; the
+    # capture/upload timestamps are never touched.
+    # ------------------------------------------------------------------
+
+    def get_workout_session(self, session_id: str) -> dict[str, Any] | None:
+        """One session's dates and sync identity, or None when not in this ledger."""
+        if not session_id:
+            return None
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT id, session_date, client_session_id, performed_timezone,"
+            " captured_at, uploaded_at, edited_at, started_at"
+            " FROM workout_sessions WHERE id = ?",
+            (str(session_id),),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            "session_id": row["id"],
+            "session_date": row["session_date"],
+            "client_session_id": row["client_session_id"],
+            "performed_timezone": row["performed_timezone"],
+            "captured_at": row["captured_at"],
+            "uploaded_at": row["uploaded_at"],
+            "edited_at": row["edited_at"],
+            "started_at": row["started_at"],
+        }
+
+    def update_session_performed_date(
+        self, session_id: str, performed_date: str, edited_at: str
+    ) -> None:
+        """Rewrites the performed date and stamps ``edited_at``; capture/upload stay."""
+        self.conn.execute(
+            "UPDATE workout_sessions SET session_date = ?, edited_at = ? WHERE id = ?",
+            (str(performed_date), str(edited_at), str(session_id)),
+        )
+        self._commit_ledger()
+
+    def record_performed_date_correction(
+        self, session_id: str, previous_date: str, corrected_date: str, corrected_at: str
+    ) -> None:
+        """Appends one immutable correction row for a session."""
+        self.conn.execute(
+            "INSERT INTO performed_date_corrections"
+            " (id, session_id, previous_date, corrected_date, corrected_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), str(session_id), str(previous_date), str(corrected_date), str(corrected_at)),
+        )
+        self._commit_ledger()
+
+    @staticmethod
+    def _correction_from_row(row: Any) -> dict[str, Any]:
+        return {
+            "previous_date": row["previous_date"],
+            "corrected_date": row["corrected_date"],
+            "corrected_at": row["corrected_at"],
+        }
+
+    def list_performed_date_corrections(self, session_id: str) -> list[dict[str, Any]]:
+        """Every correction for one session, oldest-first."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT previous_date, corrected_date, corrected_at"
+            " FROM performed_date_corrections WHERE session_id = ?"
+            " ORDER BY corrected_at ASC, rowid ASC",
+            (str(session_id),),
+        )
+        return [self._correction_from_row(row) for row in cursor.fetchall()]
+
+    def get_session_audit_metadata(self) -> dict[str, dict[str, Any]]:
+        """Per-session upload/edit timestamps and correction history, keyed by session id.
+
+        Kept separate from ``get_session_log`` so the ledger export shape is
+        unchanged while the coach history can annotate corrections (ADR 035).
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT id, uploaded_at, edited_at FROM workout_sessions")
+        audit: dict[str, dict[str, Any]] = {
+            row["id"]: {
+                "uploaded_at": row["uploaded_at"],
+                "edited_at": row["edited_at"],
+                "corrections": [],
+            }
+            for row in cursor.fetchall()
+        }
+        cursor.execute(
+            "SELECT session_id, previous_date, corrected_date, corrected_at"
+            " FROM performed_date_corrections ORDER BY corrected_at ASC, rowid ASC"
+        )
+        for row in cursor.fetchall():
+            entry = audit.get(row["session_id"])
+            if entry is not None:
+                entry["corrections"].append(self._correction_from_row(row))
+        return audit
 
     # ------------------------------------------------------------------
     # coach_alerts generalised shape (ADR 031). The table + index DDL lives
@@ -3033,7 +3133,8 @@ class DatabaseManager:
         cursor = self.conn.cursor()
         cursor.execute("""
             SELECT id, session_date, split_name, readiness_score,
-                   program_version, active_program_version_at_sync
+                   program_version, active_program_version_at_sync,
+                   uploaded_at, edited_at
             FROM workout_sessions
             ORDER BY session_date DESC, started_at DESC, rowid DESC
             LIMIT 1
@@ -3057,11 +3158,15 @@ class DatabaseManager:
         )
         exercises = [dict(row) for row in cursor.fetchall()]
         return {
+            "session_id": session["id"],
             "session_date": session["session_date"],
             "split_name": session["split_name"],
             "readiness_score": session["readiness_score"],
             "program_version": session["program_version"],
             "active_program_version_at_sync": session["active_program_version_at_sync"],
+            "uploaded_at": session["uploaded_at"],
+            "edited_at": session["edited_at"],
+            "corrections": self.list_performed_date_corrections(session["id"]),
             "sets_count": sum(exercise["sets"] for exercise in exercises),
             "total_volume_kg": sum((exercise["volume_kg"] for exercise in exercises), 0.0),
             "exercises": exercises,

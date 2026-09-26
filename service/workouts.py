@@ -18,7 +18,7 @@ from agent.progression_engine import (
 )
 from core.warmup import calculate_warmup_sets
 from service._base import bind_user
-from service.schedule import local_today, parse_iso_date
+from service.schedule import latest_schedule_timezone, local_date_in, local_today, parse_iso_date
 from utils.plate_calculator import calculate_barbell_plates
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,10 @@ CLOCK_SKEW = timedelta(minutes=10)
 
 class SessionSyncValidationError(ValueError):
     """Raised for an invalid commit request (mapped to HTTP 400 by the router)."""
+
+
+class SessionCorrectionNotAllowedError(Exception):
+    """The session is older than the three-day correction window (mapped to HTTP 409, ADR 035)."""
 
 
 class ProgramVersionMismatchError(Exception):
@@ -131,6 +135,34 @@ def _parse_captured_at(value: Any) -> datetime:
     return parsed
 
 
+def _performed_date_window(*, timezone: str, capture: datetime, current: datetime) -> tuple[date, date]:
+    """The inclusive performed-date window for one capture instant (ADR 020/035).
+
+    A performed date may be up to ``MAX_BACKDATE_DAYS`` before the capture's
+    local date and never after it, nor after the player's local today. Both the
+    entry path (ADR 033) and the correction path derive their bounds here, and
+    the local dates come from the ADR 029 ``local_date_in`` helper, so there is
+    one definition of the window.
+    """
+    capture_local = local_date_in(capture, timezone)
+    local_today = local_date_in(current, timezone)
+    earliest = capture_local - timedelta(days=MAX_BACKDATE_DAYS)
+    latest = min(capture_local, local_today)
+    return earliest, latest
+
+
+def _validate_performed_within_window(performed: date, *, earliest: date, latest: date) -> None:
+    """Refuses a performed date outside ``[earliest, latest]`` with the shared messages."""
+    if performed > latest:
+        raise SessionSyncValidationError(
+            "performed_date cannot be after the workout was captured or in the future."
+        )
+    if performed < earliest:
+        raise SessionSyncValidationError(
+            f"performed_date cannot be more than {MAX_BACKDATE_DAYS} days before the workout was captured."
+        )
+
+
 def validate_sync_fields(
     performed_date: Any,
     performed_timezone: Any,
@@ -140,16 +172,16 @@ def validate_sync_fields(
 ) -> tuple[date, str, datetime]:
     """Validates the offline-sync fields (ADR 020/033).
 
-    ``performed_date`` must be a strict ``YYYY-MM-DD`` not later than the
-    player's local today in ``performed_timezone`` and not more than three days
-    before the local date of ``captured_at``. ``captured_at`` must be a
+    ``performed_date`` must be a strict ``YYYY-MM-DD`` within the capture-anchored
+    window: no more than three days before the local date of ``captured_at`` and
+    never after it, nor after the player's local today. ``captured_at`` must be a
     timezone-aware ISO instant that is not in the future beyond a small clock
     skew. An unknown timezone is refused rather than guessed.
     """
     if not isinstance(performed_timezone, str) or not performed_timezone.strip():
         raise SessionSyncValidationError("A performed timezone is required.")
     try:
-        zone = ZoneInfo(performed_timezone)
+        ZoneInfo(performed_timezone)
     except (ZoneInfoNotFoundError, ValueError):
         raise SessionSyncValidationError(f"Unknown timezone: {performed_timezone}.") from None
 
@@ -159,17 +191,71 @@ def validate_sync_fields(
         raise SessionSyncValidationError(str(exc)) from None
     captured = _parse_captured_at(captured_at)
     current = now or _now()
-
-    if performed > current.astimezone(zone).date():
-        raise SessionSyncValidationError("performed_date cannot be in the future.")
-    captured_local = captured.astimezone(zone).date()
-    if performed < captured_local - timedelta(days=MAX_BACKDATE_DAYS):
-        raise SessionSyncValidationError(
-            f"performed_date cannot be more than {MAX_BACKDATE_DAYS} days before the workout was captured."
-        )
     if captured > current + CLOCK_SKEW:
         raise SessionSyncValidationError("captured_at cannot be in the future.")
+
+    earliest, latest = _performed_date_window(
+        timezone=performed_timezone, capture=captured, current=current
+    )
+    _validate_performed_within_window(performed, earliest=earliest, latest=latest)
     return performed, performed_timezone, captured
+
+
+def _correction_timezone(performed_timezone: Any, schedule_timezone: str | None) -> str:
+    """The session's performed timezone, else the player's schedule timezone, else UTC (ADR 029/035)."""
+    if isinstance(performed_timezone, str) and performed_timezone.strip():
+        return performed_timezone.strip()
+    return schedule_timezone or "UTC"
+
+
+def validate_performed_date_correction(
+    performed_date: Any,
+    *,
+    session_date: Any,
+    performed_timezone: Any,
+    schedule_timezone: str | None,
+    capture_instant: Any,
+    now: datetime | None = None,
+) -> tuple[date, date, str]:
+    """Validates a performed-date correction against the same window as entry (ADR 020/035).
+
+    The new date must be a strict ``YYYY-MM-DD`` within the shared capture-anchored
+    window: no more than ``MAX_BACKDATE_DAYS`` before the capture's local date and
+    never after it, nor after the player's local today (the session's performed
+    timezone, else the player's schedule timezone, else UTC). The session itself
+    is correctable only while its capture local date is within that window of the
+    player's local today; otherwise it is history that can no longer be rewritten.
+
+    Returns ``(new_date, previous_date, timezone)``.
+    """
+    try:
+        performed = parse_iso_date(performed_date, "performed_date")
+    except ValueError as exc:
+        raise SessionSyncValidationError(str(exc)) from None
+    try:
+        previous = parse_iso_date(session_date, "session_date")
+    except ValueError as exc:
+        raise SessionSyncValidationError(str(exc)) from None
+
+    timezone = _correction_timezone(performed_timezone, schedule_timezone)
+    try:
+        ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise SessionSyncValidationError(f"Unknown timezone: {timezone}.") from None
+
+    captured = _parse_captured_at(capture_instant)
+    current = now or _now()
+    capture_local = local_date_in(captured, timezone)
+    if (local_date_in(current, timezone) - capture_local).days > MAX_BACKDATE_DAYS:
+        raise SessionCorrectionNotAllowedError(
+            f"A performed date can be corrected only within {MAX_BACKDATE_DAYS} days of the workout."
+        )
+
+    earliest, latest = _performed_date_window(
+        timezone=timezone, capture=captured, current=current
+    )
+    _validate_performed_within_window(performed, earliest=earliest, latest=latest)
+    return performed, previous, timezone
 
 
 def _evaluate_missed_days(db: Any, account_id: str) -> None:
@@ -524,6 +610,25 @@ def committed_session(db: Any, client_session_id: str | None) -> CommitOutcome |
     return _commit_outcome_from_row(existing) if existing is not None else None
 
 
+def session_state(db: Any, session_id: Any, body: dict[str, Any]) -> dict[str, Any]:
+    """The stored commit body overlaid with the live session's corrected state (ADR 035).
+
+    The idempotency record is immutable, so the reconciliation read overlays the
+    session's current ``session_date``, ``edited_at``, and ``corrections``
+    history (the same key the coach responses use). A body whose session is
+    absent from this ledger is returned unchanged.
+    """
+    session = db.get_workout_session(session_id) if isinstance(session_id, str) else None
+    if session is None:
+        return body
+    return {
+        **body,
+        "session_date": session["session_date"],
+        "edited_at": session["edited_at"],
+        "corrections": db.list_performed_date_corrections(session["session_id"]),
+    }
+
+
 def commit_session(
     db: Any,
     trainee_id: str,
@@ -647,3 +752,81 @@ def commit_logged_session(
         db, account_id, session_id, sync.performed_date, outcome.body["exercise_summaries"], outcome.body["fatigue_post"]
     )
     return outcome
+
+
+def correct_performed_date(
+    db: Any,
+    trainee_id: str,
+    session_id: str,
+    performed_date: Any,
+    *,
+    account_id: str,
+    now_iso: str | None = None,
+) -> dict[str, Any] | None:
+    """Corrects one committed session's performed date (ADR 020/035).
+
+    Returns the correction result, or ``None`` when the session is not in this
+    player's ledger (the router maps that to 404). The session read and every
+    validation run inside the same ``BEGIN IMMEDIATE`` ledger transaction that
+    performs the write (mirroring ADR 034's resolve-inside-the-transaction
+    rationale), so the date cannot be corrected against a session that changed
+    under a concurrent commit. Correcting to the session's current date is an
+    idempotent no-op checked before the recency/window validation, so an old
+    session corrected to its own date returns unchanged. Otherwise the session's
+    ``session_date`` is rewritten and ``edited_at`` is stamped, with an immutable
+    correction row appended; ``uploaded_at`` and ``captured_at`` stay untouched.
+    The stored idempotent commit response is never rewritten — the by-client-id
+    read reflects the live session — and only the missed-day attendance hook
+    re-runs, after the transaction exits, so a correction can resolve or open a
+    missed-day alert. Progression alerts and PRs are intentionally not recomputed.
+    """
+    bind_user(db, trainee_id)
+    now_iso = now_iso or _now().isoformat()
+
+    with db.ledger_transaction():
+        session = db.get_workout_session(session_id)
+        if session is None:
+            return None
+
+        try:
+            performed = parse_iso_date(performed_date, "performed_date")
+        except ValueError as exc:
+            raise SessionSyncValidationError(str(exc)) from None
+        previous_date = session["session_date"]
+        if performed.isoformat() == previous_date:
+            return {
+                "session_id": session_id,
+                "session_date": previous_date,
+                "previous_date": previous_date,
+                "edited_at": session.get("edited_at"),
+                "changed": False,
+                "corrections": db.list_performed_date_corrections(session_id),
+            }
+
+        capture_instant = (
+            session.get("captured_at") or session.get("uploaded_at") or session.get("started_at")
+        )
+        performed, previous, _timezone = validate_performed_date_correction(
+            performed_date,
+            session_date=previous_date,
+            performed_timezone=session.get("performed_timezone"),
+            schedule_timezone=latest_schedule_timezone(db, trainee_id),
+            capture_instant=capture_instant,
+        )
+
+        corrected_date = performed.isoformat()
+        db.update_session_performed_date(session_id, corrected_date, now_iso)
+        db.record_performed_date_correction(
+            session_id, previous.isoformat(), corrected_date, now_iso
+        )
+        corrections = db.list_performed_date_corrections(session_id)
+
+    _evaluate_missed_days(db, account_id)
+    return {
+        "session_id": session_id,
+        "session_date": corrected_date,
+        "previous_date": previous.isoformat(),
+        "edited_at": now_iso,
+        "changed": True,
+        "corrections": corrections,
+    }

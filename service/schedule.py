@@ -53,8 +53,12 @@ def local_date_in(now: datetime, timezone: str) -> date:
     return now.astimezone(ZoneInfo(timezone)).date()
 
 
-def _latest_version_timezone(db: Any, trainee_id: str) -> str | None:
-    """The timezone of the most recently created schedule version, if any."""
+def latest_schedule_timezone(db: Any, trainee_id: str) -> str | None:
+    """The timezone of the most recently created schedule version, if any.
+
+    Public so other services (e.g. performed-date correction) resolve a legacy
+    session's local day the same way "today" is derived (ADR 029).
+    """
     versions = db.list_training_schedules(trainee_id)
     if not versions:
         return None
@@ -67,7 +71,7 @@ def local_today(db: Any, trainee_id: str, fallback_timezone: str = "UTC") -> dat
     "Today" is the player's day, not the server's UTC day: a player ahead of UTC
     rolls into tomorrow first, and a player behind UTC still has their own today.
     """
-    timezone = _latest_version_timezone(db, trainee_id) or fallback_timezone
+    timezone = latest_schedule_timezone(db, trainee_id) or fallback_timezone
     return local_date_in(datetime.now(UTC), timezone)
 
 

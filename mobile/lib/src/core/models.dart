@@ -64,7 +64,6 @@ class AccountPlans {
   }
 
   AccountPlans withoutCoach() => AccountPlans(lifter: lifter);
-
 }
 
 /// Current account identity, capabilities, and independent plan states from
@@ -101,7 +100,6 @@ class Account {
   final AccountPlans plans;
 
   bool get isCoach => capabilities.coach;
-
 }
 
 /// `GET`/`PUT /coach/profile`: coach-authored fields keyed by immutable account id.
@@ -375,8 +373,7 @@ class CoachRosterEntry {
         startedAt: json['started_at'] as String? ?? '',
         status: json['status'] as String? ?? 'active',
         alertsNew: (json['alerts_new'] as num?)?.toInt() ?? 0,
-        alertsAcknowledged:
-            (json['alerts_acknowledged'] as num?)?.toInt() ?? 0,
+        alertsAcknowledged: (json['alerts_acknowledged'] as num?)?.toInt() ?? 0,
         currentMissedStreak:
             (json['current_missed_streak'] as num?)?.toInt() ?? 0,
         nextFollowUpOn: json['next_follow_up_on'] as String?,
@@ -673,6 +670,35 @@ class CoachPlayerPause {
   final String endsOn;
 }
 
+/// One immutable performed-date correction on a committed session (ADR 035).
+class PerformedDateCorrection {
+  const PerformedDateCorrection({
+    required this.previousDate,
+    required this.correctedDate,
+    required this.correctedAt,
+  });
+
+  factory PerformedDateCorrection.fromJson(Map<String, dynamic> json) =>
+      PerformedDateCorrection(
+        previousDate: json['previous_date'] as String,
+        correctedDate: json['corrected_date'] as String,
+        correctedAt: json['corrected_at'] as String,
+      );
+
+  final String previousDate;
+  final String correctedDate;
+  final String correctedAt;
+
+  /// The coach-facing note for one correction.
+  String get label => 'Date corrected from $previousDate to $correctedDate';
+}
+
+List<PerformedDateCorrection> _correctionsFromJson(dynamic raw) =>
+    (raw as List<dynamic>? ?? const <dynamic>[])
+        .map((dynamic item) =>
+            PerformedDateCorrection.fromJson(item as Map<String, dynamic>))
+        .toList(growable: false);
+
 /// The assigned player's most recent committed session.
 class CoachPlayerLatestSession {
   const CoachPlayerLatestSession({
@@ -680,16 +706,21 @@ class CoachPlayerLatestSession {
     required this.splitName,
     required this.setsCount,
     required this.totalVolumeKg,
+    this.sessionId,
     this.readinessScore,
     this.programVersion,
     this.activeProgramVersionAtSync,
     this.isHistoricalProgram = false,
+    this.uploadedAt,
+    this.editedAt,
+    this.corrections = const <PerformedDateCorrection>[],
     this.exercises = const <CoachPlayerSessionExercise>[],
     this.divergences = const <CoachPlayerDivergence>[],
   });
 
   factory CoachPlayerLatestSession.fromJson(Map<String, dynamic> json) =>
       CoachPlayerLatestSession(
+        sessionId: json['session_id'] as String?,
         sessionDate: json['session_date'] as String,
         splitName: json['split_name'] as String,
         readinessScore: (json['readiness_score'] as num?)?.toInt(),
@@ -697,11 +728,14 @@ class CoachPlayerLatestSession {
         activeProgramVersionAtSync:
             (json['active_program_version_at_sync'] as num?)?.toInt(),
         isHistoricalProgram: json['is_historical_program'] == true,
+        uploadedAt: json['uploaded_at'] as String?,
+        editedAt: json['edited_at'] as String?,
+        corrections: _correctionsFromJson(json['corrections']),
         setsCount: (json['sets_count'] as num).toInt(),
         totalVolumeKg: (json['total_volume_kg'] as num).toDouble(),
         exercises: (json['exercises'] as List<dynamic>? ?? const [])
-            .map((dynamic e) => CoachPlayerSessionExercise.fromJson(
-                e as Map<String, dynamic>))
+            .map((dynamic e) =>
+                CoachPlayerSessionExercise.fromJson(e as Map<String, dynamic>))
             .toList(growable: false),
         divergences: (json['divergences'] as List<dynamic>? ?? const [])
             .map((dynamic d) =>
@@ -709,12 +743,16 @@ class CoachPlayerLatestSession {
             .toList(growable: false),
       );
 
+  final String? sessionId;
   final String sessionDate;
   final String splitName;
   final int? readinessScore;
   final int? programVersion;
   final int? activeProgramVersionAtSync;
   final bool isHistoricalProgram;
+  final String? uploadedAt;
+  final String? editedAt;
+  final List<PerformedDateCorrection> corrections;
   final int setsCount;
   final double totalVolumeKg;
   final List<CoachPlayerSessionExercise> exercises;
@@ -733,6 +771,9 @@ class CoachPlayerRecentSession {
     this.programVersion,
     this.activeProgramVersionAtSync,
     this.isHistoricalProgram = false,
+    this.uploadedAt,
+    this.editedAt,
+    this.corrections = const <PerformedDateCorrection>[],
     this.divergences = const <CoachPlayerDivergence>[],
   });
 
@@ -746,6 +787,9 @@ class CoachPlayerRecentSession {
         activeProgramVersionAtSync:
             (json['active_program_version_at_sync'] as num?)?.toInt(),
         isHistoricalProgram: json['is_historical_program'] == true,
+        uploadedAt: json['uploaded_at'] as String?,
+        editedAt: json['edited_at'] as String?,
+        corrections: _correctionsFromJson(json['corrections']),
         setsCount: (json['sets_count'] as num).toInt(),
         totalVolumeKg: (json['total_volume_kg'] as num).toDouble(),
         divergences: (json['divergences'] as List<dynamic>? ?? const [])
@@ -761,6 +805,9 @@ class CoachPlayerRecentSession {
   final int? programVersion;
   final int? activeProgramVersionAtSync;
   final bool isHistoricalProgram;
+  final String? uploadedAt;
+  final String? editedAt;
+  final List<PerformedDateCorrection> corrections;
   final int setsCount;
   final double totalVolumeKg;
   final List<CoachPlayerDivergence> divergences;
@@ -800,8 +847,8 @@ class CoachPlayerSummary {
         playerUsername: json['player_username'] as String,
         startedAt: json['started_at'] as String,
         status: json['status'] as String,
-        volume: (json['volume'] as Map<String, dynamic>? ?? const {})
-            .map((String key, dynamic value) =>
+        volume: (json['volume'] as Map<String, dynamic>? ?? const {}).map(
+            (String key, dynamic value) =>
                 MapEntry<String, double>(key, (value as num).toDouble())),
         latestSession: json['latest_session'] == null
             ? null
@@ -913,8 +960,8 @@ class CoachExerciseHistory {
             .toList(growable: false),
         caption: json['caption'] as String?,
         records: (json['records'] as List<dynamic>? ?? const [])
-            .map((dynamic record) => CoachExerciseRecord.fromJson(
-                record as Map<String, dynamic>))
+            .map((dynamic record) =>
+                CoachExerciseRecord.fromJson(record as Map<String, dynamic>))
             .toList(growable: false),
       );
 
@@ -1460,8 +1507,8 @@ class DraftExercise {
   });
 
   factory DraftExercise.fromJson(Map<String, dynamic> json) => DraftExercise(
-        exercise: Map<String, dynamic>.from(
-            json['exercise'] as Map<String, dynamic>),
+        exercise:
+            Map<String, dynamic>.from(json['exercise'] as Map<String, dynamic>),
         sets: (json['sets'] as List<dynamic>? ?? const <dynamic>[])
             .map((dynamic s) =>
                 WorkoutSetLog.fromJson(s as Map<String, dynamic>))
@@ -1584,6 +1631,9 @@ class WorkoutDraft {
 
   bool get inFlight => status == DraftStatus.syncing;
 
+  /// The server session id from a successful commit, or null before then.
+  String? get serverSessionId => serverResponse?['session_id'] as String?;
+
   /// The program version active on the server when this draft synced (ADR 034),
   /// or null before a commit response is stored.
   int? get activeProgramVersionAtSync =>
@@ -1609,9 +1659,7 @@ class WorkoutDraft {
           total +
           (exercise.skipped
               ? 0
-              : exercise.sets
-                  .where((WorkoutSetLog s) => !s.isWarmup)
-                  .length));
+              : exercise.sets.where((WorkoutSetLog s) => !s.isWarmup).length));
 
   String get statusLabel => switch (status) {
         DraftStatus.pending || DraftStatus.syncing => 'Pending',
@@ -1621,6 +1669,7 @@ class WorkoutDraft {
       };
 
   WorkoutDraft copyWith({
+    String? performedDate,
     String? status,
     String? lastError,
     Map<String, dynamic>? serverResponse,
@@ -1633,7 +1682,7 @@ class WorkoutDraft {
       WorkoutDraft(
         clientSessionId: clientSessionId,
         accountId: accountId,
-        performedDate: performedDate,
+        performedDate: performedDate ?? this.performedDate,
         performedTimezone: performedTimezone,
         programVersion: programVersion,
         dayOrder: dayOrder,
@@ -1717,7 +1766,8 @@ class PrescriptionTarget {
         targetRpeCap: (json['target_rpe_cap'] as num?)?.toDouble() ?? 8.5,
         projectedWeight: (json['projected_weight'] as num?)?.toDouble() ?? 0,
         lastPerf: (json['last_perf'] as List<dynamic>? ?? const <dynamic>[])
-            .map((dynamic s) => Map<String, dynamic>.from(s as Map<String, dynamic>))
+            .map((dynamic s) =>
+                Map<String, dynamic>.from(s as Map<String, dynamic>))
             .toList(growable: false),
       );
 
@@ -1742,7 +1792,8 @@ class PrescriptionTarget {
 
 /// `GET /workouts/prescription`: fatigue state and auto-regulated targets.
 class Prescription {
-  const Prescription({this.fatigueInfo = const <String, dynamic>{}, required this.targets});
+  const Prescription(
+      {this.fatigueInfo = const <String, dynamic>{}, required this.targets});
 
   factory Prescription.fromJson(Map<String, dynamic> json) => Prescription(
         fatigueInfo: Map<String, dynamic>.from(

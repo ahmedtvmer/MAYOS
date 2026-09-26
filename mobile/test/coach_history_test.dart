@@ -85,8 +85,7 @@ void main() {
     await _pumpApp(tester, fake);
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(
-        tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
 
     expect(find.text('Since 2026-09-24T10:00:00Z'), findsOneWidget);
     expect(find.text('Chest: 12.5'), findsOneWidget);
@@ -106,8 +105,7 @@ void main() {
     await _pumpApp(tester, fake);
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(
-        tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
 
     expect(find.text('Skipped: Squat'), findsOneWidget);
     expect(find.text('Unplanned: Lat Pulldown'), findsOneWidget);
@@ -123,30 +121,53 @@ void main() {
     final Map<String, dynamic> summary = fake.coachPlayerSummary;
     (summary['latest_session'] as Map<String, dynamic>)['divergences'] =
         <Map<String, dynamic>>[];
-    for (final dynamic session
-        in summary['recent_sessions'] as List<dynamic>) {
+    for (final dynamic session in summary['recent_sessions'] as List<dynamic>) {
       (session as Map<String, dynamic>)['divergences'] =
           <Map<String, dynamic>>[];
     }
     await _pumpApp(tester, fake);
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(
-        tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
 
     expect(find.textContaining('Skipped:'), findsNothing);
     expect(find.textContaining('Unplanned:'), findsNothing);
   });
 
-  testWidgets(
-      'the drill-down shows the expected weekdays, timezone, and pause',
+  testWidgets('the drill-down shows a performed-date correction note',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    final Map<String, dynamic> correction = <String, dynamic>{
+      'previous_date': '2026-09-26',
+      'corrected_date': '2026-09-25',
+      'corrected_at': '2026-09-26T12:00:00Z',
+    };
+    final Map<String, dynamic> summary = fake.coachPlayerSummary;
+    (summary['latest_session'] as Map<String, dynamic>)['corrections'] =
+        <Map<String, dynamic>>[correction];
+    for (final dynamic session in summary['recent_sessions'] as List<dynamic>) {
+      (session as Map<String, dynamic>)['corrections'] = <Map<String, dynamic>>[
+        correction
+      ];
+    }
+    await _pumpApp(tester, fake);
+
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+
+    expect(
+      find.text('Date corrected from 2026-09-26 to 2026-09-25'),
+      findsWidgets,
+    );
+  });
+
+  testWidgets('the drill-down shows the expected weekdays, timezone, and pause',
       (tester) async {
     final FakeMayosApi fake = _coachFake();
     await _pumpApp(tester, fake);
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(
-        tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
 
     expect(find.text('Expected: Mon, Wed, Fri'), findsOneWidget);
     expect(find.text('Timezone: Europe/London'), findsOneWidget);

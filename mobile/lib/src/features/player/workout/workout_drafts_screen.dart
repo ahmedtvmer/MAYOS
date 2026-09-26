@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_client.dart';
 import '../../../core/models.dart';
+import '../../../core/performed_date_window.dart';
 import '../../../providers.dart';
 import 'draft_sync_service.dart';
 
 /// The drafts/sync status list: pending, synced, and needs-attention states,
 /// with retry/discard actions and a manual "Sync now" (ADR 020/033).
+///
+/// An unsynced draft's performed date can be edited locally within the same
+/// three-day window as entry; a synced workout offers "Correct date", which
+/// calls the service and surfaces an offline/refusal error (ADR 020/035).
 class WorkoutDraftsScreen extends ConsumerWidget {
   const WorkoutDraftsScreen({super.key});
 
@@ -87,7 +93,8 @@ class _DraftTile extends ConsumerWidget {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text('${draft.workingSetCount} working sets · ${draft.statusLabel}'),
+            Text(
+                '${draft.workingSetCount} working sets · ${draft.statusLabel}'),
             if (draft.versionDifferenceLabel != null)
               Text(
                 draft.versionDifferenceLabel!,
@@ -103,11 +110,23 @@ class _DraftTile extends ConsumerWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
+            if (!draft.isSynced && !draft.inFlight)
+              IconButton(
+                tooltip: 'Edit date',
+                onPressed: () => _editPendingDate(context, ref),
+                icon: const Icon(Icons.edit_calendar_outlined),
+              ),
             if (draft.needsAttention)
               IconButton(
                 tooltip: 'Retry',
                 onPressed: () => sync.retryDraft(draft.clientSessionId),
                 icon: const Icon(Icons.refresh),
+              ),
+            if (draft.isSynced && draft.serverSessionId != null)
+              IconButton(
+                tooltip: 'Correct date',
+                onPressed: () => _correctSyncedDate(context, ref),
+                icon: const Icon(Icons.history_toggle_off),
               ),
             if (draft.isUnsynced)
               IconButton(
@@ -118,6 +137,52 @@ class _DraftTile extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+
+  /// Opens the shared window picker and stores the edited date locally.
+  Future<void> _editPendingDate(BuildContext context, WidgetRef ref) async {
+    final DateTime? picked = await _pickWithinWindow(context);
+    if (picked == null) {
+      return;
+    }
+    await ref.read(draftSyncServiceProvider).updatePendingPerformedDate(
+        draft.clientSessionId, formatPerformedDate(picked));
+  }
+
+  Future<void> _correctSyncedDate(BuildContext context, WidgetRef ref) async {
+    final DateTime? picked = await _pickWithinWindow(context);
+    if (picked == null) {
+      return;
+    }
+    try {
+      await ref.read(draftSyncServiceProvider).correctSyncedPerformedDate(
+          draft.clientSessionId, formatPerformedDate(picked));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Date corrected.')),
+        );
+      }
+    } on ApiException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message)),
+        );
+      }
+    }
+  }
+
+  Future<DateTime?> _pickWithinWindow(BuildContext context) {
+    final DateTime? capturedAt = DateTime.tryParse(draft.capturedAt);
+    final PerformedDateWindow window =
+        performedDateWindow(captureAt: capturedAt);
+    final DateTime current =
+        DateTime.tryParse(draft.performedDate) ?? window.last;
+    return showDatePicker(
+      context: context,
+      initialDate: window.clamp(current),
+      firstDate: window.first,
+      lastDate: window.last,
     );
   }
 

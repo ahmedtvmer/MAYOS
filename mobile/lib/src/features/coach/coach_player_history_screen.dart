@@ -202,14 +202,13 @@ class _CoachPlayerHistoryScreenState
       _publishError = null;
     });
     try {
-      final TrainingProgram program = await ref
-          .read(apiClientProvider)
-          .coachPublishProgram(
-            widget.entry.assignmentId,
-            splitOverride: request.split.isEmpty ? null : request.split,
-            repPreference: request.repPreference,
-            frequency: request.frequency,
-          );
+      final TrainingProgram program =
+          await ref.read(apiClientProvider).coachPublishProgram(
+                widget.entry.assignmentId,
+                splitOverride: request.split.isEmpty ? null : request.split,
+                repPreference: request.repPreference,
+                frequency: request.frequency,
+              );
       if (!mounted) return;
       setState(() => _publishing = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -230,9 +229,8 @@ class _CoachPlayerHistoryScreenState
       _requestError = null;
     });
     try {
-      await ref
-          .read(apiClientProvider)
-          .applyCoachProgramRequest(widget.entry.assignmentId, request.requestId);
+      await ref.read(apiClientProvider).applyCoachProgramRequest(
+          widget.entry.assignmentId, request.requestId);
       if (!mounted) return;
       setState(() => _resolvingRequest = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -441,9 +439,8 @@ class _CoachPlayerHistoryScreenState
     final CoachPlayerSchedule? schedule = _summary!.schedule;
     final List<Widget> children = <Widget>[];
     if (schedule != null) {
-      final String days = schedule.weekdays
-          .map((int day) => weekdayLabels[day - 1])
-          .join(', ');
+      final String days =
+          schedule.weekdays.map((int day) => weekdayLabels[day - 1]).join(', ');
       children.add(Text('Expected: $days'));
       children.add(Text('Timezone: ${schedule.timezone}'));
     }
@@ -468,6 +465,8 @@ class _CoachPlayerHistoryScreenState
       if (latest.readinessScore != null)
         Text('Readiness ${latest.readinessScore}/5'),
       if (versionNote != null) Text(versionNote),
+      for (final PerformedDateCorrection correction in latest.corrections)
+        Text(correction.label),
       const SizedBox(height: 8),
       for (final CoachPlayerSessionExercise exercise in latest.exercises)
         Text(
@@ -513,6 +512,8 @@ class _CoachPlayerHistoryScreenState
           Text(
               '${session.setsCount} sets · ${session.totalVolumeKg.toStringAsFixed(1)} kg'),
           if (versionNote != null) Text(versionNote),
+          for (final PerformedDateCorrection correction in session.corrections)
+            Text(correction.label),
           for (final CoachPlayerDivergence divergence in session.divergences)
             Text(_divergenceLabel(divergence)),
         ],
@@ -559,8 +560,7 @@ class _CoachPlayerHistoryScreenState
           const Text('No recorded sets for this exercise.')
         else
           for (final CoachExerciseHistoryPoint point in history.history)
-            Text(
-                '${point.date}: ${point.weightKg} kg × ${point.reps}'
+            Text('${point.date}: ${point.weightKg} kg × ${point.reps}'
                 '${point.rpe == null ? '' : ' @ RPE ${point.rpe}'}'
                 ' (e1RM ${point.e1rm})'),
         if (history.records.isNotEmpty) ...<Widget>[
@@ -698,8 +698,7 @@ class _DeclineRequestDialogState extends State<_DeclineRequestDialog> {
         controller: _response,
         maxLines: 2,
         decoration: const InputDecoration(
-            labelText: 'Response to the player',
-            border: OutlineInputBorder()),
+            labelText: 'Response to the player', border: OutlineInputBorder()),
       ),
       actions: <Widget>[
         TextButton(
@@ -729,8 +728,7 @@ class _CheckInDraft {
   final String? note;
 }
 
-String _isoDate(DateTime date) =>
-    '${date.year.toString().padLeft(4, '0')}-'
+String _isoDate(DateTime date) => '${date.year.toString().padLeft(4, '0')}-'
     '${date.month.toString().padLeft(2, '0')}-'
     '${date.day.toString().padLeft(2, '0')}';
 
@@ -768,7 +766,8 @@ class _RecordCheckInDialogState extends State<_RecordCheckInDialog> {
       context: context,
       initialDate: _date,
       firstDate: DateTime(now.year - 2),
-      lastDate: DateTime(now.year, now.month, now.day).add(const Duration(days: 1)),
+      lastDate:
+          DateTime(now.year, now.month, now.day).add(const Duration(days: 1)),
     );
     if (picked != null && mounted) {
       setState(() => _date = picked);

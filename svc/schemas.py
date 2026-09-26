@@ -334,9 +334,18 @@ class CoachPlayerDivergenceOut(BaseModel):
     exercise_name: str
 
 
+class PerformedDateCorrectionOut(BaseModel):
+    """One immutable performed-date correction on a committed session (ADR 035)."""
+
+    previous_date: str
+    corrected_date: str
+    corrected_at: str
+
+
 class CoachPlayerLatestSessionOut(BaseModel):
     """The assigned player's most recent committed session."""
 
+    session_id: str | None = None
     session_date: str
     split_name: str
     readiness_score: int | None = None
@@ -345,6 +354,9 @@ class CoachPlayerLatestSessionOut(BaseModel):
     program_version: int | None = None
     active_program_version_at_sync: int | None = None
     is_historical_program: bool = False
+    uploaded_at: str | None = None
+    edited_at: str | None = None
+    corrections: list[PerformedDateCorrectionOut] = []
     exercises: list[CoachPlayerSessionExerciseOut] = []
     divergences: list[CoachPlayerDivergenceOut] = []
 
@@ -361,6 +373,9 @@ class CoachPlayerRecentSessionOut(BaseModel):
     program_version: int | None = None
     active_program_version_at_sync: int | None = None
     is_historical_program: bool = False
+    uploaded_at: str | None = None
+    edited_at: str | None = None
+    corrections: list[PerformedDateCorrectionOut] = []
     divergences: list[CoachPlayerDivergenceOut] = []
 
 
@@ -646,6 +661,23 @@ class SessionCommitIn(BaseModel):
         ):
             raise ValueError("performed_date/performed_timezone/program_version/captured_at require client_session_id.")
         return self
+
+
+class SessionPerformedDateCorrectIn(BaseModel):
+    """A requested performed-date correction for one committed session (ADR 035)."""
+
+    performed_date: str = Field(max_length=10)
+
+
+class SessionPerformedDateCorrectOut(BaseModel):
+    """The result of a performed-date correction; ``changed`` is false for a no-op."""
+
+    session_id: str
+    session_date: str
+    previous_date: str | None = None
+    edited_at: str | None = None
+    changed: bool
+    corrections: list[PerformedDateCorrectionOut] = []
 
 
 class ChatMessageIn(BaseModel):

@@ -198,9 +198,12 @@ class DraftSyncService extends ChangeNotifier {
     if (id == null) {
       return;
     }
-    await _mutateDrafts(id, (List<WorkoutDraft> current) => current
-        .where((WorkoutDraft draft) => draft.clientSessionId != clientSessionId)
-        .toList(growable: false));
+    await _mutateDrafts(
+        id,
+        (List<WorkoutDraft> current) => current
+            .where((WorkoutDraft draft) =>
+                draft.clientSessionId != clientSessionId)
+            .toList(growable: false));
   }
 
   /// Removes every draft for an account (logout's explicit discard choice).
@@ -234,6 +237,69 @@ class DraftSyncService extends ChangeNotifier {
     await syncNow();
   }
 
+  /// Edits an unsynced draft's performed date in local storage (ADR 020/035).
+  ///
+  /// Returns false when the draft is missing or already committed; a synced
+  /// session must be corrected on the service instead.
+  Future<bool> updatePendingPerformedDate(
+      String clientSessionId, String performedDate) async {
+    final String? id = _accountId;
+    if (id == null) {
+      return false;
+    }
+    bool updated = false;
+    await _mutateDrafts(id, (List<WorkoutDraft> current) {
+      final List<WorkoutDraft> next = <WorkoutDraft>[];
+      for (final WorkoutDraft draft in current) {
+        if (draft.clientSessionId == clientSessionId && !draft.isSynced) {
+          updated = true;
+          next.add(
+              draft.copyWith(performedDate: performedDate, updatedAt: _iso()));
+        } else {
+          next.add(draft);
+        }
+      }
+      return next;
+    });
+    return updated;
+  }
+
+  /// Corrects a committed session's performed date on the service (ADR 035).
+  ///
+  /// Throws [ApiException] when offline or when the service refuses (400 out of
+  /// window, 409 too old, 404 unknown), so the caller can show the message. On
+  /// success the local draft reflects the corrected date and response.
+  Future<WorkoutDraft> correctSyncedPerformedDate(
+      String clientSessionId, String performedDate) async {
+    final String? accountId = _accountId;
+    if (accountId == null) {
+      throw const ApiException('You are not signed in.');
+    }
+    final List<WorkoutDraft> current = await _store.read(accountId);
+    final int index = current
+        .indexWhere((WorkoutDraft d) => d.clientSessionId == clientSessionId);
+    if (index < 0) {
+      throw const ApiException('That workout is no longer available.');
+    }
+    final WorkoutDraft draft = current[index];
+    final String? sessionId = draft.serverSessionId;
+    if (!draft.isSynced || sessionId == null) {
+      throw const ApiException('Only a synced workout can be corrected.');
+    }
+    final Map<String, dynamic> result =
+        await _api.correctSessionPerformedDate(sessionId, performedDate);
+    final WorkoutDraft corrected = draft.copyWith(
+      performedDate: (result['session_date'] as String?) ?? performedDate,
+      serverResponse: <String, dynamic>{
+        ...?draft.serverResponse,
+        ...result,
+      },
+      updatedAt: _iso(),
+    );
+    await _applyResult(accountId, corrected);
+    return corrected;
+  }
+
   /// Processes pending drafts for the logged-in account, oldest-first. If a
   /// pass is already running, marks that another is needed once it finishes
   /// rather than running two passes concurrently.
@@ -265,7 +331,9 @@ class DraftSyncService extends ChangeNotifier {
     // (``_syncing`` was true) and this pass's loop stops on the generation
     // change, so run the queued pass for the now-current account immediately
     // instead of leaving it until the next timer tick.
-    if (_resyncRequested && _accountId != null && !_stillCurrent(id, generation)) {
+    if (_resyncRequested &&
+        _accountId != null &&
+        !_stillCurrent(id, generation)) {
       _resyncRequested = false;
       unawaited(syncNow());
     }
@@ -292,11 +360,13 @@ class DraftSyncService extends ChangeNotifier {
       if (!_stillCurrent(accountId, generation)) {
         return;
       }
-      final WorkoutDraft? claimed = await _claimForSync(accountId, draft.clientSessionId);
+      final WorkoutDraft? claimed =
+          await _claimForSync(accountId, draft.clientSessionId);
       if (claimed == null || !_stillCurrent(accountId, generation)) {
         continue;
       }
-      final WorkoutDraft resolved = await _syncOne(accountId, claimed, generation);
+      final WorkoutDraft resolved =
+          await _syncOne(accountId, claimed, generation);
       if (!_stillCurrent(accountId, generation)) {
         return;
       }
@@ -315,11 +385,12 @@ class DraftSyncService extends ChangeNotifier {
 
   /// Marks a draft "syncing" under the lock and returns its pre-claim fields
   /// for the network call, or null if it was discarded or already resolved.
-  Future<WorkoutDraft?> _claimForSync(String accountId, String clientSessionId) {
+  Future<WorkoutDraft?> _claimForSync(
+      String accountId, String clientSessionId) {
     return _locked(() async {
       final List<WorkoutDraft> current = await _store.read(accountId);
-      final int index =
-          current.indexWhere((WorkoutDraft d) => d.clientSessionId == clientSessionId);
+      final int index = current
+          .indexWhere((WorkoutDraft d) => d.clientSessionId == clientSessionId);
       if (index < 0) {
         return null;
       }
@@ -328,7 +399,8 @@ class DraftSyncService extends ChangeNotifier {
         return null;
       }
       final List<WorkoutDraft> next = List<WorkoutDraft>.of(current);
-      next[index] = draft.copyWith(status: DraftStatus.syncing, updatedAt: _iso());
+      next[index] =
+          draft.copyWith(status: DraftStatus.syncing, updatedAt: _iso());
       await _store.write(accountId, next);
       if (_accountId == accountId) {
         _drafts = next;
@@ -343,8 +415,8 @@ class DraftSyncService extends ChangeNotifier {
   /// flight (it is never re-added, and never marked synced/needs-attention).
   Future<void> _applyResult(String accountId, WorkoutDraft resolved) {
     return _mutateDrafts(accountId, (List<WorkoutDraft> current) {
-      final int index = current
-          .indexWhere((WorkoutDraft d) => d.clientSessionId == resolved.clientSessionId);
+      final int index = current.indexWhere(
+          (WorkoutDraft d) => d.clientSessionId == resolved.clientSessionId);
       if (index < 0) {
         return current;
       }
@@ -360,11 +432,13 @@ class DraftSyncService extends ChangeNotifier {
   Future<bool> _isPresent(String accountId, String clientSessionId) {
     return _locked(() async {
       final List<WorkoutDraft> current = await _store.read(accountId);
-      return current.any((WorkoutDraft d) => d.clientSessionId == clientSessionId);
+      return current
+          .any((WorkoutDraft d) => d.clientSessionId == clientSessionId);
     });
   }
 
-  Future<bool> _canProceed(String accountId, String clientSessionId, int generation) async {
+  Future<bool> _canProceed(
+      String accountId, String clientSessionId, int generation) async {
     return _stillCurrent(accountId, generation) &&
         await _isPresent(accountId, clientSessionId);
   }
@@ -413,9 +487,13 @@ class DraftSyncService extends ChangeNotifier {
     }
   }
 
-  /// A committed draft: keeps the server response and clears all retry state.
+  /// A committed draft: keeps the server response, clears all retry state, and
+  /// adopts the server's current performed date so a corrected session is not
+  /// shown with a stale date on reconcile (ADR 035).
   WorkoutDraft _synced(WorkoutDraft draft, Map<String, dynamic> response) =>
       draft.copyWith(
+        performedDate:
+            (response['session_date'] as String?) ?? draft.performedDate,
         status: DraftStatus.synced,
         serverResponse: response,
         lastError: null,
@@ -441,10 +519,7 @@ class DraftSyncService extends ChangeNotifier {
   /// network failures and 5xx stay pending for a later retry.
   static bool _isTerminal(ApiException error) {
     final int? status = error.statusCode;
-    return status != null &&
-        status >= 400 &&
-        status < 500 &&
-        status != 408;
+    return status != null && status >= 400 && status < 500 && status != 408;
   }
 
   String _iso() => _now().toIso8601String();

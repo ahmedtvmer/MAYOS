@@ -52,7 +52,7 @@ def temp_db_env(tmp_path: Path, monkeypatch):
 def test_schema_version_stamping(temp_db_env):
     db, users_dir, _ = temp_db_env
     version = get_user_schema_version(db.conn)
-    assert version == CURRENT_USER_SCHEMA_VERSION == 10
+    assert version == CURRENT_USER_SCHEMA_VERSION == 11
 
 
 def test_atomic_backup_and_restore(temp_db_env):
@@ -239,11 +239,15 @@ def test_latest_session_summary_uses_real_working_sets(temp_db_env):
     ]:
         db.log_workout_set(set_id, "latest'; --", exercise_id, index, weight, reps, 8, warmup)
     expected = {
+        "session_id": "latest'; --",
         "session_date": "2026-09-16",
         "split_name": "Upper",
         "readiness_score": 3,
         "program_version": None,
         "active_program_version_at_sync": None,
+        "uploaded_at": None,
+        "edited_at": None,
+        "corrections": [],
         "sets_count": 4,
         "total_volume_kg": 2300.0,
         "exercises": [
@@ -269,11 +273,15 @@ def test_latest_session_summary_empty_and_warmup_only(temp_db_env):
     db.log_workout_set("old-set", "old", "bench", 1, 100, 8, 8)
     db.log_workout_session("empty", "2026-09-16", "Empty", "2026-09-16T12:00:00", None, None)
     expected = {
+        "session_id": "empty",
         "session_date": "2026-09-16",
         "split_name": "Empty",
         "readiness_score": None,
         "program_version": None,
         "active_program_version_at_sync": None,
+        "uploaded_at": None,
+        "edited_at": None,
+        "corrections": [],
         "sets_count": 0,
         "total_volume_kg": 0.0,
         "exercises": [],
@@ -476,7 +484,7 @@ def test_v1_to_v2_adds_password_hash_preserving_data(temp_db_env):
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
-    assert CURRENT_USER_SCHEMA_VERSION == 10
+    assert CURRENT_USER_SCHEMA_VERSION == 11
     db, users_dir, _ = temp_db_env
     # Craft a legacy v1 ledger: no password_hash column, stamped v1.
     legacy_path = users_dir / "legacy.db"
@@ -512,7 +520,7 @@ def test_v2_to_v3_adds_token_version_preserving_hash(temp_db_env):
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
-    assert CURRENT_USER_SCHEMA_VERSION == 10
+    assert CURRENT_USER_SCHEMA_VERSION == 11
     db, users_dir, _ = temp_db_env
     # Craft a v2 ledger: auth_credentials without token_version, stamped v2.
     legacy_path = users_dir / "v2user.db"
@@ -552,7 +560,7 @@ def test_v3_to_v4_backfills_personal_records(temp_db_env):
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
-    assert CURRENT_USER_SCHEMA_VERSION == 10
+    assert CURRENT_USER_SCHEMA_VERSION == 11
     db, users_dir, _ = temp_db_env
     legacy_path = users_dir / "v3lifter.db"
     conn = sqlite3.connect(legacy_path)
@@ -694,7 +702,7 @@ def test_v5_to_v6_backfills_stable_program_versions(temp_db_env):
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v5lifter"
     )
     try:
-        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 10
+        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 11
         program_cols = {r[1] for r in migrated.conn.execute("PRAGMA table_info(training_programs)")}
         assert {"version", "published_by_coach_account_id"}.issubset(program_cols)
         rows = migrated.conn.execute(
@@ -738,7 +746,7 @@ def test_v6_to_v7_adds_session_divergences(temp_db_env):
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v6lifter"
     )
     try:
-        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 10
+        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 11
         tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         assert "session_divergences" in tables
         migrated.record_session_divergences(
@@ -788,7 +796,7 @@ def test_v7_to_v8_adds_training_schedules_and_pauses(temp_db_env):
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v7lifter"
     )
     try:
-        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 10
+        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 11
         tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         assert {"training_schedules", "training_pauses"} <= tables
         migrated.append_training_schedule("v7lifter", [1, 3], "UTC", "2026-01-01", "2026-01-01T00:00:00+00:00")
@@ -834,7 +842,7 @@ def test_v8_to_v9_adds_offline_sync_columns_and_session_commits(temp_db_env):
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v8lifter"
     )
     try:
-        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 10
+        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 11
         columns = {r[1] for r in migrated.conn.execute("PRAGMA table_info(workout_sessions)")}
         assert {"client_session_id", "performed_timezone", "program_version", "captured_at", "uploaded_at"} <= columns
         tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
@@ -885,7 +893,7 @@ def test_v9_to_v10_adds_active_program_version_at_sync(temp_db_env):
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v9lifter"
     )
     try:
-        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 10
+        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 11
         columns = {r[1] for r in migrated.conn.execute("PRAGMA table_info(workout_sessions)")}
         assert "active_program_version_at_sync" in columns
         # Existing rows keep a NULL active version, so they are never read as historical.
@@ -898,6 +906,72 @@ def test_v9_to_v10_adds_active_program_version_at_sync(temp_db_env):
         migrated.create_user_schema()
         assert "active_program_version_at_sync" in {
             r[1] for r in migrated.conn.execute("PRAGMA table_info(workout_sessions)")
+        }
+    finally:
+        if migrated.user_conn is not None:
+            migrated.user_conn.close()
+        migrated.catalog_conn.close()
+
+
+def test_v10_to_v11_adds_edited_at_and_performed_date_corrections(temp_db_env):
+    import threading
+
+    from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
+
+    db, users_dir, _ = temp_db_env
+    legacy_path = users_dir / "v10lifter.db"
+    conn = sqlite3.connect(legacy_path)
+    conn.executescript("""
+        CREATE TABLE user_profile (id INTEGER PRIMARY KEY, current_goal TEXT NOT NULL, updated_at TEXT NOT NULL);
+        INSERT INTO user_profile VALUES (1, 'Strength', '2026-01-01T00:00:00+00:00');
+        CREATE TABLE workout_sessions (
+            id TEXT PRIMARY KEY, session_date TEXT NOT NULL, split_name TEXT NOT NULL,
+            started_at TEXT NOT NULL, completed_at TEXT, session_notes TEXT,
+            readiness_score INTEGER, coach_debrief TEXT, client_session_id TEXT,
+            performed_timezone TEXT, program_version INTEGER, active_program_version_at_sync INTEGER,
+            captured_at TEXT, uploaded_at TEXT
+        );
+        INSERT INTO workout_sessions (id, session_date, split_name, started_at, captured_at, uploaded_at)
+            VALUES ('legacy', '2026-01-01', 'Full A', '2026-01-01T10:00:00+00:00',
+                    '2026-01-01T10:00:00+00:00', '2026-01-01T10:05:00+00:00');
+    """)
+    conn.execute("PRAGMA user_version = 10")
+    conn.commit()
+    conn.close()
+
+    DatabaseManager._instance = None
+    DatabaseManager._local = threading.local()
+    migrated = DatabaseManager(
+        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v10lifter"
+    )
+    try:
+        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 11
+        columns = {r[1] for r in migrated.conn.execute("PRAGMA table_info(workout_sessions)")}
+        assert "edited_at" in columns
+        tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        assert "performed_date_corrections" in tables
+        # Legacy rows have no edit; the capture/upload timestamps stay intact.
+        row = migrated.conn.execute(
+            "SELECT uploaded_at, edited_at FROM workout_sessions WHERE id = 'legacy'"
+        ).fetchone()
+        assert row["uploaded_at"] == "2026-01-01T10:05:00+00:00"
+        assert row["edited_at"] is None
+        # A correction records previous/corrected dates and cascades with its session.
+        migrated.update_session_performed_date("legacy", "2026-01-02", "2026-01-02T09:00:00+00:00")
+        migrated.record_performed_date_correction(
+            "legacy", "2026-01-01", "2026-01-02", "2026-01-02T09:00:00+00:00"
+        )
+        corrections = migrated.list_performed_date_corrections("legacy")
+        assert [(c["previous_date"], c["corrected_date"]) for c in corrections] == [
+            ("2026-01-01", "2026-01-02")
+        ]
+        migrated.conn.execute("DELETE FROM workout_sessions WHERE id = 'legacy'")
+        migrated.conn.commit()
+        assert migrated.list_performed_date_corrections("legacy") == []
+        # Re-initialising the schema is idempotent.
+        migrated.create_user_schema()
+        assert "performed_date_corrections" in {
+            row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
     finally:
         if migrated.user_conn is not None:

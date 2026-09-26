@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/api_client.dart';
 import '../../../core/device_timezone.dart';
 import '../../../core/models.dart';
+import '../../../core/performed_date_window.dart';
 import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
@@ -111,9 +112,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       fromCache = program != null;
     }
     try {
-      final Prescription fetched = await ref
-          .read(apiClientProvider)
-          .prescription(widget.dayOrder);
+      final Prescription fetched =
+          await ref.read(apiClientProvider).prescription(widget.dayOrder);
       prescription = fetched;
       await cache.writePrescription(accountId, widget.dayOrder, fetched);
     } on ApiException {
@@ -167,17 +167,13 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     // the device's own wall clock; this is the same clock [_timezone] names
     // (the device zone, or the cached schedule zone only when the device
     // zone truly could not be read), so the two stay consistent.
-    final DateTime today = DateTime.now();
-    final DateTime last = DateTime(today.year, today.month, today.day);
-    final DateTime first = last.subtract(const Duration(days: 3));
-    final DateTime initial = _performedDate.isAfter(last)
-        ? last
-        : (_performedDate.isBefore(first) ? first : _performedDate);
+    final PerformedDateWindow window = performedDateWindow();
+    final DateTime initial = window.clamp(_performedDate);
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: initial,
-      firstDate: first,
-      lastDate: last,
+      firstDate: window.first,
+      lastDate: window.last,
     );
     if (picked != null) {
       setState(() => _performedDate = picked);
@@ -225,10 +221,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     });
 
     final DateTime now = DateTime.now();
-    final String performedDate =
-        '${_performedDate.year.toString().padLeft(4, '0')}-'
-        '${_performedDate.month.toString().padLeft(2, '0')}-'
-        '${_performedDate.day.toString().padLeft(2, '0')}';
+    final String performedDate = formatPerformedDate(_performedDate);
     final DraftSyncService sync = ref.read(draftSyncServiceProvider);
     final WorkoutDraft draft = WorkoutDraft(
       clientSessionId: sync.newClientSessionId(),
@@ -294,72 +287,71 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-        if (_fromCache)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 8),
-            child: Text('Offline: showing your cached program.'),
-          ),
-        Text(day.dayName,
-            style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 8),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.event_outlined),
-          title: const Text('Performed date'),
-          subtitle: Text(
-              '${_performedDate.year}-${_performedDate.month.toString().padLeft(2, '0')}-'
-              '${_performedDate.day.toString().padLeft(2, '0')}'),
-          trailing: const Icon(Icons.edit_outlined),
-          onTap: _pickDate,
-        ),
-        Text('Readiness: $_readiness/5'),
-        Slider(
-          value: _readiness.toDouble(),
-          min: 1,
-          max: 5,
-          divisions: 4,
-          label: '$_readiness',
-          onChanged: (double value) =>
-              setState(() => _readiness = value.round()),
-        ),
-        const SizedBox(height: 8),
-        ..._exercises.map(_buildExerciseCard),
-        OutlinedButton.icon(
-          onPressed: _addUnplanned,
-          icon: const Icon(Icons.add),
-          label: const Text('Add unplanned exercise'),
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _notes,
-          maxLines: 3,
-          decoration: const InputDecoration(
-            labelText: 'Notes (pumps, joint aches, fatigue)',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        if (_blockReason != null) ...<Widget>[
+          if (_fromCache)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text('Offline: showing your cached program.'),
+            ),
+          Text(day.dayName, style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
-          Text(_blockReason!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error)),
-        ],
-        if (_saveError != null) ...<Widget>[
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.event_outlined),
+            title: const Text('Performed date'),
+            subtitle: Text(
+                '${_performedDate.year}-${_performedDate.month.toString().padLeft(2, '0')}-'
+                '${_performedDate.day.toString().padLeft(2, '0')}'),
+            trailing: const Icon(Icons.edit_outlined),
+            onTap: _pickDate,
+          ),
+          Text('Readiness: $_readiness/5'),
+          Slider(
+            value: _readiness.toDouble(),
+            min: 1,
+            max: 5,
+            divisions: 4,
+            label: '$_readiness',
+            onChanged: (double value) =>
+                setState(() => _readiness = value.round()),
+          ),
           const SizedBox(height: 8),
-          Text(_saveError!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error)),
-        ],
-        const SizedBox(height: 16),
-        FilledButton.icon(
-          onPressed: _saving || _blockReason != null ? null : _finish,
-          icon: _saving
-              ? const SizedBox(
-                  height: 18,
-                  width: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.check),
-          label: const Text('Finish and save draft'),
-        ),
+          ..._exercises.map(_buildExerciseCard),
+          OutlinedButton.icon(
+            onPressed: _addUnplanned,
+            icon: const Icon(Icons.add),
+            label: const Text('Add unplanned exercise'),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _notes,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Notes (pumps, joint aches, fatigue)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          if (_blockReason != null) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(_blockReason!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ],
+          if (_saveError != null) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(_saveError!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ],
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _saving || _blockReason != null ? null : _finish,
+            icon: _saving
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.check),
+            label: const Text('Finish and save draft'),
+          ),
         ],
       ),
     );
@@ -434,7 +426,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
             child: TextField(
               controller: set.reps,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'reps', isDense: true),
+              decoration:
+                  const InputDecoration(labelText: 'reps', isDense: true),
             ),
           ),
           const SizedBox(width: 8),
@@ -443,7 +436,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
               controller: set.rpe,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'RPE', isDense: true),
+              decoration:
+                  const InputDecoration(labelText: 'RPE', isDense: true),
             ),
           ),
           IconButton(
