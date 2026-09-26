@@ -50,6 +50,11 @@ class FakeMayosApi {
   bool coachControlsProgram = false;
   final List<Map<String, dynamic>> playerNotices = <Map<String, dynamic>>[];
 
+  // Player program requests and coach resolution (#28).
+  final List<Map<String, dynamic>> programRequests = <Map<String, dynamic>>[];
+  bool staleProgramRequest = false;
+  int _programRequestSeq = 0;
+
   // Coach drill-down (#25). Denied mirrors a revoked/foreign assignment.
   bool coachHistoryDenied = false;
   Map<String, dynamic> coachPlayerSummary = _defaultCoachSummary();
@@ -70,6 +75,13 @@ class FakeMayosApi {
 
   FakeResponse _handle(FakeRequest request) {
     final String path = request.path;
+    if (path.startsWith('/coach/assignments/') &&
+        path.contains('/program-requests')) {
+      return _coachProgramRequests(request);
+    }
+    if (path.startsWith('/assignments/me/program-requests')) {
+      return _playerProgramRequests(request);
+    }
     if (path.startsWith('/coach/assignments/') && path.endsWith('/revoke')) {
       return _revokeAssignment(request);
     }
@@ -622,6 +634,163 @@ class FakeMayosApi {
     return FakeResponse(200, _activeProgramBody());
   }
 
+  FakeResponse _playerProgramRequests(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    final String path = request.path;
+    if (path.endsWith('/cancel')) {
+      final String id = path.split('/program-requests/')[1].split('/cancel')[0];
+      final int index = programRequests
+          .indexWhere((Map<String, dynamic> r) => r['request_id'] == id);
+      if (index < 0) {
+        return const FakeResponse(
+            404, <String, dynamic>{'detail': 'Request not found.'});
+      }
+      if (programRequests[index]['status'] != 'pending') {
+        return const FakeResponse(400,
+            <String, dynamic>{'detail': 'This request is no longer pending.'});
+      }
+      programRequests[index]['status'] = 'cancelled';
+      programRequests[index]['resolved_at'] = '2026-09-26T12:00:00Z';
+      programRequests[index]['resolved_by'] = 'player';
+      return FakeResponse(200, programRequests[index]);
+    }
+    if (request.method == 'POST') {
+      return _createPlayerProgramRequest(request);
+    }
+    return FakeResponse(200, <String, dynamic>{
+      'requests': List<Map<String, dynamic>>.from(programRequests),
+    });
+  }
+
+  FakeResponse _createPlayerProgramRequest(FakeRequest request) {
+    final String? kind = request.body['kind'] as String?;
+    final String reason = (request.body['reason'] as String?)?.trim() ?? '';
+    if (reason.isEmpty) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'A reason is required.'});
+    }
+    final Map<String, dynamic> row = <String, dynamic>{
+      'request_id': 'request-${++_programRequestSeq}',
+      'assignment_id': activeAssignmentId ?? 'assignment-1',
+      'kind': kind,
+      'program_version': programVersion ?? 0,
+      'day_name': null,
+      'exercise_id': null,
+      'replacement_exercise_id': null,
+      'desired_weekly_frequency': null,
+      'desired_split_preference': null,
+      'reason': reason,
+      'status': 'pending',
+      'response': null,
+      'created_at': '2026-09-26T12:00:00Z',
+      'resolved_at': null,
+      'resolved_by': null,
+    };
+    if (kind == 'exercise_substitution') {
+      final String day = (request.body['day_name'] as String?)?.trim() ?? '';
+      final String? exercise = request.body['exercise_id'] as String?;
+      final String? replacement =
+          request.body['replacement_exercise_id'] as String?;
+      if (day.isEmpty || exercise == null || replacement == null) {
+        return const FakeResponse(400, <String, dynamic>{
+          'detail': 'Pick the day, the exercise, and its replacement.'
+        });
+      }
+      if (replacement == exercise) {
+        return const FakeResponse(400, <String, dynamic>{
+          'detail': 'Choose a different replacement exercise.'
+        });
+      }
+      row['day_name'] = day;
+      row['exercise_id'] = exercise;
+      row['replacement_exercise_id'] = replacement;
+    } else if (kind == 'split_change') {
+      final int? frequency =
+          (request.body['desired_weekly_frequency'] as num?)?.toInt();
+      if (frequency == null || frequency < 1 || frequency > 5) {
+        return const FakeResponse(400, <String, dynamic>{
+          'detail': 'Weekly frequency must be between 1 and 5.'
+        });
+      }
+      row['desired_weekly_frequency'] = frequency;
+      row['desired_split_preference'] =
+          request.body['desired_split_preference'] as String?;
+    } else {
+      return const FakeResponse(400, <String, dynamic>{
+        'detail': 'Choose an exercise substitution or a split change.'
+      });
+    }
+    programRequests.insert(0, row);
+    return FakeResponse(200, row);
+  }
+
+  FakeResponse _coachProgramRequests(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    final List<String> parts = request.path
+        .replaceFirst('/coach/assignments/', '')
+        .split('/');
+    final String assignmentId = parts.isNotEmpty ? parts[0] : '';
+    final bool owned = assignments.any(
+        (Map<String, dynamic> entry) => entry['assignment_id'] == assignmentId);
+    if (!owned) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'No active assignment.'});
+    }
+    if (request.path.endsWith('/apply') || request.path.endsWith('/decline')) {
+      final String id = parts.length > 2 ? parts[2] : '';
+      final int index = programRequests
+          .indexWhere((Map<String, dynamic> r) => r['request_id'] == id);
+      if (index < 0) {
+        return const FakeResponse(
+            404, <String, dynamic>{'detail': 'Request not found.'});
+      }
+      if (programRequests[index]['status'] != 'pending') {
+        return const FakeResponse(400,
+            <String, dynamic>{'detail': 'This request is no longer pending.'});
+      }
+      if (request.path.endsWith('/apply')) {
+        if (staleProgramRequest) {
+          return const FakeResponse(400, <String, dynamic>{
+            'detail':
+                'The program changed since this request was created. Ask the player to update it.'
+          });
+        }
+        programRequests[index]['status'] = 'applied';
+        programRequests[index]['resolved_at'] = '2026-09-26T12:30:00Z';
+        programRequests[index]['resolved_by'] = 'account-$currentUsername';
+        programVersion = (programVersion ?? 0) + 1;
+        _publishedVersion = programVersion!;
+        programPublishedByCoachAccountId = 'account-$currentUsername';
+        coachControlsProgram = true;
+        return FakeResponse(200, programRequests[index]);
+      }
+      final String response =
+          (request.body['response'] as String?)?.trim() ?? '';
+      if (response.isEmpty) {
+        return const FakeResponse(
+            400, <String, dynamic>{'detail': 'A response is required.'});
+      }
+      programRequests[index]['status'] = 'declined';
+      programRequests[index]['response'] = response;
+      programRequests[index]['resolved_at'] = '2026-09-26T12:30:00Z';
+      programRequests[index]['resolved_by'] = 'account-$currentUsername';
+      return FakeResponse(200, programRequests[index]);
+    }
+    return FakeResponse(200, <String, dynamic>{
+      'requests': List<Map<String, dynamic>>.from(programRequests),
+    });
+  }
+
   FakeResponse _playerNotices(FakeRequest request) {
     if (!_authorized(request)) {
       return const FakeResponse(
@@ -909,6 +1078,9 @@ class FakeMayosApi {
       programPublishedByCoachAccountId = null;
       coachControlsProgram = false;
       playerNotices.clear();
+      programRequests.clear();
+      staleProgramRequest = false;
+      _programRequestSeq = 0;
       coachHistoryDenied = false;
       coachPlayerSummary = _defaultCoachSummary();
       coachPlayerRecords = _defaultCoachRecords();

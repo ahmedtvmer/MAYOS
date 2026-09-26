@@ -46,6 +46,9 @@ class _CoachPlayerHistoryScreenState
   bool _loadingHistory = false;
   bool _publishing = false;
   String? _publishError;
+  List<ProgramRequest> _programRequests = const <ProgramRequest>[];
+  bool _resolvingRequest = false;
+  String? _requestError;
 
   @override
   void initState() {
@@ -64,12 +67,14 @@ class _CoachPlayerHistoryScreenState
         api.coachPlayerSummary(widget.entry.assignmentId),
         api.coachPlayerPersonalRecords(widget.entry.assignmentId),
         api.coachPlayerExercises(widget.entry.assignmentId),
+        api.coachProgramRequests(widget.entry.assignmentId),
       ]);
       if (!mounted) return;
       setState(() {
         _summary = results[0] as CoachPlayerSummary;
         _records = results[1] as List<PersonalRecord>;
         _exercises = results[2] as List<CoachPlayerExercise>;
+        _programRequests = results[3] as List<ProgramRequest>;
         _loading = false;
       });
     } on ApiException catch (error) {
@@ -210,6 +215,105 @@ class _CoachPlayerHistoryScreenState
         _publishError = error.message;
       });
     }
+  }
+
+  Future<void> _applyRequest(ProgramRequest request) async {
+    setState(() {
+      _resolvingRequest = true;
+      _requestError = null;
+    });
+    try {
+      await ref
+          .read(apiClientProvider)
+          .applyCoachProgramRequest(widget.entry.assignmentId, request.requestId);
+      if (!mounted) return;
+      setState(() => _resolvingRequest = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Program request applied.')),
+      );
+      await _load();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _resolvingRequest = false;
+        _requestError = error.message;
+      });
+    }
+  }
+
+  Future<void> _declineRequest(ProgramRequest request) async {
+    final String? text = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) => const _DeclineRequestDialog(),
+    );
+    if (text == null || !mounted) return;
+    setState(() {
+      _resolvingRequest = true;
+      _requestError = null;
+    });
+    try {
+      await ref.read(apiClientProvider).declineCoachProgramRequest(
+          widget.entry.assignmentId, request.requestId, text);
+      if (!mounted) return;
+      setState(() => _resolvingRequest = false);
+      await _load();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _resolvingRequest = false;
+        _requestError = error.message;
+      });
+    }
+  }
+
+  Widget _programRequestsCard(BuildContext context) {
+    return _section(context, 'Program requests', <Widget>[
+      if (_requestError != null) ...<Widget>[
+        Text(
+          _requestError!,
+          style: TextStyle(color: Theme.of(context).colorScheme.error),
+        ),
+        const SizedBox(height: 12),
+      ],
+      if (_programRequests.isEmpty)
+        const Text('No program requests yet.')
+      else
+        for (final ProgramRequest request in _programRequests)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Chip(label: Text(request.statusLabel)),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(request.description)),
+                  ],
+                ),
+                Text('Reason: ${request.reason}'),
+                if (request.hasResponse) Text('Response: ${request.response}'),
+                if (request.isPending)
+                  Row(
+                    children: <Widget>[
+                      TextButton(
+                        onPressed: _resolvingRequest
+                            ? null
+                            : () => _applyRequest(request),
+                        child: const Text('Apply'),
+                      ),
+                      TextButton(
+                        onPressed: _resolvingRequest
+                            ? null
+                            : () => _declineRequest(request),
+                        child: const Text('Decline'),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+    ]);
   }
 
   Widget _section(BuildContext context, String title, List<Widget> children) {
@@ -421,7 +525,54 @@ class _CoachPlayerHistoryScreenState
         const SizedBox(height: 12),
         _recordsCard(context),
         const SizedBox(height: 12),
+        _programRequestsCard(context),
+        const SizedBox(height: 12),
         _exercisesCard(context),
+      ],
+    );
+  }
+}
+
+/// The decline dialog. It owns its controller so it is disposed only after the
+/// route fully leaves the tree.
+class _DeclineRequestDialog extends StatefulWidget {
+  const _DeclineRequestDialog();
+
+  @override
+  State<_DeclineRequestDialog> createState() => _DeclineRequestDialogState();
+}
+
+class _DeclineRequestDialogState extends State<_DeclineRequestDialog> {
+  final TextEditingController _response = TextEditingController();
+
+  @override
+  void dispose() {
+    _response.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Decline request'),
+      content: TextField(
+        key: const Key('decline_response_field'),
+        controller: _response,
+        maxLines: 2,
+        decoration: const InputDecoration(
+            labelText: 'Response to the player',
+            border: OutlineInputBorder()),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('decline_submit_button'),
+          onPressed: () => Navigator.of(context).pop(_response.text.trim()),
+          child: const Text('Decline'),
+        ),
       ],
     );
   }

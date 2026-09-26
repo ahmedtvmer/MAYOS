@@ -83,6 +83,22 @@ def send_assignment_redemption_email(to_email: str, coach_display_name: str, pla
     return _deliver(to_email, subject, body)
 
 
+def send_program_request_email(to_email: str, coach_display_name: str, player_username: str) -> bool:
+    """Generic coach notice that a player requested a program change.
+
+    Deliberately contains no training data: no exercise, day, slot, or requested
+    replacement is ever named. The player's username is identity, not training
+    detail, and is included so the coach can act on the request.
+    """
+    subject = "A player requested a program change"
+    body = (
+        f"Hi {coach_display_name},\n\n"
+        f"{player_username} requested a program change. Review it in your roster.\n\n"
+        "This notice does not include any training data."
+    )
+    return _deliver(to_email, subject, body)
+
+
 def send_password_reset_email(to_email: str, reset_link: str) -> bool:
     subject = "Mayos Engine password reset"
     body = (

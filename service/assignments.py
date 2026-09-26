@@ -78,7 +78,7 @@ def _access_disclosure() -> dict[str, Any]:
     }
 
 
-def _coach_identity(db: Any, coach_account_id: str, account: dict[str, Any]) -> dict[str, str]:
+def coach_identity(db: Any, coach_account_id: str, account: dict[str, Any]) -> dict[str, str]:
     """Current coach identity, degrading to the username when the profile lookup faults."""
     try:
         profile = db.get_coach_profile(coach_account_id)
@@ -169,7 +169,7 @@ def preview_assignment_invite(db: Any, token: Any, player_account_id: str) -> di
 
     return {
         "ok": True,
-        "coach": _coach_identity(db, invite["coach_account_id"], coach),
+        "coach": coach_identity(db, invite["coach_account_id"], coach),
         "access": _access_disclosure(),
         "expires_at": invite["expires_at"],
     }
@@ -214,7 +214,7 @@ def redeem_assignment_invite(db: Any, token: Any, player_account_id: str, consen
         db.prune_assignment_invites(now_iso)
         coach_account = db.get_account(result["coach_account_id"])
         if coach_account:
-            identity = _coach_identity(db, result["coach_account_id"], coach_account)
+            identity = coach_identity(db, result["coach_account_id"], coach_account)
     except Exception:
         logger.exception("Post-commit assignment side effects raised unexpectedly")
     try:
@@ -246,7 +246,7 @@ def get_player_assignment(db: Any, player_account_id: str) -> dict[str, Any] | N
         return None
     return {
         "assignment_id": assignment["assignment_id"],
-        "coach": _coach_identity(db, assignment["coach_account_id"], coach),
+        "coach": coach_identity(db, assignment["coach_account_id"], coach),
         "started_at": assignment["started_at"],
         "status": assignment["status"],
     }

@@ -272,6 +272,89 @@ class AssignmentNotice {
   bool get isUnread => readAt == null || readAt!.isEmpty;
 }
 
+/// A player's request against a coach-controlled program and its resolution
+/// state (ADR 027). It pins the exact program version, day, and slot it targets;
+/// creating one never changes the program.
+class ProgramRequest {
+  const ProgramRequest({
+    required this.requestId,
+    required this.assignmentId,
+    required this.kind,
+    required this.programVersion,
+    required this.reason,
+    required this.status,
+    required this.createdAt,
+    this.dayName,
+    this.exerciseId,
+    this.replacementExerciseId,
+    this.desiredWeeklyFrequency,
+    this.desiredSplitPreference,
+    this.response,
+    this.resolvedAt,
+    this.resolvedBy,
+  });
+
+  factory ProgramRequest.fromJson(Map<String, dynamic> json) => ProgramRequest(
+        requestId: json['request_id'] as String,
+        assignmentId: json['assignment_id'] as String,
+        kind: json['kind'] as String,
+        programVersion: (json['program_version'] as num).toInt(),
+        dayName: json['day_name'] as String?,
+        exerciseId: json['exercise_id'] as String?,
+        replacementExerciseId: json['replacement_exercise_id'] as String?,
+        desiredWeeklyFrequency:
+            (json['desired_weekly_frequency'] as num?)?.toInt(),
+        desiredSplitPreference: json['desired_split_preference'] as String?,
+        reason: json['reason'] as String,
+        status: json['status'] as String,
+        response: json['response'] as String?,
+        createdAt: json['created_at'] as String,
+        resolvedAt: json['resolved_at'] as String?,
+        resolvedBy: json['resolved_by'] as String?,
+      );
+
+  final String requestId;
+  final String assignmentId;
+  final String kind;
+  final int programVersion;
+  final String? dayName;
+  final String? exerciseId;
+  final String? replacementExerciseId;
+  final int? desiredWeeklyFrequency;
+  final String? desiredSplitPreference;
+  final String reason;
+  final String status;
+  final String? response;
+  final String createdAt;
+  final String? resolvedAt;
+  final String? resolvedBy;
+
+  bool get isPending => status == 'pending';
+
+  bool get isExerciseSubstitution => kind == 'exercise_substitution';
+
+  bool get hasResponse => response != null && response!.isNotEmpty;
+
+  String get description {
+    if (isExerciseSubstitution) {
+      return 'Substitute $exerciseId on $dayName with $replacementExerciseId';
+    }
+    final String preference =
+        desiredSplitPreference == null || desiredSplitPreference!.isEmpty
+            ? ''
+            : ' ($desiredSplitPreference)';
+    return 'Change to $desiredWeeklyFrequency days/week$preference';
+  }
+
+  String get statusLabel => switch (status) {
+        'pending' => 'Pending',
+        'applied' => 'Applied',
+        'declined' => 'Declined',
+        'cancelled' => 'Cancelled',
+        _ => status,
+      };
+}
+
 /// `GET /coach/assignments`: active assignment identity for the coach console.
 class CoachRosterEntry {
   const CoachRosterEntry({

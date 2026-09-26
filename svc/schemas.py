@@ -38,6 +38,7 @@ __all__ = [
     "CoachPlayerSummaryOut",
     "CoachProfileOut",
     "CoachProfileUpdate",
+    "CoachProgramRequestListOut",
     "CoachRosterEntryOut",
     "EmailUpdateIn",
     "ExerciseSetsIn",
@@ -51,9 +52,13 @@ __all__ = [
     "PersonaUpdate",
     "PlanStateOut",
     "PlayerNoticeListOut",
+    "PlayerProgramRequestIn",
+    "PlayerProgramRequestListOut",
     "ProfileUpdate",
     "ProgramExerciseSchema",
     "ProgramGenerateIn",
+    "ProgramRequestDeclineIn",
+    "ProgramRequestOut",
     "RecoveryEmailOut",
     "ResetPasswordIn",
     "SessionCommitIn",
@@ -363,6 +368,50 @@ class ProgramGenerateIn(BaseModel):
     rep_preference_override: str | None = None
     frequency_override: int | None = Field(default=None, ge=1, le=5)
     user_split_override: str | None = None
+
+
+class PlayerProgramRequestIn(BaseModel):
+    """A player's request against their coach-controlled program; the identity is the JWT."""
+
+    kind: Literal["exercise_substitution", "split_change"]
+    day_name: str | None = Field(default=None, max_length=80)
+    exercise_id: str | None = Field(default=None, max_length=120)
+    replacement_exercise_id: str | None = Field(default=None, max_length=120)
+    desired_weekly_frequency: int | None = Field(default=None, ge=1, le=5)
+    desired_split_preference: str | None = Field(default=None, max_length=200)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class ProgramRequestOut(BaseModel):
+    """A program request's pinned target and its current resolution state."""
+
+    request_id: str
+    assignment_id: str
+    kind: str
+    program_version: int
+    day_name: str | None = None
+    exercise_id: str | None = None
+    replacement_exercise_id: str | None = None
+    desired_weekly_frequency: int | None = None
+    desired_split_preference: str | None = None
+    reason: str
+    status: str
+    response: str | None = None
+    created_at: str
+    resolved_at: str | None = None
+    resolved_by: str | None = None
+
+
+class PlayerProgramRequestListOut(BaseModel):
+    requests: list[ProgramRequestOut]
+
+
+class CoachProgramRequestListOut(BaseModel):
+    requests: list[ProgramRequestOut]
+
+
+class ProgramRequestDeclineIn(BaseModel):
+    response: str = Field(min_length=1, max_length=500)
 
 
 class WorkoutSetIn(BaseModel):

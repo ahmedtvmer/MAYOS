@@ -20,6 +20,7 @@ from agent.ProgramState import GeneratedProgramSchema
 from service import assignments as assignment_service
 from service import coach_history as coach_history_service
 from service import coach_programs as coach_programs_service
+from service import program_requests as program_requests_service
 from svc.dependencies import VerifiedPlayer, get_current_coach, get_current_trainee, get_db
 from svc.rate_limit import (
     ASSIGNMENT_INVITE_LIMIT,
@@ -46,9 +47,14 @@ from svc.schemas import (
     CoachPlayerExerciseOut,
     CoachPlayerExercisesOut,
     CoachPlayerSummaryOut,
+    CoachProgramRequestListOut,
     CoachRosterEntryOut,
     PlayerNoticeListOut,
+    PlayerProgramRequestIn,
+    PlayerProgramRequestListOut,
     ProgramGenerateIn,
+    ProgramRequestDeclineIn,
+    ProgramRequestOut,
 )
 
 coach_router = APIRouter(prefix="/coach/assignments", tags=["coach"])
@@ -259,6 +265,75 @@ async def publish_assigned_player_program(
     return await asyncio.to_thread(_run)
 
 
+@coach_router.get("/{assignment_id}/program-requests", response_model=CoachProgramRequestListOut)
+async def list_assignment_program_requests(
+    assignment_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Lists an actively assigned player's program requests (catalog-only, newest-first)."""
+
+    def _run():
+        requests = program_requests_service.list_assignment_requests(db, coach.account_id, assignment_id)
+        if requests is None:
+            raise _no_active_assignment()
+        return requests
+
+    rows = await asyncio.to_thread(_run)
+    return CoachProgramRequestListOut(requests=[ProgramRequestOut(**row) for row in rows])
+
+
+@coach_router.post(
+    "/{assignment_id}/program-requests/{request_id}/apply", response_model=ProgramRequestOut
+)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def apply_assignment_program_request(
+    request: Request,
+    assignment_id: str,
+    request_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Revalidates and applies a pending request, publishing a new immutable version."""
+
+    def _run():
+        result = program_requests_service.apply_request(db, coach.account_id, assignment_id, request_id)
+        if result is None:
+            raise _no_active_assignment()
+        if not result["ok"]:
+            raise _bad_request(result["error"])
+        return result["request"]
+
+    return ProgramRequestOut(**await asyncio.to_thread(_run))
+
+
+@coach_router.post(
+    "/{assignment_id}/program-requests/{request_id}/decline", response_model=ProgramRequestOut
+)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def decline_assignment_program_request(
+    request: Request,
+    assignment_id: str,
+    request_id: str,
+    body: ProgramRequestDeclineIn,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Declines a pending request with a short player-visible response."""
+
+    def _run():
+        result = program_requests_service.decline_request(
+            db, coach.account_id, assignment_id, request_id, body.response
+        )
+        if result is None:
+            raise _no_active_assignment()
+        if not result["ok"]:
+            raise _bad_request(result["error"])
+        return result["request"]
+
+    return ProgramRequestOut(**await asyncio.to_thread(_run))
+
+
 # --------------------------------------------------------------------------
 # Player side
 # --------------------------------------------------------------------------
@@ -372,3 +447,54 @@ async def end_my_assignment(
 
     result = await asyncio.to_thread(_run)
     return AssignmentEndOut(**result)
+
+
+@player_router.get("/me/program-requests", response_model=PlayerProgramRequestListOut)
+async def list_my_program_requests(
+    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Lists the caller's program requests, newest-first."""
+
+    rows = await asyncio.to_thread(
+        program_requests_service.list_player_requests, db, player.account_id
+    )
+    return PlayerProgramRequestListOut(requests=[ProgramRequestOut(**row) for row in rows])
+
+
+@player_router.post("/me/program-requests", response_model=ProgramRequestOut)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def create_my_program_request(
+    request: Request,
+    body: PlayerProgramRequestIn,
+    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Records a pending exercise-substitution or split-change request; the program is untouched."""
+
+    def _run():
+        result = program_requests_service.create_request(db, player.account_id, body.model_dump())
+        if not result["ok"]:
+            raise _bad_request(result["error"])
+        return result["request"]
+
+    return ProgramRequestOut(**await asyncio.to_thread(_run))
+
+
+@player_router.post("/me/program-requests/{request_id}/cancel", response_model=ProgramRequestOut)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def cancel_my_program_request(
+    request: Request,
+    request_id: str,
+    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Cancels the caller's own pending request."""
+
+    def _run():
+        result = program_requests_service.cancel_request(db, player.account_id, request_id)
+        if not result["ok"]:
+            raise _bad_request(result["error"])
+        return result["request"]
+
+    return ProgramRequestOut(**await asyncio.to_thread(_run))

@@ -30,8 +30,12 @@ class _PlayerAssignmentScreenState
   String? _error;
   Assignment? _assignment;
   List<AssignmentNotice> _notices = const <AssignmentNotice>[];
+  List<ProgramRequest> _programRequests = const <ProgramRequest>[];
   AssignmentInvitePreview? _preview;
   String? _previewToken;
+  bool _requestingChange = false;
+  String? _cancellingRequestId;
+  String? _requestError;
 
   @override
   void initState() {
@@ -53,11 +57,16 @@ class _PlayerAssignmentScreenState
     try {
       final ApiClient api = ref.read(apiClientProvider);
       final List<Object?> results = await Future.wait<Object?>(
-          <Future<Object?>>[api.myAssignment(), api.playerNotices()]);
+          <Future<Object?>>[
+            api.myAssignment(),
+            api.playerNotices(),
+            api.playerProgramRequests(),
+          ]);
       if (!mounted) return;
       setState(() {
         _assignment = results[0] as Assignment?;
         _notices = results[1] as List<AssignmentNotice>;
+        _programRequests = results[2] as List<ProgramRequest>;
         _loading = false;
       });
     } on ApiException catch (error) {
@@ -203,6 +212,143 @@ class _PlayerAssignmentScreenState
     }
   }
 
+  Future<void> _requestChange() async {
+    final _ProgramRequestDraft? draft =
+        await showDialog<_ProgramRequestDraft>(
+      context: context,
+      builder: (BuildContext context) => const _ProgramRequestDialog(),
+    );
+    if (draft == null || !mounted) return;
+    setState(() {
+      _requestingChange = true;
+      _requestError = null;
+    });
+    try {
+      final ProgramRequest created =
+          await ref.read(apiClientProvider).createPlayerProgramRequest(
+                kind: draft.kind,
+                dayName: draft.dayName,
+                exerciseId: draft.exerciseId,
+                replacementExerciseId: draft.replacementExerciseId,
+                desiredWeeklyFrequency: draft.desiredWeeklyFrequency,
+                desiredSplitPreference: draft.desiredSplitPreference,
+                reason: draft.reason,
+              );
+      if (!mounted) return;
+      setState(() {
+        _requestingChange = false;
+        _programRequests = <ProgramRequest>[created, ..._programRequests];
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _requestingChange = false;
+        _requestError = error.message;
+      });
+    }
+  }
+
+  Future<void> _cancelRequest(ProgramRequest request) async {
+    setState(() {
+      _cancellingRequestId = request.requestId;
+      _requestError = null;
+    });
+    try {
+      final ProgramRequest cancelled = await ref
+          .read(apiClientProvider)
+          .cancelPlayerProgramRequest(request.requestId);
+      if (!mounted) return;
+      setState(() {
+        _cancellingRequestId = null;
+        _programRequests = _programRequests
+            .map((ProgramRequest item) =>
+                item.requestId == cancelled.requestId ? cancelled : item)
+            .toList(growable: false);
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _cancellingRequestId = null;
+        _requestError = error.message;
+      });
+    }
+  }
+
+  Widget _programRequestsCard(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 20),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: <Widget>[
+                  Expanded(
+                    child: Text('Program requests',
+                        style: Theme.of(context).textTheme.titleMedium),
+                  ),
+                  TextButton.icon(
+                    onPressed: _requestingChange ? null : _requestChange,
+                    icon: _requestingChange
+                        ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.add),
+                    label: const Text('Request a change'),
+                  ),
+                ],
+              ),
+              if (_requestError != null) ...<Widget>[
+                Text(
+                  _requestError!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (_programRequests.isEmpty)
+                const Text('No program requests yet.')
+              else
+                for (final ProgramRequest request in _programRequests)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Row(
+                          children: <Widget>[
+                            Chip(label: Text(request.statusLabel)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child:
+                                  Text(request.description),
+                            ),
+                          ],
+                        ),
+                        Text('Reason: ${request.reason}'),
+                        if (request.hasResponse)
+                          Text('Coach: ${request.response}'),
+                        if (request.isPending)
+                          TextButton(
+                            onPressed: _cancellingRequestId == request.requestId
+                                ? null
+                                : () => _cancelRequest(request),
+                            child: const Text('Cancel request'),
+                          ),
+                      ],
+                    ),
+                  ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _noticesCard(BuildContext context) {
     if (_notices.isEmpty) {
       return const SizedBox.shrink();
@@ -293,6 +439,7 @@ class _PlayerAssignmentScreenState
                 )
               : const Text('End assignment'),
         ),
+        _programRequestsCard(context),
       ],
     );
   }
@@ -379,6 +526,190 @@ class _PlayerAssignmentScreenState
           _activeAssignment(context, _assignment!)
         else
           _inviteSection(context),
+      ],
+    );
+  }
+}
+
+/// A locally assembled player program-request payload awaiting submission.
+class _ProgramRequestDraft {
+  const _ProgramRequestDraft({
+    required this.kind,
+    required this.reason,
+    this.dayName,
+    this.exerciseId,
+    this.replacementExerciseId,
+    this.desiredWeeklyFrequency,
+    this.desiredSplitPreference,
+  });
+
+  final String kind;
+  final String reason;
+  final String? dayName;
+  final String? exerciseId;
+  final String? replacementExerciseId;
+  final int? desiredWeeklyFrequency;
+  final String? desiredSplitPreference;
+}
+
+/// The create-request dialog. It owns its controllers so they are disposed
+/// only after the route fully leaves the tree.
+class _ProgramRequestDialog extends StatefulWidget {
+  const _ProgramRequestDialog();
+
+  @override
+  State<_ProgramRequestDialog> createState() => _ProgramRequestDialogState();
+}
+
+class _ProgramRequestDialogState extends State<_ProgramRequestDialog> {
+  final TextEditingController _day = TextEditingController();
+  final TextEditingController _exercise = TextEditingController();
+  final TextEditingController _replacement = TextEditingController();
+  final TextEditingController _preference = TextEditingController();
+  final TextEditingController _reason = TextEditingController();
+  String _kind = 'exercise_substitution';
+  int _frequency = 4;
+  String? _localError;
+
+  @override
+  void dispose() {
+    _day.dispose();
+    _exercise.dispose();
+    _replacement.dispose();
+    _preference.dispose();
+    _reason.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final String reason = _reason.text.trim();
+    if (reason.isEmpty) {
+      setState(() => _localError = 'A reason is required.');
+      return;
+    }
+    if (_kind == 'exercise_substitution' &&
+        (_day.text.trim().isEmpty ||
+            _exercise.text.trim().isEmpty ||
+            _replacement.text.trim().isEmpty)) {
+      setState(() =>
+          _localError = 'Pick the day, the exercise, and its replacement.');
+      return;
+    }
+    Navigator.of(context).pop(
+      _ProgramRequestDraft(
+        kind: _kind,
+        reason: reason,
+        dayName: _kind == 'exercise_substitution' ? _day.text.trim() : null,
+        exerciseId:
+            _kind == 'exercise_substitution' ? _exercise.text.trim() : null,
+        replacementExerciseId:
+            _kind == 'exercise_substitution' ? _replacement.text.trim() : null,
+        desiredWeeklyFrequency: _kind == 'split_change' ? _frequency : null,
+        desiredSplitPreference:
+            _kind == 'split_change' ? _preference.text.trim() : null,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Request a program change'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            DropdownButtonFormField<String>(
+              key: const Key('program_request_kind_field'),
+              initialValue: _kind,
+              decoration: const InputDecoration(
+                  labelText: 'Request type', border: OutlineInputBorder()),
+              items: const <DropdownMenuItem<String>>[
+                DropdownMenuItem<String>(
+                    value: 'exercise_substitution',
+                    child: Text('Exercise substitution')),
+                DropdownMenuItem<String>(
+                    value: 'split_change', child: Text('Split change')),
+              ],
+              onChanged: (String? value) => setState(() {
+                _kind = value ?? _kind;
+                _localError = null;
+              }),
+            ),
+            const SizedBox(height: 16),
+            if (_kind == 'exercise_substitution') ...<Widget>[
+              TextField(
+                key: const Key('program_request_day_field'),
+                controller: _day,
+                decoration: const InputDecoration(
+                    labelText: 'Day name', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                key: const Key('program_request_exercise_field'),
+                controller: _exercise,
+                decoration: const InputDecoration(
+                    labelText: 'Current exercise id',
+                    border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                key: const Key('program_request_replacement_field'),
+                controller: _replacement,
+                decoration: const InputDecoration(
+                    labelText: 'Replacement exercise id',
+                    border: OutlineInputBorder()),
+              ),
+            ] else ...<Widget>[
+              DropdownButtonFormField<int>(
+                key: const Key('program_request_frequency_field'),
+                initialValue: _frequency,
+                decoration: const InputDecoration(
+                    labelText: 'Days per week', border: OutlineInputBorder()),
+                items: <DropdownMenuItem<int>>[
+                  for (int day = 1; day <= 5; day++)
+                    DropdownMenuItem<int>(value: day, child: Text('$day')),
+                ],
+                onChanged: (int? value) =>
+                    setState(() => _frequency = value ?? _frequency),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                key: const Key('program_request_split_field'),
+                controller: _preference,
+                decoration: const InputDecoration(
+                    labelText: 'Split preference (optional)',
+                    border: OutlineInputBorder()),
+              ),
+            ],
+            const SizedBox(height: 16),
+            TextField(
+              key: const Key('program_request_reason_field'),
+              controller: _reason,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                  labelText: 'Reason', border: OutlineInputBorder()),
+            ),
+            if (_localError != null) ...<Widget>[
+              const SizedBox(height: 12),
+              Text(
+                _localError!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('program_request_submit_button'),
+          onPressed: _submit,
+          child: const Text('Submit request'),
+        ),
       ],
     );
   }

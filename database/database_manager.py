@@ -821,12 +821,45 @@ class DatabaseManager:
                     read_at TEXT
                 );
                 CREATE INDEX IF NOT EXISTS idx_assignment_notices_account ON assignment_notices(account_id);
+
+                -- Player-requested program changes (ADR 018/027, ticket #28). Catalog-side,
+                -- keyed by assignment. A request pins the exact program version/day/slot it
+                -- targets and never mutates the program; resolution is an atomic claim that
+                -- only flips a pending row, so double-apply and racing cancels fail cleanly.
+                CREATE TABLE IF NOT EXISTS program_requests (
+                    request_id TEXT PRIMARY KEY,
+                    assignment_id TEXT NOT NULL,
+                    coach_account_id TEXT NOT NULL,
+                    player_account_id TEXT NOT NULL,
+                    kind TEXT NOT NULL CHECK (kind IN ('exercise_substitution', 'split_change')),
+                    program_version INTEGER NOT NULL,
+                    day_name TEXT,
+                    exercise_id TEXT,
+                    replacement_exercise_id TEXT,
+                    desired_weekly_frequency INTEGER,
+                    desired_split_preference TEXT,
+                    reason TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'applied', 'declined', 'cancelled')),
+                    response TEXT,
+                    created_at TEXT NOT NULL,
+                    resolved_at TEXT,
+                    resolved_by TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_program_requests_assignment ON program_requests(assignment_id);
+                CREATE INDEX IF NOT EXISTS idx_program_requests_player ON program_requests(player_account_id);
             """)
             self.catalog_conn.commit()
             self._account_schema_ready = True
 
     _ACCOUNT_COLUMNS = (
         "account_id, username, ledger_id, status, is_player, is_coach, session_epoch, created_at, deleted_at"
+    )
+
+    _PROGRAM_REQUEST_COLUMNS = (
+        "request_id, assignment_id, coach_account_id, player_account_id, kind, program_version,"
+        " day_name, exercise_id, replacement_exercise_id, desired_weekly_frequency,"
+        " desired_split_preference, reason, status, response, created_at, resolved_at, resolved_by"
     )
 
     @staticmethod
@@ -1571,6 +1604,166 @@ class DatabaseManager:
             )
             self.catalog_conn.commit()
             return int(cursor.rowcount)
+
+    @staticmethod
+    def _program_request_from_row(row: Any) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        return {
+            "request_id": str(row[0]),
+            "assignment_id": str(row[1]),
+            "coach_account_id": str(row[2]),
+            "player_account_id": str(row[3]),
+            "kind": str(row[4]),
+            "program_version": int(row[5]),
+            "day_name": row[6],
+            "exercise_id": row[7],
+            "replacement_exercise_id": row[8],
+            "desired_weekly_frequency": int(row[9]) if row[9] is not None else None,
+            "desired_split_preference": row[10],
+            "reason": str(row[11]),
+            "status": str(row[12]),
+            "response": row[13],
+            "created_at": str(row[14]),
+            "resolved_at": row[15],
+            "resolved_by": row[16],
+        }
+
+    def create_program_request(
+        self,
+        request_id: str,
+        assignment_id: str,
+        coach_account_id: str,
+        player_account_id: str,
+        kind: str,
+        program_version: int,
+        day_name: str | None,
+        exercise_id: str | None,
+        replacement_exercise_id: str | None,
+        desired_weekly_frequency: int | None,
+        desired_split_preference: str | None,
+        reason: str,
+        now_iso: str,
+    ) -> str:
+        """Inserts a pending player program request. Never touches the player ledger."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            self.catalog_conn.execute(
+                "INSERT INTO program_requests"
+                " (request_id, assignment_id, coach_account_id, player_account_id, kind, program_version,"
+                " day_name, exercise_id, replacement_exercise_id, desired_weekly_frequency,"
+                " desired_split_preference, reason, status, response, created_at, resolved_at, resolved_by)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, NULL, NULL)",
+                (
+                    str(request_id),
+                    str(assignment_id),
+                    str(coach_account_id),
+                    str(player_account_id),
+                    str(kind),
+                    int(program_version),
+                    day_name,
+                    exercise_id,
+                    replacement_exercise_id,
+                    desired_weekly_frequency,
+                    desired_split_preference,
+                    reason,
+                    now_iso,
+                ),
+            )
+            self.catalog_conn.commit()
+        return request_id
+
+    def get_program_request(self, request_id: str) -> dict[str, Any] | None:
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                f"SELECT {self._PROGRAM_REQUEST_COLUMNS} FROM program_requests WHERE request_id = ?",
+                (str(request_id),),
+            )
+            return self._program_request_from_row(cursor.fetchone())
+
+    def list_program_requests_for_assignment(self, assignment_id: str) -> list[dict[str, Any]]:
+        """Requests for one assignment, newest-first. Catalog-only; no ledger mount."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                f"SELECT {self._PROGRAM_REQUEST_COLUMNS} FROM program_requests"
+                " WHERE assignment_id = ? ORDER BY created_at DESC",
+                (str(assignment_id),),
+            )
+            return [self._program_request_from_row(row) for row in cursor.fetchall()]
+
+    def list_program_requests_for_player(self, player_account_id: str) -> list[dict[str, Any]]:
+        """The player's own requests across assignments, newest-first."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                f"SELECT {self._PROGRAM_REQUEST_COLUMNS} FROM program_requests"
+                " WHERE player_account_id = ? ORDER BY created_at DESC",
+                (str(player_account_id),),
+            )
+            return [self._program_request_from_row(row) for row in cursor.fetchall()]
+
+    def resolve_program_request(
+        self, request_id: str, status: str, response: str | None, resolved_by: str, now_iso: str
+    ) -> dict[str, Any]:
+        """Atomically claims a pending request; a second resolver sees ``rowcount == 0``."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "UPDATE program_requests SET status = ?, response = ?, resolved_at = ?, resolved_by = ?"
+                " WHERE request_id = ? AND status = 'pending'",
+                (str(status), response, now_iso, str(resolved_by), str(request_id)),
+            )
+            self.catalog_conn.commit()
+            return {"ok": cursor.rowcount == 1, "rowcount": int(cursor.rowcount)}
+
+    def reopen_program_request(self, request_id: str, now_iso: str) -> dict[str, Any]:
+        """Reverts an applied request back to pending after a post-claim write failure.
+
+        Resets response and resolution provenance; only a currently-applied row is
+        touched, so a racing cancel or decline is never clobbered.
+        """
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "UPDATE program_requests SET status = 'pending', response = NULL,"
+                " resolved_at = NULL, resolved_by = NULL"
+                " WHERE request_id = ? AND status = 'applied'",
+                (str(request_id),),
+            )
+            self.catalog_conn.commit()
+            return {"ok": cursor.rowcount == 1, "rowcount": int(cursor.rowcount)}
+
+    def get_exercise_catalog_entry(self, exercise_id: str) -> dict[str, Any] | None:
+        """One catalog exercise by exact id, with the fields needed to swap it into a program."""
+        if not isinstance(exercise_id, str) or not exercise_id:
+            return None
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "SELECT id, name, body_part, target_muscle, equipment, instructions, image_path, gif_path"
+                " FROM exercises WHERE id = ?",
+                (str(exercise_id),),
+            )
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            "id": str(row[0]),
+            "name": row[1],
+            "body_part": row[2],
+            "target_muscle": row[3],
+            "equipment": row[4],
+            "instructions": row[5],
+            "image_path": row[6],
+            "gif_path": row[7],
+        }
 
     def save_training_program(
         self, program_data: dict, published_by_coach_account_id: str | None = None

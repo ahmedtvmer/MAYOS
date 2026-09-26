@@ -51,6 +51,8 @@ class ApiClient {
       'The service returned invalid program data.';
   static const String _invalidNotices =
       'The service returned invalid assignment notices.';
+  static const String _invalidProgramRequests =
+      'The service returned invalid program request data.';
   static const String _invalidProfile =
       'The service returned invalid profile data.';
 
@@ -410,6 +412,95 @@ class ApiClient {
       throw const ApiException(_invalidNotices);
     }
     return (data['marked_read'] as num).toInt();
+  }
+
+  /// Lists the player's own program requests, newest-first (ADR 027).
+  Future<List<ProgramRequest>> playerProgramRequests() async {
+    final response = await _send(
+        () => _dio.get<dynamic>('/assignments/me/program-requests'));
+    return _parseProgramRequestList(response.data);
+  }
+
+  /// Records a pending program request against the player's coach-controlled
+  /// program; the program itself is never changed by creating a request.
+  Future<ProgramRequest> createPlayerProgramRequest({
+    required String kind,
+    String? dayName,
+    String? exerciseId,
+    String? replacementExerciseId,
+    int? desiredWeeklyFrequency,
+    String? desiredSplitPreference,
+    required String reason,
+  }) async {
+    final Map<String, dynamic> body = <String, dynamic>{
+      'kind': kind,
+      if (dayName != null) 'day_name': dayName,
+      if (exerciseId != null) 'exercise_id': exerciseId,
+      if (replacementExerciseId != null)
+        'replacement_exercise_id': replacementExerciseId,
+      if (desiredWeeklyFrequency != null)
+        'desired_weekly_frequency': desiredWeeklyFrequency,
+      if (desiredSplitPreference != null)
+        'desired_split_preference': desiredSplitPreference,
+      'reason': reason,
+    };
+    final response = await _send(
+      () => _dio.post<dynamic>('/assignments/me/program-requests', data: body),
+    );
+    return _parseBody(
+        response.data, ProgramRequest.fromJson, _invalidProgramRequests);
+  }
+
+  /// Cancels the player's own pending request.
+  Future<ProgramRequest> cancelPlayerProgramRequest(String requestId) async {
+    final response = await _send(
+      () => _dio
+          .post<dynamic>('/assignments/me/program-requests/$requestId/cancel'),
+    );
+    return _parseBody(
+        response.data, ProgramRequest.fromJson, _invalidProgramRequests);
+  }
+
+  /// Lists an actively assigned player's program requests for the coach.
+  Future<List<ProgramRequest>> coachProgramRequests(String assignmentId) async {
+    final response = await _send(
+      () => _dio
+          .get<dynamic>('/coach/assignments/$assignmentId/program-requests'),
+    );
+    return _parseProgramRequestList(response.data);
+  }
+
+  /// Revalidates and applies a pending request, publishing a new program version.
+  Future<ProgramRequest> applyCoachProgramRequest(
+      String assignmentId, String requestId) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/assignments/$assignmentId/program-requests/$requestId/apply',
+      ),
+    );
+    return _parseBody(
+        response.data, ProgramRequest.fromJson, _invalidProgramRequests);
+  }
+
+  /// Declines a pending request with a short player-visible response.
+  Future<ProgramRequest> declineCoachProgramRequest(
+      String assignmentId, String requestId, String response) async {
+    final httpResponse = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/assignments/$assignmentId/program-requests/$requestId/decline',
+        data: <String, dynamic>{'response': response},
+      ),
+    );
+    return _parseBody(
+        httpResponse.data, ProgramRequest.fromJson, _invalidProgramRequests);
+  }
+
+  List<ProgramRequest> _parseProgramRequestList(dynamic data) {
+    if (data is! Map<String, dynamic> || data['requests'] is! List<dynamic>) {
+      throw const ApiException(_invalidProgramRequests);
+    }
+    return _parseBodyList(
+        data['requests'], ProgramRequest.fromJson, _invalidProgramRequests);
   }
 
   /// Regenerates the player's own program (self-service), refused 403 while an
