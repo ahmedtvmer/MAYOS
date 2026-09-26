@@ -9,10 +9,8 @@ so its existence is never revealed. Player-assistant chats are never read here.
 from typing import Any
 
 from service import dashboard as dashboard_service
-from service.assignments import DENIED_ERROR, bind_assigned_player
+from service.assignments import DENIED_ERROR, bind_assigned_player  # noqa: F401  (DENIED_ERROR re-exported for routers)
 from service.schedule import current_schedule
-
-__all__ = ["DENIED_ERROR"]
 
 DEFAULT_RECENT_SESSIONS = 10
 

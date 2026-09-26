@@ -8,7 +8,7 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 /// never touch the platform channel. A fetch failure falls back to `'UTC'`,
 /// matching the service's own default.
 final Provider<Future<String>> deviceTimezoneProvider =
-    Provider<Future<String>>((ref) => _platformTimezone());
+    Provider<Future<String>>((ref) => deviceTimezone());
 
 Future<String> deviceTimezone() async {
   try {
@@ -19,5 +19,3 @@ Future<String> deviceTimezone() async {
     return 'UTC';
   }
 }
-
-Future<String> _platformTimezone() => deviceTimezone();
