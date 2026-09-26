@@ -13,6 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from database.database_manager import DatabaseManager
+from database.storage import StorageNotReady, storage_status, validate_data_root
 from svc.app import create_app
 
 
@@ -114,3 +115,29 @@ def test_readyz_flips_when_data_root_becomes_unwritable(clean_db, monkeypatch, t
     assert response.status_code == 503
     assert response.json()["details"]["storage"] is False
     assert response.json()["details"]["storage_detail"] == "data-dir-not-ready"
+
+
+def _require_persistent_env(monkeypatch, data_dir: Path):
+    monkeypatch.setenv("MAYOS_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("MAYOS_REQUIRE_PERSISTENT_DATA", "true")
+
+
+def test_required_persistent_root_accepts_real_mount(monkeypatch, tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    _require_persistent_env(monkeypatch, data_dir)
+    monkeypatch.setattr(os.path, "ismount", lambda path: True)
+
+    assert validate_data_root() == data_dir
+    assert storage_status() == (True, "ok")
+
+
+def test_required_persistent_root_fails_closed_without_mount(monkeypatch, tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    _require_persistent_env(monkeypatch, data_dir)
+    monkeypatch.setattr(os.path, "ismount", lambda path: False)
+
+    with pytest.raises(StorageNotReady):
+        validate_data_root()
+    assert storage_status() == (False, "data-dir-not-ready")
