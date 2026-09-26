@@ -50,6 +50,7 @@ __all__ = [
     "PasswordChangeIn",
     "PersonaUpdate",
     "PlanStateOut",
+    "PlayerNoticeListOut",
     "ProfileUpdate",
     "ProgramExerciseSchema",
     "ProgramGenerateIn",
@@ -309,6 +310,10 @@ class AssignmentNoticeOut(BaseModel):
 
 
 class CoachNoticeListOut(BaseModel):
+    notices: list[AssignmentNoticeOut]
+
+
+class PlayerNoticeListOut(BaseModel):
     notices: list[AssignmentNoticeOut]
 
 

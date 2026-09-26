@@ -47,6 +47,10 @@ class ApiClient {
   static const String _skipAuth = 'skipAuth';
   static const String _invalidCoachHistory =
       'The service returned invalid coach history data.';
+  static const String _invalidProgram =
+      'The service returned invalid program data.';
+  static const String _invalidNotices =
+      'The service returned invalid assignment notices.';
 
   final TokenStore _tokens;
   late final Dio _dio;
@@ -355,6 +359,63 @@ class ApiClient {
     return ((response.data as Map<String, dynamic>)['marked_read'] as num?)
             ?.toInt() ??
         0;
+  }
+
+  /// Publishes a coach-authored program for an assigned player (ADR 026).
+  ///
+  /// Null overrides are omitted from the body so the pipeline applies its
+  /// defaults. Returns the persisted program with its stable version and
+  /// provenance. A missing/foreign/ended assignment denies.
+  Future<TrainingProgram> coachPublishProgram(
+    String assignmentId, {
+    String? splitOverride,
+    String? repPreference,
+    int? frequency,
+  }) async {
+    final Map<String, dynamic> body = <String, dynamic>{
+      if (splitOverride != null) 'user_split_override': splitOverride,
+      if (repPreference != null) 'rep_preference_override': repPreference,
+      if (frequency != null) 'frequency_override': frequency,
+    };
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/assignments/$assignmentId/program',
+        data: body,
+      ),
+    );
+    return _parseBody(response.data, TrainingProgram.fromJson, _invalidProgram);
+  }
+
+  /// Lists the player's assignment notices, newest-first.
+  Future<List<AssignmentNotice>> playerNotices() async {
+    final response =
+        await _send(() => _dio.get<dynamic>('/assignments/notices'));
+    final dynamic data = response.data;
+    if (data is! Map<String, dynamic> ||
+        data['notices'] is! List<dynamic>) {
+      throw const ApiException(_invalidNotices);
+    }
+    return _parseBodyList(
+        data['notices'], AssignmentNotice.fromJson, _invalidNotices);
+  }
+
+  /// Marks all of the player's notices read, returning how many were marked.
+  Future<int> markPlayerNoticesRead() async {
+    final response = await _send(
+        () => _dio.post<dynamic>('/assignments/notices/read'));
+    final dynamic data = response.data;
+    if (data is! Map<String, dynamic> || data['marked_read'] is! num) {
+      throw const ApiException(_invalidNotices);
+    }
+    return (data['marked_read'] as num).toInt();
+  }
+
+  /// Regenerates the player's own program (self-service), refused 403 while an
+  /// assigned coach's published program is active.
+  Future<TrainingProgram> playerGenerateProgram() async {
+    final response = await _send(
+        () => _dio.post<dynamic>('/programs/generate', data: const <String, dynamic>{}));
+    return _parseBody(response.data, TrainingProgram.fromJson, _invalidProgram);
   }
 
   /// Coach revokes an assignment; access is revoked immediately.

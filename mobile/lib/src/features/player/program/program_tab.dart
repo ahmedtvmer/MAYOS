@@ -14,6 +14,8 @@ class ProgramTab extends ConsumerStatefulWidget {
 
 class _ProgramTabState extends ConsumerState<ProgramTab> {
   late Future<TrainingProgram?> _future;
+  bool _generating = false;
+  String? _actionError;
 
   @override
   void initState() {
@@ -26,6 +28,42 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         ref.read(apiClientProvider).activeProgram();
     setState(() => _future = future);
     await future;
+  }
+
+  Future<void> _generate() async {
+    setState(() {
+      _generating = true;
+      _actionError = null;
+    });
+    try {
+      final TrainingProgram program =
+          await ref.read(apiClientProvider).playerGenerateProgram();
+      if (!mounted) return;
+      setState(() {
+        _generating = false;
+        _future = Future<TrainingProgram?>.value(program);
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _generating = false;
+        _actionError = error.message;
+      });
+    }
+  }
+
+  Widget _generateButton() {
+    return FilledButton.tonalIcon(
+      onPressed: _generating ? null : _generate,
+      icon: _generating
+          ? const SizedBox(
+              height: 18,
+              width: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.auto_awesome),
+      label: const Text('Regenerate program'),
+    );
   }
 
   @override
@@ -58,11 +96,26 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         }
         final TrainingProgram? program = snapshot.data;
         if (program == null) {
-          return const Center(
+          return Center(
             child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                  'No active program yet. Complete onboarding to build one.'),
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const Text(
+                      'No active program yet. Complete onboarding to build one.'),
+                  if (_actionError != null) ...<Widget>[
+                    const SizedBox(height: 12),
+                    Text(
+                      _actionError!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  _generateButton(),
+                ],
+              ),
             ),
           );
         }
@@ -76,6 +129,29 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
               const SizedBox(height: 4),
               Text(
                   '${program.splitType} · ${program.weeklyFrequency} days/week'),
+              if (program.version != null) ...<Widget>[
+                const SizedBox(height: 4),
+                Text('Version ${program.version}',
+                    style: Theme.of(context).textTheme.bodySmall),
+              ],
+              if (program.isCoachPublished) ...<Widget>[
+                const SizedBox(height: 4),
+                Row(
+                  children: <Widget>[
+                    const Icon(Icons.verified_user_outlined, size: 16),
+                    const SizedBox(width: 4),
+                    Text('Published by your coach',
+                        style: Theme.of(context).textTheme.bodySmall),
+                  ],
+                ),
+              ],
+              if (_actionError != null) ...<Widget>[
+                const SizedBox(height: 8),
+                Text(_actionError!,
+                    style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              ],
+              const SizedBox(height: 12),
+              _generateButton(),
               const SizedBox(height: 16),
               ...program.days.map(
                 (ProgramDay day) => Card(

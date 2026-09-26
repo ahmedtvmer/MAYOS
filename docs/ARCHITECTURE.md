@@ -104,6 +104,7 @@ IntentType = Literal[
 class AssistantState(TypedDict):
   messages: Annotated[Sequence[BaseMessage], add_messages]
   trainee_id: str
+  player_account_id: str | None
   coach_tone: str
   custom_instructions: str
   preferred_name: str | None
@@ -226,7 +227,7 @@ sequenceDiagram
 
 ### Ledger Schema Evolution (ADR 005)
 
-User ledgers carry a schema version in `PRAGMA user_version` (current target: **v4**) and migrate **lazily** when mounted by `switch_user()`:
+User ledgers carry a schema version in `PRAGMA user_version` (current target: **v6**) and migrate **lazily** when mounted by `switch_user()`:
 
 * On upgrade, an atomic pre-migration snapshot is written with `sqlite3.Connection.backup()` (WAL-safe, online) into `db/backups/<user>/`, followed by sequential migration steps inside a transaction.
 * A 3+1 retention policy keeps three rolling snapshots plus immutable pre-migration backups; failure triggers rollback from the snapshot.

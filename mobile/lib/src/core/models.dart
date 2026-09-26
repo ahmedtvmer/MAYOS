@@ -697,6 +697,8 @@ class TrainingProgram {
     required this.splitType,
     required this.weeklyFrequency,
     required this.days,
+    this.version,
+    this.publishedByCoachAccountId,
   });
 
   factory TrainingProgram.fromJson(Map<String, dynamic> json) =>
@@ -707,12 +709,23 @@ class TrainingProgram {
         days: (json['days'] as List<dynamic>? ?? const [])
             .map((dynamic d) => ProgramDay.fromJson(d as Map<String, dynamic>))
             .toList(growable: false),
+        version: (json['version'] as num?)?.toInt(),
+        publishedByCoachAccountId:
+            json['published_by_coach_account_id'] as String?,
       );
 
   final String programName;
   final String splitType;
   final int weeklyFrequency;
   final List<ProgramDay> days;
+
+  /// Stable ledger version recorded at publication; null for legacy payloads.
+  final int? version;
+
+  /// Publishing coach's account id, or null for player self-service.
+  final String? publishedByCoachAccountId;
+
+  bool get isCoachPublished => publishedByCoachAccountId != null;
 }
 
 /// `GET /dashboard/personal-records` entry.

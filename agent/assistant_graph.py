@@ -44,6 +44,7 @@ from agent.telemetry_reconciler import (
     reconcile_telemetry_query,
 )
 from database.database_manager import DatabaseManager
+from service import programs as programs_service
 from utils.logger import MyosLogger
 from utils.model_downloader import llm, uses_cloud_backend
 from utils.text_scrubber import CoachOutputScrubber, EMPTY_RESPONSE_FALLBACK, PIPELINE_ERROR_RESPONSE, finalize_coach_output
@@ -173,6 +174,7 @@ class SubstitutionResolution(BaseModel):
 class AssistantState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
     trainee_id: str
+    player_account_id: str | None
     coach_tone: str
     custom_instructions: str
     preferred_name: str | None
@@ -846,6 +848,9 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
     if not _authorized_action(query, "exercise_substitution"):
         return _response(AUTHORIZATION_RESPONSE)
 
+    if not programs_service.player_controls_program(db, state.get("player_account_id")):
+        return _response(programs_service.COACH_CONTROLLED_ERROR)
+
     active_program = db.get_active_program()
     if not active_program:
         msg = "No active routine found in your ledger. Generate a baseline routine first."
@@ -1099,6 +1104,9 @@ def program_mutation_node(state: AssistantState) -> dict[str, Any]:
     query = _get_message_text(state["messages"][-1])
     if not _authorized_action(query, "program_mutation"):
         return _response(AUTHORIZATION_RESPONSE)
+
+    if not programs_service.player_controls_program(db, state.get("player_account_id")):
+        return _response(programs_service.COACH_CONTROLLED_ERROR)
 
     meta = state.get("intent_metadata", {})
     requested = _extract_frequency(query)

@@ -21,6 +21,18 @@ class CoachPlayerHistoryScreen extends ConsumerStatefulWidget {
       _CoachPlayerHistoryScreenState();
 }
 
+class _PublishRequest {
+  const _PublishRequest({
+    required this.split,
+    required this.repPreference,
+    required this.frequency,
+  });
+
+  final String split;
+  final String repPreference;
+  final int frequency;
+}
+
 class _CoachPlayerHistoryScreenState
     extends ConsumerState<CoachPlayerHistoryScreen> {
   bool _loading = true;
@@ -32,6 +44,8 @@ class _CoachPlayerHistoryScreenState
       <String, CoachExerciseHistory>{};
   String? _openExerciseId;
   bool _loadingHistory = false;
+  bool _publishing = false;
+  String? _publishError;
 
   @override
   void initState() {
@@ -94,6 +108,106 @@ class _CoachPlayerHistoryScreenState
       setState(() {
         _loadingHistory = false;
         _error = error.message;
+      });
+    }
+  }
+
+  Future<void> _openPublishDialog() async {
+    final TextEditingController split = TextEditingController();
+    String repPreference = 'balanced';
+    int frequency = 4;
+    final _PublishRequest? request = await showDialog<_PublishRequest>(
+      context: context,
+      builder: (BuildContext context) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) =>
+            AlertDialog(
+          title: const Text('Publish program'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              TextField(
+                key: const Key('publish_split_field'),
+                controller: split,
+                decoration: const InputDecoration(
+                  labelText: 'Split override (optional)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                key: const Key('publish_rep_field'),
+                initialValue: repPreference,
+                decoration: const InputDecoration(
+                    labelText: 'Rep preference', border: OutlineInputBorder()),
+                items: const <DropdownMenuItem<String>>[
+                  DropdownMenuItem<String>(value: 'low', child: Text('Low')),
+                  DropdownMenuItem<String>(
+                      value: 'balanced', child: Text('Balanced')),
+                  DropdownMenuItem<String>(value: 'high', child: Text('High')),
+                ],
+                onChanged: (String? value) => setDialogState(
+                    () => repPreference = value ?? repPreference),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<int>(
+                key: const Key('publish_frequency_field'),
+                initialValue: frequency,
+                decoration: const InputDecoration(
+                    labelText: 'Days per week', border: OutlineInputBorder()),
+                items: <DropdownMenuItem<int>>[
+                  for (int day = 1; day <= 5; day++)
+                    DropdownMenuItem<int>(value: day, child: Text('$day')),
+                ],
+                onChanged: (int? value) =>
+                    setDialogState(() => frequency = value ?? frequency),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const Key('publish_confirm_button'),
+              onPressed: () => Navigator.of(context).pop(
+                _PublishRequest(
+                  split: split.text.trim(),
+                  repPreference: repPreference,
+                  frequency: frequency,
+                ),
+              ),
+              child: const Text('Publish'),
+            ),
+          ],
+        ),
+      ),
+    );
+    split.dispose();
+    if (request == null || !mounted) return;
+    setState(() {
+      _publishing = true;
+      _publishError = null;
+    });
+    try {
+      final TrainingProgram program = await ref
+          .read(apiClientProvider)
+          .coachPublishProgram(
+            widget.entry.assignmentId,
+            splitOverride: request.split.isEmpty ? null : request.split,
+            repPreference: request.repPreference,
+            frequency: request.frequency,
+          );
+      if (!mounted) return;
+      setState(() => _publishing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Published program version ${program.version}')),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _publishing = false;
+        _publishError = error.message;
       });
     }
   }
@@ -247,7 +361,21 @@ class _CoachPlayerHistoryScreenState
   Widget build(BuildContext context) {
     final CoachRosterEntry entry = widget.entry;
     return Scaffold(
-      appBar: AppBar(title: Text(entry.playerUsername)),
+      appBar: AppBar(
+        title: Text(entry.playerUsername),
+        actions: <Widget>[
+          TextButton(
+            onPressed: _publishing ? null : _openPublishDialog,
+            child: _publishing
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Publish program'),
+          ),
+        ],
+      ),
       body: _buildBody(context),
     );
   }
@@ -275,6 +403,13 @@ class _CoachPlayerHistoryScreenState
     return ListView(
       padding: const EdgeInsets.all(16),
       children: <Widget>[
+        if (_publishError != null) ...<Widget>[
+          Text(
+            _publishError!,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+          const SizedBox(height: 12),
+        ],
         Text('Since ${summary.startedAt}',
             style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: 12),

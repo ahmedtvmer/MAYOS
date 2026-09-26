@@ -42,10 +42,12 @@ def build_turn_state(
     tail_messages: list,
     coach_tone: str = "Direct, grounded, and pragmatic",
     custom_instructions: str = "",
+    player_account_id: str | None = None,
 ) -> dict[str, Any]:
     return {
         "messages": tail_messages,
         "trainee_id": trainee_id,
+        "player_account_id": player_account_id,
         "coach_tone": coach_tone,
         "custom_instructions": custom_instructions,
         "telemetry_context": None,

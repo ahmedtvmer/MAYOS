@@ -291,6 +291,7 @@ def generate_program_pipeline(
     user_split_override: str | None = None,
     rep_preference_override: str | None = None,
     frequency_override: int | None = None,
+    published_by_coach_account_id: str | None = None,
 ) -> tuple[GeneratedProgramSchema, str]:
     profile = db.get_user_profile()
     if not profile:
@@ -360,6 +361,8 @@ def generate_program_pipeline(
         days=generated_days,
     )
 
-    db.save_training_program(program.model_dump())
+    db.save_training_program(
+        program.model_dump(), published_by_coach_account_id=published_by_coach_account_id
+    )
 
     return program, render_program_markdown(program)

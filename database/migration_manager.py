@@ -10,7 +10,7 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_USER_SCHEMA_VERSION: int = 5
+CURRENT_USER_SCHEMA_VERSION: int = 6
 
 
 def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
@@ -136,6 +136,30 @@ def _migrate_v4_to_v5(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE program_exercises ADD COLUMN warmup_sets INTEGER DEFAULT 0")
 
 
+def _migrate_v5_to_v6(conn: sqlite3.Connection) -> None:
+    """Records coach provenance and a stable version on every training program.
+
+    Existing rows are numbered sequentially by ``created_at`` (oldest first) and
+    keep NULL provenance (self-service). The assignment is immutable afterwards:
+    it identifies the exact program a player trained against (ADR 020/026).
+    """
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    if "training_programs" not in tables:
+        return
+
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(training_programs)").fetchall()}
+    if "version" not in columns:
+        conn.execute("ALTER TABLE training_programs ADD COLUMN version INTEGER NOT NULL DEFAULT 0")
+    if "published_by_coach_account_id" not in columns:
+        conn.execute("ALTER TABLE training_programs ADD COLUMN published_by_coach_account_id TEXT")
+
+    rows = conn.execute(
+        "SELECT id FROM training_programs ORDER BY created_at ASC, rowid ASC"
+    ).fetchall()
+    for version, (program_id,) in enumerate(rows, start=1):
+        conn.execute("UPDATE training_programs SET version = ? WHERE id = ?", (version, program_id))
+
+
 def get_user_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -226,6 +250,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     2: _migrate_v2_to_v3,
     3: _migrate_v3_to_v4,
     4: _migrate_v4_to_v5,
+    5: _migrate_v5_to_v6,
 }
 
 

@@ -57,6 +57,13 @@ class GeneratedProgramSchema(BaseModel):
     weekly_frequency: int = Field(ge=1, le=5)
     instructions: str = Field(default="", description="Reserved program-level notes (currently unused)")
     days: list[ProgramDaySchema]
+    version: int | None = Field(default=None, description="Stable ledger version; set when loaded from storage")
+    published_by_coach_account_id: str | None = Field(
+        default=None, description="Publishing coach's account id; None for player self-service"
+    )
+    created_at: str | None = Field(
+        default=None, description="Ledger creation timestamp; set when loaded from storage"
+    )
 
 
 # --- LangGraph Node State ---

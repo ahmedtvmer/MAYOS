@@ -282,7 +282,9 @@ class DatabaseManager:
                 weekly_frequency INTEGER NOT NULL,
                 instructions TEXT DEFAULT '',
                 is_active INTEGER DEFAULT 1,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                version INTEGER NOT NULL DEFAULT 0,
+                published_by_coach_account_id TEXT
             );
             CREATE TABLE IF NOT EXISTS program_days (
                 id TEXT PRIMARY KEY,
@@ -1521,6 +1523,22 @@ class DatabaseManager:
                 raise
             return {"ok": True, "ended_assignments": ended}
 
+    def create_assignment_notice(
+        self, account_id: str, assignment_id: str | None, kind: str, message: str, now_iso: str
+    ) -> str:
+        """Writes one in-app notice for an account (coach or player)."""
+        notice_id = uuid.uuid4().hex
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            self.catalog_conn.execute(
+                "INSERT INTO assignment_notices"
+                " (notice_id, account_id, assignment_id, kind, message, created_at, read_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, NULL)",
+                (notice_id, str(account_id), assignment_id, kind, message, now_iso),
+            )
+            self.catalog_conn.commit()
+        return notice_id
+
     def list_assignment_notices(self, account_id: str, limit: int = 20) -> list[dict[str, Any]]:
         self.ensure_account_schema()
         with self._catalog_lock:
@@ -1554,7 +1572,14 @@ class DatabaseManager:
             self.catalog_conn.commit()
             return int(cursor.rowcount)
 
-    def save_training_program(self, program_data: dict) -> str:
+    def save_training_program(
+        self, program_data: dict, published_by_coach_account_id: str | None = None
+    ) -> str:
+        """Persists a new active program, stamping a stable version and provenance.
+
+        ``published_by_coach_account_id`` is ``None`` for player self-service and the
+        assigning coach's account id for a coach publication (ADR 026).
+        """
         cursor = self.conn.cursor()
         try:
             cursor.execute("UPDATE training_programs SET is_active = 0")
@@ -1583,6 +1608,13 @@ class DatabaseManager:
             if "instructions" in existing_cols:
                 cols.append("instructions")
                 vals.append(program_data.get("instructions", ""))
+            if "version" in existing_cols:
+                cursor.execute("SELECT COALESCE(MAX(version), 0) + 1 FROM training_programs")
+                cols.append("version")
+                vals.append(int(cursor.fetchone()[0]))
+            if "published_by_coach_account_id" in existing_cols:
+                cols.append("published_by_coach_account_id")
+                vals.append(published_by_coach_account_id)
 
             cursor.execute(
                 f"INSERT INTO training_programs ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(vals))})", vals
@@ -1645,8 +1677,16 @@ class DatabaseManager:
         cursor.execute("PRAGMA table_info(training_programs)")
         program_cols = {col[1] for col in cursor.fetchall()}
         instructions_expr = "instructions" if "instructions" in program_cols else "'' AS instructions"
+        version_expr = "version" if "version" in program_cols else "NULL AS version"
+        provenance_expr = (
+            "published_by_coach_account_id"
+            if "published_by_coach_account_id" in program_cols
+            else "NULL AS published_by_coach_account_id"
+        )
+        created_at_expr = "created_at" if "created_at" in program_cols else "NULL AS created_at"
         cursor.execute(f"""
-            SELECT id, COALESCE(program_name, name), weekly_frequency, split_type, {instructions_expr}
+            SELECT id, COALESCE(program_name, name), weekly_frequency, split_type, {instructions_expr},
+                   {version_expr}, {provenance_expr}, {created_at_expr}
             FROM training_programs
             WHERE is_active = 1
             ORDER BY created_at DESC
@@ -1656,7 +1696,7 @@ class DatabaseManager:
         if not row:
             return None
 
-        prog_id, prog_name, freq, split_type, instructions = row
+        prog_id, prog_name, freq, split_type, instructions, version, published_by, created_at = row
 
         cursor.execute("PRAGMA table_info(program_days)")
         day_cols = {col[1] for col in cursor.fetchall()}
@@ -1746,6 +1786,9 @@ class DatabaseManager:
                 split_type=split_type or "custom",
                 instructions=instructions or "",
                 days=days,
+                version=int(version) if version is not None else None,
+                published_by_coach_account_id=published_by,
+                created_at=created_at,
             )
         except Exception as exc:
             logger.warning(f"Active program '{prog_id}' is malformed or incomplete: {exc}")

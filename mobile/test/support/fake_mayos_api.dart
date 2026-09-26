@@ -38,6 +38,13 @@ class FakeMayosApi {
   final List<Map<String, dynamic>> assignmentNotices = <Map<String, dynamic>>[];
   final List<Map<String, dynamic>> assignments = <Map<String, dynamic>>[];
 
+  // Coach program publication and player notices (#26).
+  int _publishedVersion = 0;
+  int? programVersion;
+  String? programPublishedByCoachAccountId;
+  bool coachControlsProgram = false;
+  final List<Map<String, dynamic>> playerNotices = <Map<String, dynamic>>[];
+
   // Coach drill-down (#25). Denied mirrors a revoked/foreign assignment.
   bool coachHistoryDenied = false;
   Map<String, dynamic> coachPlayerSummary = _defaultCoachSummary();
@@ -58,6 +65,9 @@ class FakeMayosApi {
     final String path = request.path;
     if (path.startsWith('/coach/assignments/') && path.endsWith('/revoke')) {
       return _revokeAssignment(request);
+    }
+    if (path.startsWith('/coach/assignments/') && path.endsWith('/program')) {
+      return _publishProgram(request);
     }
     if (path.startsWith('/coach/assignments/') && path.contains('/player/')) {
       return _coachPlayerHistory(request);
@@ -98,6 +108,12 @@ class FakeMayosApi {
         return _myAssignment(request);
       case '/assignments/me/end':
         return _endMyAssignment(request);
+      case '/assignments/notices':
+        return _playerNotices(request);
+      case '/assignments/notices/read':
+        return _markPlayerNoticesRead(request);
+      case '/programs/generate':
+        return _playerGenerateProgram(request);
       case '/profile':
         return _profile(request);
       case '/onboarding/start':
@@ -566,6 +582,77 @@ class FakeMayosApi {
     });
   }
 
+  FakeResponse _publishProgram(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    final String id = request.path
+        .replaceFirst('/coach/assignments/', '')
+        .replaceFirst('/program', '');
+    final bool owned = assignments
+        .any((Map<String, dynamic> entry) => entry['assignment_id'] == id);
+    if (!owned) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'No active assignment.'});
+    }
+    _publishedVersion++;
+    programVersion = _publishedVersion;
+    programPublishedByCoachAccountId = 'account-$currentUsername';
+    coachControlsProgram = true;
+    playerNotices.insert(0, <String, dynamic>{
+      'notice_id': 'notice-$_publishedVersion',
+      'assignment_id': id,
+      'kind': 'program_published',
+      'message': 'Your coach published program version $programVersion.',
+      'created_at': '2026-09-24T11:00:00Z',
+      'read_at': null,
+    });
+    return FakeResponse(200, _activeProgramBody());
+  }
+
+  FakeResponse _playerNotices(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    return FakeResponse(200, <String, dynamic>{
+      'notices': List<Map<String, dynamic>>.from(playerNotices),
+    });
+  }
+
+  FakeResponse _markPlayerNoticesRead(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    int marked = 0;
+    for (final Map<String, dynamic> notice in playerNotices) {
+      if (notice['read_at'] == null) {
+        notice['read_at'] = '2026-09-24T11:05:00Z';
+        marked++;
+      }
+    }
+    return FakeResponse(200, <String, dynamic>{'marked_read': marked});
+  }
+
+  FakeResponse _playerGenerateProgram(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (coachControlsProgram) {
+      return const FakeResponse(403, <String, dynamic>{
+        'detail': 'Your assigned coach controls your program. Ask your coach for changes.'
+      });
+    }
+    return FakeResponse(200, _activeProgramBody());
+  }
+
   FakeResponse _profile(FakeRequest request) {
     if (!_authorized(request)) {
       return const FakeResponse(
@@ -629,12 +716,7 @@ class FakeMayosApi {
     });
   }
 
-  FakeResponse _activeProgram(FakeRequest request) {
-    if (!_authorized(request)) {
-      return const FakeResponse(
-          401, <String, dynamic>{'detail': 'Token has been revoked.'});
-    }
-    return const FakeResponse(200, <String, dynamic>{
+  Map<String, dynamic> _activeProgramBody() => <String, dynamic>{
       'program_name': 'Upper/Lower 4x',
       'split_type': 'Upper/Lower',
       'weekly_frequency': 4,
@@ -702,7 +784,17 @@ class FakeMayosApi {
           'cardio': '10 min incline walk',
         },
       ],
-    });
+      if (programVersion != null) 'version': programVersion,
+      if (programPublishedByCoachAccountId != null)
+        'published_by_coach_account_id': programPublishedByCoachAccountId,
+    };
+
+  FakeResponse _activeProgram(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    return FakeResponse(200, _activeProgramBody());
   }
 
   FakeResponse _volume(FakeRequest request) {
@@ -760,6 +852,11 @@ class FakeMayosApi {
       myAssignmentFails = false;
       assignmentNotices.clear();
       assignments.clear();
+      _publishedVersion = 0;
+      programVersion = null;
+      programPublishedByCoachAccountId = null;
+      coachControlsProgram = false;
+      playerNotices.clear();
       coachHistoryDenied = false;
       coachPlayerSummary = _defaultCoachSummary();
       coachPlayerRecords = _defaultCoachRecords();

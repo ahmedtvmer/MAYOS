@@ -29,6 +29,7 @@ class _PlayerAssignmentScreenState
   bool _ending = false;
   String? _error;
   Assignment? _assignment;
+  List<AssignmentNotice> _notices = const <AssignmentNotice>[];
   AssignmentInvitePreview? _preview;
   String? _previewToken;
 
@@ -50,11 +51,13 @@ class _PlayerAssignmentScreenState
       _error = null;
     });
     try {
-      final Assignment? assignment =
-          await ref.read(apiClientProvider).myAssignment();
+      final ApiClient api = ref.read(apiClientProvider);
+      final List<Object?> results = await Future.wait<Object?>(
+          <Future<Object?>>[api.myAssignment(), api.playerNotices()]);
       if (!mounted) return;
       setState(() {
-        _assignment = assignment;
+        _assignment = results[0] as Assignment?;
+        _notices = results[1] as List<AssignmentNotice>;
         _loading = false;
       });
     } on ApiException catch (error) {
@@ -189,6 +192,60 @@ class _PlayerAssignmentScreenState
     }
   }
 
+  Future<void> _markNoticesRead() async {
+    try {
+      await ref.read(apiClientProvider).markPlayerNoticesRead();
+      if (!mounted) return;
+      await _load();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.message);
+    }
+  }
+
+  Widget _noticesCard(BuildContext context) {
+    if (_notices.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final int unread =
+        _notices.where((AssignmentNotice notice) => notice.isUnread).length;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: <Widget>[
+                  Text('Notices',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  if (unread > 0)
+                    TextButton(
+                      onPressed: _markNoticesRead,
+                      child: const Text('Mark all read'),
+                    ),
+                ],
+              ),
+              for (final AssignmentNotice notice in _notices)
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(notice.isUnread
+                      ? Icons.notifications_active
+                      : Icons.notifications_none),
+                  title: Text(notice.message),
+                  subtitle: Text('${notice.kind} · ${notice.createdAt}'),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _errorBanner(BuildContext context) {
     if (_error == null) {
       return const SizedBox.shrink();
@@ -317,6 +374,7 @@ class _PlayerAssignmentScreenState
       padding: const EdgeInsets.all(16),
       children: <Widget>[
         _errorBanner(context),
+        _noticesCard(context),
         if (_assignment != null)
           _activeAssignment(context, _assignment!)
         else

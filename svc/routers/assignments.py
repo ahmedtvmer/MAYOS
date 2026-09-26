@@ -16,8 +16,10 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+from agent.ProgramState import GeneratedProgramSchema
 from service import assignments as assignment_service
 from service import coach_history as coach_history_service
+from service import coach_programs as coach_programs_service
 from svc.dependencies import VerifiedPlayer, get_current_coach, get_current_trainee, get_db
 from svc.rate_limit import (
     ASSIGNMENT_INVITE_LIMIT,
@@ -45,6 +47,8 @@ from svc.schemas import (
     CoachPlayerExercisesOut,
     CoachPlayerSummaryOut,
     CoachRosterEntryOut,
+    PlayerNoticeListOut,
+    ProgramGenerateIn,
 )
 
 coach_router = APIRouter(prefix="/coach/assignments", tags=["coach"])
@@ -228,6 +232,33 @@ async def revoke_assignment(
     return AssignmentEndOut(**result)
 
 
+@coach_router.post("/{assignment_id}/program", response_model=GeneratedProgramSchema)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def publish_assigned_player_program(
+    request: Request,
+    assignment_id: str,
+    body: ProgramGenerateIn,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Publishes a coach-authored program to an actively assigned player."""
+
+    def _run():
+        published = coach_programs_service.publish_program(
+            db,
+            coach.account_id,
+            assignment_id,
+            user_split_override=body.user_split_override,
+            rep_preference_override=body.rep_preference_override,
+            frequency_override=body.frequency_override,
+        )
+        if published is None:
+            raise _no_active_assignment()
+        return published
+
+    return await asyncio.to_thread(_run)
+
+
 # --------------------------------------------------------------------------
 # Player side
 # --------------------------------------------------------------------------
@@ -293,6 +324,30 @@ async def read_my_assignment(
 
     assignment = await asyncio.to_thread(assignment_service.get_player_assignment, db, player.account_id)
     return _assignment_out(assignment) if assignment is not None else None
+
+
+@player_router.get("/notices", response_model=PlayerNoticeListOut)
+async def list_player_notices(
+    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Lists the player's assignment notices newest-first."""
+
+    rows = await asyncio.to_thread(assignment_service.list_player_notices, db, player.account_id)
+    return PlayerNoticeListOut(notices=[AssignmentNoticeOut(**row) for row in rows])
+
+
+@player_router.post("/notices/read")
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def mark_player_notices_read(
+    request: Request,
+    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Marks all of the player's notices read."""
+
+    count = await asyncio.to_thread(assignment_service.mark_player_notices_read, db, player.account_id)
+    return {"marked_read": count}
 
 
 @player_router.post("/me/end", response_model=AssignmentEndOut)

@@ -9,31 +9,9 @@ so its existence is never revealed. Player-assistant chats are never read here.
 from typing import Any
 
 from service import dashboard as dashboard_service
-from service._base import bind_user
+from service.assignments import DENIED_ERROR, bind_assigned_player
 
-DENIED_ERROR = "No active assignment."
 DEFAULT_RECENT_SESSIONS = 10
-
-
-def _bind_assigned_player(
-    db: Any, coach_account_id: str, assignment_id: Any
-) -> dict[str, Any] | None:
-    """Resolves an active assignment owned by this coach, then mounts its ledger.
-
-    The catalog gate runs first; ``bind_user`` is never reached unless the
-    assignment belongs to this coach and is active. ``None`` covers unknown,
-    ended, and other-coach assignments alike so callers deny them identically.
-    """
-    if not isinstance(assignment_id, str) or not assignment_id:
-        return None
-    assignment = db.get_active_assignment_for_coach(coach_account_id, assignment_id)
-    if assignment is None:
-        return None
-    player = db.get_account(assignment["player_account_id"])
-    if not db.is_live_account(player):
-        return None
-    bind_user(db, player["ledger_id"])
-    return {"assignment": assignment, "player": player}
 
 
 def _recent_sessions(db: Any, limit: int) -> list[dict[str, Any]]:
@@ -63,7 +41,7 @@ def player_summary(
     db: Any, coach_account_id: str, assignment_id: Any, days_lookback: int = 7
 ) -> dict[str, Any] | None:
     """Identity, volume, latest session, and recent sessions for an assigned player."""
-    context = _bind_assigned_player(db, coach_account_id, assignment_id)
+    context = bind_assigned_player(db, coach_account_id, assignment_id)
     if context is None:
         return None
     ledger_id = context["player"]["ledger_id"]
@@ -81,7 +59,7 @@ def player_personal_records(
     db: Any, coach_account_id: str, assignment_id: Any, limit: int = 20
 ) -> list[dict[str, Any]] | None:
     """The assigned player's most recent personal records, newest-first."""
-    context = _bind_assigned_player(db, coach_account_id, assignment_id)
+    context = bind_assigned_player(db, coach_account_id, assignment_id)
     if context is None:
         return None
     return dashboard_service.recent_personal_records(
@@ -91,7 +69,7 @@ def player_personal_records(
 
 def player_exercises(db: Any, coach_account_id: str, assignment_id: Any) -> list[dict[str, str]] | None:
     """The distinct exercises the assigned player has logged."""
-    context = _bind_assigned_player(db, coach_account_id, assignment_id)
+    context = bind_assigned_player(db, coach_account_id, assignment_id)
     if context is None:
         return None
     return dashboard_service.logged_exercises(db, context["player"]["ledger_id"])
@@ -101,7 +79,7 @@ def player_exercise_history(
     db: Any, coach_account_id: str, assignment_id: Any, exercise_id: str
 ) -> dict[str, Any] | None:
     """Progression history, latest caption, and records for one logged exercise."""
-    context = _bind_assigned_player(db, coach_account_id, assignment_id)
+    context = bind_assigned_player(db, coach_account_id, assignment_id)
     if context is None:
         return None
     ledger_id = context["player"]["ledger_id"]
