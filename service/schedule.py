@@ -9,6 +9,9 @@ coach through the existing assignment gate with a best-effort in-app notice.
 
 The schedule is deliberately separate from the program's weekly frequency and
 ordered training days: setting it never generates, rebuilds, or reorders a program.
+
+"Today" is always the player's local day, derived from their schedule timezone:
+this module is the single place that computes it.
 """
 
 import logging
@@ -26,23 +29,51 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def local_today(current: dict[str, Any] | None) -> date:
-    """The player's local date from their current schedule timezone, or UTC when unset.
+def _latest_version_timezone(db: Any, trainee_id: str) -> str | None:
+    """The timezone of the most recently created schedule version, if any."""
+    versions = db.list_training_schedules(trainee_id)
+    if not versions:
+        return None
+    latest = max(
+        versions,
+        key=lambda version: (
+            version["created_at"],
+            version["effective_from"],
+            version["schedule_id"],
+        ),
+    )
+    return latest["timezone"]
 
-    "Today" is the player's day, not the server's UTC day: a player west of UTC can
-    still start a pause on their local today after the server has rolled over.
+
+def local_today(db: Any, trainee_id: str, fallback_timezone: str = "UTC") -> date:
+    """The player's local date from their latest schedule timezone, else the fallback.
+
+    "Today" is the player's day, not the server's UTC day: a player ahead of UTC
+    rolls into tomorrow first, and a player behind UTC still has their own today.
     """
-    timezone = current["timezone"] if current else "UTC"
+    timezone = _latest_version_timezone(db, trainee_id) or fallback_timezone
     return datetime.now(ZoneInfo(timezone)).date()
 
 
+def current_schedule(
+    db: Any, trainee_id: str, fallback_timezone: str = "UTC"
+) -> tuple[dict[str, Any] | None, date]:
+    """The schedule effective on the player's local today, plus that local date."""
+    today = local_today(db, trainee_id, fallback_timezone=fallback_timezone)
+    return db.get_schedule_effective_on(trainee_id, today.isoformat()), today
+
+
 def _parse_date(value: Any, field: str) -> date:
-    if not isinstance(value, str):
+    """A strict ``YYYY-MM-DD`` date; basic ISO forms (``20260901``) are refused."""
+    if not isinstance(value, str) or len(value) != 10:
         raise ValueError(f"{field} must be an ISO date (YYYY-MM-DD).")
     try:
-        return date.fromisoformat(value)
+        parsed = date.fromisoformat(value)
     except ValueError:
         raise ValueError(f"{field} must be an ISO date (YYYY-MM-DD).") from None
+    if parsed.isoformat() != value:
+        raise ValueError(f"{field} must be an ISO date (YYYY-MM-DD).")
+    return parsed
 
 
 def _validate_weekdays(raw: Any) -> list[int]:
@@ -69,26 +100,37 @@ def _validate_timezone(raw: Any) -> str:
 
 
 def get_schedule(db: Any, trainee_id: str) -> dict[str, Any]:
-    """The current schedule, every version, and today's active pauses."""
-    current = db.get_current_training_schedule(trainee_id)
-    today = local_today(current).isoformat()
+    """The current schedule, every version, and today's active/upcoming pauses."""
+    current, today = current_schedule(db, trainee_id)
     return {
         "current": current,
         "versions": db.list_training_schedules(trainee_id),
-        "pauses": db.get_active_training_pauses(trainee_id, today),
+        "pauses": db.list_active_or_upcoming_training_pauses(trainee_id, today.isoformat()),
     }
 
 
 def set_schedule(db: Any, trainee_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """Validates and appends a new schedule version; the program is never touched."""
+    """Validates and appends a new schedule version; the program is never touched.
+
+    ``effective_from`` may not be earlier than the player's local today, so a new
+    version can never change what an already-past date expected. It defaults to
+    the player's local today.
+    """
     weekdays = _validate_weekdays(payload.get("weekdays"))
     timezone = _validate_timezone(payload.get("timezone"))
-    effective_from = payload.get("effective_from") or _now_iso()[:10]
-    _parse_date(effective_from, "effective_from")
+    today = local_today(db, trainee_id, fallback_timezone=timezone)
+    raw_effective_from = payload.get("effective_from")
+    if raw_effective_from:
+        effective_from = _parse_date(raw_effective_from, "effective_from")
+        if effective_from < today:
+            raise ValueError("A schedule cannot take effect in the past.")
+    else:
+        effective_from = today
     version = db.append_training_schedule(
-        trainee_id, weekdays, timezone, effective_from, _now_iso()
+        trainee_id, weekdays, timezone, effective_from.isoformat(), _now_iso()
     )
-    return {"version": version, "current": db.get_current_training_schedule(trainee_id)}
+    current = db.get_schedule_effective_on(trainee_id, today.isoformat())
+    return {"version": version, "current": current}
 
 
 def schedule_pause(
@@ -96,18 +138,17 @@ def schedule_pause(
     trainee_id: str,
     payload: dict[str, Any],
     player_account_id: str | None,
-    now_iso: str,
 ) -> dict[str, Any]:
     """Validates and stores a prospective pause, then best-effort notifies the coach.
 
-    "Today" uses the player's schedule timezone (falling back to UTC before a
-    schedule exists), not the server's UTC clock passed in ``now_iso``, so a player
-    west of UTC is not rejected for starting on their own local today. ``now_iso``
-    is still the pause's ``created_at``.
+    "Today" uses the player's local schedule timezone (falling back to UTC before
+    a schedule exists), not the server's UTC clock, so a player west of UTC is not
+    rejected for starting on their own local today.
     """
+    now_iso = _now_iso()
     starts_on = _parse_date(payload.get("starts_on"), "starts_on")
     ends_on = _parse_date(payload.get("ends_on"), "ends_on")
-    today = local_today(db.get_current_training_schedule(trainee_id))
+    _, today = current_schedule(db, trainee_id)
     if starts_on < today:
         raise ValueError("A pause must start today or later.")
     if ends_on < starts_on:
@@ -118,15 +159,22 @@ def schedule_pause(
     pause = db.schedule_training_pause(
         trainee_id, starts_on.isoformat(), ends_on.isoformat(), now_iso
     )
-    notice_sent = _notify_coach(db, player_account_id, now_iso)
+    notice_sent = _notify_coach(db, player_account_id, starts_on, ends_on, now_iso)
     return {"pause": pause, "notice_sent": notice_sent}
 
 
 def get_pauses(db: Any, trainee_id: str) -> list[dict[str, Any]]:
+    """Every pause the player has scheduled, newest first."""
     return db.list_training_pauses(trainee_id)
 
 
-def _notify_coach(db: Any, player_account_id: str | None, now_iso: str) -> bool:
+def _notify_coach(
+    db: Any,
+    player_account_id: str | None,
+    starts_on: date,
+    ends_on: date,
+    now_iso: str,
+) -> bool:
     """Best-effort coach in-app notice; a notice failure never fails the pause.
 
     With no active assignment there is no coach to notify, so the pause is still
@@ -144,7 +192,7 @@ def _notify_coach(db: Any, player_account_id: str | None, now_iso: str) -> bool:
             assignment["coach_account_id"],
             assignment["assignment_id"],
             PAUSE_NOTICE_KIND,
-            f"{username} scheduled a training pause.",
+            f"{username} scheduled a training pause from {starts_on.isoformat()} to {ends_on.isoformat()}.",
             now_iso,
         )
     except Exception:

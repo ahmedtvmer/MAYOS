@@ -790,7 +790,7 @@ def test_v7_to_v8_adds_training_schedules_and_pauses(temp_db_env):
         migrated.append_training_schedule("v7lifter", [1, 3], "UTC", "2026-01-01", "2026-01-01T00:00:00+00:00")
         assert migrated.get_schedule_effective_on("v7lifter", "2026-02-01")["weekdays"] == [1, 3]
         migrated.schedule_training_pause("v7lifter", "2026-02-01", "2026-02-03", "2026-01-31T00:00:00+00:00")
-        active = migrated.get_active_training_pauses("v7lifter", "2026-02-02")
+        active = migrated.list_active_or_upcoming_training_pauses("v7lifter", "2026-02-02")
         assert [(p["starts_on"], p["ends_on"]) for p in active] == [("2026-02-01", "2026-02-03")]
     finally:
         if migrated.user_conn is not None:

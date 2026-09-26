@@ -60,6 +60,8 @@ class FakeMayosApi {
   List<Map<String, dynamic>> trainingPauses = _defaultTrainingPauses();
   int _scheduleSeq = 0;
   int _pauseSeq = 0;
+  // When true the player has no schedule yet, so no version is current.
+  bool scheduleEmpty = false;
 
   // Coach drill-down (#25). Denied mirrors a revoked/foreign assignment.
   bool coachHistoryDenied = false;
@@ -951,10 +953,12 @@ class FakeMayosApi {
       return _setSchedule(request);
     }
     final Map<String, dynamic>? current =
-        scheduleVersions.isEmpty ? null : scheduleVersions.first;
+        (scheduleEmpty || scheduleVersions.isEmpty) ? null : scheduleVersions.first;
     return FakeResponse(200, <String, dynamic>{
       'current': current,
-      'versions': List<Map<String, dynamic>>.from(scheduleVersions),
+      'versions': scheduleEmpty
+          ? <Map<String, dynamic>>[]
+          : List<Map<String, dynamic>>.from(scheduleVersions),
       'pauses': List<Map<String, dynamic>>.from(trainingPauses),
     });
   }
@@ -993,6 +997,7 @@ class FakeMayosApi {
       'created_at': '2026-09-26T12:00:00Z',
     };
     scheduleVersions.insert(0, version);
+    scheduleEmpty = false;
     return FakeResponse(
         200, <String, dynamic>{'version': version, 'current': version});
   }
@@ -1262,6 +1267,7 @@ class FakeMayosApi {
       trainingPauses = _defaultTrainingPauses();
       _scheduleSeq = 0;
       _pauseSeq = 0;
+      scheduleEmpty = false;
       coachHistoryDenied = false;
       coachPlayerSummary = _defaultCoachSummary();
       coachPlayerRecords = _defaultCoachRecords();

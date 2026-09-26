@@ -2269,10 +2269,6 @@ class DatabaseManager:
         )
         return self._training_schedule_from_row(cursor.fetchone())
 
-    def get_current_training_schedule(self, trainee_id: str) -> dict[str, Any] | None:
-        """Latest schedule effective today (UTC); ``None`` before the first schedule."""
-        return self._schedule_effective_on(trainee_id, datetime.now(UTC).date().isoformat())
-
     def get_schedule_effective_on(self, trainee_id: str, on_date: str) -> dict[str, Any] | None:
         """Latest schedule effective on ``on_date`` — attendance for a past date uses it."""
         return self._schedule_effective_on(trainee_id, on_date)
@@ -2320,13 +2316,15 @@ class DatabaseManager:
         )
         return [self._training_pause_from_row(row) for row in cursor.fetchall()]
 
-    def get_active_training_pauses(self, trainee_id: str, on_date: str) -> list[dict[str, Any]]:
-        """Pauses covering ``on_date`` (inclusive); overlapping pauses are all returned."""
+    def list_active_or_upcoming_training_pauses(
+        self, trainee_id: str, on_date: str
+    ) -> list[dict[str, Any]]:
+        """Pauses still covering or yet to cover ``on_date`` (``ends_on >= on_date``)."""
         cursor = self.conn.cursor()
         cursor.execute(
-            "SELECT * FROM training_pauses WHERE trainee_id = ? AND starts_on <= ? AND ends_on >= ?"
+            "SELECT * FROM training_pauses WHERE trainee_id = ? AND ends_on >= ?"
             " ORDER BY starts_on ASC, created_at ASC, rowid ASC",
-            (str(trainee_id), str(on_date), str(on_date)),
+            (str(trainee_id), str(on_date)),
         )
         return [self._training_pause_from_row(row) for row in cursor.fetchall()]
 

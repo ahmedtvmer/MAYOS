@@ -12,7 +12,6 @@ import sqlite3
 import threading
 from pathlib import Path
 
-import jwt as pyjwt
 import pytest
 from fastapi.testclient import TestClient
 

@@ -10,7 +10,9 @@ from typing import Any
 
 from service import dashboard as dashboard_service
 from service.assignments import DENIED_ERROR, bind_assigned_player
-from service.schedule import local_today
+from service.schedule import current_schedule
+
+__all__ = ["DENIED_ERROR"]
 
 DEFAULT_RECENT_SESSIONS = 10
 
@@ -21,15 +23,13 @@ def _schedule_and_pauses(db: Any, ledger_id: str) -> tuple[dict[str, Any] | None
     Only the underlying ledger rows are read; the caller has already passed the
     assignment gate, so no new authorization is introduced here.
     """
-    current = db.get_current_training_schedule(ledger_id)
+    current, today = current_schedule(db, ledger_id)
     schedule = None
     if current is not None:
         schedule = {"weekdays": current["weekdays"], "timezone": current["timezone"]}
-    today = local_today(current).isoformat()
     pauses = [
         {"starts_on": pause["starts_on"], "ends_on": pause["ends_on"]}
-        for pause in db.list_training_pauses(ledger_id)
-        if pause["ends_on"] >= today
+        for pause in db.list_active_or_upcoming_training_pauses(ledger_id, today.isoformat())
     ]
     return schedule, pauses
 

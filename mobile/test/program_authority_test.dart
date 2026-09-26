@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
+import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/features/player/onboarding/onboarding_screen.dart';
@@ -61,6 +62,8 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
         _apiOverride(fake),
+        deviceTimezoneProvider.overrideWithValue(
+            Future<String>.value('America/New_York')),
       ],
       child: const MayosApp(),
     ),
@@ -153,6 +156,46 @@ void main() {
       ),
     );
     expect(dropdown.value, 4);
+  });
+
+  testWidgets(
+      'the timezone field is prefilled from the device when no schedule exists',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake();
+    fake.scheduleVersions = <Map<String, dynamic>>[];
+    fake.scheduleEmpty = true;
+    await _pumpApp(tester, fake);
+    await _openProfile(tester);
+
+    final TextField timezone =
+        tester.widget<TextField>(find.byKey(const Key('timezone_field')));
+    expect(timezone.controller!.text, 'America/New_York');
+
+    await tester.ensureVisible(find.byKey(const Key('weekday_chip_2')));
+    await tester.tap(find.byKey(const Key('weekday_chip_2')));
+    await tester.pump();
+    await tester.ensureVisible(find.byKey(const Key('save_schedule_button')));
+    await tester.tap(find.byKey(const Key('save_schedule_button')));
+    await _pumpUntilFound(tester, find.text('Training schedule saved.'));
+
+    expect(fake.scheduleVersions.first['weekdays'], <int>[2]);
+    expect(fake.scheduleVersions.first['timezone'], 'America/New_York');
+  });
+
+  testWidgets('a non-IANA timezone is refused before submit', (tester) async {
+    final FakeMayosApi fake = _playerFake();
+    await _pumpApp(tester, fake);
+    await _openProfile(tester);
+
+    await tester.ensureVisible(find.byKey(const Key('timezone_field')));
+    await tester.enterText(find.byKey(const Key('timezone_field')), 'London');
+    await tester.ensureVisible(find.byKey(const Key('save_schedule_button')));
+    await tester.tap(find.byKey(const Key('save_schedule_button')));
+    await _pumpUntilFound(
+        tester, find.text('Enter an IANA timezone, e.g. Europe/London or UTC.'));
+
+    // The server was never asked to save an invalid timezone.
+    expect(fake.scheduleVersions.first['timezone'], 'Europe/London');
   });
 
   testWidgets('a prospective pause can be scheduled and is listed',

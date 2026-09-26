@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/device_timezone.dart';
 import '../../../core/models.dart';
 import '../../../providers.dart';
+
+/// Mirrors the server's `MAX_PAUSE_DAYS` in `service/schedule.py`; the client
+/// check is only a courtesy, the service stays authoritative.
+const int maxPauseDays = 14;
 
 /// Player training-profile editor. Saving can trigger a program rebuild, which
 /// is a player write path: when the assigned coach owns the active program the
@@ -87,6 +92,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final PlayerProfile profile = results[0] as PlayerProfile;
       final TrainingSchedule schedule = results[1] as TrainingSchedule;
       final List<ScheduledPause> pauses = results[2] as List<ScheduledPause>;
+      final String timezone = schedule.current != null
+          ? schedule.current!.timezone
+          : await ref.read(deviceTimezoneProvider);
+      if (!mounted) return;
       setState(() {
         _weeklyFrequency = profile.weeklyFrequency;
         _repPreference = profile.repPreference;
@@ -95,7 +104,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _weekdays
           ..clear()
           ..addAll(_schedule.current?.weekdays ?? const <int>[]);
-        _timezone.text = _schedule.current?.timezone ?? 'UTC';
+        _timezone.text = timezone;
         _loading = false;
       });
     } on ApiException catch (error) {
@@ -139,6 +148,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _saveSchedule() async {
+    final String timezone = _timezone.text.trim();
+    if (timezone.isEmpty || (!timezone.contains('/') && timezone != 'UTC')) {
+      setState(() {
+        _scheduleNotice = 'Enter an IANA timezone, e.g. Europe/London or UTC.';
+        _scheduleNoticeIsError = true;
+      });
+      return;
+    }
     setState(() {
       _savingSchedule = true;
       _scheduleNotice = null;
@@ -148,7 +165,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final List<int> weekdays = _weekdays.toList()..sort();
       await ref.read(apiClientProvider).setTrainingSchedule(
             weekdays: weekdays,
-            timezone: _timezone.text.trim(),
+            timezone: timezone,
           );
       final TrainingSchedule refreshed =
           await ref.read(apiClientProvider).trainingSchedule();
@@ -200,8 +217,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       validation = 'A pause must start today or later.';
     } else if (end.isBefore(start)) {
       validation = 'A pause must end on or after it starts.';
-    } else if (end.difference(start).inDays + 1 > 14) {
-      validation = 'A pause can last at most 14 days.';
+    } else if (end.difference(start).inDays + 1 > maxPauseDays) {
+      validation = 'A pause can last at most $maxPauseDays days.';
     }
     if (validation != null) {
       setState(() {
