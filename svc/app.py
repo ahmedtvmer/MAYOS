@@ -15,6 +15,7 @@ from slowapi.errors import RateLimitExceeded
 from database.storage import storage_status
 from svc.rate_limit import limiter
 from svc.routers import (
+    alerts,
     assignments,
     auth,
     chat,
@@ -32,6 +33,37 @@ logger = logging.getLogger(__name__)
 
 _ready = {"model": False, "catalog": False, "storage": False, "draining": False}
 
+DEFAULT_ALERT_SWEEP_INTERVAL_SECONDS = 3600.0
+
+
+def _alert_sweep_interval_seconds() -> float:
+    """The in-process sweep cadence; ``MAYOS_ALERT_SWEEP_INTERVAL_SECONDS=0`` disables it."""
+    raw = os.getenv("MAYOS_ALERT_SWEEP_INTERVAL_SECONDS", str(DEFAULT_ALERT_SWEEP_INTERVAL_SECONDS))
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("Invalid MAYOS_ALERT_SWEEP_INTERVAL_SECONDS=%r; using the default.", raw)
+        return DEFAULT_ALERT_SWEEP_INTERVAL_SECONDS
+
+
+async def _alert_sweep_loop(interval_seconds: float) -> None:
+    """Runs the missed-day sweep once at startup, then every interval, until cancelled.
+
+    Evaluations are idempotent and due-ness is computed per player-local day, so
+    an hourly cadence is sufficient (ADR 030).
+    """
+    from database.database_manager import DatabaseManager
+    from service.missed_day_alerts import run_sweep
+
+    while True:
+        try:
+            await asyncio.to_thread(run_sweep, DatabaseManager())
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Alert sweep iteration failed; the loop continues")
+        await asyncio.sleep(interval_seconds)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,7 +72,9 @@ async def lifespan(app: FastAPI):
     from svc.llm import warmup_llm
 
     _ready.update(model=False, catalog=False, storage=False, draining=False)
-    if os.getenv("SKIP_LLM_LOAD") == "true":
+    sweep_task: asyncio.Task[None] | None = None
+    unit_test_mode = os.getenv("SKIP_LLM_LOAD") == "true"
+    if unit_test_mode:
         logger.info("SKIP_LLM_LOAD set; skipping catalog init and LLM warmup (unit-test mode).")
         _ready["catalog"] = True
         _ready["storage"] = True
@@ -62,6 +96,11 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.exception("LLM warmup failed during lifespan startup")
 
+    interval_seconds = _alert_sweep_interval_seconds()
+    if _ready["catalog"] and _ready["storage"] and not unit_test_mode and interval_seconds > 0:
+        sweep_task = asyncio.create_task(_alert_sweep_loop(interval_seconds))
+        logger.info("Alert sweep loop started (every %ss).", interval_seconds)
+
     logger.info(
         "Lifespan startup complete (model=%s catalog=%s storage=%s).",
         _ready["model"],
@@ -70,6 +109,13 @@ async def lifespan(app: FastAPI):
     )
     yield
     _ready["draining"] = True
+    if sweep_task is not None:
+        sweep_task.cancel()
+        try:
+            await sweep_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("Alert sweep loop stopped.")
     from svc.llm import unload_all
 
     await asyncio.to_thread(unload_all)
@@ -100,6 +146,7 @@ def create_app() -> FastAPI:
     app.include_router(coach.router)
     app.include_router(assignments.coach_router)
     app.include_router(assignments.player_router)
+    app.include_router(alerts.router)
     app.include_router(media.router)
     app.include_router(profile.router)
     app.include_router(programs.router)

@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from service import sessions as sessions_service
 from service import workouts as workouts_service
-from svc.dependencies import bind_request, get_current_trainee, get_db
+from svc.dependencies import account_id_of, bind_request, get_current_trainee, get_db
 from svc.schemas import SessionCommitIn
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
@@ -59,7 +59,8 @@ async def commit_session(
                 }
             )
         return workouts_service.commit_session(
-            db, trainee, day_plan, body.readiness, body.session_notes, payload
+            db, trainee, day_plan, body.readiness, body.session_notes, payload,
+            account_id=account_id_of(trainee),
         )
 
     return await asyncio.to_thread(_run)

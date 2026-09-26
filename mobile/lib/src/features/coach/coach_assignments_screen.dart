@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
 import '../../core/models.dart';
 import '../../providers.dart';
+import '../../router.dart';
 import 'coach_player_history_screen.dart';
 
 /// Coach-side assignment console (#24): issue an invite, watch notices, revoke
@@ -280,6 +282,37 @@ class _CoachAssignmentsScreenState
     );
   }
 
+  Widget _badge(BuildContext context, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(color: Colors.white, fontSize: 12),
+      ),
+    );
+  }
+
+  Widget _rosterBadges(BuildContext context, CoachRosterEntry entry) {
+    if (entry.alertsOpen == 0) {
+      return const SizedBox.shrink();
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        if (entry.alertsNew > 0)
+          _badge(context, '${entry.alertsNew}', Theme.of(context).colorScheme.error),
+        if (entry.alertsNew > 0 && entry.alertsAcknowledged > 0)
+          const SizedBox(width: 4),
+        if (entry.alertsAcknowledged > 0)
+          _badge(context, '${entry.alertsAcknowledged}', Colors.orange.shade800),
+      ],
+    );
+  }
+
   Widget _assignmentsCard(BuildContext context) {
     return Card(
       child: Padding(
@@ -287,8 +320,19 @@ class _CoachAssignmentsScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text('Active assignments',
-                style: Theme.of(context).textTheme.titleMedium),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text('Active assignments',
+                      style: Theme.of(context).textTheme.titleMedium),
+                ),
+                TextButton.icon(
+                  onPressed: () => context.push(coachAlertsPath),
+                  icon: const Icon(Icons.notifications_outlined),
+                  label: const Text('Alert center'),
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
             if (_assignments.isEmpty)
               const Text('No assigned players yet.')
@@ -305,15 +349,22 @@ class _CoachAssignmentsScreenState
                           CoachPlayerHistoryScreen(entry: entry),
                     ),
                   ),
-                  trailing: TextButton(
-                    onPressed: _busyAssignmentId == entry.assignmentId
-                        ? null
-                        : () => _revoke(entry),
-                    child: Text(
-                      _busyAssignmentId == entry.assignmentId
-                          ? 'Revoking…'
-                          : 'Revoke',
-                    ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      _rosterBadges(context, entry),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: _busyAssignmentId == entry.assignmentId
+                            ? null
+                            : () => _revoke(entry),
+                        child: Text(
+                          _busyAssignmentId == entry.assignmentId
+                              ? 'Revoking…'
+                              : 'Revoke',
+                        ),
+                      ),
+                    ],
                   ),
                 ),
           ],

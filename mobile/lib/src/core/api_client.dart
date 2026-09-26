@@ -47,6 +47,8 @@ class ApiClient {
   static const String _skipAuth = 'skipAuth';
   static const String _invalidCoachHistory =
       'The service returned invalid coach history data.';
+  static const String _invalidAlerts =
+      'The service returned invalid alert data.';
   static const String _invalidProgram =
       'The service returned invalid program data.';
   static const String _invalidNotices =
@@ -365,6 +367,38 @@ class ApiClient {
     return ((response.data as Map<String, dynamic>)['marked_read'] as num?)
             ?.toInt() ??
         0;
+  }
+
+  /// Lists the coach's missed-day alerts (ADR 030); defaults to new + acknowledged.
+  Future<List<CoachAlert>> coachAlerts({List<String>? states}) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/coach/alerts',
+        queryParameters: (states == null || states.isEmpty)
+            ? null
+            : <String, dynamic>{'state': states},
+      ),
+    );
+    final dynamic data = response.data;
+    if (data is! Map<String, dynamic> || data['alerts'] is! List<dynamic>) {
+      throw const ApiException(_invalidAlerts);
+    }
+    return _parseBodyList(
+        data['alerts'], CoachAlert.fromJson, _invalidAlerts);
+  }
+
+  /// Acknowledges one missed-day alert; already acknowledged is idempotent.
+  Future<CoachAlert> acknowledgeCoachAlert(String alertId) async {
+    final response = await _send(
+        () => _dio.post<dynamic>('/coach/alerts/$alertId/acknowledge'));
+    return _parseBody(response.data, CoachAlert.fromJson, _invalidAlerts);
+  }
+
+  /// Resolves one missed-day alert; already resolved is idempotent.
+  Future<CoachAlert> resolveCoachAlert(String alertId) async {
+    final response = await _send(
+        () => _dio.post<dynamic>('/coach/alerts/$alertId/resolve'));
+    return _parseBody(response.data, CoachAlert.fromJson, _invalidAlerts);
   }
 
   /// Publishes a coach-authored program for an assigned player (ADR 026).

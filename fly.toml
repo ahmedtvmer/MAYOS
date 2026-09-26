@@ -4,9 +4,11 @@
 # product service (retirement: #46). There is intentionally NO [deploy]
 # release_command: the release Machine cannot mount the volume, so catalog
 # initialization and vector seeding run once inside the API Machine (see
-# docs/DEPLOYMENT.md). Daily jobs (backups #41, alerts #39) will run inside
-# this same always-on Machine, never on a detached Machine that cannot mount
-# /data.
+# docs/DEPLOYMENT.md). Daily backups (#41) run inside this same always-on
+# Machine, never on a detached Machine that cannot mount /data. The missed-day
+# alert sweep (#31) runs in-process in this Machine once at startup and hourly
+# (MAYOS_ALERT_SWEEP_INTERVAL_SECONDS, default 3600; 0 disables); use
+# scripts/run_alert_sweep.py to force an immediate pass.
 
 app = "mayos-api"
 primary_region = "fra"

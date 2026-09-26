@@ -362,6 +362,9 @@ class CoachRosterEntry {
     required this.playerUsername,
     required this.startedAt,
     required this.status,
+    this.alertsNew = 0,
+    this.alertsAcknowledged = 0,
+    this.currentMissedStreak = 0,
   });
 
   factory CoachRosterEntry.fromJson(Map<String, dynamic> json) =>
@@ -370,12 +373,79 @@ class CoachRosterEntry {
         playerUsername: json['player_username'] as String? ?? '',
         startedAt: json['started_at'] as String? ?? '',
         status: json['status'] as String? ?? 'active',
+        alertsNew: (json['alerts_new'] as num?)?.toInt() ?? 0,
+        alertsAcknowledged:
+            (json['alerts_acknowledged'] as num?)?.toInt() ?? 0,
+        currentMissedStreak:
+            (json['current_missed_streak'] as num?)?.toInt() ?? 0,
       );
 
   final String assignmentId;
   final String playerUsername;
   final String startedAt;
   final String status;
+  final int alertsNew;
+  final int alertsAcknowledged;
+  final int currentMissedStreak;
+
+  int get alertsOpen => alertsNew + alertsAcknowledged;
+}
+
+/// `GET /coach/alerts`: one catalog-side missed-day alert (ADR 030).
+class CoachAlert {
+  const CoachAlert({
+    required this.alertId,
+    required this.assignmentId,
+    required this.playerUsername,
+    required this.kind,
+    required this.streakStartDate,
+    required this.lastMissedDate,
+    required this.missedCount,
+    required this.state,
+    required this.createdAt,
+    this.acknowledgedAt,
+    this.resolvedAt,
+    this.resolvedBy,
+  });
+
+  factory CoachAlert.fromJson(Map<String, dynamic> json) => CoachAlert(
+        alertId: json['alert_id'] as String,
+        assignmentId: json['assignment_id'] as String? ?? '',
+        playerUsername: json['player_username'] as String? ?? '',
+        kind: json['kind'] as String? ?? '',
+        streakStartDate: json['streak_start_date'] as String? ?? '',
+        lastMissedDate: json['last_missed_date'] as String? ?? '',
+        missedCount: (json['missed_count'] as num?)?.toInt() ?? 0,
+        state: json['state'] as String? ?? 'new',
+        createdAt: json['created_at'] as String? ?? '',
+        acknowledgedAt: json['acknowledged_at'] as String?,
+        resolvedAt: json['resolved_at'] as String?,
+        resolvedBy: json['resolved_by'] as String?,
+      );
+
+  final String alertId;
+  final String assignmentId;
+  final String playerUsername;
+  final String kind;
+  final String streakStartDate;
+  final String lastMissedDate;
+  final int missedCount;
+  final String state;
+  final String createdAt;
+  final String? acknowledgedAt;
+  final String? resolvedAt;
+  final String? resolvedBy;
+
+  bool get isNew => state == 'new';
+  bool get isAcknowledged => state == 'acknowledged';
+  bool get isResolved => state == 'resolved';
+
+  String get stateLabel => switch (state) {
+        'new' => 'New',
+        'acknowledged' => 'Acknowledged',
+        'resolved' => 'Resolved',
+        _ => state,
+      };
 }
 
 /// One exercise's working-set totals within an assigned player's session.

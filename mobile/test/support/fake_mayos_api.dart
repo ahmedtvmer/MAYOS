@@ -43,6 +43,9 @@ class FakeMayosApi {
   final List<Map<String, dynamic>> assignmentNotices = <Map<String, dynamic>>[];
   final List<Map<String, dynamic>> assignments = <Map<String, dynamic>>[];
 
+  // Coach missed-day alerts (#31).
+  final List<Map<String, dynamic>> coachAlerts = <Map<String, dynamic>>[];
+
   // Coach program publication and player notices (#26).
   int _publishedVersion = 0;
   int? programVersion;
@@ -87,6 +90,9 @@ class FakeMayosApi {
         path.contains('/program-requests')) {
       return _coachProgramRequests(request);
     }
+    if (path.startsWith('/coach/alerts/')) {
+      return _coachAlertAction(request);
+    }
     if (path.startsWith('/assignments/me/program-requests')) {
       return _playerProgramRequests(request);
     }
@@ -125,6 +131,8 @@ class FakeMayosApi {
         return _coachNotices(request);
       case '/coach/assignments/notices/read':
         return _markNoticesRead(request);
+      case '/coach/alerts':
+        return _listCoachAlerts(request);
       case '/coach/capability/disable':
         return _disableCoach(request);
       case '/assignments/invites/preview':
@@ -371,6 +379,59 @@ class FakeMayosApi {
       }
     }
     return FakeResponse(200, <String, dynamic>{'marked_read': marked});
+  }
+
+  FakeResponse _listCoachAlerts(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    final dynamic states = request.query['state'];
+    final Set<String> wanted = states is List
+        ? states.map((dynamic value) => '$value').toSet()
+        : states == null
+            ? <String>{'new', 'acknowledged'}
+            : <String>{'$states'};
+    final List<Map<String, dynamic>> rows = coachAlerts
+        .where((Map<String, dynamic> alert) =>
+            wanted.contains(alert['state'] as String))
+        .toList(growable: false);
+    return FakeResponse(200, <String, dynamic>{'alerts': rows});
+  }
+
+  FakeResponse _coachAlertAction(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    final bool acknowledge = request.path.endsWith('/acknowledge');
+    final String id = request.path
+        .replaceFirst('/coach/alerts/', '')
+        .replaceFirst(RegExp(r'/(acknowledge|resolve)$'), '');
+    final int index = coachAlerts.indexWhere(
+        (Map<String, dynamic> alert) => alert['alert_id'] == id);
+    if (index < 0) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'No active assignment.'});
+    }
+    final Map<String, dynamic> alert = coachAlerts[index];
+    if (acknowledge && alert['state'] == 'new') {
+      alert['state'] = 'acknowledged';
+      alert['acknowledged_at'] = '2026-09-26T12:00:00Z';
+    } else if (!acknowledge && alert['state'] != 'resolved') {
+      alert['state'] = 'resolved';
+      alert['resolved_at'] = '2026-09-26T12:00:00Z';
+      alert['resolved_by'] = 'coach';
+    }
+    return FakeResponse(200, alert);
   }
 
   FakeResponse _revokeAssignment(FakeRequest request) {
@@ -1255,6 +1316,7 @@ class FakeMayosApi {
       myAssignmentFails = false;
       assignmentNotices.clear();
       assignments.clear();
+      coachAlerts.clear();
       _publishedVersion = 0;
       programVersion = null;
       programPublishedByCoachAccountId = null;

@@ -287,16 +287,27 @@ def end_assignment(db: Any, account_id: str, assignment_id: Any, ended_by: str) 
 
 
 def list_coach_assignments(db: Any, coach_account_id: str) -> list[dict[str, Any]]:
-    """Active assignments for a coach: identity and timing only, no training history."""
-    return [
-        {
-            "assignment_id": row["assignment_id"],
-            "player_username": row["player_username"],
-            "started_at": row["started_at"],
-            "status": row["status"],
-        }
-        for row in db.list_active_assignments_for_coach(coach_account_id)
-    ]
+    """Active assignments for a coach: identity, timing, and catalog-side alert badges.
+
+    The badge counts and current streak come from catalog tables only, so listing
+    the roster never opens a player ledger (ADR 025/030).
+    """
+    badges = db.get_roster_alert_badges(coach_account_id)
+    rows = []
+    for row in db.list_active_assignments_for_coach(coach_account_id):
+        badge = badges.get(row["assignment_id"], {})
+        rows.append(
+            {
+                "assignment_id": row["assignment_id"],
+                "player_username": row["player_username"],
+                "started_at": row["started_at"],
+                "status": row["status"],
+                "alerts_new": int(badge.get("alerts_new", 0)),
+                "alerts_acknowledged": int(badge.get("alerts_acknowledged", 0)),
+                "current_missed_streak": int(badge.get("current_missed_streak", 0)),
+            }
+        )
+    return rows
 
 
 def list_coach_notices(db: Any, coach_account_id: str) -> list[dict[str, Any]]:

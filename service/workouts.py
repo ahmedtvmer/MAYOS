@@ -1,5 +1,6 @@
 """Workout prescription and session-commit logic (moved verbatim from the UI layer)."""
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -13,7 +14,21 @@ from agent.progression_engine import (
 )
 from core.warmup import calculate_warmup_sets
 from service._base import bind_user
+from service.schedule import local_today
 from utils.plate_calculator import calculate_barbell_plates
+
+logger = logging.getLogger(__name__)
+
+
+def _evaluate_missed_days(db: Any, account_id: str) -> None:
+    """Best-effort attendance refresh after a commit; never fails the workout commit (ADR 030)."""
+    try:
+        from service import missed_day_alerts
+
+        missed_day_alerts.evaluate_for_ledger(db, account_id)
+    except Exception:
+        logger.exception("Missed-day alert evaluation raised unexpectedly after session commit")
+
 
 
 def _is_barbell(exercise: Any) -> bool:
@@ -82,13 +97,19 @@ def commit_session(
     session_id: str | None = None,
     now_iso: str | None = None,
     today_date: str | None = None,
+    account_id: str | None = None,
 ) -> dict[str, Any]:
-    """Persists a logged session and returns totals, per-movement analytics, debrief, and pointer."""
+    """Persists a logged session and returns totals, per-movement analytics, debrief, and pointer.
+
+    When the caller does not pin ``today_date``, the performed date is the
+    player's local today from their schedule timezone (ADR 029/030), not the
+    server clock, so attendance matches what the player experienced.
+    """
     bind_user(db, trainee_id)
     profile = db.get_user_profile() or {}
     session_id = session_id or str(uuid.uuid4())
     now_iso = now_iso or datetime.now(UTC).isoformat()
-    today_date = today_date or datetime.now().strftime("%Y-%m-%d")
+    today_date = today_date or local_today(db, trainee_id).isoformat()
 
     db.log_workout_session(
         session_id=session_id,
@@ -265,6 +286,9 @@ def commit_session(
         f"Readiness: {readiness}/5 | Saved to Ledger."
     )
     db.add_chat_message("assistant", compact_pointer)
+
+    if account_id:
+        _evaluate_missed_days(db, account_id)
 
     return {
         "session_id": session_id,

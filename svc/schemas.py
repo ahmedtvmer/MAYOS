@@ -220,10 +220,34 @@ class CoachRosterEntryOut(BaseModel):
     player_username: str
     started_at: str
     status: str
+    alerts_new: int = 0
+    alerts_acknowledged: int = 0
+    current_missed_streak: int = 0
 
 
 class CoachAssignmentsOut(BaseModel):
     assignments: list[CoachRosterEntryOut]
+
+
+class CoachAlertOut(BaseModel):
+    """One catalog-side missed-day alert for the coach alert centre."""
+
+    alert_id: str
+    assignment_id: str
+    player_username: str
+    kind: str
+    streak_start_date: str
+    last_missed_date: str
+    missed_count: int
+    state: str
+    created_at: str
+    acknowledged_at: str | None = None
+    resolved_at: str | None = None
+    resolved_by: str | None = None
+
+
+class CoachAlertListOut(BaseModel):
+    alerts: list[CoachAlertOut]
 
 
 class CoachPlayerSessionExerciseOut(BaseModel):

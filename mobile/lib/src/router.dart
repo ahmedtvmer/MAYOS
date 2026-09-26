@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/models.dart';
+import 'features/coach/coach_alerts_screen.dart';
 import 'features/coach/coach_assignments_screen.dart';
 import 'features/coach/coach_invite_screen.dart';
 import 'features/coach/coach_profile_screen.dart';
@@ -28,6 +29,7 @@ const String profilePath = '/profile';
 const String coachPath = '/coach';
 const String coachInvitePath = '/coach-invite';
 const String coachAssignmentsPath = '/coach/assignments';
+const String coachAlertsPath = '/coach/alerts';
 const String assignmentPath = '/assignment';
 const String splashPath = '/splash';
 
@@ -64,7 +66,9 @@ String? redirectFor(AuthState auth, String location) {
       }
       // Coach capability gates the coach surfaces (#23 hosts the module).
       final bool atCoachSurface =
-          location == coachPath || location == coachAssignmentsPath;
+          location == coachPath ||
+          location == coachAssignmentsPath ||
+          location == coachAlertsPath;
       if (atCoachSurface && !accountSession.account.isCoach) {
         return homePath;
       }
@@ -146,6 +150,13 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         builder: (BuildContext context, GoRouterState state) => Scaffold(
           appBar: AppBar(title: const Text('Assignments')),
           body: const CoachAssignmentsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: coachAlertsPath,
+        builder: (BuildContext context, GoRouterState state) => Scaffold(
+          appBar: AppBar(title: const Text('Alert center')),
+          body: const CoachAlertsScreen(),
         ),
       ),
       GoRoute(

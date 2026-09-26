@@ -237,7 +237,15 @@ def test_roster_listing_is_catalog_only_and_shape_unchanged(api, monkeypatch):
     assert roster.status_code == 200, roster.text
     rows = roster.json()["assignments"]
     assert len(rows) == 1
-    assert set(rows[0].keys()) == {"assignment_id", "player_username", "started_at", "status"}
+    assert set(rows[0].keys()) == {
+        "assignment_id",
+        "player_username",
+        "started_at",
+        "status",
+        "alerts_new",
+        "alerts_acknowledged",
+        "current_missed_streak",
+    }
     assert rows[0]["assignment_id"] == assignment_id
     assert rows[0]["player_username"] == "p1"
     # Only the coach's own ledger mounted; the player ledger was never opened.

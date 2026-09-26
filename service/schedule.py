@@ -29,20 +29,36 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def timezone_for_versions(versions: list[dict[str, Any]], fallback_timezone: str = "UTC") -> str:
+    """The timezone of the most recently created schedule version, else the fallback.
+
+    Pure and DB-free so attendance evaluation can resolve the player's local day
+    without mounting a ledger (this is the single ADR 029 definition of "today").
+    """
+    if not versions:
+        return fallback_timezone
+    latest = max(
+        versions,
+        key=lambda version: (
+            version.get("created_at", ""),
+            version.get("effective_from", ""),
+            version.get("schedule_id", ""),
+        ),
+    )
+    return latest["timezone"]
+
+
+def local_date_in(now: datetime, timezone: str) -> date:
+    """The local date of ``now`` in ``timezone`` (the one place "today" is derived)."""
+    return now.astimezone(ZoneInfo(timezone)).date()
+
+
 def _latest_version_timezone(db: Any, trainee_id: str) -> str | None:
     """The timezone of the most recently created schedule version, if any."""
     versions = db.list_training_schedules(trainee_id)
     if not versions:
         return None
-    latest = max(
-        versions,
-        key=lambda version: (
-            version["created_at"],
-            version["effective_from"],
-            version["schedule_id"],
-        ),
-    )
-    return latest["timezone"]
+    return timezone_for_versions(versions)
 
 
 def local_today(db: Any, trainee_id: str, fallback_timezone: str = "UTC") -> date:
@@ -52,7 +68,7 @@ def local_today(db: Any, trainee_id: str, fallback_timezone: str = "UTC") -> dat
     rolls into tomorrow first, and a player behind UTC still has their own today.
     """
     timezone = _latest_version_timezone(db, trainee_id) or fallback_timezone
-    return datetime.now(ZoneInfo(timezone)).date()
+    return local_date_in(datetime.now(UTC), timezone)
 
 
 def current_schedule(

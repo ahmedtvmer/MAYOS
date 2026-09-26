@@ -68,5 +68,11 @@ An interval during which the player's expected training days do not count as mis
 **Missed expected day**:
 A scheduled training day that no workout satisfied within its grace period. One workout can satisfy at most one expected day.
 
+**Missed-day streak**:
+A run of consecutive missed expected days, measured over the sequence of expected days. Paused and non-expected days are skipped and neither break nor extend it. It drives coach alerts.
+
+**Coach alert**:
+A catalog-side notification that an assigned player has a missed-day streak of at least two days. It has new, acknowledged, and resolved states, and deduplicates on the streak's start date so retries never duplicate it.
+
 **Check-in**:
 A contact recorded by the coach and visible to both coach and player, including contact outside MAYOS. It starts the interval until the next follow-up is due.

@@ -196,7 +196,27 @@ class DatabaseManager:
         self.create_user_schema()
         prune_user_backups(self.backups_dir / sanitized, max_rolling=3)
         return True
-    
+
+    def unmount_user(self) -> None:
+        """Closes and clears this thread's mounted ledger connection.
+
+        Background work (the alert sweep) shares ``asyncio``'s worker threads
+        with request handlers; without this, a player's ledger connection would
+        stay bound to that thread after the work finishes. Resets the thread to
+        the default identity so the next ``bind_user``/``switch_user`` mounts
+        cleanly.
+        """
+        current_conn = self.user_conn
+        if current_conn is not None:
+            try:
+                current_conn.commit()
+                current_conn.close()
+            except Exception as e:
+                logger.warning(f"Error closing active connection for {self.active_user}: {e}")
+        self.user_conn = None
+        self.active_user = getattr(self, "_default_user", "default")
+
+
     @contextmanager
     def catalog_locked(self) -> Iterator[sqlite3.Connection]:
         """Yields the shared catalog connection under the catalog lock.
@@ -876,6 +896,40 @@ class DatabaseManager:
                 );
                 CREATE INDEX IF NOT EXISTS idx_program_requests_assignment ON program_requests(assignment_id);
                 CREATE INDEX IF NOT EXISTS idx_program_requests_player ON program_requests(player_account_id);
+
+                -- Coach alerts for missed expected training days (ADR 030, ticket #31).
+                -- Catalog-side so the alert centre and roster badges never open a player
+                -- ledger. UNIQUE(assignment_id, kind, streak_start_date) makes the sweep
+                -- retry-safe: an existing streak is never duplicated, only extended.
+                CREATE TABLE IF NOT EXISTS coach_alerts (
+                    alert_id TEXT PRIMARY KEY,
+                    assignment_id TEXT NOT NULL,
+                    coach_account_id TEXT NOT NULL,
+                    player_account_id TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    streak_start_date TEXT NOT NULL,
+                    last_missed_date TEXT NOT NULL,
+                    missed_count INTEGER NOT NULL,
+                    state TEXT NOT NULL DEFAULT 'new'
+                        CHECK (state IN ('new', 'acknowledged', 'resolved')),
+                    created_at TEXT NOT NULL,
+                    acknowledged_at TEXT,
+                    resolved_at TEXT,
+                    resolved_by TEXT
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_coach_alerts_streak
+                    ON coach_alerts(assignment_id, kind, streak_start_date);
+                CREATE INDEX IF NOT EXISTS idx_coach_alerts_coach
+                    ON coach_alerts(coach_account_id, state);
+                CREATE INDEX IF NOT EXISTS idx_coach_alerts_assignment ON coach_alerts(assignment_id);
+
+                -- Catalog-side per-assignment attendance summary, updated by evaluation so a
+                -- roster read never opens the player's ledger (ADR 025/030).
+                CREATE TABLE IF NOT EXISTS roster_attendance (
+                    assignment_id TEXT PRIMARY KEY,
+                    current_missed_streak INTEGER NOT NULL DEFAULT 0,
+                    last_evaluated_at TEXT
+                );
             """)
             self.catalog_conn.commit()
             self._account_schema_ready = True
@@ -1768,6 +1822,256 @@ class DatabaseManager:
             self.catalog_conn.commit()
             return {"ok": cursor.rowcount == 1, "rowcount": int(cursor.rowcount)}
 
+    # ------------------------------------------------------------------
+    # Coach alerts and catalog-side roster attendance (ADR 030, ticket #31).
+    # Every read and write here is catalog-only: a roster or alert read must
+    # never mount a player ledger (ADR 025).
+    # ------------------------------------------------------------------
+
+    _COACH_ALERT_COLUMNS = (
+        "alert_id, assignment_id, coach_account_id, player_account_id, kind,"
+        " streak_start_date, last_missed_date, missed_count, state, created_at,"
+        " acknowledged_at, resolved_at, resolved_by"
+    )
+
+    @staticmethod
+    def _coach_alert_from_row(row: Any) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        return {
+            "alert_id": str(row[0]),
+            "assignment_id": str(row[1]),
+            "coach_account_id": str(row[2]),
+            "player_account_id": str(row[3]),
+            "kind": str(row[4]),
+            "streak_start_date": str(row[5]),
+            "last_missed_date": str(row[6]),
+            "missed_count": int(row[7]),
+            "state": str(row[8]),
+            "created_at": str(row[9]),
+            "acknowledged_at": row[10],
+            "resolved_at": row[11],
+            "resolved_by": row[12],
+        }
+
+    def insert_coach_alert(
+        self,
+        alert_id: str,
+        assignment_id: str,
+        coach_account_id: str,
+        player_account_id: str,
+        kind: str,
+        streak_start_date: str,
+        last_missed_date: str,
+        missed_count: int,
+        now_iso: str,
+    ) -> dict[str, Any]:
+        """Inserts one alert for a streak, ignoring a retry of the same streak.
+
+        Returns ``{"alert": ..., "created": bool}``. The unique
+        ``(assignment_id, kind, streak_start_date)`` key means a concurrent or
+        repeated sweep cannot create a second alert for one streak.
+        """
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "INSERT OR IGNORE INTO coach_alerts"
+                " (alert_id, assignment_id, coach_account_id, player_account_id, kind,"
+                " streak_start_date, last_missed_date, missed_count, state, created_at,"
+                " acknowledged_at, resolved_at, resolved_by)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, NULL, NULL, NULL)",
+                (
+                    str(alert_id),
+                    str(assignment_id),
+                    str(coach_account_id),
+                    str(player_account_id),
+                    str(kind),
+                    str(streak_start_date),
+                    str(last_missed_date),
+                    int(missed_count),
+                    now_iso,
+                ),
+            )
+            created = cursor.rowcount == 1
+            self.catalog_conn.commit()
+            cursor.execute(
+                f"SELECT {self._COACH_ALERT_COLUMNS} FROM coach_alerts"
+                " WHERE assignment_id = ? AND kind = ? AND streak_start_date = ?",
+                (str(assignment_id), str(kind), str(streak_start_date)),
+            )
+            return {"alert": self._coach_alert_from_row(cursor.fetchone()), "created": created}
+
+    def get_coach_alert(self, alert_id: str) -> dict[str, Any] | None:
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                f"SELECT {self._COACH_ALERT_COLUMNS} FROM coach_alerts WHERE alert_id = ?",
+                (str(alert_id),),
+            )
+            return self._coach_alert_from_row(cursor.fetchone())
+
+    def list_coach_alerts(self, coach_account_id: str, states: tuple[str, ...]) -> list[dict[str, Any]]:
+        """Alerts for a coach's still-active assignments only, newest-first, with the player name."""
+        self.ensure_account_schema()
+        if not states:
+            return []
+        placeholders = ", ".join("?" for _ in states)
+        columns = ", ".join("c." + column for column in self._COACH_ALERT_COLUMNS.split(", "))
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                f"SELECT {columns}, acc.username"
+                " FROM coach_alerts c"
+                " JOIN assignments a ON a.assignment_id = c.assignment_id AND a.status = 'active'"
+                " JOIN accounts acc ON acc.account_id = c.player_account_id"
+                f" WHERE c.coach_account_id = ? AND c.state IN ({placeholders})"
+                " ORDER BY c.created_at DESC, c.rowid DESC",
+                (str(coach_account_id), *states),
+            )
+            alerts = []
+            for row in cursor.fetchall():
+                alert = self._coach_alert_from_row(row)
+                alert["player_username"] = str(row[13])
+                alerts.append(alert)
+            return alerts
+
+    def update_coach_alert_streak(self, alert_id: str, last_missed_date: str, missed_count: int) -> int:
+        """Extends the same streak alert; a no-op update reports ``rowcount == 0``."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "UPDATE coach_alerts SET last_missed_date = ?, missed_count = ?"
+                " WHERE alert_id = ? AND state IN ('new', 'acknowledged')"
+                " AND (last_missed_date != ? OR missed_count != ?)",
+                (str(last_missed_date), int(missed_count), str(alert_id), str(last_missed_date), int(missed_count)),
+            )
+            self.catalog_conn.commit()
+            return int(cursor.rowcount)
+
+    def acknowledge_coach_alert(
+        self, alert_id: str, coach_account_id: str, now_iso: str
+    ) -> dict[str, Any] | None:
+        """Moves ``new`` → ``acknowledged``; already-acknowledged and resolved are left as-is.
+
+        Returns the alert for its owning coach, or ``None`` when it does not
+        belong to that coach.
+        """
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "UPDATE coach_alerts SET state = 'acknowledged', acknowledged_at = ?"
+                " WHERE alert_id = ? AND coach_account_id = ? AND state = 'new'",
+                (now_iso, str(alert_id), str(coach_account_id)),
+            )
+            self.catalog_conn.commit()
+            cursor.execute(
+                f"SELECT {self._COACH_ALERT_COLUMNS} FROM coach_alerts"
+                " WHERE alert_id = ? AND coach_account_id = ?",
+                (str(alert_id), str(coach_account_id)),
+            )
+            return self._coach_alert_from_row(cursor.fetchone())
+
+    def resolve_coach_alert(
+        self, alert_id: str, coach_account_id: str, now_iso: str, resolved_by: str
+    ) -> dict[str, Any] | None:
+        """Moves ``new``/``acknowledged`` → ``resolved``; already-resolved is left as-is.
+
+        Returns the alert for its owning coach, or ``None`` when it does not
+        belong to that coach.
+        """
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "UPDATE coach_alerts SET state = 'resolved', resolved_at = ?, resolved_by = ?"
+                " WHERE alert_id = ? AND coach_account_id = ? AND state IN ('new', 'acknowledged')",
+                (now_iso, str(resolved_by), str(alert_id), str(coach_account_id)),
+            )
+            self.catalog_conn.commit()
+            cursor.execute(
+                f"SELECT {self._COACH_ALERT_COLUMNS} FROM coach_alerts"
+                " WHERE alert_id = ? AND coach_account_id = ?",
+                (str(alert_id), str(coach_account_id)),
+            )
+            return self._coach_alert_from_row(cursor.fetchone())
+
+    def resolve_open_coach_alerts_for_assignment(
+        self, assignment_id: str, now_iso: str, except_streak_start: str | None = None
+    ) -> int:
+        """Auto-resolves open alerts when their streak is no longer the current one.
+
+        With ``except_streak_start`` set, only alerts for a different streak are
+        resolved, so a continuing streak's alert is updated rather than closed.
+        """
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "UPDATE coach_alerts SET state = 'resolved', resolved_at = ?, resolved_by = 'system'"
+                " WHERE assignment_id = ? AND state IN ('new', 'acknowledged')"
+                " AND (? IS NULL OR streak_start_date != ?)",
+                (now_iso, str(assignment_id), except_streak_start, except_streak_start),
+            )
+            self.catalog_conn.commit()
+            return int(cursor.rowcount)
+
+    def upsert_roster_attendance(self, assignment_id: str, current_missed_streak: int, now_iso: str) -> None:
+        """Records the latest catalog-side attendance summary for one assignment."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "INSERT INTO roster_attendance (assignment_id, current_missed_streak, last_evaluated_at)"
+                " VALUES (?, ?, ?)"
+                " ON CONFLICT(assignment_id) DO UPDATE SET"
+                " current_missed_streak = excluded.current_missed_streak,"
+                " last_evaluated_at = excluded.last_evaluated_at",
+                (str(assignment_id), int(current_missed_streak), now_iso),
+            )
+            self.catalog_conn.commit()
+
+    def get_roster_alert_badges(self, coach_account_id: str) -> dict[str, dict[str, int]]:
+        """New/acknowledged alert counts and streak length per active assignment (catalog-only)."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "SELECT a.assignment_id,"
+                " COALESCE(r.current_missed_streak, 0) AS streak,"
+                " COALESCE(SUM(CASE WHEN c.state = 'new' THEN 1 ELSE 0 END), 0) AS new_count,"
+                " COALESCE(SUM(CASE WHEN c.state = 'acknowledged' THEN 1 ELSE 0 END), 0) AS ack_count"
+                " FROM assignments a"
+                " LEFT JOIN roster_attendance r ON r.assignment_id = a.assignment_id"
+                " LEFT JOIN coach_alerts c ON c.assignment_id = a.assignment_id"
+                " AND c.state IN ('new', 'acknowledged')"
+                " WHERE a.coach_account_id = ? AND a.status = 'active'"
+                " GROUP BY a.assignment_id",
+                (str(coach_account_id),),
+            )
+            return {
+                str(row[0]): {
+                    "current_missed_streak": int(row[1]),
+                    "alerts_new": int(row[2]),
+                    "alerts_acknowledged": int(row[3]),
+                }
+                for row in cursor.fetchall()
+            }
+
+    def list_all_active_assignments(self) -> list[dict[str, Any]]:
+        """Every active assignment across coaches, for the sweep (catalog-only)."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                f"SELECT {self._ASSIGNMENT_COLUMNS} FROM assignments"
+                " WHERE status = 'active' ORDER BY started_at ASC",
+            )
+            return [self._assignment_from_row(row) for row in cursor.fetchall()]
+
     def get_exercise_catalog_entry(self, exercise_id: str) -> dict[str, Any] | None:
         """One catalog exercise by exact id, with the fields needed to swap it into a program."""
         if not isinstance(exercise_id, str) or not exercise_id:
@@ -2131,6 +2435,16 @@ class DatabaseManager:
                 for row in self.list_session_divergences(session["id"])
             ],
         }
+
+    def list_performed_dates(self) -> list[str]:
+        """One local date per committed session, oldest-first, including duplicates.
+
+        Two workouts on the same day are two performed dates so attendance can
+        satisfy two expected days, one per workout (ADR 030).
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT session_date FROM workout_sessions ORDER BY session_date ASC")
+        return [str(row[0]) for row in cursor.fetchall()]
 
     def get_session_log(self) -> list[dict[str, Any]]:
         """Chronological session→set rows (exercise names resolved) for ledger export.

@@ -360,6 +360,9 @@ def test_redeem_binds_immediately_and_creates_coach_notice(api, monkeypatch):
             "player_username": "p1",
             "started_at": body["assignment"]["started_at"],
             "status": "active",
+            "alerts_new": 0,
+            "alerts_acknowledged": 0,
+            "current_missed_streak": 0,
         }
     ]
 
