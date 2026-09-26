@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 
 from agent.assistant_graph import stream_assistant_turn
 from service import chat as chat_service
-from svc.dependencies import VerifiedPlayer, bind_request, get_current_trainee, get_db
+from svc.dependencies import account_id_of, bind_request, get_current_trainee, get_db
 from svc.llm import bound_stream
 from svc.rate_limit import CHAT_LIMIT, limiter
 from svc.schemas import ChatMessageIn
@@ -61,7 +61,7 @@ def _run_turn(db: Any, trainee: str, content: str, out: "queue.Queue[tuple[str, 
             tail,
             coach_tone=profile.get("coach_tone", "Direct, grounded, and pragmatic"),
             custom_instructions=profile.get("custom_instructions", ""),
-            player_account_id=trainee.account_id if isinstance(trainee, VerifiedPlayer) else None,
+            player_account_id=account_id_of(trainee),
         )
         for piece in bound_stream(stream_assistant_turn, state):
             out.put(("token", piece))

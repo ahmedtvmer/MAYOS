@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Request
 from langchain_core.messages import AIMessage, HumanMessage
 
 from service import onboarding as onboarding_service
-from svc.dependencies import bind_request, get_current_trainee, get_db
+from svc.dependencies import account_id_of, bind_request, get_current_trainee, get_db
 from svc.rate_limit import ONBOARDING_LIMIT, limiter
 from svc.schemas import OnboardingStartOut, OnboardingStepIn, OnboardingStepOut
 
@@ -101,9 +101,12 @@ async def complete_onboarding(
         bind_request(db, trainee)
         saved = db.load_onboarding_state()
         state = _deserialize(db, trainee, saved) if saved is not None else onboarding_service.start_onboarding(db, trainee)
-        result = onboarding_service.complete_onboarding(db, trainee, state)
+        account_id = account_id_of(trainee)
+        result = onboarding_service.complete_onboarding(db, trainee, state, player_account_id=account_id)
         db.clear_onboarding_state()
         program = result["program"]
+        if program is None:
+            return {"program_name": None, "weekly_frequency": None, "program_message": result["program_message"]}
         return {"program_name": program.program_name, "weekly_frequency": program.weekly_frequency}
 
     return await asyncio.to_thread(_run)

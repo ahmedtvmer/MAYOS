@@ -74,6 +74,11 @@ class _PlayerHomeScreenState extends ConsumerState<PlayerHomeScreen> {
               icon: const Icon(Icons.workspace_premium_outlined),
             ),
           IconButton(
+            tooltip: 'Profile',
+            onPressed: () => context.go(profilePath),
+            icon: const Icon(Icons.person_outline),
+          ),
+          IconButton(
             tooltip: 'Plan',
             onPressed: () => context.go(planPath),
             icon: const Icon(Icons.card_membership_outlined),

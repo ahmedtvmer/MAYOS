@@ -4,6 +4,7 @@ from typing import Any
 
 from agent.program_generator import generate_program_pipeline
 from service._base import bind_user
+from service.programs import COACH_CONTROLLED_ERROR, player_controls_program
 
 
 def get_profile(db: Any, trainee_id: str) -> dict[str, Any] | None:
@@ -11,8 +12,15 @@ def get_profile(db: Any, trainee_id: str) -> dict[str, Any] | None:
     return db.get_user_profile()
 
 
-def update_profile(db: Any, trainee_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """Upserts the profile; rebuilds the routine when frequency/rep-bias/limits change."""
+def update_profile(
+    db: Any, trainee_id: str, payload: dict[str, Any], player_account_id: str | None = None
+) -> dict[str, Any]:
+    """Upserts the profile; rebuilds the routine when frequency/rep-bias/limits change.
+
+    The profile update itself always applies. The rebuild is a player write path,
+    so while an assigned coach owns the active program it is skipped and the
+    response explains that a coach request is needed.
+    """
     bind_user(db, trainee_id)
     profile = db.get_user_profile() or {}
     freq_changed = int(payload.get("weekly_frequency", profile.get("weekly_frequency", 4))) != int(
@@ -27,12 +35,22 @@ def update_profile(db: Any, trainee_id: str, payload: dict[str, Any]) -> dict[st
     updated = {**profile, **payload}
     db.upsert_user_profile(updated)
     program = None
+    program_blocked = False
     if freq_changed or rep_changed or limits_changed:
-        program, _ = generate_program_pipeline(
-            rep_preference_override=updated.get("rep_preference", "balanced"),
-            frequency_override=int(updated.get("weekly_frequency", 4)),
-        )
-    return {"profile": db.get_user_profile(), "program_rebuilt": program is not None, "program": program}
+        if player_controls_program(db, player_account_id):
+            program, _ = generate_program_pipeline(
+                rep_preference_override=updated.get("rep_preference", "balanced"),
+                frequency_override=int(updated.get("weekly_frequency", 4)),
+            )
+        else:
+            program_blocked = True
+    return {
+        "profile": db.get_user_profile(),
+        "program_rebuilt": program is not None,
+        "program": program,
+        "program_blocked": program_blocked,
+        "program_message": COACH_CONTROLLED_ERROR if program_blocked else None,
+    }
 
 
 def update_persona(db: Any, trainee_id: str, coach_tone: str, custom_instructions: str) -> dict[str, Any]:

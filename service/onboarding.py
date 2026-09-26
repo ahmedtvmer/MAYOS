@@ -28,13 +28,20 @@ def answer_intake(db: Any, trainee_id: str, state: dict[str, Any], user_input: s
     return state
 
 
-def complete_onboarding(db: Any, trainee_id: str, state: dict[str, Any]) -> dict[str, Any]:
+def complete_onboarding(
+    db: Any, trainee_id: str, state: dict[str, Any], player_account_id: str | None = None
+) -> dict[str, Any]:
     from agent.program_generator import generate_program_pipeline
 
-    from service.programs import ensure_active_program
+    from service.programs import COACH_CONTROLLED_ERROR, ensure_active_program, player_controls_program
 
     clean_id = bind_user(db, trainee_id)
-    program = ensure_active_program(db, clean_id) or generate_program_pipeline()[0]
+    program = ensure_active_program(db, clean_id, player_account_id=player_account_id)
+    if program is None and player_controls_program(db, player_account_id):
+        program = generate_program_pipeline()[0]
+    if program is None:
+        db.add_chat_message("assistant", f"Welcome! {COACH_CONTROLLED_ERROR}")
+        return {"program": None, "state": state, "program_message": COACH_CONTROLLED_ERROR}
     db.add_chat_message(
         "assistant",
         f"Welcome! I have calibrated your active routine: **{program.program_name}** "

@@ -129,20 +129,31 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final OnboardingCompletion? completion = _completion;
     if (completion != null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Your program is ready')),
+        appBar: AppBar(
+          title: Text(completion.hasProgram
+              ? 'Your program is ready'
+              : "You're all set"),
+        ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Text(
-                  completion.programName,
-                  style: Theme.of(context).textTheme.headlineSmall,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text('${completion.weeklyFrequency} training days per week'),
+                if (completion.hasProgram) ...<Widget>[
+                  Text(
+                    completion.programName!,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                      '${completion.weeklyFrequency} training days per week'),
+                ] else if (completion.programMessage != null)
+                  Text(
+                    completion.programMessage!,
+                    textAlign: TextAlign.center,
+                  ),
                 const SizedBox(height: 24),
                 FilledButton(
                   onPressed: () =>

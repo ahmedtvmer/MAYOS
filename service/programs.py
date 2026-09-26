@@ -31,26 +31,23 @@ def player_controls_program(db: Any, player_account_id: str | None) -> bool:
     return False
 
 
-def ensure_active_program(db: Any, trainee_id: str) -> Any:
-    """Returns the saved routine, synthesizing one when the profile exists but none is saved."""
+def ensure_active_program(db: Any, trainee_id: str, player_account_id: str | None = None) -> Any:
+    """Returns the saved routine, synthesizing one when the profile exists but none is saved.
+
+    Synthesis is a player write path, so it obeys the single authority decision:
+    while an assigned coach owns the active program, nothing is synthesized and
+    ``None`` is returned with the saved program left untouched.
+    """
     bind_user(db, trainee_id)
     saved = db.get_active_program()
     if saved is not None:
         return saved
+    if not player_controls_program(db, player_account_id):
+        return None
     profile = db.get_user_profile()
     if not profile:
         return None
     program, _ = generate_program_pipeline(rep_preference_override=profile.get("rep_preference", "balanced"))
-    return program
-
-
-def regenerate_program(db: Any, trainee_id: str) -> Any:
-    bind_user(db, trainee_id)
-    profile = db.get_user_profile() or {}
-    program, _ = generate_program_pipeline(
-        rep_preference_override=profile.get("rep_preference", "balanced"),
-        frequency_override=int(profile.get("weekly_frequency", 4)),
-    )
     return program
 
 

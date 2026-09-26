@@ -105,6 +105,11 @@ async def get_current_coach(
     return _mount_verified_identity(db, identity)
 
 
+def account_id_of(trainee: Any) -> str | None:
+    """Returns the verified account id carried by the trainee, or None for a bare ledger id."""
+    return trainee.account_id if isinstance(trainee, VerifiedPlayer) else None
+
+
 def bind_request(db: Any, trainee_id: str) -> str:
     """Mounts the verified trainee ledger on this worker thread and sets the request ContextVar."""
     if isinstance(trainee_id, VerifiedPlayer):

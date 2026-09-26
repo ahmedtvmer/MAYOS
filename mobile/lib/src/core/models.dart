@@ -559,20 +559,70 @@ class OnboardingState {
 }
 
 /// `POST /onboarding/complete` response body.
+///
+/// Both program fields are null when no program could be produced (a
+/// coach-controlled completion with nothing saved), and [programMessage] carries
+/// the service's explanation so the client must not announce a routine.
 class OnboardingCompletion {
   const OnboardingCompletion({
     required this.programName,
     required this.weeklyFrequency,
+    this.programMessage,
   });
 
   factory OnboardingCompletion.fromJson(Map<String, dynamic> json) =>
       OnboardingCompletion(
-        programName: json['program_name'] as String,
-        weeklyFrequency: (json['weekly_frequency'] as num).toInt(),
+        programName: json['program_name'] as String?,
+        weeklyFrequency: (json['weekly_frequency'] as num?)?.toInt(),
+        programMessage: json['program_message'] as String?,
       );
 
-  final String programName;
+  final String? programName;
+  final int? weeklyFrequency;
+  final String? programMessage;
+
+  bool get hasProgram => programName != null && weeklyFrequency != null;
+}
+
+/// `GET /profile`: the player's stored training profile. Only the fields the
+/// profile editor writes are modeled; unknown keys are ignored.
+class PlayerProfile {
+  const PlayerProfile({
+    this.repPreference = 'balanced',
+    this.weeklyFrequency = 4,
+  });
+
+  factory PlayerProfile.fromJson(Map<String, dynamic> json) => PlayerProfile(
+        repPreference: json['rep_preference'] as String? ?? 'balanced',
+        weeklyFrequency: (json['weekly_frequency'] as num?)?.toInt() ?? 4,
+      );
+
+  final String repPreference;
   final int weeklyFrequency;
+}
+
+/// `PUT /profile` response body.
+///
+/// [programBlocked] is true when a rebuild was warranted but the assigned coach
+/// owns the active program, so nothing was regenerated and [programMessage]
+/// explains that a coach request is needed.
+class ProfileUpdateResult {
+  const ProfileUpdateResult({
+    required this.programRebuilt,
+    this.programBlocked = false,
+    this.programMessage,
+  });
+
+  factory ProfileUpdateResult.fromJson(Map<String, dynamic> json) =>
+      ProfileUpdateResult(
+        programRebuilt: json['program_rebuilt'] as bool? ?? false,
+        programBlocked: json['program_blocked'] as bool? ?? false,
+        programMessage: json['program_message'] as String?,
+      );
+
+  final bool programRebuilt;
+  final bool programBlocked;
+  final String? programMessage;
 }
 
 class ProgramExercise {

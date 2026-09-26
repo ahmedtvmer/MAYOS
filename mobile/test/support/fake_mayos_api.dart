@@ -19,6 +19,11 @@ class FakeMayosApi {
   String coachPlan = 'free';
   bool profileExists = false;
   String? recoveryEmail;
+  // Player profile fields written through `PUT /profile` (#27).
+  String repPreference = 'balanced';
+  int weeklyFrequency = 4;
+  // Forces a coach-controlled profile-update response even with no publication.
+  bool profileBlocked = false;
   String coachDisplayName = '';
   String coachBio = '';
   String coachSpecialization = '';
@@ -60,6 +65,8 @@ class FakeMayosApi {
   int _answeredSteps = 0;
   List<String> _assistantMessages = <String>[];
   bool _onboardingComplete = false;
+  // When true, completion returns null program fields (coach-controlled edge).
+  bool nullOnboardingProgram = false;
 
   FakeResponse _handle(FakeRequest request) {
     final String path = request.path;
@@ -664,8 +671,42 @@ class FakeMayosApi {
         <String, dynamic>{'detail': 'No profile yet; complete onboarding.'},
       );
     }
-    return const FakeResponse(
-        200, <String, dynamic>{'current_goal': 'Build muscle'});
+    if (request.method == 'PUT') {
+      return _updateProfile(request);
+    }
+    return FakeResponse(200, _profileBody());
+  }
+
+  Map<String, dynamic> _profileBody() => <String, dynamic>{
+        'rep_preference': repPreference,
+        'weekly_frequency': weeklyFrequency,
+      };
+
+  FakeResponse _updateProfile(FakeRequest request) {
+    final int? frequency = (request.body['weekly_frequency'] as num?)?.toInt();
+    final String? preference = request.body['rep_preference'] as String?;
+    final bool rebuildWarranted = (frequency != null && frequency != weeklyFrequency) ||
+        (preference != null && preference != repPreference);
+    if (frequency != null) weeklyFrequency = frequency;
+    if (preference != null) repPreference = preference;
+
+    if (rebuildWarranted && (coachControlsProgram || profileBlocked)) {
+      return FakeResponse(200, <String, dynamic>{
+        'profile': _profileBody(),
+        'program_rebuilt': false,
+        'program': null,
+        'program_blocked': true,
+        'program_message':
+            'Your assigned coach controls your program. Ask your coach for changes.',
+      });
+    }
+    return FakeResponse(200, <String, dynamic>{
+      'profile': _profileBody(),
+      'program_rebuilt': rebuildWarranted,
+      'program': rebuildWarranted ? _activeProgramBody() : null,
+      'program_blocked': false,
+      'program_message': null,
+    });
   }
 
   FakeResponse _startOnboarding(FakeRequest request) {
@@ -710,6 +751,14 @@ class FakeMayosApi {
     }
     profileExists = true;
     _onboardingComplete = true;
+    if (nullOnboardingProgram) {
+      return const FakeResponse(200, <String, dynamic>{
+        'program_name': null,
+        'weekly_frequency': null,
+        'program_message':
+            'Your assigned coach controls your program. Ask your coach for changes.',
+      });
+    }
     return const FakeResponse(200, <String, dynamic>{
       'program_name': 'Upper/Lower 4x',
       'weekly_frequency': 4,
@@ -836,6 +885,9 @@ class FakeMayosApi {
       coachPlan = 'free';
       profileExists = false;
       recoveryEmail = null;
+      repPreference = 'balanced';
+      weeklyFrequency = 4;
+      profileBlocked = false;
       coachDisplayName = '';
       coachBio = '';
       coachSpecialization = '';
@@ -865,6 +917,7 @@ class FakeMayosApi {
       _answeredSteps = 0;
       _assistantMessages = <String>[];
       _onboardingComplete = false;
+      nullOnboardingProgram = false;
     }
   }
 

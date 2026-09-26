@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from agent.ProgramState import GeneratedProgramSchema
 from agent.program_generator import generate_program_pipeline
 from service import programs as programs_service
-from svc.dependencies import VerifiedPlayer, bind_request, get_current_trainee, get_db
+from svc.dependencies import account_id_of, bind_request, get_current_trainee, get_db
 from svc.schemas import ProgramGenerateIn
 
 router = APIRouter(prefix="/programs", tags=["programs"])
@@ -24,7 +24,7 @@ async def generate_program(
 ):
     def _run():
         bind_request(db, trainee)
-        account_id = trainee.account_id if isinstance(trainee, VerifiedPlayer) else None
+        account_id = account_id_of(trainee)
         if not programs_service.player_controls_program(db, account_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail=programs_service.COACH_CONTROLLED_ERROR
@@ -48,7 +48,8 @@ async def read_active_program(
 ):
     def _run():
         bind_request(db, trainee)
-        return programs_service.ensure_active_program(db, trainee)
+        account_id = account_id_of(trainee)
+        return programs_service.ensure_active_program(db, trainee, player_account_id=account_id)
 
     return await asyncio.to_thread(_run)
 

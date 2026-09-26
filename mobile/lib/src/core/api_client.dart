@@ -51,6 +51,8 @@ class ApiClient {
       'The service returned invalid program data.';
   static const String _invalidNotices =
       'The service returned invalid assignment notices.';
+  static const String _invalidProfile =
+      'The service returned invalid profile data.';
 
   final TokenStore _tokens;
   late final Dio _dio;
@@ -468,6 +470,30 @@ class ApiClient {
       }
       rethrow;
     }
+  }
+
+  /// The player's stored training profile.
+  Future<PlayerProfile> profile() async {
+    final response = await _send(() => _dio.get<dynamic>('/profile'));
+    return _parseBody(response.data, PlayerProfile.fromJson, _invalidProfile);
+  }
+
+  /// Updates the player's profile. A profile-triggered rebuild is a player
+  /// write path, so the response reports when a coach-controlled program left
+  /// it unchanged instead of refusing the profile update itself.
+  Future<ProfileUpdateResult> updateProfile({
+    int? weeklyFrequency,
+    String? repPreference,
+  }) async {
+    final Map<String, dynamic> body = <String, dynamic>{
+      if (weeklyFrequency != null) 'weekly_frequency': weeklyFrequency,
+      if (repPreference != null) 'rep_preference': repPreference,
+    };
+    final response = await _send(
+      () => _dio.put<dynamic>('/profile', data: body),
+    );
+    return _parseBody(
+        response.data, ProfileUpdateResult.fromJson, _invalidProfile);
   }
 
   Future<OnboardingState> startOnboarding() async {

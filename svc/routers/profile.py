@@ -6,7 +6,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from service import profile as profile_service
-from svc.dependencies import bind_request, get_current_trainee, get_db
+from svc.dependencies import account_id_of, bind_request, get_current_trainee, get_db
 from svc.schemas import PersonaUpdate, ProfileUpdate
 
 router = APIRouter(prefix="/profile", tags=["profile"])
@@ -34,8 +34,9 @@ async def update_profile(
 ):
     def _run():
         bind_request(db, trainee)
+        account_id = account_id_of(trainee)
         payload = {key: value for key, value in body.model_dump().items() if value is not None}
-        return profile_service.update_profile(db, trainee, payload)
+        return profile_service.update_profile(db, trainee, payload, player_account_id=account_id)
 
     return await asyncio.to_thread(_run)
 
