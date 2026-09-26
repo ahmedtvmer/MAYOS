@@ -137,6 +137,23 @@ from unittest.mock import MagicMock
 from agent import onboarding_graph as onboarding
 
 
+@pytest.fixture(autouse=True)
+def _rebind_llm_extractors():
+    """Rebind the graph's extractors to a live model before every test.
+
+    Shared API fixtures run the FastAPI lifespan, which calls ``unload_all()``
+    on teardown and releases the process-wide LLM client. ``onboarding_graph``
+    binds ``step*_extractor`` to that instance at import time, so without a
+    rebind the next real invocation would call a released client (``client is
+    None``). Resolving through the lazy ``llm`` proxy here makes this module
+    independent of what earlier tests did to the LLM singleton.
+    """
+    onboarding.step1_extractor = onboarding.llm.with_structured_output(onboarding.Step1Extraction)
+    onboarding.step2_extractor = onboarding.llm.with_structured_output(onboarding.Step2Extraction)
+    onboarding.step3_extractor = onboarding.llm.with_structured_output(onboarding.Step3Extraction)
+    yield
+
+
 @pytest.mark.parametrize("frequency", ["0", "6", "7", "12", "zero", "six", "seven", "twenty-one", "one hundred", "-1"])
 @pytest.mark.parametrize("numbered", [True, False])
 def test_invalid_frequency_never_advances_or_writes(monkeypatch, frequency, numbered):
