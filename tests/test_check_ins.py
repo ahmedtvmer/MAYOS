@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from database.database_manager import DatabaseManager
 from service import alert_sweep
+from service import assignments as assignments_service
 from service import check_ins as check_ins_service
 from service import coach as coach_service
 from service.missed_day_alerts import present_alert
@@ -26,12 +27,31 @@ from svc.dependencies import get_db
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
 
+#: A fixed instant in the buggy window (after 10:00 UTC, when Pacific/Kiritimati
+#: has already rolled into the next calendar day). Every test runs at this frozen
+#: clock so results never depend on the hour the suite happens to execute.
+_FROZEN_NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
+
+
+class _FrozenDatetime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return _FROZEN_NOW.astimezone(tz) if tz is not None else _FROZEN_NOW.replace(tzinfo=None)
+
+
+def _now() -> datetime:
+    return _FROZEN_NOW
+
 
 @pytest.fixture
 def api(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("SKIP_LLM_LOAD", "true")
     monkeypatch.setenv("TESTING", "1")
     monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
+    # Pin the wall clock for both the check-in validation seam and assignment
+    # creation, so the check-in bounds and the assignment start are deterministic.
+    monkeypatch.setattr(check_ins_service, "_now", _now)
+    monkeypatch.setattr(assignments_service, "datetime", _FrozenDatetime)
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
@@ -115,7 +135,7 @@ def _backdate_assignment(db, assignment_id, started_at):
 
 
 def _today() -> date:
-    return datetime.now(UTC).date()
+    return _now().date()
 
 
 def _follow_up_alerts(db, coach_account_id, states):
@@ -159,12 +179,13 @@ def test_coach_records_and_lists_a_check_in(api):
 def test_check_in_validation_rejects_bad_input(api):
     client, db = api
     coach_headers, _, assignment_id, _, _ = _assign(api)
-    _backdate_assignment(db, assignment_id, datetime.now(UTC) - timedelta(days=5))
+    _backdate_assignment(db, assignment_id, _now() - timedelta(days=5))
     base = f"/coach/assignments/{assignment_id}/check-ins"
 
+    # Two days out is beyond even UTC+14's today (the most permissive bound).
     future = client.post(
         base, headers=coach_headers,
-        json={"checked_in_on": (_today() + timedelta(days=1)).isoformat(), "channel": "phone"},
+        json={"checked_in_on": (_today() + timedelta(days=2)).isoformat(), "channel": "phone"},
     )
     assert future.status_code == 400
 
@@ -261,7 +282,7 @@ def test_unrelated_coach_is_denied(api):
 def test_follow_up_alert_is_created_once_when_due(api):
     client, db = api
     coach_headers, _, assignment_id, coach_account_id, _ = _assign(api)
-    now = datetime.now(UTC)
+    now = _now()
     started = now - timedelta(days=10)
     _backdate_assignment(db, assignment_id, started)
 
@@ -283,7 +304,7 @@ def test_follow_up_alert_is_created_once_when_due(api):
 def test_follow_up_is_not_created_before_due(api):
     client, db = api
     _, _, assignment_id, coach_account_id, _ = _assign(api)
-    now = datetime.now(UTC)
+    now = _now()
     _backdate_assignment(db, assignment_id, now - timedelta(days=3))
 
     counts = alert_sweep.run_sweep(db, now=now)
@@ -295,7 +316,7 @@ def test_follow_up_is_not_created_before_due(api):
 def test_new_check_in_resolves_the_follow_up_alert(api):
     client, db = api
     coach_headers, _, assignment_id, coach_account_id, _ = _assign(api)
-    now = datetime.now(UTC)
+    now = _now()
     _backdate_assignment(db, assignment_id, now - timedelta(days=10))
     assert alert_sweep.run_sweep(db, now=now)["follow_ups_created"] == 1
     assert len(_follow_up_alerts(db, coach_account_id, ("new",))) == 1
@@ -318,7 +339,7 @@ def test_new_check_in_resolves_the_follow_up_alert(api):
 def test_due_date_shifts_with_check_ins_and_shows_on_the_roster(api):
     client, db = api
     coach_headers, _, assignment_id, _, _ = _assign(api)
-    started = datetime.now(UTC) - timedelta(days=20)
+    started = _now() - timedelta(days=20)
     _backdate_assignment(db, assignment_id, started)
 
     first_day = _today() - timedelta(days=6)
@@ -330,7 +351,7 @@ def test_due_date_shifts_with_check_ins_and_shows_on_the_roster(api):
     assert first.json()["next_follow_up_on"] == (first_day + timedelta(days=7)).isoformat()
 
     # Due date is now in the future, so the sweep creates nothing.
-    counts = alert_sweep.run_sweep(db, now=datetime.now(UTC))
+    counts = alert_sweep.run_sweep(db, now=_now())
     assert counts["follow_ups_created"] == 0
 
     roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
@@ -443,7 +464,7 @@ def test_backdated_check_in_does_not_clear_an_overdue_alert(api):
     coach_headers, _, assignment_id, coach_account_id, _ = _assign(api)
     started = _started_days_ago(10)
     _backdate_assignment(db, assignment_id, started)
-    assert alert_sweep.run_sweep(db, now=datetime.now(UTC))["follow_ups_created"] == 1
+    assert alert_sweep.run_sweep(db, now=_now())["follow_ups_created"] == 1
     due_key = (started.date() + timedelta(days=7)).isoformat()
 
     # Dating the check-in at the assignment start does not move due_on, so the
@@ -465,7 +486,7 @@ def test_check_in_that_moves_due_on_resolves_the_old_alert(api):
     coach_headers, _, assignment_id, coach_account_id, _ = _assign(api)
     started = _started_days_ago(10)
     _backdate_assignment(db, assignment_id, started)
-    assert alert_sweep.run_sweep(db, now=datetime.now(UTC))["follow_ups_created"] == 1
+    assert alert_sweep.run_sweep(db, now=_now())["follow_ups_created"] == 1
     old_key = (started.date() + timedelta(days=7)).isoformat()
 
     client.post(
@@ -485,7 +506,7 @@ def test_acknowledged_follow_up_is_resolved_by_a_new_check_in(api):
     coach_headers, _, assignment_id, coach_account_id, _ = _assign(api)
     started = _started_days_ago(10)
     _backdate_assignment(db, assignment_id, started)
-    alert_sweep.run_sweep(db, now=datetime.now(UTC))
+    alert_sweep.run_sweep(db, now=_now())
     alert = _follow_up_alerts(db, coach_account_id, ("new",))[0]
     ack = client.post(f"/coach/alerts/{alert['alert_id']}/acknowledge", headers=coach_headers)
     assert ack.status_code == 200
@@ -520,7 +541,7 @@ def test_stale_follow_up_key_is_resolved_on_the_next_sweep(api):
         "2026-01-01T00:00:00+00:00",
     )
 
-    alert_sweep.run_sweep(db, now=datetime.now(UTC))
+    alert_sweep.run_sweep(db, now=_now())
 
     stale = db.get_coach_alert("stale-alert")
     assert stale["state"] == "resolved"
@@ -545,7 +566,7 @@ def test_stale_follow_up_key_is_resolved_when_no_longer_due(api):
         "2026-01-01T00:00:00+00:00",
     )
 
-    alert_sweep.run_sweep(db, now=datetime.now(UTC))
+    alert_sweep.run_sweep(db, now=_now())
 
     assert db.get_coach_alert("stale-alert")["state"] == "resolved"
     assert _follow_up_alerts(db, coach_account_id, ("new", "acknowledged")) == []
@@ -581,6 +602,110 @@ def test_unknown_timezone_accepts_a_player_today_ahead_of_utc(api):
     )
     assert rejected["ok"] is False
     assert "future" in rejected["error"]
+
+
+# --------------------------------------------------------------------------
+# Hour-independent bounds without a cached timezone (UTC+14 upper, UTC-12 lower)
+# --------------------------------------------------------------------------
+
+
+#: The assignment starts at 12:00 UTC on 2026-09-26, the exact bug window: it is
+#: still 2026-09-26 in UTC but already 2026-09-27 at UTC+14. The old code used
+#: UTC+14 for the start bound too, so it rejected a check-in dated 2026-09-26.
+_STARTED_AT = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
+_PINNED_NOWS = [
+    datetime(2026, 9, 26, 9, 59, tzinfo=UTC),
+    datetime(2026, 9, 26, 10, 1, tzinfo=UTC),
+    datetime(2026, 9, 26, 23, 30, tzinfo=UTC),
+]
+
+
+def _undated_assignment(api):
+    """An assignment at the bug-window start with no cached timezone."""
+    _, db = api
+    _, _, assignment_id, coach_account_id, _ = _assign(api)
+    _backdate_assignment(db, assignment_id, _STARTED_AT)
+    assert db.get_roster_timezone(assignment_id) is None
+    return db, assignment_id, coach_account_id
+
+
+@pytest.mark.parametrize("now", _PINNED_NOWS)
+def test_check_in_on_the_assignment_start_day_is_accepted_without_a_cached_timezone(api, now):
+    db, assignment_id, coach_account_id = _undated_assignment(api)
+    assert now.date() == _STARTED_AT.date()
+
+    result = check_ins_service.create_check_in(
+        db,
+        coach_account_id,
+        assignment_id,
+        {"checked_in_on": "2026-09-26", "channel": "phone"},
+        now=now,
+    )
+    assert result["ok"] is True, result
+
+
+@pytest.mark.parametrize(
+    "now,accepted",
+    [
+        (datetime(2026, 9, 26, 9, 59, tzinfo=UTC), False),
+        (datetime(2026, 9, 26, 10, 1, tzinfo=UTC), True),
+        (datetime(2026, 9, 26, 23, 30, tzinfo=UTC), True),
+    ],
+)
+def test_utc_plus_14_tomorrow_is_accepted_only_when_it_is_today_somewhere(api, now, accepted):
+    db, assignment_id, coach_account_id = _undated_assignment(api)
+    result = check_ins_service.create_check_in(
+        db,
+        coach_account_id,
+        assignment_id,
+        {"checked_in_on": "2026-09-27", "channel": "phone"},
+        now=now,
+    )
+    assert result["ok"] is accepted, result
+    if not accepted:
+        assert "future" in result["error"]
+
+
+@pytest.mark.parametrize("now", _PINNED_NOWS)
+def test_check_in_beyond_utc_plus_14_today_is_rejected_as_future(api, now):
+    db, assignment_id, coach_account_id = _undated_assignment(api)
+    result = check_ins_service.create_check_in(
+        db,
+        coach_account_id,
+        assignment_id,
+        {"checked_in_on": "2026-09-28", "channel": "phone"},
+        now=now,
+    )
+    assert result["ok"] is False
+    assert "future" in result["error"]
+
+
+def test_a_cached_timezone_still_bounds_both_sides(api):
+    db, assignment_id, coach_account_id = _undated_assignment(api)
+    db.upsert_roster_attendance(
+        assignment_id, 0, _now().isoformat(), timezone="Pacific/Kiritimati"
+    )
+
+    # At 12:00 UTC Kiritimati is already 2026-09-27, so the 12:00 UTC start is the
+    # 27th locally; the real start day (the 26th) now correctly predates it.
+    rejected = check_ins_service.create_check_in(
+        db,
+        coach_account_id,
+        assignment_id,
+        {"checked_in_on": "2026-09-26", "channel": "phone"},
+        now=_now(),
+    )
+    assert rejected["ok"] is False
+    assert "predate" in rejected["error"]
+
+    accepted = check_ins_service.create_check_in(
+        db,
+        coach_account_id,
+        assignment_id,
+        {"checked_in_on": "2026-09-27", "channel": "phone"},
+        now=_now(),
+    )
+    assert accepted["ok"] is True, accepted
 
 
 # --------------------------------------------------------------------------

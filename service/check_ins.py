@@ -16,10 +16,13 @@ and re-runs that evaluation.
 
 Everything in this module is catalog-only: no player ledger is ever mounted. The
 player's local day comes from the timezone the missed-day sweep caches on
-``roster_attendance``, falling back to UTC. Until a timezone is cached, a
-check-in's future-date check uses the latest possible local day
-(``Pacific/Kiritimati``, UTC+14) so a player ahead of UTC is never rejected for
-dating their own today.
+``roster_attendance``, falling back to UTC. Until a timezone is cached, each
+validation bound takes the most permissive local day on earth: the future-date
+bound uses the latest local day (``Pacific/Kiritimati``, UTC+14) so a player
+ahead of UTC is never rejected for dating their own today, while the assignment
+start (lower) bound uses the earliest local day (``Etc/GMT+12``, UTC-12) so a
+check-in dated on the assignment's real start day is never rejected as
+predating it once UTC+14 has rolled into the next calendar day.
 """
 
 from __future__ import annotations
@@ -45,9 +48,14 @@ FOLLOW_UP_KIND = "follow_up_due"
 FOLLOW_UP_CADENCE_DAYS = 7
 
 #: When the player's timezone is not cached yet, validate a check-in date against
-#: the latest local day on earth (UTC+14) rather than UTC, so a player ahead of
-#: UTC is never told their own today is in the future.
+#: the most permissive local day on each side rather than UTC. The upper bound
+#: (future date) uses the latest local day on earth (UTC+14) so a player ahead of
+#: UTC is never told their own today is in the future; the lower bound
+#: (assignment start) uses the earliest local day on earth (UTC-12) so a check-in
+#: dated on the assignment's real start day is never rejected as predating it
+#: once UTC+14 has already rolled into the next calendar day.
 MAX_LOCAL_TIMEZONE = "Pacific/Kiritimati"
+MIN_LOCAL_TIMEZONE = "Etc/GMT+12"
 
 __all__ = [
     "CHECK_IN_CHANNELS",
@@ -55,12 +63,18 @@ __all__ = [
     "FOLLOW_UP_KIND",
     "MAX_CHECK_IN_NOTE_LENGTH",
     "MAX_LOCAL_TIMEZONE",
+    "MIN_LOCAL_TIMEZONE",
     "create_check_in",
     "evaluate_follow_up",
     "list_coach_check_ins",
     "list_player_check_ins",
     "next_follow_up_on",
 ]
+
+
+def _now() -> datetime:
+    """The current instant; the single seam tests freeze to pin the wall clock."""
+    return datetime.now(UTC)
 
 
 def _parse_instant(value: Any) -> datetime | None:
@@ -144,7 +158,7 @@ def evaluate_follow_up(db: Any, assignment: dict[str, Any], now: datetime | None
     Catalog-only and idempotent: a repeated or concurrent sweep never duplicates
     an alert.
     """
-    now = now or datetime.now(UTC)
+    now = now or _now()
     now_iso = now.isoformat()
     assignment_id = assignment["assignment_id"]
     timezone = db.get_roster_timezone(assignment_id) or "UTC"
@@ -213,7 +227,7 @@ def create_check_in(
     Returns ``{"ok": False, "denied": True}`` for an unknown/ended/foreign
     assignment and ``{"ok": False, "error": ...}`` for a validation failure.
     """
-    now = now or datetime.now(UTC)
+    now = now or _now()
     now_iso = now.isoformat()
     assignment = _gate_coach(db, coach_account_id, assignment_id)
     if assignment is None:
@@ -228,14 +242,16 @@ def create_check_in(
     except ValueError as error:
         return {"ok": False, "error": str(error)}
 
-    # Until the timezone is cached, use the latest possible local day so a player
-    # ahead of UTC is not rejected for dating their own today (ADR 031).
+    # Until the timezone is cached, take the most permissive bound on each side:
+    # the latest local day for the future check and the earliest local day for
+    # the assignment-start check (ADR 031).
     cached_timezone = db.get_roster_timezone(assignment_id)
-    validation_timezone = cached_timezone or MAX_LOCAL_TIMEZONE
-    local_today = local_date_in(now, validation_timezone)
+    upper_bound_timezone = cached_timezone or MAX_LOCAL_TIMEZONE
+    lower_bound_timezone = cached_timezone or MIN_LOCAL_TIMEZONE
+    local_today = local_date_in(now, upper_bound_timezone)
     if checked_in_on > local_today:
         return {"ok": False, "error": "A check-in cannot be dated in the future."}
-    start_local = _assignment_start_local(assignment, validation_timezone)
+    start_local = _assignment_start_local(assignment, lower_bound_timezone)
     if start_local is not None and checked_in_on < start_local:
         return {"ok": False, "error": "A check-in cannot predate the assignment."}
 
