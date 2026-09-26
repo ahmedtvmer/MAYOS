@@ -14,29 +14,94 @@ class Capabilities {
   final bool coach;
 }
 
-/// Current account identity and capabilities from `GET /auth/me`.
+/// One capability's server-owned plan state. The client only displays it; it
+/// never infers an entitlement from the user or the device.
+class PlanState {
+  const PlanState({required this.plan, required this.status});
+
+  factory PlanState.fromJson(Map<String, dynamic> json) {
+    final dynamic rawPlan = json['plan'];
+    final dynamic rawStatus = json['status'];
+    if (rawPlan is! String || rawStatus is! String) {
+      throw const FormatException('Invalid plan state.');
+    }
+    final String plan = rawPlan;
+    if (plan != 'free' && plan != 'pro') {
+      throw FormatException('Unknown plan: $plan');
+    }
+    return PlanState(plan: plan, status: rawStatus);
+  }
+
+  final String plan;
+  final String status;
+
+  bool get isPro => plan == 'pro';
+
+  bool get isFree => plan == 'free';
+
+  String get label => isPro ? 'Pro' : 'Free';
+}
+
+/// Independent Lifter and Coach plan states. A null entry means the account
+/// does not hold that capability, so it has no plan for it.
+class AccountPlans {
+  const AccountPlans({this.lifter, this.coach});
+
+  factory AccountPlans.fromJson(Map<String, dynamic> json) => AccountPlans(
+        lifter: _state(json['lifter']),
+        coach: _state(json['coach']),
+      );
+
+  final PlanState? lifter;
+  final PlanState? coach;
+
+  static PlanState? _state(dynamic value) {
+    if (value == null) return null;
+    if (value is! Map<String, dynamic>) {
+      throw const FormatException('Invalid plan state.');
+    }
+    return PlanState.fromJson(value);
+  }
+
+  AccountPlans withoutCoach() => AccountPlans(lifter: lifter);
+
+}
+
+/// Current account identity, capabilities, and independent plan states from
+/// `GET /auth/me`.
 class Account {
   const Account({
     required this.accountId,
     required this.traineeId,
     required this.capabilities,
+    this.plans = const AccountPlans(),
   });
 
-  factory Account.fromJson(Map<String, dynamic> json) => Account(
-        accountId: json['account_id'] as String,
-        traineeId: json['trainee_id'] as String,
-        capabilities: Capabilities.fromJson(
-          json['capabilities'] as Map<String, dynamic>,
-        ),
-      );
+  factory Account.fromJson(Map<String, dynamic> json) {
+    final Capabilities capabilities = Capabilities.fromJson(
+      json['capabilities'] as Map<String, dynamic>,
+    );
+    final dynamic rawPlans = json['plans'];
+    if (rawPlans is! Map<String, dynamic>) {
+      throw const FormatException('Missing account plan states.');
+    }
+    return Account(
+      accountId: json['account_id'] as String,
+      traineeId: json['trainee_id'] as String,
+      capabilities: capabilities,
+      plans: AccountPlans.fromJson(rawPlans),
+    );
+  }
 
   final String accountId;
 
   /// The legacy wire field for the reusable username.
   final String traineeId;
   final Capabilities capabilities;
+  final AccountPlans plans;
 
   bool get isCoach => capabilities.coach;
+
 }
 
 /// `GET`/`PUT /coach/profile`: coach-authored fields keyed by immutable account id.

@@ -739,6 +739,19 @@ class DatabaseManager:
                     ON accounts(username) WHERE deleted_at IS NULL;
                 CREATE INDEX IF NOT EXISTS idx_accounts_ledger ON accounts(ledger_id);
 
+                -- Server-owned Lifter/Coach plan state, keyed by the immutable account
+                -- id and one row per capability. A missing row means the ongoing Free
+                -- plan; eligibility is decided from the account's live capabilities,
+                -- never from client-supplied role or username (issue #56).
+                CREATE TABLE IF NOT EXISTS account_plans (
+                    account_id TEXT NOT NULL,
+                    capability TEXT NOT NULL CHECK (capability IN ('lifter', 'coach')),
+                    plan TEXT NOT NULL DEFAULT 'free' CHECK (plan IN ('free', 'pro')),
+                    status TEXT NOT NULL DEFAULT 'active',
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (account_id, capability)
+                );
+
                 -- Owner-issued, account-bound coach invitations (ADR 013). Only the
                 -- SHA-256 of the token is stored; the raw code is shown once to the
                 -- operator. Redemption is a single atomic catalog transaction.
@@ -914,6 +927,50 @@ class DatabaseManager:
             cursor.execute("UPDATE accounts SET session_epoch = ? WHERE account_id = ?", (new_epoch, str(account_id)))
             self.catalog_conn.commit()
             return new_epoch
+
+    _PLAN_COLUMNS = "account_id, capability, plan, status, updated_at"
+
+    @staticmethod
+    def _plan_from_row(row: Any) -> dict[str, Any]:
+        return {
+            "account_id": str(row[0]),
+            "capability": str(row[1]),
+            "plan": str(row[2]),
+            "status": str(row[3]),
+            "updated_at": str(row[4]),
+        }
+
+    def list_plans(self, account_id: str) -> list[dict[str, Any]]:
+        """Lists every stored plan override for an immutable account id."""
+        if not account_id:
+            return []
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                f"SELECT {self._PLAN_COLUMNS} FROM account_plans WHERE account_id = ? ORDER BY capability",
+                (str(account_id),),
+            )
+            return [self._plan_from_row(row) for row in cursor.fetchall()]
+
+    def set_plan(self, account_id: str, capability: str, plan: str, status: str = "active") -> None:
+        """Upserts one capability's plan. Callers must check capability eligibility first."""
+        self.ensure_account_schema()
+        now = datetime.now(UTC).isoformat()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO account_plans (account_id, capability, plan, status, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(account_id, capability) DO UPDATE SET
+                    plan = excluded.plan,
+                    status = excluded.status,
+                    updated_at = excluded.updated_at
+                """,
+                (str(account_id), str(capability), str(plan), str(status), now),
+            )
+            self.catalog_conn.commit()
 
     def set_trainee_email(self, trainee_id: str, email: str) -> None:
         """Links a normalized email to a trainee. Raises ValueError if taken by another ledger."""

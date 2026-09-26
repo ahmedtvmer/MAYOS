@@ -13,11 +13,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from service import assignments as assignment_service
 from service import coach as coach_service
+from service import plans as plans_service
 from svc.dependencies import VerifiedPlayer, get_current_coach, get_current_trainee, get_db
 from svc.rate_limit import ASSIGNMENT_MUTATE_LIMIT, COACH_INVITE_LIMIT, limiter
 from svc.schemas import (
     AccountCapabilitiesOut,
     AccountOut,
+    AccountPlansOut,
     CoachCapabilityDisableOut,
     CoachInviteRedeemIn,
     CoachProfileOut,
@@ -41,6 +43,7 @@ async def redeem_coach_invite(
         result = coach_service.redeem_coach_invite(db, trainee.account_id, body.token)
         if not result["ok"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
+        result["plans"] = plans_service.read_plans(db, result["account_id"])
         return result
 
     result = await asyncio.to_thread(_run)
@@ -48,6 +51,7 @@ async def redeem_coach_invite(
         account_id=result["account_id"],
         trainee_id=result["username"],
         capabilities=AccountCapabilitiesOut(**result["capabilities"]),
+        plans=AccountPlansOut(**result["plans"]),
     )
 
 

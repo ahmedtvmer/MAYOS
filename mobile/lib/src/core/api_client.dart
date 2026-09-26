@@ -141,7 +141,7 @@ class ApiClient {
 
   Future<Account> currentAccount() async {
     final response = await _send(() => _dio.get<dynamic>('/auth/me'));
-    return Account.fromJson(response.data as Map<String, dynamic>);
+    return _parseAccount(response.data);
   }
 
   /// Redeems an owner-issued, single-use coach invite and returns the updated account.
@@ -149,7 +149,18 @@ class ApiClient {
     final response = await _send(
       () => _dio.post<dynamic>('/coach/invite/redeem', data: {'token': token}),
     );
-    return Account.fromJson(response.data as Map<String, dynamic>);
+    return _parseAccount(response.data);
+  }
+
+  Account _parseAccount(dynamic responseData) {
+    if (responseData is! Map<String, dynamic>) {
+      throw const ApiException('The service returned invalid account status.');
+    }
+    try {
+      return Account.fromJson(responseData);
+    } on FormatException {
+      throw const ApiException('The service returned invalid account status.');
+    }
   }
 
   /// The authenticated coach's profile.

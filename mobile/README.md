@@ -1,25 +1,27 @@
 # MAYOS Mobile (Flutter)
 
-Android player client for the MAYOS closed trial, backed by the FastAPI service
-in the repository root. The basic player journey — register, log in, onboard,
-view the automatic program, and open the dashboard — is exercised by tests.
+Shared Android and web client for the MAYOS closed trial, backed by the FastAPI
+service in the repository root. The basic player journey — register, log in,
+onboard, view the automatic program, and open the dashboard — is exercised by
+tests.
 
 ## Layout
 
 - `lib/src/core/` — API client, secure token store, wire models, config.
 - `lib/src/features/player/` — auth, conversational onboarding, dashboard, program.
-- `lib/src/features/coach/` — reserved placeholder for the coach console (#23).
+- `lib/src/features/coach/` — coach capability and assignment screens.
 - `lib/src/features/shared/` — cross-cutting UI.
 - `test/` — service-contract flow test and capability-routing tests.
 
-The Android platform project under `android/` is part of the repository; no
-`flutter create` step is needed on a clean checkout.
+Android and web platform projects are included; no `flutter create` step is
+needed on a clean checkout.
 
 ## Requirements
 
 - Flutter stable with Dart 3.4+.
 - For device/emulator builds: an installed Android SDK, accepted licenses, and a
   connected device or running emulator.
+- For local web browser runs: Chrome available to Flutter as a device.
 
 ## Gates
 
@@ -43,7 +45,16 @@ flutter run --dart-define=MAYOS_API_BASE_URL=http://10.0.2.2:8000
 
 # Release requires an explicit HTTPS base URL; the app fails fast otherwise.
 flutter build apk --release --dart-define=MAYOS_API_BASE_URL=https://api.example.com
+
+# Build the shared web client for an HTTPS API.
+flutter build web --release --dart-define=MAYOS_API_BASE_URL=https://api.example.com
 ```
+
+For local web development, set the service's `UI_BASE_URL` to the browser
+origin (for example, `http://localhost:7357`) so CORS permits it, then run
+`flutter run -d chrome --web-port 7357 --dart-define=MAYOS_API_BASE_URL=http://localhost:8000`.
+Web requires a connection; offline workout drafts are Android-only. A release
+web build must point at an HTTPS API on a host that permits its origin.
 
 Onboarding, chat, and program generation need the model backend, so run the
 service normally to exercise the player journey. `SKIP_LLM_LOAD=true` starts
@@ -64,7 +75,9 @@ contract is also covered against the real FastAPI app in
 - Registration and login post the legacy `trainee_id` wire field. Domain-facing
   auth methods use `username`; only the API client touches the wire field.
 - `GET /auth/me` returns the immutable `account_id`, the legacy `trainee_id`,
-  and current `capabilities` (`player`, `coach`) read from the durable registry.
+  current `capabilities` (`player`, `coach`), and separate server-owned `plans`
+  (`lifter`, `coach`). Eligible capabilities default to Free; a missing plan
+  contract is treated as an invalid service response.
 - ADR 007: a recovery email is mandatory. `GET /auth/email` returns
   `{"email": string | null}` and `POST /auth/email` accepts `{"email": string}`;
   a missing email routes to the recovery-email screen before dashboard or

@@ -9,6 +9,7 @@ from agent.ProgramState import GeneratedProgramSchema, ProgramExerciseSchema
 __all__ = [
     "AccountCapabilitiesOut",
     "AccountOut",
+    "AccountPlansOut",
     "AssignmentAccessOut",
     "AssignmentEndOut",
     "AssignmentInviteIssueOut",
@@ -38,6 +39,7 @@ __all__ = [
     "OnboardingStepOut",
     "PasswordChangeIn",
     "PersonaUpdate",
+    "PlanStateOut",
     "ProfileUpdate",
     "ProgramExerciseSchema",
     "ProgramGenerateIn",
@@ -71,12 +73,27 @@ class AccountCapabilitiesOut(BaseModel):
     coach: bool
 
 
+class PlanStateOut(BaseModel):
+    """One capability's server-owned plan. A status field leaves room for later lifecycle states."""
+
+    plan: str
+    status: str
+
+
+class AccountPlansOut(BaseModel):
+    """Independent Lifter and Coach plans. ``None`` means the account lacks that capability."""
+
+    lifter: PlanStateOut | None = None
+    coach: PlanStateOut | None = None
+
+
 class AccountOut(BaseModel):
-    """Current account identity and capabilities, read from the durable registry."""
+    """Current account identity, capabilities, and plan states, read from the durable registry."""
 
     account_id: str
     trainee_id: str
     capabilities: AccountCapabilitiesOut
+    plans: AccountPlansOut
 
 
 class CoachInviteRedeemIn(BaseModel):

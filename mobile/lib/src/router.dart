@@ -13,6 +13,7 @@ import 'features/player/auth/recovery_email_screen.dart';
 import 'features/player/auth/register_screen.dart';
 import 'features/player/home/player_home_screen.dart';
 import 'features/player/onboarding/onboarding_screen.dart';
+import 'features/player/plan/plan_screen.dart';
 import 'features/shared/splash_screen.dart';
 import 'providers.dart';
 
@@ -21,6 +22,7 @@ const String registerPath = '/register';
 const String recoveryEmailPath = '/recovery-email';
 const String onboardingPath = '/onboarding';
 const String homePath = '/home';
+const String planPath = '/plan';
 const String coachPath = '/coach';
 const String coachInvitePath = '/coach-invite';
 const String coachAssignmentsPath = '/coach/assignments';
@@ -110,6 +112,13 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: homePath,
         builder: (BuildContext context, GoRouterState state) =>
             const PlayerHomeScreen(),
+      ),
+      GoRoute(
+        path: planPath,
+        builder: (BuildContext context, GoRouterState state) => Scaffold(
+          appBar: AppBar(title: const Text('Plan')),
+          body: const PlanScreen(),
+        ),
       ),
       GoRoute(
         path: coachInvitePath,

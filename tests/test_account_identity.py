@@ -369,6 +369,10 @@ def test_current_account_reports_capabilities_from_durable_registry(api):
         "account_id": account_id,
         "trainee_id": "alice",
         "capabilities": {"player": True, "coach": False},
+        "plans": {
+            "lifter": {"plan": "free", "status": "active"},
+            "coach": None,
+        },
     }
 
     # Capabilities come from the durable registry, not the token: flipping the

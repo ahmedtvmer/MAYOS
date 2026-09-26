@@ -153,6 +153,7 @@ class AuthController extends StateNotifier<AuthState> {
             player: account.capabilities.player,
             coach: false,
           ),
+          plans: account.plans.withoutCoach(),
         ),
         onboarded: current.onboarded,
         hasRecoveryEmail: current.hasRecoveryEmail,

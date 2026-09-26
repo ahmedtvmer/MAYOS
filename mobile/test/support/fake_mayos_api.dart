@@ -15,6 +15,8 @@ class FakeMayosApi {
   String? currentUsername;
   bool tokenValid = true;
   bool coach = false;
+  String lifterPlan = 'free';
+  String coachPlan = 'free';
   bool profileExists = false;
   String? recoveryEmail;
   String coachDisplayName = '';
@@ -141,8 +143,14 @@ class FakeMayosApi {
       'account_id': 'account-$currentUsername',
       'trainee_id': currentUsername,
       'capabilities': <String, dynamic>{'player': true, 'coach': coach},
+      'plans': _plansBody(),
     });
   }
+
+  Map<String, dynamic> _plansBody() => <String, dynamic>{
+        'lifter': <String, dynamic>{'plan': lifterPlan, 'status': 'active'},
+        if (coach) 'coach': <String, dynamic>{'plan': coachPlan, 'status': 'active'},
+      };
 
   FakeResponse _recoveryEmail(FakeRequest request) {
     if (!_authorized(request)) {
@@ -185,6 +193,7 @@ class FakeMayosApi {
       'account_id': 'account-$currentUsername',
       'trainee_id': currentUsername,
       'capabilities': <String, dynamic>{'player': true, 'coach': true},
+      'plans': _plansBody(),
     });
   }
 
@@ -601,6 +610,8 @@ class FakeMayosApi {
     tokenValid = true;
     if (fresh) {
       coach = false;
+      lifterPlan = 'free';
+      coachPlan = 'free';
       profileExists = false;
       recoveryEmail = null;
       coachDisplayName = '';
