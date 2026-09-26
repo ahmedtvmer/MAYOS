@@ -47,11 +47,11 @@ def _public_view(state: dict[str, Any], only_new: list | None = None) -> dict[st
     return {"intake_step": state.get("intake_step", 1), "is_complete": state.get("is_complete", False), "messages": texts}
 
 
-def _load_or_start(db: Any, trainee: str) -> dict[str, Any]:
+def _load_or_start(db: Any, trainee: str, account_id: str | None) -> dict[str, Any]:
     saved = db.load_onboarding_state()
     if saved is not None:
         return _deserialize(db, trainee, saved)
-    return onboarding_service.start_onboarding(db, trainee)
+    return onboarding_service.start_onboarding(db, trainee, player_account_id=account_id)
 
 
 @router.post("/start", response_model=OnboardingStartOut)
@@ -66,7 +66,7 @@ async def start_onboarding(
 
     def _run():
         bind_request(db, trainee)
-        state = _load_or_start(db, trainee)
+        state = _load_or_start(db, trainee, account_id_of(trainee))
         db.save_onboarding_state(_serialize(state))
         return _public_view(state)
 
@@ -83,10 +83,15 @@ async def answer_step(
 ):
     def _run():
         bind_request(db, trainee)
-        state = onboarding_service.start_onboarding(db, trainee) if body.reset else _load_or_start(db, trainee)
+        account_id = account_id_of(trainee)
+        state = (
+            onboarding_service.start_onboarding(db, trainee, player_account_id=account_id)
+            if body.reset
+            else _load_or_start(db, trainee, account_id)
+        )
         seen = len(state.get("messages", []))
         if body.content:
-            state = onboarding_service.answer_intake(db, trainee, state, body.content)
+            state = onboarding_service.answer_intake(db, trainee, state, body.content, player_account_id=account_id)
         db.save_onboarding_state(_serialize(state))
         return _public_view(state, only_new=state.get("messages", [])[seen:])
 
@@ -99,9 +104,13 @@ async def complete_onboarding(
 ):
     def _run():
         bind_request(db, trainee)
-        saved = db.load_onboarding_state()
-        state = _deserialize(db, trainee, saved) if saved is not None else onboarding_service.start_onboarding(db, trainee)
         account_id = account_id_of(trainee)
+        saved = db.load_onboarding_state()
+        state = (
+            _deserialize(db, trainee, saved)
+            if saved is not None
+            else onboarding_service.start_onboarding(db, trainee, player_account_id=account_id)
+        )
         result = onboarding_service.complete_onboarding(db, trainee, state, player_account_id=account_id)
         db.clear_onboarding_state()
         program = result["program"]

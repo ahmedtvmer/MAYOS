@@ -153,6 +153,28 @@ def _cloud_api_base() -> str:
     return os.getenv("LLM_API_BASE", DEFAULT_CLOUD_API_BASE).strip()
 
 
+def _cloud_model_id(model_type: str) -> str:
+    """The id metered for a cloud model (pricing key; env-overridable)."""
+    config = CLOUD_MODEL_REGISTRY[model_type]
+    return os.getenv(config["model_env"], config["default_model"]).strip()
+
+
+def _local_model_id(model_type: str) -> str:
+    """The id metered for a local GGUF; local inference is always cost 0."""
+    return f"local:{MODEL_REGISTRY[model_type]['repo_id']}"
+
+
+def _metering_callbacks(model_id: str) -> list[Any]:
+    """One usage callback for ``model_id``; a failure must never block a model build."""
+    try:
+        from utils.model_metering import MeteringCallback
+
+        return [MeteringCallback(model_id)]
+    except Exception:  # pragma: no cover - defensive; metering is best-effort
+        logger.exception("Model metering callback unavailable; building the model unmetered.")
+        return []
+
+
 def _should_use_cloud_mock() -> bool:
     """Mock the cloud backend in explicit test mode or when CI/pytest has no key.
 
@@ -630,14 +652,19 @@ def _build_cloud_llm(model_type: str) -> Any:
         # DeepInfra's documented Qwen example nests the toggle under
         # chat_template_kwargs; other providers can override via LLM_EXTRA_BODY.
         extra_body = {"chat_template_kwargs": {"enable_thinking": False}}
+    model_id = _cloud_model_id(model_type)
     return SafeChatOpenAI(
-        model=os.getenv(config["model_env"], config["default_model"]).strip(),
+        model=model_id,
         api_key=_cloud_api_key(),
         base_url=_cloud_api_base(),
         temperature=_float_env("LLM_TEMPERATURE", 0.0),
         max_tokens=_int_env(config["max_tokens_env"], config["default_max_tokens"]),
         streaming=bool(config["streaming"]),
         extra_body=extra_body,
+        # Ask the provider to include token usage on streamed calls so the
+        # metering callback sees real tokens instead of the fallback estimate.
+        stream_usage=True,
+        callbacks=_metering_callbacks(model_id),
         # Finite, configurable bounds so a stalled provider cannot hang a turn.
         timeout=_positive_float_env("LLM_REQUEST_TIMEOUT", DEFAULT_CLOUD_REQUEST_TIMEOUT),
         max_retries=_non_negative_int_env("LLM_MAX_RETRIES", DEFAULT_CLOUD_MAX_RETRIES),
@@ -671,6 +698,7 @@ def get_llm(n_gpu_layers: int | None = None) -> Any:
             model_path=resolved,
             max_tokens=_int_env("LLM_MAX_TOKENS", 200),
             streaming=True,
+            callbacks=_metering_callbacks(_local_model_id("production")),
             **_common_llm_kwargs(),
         )
         _attach_prompt_cache(instance)
@@ -714,6 +742,7 @@ def get_judge_llm(n_gpu_layers: int | None = None) -> Any:
             model_path=resolved,
             max_tokens=_int_env("JUDGE_MAX_TOKENS", 280),
             streaming=False,
+            callbacks=_metering_callbacks(_local_model_id("judge")),
             **{**_common_llm_kwargs(), "n_ctx": _int_env("JUDGE_N_CTX", 4096)},
         )
         return _judge_llm_instance

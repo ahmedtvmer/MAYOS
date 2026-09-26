@@ -8,7 +8,10 @@
 # Machine, never on a detached Machine that cannot mount /data. The missed-day
 # alert sweep (#31) runs in-process in this Machine once at startup and hourly
 # (MAYOS_ALERT_SWEEP_INTERVAL_SECONDS, default 3600; 0 disables); use
-# scripts/run_alert_sweep.py to force an immediate pass.
+# scripts/run_alert_sweep.py to force an immediate pass. The model spend alert
+# (#39, ADR 038) rides that same sweep and is deduped once per UTC month; the
+# owner address comes from the OWNER_ALERT_EMAIL secret and usage is reviewed
+# with scripts/model_usage_report.py.
 
 app = "mayos-api"
 primary_region = "fra"
@@ -33,6 +36,13 @@ primary_region = "fra"
   RESET_LINK_BASE_URL = "https://mayos-api.fly.dev"
   # CORS origin for the (legacy) web client; not used for reset links.
   # UI_BASE_URL = "https://<web-app-host>"
+  # Hosted-model usage controls (#39, ADR 038). Limits are per immutable account,
+  # enforced before any model call or stream starts. The spend alert is deduped
+  # once per UTC month; OWNER_ALERT_EMAIL is a `fly secrets set` value, not [env].
+  # MODEL_RATE_LIMIT_REQUESTS = "20"      # requests/minute/account (0 disables)
+  # MODEL_DAILY_TOKEN_LIMIT = "200000"    # tokens/UTC day/account (0 disables)
+  # MODEL_SPEND_ALERT_USD = "50"
+  # MODEL_PRICING_JSON = '{"Qwen/Qwen3.5-9B":{"input":0.10,"output":0.30},"Qwen/Qwen3.5-27B":{"input":0.30,"output":0.90}}'
   # Android App Link association. Set the signing-cert SHA-256 fingerprint(s)
   # (comma-separated; case/colons optional, normalised to uppercase
   # colon-separated). Include both the upload key and the Play App Signing cert

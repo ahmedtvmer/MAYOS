@@ -1,6 +1,6 @@
 """Dialogue-history helpers and assistant-turn entry points."""
 
-from typing import Any, Generator
+from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -82,13 +82,6 @@ def build_turn_state(
         "program_updated": False,
         "response_content": None,
     }
-
-
-def stream_turn(state: dict[str, Any]) -> Generator[str, None, None]:
-    from agent.assistant_graph import stream_assistant_turn
-    from svc.llm import bound_stream
-
-    yield from bound_stream(stream_assistant_turn, state)
 
 
 def persist_assistant_message(db: Any, response: str | None) -> None:

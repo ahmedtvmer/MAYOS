@@ -495,11 +495,11 @@ def test_onboarding_state_is_server_side(client, monkeypatch):
     client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
     calls = []
 
-    def fake_start(db, trainee_id):
+    def fake_start(db, trainee_id, player_account_id=None):
         calls.append(trainee_id)
         return {"messages": [AIMessage(content="Q1?")], "trainee_id": trainee_id, "intake_step": 1, "is_complete": False, "profile_data": None}
 
-    def fake_answer(db, trainee_id, state, user_input):
+    def fake_answer(db, trainee_id, state, user_input, player_account_id=None):
         calls.append((trainee_id, user_input))
         state["messages"].append(HumanMessage(content=user_input))
         state["messages"].append(AIMessage(content="Q2?"))
@@ -537,10 +537,10 @@ def test_onboarding_state_survives_restart(client, monkeypatch):
     client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
     seen_states = []
 
-    def fake_start(db, trainee_id):
+    def fake_start(db, trainee_id, player_account_id=None):
         return {"messages": [AIMessage(content="Q1?")], "trainee_id": trainee_id, "intake_step": 1, "is_complete": False, "profile_data": None}
 
-    def fake_answer(db, trainee_id, state, user_input):
+    def fake_answer(db, trainee_id, state, user_input, player_account_id=None):
         seen_states.append((trainee_id, [m.content for m in state["messages"]], user_input))
         state["messages"].append(HumanMessage(content=user_input))
         state["messages"].append(AIMessage(content="Q2?"))
@@ -563,7 +563,7 @@ def test_onboarding_start_resumes_persisted_progress(client, monkeypatch):
     client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
     answered_from = []
 
-    def fake_start(db, trainee_id):
+    def fake_start(db, trainee_id, player_account_id=None):
         return {
             "messages": [AIMessage(content="Q1?")],
             "trainee_id": trainee_id,
@@ -572,7 +572,7 @@ def test_onboarding_start_resumes_persisted_progress(client, monkeypatch):
             "profile_data": None,
         }
 
-    def fake_answer(db, trainee_id, state, user_input):
+    def fake_answer(db, trainee_id, state, user_input, player_account_id=None):
         answered_from.append([m.content for m in state["messages"]])
         state["messages"].append(HumanMessage(content=user_input))
         state["messages"].append(AIMessage(content="Q2?"))

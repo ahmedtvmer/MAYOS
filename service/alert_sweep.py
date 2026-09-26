@@ -33,6 +33,7 @@ def run_sweep(db: Any, now: datetime | None = None) -> dict[str, int]:
         "alerts_created": 0,
         "alerts_resolved": 0,
         "follow_ups_created": 0,
+        "spend_alert_fired": 0,
         "errors": 0,
     }
     for assignment in db.list_all_active_assignments():
@@ -61,4 +62,14 @@ def run_sweep(db: Any, now: datetime | None = None) -> dict[str, int]:
             logger.exception(
                 "Follow-up evaluation failed for assignment %s", assignment.get("assignment_id")
             )
+    # The model spend alert rides this existing sweep rather than adding a loop
+    # (ADR 038, AC3). It is deduped per UTC month and never raises.
+    try:
+        from service.model_metering import evaluate_spend_alert
+
+        spend = evaluate_spend_alert(db, now=now)
+        counts["spend_alert_fired"] = 1 if spend.get("fired") else 0
+    except Exception:
+        counts["errors"] += 1
+        logger.exception("Model spend-alert evaluation failed")
     return counts

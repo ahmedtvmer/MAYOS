@@ -15,8 +15,9 @@ from fastapi.responses import StreamingResponse
 
 from agent.assistant_graph import stream_assistant_turn
 from service import chat as chat_service
+from service.model_limits import admit_model_request
 from svc.dependencies import account_id_of, bind_request, get_current_trainee, get_db
-from svc.llm import bound_stream
+from svc.llm import InferenceScope, bound_stream
 from svc.rate_limit import CHAT_LIMIT, limiter
 from svc.schemas import ChatMessageIn
 from utils.text_scrubber import PIPELINE_ERROR_RESPONSE
@@ -47,8 +48,15 @@ async def clear_history(
     return None
 
 
-def _run_turn(db: Any, trainee: str, content: str, out: "queue.Queue[tuple[str, Any]]") -> None:
-    """Executes the sync turn on a worker thread, bridging chunks into the queue."""
+def _run_turn(
+    db: Any, trainee: str, content: str, out: "queue.Queue[tuple[str, Any]]", account_id: str | None = None
+) -> None:
+    """Executes the sync turn on a worker thread, bridging chunks into the queue.
+
+    The route already admitted this account for one request, so the stream is
+    admitted with ``admit=False`` (it still runs under the account/role usage
+    context, so every model call in the turn is attributed).
+    """
     try:
         bind_request(db, trainee)
         profile = db.get_user_profile() or {}
@@ -62,7 +70,11 @@ def _run_turn(db: Any, trainee: str, content: str, out: "queue.Queue[tuple[str, 
             custom_instructions=profile.get("custom_instructions", ""),
             player_account_id=account_id_of(trainee),
         )
-        for piece in bound_stream(stream_assistant_turn, state):
+        for piece in bound_stream(
+            stream_assistant_turn,
+            state,
+            scope=InferenceScope(account_id=account_id, role="player", purpose="chat", admit=False),
+        ):
             out.put(("token", piece))
         chat_service.persist_assistant_message(db, state.get("response_content"))
         out.put(("done", {"response_content": state.get("response_content") or "", "program_updated": bool(state.get("program_updated"))}))
@@ -80,8 +92,16 @@ async def post_message(
     trainee: Annotated[str, Depends(get_current_trainee)],
     db: Annotated[Any, Depends(get_db)],
 ):
+    account_id = account_id_of(trainee)
+    # Refuse before the stream starts: the app-wide ModelLimitExceeded handler
+    # returns a plain HTTP 429 with a JSON ``detail`` (surfaced verbatim by the
+    # mobile client, ADR 036/038).
+    admit_model_request(account_id, guard=False)
+
     out: "queue.Queue[tuple[str, Any]]" = queue.Queue()
-    worker = threading.Thread(target=_run_turn, args=(db, trainee, body.content, out), daemon=True)
+    worker = threading.Thread(
+        target=_run_turn, args=(db, trainee, body.content, out, account_id), daemon=True
+    )
     worker.start()
 
     async def event_stream():

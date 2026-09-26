@@ -250,6 +250,17 @@ Password recovery needs an email → account mapping while **logged out**, so re
 
 Both are provisioned idempotently at catalog boot. See [`AUTHENTICATION.md`](AUTHENTICATION.md) for the full specification.
 
+### Catalog Model Usage Tables (ADR 038)
+
+Hosted-model metering and the closed-trial owner alert also live catalog-side, so the owner report and the in-process spend check read one shared table without mounting a player ledger (ticket #39):
+
+| Table | Purpose |
+| :--- | :--- |
+| `model_usage` | One row per model call: immutable account id (NULL ⇒ unattributed), role, model, purpose, input/output tokens, `estimated`, `cost_usd`, `created_at` |
+| `model_spend_alerts` | Once-per-UTC-month alert dedupe (`period` primary key) with projected/actual spend |
+
+Per-account request and daily-token limits are enforced before any model call or stream starts; the metering callback is attached to every model the downloader builds, so `invoke`, structured output, and streaming all meter themselves.
+
 ---
 
 ## 5. Token Streaming & Tool-Call Sanitization Flow

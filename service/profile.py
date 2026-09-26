@@ -38,9 +38,13 @@ def update_profile(
     program_blocked = False
     if freq_changed or rep_changed or limits_changed:
         if player_controls_program(db, player_account_id):
-            program, _ = generate_program_pipeline(
+            from svc.llm import InferenceScope, run_inference_sync
+
+            program, _ = run_inference_sync(
+                generate_program_pipeline,
                 rep_preference_override=updated.get("rep_preference", "balanced"),
                 frequency_override=int(updated.get("weekly_frequency", 4)),
+                scope=InferenceScope(account_id=player_account_id, role="player", purpose="profile_rebuild"),
             )
         else:
             program_blocked = True

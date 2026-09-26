@@ -157,6 +157,7 @@ def test_sweep_creates_one_alert_and_notice_for_a_two_day_streak(api):
         "alerts_created": 1,
         "alerts_resolved": 0,
         "follow_ups_created": 1,
+        "spend_alert_fired": 0,
         "errors": 0,
     }
     alerts = [

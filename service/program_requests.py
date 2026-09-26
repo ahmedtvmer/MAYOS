@@ -259,10 +259,14 @@ def apply_request(
         if request["kind"] == EXERCISE_SUBSTITUTION:
             db.save_training_program(data, published_by_coach_account_id=coach_account_id)
         else:
-            generate_program_pipeline(
+            from svc.llm import InferenceScope, run_inference_sync
+
+            run_inference_sync(
+                generate_program_pipeline,
                 frequency_override=request["desired_weekly_frequency"],
                 user_split_override=request["desired_split_preference"],
                 published_by_coach_account_id=coach_account_id,
+                scope=InferenceScope(account_id=coach_account_id, role="coach", purpose="coach_program_request"),
             )
     except Exception:
         logger.exception(

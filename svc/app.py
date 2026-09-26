@@ -14,6 +14,8 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from database.storage import storage_status
+from service.model_limits import ModelLimitExceeded
+from service.model_metering import record_model_usage
 from svc.rate_limit import limiter
 from svc.routers import (
     alerts,
@@ -68,6 +70,17 @@ def _install_access_log_redaction() -> None:
 
 
 _install_access_log_redaction()
+
+
+def _register_model_metering() -> None:
+    """Wires the metering sink once at startup (utils must not import service).
+
+    The LangChain callback in ``utils.model_metering`` records every model call
+    through this sink; until it is registered the callback is a no-op (ADR 038).
+    """
+    from utils import model_metering
+
+    model_metering.set_recorder(record_model_usage)
 
 DEFAULT_ALERT_SWEEP_INTERVAL_SECONDS = 3600.0
 
@@ -162,6 +175,12 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Mayos Training Engine", version="2.0.0", lifespan=lifespan)
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    _register_model_metering()
+
+    @app.exception_handler(ModelLimitExceeded)
+    async def model_limit_handler(request: Request, exc: ModelLimitExceeded):
+        """One 429 shape for every per-account model limit refusal (ADR 038)."""
+        return JSONResponse(status_code=429, content={"detail": exc.detail})
 
     ui_origin = os.getenv("UI_BASE_URL", "http://localhost:8501")
     app.add_middleware(

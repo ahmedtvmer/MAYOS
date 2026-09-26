@@ -16,15 +16,39 @@ There are two entry surfaces because callers live in two worlds:
 
 Both surfaces honor ``LLM_MAX_CONCURRENT`` and fail fast (``TimeoutError``)
 instead of piling requests up.
+
+Every entry point also carries the caller's immutable account plus role,
+purpose, and an admission flag bundled as an :class:`InferenceScope` (ADR 038).
+Admission (the per-account model rate limit) and the usage context run before
+the gate is taken, so no model call or stream can start while an account is over
+its limit; the context attributes each metered model call to the account for the
+whole turn. ``admit=False`` is for a route that already pre-admitted (the
+streamed chat route, so it can refuse with a plain HTTP 429 before the stream
+starts).
 """
 
 import asyncio
 import contextlib
 import os
 import threading
+from dataclasses import dataclass
 from typing import Any, Callable, Iterator
 
 _INFERENCE_LOCK = threading.Lock()
+
+
+@dataclass(frozen=True)
+class InferenceScope:
+    """The immutable account + role + purpose an inference is attributed to.
+
+    ``admit`` controls whether the entry point also enforces the per-account
+    request/daily-token limit (``False`` for a route that already admitted).
+    """
+
+    account_id: str | None = None
+    role: str = "unknown"
+    purpose: str | None = None
+    admit: bool = True
 
 
 def _max_concurrent() -> int:
@@ -99,55 +123,88 @@ def _uses_serial_lock() -> bool:
 
 
 @contextlib.contextmanager
-def inference_slot(timeout: float = 30.0) -> Iterator[None]:
-    """Sync gate for a blocking graph call: one ``LLM_MAX_CONCURRENT`` slot.
+def _usage_scope(scope: InferenceScope) -> Iterator[None]:
+    """Admits one per-account request (unless disabled) and sets the usage context.
 
-    Raises ``TimeoutError`` when the gate stays full for ``timeout`` seconds.
-    The thread-unsafe local backend additionally holds ``_INFERENCE_LOCK`` for
-    the whole slot; cloud calls skip it.
+    Admission runs first, so an over-limit account is refused before any model
+    call, stream, or gate acquisition. The guard token is released when the
+    scope exits, so a later turn in the same thread/context is enforced again.
+    The context stays set for the whole block, so every model call the turn makes
+    is metered to the same account/role.
     """
-    gate = _inference_gate()
-    if not gate.acquire(timeout=timeout):
-        raise TimeoutError("Inference queue is full; retry shortly.")
+    from service.model_limits import admit_model_request, release_admission
+    from utils.model_metering import usage_context
+
+    token = admit_model_request(scope.account_id) if scope.admit else None
     try:
-        if _uses_serial_lock():
-            with _INFERENCE_LOCK:
-                yield
-        else:
+        with usage_context(scope.account_id, scope.role, scope.purpose):
             yield
     finally:
-        gate.release()
+        release_admission(token)
 
 
-def run_inference_sync(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+@contextlib.contextmanager
+def inference_slot(timeout: float = 30.0, *, scope: InferenceScope | None = None) -> Iterator[None]:
+    """Sync gate for a blocking graph call: one ``LLM_MAX_CONCURRENT`` slot.
+
+    Raises ``TimeoutError`` when the gate stays full for ``timeout`` seconds and
+    ``ModelLimitExceeded`` when the account is over its model limit. The
+    thread-unsafe local backend additionally holds ``_INFERENCE_LOCK`` for the
+    whole slot; cloud calls skip it.
+    """
+    with _usage_scope(scope or InferenceScope()):
+        gate = _inference_gate()
+        if not gate.acquire(timeout=timeout):
+            raise TimeoutError("Inference queue is full; retry shortly.")
+        try:
+            if _uses_serial_lock():
+                with _INFERENCE_LOCK:
+                    yield
+            else:
+                yield
+        finally:
+            gate.release()
+
+
+def run_inference_sync(
+    fn: Callable[..., Any], *args: Any, scope: InferenceScope | None = None, **kwargs: Any
+) -> Any:
     """Runs a blocking ``llm.*`` callable under the shared inference gate."""
-    with inference_slot():
+    with inference_slot(scope=scope):
         return fn(*args, **kwargs)
 
 
-def bound_stream(stream_factory: Callable[..., Iterator[Any]], *args: Any, **kwargs: Any) -> Iterator[Any]:
+def bound_stream(
+    stream_factory: Callable[..., Iterator[Any]],
+    *args: Any,
+    scope: InferenceScope | None = None,
+    **kwargs: Any,
+) -> Iterator[Any]:
     """Yields from a sync generator while holding one inference slot.
 
     The slot spans the whole stream so concurrent chat turns are bounded by
     ``LLM_MAX_CONCURRENT`` (and serialized for the local backend) instead of
     only buffering whole responses.
     """
-    with inference_slot():
+    with inference_slot(scope=scope):
         yield from stream_factory(*args, **kwargs)
 
 
-async def run_inference(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+async def run_inference(
+    fn: Callable[..., Any], *args: Any, scope: InferenceScope | None = None, **kwargs: Any
+) -> Any:
     """Runs a blocking ``llm.*`` callable; raises ``TimeoutError`` on overload."""
-    try:
-        await asyncio.wait_for(_SEMAPHORE.acquire(), timeout=30.0)
-    except asyncio.TimeoutError:
-        raise TimeoutError("Inference queue is full; retry shortly.") from None
-    try:
-        if _uses_serial_lock():
-            return await asyncio.to_thread(_locked_call, fn, args, kwargs)
-        return await asyncio.to_thread(fn, *args, **kwargs)
-    finally:
-        _SEMAPHORE.release()
+    with _usage_scope(scope or InferenceScope()):
+        try:
+            await asyncio.wait_for(_SEMAPHORE.acquire(), timeout=30.0)
+        except asyncio.TimeoutError:
+            raise TimeoutError("Inference queue is full; retry shortly.") from None
+        try:
+            if _uses_serial_lock():
+                return await asyncio.to_thread(_locked_call, fn, args, kwargs)
+            return await asyncio.to_thread(fn, *args, **kwargs)
+        finally:
+            _SEMAPHORE.release()
 
 
 def _locked_call(fn: Callable[..., Any], args: tuple, kwargs: dict) -> Any:

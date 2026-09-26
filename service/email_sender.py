@@ -112,6 +112,28 @@ def send_program_request_email(to_email: str, coach_display_name: str, player_us
     return _deliver(to_email, subject, body)
 
 
+def send_model_spend_alert_email(
+    to_email: str, projected_usd: float, actual_usd: float, threshold_usd: float
+) -> bool:
+    """Owner-only notice that projected hosted-model spend crossed the trial threshold (ADR 038).
+
+    Contains aggregate spend figures only — never account ids, prompts, or any
+    player/coach content. The owner reviews per-account usage with
+    ``scripts/model_usage_report.py``.
+    """
+    subject = "MAYOS model spend alert"
+    body = (
+        "Hosted model spend for the closed trial has crossed the alert threshold.\n\n"
+        f"Threshold:        ${threshold_usd:,.2f}\n"
+        f"Projected month:  ${projected_usd:,.2f}\n"
+        f"Month-to-date:    ${actual_usd:,.2f}\n\n"
+        "Review actual usage before expanding:\n"
+        "  python scripts/model_usage_report.py\n\n"
+        "This notice contains aggregate spend only."
+    )
+    return _deliver(to_email, subject, body)
+
+
 def send_password_reset_email(to_email: str, reset_link: str) -> bool:
     # Local import: password_reset imports this module, so a top-level import
     # here would be circular. The TTL stays defined in one place.

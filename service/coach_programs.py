@@ -32,11 +32,15 @@ def publish_program(
     if context is None:
         return None
 
-    _program, _ = generate_program_pipeline(
+    from svc.llm import InferenceScope, run_inference_sync
+
+    _program, _ = run_inference_sync(
+        generate_program_pipeline,
         user_split_override=user_split_override,
         rep_preference_override=rep_preference_override,
         frequency_override=frequency_override,
         published_by_coach_account_id=coach_account_id,
+        scope=InferenceScope(account_id=coach_account_id, role="coach", purpose="coach_program_publish"),
     )
 
     published = db.get_active_program()
