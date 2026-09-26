@@ -30,6 +30,28 @@ def _evaluate_missed_days(db: Any, account_id: str) -> None:
         logger.exception("Missed-day alert evaluation raised unexpectedly after session commit")
 
 
+def _evaluate_progression_alerts(
+    db: Any,
+    account_id: str,
+    session_id: str,
+    session_date: str,
+    exercise_summaries: list[dict[str, Any]],
+    fatigue_post: dict[str, Any],
+) -> None:
+    """Best-effort deload/regression alert evaluation after a commit (ADR 032).
+
+    Catalog-only, so it is safe to run after the missed-day hook has unmounted the
+    player's ledger; a failure never fails the workout commit.
+    """
+    try:
+        from service import progression_alerts
+
+        progression_alerts.evaluate_commit(
+            db, account_id, session_id, session_date, exercise_summaries, fatigue_post
+        )
+    except Exception:
+        logger.exception("Progression alert evaluation raised unexpectedly after session commit")
+
 
 def _is_barbell(exercise: Any) -> bool:
     return "barbell" in exercise.exercise_name.lower() or "barbell" in str(getattr(exercise, "equipment", "")).lower()
@@ -206,6 +228,7 @@ def commit_session(
 
         exercise_summaries.append(
             {
+                "exercise_id": exercise_id,
                 "name": ex_obj.exercise_name,
                 "top_load": top_set["weight_kg"],
                 "top_reps": top_set["reps"],
@@ -218,6 +241,7 @@ def commit_session(
                 "reps_delta": reps_delta,
                 "action": action,
                 "status_badge": status_badge,
+                "projection_status": next_proj["status"],
                 "target_text": target_text,
             }
         )
@@ -289,6 +313,9 @@ def commit_session(
 
     if account_id:
         _evaluate_missed_days(db, account_id)
+        _evaluate_progression_alerts(
+            db, account_id, session_id, today_date, exercise_summaries, fatigue_post
+        )
 
     return {
         "session_id": session_id,

@@ -238,11 +238,12 @@ class CoachAssignmentsOut(BaseModel):
 
 
 class CoachAlertOut(BaseModel):
-    """One catalog-side alert for the coach alert centre (ADR 030/031).
+    """One catalog-side alert for the coach alert centre (ADR 030/031/032).
 
-    ``kind`` distinguishes missed-day alerts from follow-up-due alerts. The
-    kind-specific fields are flattened beside the common ones, so a client can
-    read ``streak_start_date``/``missed_count`` or ``due_on`` directly.
+    ``kind`` distinguishes missed-day, follow-up-due, deload, and
+    performance-regression alerts. The kind-specific fields are flattened beside
+    the common ones, so a client can read ``streak_start_date``/``missed_count``,
+    ``due_on``, or the progression evidence directly.
     """
 
     alert_id: str
@@ -259,6 +260,23 @@ class CoachAlertOut(BaseModel):
     missed_count: int = 0
     due_on: str | None = None
     last_check_in_on: str | None = None
+    severity: str | None = None
+    reason: str | None = None
+    recent_readiness_avg: float | None = None
+    volume_multiplier: float | None = None
+    intensity_cap_rpe: float | None = None
+    exercise_id: str | None = None
+    exercise_name: str | None = None
+    status_badge: str | None = None
+    e1rm_delta: float | None = None
+    current_e1rm: float | None = None
+    top_load: float | None = None
+    top_reps: int | None = None
+    top_rpe: float | None = None
+    session_id: str | None = None
+    session_date: str | None = None
+    latest_session_id: str | None = None
+    latest_session_date: str | None = None
 
 
 class CoachAlertListOut(BaseModel):

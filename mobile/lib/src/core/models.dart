@@ -396,11 +396,11 @@ class CoachRosterEntry {
   int get alertsOpen => alertsNew + alertsAcknowledged;
 }
 
-/// `GET /coach/alerts`: one catalog-side alert, of more than one kind (ADR 030/031).
+/// `GET /coach/alerts`: one catalog-side alert, of more than one kind (ADR 030/031/032).
 ///
-/// `kind` is `missed_expected_days` or `follow_up_due`; the kind-specific fields
-/// (`streak_start_date`/`last_missed_date`/`missed_count` vs `due_on`) are
-/// flattened beside the common fields.
+/// `kind` is `missed_expected_days`, `follow_up_due`, `deload_recommended`, or
+/// `performance_regression`; the kind-specific fields are flattened beside the
+/// common fields.
 class CoachAlert {
   const CoachAlert({
     required this.alertId,
@@ -414,6 +414,12 @@ class CoachAlert {
     this.missedCount = 0,
     this.dueOn,
     this.lastCheckInOn,
+    this.reason,
+    this.severity,
+    this.recentReadinessAvg,
+    this.exerciseName,
+    this.statusBadge,
+    this.e1rmDelta,
     this.acknowledgedAt,
     this.resolvedAt,
     this.resolvedBy,
@@ -431,6 +437,12 @@ class CoachAlert {
         missedCount: (json['missed_count'] as num?)?.toInt() ?? 0,
         dueOn: json['due_on'] as String?,
         lastCheckInOn: json['last_check_in_on'] as String?,
+        reason: json['reason'] as String?,
+        severity: json['severity'] as String?,
+        recentReadinessAvg: (json['recent_readiness_avg'] as num?)?.toDouble(),
+        exerciseName: json['exercise_name'] as String?,
+        statusBadge: json['status_badge'] as String?,
+        e1rmDelta: (json['e1rm_delta'] as num?)?.toDouble(),
         acknowledgedAt: json['acknowledged_at'] as String?,
         resolvedAt: json['resolved_at'] as String?,
         resolvedBy: json['resolved_by'] as String?,
@@ -447,24 +459,45 @@ class CoachAlert {
   final int missedCount;
   final String? dueOn;
   final String? lastCheckInOn;
+  final String? reason;
+  final String? severity;
+  final double? recentReadinessAvg;
+  final String? exerciseName;
+  final String? statusBadge;
+  final double? e1rmDelta;
   final String? acknowledgedAt;
   final String? resolvedAt;
   final String? resolvedBy;
 
   static const String followUpDueKind = 'follow_up_due';
+  static const String deloadRecommendedKind = 'deload_recommended';
+  static const String performanceRegressionKind = 'performance_regression';
 
   bool get isNew => state == 'new';
   bool get isAcknowledged => state == 'acknowledged';
   bool get isResolved => state == 'resolved';
 
   bool get isFollowUpDue => kind == followUpDueKind;
+  bool get isDeloadRecommended => kind == deloadRecommendedKind;
+  bool get isPerformanceRegression => kind == performanceRegressionKind;
 
   /// The alert-centre description, rendered per kind.
-  String get description => isFollowUpDue
-      ? 'Follow-up due since ${dueOn ?? 'an earlier date'}'
-      : 'Missed $missedCount expected training '
-          '${missedCount == 1 ? 'day' : 'days'} '
-          '(${streakStartDate ?? '?'} to ${lastMissedDate ?? '?'})';
+  String get description {
+    if (isDeloadRecommended) {
+      return 'Deload recommended — ${reason ?? 'Systemic fatigue'}';
+    }
+    if (isPerformanceRegression) {
+      final String badge = statusBadge ?? 'regression';
+      return 'Performance regression — ${exerciseName ?? 'Exercise'}: '
+          'e1RM ${_signedE1rm(e1rmDelta)} kg ($badge)';
+    }
+    if (isFollowUpDue) {
+      return 'Follow-up due since ${dueOn ?? 'an earlier date'}';
+    }
+    return 'Missed $missedCount expected training '
+        '${missedCount == 1 ? 'day' : 'days'} '
+        '(${streakStartDate ?? '?'} to ${lastMissedDate ?? '?'})';
+  }
 
   String get stateLabel => switch (state) {
         'new' => 'New',
@@ -472,6 +505,15 @@ class CoachAlert {
         'resolved' => 'Resolved',
         _ => state,
       };
+}
+
+/// Formats an e1RM delta with a true minus sign, e.g. `−6.2` or `+1.0`.
+String _signedE1rm(double? value) {
+  if (value == null) {
+    return '?';
+  }
+  final String sign = value < 0 ? '−' : '+';
+  return '$sign${value.abs().toStringAsFixed(1)}';
 }
 
 /// One coach-recorded check-in fact (`GET /coach/assignments/{id}/check-ins`,

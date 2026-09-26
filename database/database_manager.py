@@ -98,7 +98,10 @@ class DatabaseManager:
             self.users_dir = Path(users_dir) if users_dir is not None else root / "users"
             self.backups_dir = Path(backups_dir) if backups_dir is not None else root / "backups"
             self._default_user = self._sanitize_username(active_user) if active_user else "default"
-            self._catalog_lock = threading.Lock()
+            # A re-entrant lock lets a ``catalog_transaction`` hold the lock while
+            # the catalog methods it calls re-acquire it (their own writes only
+            # commit when no transaction is active).
+            self._catalog_lock = threading.RLock()
 
             os.makedirs(self.catalog_path.parent, exist_ok=True)
             os.makedirs(self.users_dir, exist_ok=True)
@@ -924,11 +927,78 @@ class DatabaseManager:
                 );
                 CREATE INDEX IF NOT EXISTS idx_check_ins_assignment ON check_ins(assignment_id);
                 CREATE INDEX IF NOT EXISTS idx_check_ins_player ON check_ins(player_account_id);
+
+                -- Catalog-side episode state for the progression alerts (ADR 032,
+                -- ticket #33). ``subject`` is '' for the systemic deload signal and
+                -- the exercise id for performance regression, so a commit that does
+                -- not include an exercise leaves its episode untouched.
+                CREATE TABLE IF NOT EXISTS alert_signal_state (
+                    assignment_id TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    subject TEXT NOT NULL,
+                    active INTEGER NOT NULL DEFAULT 0,
+                    episode_key TEXT,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (assignment_id, kind, subject)
+                );
+
+                -- Catalog-side marker of committed sessions whose progression
+                -- signals have been evaluated (ADR 032, ticket #33). Written in the
+                -- same transaction as the alert transitions, so re-processing an
+                -- older session (even after later ones) is a no-op.
+                CREATE TABLE IF NOT EXISTS progression_alert_sessions (
+                    assignment_id TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    processed_at TEXT NOT NULL,
+                    PRIMARY KEY (assignment_id, session_id)
+                );
             """)
             self._create_coach_alerts_schema()
             self._ensure_roster_attendance_timezone()
-            self.catalog_conn.commit()
+            self._commit_catalog()
             self._account_schema_ready = True
+
+    # ------------------------------------------------------------------
+    # Catalog transactions. The whole progression-alert evaluation for one
+    # commit runs inside a single explicit transaction under the catalog lock
+    # (ADR 032). Catalog write methods detect the active transaction and skip
+    # their own commit, so a failure anywhere rolls the whole evaluation back.
+    # ------------------------------------------------------------------
+
+    @contextmanager
+    def catalog_transaction(self) -> Iterator[None]:
+        """Runs a group of catalog writes atomically.
+
+        Re-entrant: nested calls join the outermost transaction. On error the
+        whole group is rolled back and the exception re-raised. The catalog lock
+        is held for the life of the transaction.
+        """
+        with self._catalog_lock:
+            depth = getattr(self._local, "catalog_tx_depth", 0)
+            self._local.catalog_tx_depth = depth + 1
+            outermost = depth == 0
+            original_isolation = self.catalog_conn.isolation_level
+            if outermost:
+                self.catalog_conn.isolation_level = None
+                self.catalog_conn.execute("BEGIN")
+            try:
+                yield
+            except Exception:
+                if outermost:
+                    self.catalog_conn.execute("ROLLBACK")
+                raise
+            else:
+                if outermost:
+                    self.catalog_conn.execute("COMMIT")
+            finally:
+                self._local.catalog_tx_depth = depth
+                if outermost:
+                    self.catalog_conn.isolation_level = original_isolation
+
+    def _commit_catalog(self) -> None:
+        """Commits a standalone catalog write, or defers to the active transaction."""
+        if getattr(self._local, "catalog_tx_depth", 0) == 0:
+            self.catalog_conn.commit()
 
     # ------------------------------------------------------------------
     # coach_alerts generalised shape (ADR 031). The table + index DDL lives
@@ -1018,7 +1088,8 @@ class DatabaseManager:
         """Rebuild the legacy missed-day-shaped ``coach_alerts`` in place (ADR 031).
 
         Idempotent and crash-safe. The caller already holds ``_catalog_lock`` for
-        the whole rebuild. Shape detection handles every crash point:
+        the whole rebuild (``catalog_transaction`` is re-entrant). Shape detection
+        handles every crash point:
 
         * old shape + no leftover: the normal rebuild;
         * old shape + leftover ``coach_alerts_new``: drop the orphan and rebuild;
@@ -1026,9 +1097,9 @@ class DatabaseManager:
           the old table was dropped, so the leftover is complete and is renamed;
         * already migrated: any orphan is dropped and nothing else happens.
 
-        The rebuild runs inside one explicit ``BEGIN``/``COMMIT`` (legacy sqlite3
-        autocommit is disabled for the duration) and rolls back on any exception,
-        so a failure leaves the old table and its rows intact.
+        The rebuild runs inside one ``catalog_transaction`` ``BEGIN``/``COMMIT``
+        and rolls back on any exception, so a failure leaves the old table and its
+        rows intact.
         """
         cursor = self.catalog_conn.cursor()
         old_columns = self._table_columns(cursor, "coach_alerts")
@@ -1037,34 +1108,25 @@ class DatabaseManager:
         if old_columns and "dedupe_key" in old_columns:
             # Already migrated; clear any orphan left by an interrupted run.
             if new_columns:
-                self.catalog_conn.execute("DROP TABLE IF EXISTS coach_alerts_new")
-                self.catalog_conn.commit()
+                with self.catalog_transaction():
+                    self.catalog_conn.execute("DROP TABLE IF EXISTS coach_alerts_new")
             return
         if not old_columns and not new_columns:
             return
 
-        original_isolation = self.catalog_conn.isolation_level
-        self.catalog_conn.isolation_level = None
-        try:
-            self.catalog_conn.execute("BEGIN")
-            try:
-                if not old_columns and new_columns:
-                    # The old table was already dropped before the crash: finish.
-                    cursor.execute("ALTER TABLE coach_alerts_new RENAME TO coach_alerts")
-                else:
-                    cursor.execute("DROP TABLE IF EXISTS coach_alerts_new")
-                    cursor.execute(self._coach_alerts_create_sql("coach_alerts_new"))
-                    self._copy_legacy_coach_alert_rows(cursor)
-                    cursor.execute("DROP TABLE coach_alerts")
-                    cursor.execute("ALTER TABLE coach_alerts_new RENAME TO coach_alerts")
-                for statement in self._COACH_ALERTS_INDEX_SQL:
-                    cursor.execute(statement)
-                self.catalog_conn.execute("COMMIT")
-            except Exception:
-                self.catalog_conn.execute("ROLLBACK")
-                raise
-        finally:
-            self.catalog_conn.isolation_level = original_isolation
+        with self.catalog_transaction():
+            cursor = self.catalog_conn.cursor()
+            if not old_columns and new_columns:
+                # The old table was already dropped before the crash: finish.
+                cursor.execute("ALTER TABLE coach_alerts_new RENAME TO coach_alerts")
+            else:
+                cursor.execute("DROP TABLE IF EXISTS coach_alerts_new")
+                cursor.execute(self._coach_alerts_create_sql("coach_alerts_new"))
+                self._copy_legacy_coach_alert_rows(cursor)
+                cursor.execute("DROP TABLE coach_alerts")
+                cursor.execute("ALTER TABLE coach_alerts_new RENAME TO coach_alerts")
+            for statement in self._COACH_ALERTS_INDEX_SQL:
+                cursor.execute(statement)
 
     def _ensure_roster_attendance_timezone(self) -> None:
         """Additive ``timezone`` column on an existing ``roster_attendance`` (ADR 031)."""
@@ -2036,13 +2098,31 @@ class DatabaseManager:
                 ),
             )
             created = cursor.rowcount == 1
-            self.catalog_conn.commit()
+            self._commit_catalog()
             cursor.execute(
                 f"SELECT {self._COACH_ALERT_COLUMNS} FROM coach_alerts"
                 " WHERE assignment_id = ? AND kind = ? AND dedupe_key = ?",
                 (str(assignment_id), str(kind), str(dedupe_key)),
             )
             return {"alert": self._coach_alert_from_row(cursor.fetchone()), "created": created}
+
+    def get_coach_alert_by_dedupe(
+        self, assignment_id: str, kind: str, dedupe_key: str
+    ) -> dict[str, Any] | None:
+        """The alert for one exact ``(assignment, kind, dedupe_key)``, or ``None``.
+
+        Read-only, so an episode extension can look the open alert up without
+        risking the creation of a new one (ADR 032).
+        """
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                f"SELECT {self._COACH_ALERT_COLUMNS} FROM coach_alerts"
+                " WHERE assignment_id = ? AND kind = ? AND dedupe_key = ?",
+                (str(assignment_id), str(kind), str(dedupe_key)),
+            )
+            return self._coach_alert_from_row(cursor.fetchone())
 
     def get_coach_alert(self, alert_id: str) -> dict[str, Any] | None:
         self.ensure_account_schema()
@@ -2091,7 +2171,7 @@ class DatabaseManager:
                 " AND details != ?",
                 (encoded, str(alert_id), encoded),
             )
-            self.catalog_conn.commit()
+            self._commit_catalog()
             return int(cursor.rowcount)
 
     def acknowledge_coach_alert(
@@ -2164,8 +2244,111 @@ class DatabaseManager:
                 " AND (? IS NULL OR dedupe_key != ?)",
                 (now_iso, str(assignment_id), str(kind), except_dedupe_key, except_dedupe_key),
             )
-            self.catalog_conn.commit()
+            self._commit_catalog()
             return int(cursor.rowcount)
+
+    def resolve_open_coach_alerts_for_dedupe(
+        self, assignment_id: str, kind: str, dedupe_key: str, now_iso: str
+    ) -> int:
+        """Auto-resolves the open alert for one exact dedupe key (ADR 032).
+
+        Used by a progression episode close: each exercise's alert carries its own
+        ``<subject>:<episode_key>`` dedupe key, so resolving by key closes only
+        that episode's alert, never a sibling exercise's.
+        """
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "UPDATE coach_alerts SET state = 'resolved', resolved_at = ?, resolved_by = 'system'"
+                " WHERE assignment_id = ? AND kind = ? AND dedupe_key = ?"
+                " AND state IN ('new', 'acknowledged')",
+                (now_iso, str(assignment_id), str(kind), str(dedupe_key)),
+            )
+            self._commit_catalog()
+            return int(cursor.rowcount)
+
+    # ------------------------------------------------------------------
+    # Alert signal episodes (ADR 032, ticket #33). Catalog-only transition
+    # state so the commit-time evaluator never needs the player ledger.
+    # ------------------------------------------------------------------
+
+    _ALERT_SIGNAL_STATE_COLUMNS = "assignment_id, kind, subject, active, episode_key"
+
+    @classmethod
+    def _alert_signal_state_from_row(cls, row: Any) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        return {
+            "assignment_id": str(row[0]),
+            "kind": str(row[1]),
+            "subject": str(row[2]),
+            "active": int(row[3]),
+            "episode_key": row[4],
+        }
+
+    def get_alert_signal_state(self, assignment_id: str, kind: str, subject: str) -> dict[str, Any] | None:
+        """The episode state for one (assignment, kind, subject), or ``None``."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                f"SELECT {self._ALERT_SIGNAL_STATE_COLUMNS} FROM alert_signal_state"
+                " WHERE assignment_id = ? AND kind = ? AND subject = ?",
+                (str(assignment_id), str(kind), str(subject)),
+            )
+            return self._alert_signal_state_from_row(cursor.fetchone())
+
+    def upsert_alert_signal_state(
+        self,
+        assignment_id: str,
+        kind: str,
+        subject: str,
+        active: int,
+        episode_key: str | None,
+        now_iso: str,
+    ) -> None:
+        """Opens, extends, or closes one episode state row."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "INSERT INTO alert_signal_state"
+                " (assignment_id, kind, subject, active, episode_key, updated_at)"
+                " VALUES (?, ?, ?, ?, ?, ?)"
+                " ON CONFLICT(assignment_id, kind, subject) DO UPDATE SET"
+                " active = excluded.active,"
+                " episode_key = excluded.episode_key,"
+                " updated_at = excluded.updated_at",
+                (str(assignment_id), str(kind), str(subject), int(active), episode_key, now_iso),
+            )
+            self._commit_catalog()
+
+    def is_progression_session_processed(self, assignment_id: str, session_id: str) -> bool:
+        """Whether this session's progression signals were already evaluated (ADR 032)."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "SELECT 1 FROM progression_alert_sessions"
+                " WHERE assignment_id = ? AND session_id = ?",
+                (str(assignment_id), str(session_id)),
+            )
+            return cursor.fetchone() is not None
+
+    def mark_progression_session_processed(
+        self, assignment_id: str, session_id: str, now_iso: str
+    ) -> None:
+        """Records a processed session in the same transaction as its alert changes (ADR 032)."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "INSERT OR IGNORE INTO progression_alert_sessions"
+                " (assignment_id, session_id, processed_at) VALUES (?, ?, ?)",
+                (str(assignment_id), str(session_id), now_iso),
+            )
+            self._commit_catalog()
 
     def upsert_roster_attendance(
         self,

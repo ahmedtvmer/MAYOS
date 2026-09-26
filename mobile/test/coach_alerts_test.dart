@@ -88,6 +88,39 @@ Map<String, dynamic> _alert({
       'resolved_by': null,
     };
 
+Map<String, dynamic> _deloadAlert({String state = 'new'}) => <String, dynamic>{
+      'alert_id': 'alert-deload',
+      'assignment_id': 'assignment-1',
+      'player_username': 'bob',
+      'kind': 'deload_recommended',
+      'state': state,
+      'created_at': '2026-09-22T08:00:00Z',
+      'reason': 'Rolling readiness crash (avg 1.7/5)',
+      'severity': 'HIGH',
+      'recent_readiness_avg': 1.67,
+      'acknowledged_at': null,
+      'resolved_at': null,
+      'resolved_by': null,
+    };
+
+Map<String, dynamic> _regressionAlert({String state = 'new'}) =>
+    <String, dynamic>{
+      'alert_id': 'alert-regression',
+      'assignment_id': 'assignment-1',
+      'player_username': 'bob',
+      'kind': 'performance_regression',
+      'state': state,
+      'created_at': '2026-09-22T08:00:00Z',
+      'exercise_id': 'bp',
+      'exercise_name': 'Bench Press',
+      'status_badge': 'OVERSHOOT',
+      'e1rm_delta': -6.2,
+      'current_e1rm': 93.8,
+      'acknowledged_at': null,
+      'resolved_at': null,
+      'resolved_by': null,
+    };
+
 Future<void> _openRoster(WidgetTester tester) async {
   await tester.tap(find.byIcon(Icons.handshake_outlined));
   await _pumpUntilFound(tester, find.text('Active assignments'));
@@ -133,5 +166,36 @@ void main() {
     await _pumpUntilFound(tester, find.text('Resolved by coach'));
     expect(find.text('Resolved by coach'), findsOneWidget);
     expect(find.text('Resolve'), findsNothing);
+  });
+
+  testWidgets('deload alert renders its reason and can be resolved',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.coachAlerts.add(_deloadAlert());
+    await _pumpApp(tester, fake);
+    await _openAlertCenter(tester);
+
+    expect(
+      find.text('Deload recommended — Rolling readiness crash (avg 1.7/5)'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Resolve'));
+    await _pumpUntilFound(tester, find.text('Resolve'));
+    expect(fake.coachAlerts.single['state'], 'resolved');
+  });
+
+  testWidgets('performance regression alert renders exercise and e1RM delta',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.coachAlerts.add(_regressionAlert());
+    await _pumpApp(tester, fake);
+    await _openAlertCenter(tester);
+
+    expect(
+      find.text(
+          'Performance regression — Bench Press: e1RM −6.2 kg (OVERSHOOT)'),
+      findsOneWidget,
+    );
   });
 }
