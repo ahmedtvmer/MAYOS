@@ -421,6 +421,35 @@ class CoachPlayerDivergence {
   final String exerciseName;
 }
 
+/// The assigned player's current expected training weekdays and timezone.
+class CoachPlayerSchedule {
+  const CoachPlayerSchedule({required this.weekdays, required this.timezone});
+
+  factory CoachPlayerSchedule.fromJson(Map<String, dynamic> json) =>
+      CoachPlayerSchedule(
+        weekdays: _weekdays(json['weekdays']),
+        timezone: json['timezone'] as String,
+      );
+
+  final List<int> weekdays;
+  final String timezone;
+}
+
+/// An upcoming or active training pause the assigned player scheduled. No
+/// reason is ever stored or returned.
+class CoachPlayerPause {
+  const CoachPlayerPause({required this.startsOn, required this.endsOn});
+
+  factory CoachPlayerPause.fromJson(Map<String, dynamic> json) =>
+      CoachPlayerPause(
+        startsOn: json['starts_on'] as String,
+        endsOn: json['ends_on'] as String,
+      );
+
+  final String startsOn;
+  final String endsOn;
+}
+
 /// The assigned player's most recent committed session.
 class CoachPlayerLatestSession {
   const CoachPlayerLatestSession({
@@ -503,6 +532,8 @@ class CoachPlayerSummary {
     required this.volume,
     this.latestSession,
     this.recentSessions = const <CoachPlayerRecentSession>[],
+    this.schedule,
+    this.pauses = const <CoachPlayerPause>[],
   });
 
   factory CoachPlayerSummary.fromJson(Map<String, dynamic> json) =>
@@ -521,6 +552,14 @@ class CoachPlayerSummary {
             .map((dynamic s) =>
                 CoachPlayerRecentSession.fromJson(s as Map<String, dynamic>))
             .toList(growable: false),
+        schedule: json['schedule'] == null
+            ? null
+            : CoachPlayerSchedule.fromJson(
+                json['schedule'] as Map<String, dynamic>),
+        pauses: (json['pauses'] as List<dynamic>? ?? const [])
+            .map((dynamic p) =>
+                CoachPlayerPause.fromJson(p as Map<String, dynamic>))
+            .toList(growable: false),
       );
 
   final String playerUsername;
@@ -529,6 +568,8 @@ class CoachPlayerSummary {
   final Map<String, double> volume;
   final CoachPlayerLatestSession? latestSession;
   final List<CoachPlayerRecentSession> recentSessions;
+  final CoachPlayerSchedule? schedule;
+  final List<CoachPlayerPause> pauses;
 }
 
 /// One exercise the assigned player has logged.
@@ -738,6 +779,147 @@ class ProfileUpdateResult {
   final bool programRebuilt;
   final bool programBlocked;
   final String? programMessage;
+}
+
+const List<String> weekdayLabels = <String>[
+  'Mon',
+  'Tue',
+  'Wed',
+  'Thu',
+  'Fri',
+  'Sat',
+  'Sun',
+];
+
+List<int> _weekdays(dynamic raw) {
+  if (raw is! List<dynamic>) {
+    throw const FormatException('Invalid training weekdays.');
+  }
+  return raw.map((dynamic day) {
+    if (day is! num) {
+      throw const FormatException('Invalid training weekday.');
+    }
+    final int value = day.toInt();
+    if (value < 1 || value > 7) {
+      throw const FormatException('Invalid training weekday.');
+    }
+    return value;
+  }).toList(growable: false);
+}
+
+/// One effective-dated version of the player's expected training weekdays
+/// (`GET`/`PUT /profile/schedule`, ADR 029). Setting a schedule never touches
+/// the program's weekly frequency or ordered training days.
+class TrainingScheduleVersion {
+  const TrainingScheduleVersion({
+    required this.scheduleId,
+    required this.weekdays,
+    required this.timezone,
+    required this.effectiveFrom,
+    required this.createdAt,
+  });
+
+  factory TrainingScheduleVersion.fromJson(Map<String, dynamic> json) =>
+      TrainingScheduleVersion(
+        scheduleId: json['schedule_id'] as String,
+        weekdays: _weekdays(json['weekdays']),
+        timezone: json['timezone'] as String,
+        effectiveFrom: json['effective_from'] as String,
+        createdAt: json['created_at'] as String,
+      );
+
+  final String scheduleId;
+  final List<int> weekdays;
+  final String timezone;
+  final String effectiveFrom;
+  final String createdAt;
+}
+
+/// A prospective training pause; no reason is stored or returned.
+class ScheduledPause {
+  const ScheduledPause({
+    required this.pauseId,
+    required this.startsOn,
+    required this.endsOn,
+    required this.createdAt,
+  });
+
+  factory ScheduledPause.fromJson(Map<String, dynamic> json) => ScheduledPause(
+        pauseId: json['pause_id'] as String,
+        startsOn: json['starts_on'] as String,
+        endsOn: json['ends_on'] as String,
+        createdAt: json['created_at'] as String,
+      );
+
+  final String pauseId;
+  final String startsOn;
+  final String endsOn;
+  final String createdAt;
+}
+
+/// `GET /profile/schedule`: the current version, every version, and active pauses.
+class TrainingSchedule {
+  const TrainingSchedule({
+    this.current,
+    this.versions = const <TrainingScheduleVersion>[],
+    this.pauses = const <ScheduledPause>[],
+  });
+
+  factory TrainingSchedule.fromJson(Map<String, dynamic> json) =>
+      TrainingSchedule(
+        current: json['current'] == null
+            ? null
+            : TrainingScheduleVersion.fromJson(
+                json['current'] as Map<String, dynamic>),
+        versions: (json['versions'] as List<dynamic>? ?? const [])
+            .map((dynamic v) =>
+                TrainingScheduleVersion.fromJson(v as Map<String, dynamic>))
+            .toList(growable: false),
+        pauses: (json['pauses'] as List<dynamic>? ?? const [])
+            .map((dynamic p) =>
+                ScheduledPause.fromJson(p as Map<String, dynamic>))
+            .toList(growable: false),
+      );
+
+  final TrainingScheduleVersion? current;
+  final List<TrainingScheduleVersion> versions;
+  final List<ScheduledPause> pauses;
+}
+
+/// `PUT /profile/schedule` response: the appended version and the current schedule.
+class TrainingScheduleSetResult {
+  const TrainingScheduleSetResult({required this.version, this.current});
+
+  factory TrainingScheduleSetResult.fromJson(Map<String, dynamic> json) =>
+      TrainingScheduleSetResult(
+        version: TrainingScheduleVersion.fromJson(
+            json['version'] as Map<String, dynamic>),
+        current: json['current'] == null
+            ? null
+            : TrainingScheduleVersion.fromJson(
+                json['current'] as Map<String, dynamic>),
+      );
+
+  final TrainingScheduleVersion version;
+  final TrainingScheduleVersion? current;
+}
+
+/// `POST /profile/schedule/pauses` response: the stored pause and whether the
+/// assigned coach was notified.
+class TrainingPauseCreateResult {
+  const TrainingPauseCreateResult({
+    required this.pause,
+    required this.noticeSent,
+  });
+
+  factory TrainingPauseCreateResult.fromJson(Map<String, dynamic> json) =>
+      TrainingPauseCreateResult(
+        pause: ScheduledPause.fromJson(json['pause'] as Map<String, dynamic>),
+        noticeSent: json['notice_sent'] as bool? ?? false,
+      );
+
+  final ScheduledPause pause;
+  final bool noticeSent;
 }
 
 class ProgramExercise {

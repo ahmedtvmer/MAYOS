@@ -1,13 +1,24 @@
 """Profile and coach-persona endpoints. Identity comes from the JWT, never the body."""
 
 import asyncio
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from service import profile as profile_service
+from service import schedule as schedule_service
 from svc.dependencies import account_id_of, bind_request, get_current_trainee, get_db
-from svc.schemas import PersonaUpdate, ProfileUpdate
+from svc.schemas import (
+    PersonaUpdate,
+    ProfileUpdate,
+    TrainingPauseCreateOut,
+    TrainingPauseIn,
+    TrainingPauseListOut,
+    TrainingScheduleOut,
+    TrainingScheduleSetOut,
+    TrainingScheduleUpdateIn,
+)
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -64,3 +75,71 @@ async def reset_profile(
 
     await asyncio.to_thread(_run)
     return None
+
+
+@router.get("/schedule", response_model=TrainingScheduleOut)
+async def read_schedule(
+    trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
+):
+    """The player's current expected schedule, all versions, and today's active pauses."""
+
+    def _run():
+        bind_request(db, trainee)
+        return schedule_service.get_schedule(db, trainee)
+
+    return TrainingScheduleOut(**await asyncio.to_thread(_run))
+
+
+@router.put("/schedule", response_model=TrainingScheduleSetOut)
+async def set_schedule(
+    body: TrainingScheduleUpdateIn,
+    trainee: Annotated[str, Depends(get_current_trainee)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Appends a new effective-dated schedule version; the program is never touched."""
+
+    def _run():
+        bind_request(db, trainee)
+        try:
+            return schedule_service.set_schedule(db, trainee, body.model_dump())
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+
+    return TrainingScheduleSetOut(**await asyncio.to_thread(_run))
+
+
+@router.get("/schedule/pauses", response_model=TrainingPauseListOut)
+async def list_pauses(
+    trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
+):
+    """All pauses the player has scheduled, newest first."""
+
+    def _run():
+        bind_request(db, trainee)
+        return schedule_service.get_pauses(db, trainee)
+
+    return TrainingPauseListOut(pauses=await asyncio.to_thread(_run))
+
+
+@router.post("/schedule/pauses", status_code=status.HTTP_201_CREATED, response_model=TrainingPauseCreateOut)
+async def create_pause(
+    body: TrainingPauseIn,
+    trainee: Annotated[str, Depends(get_current_trainee)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Stores a prospective pause (max 14 days, no reason) and best-effort notifies the coach."""
+
+    def _run():
+        bind_request(db, trainee)
+        try:
+            return schedule_service.schedule_pause(
+                db,
+                trainee,
+                body.model_dump(),
+                account_id_of(trainee),
+                datetime.now(UTC).isoformat(),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+
+    return TrainingPauseCreateOut(**await asyncio.to_thread(_run))

@@ -10,7 +10,7 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_USER_SCHEMA_VERSION: int = 7
+CURRENT_USER_SCHEMA_VERSION: int = 8
 
 
 def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
@@ -179,6 +179,42 @@ def _migrate_v6_to_v7(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migrate_v7_to_v8(conn: sqlite3.Connection) -> None:
+    """Adds the player's expected training schedule and prospective pauses (ADR 029).
+
+    Schedule versions are effective-dated ledger facts: a new expected weekday set
+    is appended, never rewritten, so attendance for a past date resolves against
+    the schedule effective then. Pauses are prospective, bounded ledger rows shown
+    to the assigned coach. Both are separate from the program's weekly frequency.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS training_schedules (
+            id TEXT PRIMARY KEY,
+            trainee_id TEXT NOT NULL,
+            weekdays TEXT NOT NULL,
+            timezone TEXT NOT NULL,
+            effective_from TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_training_schedules_trainee"
+        " ON training_schedules(trainee_id, effective_from)"
+    )
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS training_pauses (
+            id TEXT PRIMARY KEY,
+            trainee_id TEXT NOT NULL,
+            starts_on TEXT NOT NULL,
+            ends_on TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_training_pauses_trainee ON training_pauses(trainee_id)"
+    )
+
+
 def get_user_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -271,6 +307,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     4: _migrate_v4_to_v5,
     5: _migrate_v5_to_v6,
     6: _migrate_v6_to_v7,
+    7: _migrate_v7_to_v8,
 }
 
 

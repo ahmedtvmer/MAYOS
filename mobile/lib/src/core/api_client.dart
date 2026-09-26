@@ -55,6 +55,8 @@ class ApiClient {
       'The service returned invalid program request data.';
   static const String _invalidProfile =
       'The service returned invalid profile data.';
+  static const String _invalidSchedule =
+      'The service returned invalid training schedule data.';
 
   final TokenStore _tokens;
   late final Dio _dio;
@@ -585,6 +587,59 @@ class ApiClient {
     );
     return _parseBody(
         response.data, ProfileUpdateResult.fromJson, _invalidProfile);
+  }
+
+  /// The player's current expected training schedule, all versions, and active pauses.
+  Future<TrainingSchedule> trainingSchedule() async {
+    final response = await _send(() => _dio.get<dynamic>('/profile/schedule'));
+    return _parseBody(
+        response.data, TrainingSchedule.fromJson, _invalidSchedule);
+  }
+
+  /// Appends a new effective-dated schedule version; the program is never touched.
+  Future<TrainingScheduleSetResult> setTrainingSchedule({
+    required List<int> weekdays,
+    required String timezone,
+    String? effectiveFrom,
+  }) async {
+    final Map<String, dynamic> body = <String, dynamic>{
+      'weekdays': weekdays,
+      'timezone': timezone,
+      if (effectiveFrom != null) 'effective_from': effectiveFrom,
+    };
+    final response = await _send(
+      () => _dio.put<dynamic>('/profile/schedule', data: body),
+    );
+    return _parseBody(
+        response.data, TrainingScheduleSetResult.fromJson, _invalidSchedule);
+  }
+
+  /// All pauses the player has scheduled, newest-first.
+  Future<List<ScheduledPause>> trainingPauses() async {
+    final response =
+        await _send(() => _dio.get<dynamic>('/profile/schedule/pauses'));
+    final dynamic data = response.data;
+    if (data is! Map<String, dynamic> || data['pauses'] is! List<dynamic>) {
+      throw const ApiException(_invalidSchedule);
+    }
+    return _parseBodyList(
+        data['pauses'], ScheduledPause.fromJson, _invalidSchedule);
+  }
+
+  /// Stores a prospective pause (max 14 days, no reason); the assigned coach is
+  /// best-effort notified.
+  Future<TrainingPauseCreateResult> createTrainingPause({
+    required String startsOn,
+    required String endsOn,
+  }) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/profile/schedule/pauses',
+        data: <String, dynamic>{'starts_on': startsOn, 'ends_on': endsOn},
+      ),
+    );
+    return _parseBody(
+        response.data, TrainingPauseCreateResult.fromJson, _invalidSchedule);
   }
 
   Future<OnboardingState> startOnboarding() async {

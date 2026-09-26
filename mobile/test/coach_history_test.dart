@@ -138,6 +138,21 @@ void main() {
     expect(find.textContaining('Unplanned:'), findsNothing);
   });
 
+  testWidgets(
+      'the drill-down shows the expected weekdays, timezone, and pause',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _pumpApp(tester, fake);
+
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(
+        tester, find.text('Volume (weighted working sets)'));
+
+    expect(find.text('Expected: Mon, Wed, Fri'), findsOneWidget);
+    expect(find.text('Timezone: Europe/London'), findsOneWidget);
+    expect(find.text('Pause: 2026-09-28 → 2026-10-02'), findsOneWidget);
+  });
+
   testWidgets('a denied assignment shows the error state with no training data',
       (tester) async {
     final FakeMayosApi fake = _coachFake();

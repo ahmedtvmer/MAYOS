@@ -349,6 +349,22 @@ class _CoachPlayerHistoryScreenState
     );
   }
 
+  Widget _scheduleCard(BuildContext context) {
+    final CoachPlayerSchedule? schedule = _summary!.schedule;
+    final List<Widget> children = <Widget>[];
+    if (schedule != null) {
+      final String days = schedule.weekdays
+          .map((int day) => weekdayLabels[day - 1])
+          .join(', ');
+      children.add(Text('Expected: $days'));
+      children.add(Text('Timezone: ${schedule.timezone}'));
+    }
+    for (final CoachPlayerPause pause in _summary!.pauses) {
+      children.add(Text('Pause: ${pause.startsOn} → ${pause.endsOn}'));
+    }
+    return _section(context, 'Training schedule', children);
+  }
+
   Widget _latestSessionCard(BuildContext context) {
     final CoachPlayerLatestSession? latest = _summary!.latestSession;
     if (latest == null) {
@@ -538,6 +554,10 @@ class _CoachPlayerHistoryScreenState
         const SizedBox(height: 12),
         _volumeCard(context),
         const SizedBox(height: 12),
+        if (summary.schedule != null || summary.pauses.isNotEmpty) ...<Widget>[
+          _scheduleCard(context),
+          const SizedBox(height: 12),
+        ],
         _latestSessionCard(context),
         const SizedBox(height: 12),
         _recentSessionsCard(context),

@@ -34,7 +34,9 @@ __all__ = [
     "CoachPlayerExerciseOut",
     "CoachPlayerExercisesOut",
     "CoachPlayerLatestSessionOut",
+    "CoachPlayerPauseOut",
     "CoachPlayerRecentSessionOut",
+    "CoachPlayerScheduleOut",
     "CoachPlayerSessionExerciseOut",
     "CoachPlayerSummaryOut",
     "CoachProfileOut",
@@ -62,8 +64,16 @@ __all__ = [
     "ProgramRequestOut",
     "RecoveryEmailOut",
     "ResetPasswordIn",
+    "ScheduledPauseOut",
     "SessionCommitIn",
     "TraineeIn",
+    "TrainingPauseCreateOut",
+    "TrainingPauseIn",
+    "TrainingPauseListOut",
+    "TrainingScheduleOut",
+    "TrainingScheduleSetOut",
+    "TrainingScheduleUpdateIn",
+    "TrainingScheduleVersionOut",
     "TokenOut",
     "WorkoutSetIn",
 ]
@@ -257,6 +267,20 @@ class CoachPlayerRecentSessionOut(BaseModel):
     divergences: list[CoachPlayerDivergenceOut] = []
 
 
+class CoachPlayerScheduleOut(BaseModel):
+    """The assigned player's current expected training weekdays and timezone."""
+
+    weekdays: list[int]
+    timezone: str
+
+
+class CoachPlayerPauseOut(BaseModel):
+    """An upcoming or active training pause the assigned player scheduled."""
+
+    starts_on: str
+    ends_on: str
+
+
 class CoachPlayerSummaryOut(BaseModel):
     """Roster identity plus the assigned player's volume and session activity."""
 
@@ -266,6 +290,8 @@ class CoachPlayerSummaryOut(BaseModel):
     volume: dict[str, float]
     latest_session: CoachPlayerLatestSessionOut | None = None
     recent_sessions: list[CoachPlayerRecentSessionOut] = []
+    schedule: CoachPlayerScheduleOut | None = None
+    pauses: list[CoachPlayerPauseOut] = []
 
 
 class CoachPlayerExerciseOut(BaseModel):
@@ -373,6 +399,66 @@ class ProfileUpdate(BaseModel):
 class PersonaUpdate(BaseModel):
     coach_tone: str = Field(min_length=1, max_length=200)
     custom_instructions: str = Field(default="", max_length=5000)
+
+
+class TrainingScheduleVersionOut(BaseModel):
+    """One effective-dated version of the player's expected training weekdays."""
+
+    schedule_id: str
+    weekdays: list[int]
+    timezone: str
+    effective_from: str
+    created_at: str
+
+
+class ScheduledPauseOut(BaseModel):
+    """A prospective pause; no reason is stored or returned."""
+
+    pause_id: str
+    starts_on: str
+    ends_on: str
+    created_at: str
+
+
+class TrainingScheduleOut(BaseModel):
+    """The current schedule, every version, and today's active pauses."""
+
+    current: TrainingScheduleVersionOut | None = None
+    versions: list[TrainingScheduleVersionOut] = []
+    pauses: list[ScheduledPauseOut] = []
+
+
+class TrainingScheduleUpdateIn(BaseModel):
+    """A player sets expected weekdays and timezone separately from program order."""
+
+    weekdays: list[int]
+    timezone: str = Field(min_length=1, max_length=64)
+    effective_from: str | None = None
+
+
+class TrainingScheduleSetOut(BaseModel):
+    """The appended version and the schedule now current."""
+
+    version: TrainingScheduleVersionOut
+    current: TrainingScheduleVersionOut | None = None
+
+
+class TrainingPauseIn(BaseModel):
+    """A prospective pause body; only the bounds, never a reason."""
+
+    starts_on: str = Field(min_length=1, max_length=10)
+    ends_on: str = Field(min_length=1, max_length=10)
+
+
+class TrainingPauseListOut(BaseModel):
+    pauses: list[ScheduledPauseOut]
+
+
+class TrainingPauseCreateOut(BaseModel):
+    """The created pause and whether the assigned coach was notified."""
+
+    pause: ScheduledPauseOut
+    notice_sent: bool
 
 
 class ProgramGenerateIn(BaseModel):

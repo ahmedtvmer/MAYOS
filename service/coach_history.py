@@ -10,8 +10,28 @@ from typing import Any
 
 from service import dashboard as dashboard_service
 from service.assignments import DENIED_ERROR, bind_assigned_player
+from service.schedule import local_today
 
 DEFAULT_RECENT_SESSIONS = 10
+
+
+def _schedule_and_pauses(db: Any, ledger_id: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """The player's current expected schedule and their upcoming/active pauses.
+
+    Only the underlying ledger rows are read; the caller has already passed the
+    assignment gate, so no new authorization is introduced here.
+    """
+    current = db.get_current_training_schedule(ledger_id)
+    schedule = None
+    if current is not None:
+        schedule = {"weekdays": current["weekdays"], "timezone": current["timezone"]}
+    today = local_today(current).isoformat()
+    pauses = [
+        {"starts_on": pause["starts_on"], "ends_on": pause["ends_on"]}
+        for pause in db.list_training_pauses(ledger_id)
+        if pause["ends_on"] >= today
+    ]
+    return schedule, pauses
 
 
 def _recent_sessions(db: Any, limit: int) -> list[dict[str, Any]]:
@@ -47,6 +67,7 @@ def player_summary(
     if context is None:
         return None
     ledger_id = context["player"]["ledger_id"]
+    schedule, pauses = _schedule_and_pauses(db, ledger_id)
     return {
         "player_username": context["player"]["username"],
         "started_at": context["assignment"]["started_at"],
@@ -54,6 +75,8 @@ def player_summary(
         "volume": dashboard_service.volume_attribution(db, ledger_id, days_lookback=days_lookback),
         "latest_session": db.get_latest_session_summary(),
         "recent_sessions": _recent_sessions(db, DEFAULT_RECENT_SESSIONS),
+        "schedule": schedule,
+        "pauses": pauses,
     }
 
 

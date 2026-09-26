@@ -79,6 +79,18 @@ Future<void> _changeTrainingDays(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 300));
 }
 
+Future<void> _openProfile(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Profile'));
+  await _pumpUntilFound(tester, find.text('Training profile'));
+}
+
+String _todayIso() {
+  final DateTime now = DateTime.now();
+  return '${now.year.toString().padLeft(4, '0')}-'
+      '${now.month.toString().padLeft(2, '0')}-'
+      '${now.day.toString().padLeft(2, '0')}';
+}
+
 void main() {
   testWidgets('blocked profile update shows the coach message, not a rebuild',
       (tester) async {
@@ -108,6 +120,80 @@ void main() {
     expect(find.text('Program rebuilt.'), findsOneWidget);
     expect(find.text(_coachMessage), findsNothing);
     expect(fake.weeklyFrequency, 3);
+  });
+
+  testWidgets(
+      'saving the schedule leaves the training-days setting untouched',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake();
+    await _pumpApp(tester, fake);
+    await _openProfile(tester);
+
+    // The schedule is its own section, seeded from the service's current version.
+    expect(find.text('Training schedule'), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const Key('weekday_chip_2')));
+    await tester.tap(find.byKey(const Key('weekday_chip_2')));
+    await tester.pump();
+    await tester.ensureVisible(find.byKey(const Key('timezone_field')));
+    await tester.enterText(
+        find.byKey(const Key('timezone_field')), 'Europe/Paris');
+    await tester.ensureVisible(find.byKey(const Key('save_schedule_button')));
+    await tester.tap(find.byKey(const Key('save_schedule_button')));
+    await _pumpUntilFound(tester, find.text('Training schedule saved.'));
+
+    expect(fake.scheduleVersions.first['timezone'], 'Europe/Paris');
+    expect(fake.scheduleVersions.first['weekdays'], <int>[1, 2, 3, 5]);
+    // The program's own setting is not rewritten by a schedule save.
+    expect(fake.weeklyFrequency, 4);
+    final DropdownButton<int> dropdown = tester.widget<DropdownButton<int>>(
+      find.descendant(
+        of: find.byType(DropdownButtonFormField<int>),
+        matching: find.byType(DropdownButton<int>),
+      ),
+    );
+    expect(dropdown.value, 4);
+  });
+
+  testWidgets('a prospective pause can be scheduled and is listed',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake();
+    await _pumpApp(tester, fake);
+    await _openProfile(tester);
+    await _pumpUntilFound(tester, find.text('Training pause'));
+
+    expect(find.text('Pause: 2026-09-24 → 2026-10-01'), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const Key('schedule_pause_button')));
+    await tester.tap(find.byKey(const Key('schedule_pause_button')));
+    await _pumpUntilFound(tester, find.textContaining('Pause scheduled'));
+
+    expect(fake.trainingPauses.length, 2);
+    expect(fake.trainingPauses.first['starts_on'], _todayIso());
+    expect(fake.trainingPauses.first['ends_on'], _todayIso());
+  });
+
+  testWidgets('a pause starting before today is refused inline',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake();
+    await _pumpApp(tester, fake);
+    await _openProfile(tester);
+    await _pumpUntilFound(tester, find.text('Training pause'));
+
+    await tester.ensureVisible(find.byKey(const Key('pause_start_button')));
+    await tester.tap(find.byKey(const Key('pause_start_button')));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('1'));
+    await tester.pump();
+    await tester.tap(find.text('OK'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.ensureVisible(find.byKey(const Key('schedule_pause_button')));
+    await tester.tap(find.byKey(const Key('schedule_pause_button')));
+    await _pumpUntilFound(
+        tester, find.text('A pause must start today or later.'));
+
+    expect(fake.trainingPauses.length, 1);
   });
 
   testWidgets(

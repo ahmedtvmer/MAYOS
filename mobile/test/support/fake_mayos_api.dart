@@ -55,6 +55,12 @@ class FakeMayosApi {
   bool staleProgramRequest = false;
   int _programRequestSeq = 0;
 
+  // Player training schedule and pauses (#30).
+  List<Map<String, dynamic>> scheduleVersions = _defaultScheduleVersions();
+  List<Map<String, dynamic>> trainingPauses = _defaultTrainingPauses();
+  int _scheduleSeq = 0;
+  int _pauseSeq = 0;
+
   // Coach drill-down (#25). Denied mirrors a revoked/foreign assignment.
   bool coachHistoryDenied = false;
   Map<String, dynamic> coachPlayerSummary = _defaultCoachSummary();
@@ -133,6 +139,10 @@ class FakeMayosApi {
         return _markPlayerNoticesRead(request);
       case '/programs/generate':
         return _playerGenerateProgram(request);
+      case '/profile/schedule':
+        return _schedule(request);
+      case '/profile/schedule/pauses':
+        return _schedulePauses(request);
       case '/profile':
         return _profile(request);
       case '/onboarding/start':
@@ -418,11 +428,51 @@ class FakeMayosApi {
         404, <String, dynamic>{'detail': 'Not found.'});
   }
 
+  /// Newest-first schedule versions, including a past edit (#30).
+  static List<Map<String, dynamic>> _defaultScheduleVersions() =>
+      <Map<String, dynamic>>[
+        <String, dynamic>{
+          'schedule_id': 'schedule-2',
+          'weekdays': <int>[1, 3, 5],
+          'timezone': 'Europe/London',
+          'effective_from': '2026-09-01',
+          'created_at': '2026-08-25T10:00:00Z',
+        },
+        <String, dynamic>{
+          'schedule_id': 'schedule-1',
+          'weekdays': <int>[1, 2, 4, 6],
+          'timezone': 'Europe/London',
+          'effective_from': '2026-08-01',
+          'created_at': '2026-07-25T10:00:00Z',
+        },
+      ];
+
+  /// One active pause, matching the seeded current schedule.
+  static List<Map<String, dynamic>> _defaultTrainingPauses() =>
+      <Map<String, dynamic>>[
+        <String, dynamic>{
+          'pause_id': 'pause-1',
+          'starts_on': '2026-09-24',
+          'ends_on': '2026-10-01',
+          'created_at': '2026-09-20T09:00:00Z',
+        },
+      ];
+
   static Map<String, dynamic> _defaultCoachSummary() => <String, dynamic>{
         'player_username': 'bob',
         'started_at': '2026-09-24T10:00:00Z',
         'status': 'active',
         'volume': <String, dynamic>{'Chest': 12.5, 'Back': 9.0},
+        'schedule': <String, dynamic>{
+          'weekdays': <int>[1, 3, 5],
+          'timezone': 'Europe/London',
+        },
+        'pauses': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'starts_on': '2026-09-28',
+            'ends_on': '2026-10-02',
+          },
+        ],
         'latest_session': <String, dynamic>{
           'session_date': '2026-09-25',
           'split_name': 'Upper 1',
@@ -892,6 +942,119 @@ class FakeMayosApi {
     });
   }
 
+  FakeResponse _schedule(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (request.method == 'PUT') {
+      return _setSchedule(request);
+    }
+    final Map<String, dynamic>? current =
+        scheduleVersions.isEmpty ? null : scheduleVersions.first;
+    return FakeResponse(200, <String, dynamic>{
+      'current': current,
+      'versions': List<Map<String, dynamic>>.from(scheduleVersions),
+      'pauses': List<Map<String, dynamic>>.from(trainingPauses),
+    });
+  }
+
+  FakeResponse _setSchedule(FakeRequest request) {
+    final dynamic raw = request.body['weekdays'];
+    final String timezone = (request.body['timezone'] as String?)?.trim() ?? '';
+    if (raw is! List<dynamic> || raw.isEmpty) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'Pick at least one expected training weekday.'});
+    }
+    final List<int> weekdays = <int>[];
+    for (final dynamic day in raw) {
+      if (day is! int || day < 1 || day > 7) {
+        return const FakeResponse(400, <String, dynamic>{
+          'detail': 'Expected training weekdays must be integers from 1 (Mon) to 7 (Sun).'
+        });
+      }
+      weekdays.add(day);
+    }
+    if (weekdays.toSet().length != weekdays.length) {
+      return const FakeResponse(400,
+          <String, dynamic>{'detail': 'Expected training weekdays must be unique.'});
+    }
+    if (timezone.isEmpty) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'A timezone is required.'});
+    }
+    final String effectiveFrom =
+        request.body['effective_from'] as String? ?? _todayIso();
+    final Map<String, dynamic> version = <String, dynamic>{
+      'schedule_id': 'schedule-new-${++_scheduleSeq}',
+      'weekdays': (weekdays..sort()),
+      'timezone': timezone,
+      'effective_from': effectiveFrom,
+      'created_at': '2026-09-26T12:00:00Z',
+    };
+    scheduleVersions.insert(0, version);
+    return FakeResponse(
+        200, <String, dynamic>{'version': version, 'current': version});
+  }
+
+  FakeResponse _schedulePauses(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (request.method == 'POST') {
+      return _createPause(request);
+    }
+    return FakeResponse(200, <String, dynamic>{
+      'pauses': List<Map<String, dynamic>>.from(trainingPauses),
+    });
+  }
+
+  FakeResponse _createPause(FakeRequest request) {
+    final String? startsOn = request.body['starts_on'] as String?;
+    final String? endsOn = request.body['ends_on'] as String?;
+    final DateTime? start =
+        startsOn == null ? null : DateTime.tryParse(startsOn);
+    final DateTime? end = endsOn == null ? null : DateTime.tryParse(endsOn);
+    if (start == null || end == null) {
+      return const FakeResponse(400, <String, dynamic>{
+        'detail': 'Dates must be ISO dates (YYYY-MM-DD).'
+      });
+    }
+    final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day);
+    if (start.isBefore(today)) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'A pause must start today or later.'});
+    }
+    if (end.isBefore(start)) {
+      return const FakeResponse(400,
+          <String, dynamic>{'detail': 'A pause must end on or after it starts.'});
+    }
+    if (end.difference(start).inDays + 1 > 14) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'A pause can last at most 14 days.'});
+    }
+    final Map<String, dynamic> pause = <String, dynamic>{
+      'pause_id': 'pause-new-${++_pauseSeq}',
+      'starts_on': startsOn,
+      'ends_on': endsOn,
+      'created_at': '2026-09-26T12:00:00Z',
+    };
+    trainingPauses.insert(0, pause);
+    return FakeResponse(201, <String, dynamic>{
+      'pause': pause,
+      'notice_sent': activeAssignmentId != null,
+    });
+  }
+
+  String _todayIso() {
+    final DateTime now = DateTime.now();
+    return '${now.year.toString().padLeft(4, '0')}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+  }
+
   FakeResponse _startOnboarding(FakeRequest request) {
     if (!_authorized(request)) {
       return const FakeResponse(
@@ -1095,6 +1258,10 @@ class FakeMayosApi {
       programRequests.clear();
       staleProgramRequest = false;
       _programRequestSeq = 0;
+      scheduleVersions = _defaultScheduleVersions();
+      trainingPauses = _defaultTrainingPauses();
+      _scheduleSeq = 0;
+      _pauseSeq = 0;
       coachHistoryDenied = false;
       coachPlayerSummary = _defaultCoachSummary();
       coachPlayerRecords = _defaultCoachRecords();
