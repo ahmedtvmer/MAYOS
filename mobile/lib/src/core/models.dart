@@ -401,6 +401,26 @@ class CoachPlayerSessionExercise {
   final double volumeKg;
 }
 
+/// A factual skipped or unplanned exercise recorded in a player's session.
+class CoachPlayerDivergence {
+  const CoachPlayerDivergence({
+    required this.kind,
+    required this.exerciseId,
+    required this.exerciseName,
+  });
+
+  factory CoachPlayerDivergence.fromJson(Map<String, dynamic> json) =>
+      CoachPlayerDivergence(
+        kind: json['kind'] as String,
+        exerciseId: json['exercise_id'] as String,
+        exerciseName: json['exercise_name'] as String,
+      );
+
+  final String kind;
+  final String exerciseId;
+  final String exerciseName;
+}
+
 /// The assigned player's most recent committed session.
 class CoachPlayerLatestSession {
   const CoachPlayerLatestSession({
@@ -410,6 +430,7 @@ class CoachPlayerLatestSession {
     required this.totalVolumeKg,
     this.readinessScore,
     this.exercises = const <CoachPlayerSessionExercise>[],
+    this.divergences = const <CoachPlayerDivergence>[],
   });
 
   factory CoachPlayerLatestSession.fromJson(Map<String, dynamic> json) =>
@@ -423,6 +444,10 @@ class CoachPlayerLatestSession {
             .map((dynamic e) => CoachPlayerSessionExercise.fromJson(
                 e as Map<String, dynamic>))
             .toList(growable: false),
+        divergences: (json['divergences'] as List<dynamic>? ?? const [])
+            .map((dynamic d) =>
+                CoachPlayerDivergence.fromJson(d as Map<String, dynamic>))
+            .toList(growable: false),
       );
 
   final String sessionDate;
@@ -431,6 +456,7 @@ class CoachPlayerLatestSession {
   final int setsCount;
   final double totalVolumeKg;
   final List<CoachPlayerSessionExercise> exercises;
+  final List<CoachPlayerDivergence> divergences;
 }
 
 /// A compact entry in the assigned player's recent session history.
@@ -442,6 +468,7 @@ class CoachPlayerRecentSession {
     required this.setsCount,
     required this.totalVolumeKg,
     this.readinessScore,
+    this.divergences = const <CoachPlayerDivergence>[],
   });
 
   factory CoachPlayerRecentSession.fromJson(Map<String, dynamic> json) =>
@@ -452,6 +479,10 @@ class CoachPlayerRecentSession {
         readinessScore: (json['readiness_score'] as num?)?.toInt(),
         setsCount: (json['sets_count'] as num).toInt(),
         totalVolumeKg: (json['total_volume_kg'] as num).toDouble(),
+        divergences: (json['divergences'] as List<dynamic>? ?? const [])
+            .map((dynamic d) =>
+                CoachPlayerDivergence.fromJson(d as Map<String, dynamic>))
+            .toList(growable: false),
       );
 
   final String sessionId;
@@ -460,6 +491,7 @@ class CoachPlayerRecentSession {
   final int? readinessScore;
   final int setsCount;
   final double totalVolumeKg;
+  final List<CoachPlayerDivergence> divergences;
 }
 
 /// `GET /coach/assignments/{id}/player/summary` for an actively assigned player.

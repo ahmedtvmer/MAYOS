@@ -335,6 +335,15 @@ class DatabaseManager:
                 logged_at TEXT NOT NULL,
                 FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS session_divergences (
+                session_id TEXT NOT NULL,
+                exercise_id TEXT NOT NULL,
+                exercise_name TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK (kind IN ('skipped', 'unplanned')),
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (session_id, exercise_id, kind),
+                FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE
+            );
             CREATE TABLE IF NOT EXISTS personal_records (
                 id TEXT PRIMARY KEY,
                 exercise_id TEXT NOT NULL,
@@ -2094,6 +2103,14 @@ class DatabaseManager:
             "sets_count": sum(exercise["sets"] for exercise in exercises),
             "total_volume_kg": sum((exercise["volume_kg"] for exercise in exercises), 0.0),
             "exercises": exercises,
+            "divergences": [
+                {
+                    "kind": row["kind"],
+                    "exercise_id": row["exercise_id"],
+                    "exercise_name": row["exercise_name"],
+                }
+                for row in self.list_session_divergences(session["id"])
+            ],
         }
 
     def get_session_log(self) -> list[dict[str, Any]]:
@@ -2113,6 +2130,71 @@ class DatabaseManager:
             ORDER BY s.session_date ASC, s.started_at ASC, s.rowid ASC, ws.rowid ASC
         """)
         return [dict(row) for row in cursor.fetchall()]
+
+    def record_session_divergences(
+        self, session_id: str, divergences: list[dict[str, Any]], now_iso: str
+    ) -> None:
+        """Persists the prescribed-vs-performed differences for one session.
+
+        Recording is factual history only and never touches the training program
+        (ADR 018/028). An empty batch is accepted and writes nothing. A duplicate
+        fact is the same fact, so conflicting inserts are ignored rather than
+        failing.
+        """
+        if not divergences:
+            return
+        payload = [
+            {
+                "session_id": session_id,
+                "exercise_id": str(divergence["exercise_id"]),
+                "exercise_name": divergence["exercise_name"],
+                "kind": divergence["kind"],
+                "created_at": now_iso,
+            }
+            for divergence in divergences
+        ]
+        cursor = self.conn.cursor()
+        cursor.executemany(
+            """
+            INSERT OR IGNORE INTO session_divergences (
+                session_id, exercise_id, exercise_name, kind, created_at
+            ) VALUES (:session_id, :exercise_id, :exercise_name, :kind, :created_at)
+        """,
+            payload,
+        )
+        self.conn.commit()
+
+    def list_session_divergences(self, session_id: str) -> list[dict[str, Any]]:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT session_id, exercise_id, exercise_name, kind, created_at
+            FROM session_divergences
+            WHERE session_id = ?
+            ORDER BY kind ASC, exercise_id ASC
+        """,
+            (session_id,),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def list_divergences_by_session(self) -> dict[str, list[dict[str, Any]]]:
+        """Every session's divergences keyed by session id, in a single query."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT session_id, exercise_id, exercise_name, kind
+            FROM session_divergences
+            ORDER BY kind ASC, exercise_id ASC
+        """)
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for row in cursor.fetchall():
+            grouped.setdefault(row["session_id"], []).append(
+                {
+                    "kind": row["kind"],
+                    "exercise_id": row["exercise_id"],
+                    "exercise_name": row["exercise_name"],
+                }
+            )
+        return grouped
 
     def get_last_performance(self, exercise_id: str) -> list[dict[str, Any]]:
         cursor = self.conn.cursor()

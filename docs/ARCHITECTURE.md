@@ -227,12 +227,13 @@ sequenceDiagram
 
 ### Ledger Schema Evolution (ADR 005)
 
-User ledgers carry a schema version in `PRAGMA user_version` (current target: **v6**) and migrate **lazily** when mounted by `switch_user()`:
+User ledgers carry a schema version in `PRAGMA user_version` (current target: **v7**) and migrate **lazily** when mounted by `switch_user()`:
 
 * On upgrade, an atomic pre-migration snapshot is written with `sqlite3.Connection.backup()` (WAL-safe, online) into `db/backups/<user>/`, followed by sequential migration steps inside a transaction.
 * A 3+1 retention policy keeps three rolling snapshots plus immutable pre-migration backups; failure triggers rollback from the snapshot.
 * **v3** adds `auth_credentials.token_version`; for enrolled accounts, the authoritative session epoch now lives in the catalog account registry (`accounts.session_epoch`) and is bumped on password changes and resets (ADR 006/015). An enrolled ledger without a password hash uses the one-time claim flow; a bare local ledger requires the opted-in import path (ADR 019).
 * **v4** adds `personal_records` and backfills historical PRs (heaviest set per exact rep count + best e1RM) from `workout_sets` with first-achievement timestamps (ADR 009).
+* **v7** adds `session_divergences`: factual skipped/unplanned rows on workout history, cascading with their session (ADR 018/028).
 
 ### Catalog Account Tables (ADR 007)
 

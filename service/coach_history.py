@@ -16,6 +16,7 @@ DEFAULT_RECENT_SESSIONS = 10
 
 def _recent_sessions(db: Any, limit: int) -> list[dict[str, Any]]:
     """Newest-first working-set summaries grouped from the ledger session log."""
+    divergences_by_session = db.list_divergences_by_session()
     sessions: dict[str, dict[str, Any]] = {}
     for row in db.get_session_log():
         summary = sessions.get(row["session_id"])
@@ -27,6 +28,7 @@ def _recent_sessions(db: Any, limit: int) -> list[dict[str, Any]]:
                 "readiness_score": row["readiness_score"],
                 "sets_count": 0,
                 "total_volume_kg": 0.0,
+                "divergences": divergences_by_session.get(row["session_id"], []),
             }
             sessions[row["session_id"]] = summary
         if not row["is_warmup"]:

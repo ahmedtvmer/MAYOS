@@ -365,7 +365,18 @@ class _CoachPlayerHistoryScreenState
       for (final CoachPlayerSessionExercise exercise in latest.exercises)
         Text(
             '${exercise.name}: ${exercise.sets} sets · ${exercise.volumeKg.toStringAsFixed(1)} kg'),
+      for (final CoachPlayerDivergence divergence in latest.divergences)
+        Text(_divergenceLabel(divergence)),
     ]);
+  }
+
+  String _divergenceLabel(CoachPlayerDivergence divergence) {
+    final String kind = switch (divergence.kind) {
+      'skipped' => 'Skipped',
+      'unplanned' => 'Unplanned',
+      _ => divergence.kind,
+    };
+    return '$kind: ${divergence.exerciseName}';
   }
 
   Widget _recentSessionsCard(BuildContext context) {
@@ -381,8 +392,16 @@ class _CoachPlayerHistoryScreenState
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   title: Text('${session.splitName} · ${session.sessionDate}'),
-                  subtitle: Text(
-                      '${session.setsCount} sets · ${session.totalVolumeKg.toStringAsFixed(1)} kg'),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                          '${session.setsCount} sets · ${session.totalVolumeKg.toStringAsFixed(1)} kg'),
+                      for (final CoachPlayerDivergence divergence
+                          in session.divergences)
+                        Text(_divergenceLabel(divergence)),
+                    ],
+                  ),
                 ),
             ],
     );

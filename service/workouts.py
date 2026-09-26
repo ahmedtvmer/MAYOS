@@ -104,12 +104,18 @@ def commit_session(
     total_working_sets = 0
     exercise_summaries: list[dict[str, Any]] = []
     all_sets_to_batch: list[dict[str, Any]] = []
+    performed: list[dict[str, str]] = []
+    performed_ids: set[str] = set()
 
     for item in sets_by_exercise:
         ex_obj = item["exercise"]
         sets_data = item["sets"]
         prev_perf = item.get("previous_perf") or []
         working_sets = [s for s in sets_data if not s.get("is_warmup", False)]
+        exercise_id = str(ex_obj.exercise_id)
+        if working_sets and exercise_id not in performed_ids:
+            performed_ids.add(exercise_id)
+            performed.append({"exercise_id": exercise_id, "exercise_name": ex_obj.exercise_name})
 
         total_working_sets += len(working_sets)
         ex_volume = sum(s["weight_kg"] * s["reps"] for s in working_sets)
@@ -197,6 +203,35 @@ def commit_session(
 
     db.log_workout_sets_batch(all_sets_to_batch)
 
+    prescribed_ids = {str(ex.exercise_id) for ex in day_plan.exercises}
+    divergences: list[dict[str, str]] = [
+        {
+            "kind": "skipped",
+            "exercise_id": str(ex.exercise_id),
+            "exercise_name": ex.exercise_name,
+        }
+        for ex in day_plan.exercises
+        if str(ex.exercise_id) not in performed_ids
+    ]
+    divergences.extend(
+        {
+            "kind": "unplanned",
+            "exercise_id": entry["exercise_id"],
+            "exercise_name": entry["exercise_name"],
+        }
+        for entry in performed
+        if entry["exercise_id"] not in prescribed_ids
+    )
+    seen_divergences: set[tuple[str, str]] = set()
+    deduped_divergences: list[dict[str, str]] = []
+    for divergence in divergences:
+        key = (divergence["kind"], divergence["exercise_id"])
+        if key not in seen_divergences:
+            seen_divergences.add(key)
+            deduped_divergences.append(divergence)
+    divergences = deduped_divergences
+    db.record_session_divergences(session_id, divergences, now_iso)
+
     pr_events: list[dict[str, Any]] = []
     for item in sets_by_exercise:
         ex_obj = item["exercise"]
@@ -240,4 +275,5 @@ def commit_session(
         "pointer": compact_pointer,
         "fatigue_post": fatigue_post,
         "new_prs": pr_events,
+        "divergences": divergences,
     }

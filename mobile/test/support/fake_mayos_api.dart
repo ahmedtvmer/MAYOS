@@ -437,6 +437,13 @@ class FakeMayosApi {
               'volume_kg': 2000.0,
             },
           ],
+          'divergences': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'kind': 'skipped',
+              'exercise_id': 'squat',
+              'exercise_name': 'Squat',
+            },
+          ],
         },
         'recent_sessions': <Map<String, dynamic>>[
           <String, dynamic>{
@@ -446,6 +453,13 @@ class FakeMayosApi {
             'readiness_score': 4,
             'sets_count': 12,
             'total_volume_kg': 4200.0,
+            'divergences': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'kind': 'unplanned',
+                'exercise_id': 'lat_pulldown',
+                'exercise_name': 'Lat Pulldown',
+              },
+            ],
           },
           <String, dynamic>{
             'session_id': 's1',

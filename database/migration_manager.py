@@ -10,7 +10,7 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_USER_SCHEMA_VERSION: int = 6
+CURRENT_USER_SCHEMA_VERSION: int = 7
 
 
 def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
@@ -160,6 +160,25 @@ def _migrate_v5_to_v6(conn: sqlite3.Connection) -> None:
         conn.execute("UPDATE training_programs SET version = ? WHERE id = ?", (version, program_id))
 
 
+def _migrate_v6_to_v7(conn: sqlite3.Connection) -> None:
+    """Adds session_divergences: factual skipped/unplanned rows on workout history.
+
+    Divergences are ledger history, never program state (ADR 018/028). The table
+    cascades with its session so deleting a workout drops its divergences too.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS session_divergences (
+            session_id TEXT NOT NULL,
+            exercise_id TEXT NOT NULL,
+            exercise_name TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN ('skipped', 'unplanned')),
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (session_id, exercise_id, kind),
+            FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE
+        )
+    """)
+
+
 def get_user_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -251,6 +270,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     3: _migrate_v3_to_v4,
     4: _migrate_v4_to_v5,
     5: _migrate_v5_to_v6,
+    6: _migrate_v6_to_v7,
 }
 
 

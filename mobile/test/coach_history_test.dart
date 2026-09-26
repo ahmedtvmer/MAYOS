@@ -100,6 +100,44 @@ void main() {
     expect(find.textContaining('e1RM 120.0'), findsOneWidget);
   });
 
+  testWidgets('the drill-down shows skipped and unplanned divergences',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _pumpApp(tester, fake);
+
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(
+        tester, find.text('Volume (weighted working sets)'));
+
+    expect(find.text('Skipped: Squat'), findsOneWidget);
+    expect(find.text('Unplanned: Lat Pulldown'), findsOneWidget);
+    // The Lower 1 session carries no divergences, so only one of each renders.
+    expect(find.text('Lower 1 · 2026-09-23'), findsOneWidget);
+    expect(find.textContaining('Skipped:'), findsOneWidget);
+    expect(find.textContaining('Unplanned:'), findsOneWidget);
+  });
+
+  testWidgets('sessions without divergences render no divergence rows',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    final Map<String, dynamic> summary = fake.coachPlayerSummary;
+    (summary['latest_session'] as Map<String, dynamic>)['divergences'] =
+        <Map<String, dynamic>>[];
+    for (final dynamic session
+        in summary['recent_sessions'] as List<dynamic>) {
+      (session as Map<String, dynamic>)['divergences'] =
+          <Map<String, dynamic>>[];
+    }
+    await _pumpApp(tester, fake);
+
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(
+        tester, find.text('Volume (weighted working sets)'));
+
+    expect(find.textContaining('Skipped:'), findsNothing);
+    expect(find.textContaining('Unplanned:'), findsNothing);
+  });
+
   testWidgets('a denied assignment shows the error state with no training data',
       (tester) async {
     final FakeMayosApi fake = _coachFake();
@@ -139,6 +177,31 @@ void main() {
     ];
     await expectLater(
       client.coachPlayerPersonalRecords('assignment-1'),
+      throwsA(isA<ApiException>()),
+    );
+
+    // Malformed divergence entry fails the whole summary closed.
+    fake.coachPlayerSummary = <String, dynamic>{
+      'player_username': 'bob',
+      'started_at': '2026-09-24T10:00:00Z',
+      'status': 'active',
+      'volume': <String, dynamic>{},
+      'latest_session': <String, dynamic>{
+        'session_date': '2026-09-25',
+        'split_name': 'Upper 1',
+        'sets_count': 12,
+        'total_volume_kg': 4200.0,
+        'divergences': <dynamic>[
+          <String, dynamic>{
+            'kind': 'skipped',
+            'exercise_id': 7,
+            'exercise_name': 'Squat',
+          },
+        ],
+      },
+    };
+    await expectLater(
+      client.coachPlayerSummary('assignment-1'),
       throwsA(isA<ApiException>()),
     );
   });

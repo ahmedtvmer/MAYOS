@@ -30,6 +30,7 @@ __all__ = [
     "CoachInviteRedeemIn",
     "CoachNoticeListOut",
     "CoachPersonalRecordOut",
+    "CoachPlayerDivergenceOut",
     "CoachPlayerExerciseOut",
     "CoachPlayerExercisesOut",
     "CoachPlayerLatestSessionOut",
@@ -224,6 +225,14 @@ class CoachPlayerSessionExerciseOut(BaseModel):
     volume_kg: float
 
 
+class CoachPlayerDivergenceOut(BaseModel):
+    """A factual skipped or unplanned exercise in the player's workout history."""
+
+    kind: str
+    exercise_id: str
+    exercise_name: str
+
+
 class CoachPlayerLatestSessionOut(BaseModel):
     """The assigned player's most recent committed session."""
 
@@ -233,6 +242,7 @@ class CoachPlayerLatestSessionOut(BaseModel):
     sets_count: int
     total_volume_kg: float
     exercises: list[CoachPlayerSessionExerciseOut] = []
+    divergences: list[CoachPlayerDivergenceOut] = []
 
 
 class CoachPlayerRecentSessionOut(BaseModel):
@@ -244,6 +254,7 @@ class CoachPlayerRecentSessionOut(BaseModel):
     readiness_score: int | None = None
     sets_count: int
     total_volume_kg: float
+    divergences: list[CoachPlayerDivergenceOut] = []
 
 
 class CoachPlayerSummaryOut(BaseModel):
