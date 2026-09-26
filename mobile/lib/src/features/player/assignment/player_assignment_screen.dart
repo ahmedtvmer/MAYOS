@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/connectivity_message.dart';
 import '../../../core/models.dart';
 import '../../../providers.dart';
 
@@ -57,13 +58,13 @@ class _PlayerAssignmentScreenState
     });
     try {
       final ApiClient api = ref.read(apiClientProvider);
-      final List<Object?> results = await Future.wait<Object?>(
-          <Future<Object?>>[
-            api.myAssignment(),
-            api.playerNotices(),
-            api.playerProgramRequests(),
-            api.playerCheckIns(),
-          ]);
+      final List<Object?> results =
+          await Future.wait<Object?>(<Future<Object?>>[
+        api.myAssignment(),
+        api.playerNotices(),
+        api.playerProgramRequests(),
+        api.playerCheckIns(),
+      ]);
       if (!mounted) return;
       setState(() {
         _assignment = results[0] as Assignment?;
@@ -216,8 +217,7 @@ class _PlayerAssignmentScreenState
   }
 
   Future<void> _requestChange() async {
-    final _ProgramRequestDraft? draft =
-        await showDialog<_ProgramRequestDraft>(
+    final _ProgramRequestDraft? draft = await showDialog<_ProgramRequestDraft>(
       context: context,
       builder: (BuildContext context) => const _ProgramRequestDialog(),
     );
@@ -246,7 +246,7 @@ class _PlayerAssignmentScreenState
       if (!mounted) return;
       setState(() {
         _requestingChange = false;
-        _requestError = error.message;
+        _requestError = mutationFailureMessage(error);
       });
     }
   }
@@ -272,7 +272,7 @@ class _PlayerAssignmentScreenState
       if (!mounted) return;
       setState(() {
         _cancellingRequestId = null;
-        _requestError = error.message;
+        _requestError = mutationFailureMessage(error);
       });
     }
   }
@@ -327,8 +327,7 @@ class _PlayerAssignmentScreenState
                             Chip(label: Text(request.statusLabel)),
                             const SizedBox(width: 8),
                             Expanded(
-                              child:
-                                  Text(request.description),
+                              child: Text(request.description),
                             ),
                           ],
                         ),
@@ -407,16 +406,15 @@ class _PlayerAssignmentScreenState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text('Check-ins',
-                  style: Theme.of(context).textTheme.titleMedium),
+              Text('Check-ins', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 8),
               for (final CheckIn checkIn in _checkIns)
                 ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.handshake_outlined),
-                  title: Text(
-                      '${checkIn.checkedInOn} · ${checkIn.channelLabel}'),
+                  title:
+                      Text('${checkIn.checkedInOn} · ${checkIn.channelLabel}'),
                   subtitle: Text(
                     <String>[
                       if (checkIn.coachUsername != null)
@@ -492,8 +490,7 @@ class _PlayerAssignmentScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('Coach assignment',
-            style: Theme.of(context).textTheme.titleLarge),
+        Text('Coach assignment', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
         const Text(
           'Enter a coach invite code. Your coach can only see your training data '

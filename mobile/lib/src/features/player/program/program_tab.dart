@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/connectivity_message.dart';
 import '../../../core/models.dart';
 import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
@@ -102,7 +103,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       if (!mounted) return;
       setState(() {
         _generating = false;
-        _actionError = error.message;
+        _actionError = mutationFailureMessage(error);
       });
     }
   }
@@ -110,8 +111,8 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   /// Caching the fetched program is fire-and-forget: a slow or failing store
   /// must never hide (or delay showing) an otherwise-successful online fetch
   /// (ADR 020/033).
-  Future<void> _cacheProgram(
-      WorkoutCacheStore cache, String accountId, TrainingProgram program) async {
+  Future<void> _cacheProgram(WorkoutCacheStore cache, String accountId,
+      TrainingProgram program) async {
     try {
       await cache.writeProgram(accountId, program);
     } on Object {

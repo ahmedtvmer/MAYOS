@@ -20,6 +20,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 # Re-exported interfaces for pipeline and test compatibility
+from agent.chat_markers import is_session_pointer_text
 from agent.clinical_guard import (
     EMBED_MODEL,
     evaluate_clinical_semantic_guard,
@@ -1162,11 +1163,9 @@ def _message_role(message: Any) -> str:
 
 
 def _is_session_pointer(message: Any) -> bool:
-    return _message_role(message) == "assistant" and bool(re.fullmatch(
-        r"[^\w]*\*\*Session Logged:\*\* .+ \(\d{4}-\d{2}-\d{2}\) \| \d+ Sets \| "
-        r"Volume: [\d,.]+ kg \| Readiness: [1-5]/5 \| Saved to Ledger\.",
-        _get_message_text(message),
-    ))
+    return _message_role(message) == "assistant" and is_session_pointer_text(
+        _get_message_text(message)
+    )
 
 
 def _prompt_token_count(messages: Sequence[BaseMessage]) -> int:

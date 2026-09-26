@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/api_client.dart';
+import 'core/chat_storage.dart';
 import 'core/config.dart';
 import 'core/token_store.dart';
 import 'core/workout_storage.dart';
@@ -32,6 +33,7 @@ final Provider<AuthRepository> authRepositoryProvider =
   (ref) => AuthRepository(
     api: ref.watch(apiClientProvider),
     tokens: ref.watch(tokenStoreProvider),
+    chatCache: ref.watch(chatCacheStoreProvider),
   ),
 );
 
@@ -63,6 +65,14 @@ final Provider<WorkoutCacheStore> workoutCacheStoreProvider =
         ref.watch(offlineWorkoutDraftsEnabledProvider)
             ? SecureWorkoutCacheStore()
             : InMemoryWorkoutCacheStore());
+
+/// Protected, account-separated disclosure acceptance and chat-history cache
+/// for read-only offline viewing (#37, ADR 016/036).
+final Provider<ChatCacheStore> chatCacheStoreProvider =
+    Provider<ChatCacheStore>((ref) =>
+        ref.watch(offlineWorkoutDraftsEnabledProvider)
+            ? SecureChatCacheStore()
+            : InMemoryChatCacheStore());
 
 /// Processes the logged-in account's drafts on login, after a save, on demand,
 /// and periodically while the app is in the foreground (ADR 020/033).

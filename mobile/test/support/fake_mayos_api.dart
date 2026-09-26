@@ -79,6 +79,29 @@ class FakeMayosApi {
       <String, Map<String, dynamic>>{};
   int _sessionSeq = 0;
 
+  // Hosted player-assistant chat (#37).
+  final List<Map<String, dynamic>> chatHistory = <Map<String, dynamic>>[];
+  int _chatSeq = 0;
+  // When true, chat reads/sends fail as a dropped connection (offline).
+  bool chatOffline = false;
+  // When true, `POST /chat/messages` emits an SSE error frame after the user
+  // message is stored (a failed turn; no assistant reply is persisted).
+  bool chatSendError = false;
+  // When true, the done frame reports `program_updated: true`.
+  bool chatProgramUpdated = false;
+
+  // Exact method+path pairs that fail as a dropped connection (offline
+  // program-changing action, spec AC3). Add via ``failOffline('POST', path)``.
+  final Set<String> offlineRequests = <String>{};
+
+  /// Test hook: make one method+path fail as a network error.
+  void failOffline(String method, String path) {
+    offlineRequests.add('${method.toUpperCase()} $path');
+  }
+
+  bool _isOfflineRequest(FakeRequest request) =>
+      offlineRequests.contains('${request.method} ${request.path}');
+
   // Player training schedule and pauses (#30).
   List<Map<String, dynamic>> scheduleVersions = _defaultScheduleVersions();
   List<Map<String, dynamic>> trainingPauses = _defaultTrainingPauses();
@@ -105,6 +128,15 @@ class FakeMayosApi {
 
   FakeResponse _handle(FakeRequest request) {
     final String path = request.path;
+    if (_isOfflineRequest(request)) {
+      return const FakeResponse.networkFailure();
+    }
+    if (path == '/chat/history') {
+      return _chatHistoryResponse(request);
+    }
+    if (path == '/chat/messages') {
+      return _chatMessage(request);
+    }
     if (path.startsWith('/workouts/sessions/by-client-id/')) {
       return _sessionByClientId(request);
     }
@@ -628,6 +660,89 @@ class FakeMayosApi {
     return FakeResponse(200, <String, dynamic>{
       'check_ins': List<Map<String, dynamic>>.from(checkIns),
     });
+  }
+
+  FakeResponse _chatHistoryResponse(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (chatOffline) {
+      return const FakeResponse.networkFailure();
+    }
+    if (request.method == 'DELETE') {
+      chatHistory.clear();
+      return const FakeResponse(204);
+    }
+    // The service annotates each message with its `kind` (ADR 036), so the
+    // client renders a debrief card without re-deriving the wording.
+    return FakeResponse(
+      200,
+      <Map<String, dynamic>>[
+        for (final Map<String, dynamic> row in chatHistory)
+          <String, dynamic>{
+            ...row,
+            'kind': _chatKind(
+              row['role'] as String? ?? '',
+              row['content'] as String? ?? '',
+            ),
+          },
+      ],
+    );
+  }
+
+  static String _chatKind(String role, String content) {
+    final bool pointer = role == 'assistant' &&
+        content.trimLeft().startsWith('📋') &&
+        content.contains('**Session Logged:**');
+    return pointer ? 'debrief' : 'message';
+  }
+
+  FakeResponse _chatMessage(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (chatOffline) {
+      return const FakeResponse.networkFailure();
+    }
+    final String content = (request.body['content'] as String?)?.trim() ?? '';
+    if (content.isEmpty) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'content is required'});
+    }
+    // Idempotent retry: a failed turn leaves the user message unanswered, so a
+    // retry of the same content already the last stored message reuses it
+    // rather than inserting a duplicate (service/chat.py::prepare_user_turn).
+    final bool alreadyStored = chatHistory.isNotEmpty &&
+        chatHistory.last['role'] == 'user' &&
+        chatHistory.last['content'] == content;
+    if (!alreadyStored) {
+      chatHistory.add(<String, dynamic>{
+        'id': 'chat-${++_chatSeq}',
+        'role': 'user',
+        'content': content,
+        'created_at': '2026-09-26T12:00:00Z',
+      });
+    }
+    if (chatSendError) {
+      return const FakeResponse(200, null, <String>[
+        'event: error\ndata: {"detail": "The assistant is temporarily unavailable."}\n\n',
+      ]);
+    }
+    const String reply = 'Keep your elbows tucked.';
+    chatHistory.add(<String, dynamic>{
+      'id': 'chat-${++_chatSeq}',
+      'role': 'assistant',
+      'content': reply,
+      'created_at': '2026-09-26T12:00:01Z',
+    });
+    return FakeResponse(200, null, <String>[
+      'data: {"token": "Keep your "}\n\n',
+      'data: {"token": "elbows tucked."}\n\n',
+      'data: {"done": true, "response_content": "$reply", '
+          '"program_updated": ${chatProgramUpdated ? 'true' : 'false'}}\n\n',
+    ]);
   }
 
   String _addDays(String iso, int days) {

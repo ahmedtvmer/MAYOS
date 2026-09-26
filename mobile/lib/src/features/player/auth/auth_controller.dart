@@ -83,7 +83,8 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
-    await _repository.logout();
+    final String? accountId = state.session?.account.accountId;
+    await _repository.logout(accountId: accountId);
     state = const AuthState.unauthenticated();
   }
 
@@ -194,9 +195,11 @@ class AuthController extends StateNotifier<AuthState> {
     if (!state.isAuthenticated) {
       return;
     }
+    final String? accountId = state.session?.account.accountId;
     state = const AuthState.unauthenticated();
-    // Fire-and-forget: the in-memory state already reflects the logout.
-    unawaited(_repository.clearToken());
+    // Fire-and-forget: the in-memory state already reflects the logout. The
+    // token is already invalid, so only the local state is dropped here.
+    unawaited(_repository.clearSession(accountId: accountId));
   }
 
   @override

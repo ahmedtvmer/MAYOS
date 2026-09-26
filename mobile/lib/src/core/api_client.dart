@@ -1,6 +1,12 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 
+import 'chat_models.dart';
 import 'models.dart';
+import 'sse.dart';
 import 'token_store.dart';
 
 /// Raised for any failed service call, carrying the HTTP status when there was
@@ -75,6 +81,7 @@ class ApiClient {
       'The service returned invalid profile data.';
   static const String _invalidSchedule =
       'The service returned invalid training schedule data.';
+  static const String _invalidChat = 'The service returned invalid chat data.';
 
   final TokenStore _tokens;
   late final Dio _dio;
@@ -895,5 +902,143 @@ class ApiClient {
       throw const ApiException('The service returned invalid session data.');
     }
     return data;
+  }
+
+  /// The player's persisted assistant-chat history, oldest-first
+  /// (`GET /chat/history`, ADR 016).
+  Future<List<ChatMessage>> chatHistory() async {
+    final response = await _send(() => _dio.get<dynamic>('/chat/history'));
+    final dynamic data = response.data;
+    if (data is! List<dynamic>) {
+      throw const ApiException(_invalidChat);
+    }
+    return _parseBodyList(data, ChatMessage.fromJson, _invalidChat);
+  }
+
+  /// Clears the player's assistant-chat history (`DELETE /chat/history`).
+  Future<void> clearChatHistory() async {
+    await _send(() => _dio.delete<dynamic>('/chat/history'));
+  }
+
+  /// Streams one assistant turn as decoded SSE events (`POST /chat/messages`).
+  ///
+  /// Tokens arrive incrementally via [ChatToken]; the final [ChatDone] reports
+  /// the persisted reply and whether the program changed. A failed turn is a
+  /// [ChatError] frame. Any transport failure while the stream is open — a
+  /// dropped connection, or a non-2xx body such as a 429 rate limit — surfaces
+  /// as an [ApiException] (network failures have a null status code) so the
+  /// caller can show a needs-connection/refusal state and never treat a
+  /// partial reply as finished.
+  Stream<ChatStreamEvent> streamChatMessage(String content) async* {
+    final Response<ResponseBody> response;
+    try {
+      response = await _dio.post<ResponseBody>(
+        '/chat/messages',
+        data: <String, dynamic>{'content': content},
+        options: Options(responseType: ResponseType.stream),
+      );
+    } on DioException catch (error) {
+      throw _toApiException(error);
+    }
+
+    final dynamic body = response.data;
+    final Stream<Uint8List>? bytes = body is ResponseBody ? body.stream : null;
+    if (bytes == null) {
+      throw const ApiException(
+          'The service returned no message stream. Check your connection.');
+    }
+
+    // A non-2xx response (e.g. 429 from CHAT_LIMIT) is still a stream: read it
+    // as JSON to surface the server's `detail` instead of an empty SSE body.
+    final int status = response.statusCode ?? 200;
+    if (status < 200 || status >= 300) {
+      final String raw = await _readStream(bytes);
+      throw _errorFromResponse(status, raw);
+    }
+
+    final SseDecoder decoder = SseDecoder();
+    try {
+      await for (final String chunk in _decodeUtf8(bytes)) {
+        for (final SseEvent event in decoder.addChunk(chunk)) {
+          final ChatStreamEvent? parsed = _parseChatEvent(event);
+          if (parsed != null) {
+            yield parsed;
+          }
+        }
+      }
+      for (final SseEvent event in decoder.close()) {
+        final ChatStreamEvent? parsed = _parseChatEvent(event);
+        if (parsed != null) {
+          yield parsed;
+        }
+      }
+    } on DioException catch (error) {
+      // The connection dropped mid-stream: treat it as a transient failure so
+      // the screen enters its error/offline state and can retry.
+      throw _toApiException(error);
+    } on ApiException {
+      rethrow;
+    } on FormatException {
+      throw const ApiException(
+          'The service sent an unreadable chat stream. Please retry.');
+    }
+  }
+
+  /// Decodes [bytes] as streaming UTF-8 so a multibyte character split across
+  /// two network chunks is reassembled rather than mangled. [utf8.decoder] is
+  /// a chunked converter, so it carries partial sequence state across chunks.
+  Stream<String> _decodeUtf8(Stream<List<int>> bytes) =>
+      utf8.decoder.bind(bytes);
+
+  Future<String> _readStream(Stream<Uint8List> bytes) async {
+    final List<int> collected = <int>[];
+    await for (final Uint8List chunk in bytes) {
+      collected.addAll(chunk);
+    }
+    return utf8.decode(collected, allowMalformed: true);
+  }
+
+  /// Builds an [ApiException] from a non-2xx streamed body, surfacing the
+  /// server's `detail` (e.g. the rate-limit message) when present.
+  ApiException _errorFromResponse(int status, String raw) {
+    final String trimmed = raw.trim();
+    if (trimmed.isNotEmpty) {
+      try {
+        final dynamic decoded = jsonDecode(trimmed);
+        if (decoded is Map && decoded['detail'] is String) {
+          return ApiException(decoded['detail'] as String, statusCode: status);
+        }
+      } on FormatException {
+        // Fall through to the status-based message below.
+      }
+    }
+    if (status >= 500) {
+      return ApiException('The service is unavailable. Please retry.',
+          statusCode: status);
+    }
+    return ApiException('Request failed ($status).', statusCode: status);
+  }
+
+  ChatStreamEvent? _parseChatEvent(SseEvent event) {
+    final dynamic decoded = jsonDecode(event.data);
+    if (decoded is! Map<String, dynamic>) {
+      return null;
+    }
+    if (event.event == 'error') {
+      final dynamic detail = decoded['detail'];
+      return ChatError(detail is String && detail.isNotEmpty
+          ? detail
+          : 'The assistant could not answer. Please retry.');
+    }
+    if (decoded['done'] == true) {
+      return ChatDone(
+        responseContent: decoded['response_content'] is String
+            ? decoded['response_content'] as String
+            : '',
+        programUpdated: decoded['program_updated'] == true,
+      );
+    }
+    final dynamic token = decoded['token'];
+    return token is String ? ChatToken(token) : null;
   }
 }

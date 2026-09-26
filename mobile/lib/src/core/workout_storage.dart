@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'models.dart';
+import 'secure_store.dart';
 
 /// Protected, account-separated storage for offline workout drafts (ADR 020/033).
 ///
@@ -24,13 +25,10 @@ abstract class DraftStore {
 
 class SecureDraftStore implements DraftStore {
   SecureDraftStore({FlutterSecureStorage? storage, DateTime Function()? now})
-      : _storage = storage ??
-            const FlutterSecureStorage(
-              aOptions: AndroidOptions(encryptedSharedPreferences: true),
-            ),
+      : _store = SecureStore(storage: storage),
         _now = now ?? DateTime.now;
 
-  final FlutterSecureStorage _storage;
+  final SecureStore _store;
   final DateTime Function() _now;
   final Set<String> _quarantined = <String>{};
 
@@ -42,7 +40,7 @@ class SecureDraftStore implements DraftStore {
   @override
   Future<List<WorkoutDraft>> read(String accountId) async {
     final String key = _key(accountId);
-    final String? raw = await _storage.read(key: key);
+    final String? raw = await _store.readString(key);
     if (raw == null || raw.isEmpty) {
       _quarantined.remove(accountId);
       return <WorkoutDraft>[];
@@ -72,16 +70,15 @@ class SecureDraftStore implements DraftStore {
   Future<void> _quarantine(String accountId, String raw) async {
     final String quarantineKey =
         'drafts.$accountId.corrupt.${_now().millisecondsSinceEpoch}';
-    await _storage.write(key: quarantineKey, value: raw);
+    await _store.writeString(quarantineKey, raw);
     _quarantined.add(accountId);
   }
 
   @override
   Future<void> write(String accountId, List<WorkoutDraft> drafts) async {
-    final String raw = jsonEncode(<Map<String, dynamic>>[
+    await _store.writeJson(key: _key(accountId), value: <Map<String, dynamic>>[
       for (final WorkoutDraft draft in drafts) draft.toJson(),
     ]);
-    await _storage.write(key: _key(accountId), value: raw);
     _quarantined.remove(accountId);
   }
 }
@@ -101,7 +98,8 @@ class InMemoryDraftStore implements DraftStore {
   /// Test hook: the next [read] for [accountId] finds unreadable raw storage
   /// (e.g. a value a previous app version could not have written), exercising
   /// the same quarantine path as [SecureDraftStore].
-  void simulateCorruptStorage(String accountId, {String raw = '{not valid json'}) {
+  void simulateCorruptStorage(String accountId,
+      {String raw = '{not valid json'}) {
     _byAccount.remove(accountId);
     _corrupt[accountId] = raw;
   }
@@ -113,7 +111,8 @@ class InMemoryDraftStore implements DraftStore {
   Future<List<WorkoutDraft>> read(String accountId) async {
     final String? raw = _corrupt.remove(accountId);
     if (raw != null) {
-      quarantinedRaw['$accountId.corrupt.${DateTime.now().millisecondsSinceEpoch}'] = raw;
+      quarantinedRaw[
+          '$accountId.corrupt.${DateTime.now().millisecondsSinceEpoch}'] = raw;
       _quarantined.add(accountId);
       return <WorkoutDraft>[];
     }
@@ -143,22 +142,18 @@ abstract class WorkoutCacheStore {
 
 class SecureWorkoutCacheStore implements WorkoutCacheStore {
   SecureWorkoutCacheStore({FlutterSecureStorage? storage})
-      : _storage = storage ??
-            const FlutterSecureStorage(
-              aOptions: AndroidOptions(encryptedSharedPreferences: true),
-            );
+      : _store = SecureStore(storage: storage);
 
-  final FlutterSecureStorage _storage;
+  final SecureStore _store;
 
   @override
   Future<TrainingProgram?> readProgram(String accountId) async {
-    final String? raw = await _storage.read(key: 'program.$accountId');
-    if (raw == null || raw.isEmpty) {
+    final dynamic decoded = await _store.readJson('program.$accountId');
+    if (decoded is! Map<String, dynamic>) {
       return null;
     }
     try {
-      return TrainingProgram.fromJson(
-          jsonDecode(raw) as Map<String, dynamic>);
+      return TrainingProgram.fromJson(decoded);
     } on FormatException {
       return null;
     } on TypeError {
@@ -168,18 +163,17 @@ class SecureWorkoutCacheStore implements WorkoutCacheStore {
 
   @override
   Future<void> writeProgram(String accountId, TrainingProgram program) =>
-      _storage.write(
-          key: 'program.$accountId', value: jsonEncode(program.toJson()));
+      _store.writeJson(key: 'program.$accountId', value: program.toJson());
 
   @override
   Future<Prescription?> readPrescription(String accountId, int dayOrder) async {
-    final String? raw =
-        await _storage.read(key: 'prescription.$accountId.$dayOrder');
-    if (raw == null || raw.isEmpty) {
+    final dynamic decoded =
+        await _store.readJson('prescription.$accountId.$dayOrder');
+    if (decoded is! Map<String, dynamic>) {
       return null;
     }
     try {
-      return Prescription.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      return Prescription.fromJson(decoded);
     } on FormatException {
       return null;
     } on TypeError {
@@ -190,9 +184,9 @@ class SecureWorkoutCacheStore implements WorkoutCacheStore {
   @override
   Future<void> writePrescription(
           String accountId, int dayOrder, Prescription prescription) =>
-      _storage.write(
+      _store.writeJson(
         key: 'prescription.$accountId.$dayOrder',
-        value: jsonEncode(prescription.toJson()),
+        value: prescription.toJson(),
       );
 }
 
@@ -210,7 +204,8 @@ class InMemoryWorkoutCacheStore implements WorkoutCacheStore {
   }
 
   @override
-  Future<Prescription?> readPrescription(String accountId, int dayOrder) async =>
+  Future<Prescription?> readPrescription(
+          String accountId, int dayOrder) async =>
       _prescriptions['$accountId.$dayOrder'];
 
   @override

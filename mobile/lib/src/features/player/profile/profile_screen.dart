@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/connectivity_message.dart';
 import '../../../core/device_timezone.dart';
 import '../../../core/models.dart';
 import '../../../providers.dart';
@@ -141,7 +142,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _notice = error.message;
+        _notice = mutationFailureMessage(error);
         _noticeIsError = true;
       });
     }
@@ -179,7 +180,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _savingSchedule = false;
-        _scheduleNotice = error.message;
+        _scheduleNotice = mutationFailureMessage(error);
         _scheduleNoticeIsError = true;
       });
     }
@@ -208,8 +209,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _schedulePause() async {
     final DateTime today = _today();
-    final DateTime start = DateTime(
-        _pauseStart.year, _pauseStart.month, _pauseStart.day);
+    final DateTime start =
+        DateTime(_pauseStart.year, _pauseStart.month, _pauseStart.day);
     final DateTime end =
         DateTime(_pauseEnd.year, _pauseEnd.month, _pauseEnd.day);
     String? validation;
@@ -250,7 +251,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _schedulingPause = false;
-        _pauseNotice = error.message;
+        _pauseNotice = mutationFailureMessage(error);
         _pauseNoticeIsError = true;
       });
     }
@@ -299,8 +300,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ],
           onChanged: _saving
               ? null
-              : (int? value) => setState(
-                  () => _weeklyFrequency = value ?? _weeklyFrequency),
+              : (int? value) =>
+                  setState(() => _weeklyFrequency = value ?? _weeklyFrequency),
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
@@ -316,8 +317,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ],
           onChanged: _saving
               ? null
-              : (String? value) => setState(
-                  () => _repPreference = value ?? _repPreference),
+              : (String? value) =>
+                  setState(() => _repPreference = value ?? _repPreference),
         ),
         if (_notice != null) ...<Widget>[
           const SizedBox(height: 12),
@@ -418,8 +419,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             Expanded(
               child: OutlinedButton(
                 key: const Key('pause_end_button'),
-                onPressed:
-                    _schedulingPause ? null : () => _pickPauseDate(start: false),
+                onPressed: _schedulingPause
+                    ? null
+                    : () => _pickPauseDate(start: false),
                 child: Text('End: ${_formatDate(_pauseEnd)}'),
               ),
             ),

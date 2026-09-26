@@ -52,9 +52,8 @@ def _run_turn(db: Any, trainee: str, content: str, out: "queue.Queue[tuple[str, 
     try:
         bind_request(db, trainee)
         profile = db.get_user_profile() or {}
-        history = db.get_chat_history()
-        db.add_chat_message("user", content)
-        tail = chat_service.build_tail_messages(history + [{"role": "user", "content": content}])
+        history = chat_service.prepare_user_turn(db, content)
+        tail = chat_service.build_tail_messages(history)
         state = chat_service.build_turn_state(
             db,
             trainee,

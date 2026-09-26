@@ -12,6 +12,7 @@ import 'features/player/auth/auth_controller.dart';
 import 'features/player/auth/login_screen.dart';
 import 'features/player/auth/recovery_email_screen.dart';
 import 'features/player/auth/register_screen.dart';
+import 'features/player/chat/chat_screen.dart';
 import 'features/player/home/player_home_screen.dart';
 import 'features/player/onboarding/onboarding_screen.dart';
 import 'features/player/plan/plan_screen.dart';
@@ -35,6 +36,7 @@ const String coachAlertsPath = '/coach/alerts';
 const String assignmentPath = '/assignment';
 const String workoutsPath = '/workouts';
 const String logWorkoutPath = '/log-workout';
+const String chatPath = '/chat';
 const String splashPath = '/splash';
 
 /// Pure routing decision, kept separate so capability gating is unit-testable.
@@ -136,6 +138,11 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
           appBar: AppBar(title: const Text('Profile')),
           body: const ProfileScreen(),
         ),
+      ),
+      GoRoute(
+        path: chatPath,
+        builder: (BuildContext context, GoRouterState state) =>
+            const ChatScreen(),
       ),
       GoRoute(
         path: coachInvitePath,

@@ -21,10 +21,28 @@ class FakeRequest {
 }
 
 class FakeResponse {
-  const FakeResponse(this.status, [this.body]);
+  const FakeResponse(
+    this.status, [
+    this.body,
+    this.chunks,
+  ]) : networkFailure = false;
+
+  /// The transport fails before any response arrives (offline simulation).
+  const FakeResponse.networkFailure()
+      : status = 0,
+        body = null,
+        chunks = null,
+        networkFailure = true;
 
   final int status;
   final Object? body;
+
+  /// When set, the body is streamed as these raw chunks (e.g. SSE frames)
+  /// rather than returned as one response. A short delay between chunks lets
+  /// tests observe incremental rendering.
+  final List<String>? chunks;
+
+  final bool networkFailure;
 }
 
 typedef FakeHandler = FakeResponse Function(FakeRequest request);
@@ -72,6 +90,29 @@ class FakeApiAdapter implements HttpClientAdapter {
     }
 
     final FakeResponse response = _handler(request);
+    if (response.networkFailure) {
+      throw DioException.connectionError(
+        requestOptions: options,
+        reason: 'Network unavailable (test).',
+      );
+    }
+    final List<String>? chunks = response.chunks;
+    if (chunks != null) {
+      Stream<Uint8List> body() async* {
+        for (final String chunk in chunks) {
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+          yield Uint8List.fromList(utf8.encode(chunk));
+        }
+      }
+
+      return ResponseBody(
+        body(),
+        response.status,
+        headers: <String, List<String>>{
+          Headers.contentTypeHeader: <String>['text/event-stream'],
+        },
+      );
+    }
     return ResponseBody.fromString(
       response.body == null ? '' : jsonEncode(response.body),
       response.status,

@@ -1,15 +1,21 @@
 import '../../../core/api_client.dart';
+import '../../../core/chat_storage.dart';
 import '../../../core/models.dart';
 import '../../../core/token_store.dart';
 
 /// Coordinates the API and the persisted token for the auth lifecycle.
 class AuthRepository {
-  AuthRepository({required ApiClient api, required TokenStore tokens})
-      : _api = api,
-        _tokens = tokens;
+  AuthRepository({
+    required ApiClient api,
+    required TokenStore tokens,
+    ChatCacheStore? chatCache,
+  })  : _api = api,
+        _tokens = tokens,
+        _chatCache = chatCache;
 
   final ApiClient _api;
   final TokenStore _tokens;
+  final ChatCacheStore? _chatCache;
 
   Future<AccountSession> register({
     required String username,
@@ -68,13 +74,39 @@ class AuthRepository {
 
   Future<void> clearToken() => _tokens.clear();
 
-  Future<void> logout() async {
+  /// Ends the session and drops the account's cached chat history.
+  ///
+  /// History lives server-side, so clearing the local cache loses nothing; it
+  /// keeps a private conversation from being readable by whoever holds the
+  /// device next (ADR 036). Disclosure acceptance stays per account.
+  Future<void> logout({String? accountId}) async {
     try {
       await _api.logout();
     } on ApiException {
       // Local session is cleared regardless; the server revokes on best effort.
     }
+    await _clearChatCache(accountId);
     await _tokens.clear();
+  }
+
+  /// Drops the local session without a server call (the token is already
+  /// invalid, e.g. after a 401): clears the account's cached chat history and
+  /// the persisted token.
+  Future<void> clearSession({String? accountId}) async {
+    await _clearChatCache(accountId);
+    await _tokens.clear();
+  }
+
+  Future<void> _clearChatCache(String? accountId) async {
+    final ChatCacheStore? cache = _chatCache;
+    if (cache == null || accountId == null) {
+      return;
+    }
+    try {
+      await cache.clearHistory(accountId);
+    } on Object {
+      // Best effort: a storage failure must never block logout.
+    }
   }
 
   /// Persists the token issued by register/login, then resolves the session.

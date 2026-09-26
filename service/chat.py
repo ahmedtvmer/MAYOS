@@ -4,12 +4,21 @@ from typing import Any, Generator
 
 from langchain_core.messages import AIMessage, HumanMessage
 
+from agent.chat_markers import chat_message_kind
+
 
 def get_history(db: Any, trainee_id: str) -> list[dict[str, Any]]:
     from service._base import bind_user
 
     bind_user(db, trainee_id)
-    return db.get_chat_history()
+    history = db.get_chat_history()
+    # Label the session-commit pointer as a debrief so the client renders it
+    # distinctly without re-deriving the wording (ADR 036).
+    for message in history:
+        message["kind"] = chat_message_kind(
+            str(message.get("role", "")), str(message.get("content", ""))
+        )
+    return history
 
 
 def add_user_message(db: Any, trainee_id: str, content: str) -> None:
@@ -17,6 +26,23 @@ def add_user_message(db: Any, trainee_id: str, content: str) -> None:
 
     bind_user(db, trainee_id)
     db.add_chat_message("user", content)
+
+
+def prepare_user_turn(db: Any, content: str) -> list[dict[str, Any]]:
+    """Persists a user turn idempotently and returns the full history to run against.
+
+    A turn persists the user message *before* the model runs, so a failed turn
+    leaves it unanswered in the ledger. Retrying that exact message must not
+    insert a second user row: when the most recent stored message is a ``user``
+    message with identical content and no assistant reply follows it, the turn
+    runs against the existing history instead. Reusing the stored row also
+    means the retried turn sees the same tail context as the original attempt.
+    """
+    history = db.get_chat_history()
+    if history and history[-1]["role"] == "user" and history[-1]["content"] == content:
+        return history
+    db.add_chat_message("user", content)
+    return history + [{"role": "user", "content": content}]
 
 
 def clear_history(db: Any, trainee_id: str) -> None:
