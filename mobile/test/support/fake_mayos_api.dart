@@ -38,6 +38,16 @@ class FakeMayosApi {
   final List<Map<String, dynamic>> assignmentNotices = <Map<String, dynamic>>[];
   final List<Map<String, dynamic>> assignments = <Map<String, dynamic>>[];
 
+  // Coach drill-down (#25). Denied mirrors a revoked/foreign assignment.
+  bool coachHistoryDenied = false;
+  Map<String, dynamic> coachPlayerSummary = _defaultCoachSummary();
+  List<Map<String, dynamic>> coachPlayerRecords =
+      _defaultCoachRecords();
+  List<Map<String, dynamic>> coachPlayerExercises =
+      _defaultCoachExercises();
+  Map<String, Map<String, dynamic>> coachPlayerHistories =
+      _defaultCoachHistories();
+
   /// When true, `GET /auth/me` fails with a transient 500 (token still valid).
   bool meFails = false;
   int _answeredSteps = 0;
@@ -48,6 +58,9 @@ class FakeMayosApi {
     final String path = request.path;
     if (path.startsWith('/coach/assignments/') && path.endsWith('/revoke')) {
       return _revokeAssignment(request);
+    }
+    if (path.startsWith('/coach/assignments/') && path.contains('/player/')) {
+      return _coachPlayerHistory(request);
     }
     switch (path) {
       case '/auth/register':
@@ -333,6 +346,123 @@ class FakeMayosApi {
       'ended_at': '2026-09-24T11:00:00Z',
     });
   }
+
+  FakeResponse _coachPlayerHistory(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    if (coachHistoryDenied) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'No active assignment.'});
+    }
+    final String path = request.path;
+    if (path.endsWith('/player/summary')) {
+      return FakeResponse(200, coachPlayerSummary);
+    }
+    if (path.endsWith('/player/personal-records')) {
+      return FakeResponse(200, List<Map<String, dynamic>>.from(coachPlayerRecords));
+    }
+    if (path.endsWith('/player/exercises')) {
+      return FakeResponse(
+          200, <String, dynamic>{'exercises': coachPlayerExercises});
+    }
+    if (path.contains('/player/exercises/') && path.endsWith('/history')) {
+      final String exerciseId =
+          path.split('/player/exercises/')[1].split('/history')[0];
+      return FakeResponse(
+          200,
+          coachPlayerHistories[exerciseId] ??
+              <String, dynamic>{'history': <dynamic>[], 'caption': null, 'records': <dynamic>[]});
+    }
+    return const FakeResponse(
+        404, <String, dynamic>{'detail': 'Not found.'});
+  }
+
+  static Map<String, dynamic> _defaultCoachSummary() => <String, dynamic>{
+        'player_username': 'bob',
+        'started_at': '2026-09-24T10:00:00Z',
+        'status': 'active',
+        'volume': <String, dynamic>{'Chest': 12.5, 'Back': 9.0},
+        'latest_session': <String, dynamic>{
+          'session_date': '2026-09-25',
+          'split_name': 'Upper 1',
+          'readiness_score': 4,
+          'sets_count': 12,
+          'total_volume_kg': 4200.0,
+          'exercises': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'name': 'Bench Press',
+              'sets': 3,
+              'reps': 15,
+              'volume_kg': 2000.0,
+            },
+          ],
+        },
+        'recent_sessions': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'session_id': 's2',
+            'session_date': '2026-09-25',
+            'split_name': 'Upper 1',
+            'readiness_score': 4,
+            'sets_count': 12,
+            'total_volume_kg': 4200.0,
+          },
+          <String, dynamic>{
+            'session_id': 's1',
+            'session_date': '2026-09-23',
+            'split_name': 'Lower 1',
+            'readiness_score': 3,
+            'sets_count': 10,
+            'total_volume_kg': 3900.0,
+          },
+        ],
+      };
+
+  static List<Map<String, dynamic>> _defaultCoachRecords() =>
+      <Map<String, dynamic>>[
+        <String, dynamic>{
+          'exercise_id': 'bench_press',
+          'name': 'Bench Press',
+          'record_type': 'e1RM',
+          'reps': 5,
+          'value': 120.0,
+          'achieved_at': '2026-09-20T10:00:00Z',
+        },
+      ];
+
+  static List<Map<String, dynamic>> _defaultCoachExercises() =>
+      <Map<String, dynamic>>[
+        <String, dynamic>{'id': 'bench_press', 'name': 'Bench Press'},
+      ];
+
+  static Map<String, Map<String, dynamic>> _defaultCoachHistories() =>
+      <String, Map<String, dynamic>>{
+        'bench_press': <String, dynamic>{
+          'history': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'date': '2026-09-20',
+              'weight_kg': 100.0,
+              'reps': 5,
+              'rpe': 8.0,
+              'e1rm': 120.0,
+            },
+          ],
+          'caption': 'Latest Recorded: **100.0 kg × 5 reps @ RPE 8.0**',
+          'records': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'record_type': 'max_weight',
+              'reps': 5,
+              'value': 100.0,
+              'achieved_at': '2026-09-20T10:00:00Z',
+            },
+          ],
+        },
+      };
 
   FakeResponse _disableCoach(FakeRequest request) {
     if (!_authorized(request)) {
@@ -630,6 +760,11 @@ class FakeMayosApi {
       myAssignmentFails = false;
       assignmentNotices.clear();
       assignments.clear();
+      coachHistoryDenied = false;
+      coachPlayerSummary = _defaultCoachSummary();
+      coachPlayerRecords = _defaultCoachRecords();
+      coachPlayerExercises = _defaultCoachExercises();
+      coachPlayerHistories = _defaultCoachHistories();
       _answeredSteps = 0;
       _assistantMessages = <String>[];
       _onboardingComplete = false;

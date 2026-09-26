@@ -1285,6 +1285,23 @@ class DatabaseManager:
             )
             return self._assignment_from_row(cursor.fetchone())
 
+    def get_active_assignment_for_coach(self, coach_account_id: str, assignment_id: str) -> dict[str, Any] | None:
+        """Reads one active assignment only when it belongs to this coach.
+
+        The catalog-only gate for a coach's drill-down reads; ``None`` for an
+        unknown, ended, or other coach's assignment, so callers deny all three
+        identically and never mount a ledger.
+        """
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                f"SELECT {self._ASSIGNMENT_COLUMNS} FROM assignments"
+                " WHERE assignment_id = ? AND coach_account_id = ? AND status = 'active'",
+                (str(assignment_id), str(coach_account_id)),
+            )
+            return self._assignment_from_row(cursor.fetchone())
+
     def list_active_assignments_for_coach(self, coach_account_id: str) -> list[dict[str, Any]]:
         """Lists active assignments with the player's username; catalog-only, no ledger mount."""
         self.ensure_account_schema()

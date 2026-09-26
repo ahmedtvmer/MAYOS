@@ -23,9 +23,19 @@ __all__ = [
     "ChatMessageOut",
     "CoachAssignmentsOut",
     "CoachCapabilityDisableOut",
+    "CoachExerciseHistoryOut",
+    "CoachExerciseHistoryPointOut",
+    "CoachExerciseRecordOut",
     "CoachIdentityOut",
     "CoachInviteRedeemIn",
     "CoachNoticeListOut",
+    "CoachPersonalRecordOut",
+    "CoachPlayerExerciseOut",
+    "CoachPlayerExercisesOut",
+    "CoachPlayerLatestSessionOut",
+    "CoachPlayerRecentSessionOut",
+    "CoachPlayerSessionExerciseOut",
+    "CoachPlayerSummaryOut",
     "CoachProfileOut",
     "CoachProfileUpdate",
     "CoachRosterEntryOut",
@@ -197,6 +207,97 @@ class CoachRosterEntryOut(BaseModel):
 
 class CoachAssignmentsOut(BaseModel):
     assignments: list[CoachRosterEntryOut]
+
+
+class CoachPlayerSessionExerciseOut(BaseModel):
+    """One exercise's working-set totals within a session."""
+
+    name: str
+    sets: int
+    reps: int
+    volume_kg: float
+
+
+class CoachPlayerLatestSessionOut(BaseModel):
+    """The assigned player's most recent committed session."""
+
+    session_date: str
+    split_name: str
+    readiness_score: int | None = None
+    sets_count: int
+    total_volume_kg: float
+    exercises: list[CoachPlayerSessionExerciseOut] = []
+
+
+class CoachPlayerRecentSessionOut(BaseModel):
+    """A compact session entry for the assigned player's recent history."""
+
+    session_id: str
+    session_date: str
+    split_name: str
+    readiness_score: int | None = None
+    sets_count: int
+    total_volume_kg: float
+
+
+class CoachPlayerSummaryOut(BaseModel):
+    """Roster identity plus the assigned player's volume and session activity."""
+
+    player_username: str
+    started_at: str
+    status: str
+    volume: dict[str, float]
+    latest_session: CoachPlayerLatestSessionOut | None = None
+    recent_sessions: list[CoachPlayerRecentSessionOut] = []
+
+
+class CoachPlayerExerciseOut(BaseModel):
+    id: str
+    name: str
+
+
+class CoachPlayerExercisesOut(BaseModel):
+    exercises: list[CoachPlayerExerciseOut]
+
+
+class CoachPersonalRecordOut(BaseModel):
+    exercise_id: str
+    name: str
+    record_type: str
+    reps: int
+    value: float
+    prev_value: float | None = None
+    achieved_at: str
+    session_id: str | None = None
+
+
+class CoachExerciseHistoryPointOut(BaseModel):
+    """One progression point for the assigned player's exercise."""
+
+    date: str
+    weight_kg: float
+    reps: int
+    rpe: float
+    e1rm: float
+
+
+class CoachExerciseRecordOut(BaseModel):
+    """One recorded personal record for the assigned player's exercise."""
+
+    record_type: str
+    reps: int
+    value: float
+    prev_value: float | None = None
+    achieved_at: str
+    session_id: str | None = None
+
+
+class CoachExerciseHistoryOut(BaseModel):
+    """Progression history, latest-record caption, and records for one exercise."""
+
+    history: list[CoachExerciseHistoryPointOut]
+    caption: str | None = None
+    records: list[CoachExerciseRecordOut]
 
 
 class AssignmentNoticeOut(BaseModel):

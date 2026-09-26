@@ -295,6 +295,219 @@ class CoachRosterEntry {
   final String status;
 }
 
+/// One exercise's working-set totals within an assigned player's session.
+class CoachPlayerSessionExercise {
+  const CoachPlayerSessionExercise({
+    required this.name,
+    required this.sets,
+    required this.reps,
+    required this.volumeKg,
+  });
+
+  factory CoachPlayerSessionExercise.fromJson(Map<String, dynamic> json) =>
+      CoachPlayerSessionExercise(
+        name: json['name'] as String,
+        sets: (json['sets'] as num).toInt(),
+        reps: (json['reps'] as num).toInt(),
+        volumeKg: (json['volume_kg'] as num).toDouble(),
+      );
+
+  final String name;
+  final int sets;
+  final int reps;
+  final double volumeKg;
+}
+
+/// The assigned player's most recent committed session.
+class CoachPlayerLatestSession {
+  const CoachPlayerLatestSession({
+    required this.sessionDate,
+    required this.splitName,
+    required this.setsCount,
+    required this.totalVolumeKg,
+    this.readinessScore,
+    this.exercises = const <CoachPlayerSessionExercise>[],
+  });
+
+  factory CoachPlayerLatestSession.fromJson(Map<String, dynamic> json) =>
+      CoachPlayerLatestSession(
+        sessionDate: json['session_date'] as String,
+        splitName: json['split_name'] as String,
+        readinessScore: (json['readiness_score'] as num?)?.toInt(),
+        setsCount: (json['sets_count'] as num).toInt(),
+        totalVolumeKg: (json['total_volume_kg'] as num).toDouble(),
+        exercises: (json['exercises'] as List<dynamic>? ?? const [])
+            .map((dynamic e) => CoachPlayerSessionExercise.fromJson(
+                e as Map<String, dynamic>))
+            .toList(growable: false),
+      );
+
+  final String sessionDate;
+  final String splitName;
+  final int? readinessScore;
+  final int setsCount;
+  final double totalVolumeKg;
+  final List<CoachPlayerSessionExercise> exercises;
+}
+
+/// A compact entry in the assigned player's recent session history.
+class CoachPlayerRecentSession {
+  const CoachPlayerRecentSession({
+    required this.sessionId,
+    required this.sessionDate,
+    required this.splitName,
+    required this.setsCount,
+    required this.totalVolumeKg,
+    this.readinessScore,
+  });
+
+  factory CoachPlayerRecentSession.fromJson(Map<String, dynamic> json) =>
+      CoachPlayerRecentSession(
+        sessionId: json['session_id'] as String,
+        sessionDate: json['session_date'] as String,
+        splitName: json['split_name'] as String,
+        readinessScore: (json['readiness_score'] as num?)?.toInt(),
+        setsCount: (json['sets_count'] as num).toInt(),
+        totalVolumeKg: (json['total_volume_kg'] as num).toDouble(),
+      );
+
+  final String sessionId;
+  final String sessionDate;
+  final String splitName;
+  final int? readinessScore;
+  final int setsCount;
+  final double totalVolumeKg;
+}
+
+/// `GET /coach/assignments/{id}/player/summary` for an actively assigned player.
+class CoachPlayerSummary {
+  const CoachPlayerSummary({
+    required this.playerUsername,
+    required this.startedAt,
+    required this.status,
+    required this.volume,
+    this.latestSession,
+    this.recentSessions = const <CoachPlayerRecentSession>[],
+  });
+
+  factory CoachPlayerSummary.fromJson(Map<String, dynamic> json) =>
+      CoachPlayerSummary(
+        playerUsername: json['player_username'] as String,
+        startedAt: json['started_at'] as String,
+        status: json['status'] as String,
+        volume: (json['volume'] as Map<String, dynamic>? ?? const {})
+            .map((String key, dynamic value) =>
+                MapEntry<String, double>(key, (value as num).toDouble())),
+        latestSession: json['latest_session'] == null
+            ? null
+            : CoachPlayerLatestSession.fromJson(
+                json['latest_session'] as Map<String, dynamic>),
+        recentSessions: (json['recent_sessions'] as List<dynamic>? ?? const [])
+            .map((dynamic s) =>
+                CoachPlayerRecentSession.fromJson(s as Map<String, dynamic>))
+            .toList(growable: false),
+      );
+
+  final String playerUsername;
+  final String startedAt;
+  final String status;
+  final Map<String, double> volume;
+  final CoachPlayerLatestSession? latestSession;
+  final List<CoachPlayerRecentSession> recentSessions;
+}
+
+/// One exercise the assigned player has logged.
+class CoachPlayerExercise {
+  const CoachPlayerExercise({required this.id, required this.name});
+
+  factory CoachPlayerExercise.fromJson(Map<String, dynamic> json) =>
+      CoachPlayerExercise(
+        id: json['id'] as String,
+        name: json['name'] as String,
+      );
+
+  final String id;
+  final String name;
+}
+
+/// One progression point in an exercise's history.
+class CoachExerciseHistoryPoint {
+  const CoachExerciseHistoryPoint({
+    required this.date,
+    required this.weightKg,
+    required this.reps,
+    required this.e1rm,
+    this.rpe,
+  });
+
+  factory CoachExerciseHistoryPoint.fromJson(Map<String, dynamic> json) =>
+      CoachExerciseHistoryPoint(
+        date: json['date'] as String,
+        weightKg: (json['weight_kg'] as num).toDouble(),
+        reps: (json['reps'] as num).toInt(),
+        rpe: (json['rpe'] as num?)?.toDouble(),
+        e1rm: (json['e1rm'] as num).toDouble(),
+      );
+
+  final String date;
+  final double weightKg;
+  final int reps;
+  final double? rpe;
+  final double e1rm;
+}
+
+/// One recorded personal record for a single exercise.
+class CoachExerciseRecord {
+  const CoachExerciseRecord({
+    required this.recordType,
+    required this.reps,
+    required this.value,
+    required this.achievedAt,
+    this.prevValue,
+  });
+
+  factory CoachExerciseRecord.fromJson(Map<String, dynamic> json) =>
+      CoachExerciseRecord(
+        recordType: json['record_type'] as String,
+        reps: (json['reps'] as num).toInt(),
+        value: (json['value'] as num).toDouble(),
+        prevValue: (json['prev_value'] as num?)?.toDouble(),
+        achievedAt: json['achieved_at'] as String,
+      );
+
+  final String recordType;
+  final int reps;
+  final double value;
+  final double? prevValue;
+  final String achievedAt;
+}
+
+/// `GET /coach/assignments/{id}/player/exercises/{exercise_id}/history`.
+class CoachExerciseHistory {
+  const CoachExerciseHistory({
+    required this.history,
+    required this.records,
+    this.caption,
+  });
+
+  factory CoachExerciseHistory.fromJson(Map<String, dynamic> json) =>
+      CoachExerciseHistory(
+        history: (json['history'] as List<dynamic>? ?? const [])
+            .map((dynamic point) => CoachExerciseHistoryPoint.fromJson(
+                point as Map<String, dynamic>))
+            .toList(growable: false),
+        caption: json['caption'] as String?,
+        records: (json['records'] as List<dynamic>? ?? const [])
+            .map((dynamic record) => CoachExerciseRecord.fromJson(
+                record as Map<String, dynamic>))
+            .toList(growable: false),
+      );
+
+  final List<CoachExerciseHistoryPoint> history;
+  final String? caption;
+  final List<CoachExerciseRecord> records;
+}
+
 /// An authenticated account plus onboarding and recovery-email state.
 class AccountSession {
   const AccountSession({

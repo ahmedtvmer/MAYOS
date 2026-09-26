@@ -45,6 +45,8 @@ class ApiClient {
   }
 
   static const String _skipAuth = 'skipAuth';
+  static const String _invalidCoachHistory =
+      'The service returned invalid coach history data.';
 
   final TokenStore _tokens;
   late final Dio _dio;
@@ -152,17 +154,48 @@ class ApiClient {
     return _parseAccount(response.data);
   }
 
-  Account _parseAccount(dynamic responseData) {
-    const String invalidAccountStatus = 'The service returned invalid account status.';
+  Account _parseAccount(dynamic responseData) => _parseBody(
+        responseData,
+        Account.fromJson,
+        'The service returned invalid account status.',
+      );
+
+  T _parseBody<T>(
+    dynamic responseData,
+    T Function(Map<String, dynamic>) parse,
+    String invalidMessage,
+  ) {
     if (responseData is! Map<String, dynamic>) {
-      throw const ApiException(invalidAccountStatus);
+      throw ApiException(invalidMessage);
     }
     try {
-      return Account.fromJson(responseData);
+      return parse(responseData);
     } on FormatException {
-      throw const ApiException(invalidAccountStatus);
+      throw ApiException(invalidMessage);
     } on TypeError {
-      throw const ApiException(invalidAccountStatus);
+      throw ApiException(invalidMessage);
+    }
+  }
+
+  List<T> _parseBodyList<T>(
+    dynamic responseData,
+    T Function(Map<String, dynamic>) parse,
+    String invalidMessage,
+  ) {
+    if (responseData is! List<dynamic>) {
+      throw ApiException(invalidMessage);
+    }
+    try {
+      return responseData.map((dynamic item) {
+        if (item is! Map<String, dynamic>) {
+          throw const FormatException('Invalid entry.');
+        }
+        return parse(item);
+      }).toList(growable: false);
+    } on FormatException {
+      throw ApiException(invalidMessage);
+    } on TypeError {
+      throw ApiException(invalidMessage);
     }
   }
 
@@ -245,6 +278,62 @@ class ApiClient {
         .map((dynamic item) =>
             CoachRosterEntry.fromJson(item as Map<String, dynamic>))
         .toList(growable: false);
+  }
+
+  /// Volume and recent sessions for an actively assigned player.
+  Future<CoachPlayerSummary> coachPlayerSummary(String assignmentId,
+      {int days = 7}) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/coach/assignments/$assignmentId/player/summary',
+        queryParameters: <String, dynamic>{'days': days},
+      ),
+    );
+    return _parseBody(
+        response.data, CoachPlayerSummary.fromJson, _invalidCoachHistory);
+  }
+
+  /// The assigned player's recent personal records, newest-first.
+  Future<List<PersonalRecord>> coachPlayerPersonalRecords(String assignmentId,
+      {int limit = 20}) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/coach/assignments/$assignmentId/player/personal-records',
+        queryParameters: <String, dynamic>{'limit': limit},
+      ),
+    );
+    return _parseBodyList(
+        response.data, PersonalRecord.fromJson, _invalidCoachHistory);
+  }
+
+  /// The distinct exercises the assigned player has logged.
+  Future<List<CoachPlayerExercise>> coachPlayerExercises(
+      String assignmentId) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/coach/assignments/$assignmentId/player/exercises',
+      ),
+    );
+    return _parseBody(
+      response.data,
+      (Map<String, dynamic> json) => (json['exercises'] as List<dynamic>)
+          .map((dynamic item) =>
+              CoachPlayerExercise.fromJson(item as Map<String, dynamic>))
+          .toList(growable: false),
+      _invalidCoachHistory,
+    );
+  }
+
+  /// Progression history, latest caption, and records for one logged exercise.
+  Future<CoachExerciseHistory> coachPlayerExerciseHistory(
+      String assignmentId, String exerciseId) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/coach/assignments/$assignmentId/player/exercises/$exerciseId/history',
+      ),
+    );
+    return _parseBody(
+        response.data, CoachExerciseHistory.fromJson, _invalidCoachHistory);
   }
 
   /// Lists the coach's assignment notices, newest-first.

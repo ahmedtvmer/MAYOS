@@ -17,6 +17,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from service import assignments as assignment_service
+from service import coach_history as coach_history_service
 from svc.dependencies import VerifiedPlayer, get_current_coach, get_current_trainee, get_db
 from svc.rate_limit import (
     ASSIGNMENT_INVITE_LIMIT,
@@ -36,8 +37,13 @@ from svc.schemas import (
     AssignmentRedeemIn,
     AssignmentRedeemOut,
     CoachAssignmentsOut,
+    CoachExerciseHistoryOut,
     CoachIdentityOut,
     CoachNoticeListOut,
+    CoachPersonalRecordOut,
+    CoachPlayerExerciseOut,
+    CoachPlayerExercisesOut,
+    CoachPlayerSummaryOut,
     CoachRosterEntryOut,
 )
 
@@ -47,6 +53,11 @@ player_router = APIRouter(prefix="/assignments", tags=["assignments"])
 
 def _bad_request(error: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
+
+
+def _no_active_assignment() -> HTTPException:
+    """One generic 403 for unknown, revoked, and other-coach assignments alike."""
+    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=coach_history_service.DENIED_ERROR)
 
 
 def _assignment_out(assignment: dict[str, Any]) -> AssignmentOut:
@@ -91,6 +102,84 @@ async def list_coach_assignments(
 
     rows = await asyncio.to_thread(assignment_service.list_coach_assignments, db, coach.account_id)
     return CoachAssignmentsOut(assignments=[CoachRosterEntryOut(**row) for row in rows])
+
+
+@coach_router.get("/{assignment_id}/player/summary", response_model=CoachPlayerSummaryOut)
+async def read_assigned_player_summary(
+    assignment_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+    days: int = 7,
+):
+    """Volume and recent sessions for an actively assigned player."""
+
+    def _run():
+        summary = coach_history_service.player_summary(
+            db, coach.account_id, assignment_id, days_lookback=max(1, min(days, 90))
+        )
+        if summary is None:
+            raise _no_active_assignment()
+        return summary
+
+    return CoachPlayerSummaryOut(**await asyncio.to_thread(_run))
+
+
+@coach_router.get("/{assignment_id}/player/personal-records", response_model=list[CoachPersonalRecordOut])
+async def read_assigned_player_personal_records(
+    assignment_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+    limit: int = 20,
+):
+    """The assigned player's recent personal records, newest-first."""
+
+    def _run():
+        records = coach_history_service.player_personal_records(
+            db, coach.account_id, assignment_id, limit=max(1, min(limit, 100))
+        )
+        if records is None:
+            raise _no_active_assignment()
+        return records
+
+    return [CoachPersonalRecordOut(**record) for record in await asyncio.to_thread(_run)]
+
+
+@coach_router.get("/{assignment_id}/player/exercises", response_model=CoachPlayerExercisesOut)
+async def read_assigned_player_exercises(
+    assignment_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """The distinct exercises the assigned player has logged."""
+
+    def _run():
+        exercises = coach_history_service.player_exercises(db, coach.account_id, assignment_id)
+        if exercises is None:
+            raise _no_active_assignment()
+        return exercises
+
+    rows = await asyncio.to_thread(_run)
+    return CoachPlayerExercisesOut(exercises=[CoachPlayerExerciseOut(**row) for row in rows])
+
+
+@coach_router.get("/{assignment_id}/player/exercises/{exercise_id}/history", response_model=CoachExerciseHistoryOut)
+async def read_assigned_player_exercise_history(
+    assignment_id: str,
+    exercise_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Progression history, latest caption, and records for one exercise."""
+
+    def _run():
+        history = coach_history_service.player_exercise_history(
+            db, coach.account_id, assignment_id, exercise_id
+        )
+        if history is None:
+            raise _no_active_assignment()
+        return history
+
+    return CoachExerciseHistoryOut(**await asyncio.to_thread(_run))
 
 
 @coach_router.get("/notices", response_model=CoachNoticeListOut)

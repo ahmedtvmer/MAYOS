@@ -4,10 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api_client.dart';
 import '../../core/models.dart';
 import '../../providers.dart';
+import 'coach_player_history_screen.dart';
 
 /// Coach-side assignment console (#24): issue an invite, watch notices, revoke
-/// assignments, and disable coaching. Roster history reads belong to #25 and are
-/// deliberately absent here.
+/// assignments, and disable coaching. Tapping a roster row opens the assigned
+/// player's history drill-down (#25).
 class CoachAssignmentsScreen extends ConsumerStatefulWidget {
   const CoachAssignmentsScreen({super.key});
 
@@ -298,6 +299,12 @@ class _CoachAssignmentsScreenState
                   leading: const Icon(Icons.person_outline),
                   title: Text(entry.playerUsername),
                   subtitle: Text('Since ${entry.startedAt}'),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (BuildContext context) =>
+                          CoachPlayerHistoryScreen(entry: entry),
+                    ),
+                  ),
                   trailing: TextButton(
                     onPressed: _busyAssignmentId == entry.assignmentId
                         ? null
