@@ -137,7 +137,7 @@ This document records the architectural, algorithmic, and heuristic decisions im
 ---
 
 ### ADR 017: Flutter is the product client
-* **Status**: Accepted
+* **Status**: Superseded in part by ADR 022 for closed-trial client scope
 * **Decision**: MAYOS is migrating to a mobile application, beginning with Android only for the closed trial. The Flutter app is the product client, backed by the FastAPI service; the Streamlit interface is legacy migration reference and serves no users. Delete it after the four-week trial passes its exit gates and opted-in real-user imports finish, before public launch. The local GGUF backend remains available for development and evaluation. This concentrates delivery and design work on one user experience while retaining useful engine test paths.
 
 ---
@@ -157,3 +157,31 @@ This document records the architectural, algorithmic, and heuristic decisions im
 ### ADR 020: Offline workout drafts with idempotent sync
 * **Status**: Accepted
 * **Decision**: The Android player may capture workout drafts without connectivity and sync them when connected. Chat and program changes remain online. Each draft carries a stable client session ID, performed date and timezone, and the program version used while logging; server commit must be idempotent so retries cannot create duplicate workouts. If a coach publishes a newer program before sync, the workout remains a historical record against the captured version and does not change the new program; both parties see the version difference. Unsynced drafts survive app restart and logout in protected storage isolated to that account, with a logout warning and explicit discard action. Account deletion erases drafts on the deleting device; another offline device erases them when it next checks account status. Performed dates may be entered or corrected up to three days back, while upload/edit timestamps remain available for audit and affected absence alerts are recalculated. This adds a sync contract to the current online-only workout endpoint because workout logging is a core mobile task even when connectivity is interrupted.
+
+---
+
+### ADR 021: Structured, resumable mobile onboarding
+* **Status**: Accepted design; implementation pending
+* **Decision**: The Android onboarding flow will collect named answers on focused screens and save each completed answer to the account. Players may resume and edit earlier answers before confirming first-program creation. Available values in incomplete three-step intakes will prefill the new flow; missing values will be requested. The existing program generation rules, including the required male/female specialization choice and the coaching-only use of body proportions, remain in effect. Hosted-processing disclosure remains before any onboarding answer leaves the device.
+* **Rationale**: The current text-only, three-step intake response cannot reliably restore or revise individual screen answers. A structured contract adds API work, but gives the mobile flow explicit validation, recoverable progress, and a migration path for trial accounts without changing program behavior.
+
+---
+
+### ADR 022: One web app joins Android in the closed trial
+* **Status**: Accepted client scope; web technology pending feasibility
+* **Decision**: The free closed trial requires the Android Flutter app and one web app serving both player and coach capabilities through the same FastAPI service. The iPhone player web experience covers the Android trial features while online; Android alone supports offline workout drafts. Web and Android share behavior, data, privacy boundaries, and the MAYOS design system while adapting layouts to phone and desktop. The trial coach web experience includes the roster, assigned-player history, programs, requests, and alerts. Streamlit remains unused legacy software. Extending Flutter to web is the first candidate, contingent on browser authentication, routing, Safari, responsive-layout, and failed-write verification. If a Flutter-specific limitation blocks the required experience, use another web frontend against the same API. Hold the trial if the browser still cannot support the required online behavior. This replaces ADR 017's Android-only trial scope without choosing the web frontend technology yet.
+* **Rationale**: Trial coaches need a desktop workspace and iPhone players need access before public launch. One capability-aware web app avoids splitting account and assignment behavior across two web products; keeping web online-only avoids promising Android's offline-draft guarantees in a browser.
+
+---
+
+### ADR 023: Web checkout with an Android consumption-only app
+* **Status**: Accepted for public subscriptions; recheck store policy before release
+* **Decision**: Paid subscriptions are purchased through the web app and granted to the same account on Android. The Play-distributed Android app lets subscribers use their entitlements but does not sell digital subscriptions, link to web checkout, or steer users to another payment method. The backend verifies payment events and owns the entitlement state for both clients. The closed trial remains free.
+* **Rationale**: One web checkout avoids adding Play Billing to the Android client while keeping access consistent across Android and web. [Google Play's current payments policy](https://support.google.com/googleplay/android-developer/answer/10281818?hl=en) permits a consumption-only app to provide access to purchases made elsewhere, subject to its restrictions on in-app payment steering.
+
+---
+
+### ADR 024: Constrained cross-player AI for public Coach Pro
+* **Status**: Accepted design; separate privacy and evaluation gate pending
+* **Decision**: The closed trial keeps ADR 016's one-selected-player coach-model boundary. At public launch, Coach Pro may request an on-demand, stateless roster briefing. Deterministic ranking selects at most five consenting players with active assignments to that coach; the model receives only needed de-identified evidence, never raw roster histories or player-assistant chats. The service does not retain a multi-player chat transcript. Players who decline this hosted cross-player use remain visible through ordinary authorized records and deterministic alerts. Updated player disclosure and consent, authorization checks, and a separate privacy and quality evaluation must pass before enabling this feature.
+* **Rationale**: A coach can prioritize the roster with a short model explanation while bounding disclosure and cost. Keeping the roster briefing separate from the single-player assistant avoids carrying one player's context into another's conversation.

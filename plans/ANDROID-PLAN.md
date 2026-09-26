@@ -1,29 +1,30 @@
-# MAYOS — Coaching Platform & Android Delivery Plan
+# MAYOS — Coaching Platform Trial Delivery Plan
 
-> Status: Approved for the closed Android trial · Updated: 2026-09-23
+> Status: Client scope revised for the closed trial · Updated: 2026-09-25
 > Scope: Migrate MAYOS to a cloud-backed **two-capability coaching platform**
-> (coach + player) with a Flutter Android product client distributed via Google
-> Play. The closed trial targets Android only. Fly.io serves the API only
-> (uvicorn). The Streamlit UI is legacy, serves no users, and is scheduled for
-> deletion after mobile cutover. The local GGUF backend remains available for
+> (coach + player) with an Android Flutter app and one web app serving both
+> capabilities. The iPhone player uses the web app while online; trial coaches
+> have a desktop-capable web console. Fly.io serves the API only (uvicorn).
+> The Streamlit UI is legacy, serves no users, and is scheduled for
+> deletion after client cutover. The local GGUF backend remains available for
 > development and evaluation; production uses a hosted model selected by the
 > parity gate.
 >
 > The player-only v1 plan is superseded. Phase 0's hosted parity gate passed;
-> the remaining trial path is C1–C3
-> and workout sync → D → C5 → P. C4 coach AI can be enabled only after its
+> the remaining trial path includes C1–C3, workout sync, D, a web-client gate,
+> C5, and P. C4 coach AI can be enabled only after its
 > separate privacy and eval gates. Directory discovery and payments follow a
 > successful trial. Re-estimate delivery time from this scope before starting.
 >
-> Coaching terms are defined in [CONTEXT.md](CONTEXT.md). Earlier engine ADRs
-> are in [DECISIONS.md](DECISIONS.md), including accepted coaching decisions.
+> Coaching terms are defined in [CONTEXT.md](../CONTEXT.md). Earlier engine ADRs
+> are in [DECISIONS.md](../DECISIONS.md), including accepted coaching decisions.
 
 ## 1. Locked Decisions
 
 | Decision           | Choice                                                             |
 |--------------------|--------------------------------------------------------------------|
 | Product model      | One account may train, coach, or both; capabilities are not exclusive |
-| Client packaging   | Flutter Android is the product client; capability-gated navigation and feature-module layout |
+| Client packaging   | Android Flutter app plus one capability-aware web app for players and coaches; evaluate Flutter web before choosing its frontend technology |
 | Player assistant   | Qwen3.5-9B via DeepInfra, non-reasoning; measured 62/65 standard and 15/15 generalization |
 | Coach assistant    | Qwen3.5-27B via DeepInfra (player-scoped analysis + split help)     |
 | Judge LLM          | Qwen3.5-27B via DeepInfra (eval-only; outside production requests)  |
@@ -36,7 +37,7 @@
 | Player chat        | Private — never visible to coaches                                 |
 | Alerts             | In-app alert center + badges (no push in the trial)                 |
 | Scale target       | < 100 users, single replica (SQLite single-writer)                 |
-| Distribution       | Free Android-only Google Play closed trial with owner-invited coaches and 5–10 coach-player pairs for four weeks |
+| Distribution       | Free closed trial on Android and web, with owner-invited coaches and 5–10 coach-player pairs for four weeks |
 | API server         | Fly.io, Frankfurt (fra), shared-cpu-1x 1–2 GB, 10 GB volume        |
 | Object storage     | Cloudflare R2 — daily snapshots; deletion removes user-specific copies; restricted catalog recovery backups may retain deleted rows up to 30 days |
 | Email              | Resend via existing SMTP transport; new invite/request notices need templates |
@@ -390,6 +391,26 @@ Two consent paths:
   Shared check-in records and program-change requests capture the relevant
   actions; direct in-app coach-player messaging is outside the trial.
 
+### Phase W — Shared Trial Web App
+
+- Provide one web app for both account capabilities, with the same trial
+  behavior, data, privacy boundaries, and MAYOS design system as Android;
+  adapt layouts for iPhone players and desktop coaches.
+- The coach web minimum includes roster, assigned-player history, program
+  publishing, requests, and alerts, with profile, invites, and assignment
+  controls. The iPhone player web app supports the Android trial's online
+  features. Web does not capture offline workout drafts.
+- Keep failed workout entries in the open tab for explicit retry with an
+  idempotent session key. A closed or reloaded tab does not retain web entries;
+  tell players this before logging.
+- A disposable Flutter web JavaScript build passed on 2026-09-25, but the
+  frontend choice depends on iPhone Safari runtime checks for auth storage,
+  API CORS, route reload, responsive layouts, and online workout writes.
+  If Flutter-specific limitations block these flows, use another web
+  frontend against the same API. Hold the trial if the browser cannot meet
+  the required online behavior.
+  Host the web client separately from the Fly API; do not revive Streamlit.
+
 ### Phase P — Google Play Compliance
 
 - Privacy policy URL and in-app access to that policy; accurate data-safety
@@ -430,6 +451,11 @@ Two consent paths:
    account. Coach capability deactivation preserves that person's own player
    data. Test a consented import of one identified real user's local history
    before cutover.
+9. Shared web trial path e2e on iPhone Safari and a desktop browser: player
+   login, onboarding, program, workout logging and retry after a failed write;
+   coach roster, assignment, history, program publication, requests, and
+   alerts. Verify HTTPS token storage, API CORS, route reload/back navigation,
+   responsive layouts, and account isolation.
 
 Coach-assistant activation has its own gate: privacy review and a new eval
 suite pass; player-switch, revocation, logout, and app-close context clearing
@@ -489,8 +515,11 @@ apply per-account model rate limits and review actual usage before expanding.
   (`GET /coaches`, `POST /coaches/{id}/request`), coach approve/reject/block,
   and the directory assignment path. Test the full request → approval flow
   before enabling discovery.
-- **Monetization**: closed trial is free; decide who pays (coach subscription
-  via Play Billing vs. paid listing vs. freemium) before a paid/public launch.
+- **Public subscriptions**: the closed trial is free. At public launch, sell
+  Lifter and Coach Pro through web checkout with shared server-side
+  entitlements; the Play app is consumption-only. See
+  [MAYOS_LAUNCH_PRICING.md](MAYOS_LAUNCH_PRICING.md) and ADR 023. Recheck Play
+  policy before release.
 - **Push notifications (FCM)**: deferred to v2 — v1 ships the in-app alert
   center only.
 - **Multiple coaches per player**: deferred to v2+.

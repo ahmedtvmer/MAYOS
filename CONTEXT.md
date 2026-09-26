@@ -14,6 +14,24 @@ _Avoid_: Trainee (legacy code and API term), client
 **Coach**:
 An account holder who provides coaching to assigned players. A coach may also be a player.
 
+**Lifter plan**:
+The customer-facing Free or Pro plan for a player's own training features. It is independent of any coaching plan on the same account.
+
+**Coach plan**:
+The customer-facing Free or Pro plan for coaching features and capacity. It does not upgrade the coach's assigned players to Lifter Pro.
+
+**Free plan**:
+An ongoing, usable Lifter or Coach plan. It is distinct from the time-limited closed trial or a promotional free period.
+
+**AI allowance**:
+The number of assistant requests available to an account for a given period. An account with both player and coach capabilities has separate Lifter and Coach allowances.
+
+**Active account**:
+An account that completed a workout or recorded a coaching action in the previous 30 days. A login alone does not make an account active.
+
+**Roster briefing**:
+An on-demand coach view that summarizes which assigned players need attention across the roster. It is distinct from a conversation about one selected player.
+
 **Assignment**:
 A mutually consented coaching relationship between a coach and a player. A player has at most one active assignment, and the coach can access that player's training history only while it is active.
 
@@ -22,6 +40,9 @@ A single-use invitation issued by a coach. The first player to redeem it may acc
 
 **Training program**:
 The player's current structured selection of training days and exercises.
+
+**Body proportions**:
+A player's self-reported comparison of leg and torso length, recorded as coaching context.
 
 **Program provenance**:
 The origin of a training program, such as automatic generation or coach authorship. It does not change when the right to edit that program changes.
