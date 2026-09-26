@@ -47,13 +47,13 @@ def _alert_sweep_interval_seconds() -> float:
 
 
 async def _alert_sweep_loop(interval_seconds: float) -> None:
-    """Runs the missed-day sweep once at startup, then every interval, until cancelled.
+    """Runs the alert sweep once at startup, then every interval, until cancelled.
 
     Evaluations are idempotent and due-ness is computed per player-local day, so
-    an hourly cadence is sufficient (ADR 030).
+    an hourly cadence is sufficient (ADR 030/031).
     """
     from database.database_manager import DatabaseManager
-    from service.missed_day_alerts import run_sweep
+    from service.alert_sweep import run_sweep
 
     while True:
         try:

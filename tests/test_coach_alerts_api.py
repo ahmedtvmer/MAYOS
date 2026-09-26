@@ -15,8 +15,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from database.database_manager import DatabaseManager
+from service import alert_sweep
 from service import coach as coach_service
-from service import missed_day_alerts as alerts_service
 from service.assignments import DENIED_ERROR
 from svc.app import create_app
 from svc.dependencies import get_db
@@ -123,9 +123,13 @@ def _seed_alert(api, days_ago=5, coach_name="coach", player_name="p1"):
         (started.date() - timedelta(days=1)).isoformat(),
         "2026-01-01T00:00:00+00:00",
     )
-    counts = alerts_service.run_sweep(db, now=now)
+    counts = alert_sweep.run_sweep(db, now=now)
     assert counts["alerts_created"] == 1, counts
-    alert = db.list_coach_alerts(coach_account_id, ("new",))[0]
+    alert = [
+        row
+        for row in db.list_coach_alerts(coach_account_id, ("new",))
+        if row["kind"] == "missed_expected_days"
+    ][0]
     return coach_headers, player_headers, assignment_id, coach_account_id, alert
 
 
@@ -140,7 +144,7 @@ def test_list_alerts_defaults_to_new_and_acknowledged(api):
     assert alerts[0]["state"] == "new"
     assert alerts[0]["player_username"] == "p1"
     assert alerts[0]["missed_count"] == 4
-    assert alerts[0]["streak_start_date"] == alert["streak_start_date"]
+    assert alerts[0]["streak_start_date"] == alert["details"]["streak_start_date"]
 
     resolved = client.get("/coach/alerts?state=resolved", headers=coach_headers)
     assert resolved.status_code == 200

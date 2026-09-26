@@ -365,6 +365,7 @@ class CoachRosterEntry {
     this.alertsNew = 0,
     this.alertsAcknowledged = 0,
     this.currentMissedStreak = 0,
+    this.nextFollowUpOn,
   });
 
   factory CoachRosterEntry.fromJson(Map<String, dynamic> json) =>
@@ -378,6 +379,7 @@ class CoachRosterEntry {
             (json['alerts_acknowledged'] as num?)?.toInt() ?? 0,
         currentMissedStreak:
             (json['current_missed_streak'] as num?)?.toInt() ?? 0,
+        nextFollowUpOn: json['next_follow_up_on'] as String?,
       );
 
   final String assignmentId;
@@ -388,21 +390,30 @@ class CoachRosterEntry {
   final int alertsAcknowledged;
   final int currentMissedStreak;
 
+  /// The next weekly follow-up due date (`YYYY-MM-DD`), computed catalog-side.
+  final String? nextFollowUpOn;
+
   int get alertsOpen => alertsNew + alertsAcknowledged;
 }
 
-/// `GET /coach/alerts`: one catalog-side missed-day alert (ADR 030).
+/// `GET /coach/alerts`: one catalog-side alert, of more than one kind (ADR 030/031).
+///
+/// `kind` is `missed_expected_days` or `follow_up_due`; the kind-specific fields
+/// (`streak_start_date`/`last_missed_date`/`missed_count` vs `due_on`) are
+/// flattened beside the common fields.
 class CoachAlert {
   const CoachAlert({
     required this.alertId,
     required this.assignmentId,
     required this.playerUsername,
     required this.kind,
-    required this.streakStartDate,
-    required this.lastMissedDate,
-    required this.missedCount,
     required this.state,
     required this.createdAt,
+    this.streakStartDate,
+    this.lastMissedDate,
+    this.missedCount = 0,
+    this.dueOn,
+    this.lastCheckInOn,
     this.acknowledgedAt,
     this.resolvedAt,
     this.resolvedBy,
@@ -413,11 +424,13 @@ class CoachAlert {
         assignmentId: json['assignment_id'] as String? ?? '',
         playerUsername: json['player_username'] as String? ?? '',
         kind: json['kind'] as String? ?? '',
-        streakStartDate: json['streak_start_date'] as String? ?? '',
-        lastMissedDate: json['last_missed_date'] as String? ?? '',
-        missedCount: (json['missed_count'] as num?)?.toInt() ?? 0,
         state: json['state'] as String? ?? 'new',
         createdAt: json['created_at'] as String? ?? '',
+        streakStartDate: json['streak_start_date'] as String?,
+        lastMissedDate: json['last_missed_date'] as String?,
+        missedCount: (json['missed_count'] as num?)?.toInt() ?? 0,
+        dueOn: json['due_on'] as String?,
+        lastCheckInOn: json['last_check_in_on'] as String?,
         acknowledgedAt: json['acknowledged_at'] as String?,
         resolvedAt: json['resolved_at'] as String?,
         resolvedBy: json['resolved_by'] as String?,
@@ -427,18 +440,31 @@ class CoachAlert {
   final String assignmentId;
   final String playerUsername;
   final String kind;
-  final String streakStartDate;
-  final String lastMissedDate;
-  final int missedCount;
   final String state;
   final String createdAt;
+  final String? streakStartDate;
+  final String? lastMissedDate;
+  final int missedCount;
+  final String? dueOn;
+  final String? lastCheckInOn;
   final String? acknowledgedAt;
   final String? resolvedAt;
   final String? resolvedBy;
 
+  static const String followUpDueKind = 'follow_up_due';
+
   bool get isNew => state == 'new';
   bool get isAcknowledged => state == 'acknowledged';
   bool get isResolved => state == 'resolved';
+
+  bool get isFollowUpDue => kind == followUpDueKind;
+
+  /// The alert-centre description, rendered per kind.
+  String get description => isFollowUpDue
+      ? 'Follow-up due since ${dueOn ?? 'an earlier date'}'
+      : 'Missed $missedCount expected training '
+          '${missedCount == 1 ? 'day' : 'days'} '
+          '(${streakStartDate ?? '?'} to ${lastMissedDate ?? '?'})';
 
   String get stateLabel => switch (state) {
         'new' => 'New',
@@ -446,6 +472,91 @@ class CoachAlert {
         'resolved' => 'Resolved',
         _ => state,
       };
+}
+
+/// One coach-recorded check-in fact (`GET /coach/assignments/{id}/check-ins`,
+/// `GET /assignments/me/check-ins`). Immutable and visible to the player for
+/// the life of the account, including after unassignment (ADR 031).
+class CheckIn {
+  const CheckIn({
+    required this.checkInId,
+    required this.assignmentId,
+    required this.checkedInOn,
+    required this.channel,
+    required this.createdAt,
+    this.note,
+    this.coachUsername,
+    this.assignmentStatus,
+  });
+
+  factory CheckIn.fromJson(Map<String, dynamic> json) => CheckIn(
+        checkInId: json['check_in_id'] as String,
+        assignmentId: json['assignment_id'] as String? ?? '',
+        checkedInOn: json['checked_in_on'] as String? ?? '',
+        channel: json['channel'] as String? ?? 'other',
+        createdAt: json['created_at'] as String? ?? '',
+        note: json['note'] as String?,
+        coachUsername: json['coach_username'] as String?,
+        assignmentStatus: json['assignment_status'] as String?,
+      );
+
+  final String checkInId;
+  final String assignmentId;
+  final String checkedInOn;
+  final String channel;
+  final String createdAt;
+  final String? note;
+
+  /// The coach's current username; present on the player's cross-assignment list.
+  final String? coachUsername;
+
+  /// `active` or `ended`; present on the player's cross-assignment list.
+  final String? assignmentStatus;
+
+  static const List<String> channels = <String>[
+    'in_app',
+    'in_person',
+    'phone',
+    'video',
+    'message',
+    'email',
+    'other',
+  ];
+
+  String get channelLabel => switch (channel) {
+        'in_app' => 'In app',
+        'in_person' => 'In person',
+        'phone' => 'Phone',
+        'video' => 'Video',
+        'message' => 'Message',
+        'email' => 'Email',
+        _ => 'Other',
+      };
+}
+
+/// The check-ins ordered newest `checked_in_on` first (ties keep input order).
+///
+/// Shared so the coach drill-down stays sorted after appending a new check-in
+/// rather than relying on server order or a bare prepend.
+List<CheckIn> sortCheckInsNewestFirst(Iterable<CheckIn> checkIns) {
+  final List<CheckIn> sorted = List<CheckIn>.of(checkIns);
+  sorted.sort((CheckIn a, CheckIn b) => b.checkedInOn.compareTo(a.checkedInOn));
+  return sorted;
+}
+
+/// `POST /coach/assignments/{id}/check-ins`: the recorded check-in and the
+/// next follow-up date a full weekly cadence past it.
+class CheckInCreation {
+  const CheckInCreation({required this.checkIn, this.nextFollowUpOn});
+
+  factory CheckInCreation.fromJson(Map<String, dynamic> json) =>
+      CheckInCreation(
+        checkIn: CheckIn.fromJson(json['check_in'] as Map<String, dynamic>),
+        nextFollowUpOn: json['next_follow_up_on'] as String?,
+      );
+
+  final CheckIn checkIn;
+  final String? nextFollowUpOn;
 }
 
 /// One exercise's working-set totals within an assigned player's session.

@@ -354,17 +354,15 @@ def test_redeem_binds_immediately_and_creates_coach_notice(api, monkeypatch):
     assert notices[0]["kind"] == "assignment_redeemed"
     assert "p1" in notices[0]["message"]
     roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
-    assert roster == [
-        {
-            "assignment_id": body["assignment"]["assignment_id"],
-            "player_username": "p1",
-            "started_at": body["assignment"]["started_at"],
-            "status": "active",
-            "alerts_new": 0,
-            "alerts_acknowledged": 0,
-            "current_missed_streak": 0,
-        }
-    ]
+    assert len(roster) == 1
+    assert roster[0]["assignment_id"] == body["assignment"]["assignment_id"]
+    assert roster[0]["player_username"] == "p1"
+    assert roster[0]["started_at"] == body["assignment"]["started_at"]
+    assert roster[0]["status"] == "active"
+    assert roster[0]["alerts_new"] == 0
+    assert roster[0]["alerts_acknowledged"] == 0
+    assert roster[0]["current_missed_streak"] == 0
+    assert roster[0]["next_follow_up_on"] is not None
 
 
 def test_email_transport_failure_does_not_roll_back_assignment(api, monkeypatch):

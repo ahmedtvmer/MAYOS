@@ -7,13 +7,14 @@ ledger (the sweep may; roster reads may not), runs the pure attendance evaluatio
 
 * creates one ``new`` alert for a qualifying streak and a best-effort coach
   in-app notice (the notice is only written when the alert is first created);
-* extends the same alert's ``last_missed_date``/``missed_count`` while the
-  streak continues;
+* extends the same alert's ``details`` (``last_missed_date``/``missed_count``)
+  while the streak continues;
 * auto-resolves any open alert whose streak is no longer the current one; and
 * updates the catalog-side roster summary so roster reads never open a ledger.
 
-The catalog alert is keyed by ``(assignment, kind, streak_start_date)`` so a
-retry or a concurrent sweep cannot duplicate it.
+The catalog alert is keyed by ``(assignment, kind, dedupe_key)`` where the
+missed-day dedupe key is the streak's start date, so a retry or a concurrent
+sweep cannot duplicate it.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from typing import Any
 
 from service._base import bind_user
 from service.attendance import AttendanceEvaluation, evaluate_attendance
+from service.coach_notices import notify_coach, player_display_name
 from service.schedule import local_date_in, timezone_for_versions
 
 logger = logging.getLogger(__name__)
@@ -42,8 +44,8 @@ __all__ = [
     "evaluate_assignment",
     "evaluate_for_ledger",
     "list_alerts",
+    "present_alert",
     "resolve_alert",
-    "run_sweep",
 ]
 
 
@@ -75,24 +77,17 @@ def _window_start(started_at: Any, versions: list[dict[str, Any]], timezone: str
 
 def _notify_coach(db: Any, assignment: dict[str, Any], evaluation: AttendanceEvaluation, now_iso: str) -> bool:
     """Best-effort coach in-app notice; carries the missed date range, no training detail."""
-    try:
-        account = db.get_account(assignment["player_account_id"])
-        username = account["username"] if account else "A player"
-        db.create_assignment_notice(
-            assignment["coach_account_id"],
-            assignment["assignment_id"],
-            MISSED_DAY_KIND,
-            (
-                f"{username} missed {evaluation.trailing_streak_length} expected training days "
-                f"({evaluation.trailing_streak_start.isoformat()} to "
-                f"{evaluation.trailing_streak_last.isoformat()}). Review the alert in your roster."
-            ),
-            now_iso,
-        )
-    except Exception:
-        logger.exception("Coach missed-day notice raised unexpectedly")
-        return False
-    return True
+    return notify_coach(
+        db,
+        assignment,
+        MISSED_DAY_KIND,
+        (
+            f"{player_display_name(db, assignment)} missed {evaluation.trailing_streak_length}"
+            f" expected training days ({evaluation.trailing_streak_start.isoformat()} to"
+            f" {evaluation.trailing_streak_last.isoformat()}). Review the alert in your roster."
+        ),
+        now_iso,
+    )
 
 
 def evaluate_assignment(db: Any, assignment: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
@@ -139,6 +134,11 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any], now: datetime | Non
     created = 0
     if streak >= STREAK_ALERT_THRESHOLD:
         streak_start = evaluation.trailing_streak_start.isoformat()
+        details = {
+            "streak_start_date": streak_start,
+            "last_missed_date": evaluation.trailing_streak_last.isoformat(),
+            "missed_count": streak,
+        }
         inserted = db.insert_coach_alert(
             uuid.uuid4().hex,
             assignment_id,
@@ -146,26 +146,23 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any], now: datetime | Non
             player_account_id,
             MISSED_DAY_KIND,
             streak_start,
-            evaluation.trailing_streak_last.isoformat(),
-            streak,
+            details,
             now_iso,
         )
         if inserted["created"]:
             created = 1
             _notify_coach(db, assignment, evaluation, now_iso)
         else:
-            db.update_coach_alert_streak(
-                inserted["alert"]["alert_id"],
-                evaluation.trailing_streak_last.isoformat(),
-                streak,
-            )
+            db.update_coach_alert_details(inserted["alert"]["alert_id"], details)
         resolved = db.resolve_open_coach_alerts_for_assignment(
-            assignment_id, now_iso, except_streak_start=streak_start
+            assignment_id, now_iso, MISSED_DAY_KIND, except_dedupe_key=streak_start
         )
     else:
-        resolved = db.resolve_open_coach_alerts_for_assignment(assignment_id, now_iso)
+        resolved = db.resolve_open_coach_alerts_for_assignment(
+            assignment_id, now_iso, MISSED_DAY_KIND
+        )
 
-    db.upsert_roster_attendance(assignment_id, streak, now_iso)
+    db.upsert_roster_attendance(assignment_id, streak, now_iso, timezone=evaluation.timezone)
     return {
         "evaluated": True,
         "skipped": False,
@@ -193,28 +190,18 @@ def evaluate_for_ledger(db: Any, account_id: str, now: datetime | None = None) -
         db.unmount_user()
 
 
-def run_sweep(db: Any, now: datetime | None = None) -> dict[str, int]:
-    """Evaluates every active assignment; one player's failure never stops the sweep."""
-    now = now or datetime.now(UTC)
-    counts = {"evaluated": 0, "skipped": 0, "alerts_created": 0, "alerts_resolved": 0, "errors": 0}
-    for assignment in db.list_all_active_assignments():
-        try:
-            result = evaluate_assignment(db, assignment, now=now)
-        except Exception:
-            counts["errors"] += 1
-            logger.exception(
-                "Missed-day evaluation failed for assignment %s", assignment.get("assignment_id")
-            )
-            continue
-        finally:
-            db.unmount_user()
-        if result.get("skipped"):
-            counts["skipped"] += 1
-        elif result.get("evaluated"):
-            counts["evaluated"] += 1
-        counts["alerts_created"] += int(result.get("alerts_created", 0))
-        counts["alerts_resolved"] += int(result.get("alerts_resolved", 0))
-    return counts
+def present_alert(alert: dict[str, Any]) -> dict[str, Any]:
+    """Flatten kind-specific ``details`` beside the common fields for the response.
+
+    The single presentation point for the alert API shape (ADR 031); the database
+    row keeps the fields nested under ``details``.
+    """
+    presented = {key: value for key, value in alert.items() if key != "details"}
+    details = alert.get("details")
+    if isinstance(details, dict):
+        for key, value in details.items():
+            presented.setdefault(str(key), value)
+    return presented
 
 
 def list_alerts(db: Any, coach_account_id: str, states: tuple[str, ...]) -> list[dict[str, Any]]:
@@ -223,7 +210,7 @@ def list_alerts(db: Any, coach_account_id: str, states: tuple[str, ...]) -> list
     Unknown states are dropped; an empty selection lists nothing.
     """
     allowed = tuple(state for state in states if state in ALERT_STATES)
-    return db.list_coach_alerts(coach_account_id, allowed)
+    return [present_alert(alert) for alert in db.list_coach_alerts(coach_account_id, allowed)]
 
 
 def _active_alert(db: Any, coach_account_id: str, alert_id: Any) -> dict[str, Any] | None:
@@ -241,7 +228,7 @@ def _active_alert(db: Any, coach_account_id: str, alert_id: Any) -> dict[str, An
 def _with_player_username(db: Any, alert: dict[str, Any]) -> dict[str, Any]:
     account = db.get_account(alert["player_account_id"])
     alert["player_username"] = account["username"] if account else "former player"
-    return alert
+    return present_alert(alert)
 
 
 def acknowledge_alert(db: Any, coach_account_id: str, alert_id: Any) -> dict[str, Any] | None:

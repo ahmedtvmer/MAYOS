@@ -46,6 +46,10 @@ class FakeMayosApi {
   // Coach missed-day alerts (#31).
   final List<Map<String, dynamic>> coachAlerts = <Map<String, dynamic>>[];
 
+  // Coach check-ins and follow-ups (#32).
+  final List<Map<String, dynamic>> checkIns = <Map<String, dynamic>>[];
+  int _checkInSeq = 0;
+
   // Coach program publication and player notices (#26).
   int _publishedVersion = 0;
   int? programVersion;
@@ -86,6 +90,12 @@ class FakeMayosApi {
 
   FakeResponse _handle(FakeRequest request) {
     final String path = request.path;
+    if (path == '/assignments/me/check-ins') {
+      return _playerCheckIns(request);
+    }
+    if (path.startsWith('/coach/assignments/') && path.endsWith('/check-ins')) {
+      return _coachCheckIns(request);
+    }
     if (path.startsWith('/coach/assignments/') &&
         path.contains('/program-requests')) {
       return _coachProgramRequests(request);
@@ -489,6 +499,102 @@ class FakeMayosApi {
     }
     return const FakeResponse(
         404, <String, dynamic>{'detail': 'Not found.'});
+  }
+
+  FakeResponse _coachCheckIns(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    final String id = request.path
+        .replaceFirst('/coach/assignments/', '')
+        .replaceFirst('/check-ins', '');
+    final bool owned = assignments
+        .any((Map<String, dynamic> entry) => entry['assignment_id'] == id);
+    if (!owned) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'No active assignment.'});
+    }
+    if (request.method == 'POST') {
+      return _createCheckIn(request, id);
+    }
+    return FakeResponse(200, <String, dynamic>{
+      'check_ins': checkIns
+          .where((Map<String, dynamic> row) => row['assignment_id'] == id)
+          .toList(growable: false),
+    });
+  }
+
+  FakeResponse _createCheckIn(FakeRequest request, String assignmentId) {
+    final String? checkedInOn = request.body['checked_in_on'] as String?;
+    final String? channel = request.body['channel'] as String?;
+    final String? note = (request.body['note'] as String?)?.trim();
+    const List<String> channels = <String>[
+      'in_app',
+      'in_person',
+      'phone',
+      'video',
+      'message',
+      'email',
+      'other',
+    ];
+    if (channel == null || !channels.contains(channel)) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'channel is not a recognized contact method.'});
+    }
+    final DateTime? date = checkedInOn == null ? null : DateTime.tryParse(checkedInOn);
+    if (date == null) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'checked_in_on must be an ISO date (YYYY-MM-DD).'});
+    }
+    if (checkedInOn!.compareTo(_todayIso()) > 0) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'A check-in cannot be dated in the future.'});
+    }
+    if (note != null && note.length > 500) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'A check-in note can be at most 500 characters.'});
+    }
+    final Map<String, dynamic> row = <String, dynamic>{
+      'check_in_id': 'check-in-${++_checkInSeq}',
+      'assignment_id': assignmentId,
+      'checked_in_on': checkedInOn,
+      'channel': channel,
+      'note': note == null || note.isEmpty ? null : note,
+      'created_at': '2026-09-26T12:00:00Z',
+      'coach_username': currentUsername,
+      'assignment_status': 'active',
+    };
+    checkIns.insert(0, row);
+    return FakeResponse(200, <String, dynamic>{
+      'check_in': row,
+      'next_follow_up_on': _addDays(checkedInOn, 7),
+    });
+  }
+
+  FakeResponse _playerCheckIns(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    return FakeResponse(200, <String, dynamic>{
+      'check_ins': List<Map<String, dynamic>>.from(checkIns),
+    });
+  }
+
+  String _addDays(String iso, int days) {
+    final DateTime? date = DateTime.tryParse(iso);
+    if (date == null) {
+      return iso;
+    }
+    final DateTime shifted = date.add(Duration(days: days));
+    return '${shifted.year.toString().padLeft(4, '0')}-'
+        '${shifted.month.toString().padLeft(2, '0')}-'
+        '${shifted.day.toString().padLeft(2, '0')}';
   }
 
   /// Newest-first schedule versions, including a past edit (#30).
@@ -1317,6 +1423,8 @@ class FakeMayosApi {
       assignmentNotices.clear();
       assignments.clear();
       coachAlerts.clear();
+      checkIns.clear();
+      _checkInSeq = 0;
       _publishedVersion = 0;
       programVersion = null;
       programPublishedByCoachAccountId = null;

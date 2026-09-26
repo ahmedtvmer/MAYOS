@@ -21,8 +21,14 @@ __all__ = [
     "AssignmentRedeemOut",
     "ChatMessageIn",
     "ChatMessageOut",
+    "CheckInIn",
+    "CheckInOut",
+    "CoachAlertListOut",
+    "CoachAlertOut",
     "CoachAssignmentsOut",
     "CoachCapabilityDisableOut",
+    "CoachCheckInCreateOut",
+    "CoachCheckInListOut",
     "CoachExerciseHistoryOut",
     "CoachExerciseHistoryPointOut",
     "CoachExerciseRecordOut",
@@ -54,6 +60,7 @@ __all__ = [
     "PasswordChangeIn",
     "PersonaUpdate",
     "PlanStateOut",
+    "PlayerCheckInListOut",
     "PlayerNoticeListOut",
     "PlayerProgramRequestIn",
     "PlayerProgramRequestListOut",
@@ -223,6 +230,7 @@ class CoachRosterEntryOut(BaseModel):
     alerts_new: int = 0
     alerts_acknowledged: int = 0
     current_missed_streak: int = 0
+    next_follow_up_on: str | None = None
 
 
 class CoachAssignmentsOut(BaseModel):
@@ -230,24 +238,65 @@ class CoachAssignmentsOut(BaseModel):
 
 
 class CoachAlertOut(BaseModel):
-    """One catalog-side missed-day alert for the coach alert centre."""
+    """One catalog-side alert for the coach alert centre (ADR 030/031).
+
+    ``kind`` distinguishes missed-day alerts from follow-up-due alerts. The
+    kind-specific fields are flattened beside the common ones, so a client can
+    read ``streak_start_date``/``missed_count`` or ``due_on`` directly.
+    """
 
     alert_id: str
     assignment_id: str
     player_username: str
     kind: str
-    streak_start_date: str
-    last_missed_date: str
-    missed_count: int
     state: str
     created_at: str
     acknowledged_at: str | None = None
     resolved_at: str | None = None
     resolved_by: str | None = None
+    streak_start_date: str | None = None
+    last_missed_date: str | None = None
+    missed_count: int = 0
+    due_on: str | None = None
+    last_check_in_on: str | None = None
 
 
 class CoachAlertListOut(BaseModel):
     alerts: list[CoachAlertOut]
+
+
+class CheckInIn(BaseModel):
+    """A coach-recorded check-in: date, contact channel, and an optional note."""
+
+    checked_in_on: str
+    channel: str
+    note: str | None = None
+
+
+class CheckInOut(BaseModel):
+    """One immutable check-in fact, visible to the coach (while assigned) and the player."""
+
+    check_in_id: str
+    assignment_id: str
+    checked_in_on: str
+    channel: str
+    note: str | None = None
+    created_at: str
+    coach_username: str | None = None
+    assignment_status: str | None = None
+
+
+class CoachCheckInListOut(BaseModel):
+    check_ins: list[CheckInOut]
+
+
+class CoachCheckInCreateOut(BaseModel):
+    check_in: CheckInOut
+    next_follow_up_on: str | None = None
+
+
+class PlayerCheckInListOut(BaseModel):
+    check_ins: list[CheckInOut]
 
 
 class CoachPlayerSessionExerciseOut(BaseModel):

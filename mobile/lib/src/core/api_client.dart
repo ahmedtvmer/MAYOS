@@ -49,6 +49,8 @@ class ApiClient {
       'The service returned invalid coach history data.';
   static const String _invalidAlerts =
       'The service returned invalid alert data.';
+  static const String _invalidCheckIns =
+      'The service returned invalid check-in data.';
   static const String _invalidProgram =
       'The service returned invalid program data.';
   static const String _invalidNotices =
@@ -399,6 +401,52 @@ class ApiClient {
     final response = await _send(
         () => _dio.post<dynamic>('/coach/alerts/$alertId/resolve'));
     return _parseBody(response.data, CoachAlert.fromJson, _invalidAlerts);
+  }
+
+  /// Lists an actively assigned player's check-ins, newest date first (ADR 031).
+  Future<List<CheckIn>> coachCheckIns(String assignmentId) async {
+    final response = await _send(
+      () => _dio.get<dynamic>('/coach/assignments/$assignmentId/check-ins'),
+    );
+    return _parseCheckInList(response.data);
+  }
+
+  /// Records an immutable check-in for an actively assigned player (ADR 031).
+  Future<CheckInCreation> createCoachCheckIn(
+    String assignmentId, {
+    required String checkedInOn,
+    required String channel,
+    String? note,
+  }) async {
+    final Map<String, dynamic> body = <String, dynamic>{
+      'checked_in_on': checkedInOn,
+      'channel': channel,
+      if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+    };
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/assignments/$assignmentId/check-ins',
+        data: body,
+      ),
+    );
+    return _parseBody(
+        response.data, CheckInCreation.fromJson, _invalidCheckIns);
+  }
+
+  /// Lists the player's check-ins across all assignments, including ended ones.
+  Future<List<CheckIn>> playerCheckIns() async {
+    final response =
+        await _send(() => _dio.get<dynamic>('/assignments/me/check-ins'));
+    return _parseCheckInList(response.data);
+  }
+
+  List<CheckIn> _parseCheckInList(dynamic responseData) {
+    if (responseData is! Map<String, dynamic> ||
+        responseData['check_ins'] is! List<dynamic>) {
+      throw const ApiException(_invalidCheckIns);
+    }
+    return _parseBodyList(
+        responseData['check_ins'], CheckIn.fromJson, _invalidCheckIns);
   }
 
   /// Publishes a coach-authored program for an assigned player (ADR 026).

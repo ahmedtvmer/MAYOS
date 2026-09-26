@@ -125,11 +125,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
               ],
             ),
             const SizedBox(height: 4),
-            Text(
-              'Missed ${alert.missedCount} expected training '
-              '${alert.missedCount == 1 ? 'day' : 'days'} '
-              '(${alert.streakStartDate} to ${alert.lastMissedDate})',
-            ),
+            Text(alert.description),
             if (alert.resolvedBy != null)
               Text('Resolved by ${alert.resolvedBy}',
                   style: Theme.of(context).textTheme.bodySmall),

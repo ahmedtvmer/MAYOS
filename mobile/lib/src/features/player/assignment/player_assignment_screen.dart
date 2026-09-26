@@ -31,6 +31,7 @@ class _PlayerAssignmentScreenState
   Assignment? _assignment;
   List<AssignmentNotice> _notices = const <AssignmentNotice>[];
   List<ProgramRequest> _programRequests = const <ProgramRequest>[];
+  List<CheckIn> _checkIns = const <CheckIn>[];
   AssignmentInvitePreview? _preview;
   String? _previewToken;
   bool _requestingChange = false;
@@ -61,12 +62,14 @@ class _PlayerAssignmentScreenState
             api.myAssignment(),
             api.playerNotices(),
             api.playerProgramRequests(),
+            api.playerCheckIns(),
           ]);
       if (!mounted) return;
       setState(() {
         _assignment = results[0] as Assignment?;
         _notices = results[1] as List<AssignmentNotice>;
         _programRequests = results[2] as List<ProgramRequest>;
+        _checkIns = results[3] as List<CheckIn>;
         _loading = false;
       });
     } on ApiException catch (error) {
@@ -392,6 +395,46 @@ class _PlayerAssignmentScreenState
     );
   }
 
+  Widget _checkInsCard(BuildContext context) {
+    if (_checkIns.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 20),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text('Check-ins',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              for (final CheckIn checkIn in _checkIns)
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.handshake_outlined),
+                  title: Text(
+                      '${checkIn.checkedInOn} · ${checkIn.channelLabel}'),
+                  subtitle: Text(
+                    <String>[
+                      if (checkIn.coachUsername != null)
+                        'Coach ${checkIn.coachUsername}',
+                      if (checkIn.assignmentStatus == 'ended')
+                        'assignment ended',
+                      if (checkIn.note != null && checkIn.note!.isNotEmpty)
+                        checkIn.note!,
+                    ].join(' · '),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _errorBanner(BuildContext context) {
     if (_error == null) {
       return const SizedBox.shrink();
@@ -526,6 +569,7 @@ class _PlayerAssignmentScreenState
           _activeAssignment(context, _assignment!)
         else
           _inviteSection(context),
+        _checkInsCard(context),
       ],
     );
   }

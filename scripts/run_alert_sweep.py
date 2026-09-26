@@ -1,9 +1,9 @@
-"""Manual run of the missed-day alert sweep from the ops console (ticket #31, ADR 030).
+"""Manual run of the alert sweep from the ops console (tickets #31/#32, ADR 030/031).
 
 The service runs this same sweep in-process once at startup and every
 ``MAYOS_ALERT_SWEEP_INTERVAL_SECONDS`` (default hourly). Run this script on the
-always-on Machine to force an immediate pass after a schedule/pause change or a
-late data correction.
+always-on Machine to force an immediate pass after a schedule/pause change, a
+check-in, or a late data correction.
 
 Usage:
     python scripts/run_alert_sweep.py
@@ -25,7 +25,7 @@ from database.database_manager import (  # noqa: E402
     DEFAULT_USERS_DIR,
     DatabaseManager,
 )
-from service import missed_day_alerts as alerts_service  # noqa: E402
+from service import alert_sweep as alerts_service  # noqa: E402
 from utils.logger import MyosLogger  # noqa: E402
 
 logger = MyosLogger().get_logger(__name__)
@@ -52,7 +52,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         "Sweep complete: "
         f"{counts['evaluated']} evaluated, {counts['alerts_created']} alerts created, "
-        f"{counts['alerts_resolved']} resolved, {counts['errors']} errors."
+        f"{counts['alerts_resolved']} resolved, {counts['follow_ups_created']} follow-ups created, "
+        f"{counts['errors']} errors."
     )
     return 1 if counts["errors"] else 0
 

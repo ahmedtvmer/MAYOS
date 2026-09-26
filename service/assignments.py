@@ -22,6 +22,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
 from service._base import bind_user
+from service.check_ins import next_follow_up_on
 from service.email_sender import send_assignment_redemption_email
 
 logger = logging.getLogger(__name__)
@@ -293,9 +294,16 @@ def list_coach_assignments(db: Any, coach_account_id: str) -> list[dict[str, Any
     the roster never opens a player ledger (ADR 025/030).
     """
     badges = db.get_roster_alert_badges(coach_account_id)
+    follow_ups = db.list_roster_follow_up_basis(coach_account_id)
     rows = []
     for row in db.list_active_assignments_for_coach(coach_account_id):
         badge = badges.get(row["assignment_id"], {})
+        basis = follow_ups.get(row["assignment_id"], {})
+        next_follow_up = next_follow_up_on(
+            basis.get("started_at", row["started_at"]),
+            basis.get("latest_check_in_on"),
+            basis.get("timezone") or "UTC",
+        )
         rows.append(
             {
                 "assignment_id": row["assignment_id"],
@@ -305,6 +313,7 @@ def list_coach_assignments(db: Any, coach_account_id: str) -> list[dict[str, Any
                 "alerts_new": int(badge.get("alerts_new", 0)),
                 "alerts_acknowledged": int(badge.get("alerts_acknowledged", 0)),
                 "current_missed_streak": int(badge.get("current_missed_streak", 0)),
+                "next_follow_up_on": next_follow_up.isoformat() if next_follow_up else None,
             }
         )
     return rows

@@ -757,6 +757,7 @@ class DatabaseManager:
         with self._catalog_lock:
             if getattr(self, "_account_schema_ready", False):
                 return
+            self._migrate_coach_alerts_shape()
             self.catalog_conn.executescript("""
                 CREATE TABLE IF NOT EXISTS trainee_emails (
                     trainee_id TEXT PRIMARY KEY,
@@ -897,42 +898,180 @@ class DatabaseManager:
                 CREATE INDEX IF NOT EXISTS idx_program_requests_assignment ON program_requests(assignment_id);
                 CREATE INDEX IF NOT EXISTS idx_program_requests_player ON program_requests(player_account_id);
 
-                -- Coach alerts for missed expected training days (ADR 030, ticket #31).
-                -- Catalog-side so the alert centre and roster badges never open a player
-                -- ledger. UNIQUE(assignment_id, kind, streak_start_date) makes the sweep
-                -- retry-safe: an existing streak is never duplicated, only extended.
-                CREATE TABLE IF NOT EXISTS coach_alerts (
-                    alert_id TEXT PRIMARY KEY,
-                    assignment_id TEXT NOT NULL,
-                    coach_account_id TEXT NOT NULL,
-                    player_account_id TEXT NOT NULL,
-                    kind TEXT NOT NULL,
-                    streak_start_date TEXT NOT NULL,
-                    last_missed_date TEXT NOT NULL,
-                    missed_count INTEGER NOT NULL,
-                    state TEXT NOT NULL DEFAULT 'new'
-                        CHECK (state IN ('new', 'acknowledged', 'resolved')),
-                    created_at TEXT NOT NULL,
-                    acknowledged_at TEXT,
-                    resolved_at TEXT,
-                    resolved_by TEXT
-                );
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_coach_alerts_streak
-                    ON coach_alerts(assignment_id, kind, streak_start_date);
-                CREATE INDEX IF NOT EXISTS idx_coach_alerts_coach
-                    ON coach_alerts(coach_account_id, state);
-                CREATE INDEX IF NOT EXISTS idx_coach_alerts_assignment ON coach_alerts(assignment_id);
-
                 -- Catalog-side per-assignment attendance summary, updated by evaluation so a
-                -- roster read never opens the player's ledger (ADR 025/030).
+                -- roster read never opens the player's ledger (ADR 025/030). The cached
+                -- ``timezone`` is the player's local timezone as of the last evaluation;
+                -- absence falls back to UTC (ADR 031).
                 CREATE TABLE IF NOT EXISTS roster_attendance (
                     assignment_id TEXT PRIMARY KEY,
                     current_missed_streak INTEGER NOT NULL DEFAULT 0,
-                    last_evaluated_at TEXT
+                    last_evaluated_at TEXT,
+                    timezone TEXT
                 );
+
+                -- Coach-recorded check-ins (ADR 031, ticket #32). Catalog-side immutable
+                -- facts: the coach records the date, contact channel, and an optional note.
+                -- The row survives unassignment so the player keeps their history.
+                CREATE TABLE IF NOT EXISTS check_ins (
+                    check_in_id TEXT PRIMARY KEY,
+                    assignment_id TEXT NOT NULL,
+                    coach_account_id TEXT NOT NULL,
+                    player_account_id TEXT NOT NULL,
+                    checked_in_on TEXT NOT NULL,
+                    channel TEXT NOT NULL,
+                    note TEXT,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_check_ins_assignment ON check_ins(assignment_id);
+                CREATE INDEX IF NOT EXISTS idx_check_ins_player ON check_ins(player_account_id);
             """)
+            self._create_coach_alerts_schema()
+            self._ensure_roster_attendance_timezone()
             self.catalog_conn.commit()
             self._account_schema_ready = True
+
+    # ------------------------------------------------------------------
+    # coach_alerts generalised shape (ADR 031). The table + index DDL lives
+    # in one place so the fresh-create path and the legacy rebuild cannot
+    # drift apart; the rebuild is a single explicit transaction.
+    # ------------------------------------------------------------------
+
+    _COACH_ALERTS_TABLE_SQL = (
+        "alert_id TEXT PRIMARY KEY,"
+        " assignment_id TEXT NOT NULL,"
+        " coach_account_id TEXT NOT NULL,"
+        " player_account_id TEXT NOT NULL,"
+        " kind TEXT NOT NULL,"
+        " dedupe_key TEXT NOT NULL,"
+        " details TEXT NOT NULL,"
+        " state TEXT NOT NULL DEFAULT 'new'"
+        " CHECK (state IN ('new', 'acknowledged', 'resolved')),"
+        " created_at TEXT NOT NULL,"
+        " acknowledged_at TEXT,"
+        " resolved_at TEXT,"
+        " resolved_by TEXT"
+    )
+    _COACH_ALERTS_INDEX_SQL = (
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_coach_alerts_dedupe"
+        " ON coach_alerts(assignment_id, kind, dedupe_key)",
+        "CREATE INDEX IF NOT EXISTS idx_coach_alerts_coach"
+        " ON coach_alerts(coach_account_id, state)",
+        "CREATE INDEX IF NOT EXISTS idx_coach_alerts_assignment ON coach_alerts(assignment_id)",
+    )
+    _LEGACY_COACH_ALERT_COLUMNS = (
+        "alert_id, assignment_id, coach_account_id, player_account_id, kind,"
+        " streak_start_date, last_missed_date, missed_count, state, created_at,"
+        " acknowledged_at, resolved_at, resolved_by"
+    )
+
+    @classmethod
+    def _coach_alerts_create_sql(cls, table: str) -> str:
+        return f"CREATE TABLE IF NOT EXISTS {table} ({cls._COACH_ALERTS_TABLE_SQL})"
+
+    def _create_coach_alerts_schema(self) -> None:
+        """Fresh-create (or complete) the generalised ``coach_alerts`` and its indexes."""
+        statements = [self._coach_alerts_create_sql("coach_alerts"), *self._COACH_ALERTS_INDEX_SQL]
+        self.catalog_conn.executescript(";\n".join(statements) + ";")
+
+    @staticmethod
+    def _table_columns(cursor: Any, table: str) -> set[str]:
+        """Column names present on ``table``; empty when the table does not exist."""
+        cursor.execute(f"PRAGMA table_info({table})")
+        return {str(row[1]) for row in cursor.fetchall()}
+
+    def _copy_legacy_coach_alert_rows(self, cursor: Any) -> None:
+        """Copy legacy missed-day rows into ``coach_alerts_new``, mapping to details.
+
+        A separate method so a failure mid-rebuild is injectable in tests.
+        """
+        rows = cursor.execute(
+            f"SELECT {self._LEGACY_COACH_ALERT_COLUMNS} FROM coach_alerts"
+        ).fetchall()
+        for row in rows:
+            details = {
+                "streak_start_date": str(row[5]),
+                "last_missed_date": str(row[6]),
+                "missed_count": int(row[7]),
+            }
+            cursor.execute(
+                "INSERT INTO coach_alerts_new"
+                " (alert_id, assignment_id, coach_account_id, player_account_id, kind,"
+                " dedupe_key, details, state, created_at, acknowledged_at, resolved_at, resolved_by)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    str(row[0]),
+                    str(row[1]),
+                    str(row[2]),
+                    str(row[3]),
+                    str(row[4]),
+                    str(row[5]),
+                    json.dumps(details),
+                    str(row[8]),
+                    str(row[9]),
+                    row[10],
+                    row[11],
+                    row[12],
+                ),
+            )
+
+    def _migrate_coach_alerts_shape(self) -> None:
+        """Rebuild the legacy missed-day-shaped ``coach_alerts`` in place (ADR 031).
+
+        Idempotent and crash-safe. The caller already holds ``_catalog_lock`` for
+        the whole rebuild. Shape detection handles every crash point:
+
+        * old shape + no leftover: the normal rebuild;
+        * old shape + leftover ``coach_alerts_new``: drop the orphan and rebuild;
+        * no old table but leftover ``coach_alerts_new``: the crash happened after
+          the old table was dropped, so the leftover is complete and is renamed;
+        * already migrated: any orphan is dropped and nothing else happens.
+
+        The rebuild runs inside one explicit ``BEGIN``/``COMMIT`` (legacy sqlite3
+        autocommit is disabled for the duration) and rolls back on any exception,
+        so a failure leaves the old table and its rows intact.
+        """
+        cursor = self.catalog_conn.cursor()
+        old_columns = self._table_columns(cursor, "coach_alerts")
+        new_columns = self._table_columns(cursor, "coach_alerts_new")
+
+        if old_columns and "dedupe_key" in old_columns:
+            # Already migrated; clear any orphan left by an interrupted run.
+            if new_columns:
+                self.catalog_conn.execute("DROP TABLE IF EXISTS coach_alerts_new")
+                self.catalog_conn.commit()
+            return
+        if not old_columns and not new_columns:
+            return
+
+        original_isolation = self.catalog_conn.isolation_level
+        self.catalog_conn.isolation_level = None
+        try:
+            self.catalog_conn.execute("BEGIN")
+            try:
+                if not old_columns and new_columns:
+                    # The old table was already dropped before the crash: finish.
+                    cursor.execute("ALTER TABLE coach_alerts_new RENAME TO coach_alerts")
+                else:
+                    cursor.execute("DROP TABLE IF EXISTS coach_alerts_new")
+                    cursor.execute(self._coach_alerts_create_sql("coach_alerts_new"))
+                    self._copy_legacy_coach_alert_rows(cursor)
+                    cursor.execute("DROP TABLE coach_alerts")
+                    cursor.execute("ALTER TABLE coach_alerts_new RENAME TO coach_alerts")
+                for statement in self._COACH_ALERTS_INDEX_SQL:
+                    cursor.execute(statement)
+                self.catalog_conn.execute("COMMIT")
+            except Exception:
+                self.catalog_conn.execute("ROLLBACK")
+                raise
+        finally:
+            self.catalog_conn.isolation_level = original_isolation
+
+    def _ensure_roster_attendance_timezone(self) -> None:
+        """Additive ``timezone`` column on an existing ``roster_attendance`` (ADR 031)."""
+        cursor = self.catalog_conn.cursor()
+        columns = self._table_columns(cursor, "roster_attendance")
+        if columns and "timezone" not in columns:
+            cursor.execute("ALTER TABLE roster_attendance ADD COLUMN timezone TEXT")
 
     _ACCOUNT_COLUMNS = (
         "account_id, username, ledger_id, status, is_player, is_coach, session_epoch, created_at, deleted_at"
@@ -1823,35 +1962,41 @@ class DatabaseManager:
             return {"ok": cursor.rowcount == 1, "rowcount": int(cursor.rowcount)}
 
     # ------------------------------------------------------------------
-    # Coach alerts and catalog-side roster attendance (ADR 030, ticket #31).
-    # Every read and write here is catalog-only: a roster or alert read must
-    # never mount a player ledger (ADR 025).
+    # Coach alerts and catalog-side roster attendance (ADR 030/031,
+    # tickets #31/#32). Every read and write here is catalog-only: a roster or
+    # alert read must never mount a player ledger (ADR 025).
     # ------------------------------------------------------------------
 
     _COACH_ALERT_COLUMNS = (
         "alert_id, assignment_id, coach_account_id, player_account_id, kind,"
-        " streak_start_date, last_missed_date, missed_count, state, created_at,"
-        " acknowledged_at, resolved_at, resolved_by"
+        " dedupe_key, details, state, created_at, acknowledged_at, resolved_at, resolved_by"
     )
 
-    @staticmethod
-    def _coach_alert_from_row(row: Any) -> dict[str, Any] | None:
+    @classmethod
+    def _coach_alert_from_row(cls, row: Any) -> dict[str, Any] | None:
         if row is None:
             return None
+        try:
+            details = json.loads(row[6]) if row[6] else {}
+        except (TypeError, ValueError):
+            details = {}
+        if not isinstance(details, dict):
+            details = {}
+        # The kind-specific fields stay under ``details`` here; the service layer
+        # flattens them into the API response shape (ADR 031).
         return {
             "alert_id": str(row[0]),
             "assignment_id": str(row[1]),
             "coach_account_id": str(row[2]),
             "player_account_id": str(row[3]),
             "kind": str(row[4]),
-            "streak_start_date": str(row[5]),
-            "last_missed_date": str(row[6]),
-            "missed_count": int(row[7]),
-            "state": str(row[8]),
-            "created_at": str(row[9]),
-            "acknowledged_at": row[10],
-            "resolved_at": row[11],
-            "resolved_by": row[12],
+            "dedupe_key": str(row[5]),
+            "details": details,
+            "state": str(row[7]),
+            "created_at": str(row[8]),
+            "acknowledged_at": row[9],
+            "resolved_at": row[10],
+            "resolved_by": row[11],
         }
 
     def insert_coach_alert(
@@ -1861,16 +2006,15 @@ class DatabaseManager:
         coach_account_id: str,
         player_account_id: str,
         kind: str,
-        streak_start_date: str,
-        last_missed_date: str,
-        missed_count: int,
+        dedupe_key: str,
+        details: dict[str, Any],
         now_iso: str,
     ) -> dict[str, Any]:
-        """Inserts one alert for a streak, ignoring a retry of the same streak.
+        """Inserts one alert for a dedupe key, ignoring a retry of the same key.
 
         Returns ``{"alert": ..., "created": bool}``. The unique
-        ``(assignment_id, kind, streak_start_date)`` key means a concurrent or
-        repeated sweep cannot create a second alert for one streak.
+        ``(assignment_id, kind, dedupe_key)`` key means a concurrent or repeated
+        sweep cannot create a second alert for one recurring fact.
         """
         self.ensure_account_schema()
         with self._catalog_lock:
@@ -1878,18 +2022,16 @@ class DatabaseManager:
             cursor.execute(
                 "INSERT OR IGNORE INTO coach_alerts"
                 " (alert_id, assignment_id, coach_account_id, player_account_id, kind,"
-                " streak_start_date, last_missed_date, missed_count, state, created_at,"
-                " acknowledged_at, resolved_at, resolved_by)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, NULL, NULL, NULL)",
+                " dedupe_key, details, state, created_at, acknowledged_at, resolved_at, resolved_by)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?, NULL, NULL, NULL)",
                 (
                     str(alert_id),
                     str(assignment_id),
                     str(coach_account_id),
                     str(player_account_id),
                     str(kind),
-                    str(streak_start_date),
-                    str(last_missed_date),
-                    int(missed_count),
+                    str(dedupe_key),
+                    json.dumps(details),
                     now_iso,
                 ),
             )
@@ -1897,8 +2039,8 @@ class DatabaseManager:
             self.catalog_conn.commit()
             cursor.execute(
                 f"SELECT {self._COACH_ALERT_COLUMNS} FROM coach_alerts"
-                " WHERE assignment_id = ? AND kind = ? AND streak_start_date = ?",
-                (str(assignment_id), str(kind), str(streak_start_date)),
+                " WHERE assignment_id = ? AND kind = ? AND dedupe_key = ?",
+                (str(assignment_id), str(kind), str(dedupe_key)),
             )
             return {"alert": self._coach_alert_from_row(cursor.fetchone()), "created": created}
 
@@ -1933,20 +2075,21 @@ class DatabaseManager:
             alerts = []
             for row in cursor.fetchall():
                 alert = self._coach_alert_from_row(row)
-                alert["player_username"] = str(row[13])
+                alert["player_username"] = str(row[12])
                 alerts.append(alert)
             return alerts
 
-    def update_coach_alert_streak(self, alert_id: str, last_missed_date: str, missed_count: int) -> int:
-        """Extends the same streak alert; a no-op update reports ``rowcount == 0``."""
+    def update_coach_alert_details(self, alert_id: str, details: dict[str, Any]) -> int:
+        """Extends an open alert's kind-specific fields; a no-op reports ``rowcount == 0``."""
         self.ensure_account_schema()
+        encoded = json.dumps(details)
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
-                "UPDATE coach_alerts SET last_missed_date = ?, missed_count = ?"
+                "UPDATE coach_alerts SET details = ?"
                 " WHERE alert_id = ? AND state IN ('new', 'acknowledged')"
-                " AND (last_missed_date != ? OR missed_count != ?)",
-                (str(last_missed_date), int(missed_count), str(alert_id), str(last_missed_date), int(missed_count)),
+                " AND details != ?",
+                (encoded, str(alert_id), encoded),
             )
             self.catalog_conn.commit()
             return int(cursor.rowcount)
@@ -2000,39 +2143,82 @@ class DatabaseManager:
             return self._coach_alert_from_row(cursor.fetchone())
 
     def resolve_open_coach_alerts_for_assignment(
-        self, assignment_id: str, now_iso: str, except_streak_start: str | None = None
+        self,
+        assignment_id: str,
+        now_iso: str,
+        kind: str,
+        except_dedupe_key: str | None = None,
     ) -> int:
-        """Auto-resolves open alerts when their streak is no longer the current one.
+        """Auto-resolves open alerts of one kind when their dedupe key is no longer current.
 
-        With ``except_streak_start`` set, only alerts for a different streak are
-        resolved, so a continuing streak's alert is updated rather than closed.
+        With ``except_dedupe_key`` set, only alerts for a different key are
+        resolved, so a continuing fact's alert is updated rather than closed.
+        Scoping to ``kind`` keeps resolutions from crossing alert kinds.
         """
         self.ensure_account_schema()
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
                 "UPDATE coach_alerts SET state = 'resolved', resolved_at = ?, resolved_by = 'system'"
-                " WHERE assignment_id = ? AND state IN ('new', 'acknowledged')"
-                " AND (? IS NULL OR streak_start_date != ?)",
-                (now_iso, str(assignment_id), except_streak_start, except_streak_start),
+                " WHERE assignment_id = ? AND kind = ? AND state IN ('new', 'acknowledged')"
+                " AND (? IS NULL OR dedupe_key != ?)",
+                (now_iso, str(assignment_id), str(kind), except_dedupe_key, except_dedupe_key),
             )
             self.catalog_conn.commit()
             return int(cursor.rowcount)
 
-    def upsert_roster_attendance(self, assignment_id: str, current_missed_streak: int, now_iso: str) -> None:
-        """Records the latest catalog-side attendance summary for one assignment."""
+    def upsert_roster_attendance(
+        self,
+        assignment_id: str,
+        current_missed_streak: int,
+        now_iso: str,
+        timezone: str | None = None,
+    ) -> None:
+        """Records the latest catalog-side attendance summary for one assignment.
+
+        ``timezone`` is the player's local timezone as of this evaluation; when
+        omitted the previously cached value is preserved (absent means UTC).
+        """
         self.ensure_account_schema()
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
-                "INSERT INTO roster_attendance (assignment_id, current_missed_streak, last_evaluated_at)"
-                " VALUES (?, ?, ?)"
+                "INSERT INTO roster_attendance"
+                " (assignment_id, current_missed_streak, last_evaluated_at, timezone)"
+                " VALUES (?, ?, ?, ?)"
                 " ON CONFLICT(assignment_id) DO UPDATE SET"
                 " current_missed_streak = excluded.current_missed_streak,"
-                " last_evaluated_at = excluded.last_evaluated_at",
-                (str(assignment_id), int(current_missed_streak), now_iso),
+                " last_evaluated_at = excluded.last_evaluated_at,"
+                " timezone = COALESCE(excluded.timezone, roster_attendance.timezone)",
+                (str(assignment_id), int(current_missed_streak), now_iso, timezone),
             )
             self.catalog_conn.commit()
+
+    def get_roster_timezone(self, assignment_id: str) -> str | None:
+        """The player's cached timezone for an assignment, or ``None`` when unknown."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "SELECT timezone FROM roster_attendance WHERE assignment_id = ?",
+                (str(assignment_id),),
+            )
+            row = cursor.fetchone()
+            if row is None or row[0] is None or not str(row[0]).strip():
+                return None
+            return str(row[0])
+
+    def latest_check_in_on(self, assignment_id: str) -> str | None:
+        """The most recent check-in date for an assignment, or ``None`` if never."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "SELECT MAX(checked_in_on) FROM check_ins WHERE assignment_id = ?",
+                (str(assignment_id),),
+            )
+            row = cursor.fetchone()
+            return str(row[0]) if row and row[0] else None
 
     def get_roster_alert_badges(self, coach_account_id: str) -> dict[str, dict[str, int]]:
         """New/acknowledged alert counts and streak length per active assignment (catalog-only)."""
@@ -2071,6 +2257,136 @@ class DatabaseManager:
                 " WHERE status = 'active' ORDER BY started_at ASC",
             )
             return [self._assignment_from_row(row) for row in cursor.fetchall()]
+
+    # ------------------------------------------------------------------
+    # Coach check-ins (ADR 031, ticket #32). Catalog-side immutable facts,
+    # keyed by assignment and player so a player keeps their history after
+    # unassignment while the former coach loses access at the gate.
+    # ------------------------------------------------------------------
+
+    _CHECK_IN_COLUMNS = (
+        "check_in_id, assignment_id, coach_account_id, player_account_id,"
+        " checked_in_on, channel, note, created_at"
+    )
+
+    @staticmethod
+    def _check_in_from_row(row: Any) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        return {
+            "check_in_id": str(row[0]),
+            "assignment_id": str(row[1]),
+            "coach_account_id": str(row[2]),
+            "player_account_id": str(row[3]),
+            "checked_in_on": str(row[4]),
+            "channel": str(row[5]),
+            "note": row[6],
+            "created_at": str(row[7]),
+        }
+
+    def create_check_in(
+        self,
+        check_in_id: str,
+        assignment_id: str,
+        coach_account_id: str,
+        player_account_id: str,
+        checked_in_on: str,
+        channel: str,
+        note: str | None,
+        now_iso: str,
+    ) -> dict[str, Any]:
+        """Inserts one immutable check-in row and returns it."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "INSERT INTO check_ins"
+                " (check_in_id, assignment_id, coach_account_id, player_account_id,"
+                " checked_in_on, channel, note, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    str(check_in_id),
+                    str(assignment_id),
+                    str(coach_account_id),
+                    str(player_account_id),
+                    str(checked_in_on),
+                    str(channel),
+                    note,
+                    now_iso,
+                ),
+            )
+            self.catalog_conn.commit()
+            cursor.execute(
+                f"SELECT {self._CHECK_IN_COLUMNS} FROM check_ins WHERE check_in_id = ?",
+                (str(check_in_id),),
+            )
+            return self._check_in_from_row(cursor.fetchone())
+
+    def list_assignment_check_ins(self, assignment_id: str) -> list[dict[str, Any]]:
+        """Every check-in for one assignment, newest date first."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                f"SELECT {self._CHECK_IN_COLUMNS} FROM check_ins"
+                " WHERE assignment_id = ? ORDER BY checked_in_on DESC, rowid DESC",
+                (str(assignment_id),),
+            )
+            return [self._check_in_from_row(row) for row in cursor.fetchall()]
+
+    def list_player_check_ins(self, player_account_id: str) -> list[dict[str, Any]]:
+        """Every check-in the player ever received, across active and ended assignments.
+
+        The coach's current username is joined for display without ever reading
+        another player's rows.
+        """
+        self.ensure_account_schema()
+        columns = ", ".join("ci." + column for column in self._CHECK_IN_COLUMNS.split(", "))
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                f"SELECT {columns}, acc.username, a.status"
+                " FROM check_ins ci"
+                " LEFT JOIN accounts acc ON acc.account_id = ci.coach_account_id"
+                " LEFT JOIN assignments a ON a.assignment_id = ci.assignment_id"
+                " WHERE ci.player_account_id = ?"
+                " ORDER BY ci.checked_in_on DESC, ci.rowid DESC",
+                (str(player_account_id),),
+            )
+            rows = []
+            for row in cursor.fetchall():
+                item = self._check_in_from_row(row)
+                item["coach_username"] = str(row[8]) if row[8] else "former coach"
+                item["assignment_status"] = str(row[9]) if row[9] else "ended"
+                rows.append(item)
+            return rows
+
+    def list_roster_follow_up_basis(self, coach_account_id: str) -> dict[str, dict[str, Any]]:
+        """Catalog-only follow-up inputs per active assignment for the roster.
+
+        Returns ``assignment_id -> {started_at, timezone, latest_check_in_on}`` so
+        the service can compute ``next_follow_up_on`` without mounting a ledger.
+        """
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "SELECT a.assignment_id, a.started_at, r.timezone, MAX(ci.checked_in_on)"
+                " FROM assignments a"
+                " LEFT JOIN roster_attendance r ON r.assignment_id = a.assignment_id"
+                " LEFT JOIN check_ins ci ON ci.assignment_id = a.assignment_id"
+                " WHERE a.coach_account_id = ? AND a.status = 'active'"
+                " GROUP BY a.assignment_id, a.started_at, r.timezone",
+                (str(coach_account_id),),
+            )
+            return {
+                str(row[0]): {
+                    "started_at": str(row[1]),
+                    "timezone": str(row[2]) if row[2] else None,
+                    "latest_check_in_on": str(row[3]) if row[3] else None,
+                }
+                for row in cursor.fetchall()
+            }
 
     def get_exercise_catalog_entry(self, exercise_id: str) -> dict[str, Any] | None:
         """One catalog exercise by exact id, with the fields needed to swap it into a program."""

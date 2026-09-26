@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from agent.ProgramState import ProgramDaySchema, ProgramExerciseSchema
 from database.database_manager import DatabaseManager
+from service import alert_sweep
 from service import coach as coach_service
 from service import missed_day_alerts as alerts_service
 from service import workouts as workouts_service
@@ -148,26 +149,34 @@ def test_sweep_creates_one_alert_and_notice_for_a_two_day_streak(api):
     _backdate_assignment(db, assignment_id, started)
     _seed_schedule(db, "p1", ALL_DAYS, started.date() - timedelta(days=1))
 
-    counts = alerts_service.run_sweep(db, now=now)
+    counts = alert_sweep.run_sweep(db, now=now)
 
     assert counts == {
         "evaluated": 1,
         "skipped": 0,
         "alerts_created": 1,
         "alerts_resolved": 0,
+        "follow_ups_created": 1,
         "errors": 0,
     }
-    alerts = db.list_coach_alerts(coach_account_id, ("new",))
+    alerts = [
+        alert
+        for alert in db.list_coach_alerts(coach_account_id, ("new",))
+        if alert["kind"] == alerts_service.MISSED_DAY_KIND
+    ]
     assert len(alerts) == 1
     alert = alerts[0]
     assert alert["kind"] == alerts_service.MISSED_DAY_KIND
     assert alert["assignment_id"] == assignment_id
-    assert alert["streak_start_date"] == started.date().isoformat()
-    assert alert["missed_count"] == 9
+    assert alert["details"]["streak_start_date"] == started.date().isoformat()
+    assert alert["details"]["missed_count"] == 9
     assert alert["state"] == "new"
     assert len(_notices(db, coach_account_id)) == 1
     summary = db.get_roster_alert_badges(coach_account_id)[assignment_id]
-    assert summary == {"current_missed_streak": 9, "alerts_new": 1, "alerts_acknowledged": 0}
+    assert summary["current_missed_streak"] == 9
+    assert summary["alerts_acknowledged"] == 0
+    # The badge count spans every alert kind, so the due follow-up is counted too.
+    assert summary["alerts_new"] == 2
 
 
 def test_sweep_is_idempotent_and_does_not_duplicate_the_notice(api):
@@ -178,13 +187,23 @@ def test_sweep_is_idempotent_and_does_not_duplicate_the_notice(api):
     _backdate_assignment(db, assignment_id, started)
     _seed_schedule(db, "p1", ALL_DAYS, started.date() - timedelta(days=1))
 
-    first = alerts_service.run_sweep(db, now=now)
-    alert_id = db.list_coach_alerts(coach_account_id, ("new",))[0]["alert_id"]
-    second = alerts_service.run_sweep(db, now=now)
+    first = alert_sweep.run_sweep(db, now=now)
+    alert_id = [
+        alert
+        for alert in db.list_coach_alerts(coach_account_id, ("new",))
+        if alert["kind"] == alerts_service.MISSED_DAY_KIND
+    ][0]["alert_id"]
+    second = alert_sweep.run_sweep(db, now=now)
 
     assert first["alerts_created"] == 1
     assert second["alerts_created"] == 0
-    alerts = db.list_coach_alerts(coach_account_id, ("new", "acknowledged", "resolved"))
+    assert first["follow_ups_created"] == 1
+    assert second["follow_ups_created"] == 0
+    alerts = [
+        alert
+        for alert in db.list_coach_alerts(coach_account_id, ("new", "acknowledged", "resolved"))
+        if alert["kind"] == alerts_service.MISSED_DAY_KIND
+    ]
     assert len(alerts) == 1
     assert alerts[0]["alert_id"] == alert_id
     assert len(_notices(db, coach_account_id)) == 1
@@ -198,16 +217,24 @@ def test_longer_streak_extends_the_same_alert(api):
     _backdate_assignment(db, assignment_id, started)
     _seed_schedule(db, "p1", ALL_DAYS, started.date() - timedelta(days=1))
 
-    alerts_service.run_sweep(db, now=now)
-    first = db.list_coach_alerts(coach_account_id, ("new",))[0]
-    assert first["missed_count"] == 2
+    alert_sweep.run_sweep(db, now=now)
+    first = [
+        alert
+        for alert in db.list_coach_alerts(coach_account_id, ("new",))
+        if alert["kind"] == alerts_service.MISSED_DAY_KIND
+    ][0]
+    assert first["details"]["missed_count"] == 2
 
-    alerts_service.run_sweep(db, now=now + timedelta(days=1))
-    alerts = db.list_coach_alerts(coach_account_id, ("new", "acknowledged", "resolved"))
+    alert_sweep.run_sweep(db, now=now + timedelta(days=1))
+    alerts = [
+        alert
+        for alert in db.list_coach_alerts(coach_account_id, ("new", "acknowledged", "resolved"))
+        if alert["kind"] == alerts_service.MISSED_DAY_KIND
+    ]
     assert len(alerts) == 1
     assert alerts[0]["alert_id"] == first["alert_id"]
-    assert alerts[0]["missed_count"] == 3
-    assert alerts[0]["last_missed_date"] == (now.date() - timedelta(days=1)).isoformat()
+    assert alerts[0]["details"]["missed_count"] == 3
+    assert alerts[0]["details"]["last_missed_date"] == (now.date() - timedelta(days=1)).isoformat()
     assert len(_notices(db, coach_account_id)) == 1
 
 
@@ -219,11 +246,11 @@ def test_streak_breaks_and_the_open_alert_auto_resolves(api):
     _backdate_assignment(db, assignment_id, started)
     _seed_schedule(db, "p1", ALL_DAYS, started.date() - timedelta(days=1))
 
-    alerts_service.run_sweep(db, now=now)
+    alert_sweep.run_sweep(db, now=now)
     assert len(db.list_coach_alerts(coach_account_id, ("new",))) == 1
 
     _seed_session(db, "p1", now.date() - timedelta(days=1))
-    counts = alerts_service.run_sweep(db, now=now)
+    counts = alert_sweep.run_sweep(db, now=now)
 
     assert counts["alerts_resolved"] == 1
     open_alerts = db.list_coach_alerts(coach_account_id, ("new", "acknowledged"))
@@ -242,7 +269,7 @@ def test_commit_hook_resolves_alert_when_an_expected_day_is_satisfied(api):
     started = now - timedelta(days=3)
     _backdate_assignment(db, assignment_id, started)
     _seed_schedule(db, "p1", ALL_DAYS, started.date() - timedelta(days=1))
-    assert alerts_service.run_sweep(db, now=now)["alerts_created"] == 1
+    assert alert_sweep.run_sweep(db, now=now)["alerts_created"] == 1
     assert len(db.list_coach_alerts(coach_account_id, ("new",))) == 1
 
     db.switch_user("p1")
@@ -321,7 +348,7 @@ def test_sweep_skips_a_player_without_a_ledger_and_never_creates_one(api):
     db.catalog_conn.commit()
     assert not db.user_exists("ghost")
 
-    counts = alerts_service.run_sweep(db, now=now)
+    counts = alert_sweep.run_sweep(db, now=now)
 
     assert counts["skipped"] == 1
     assert counts["evaluated"] == 0
@@ -336,7 +363,7 @@ def test_sweep_unbinds_the_ledger_from_the_worker_thread(api):
     _backdate_assignment(db, assignment_id, started)
     _seed_schedule(db, "p1", ALL_DAYS, started.date() - timedelta(days=1))
 
-    alerts_service.run_sweep(db, now=now)
+    alert_sweep.run_sweep(db, now=now)
 
     assert db.user_conn is None
 
@@ -355,8 +382,8 @@ def test_sweep_unbinds_the_ledger_even_when_evaluation_raises(api, monkeypatch):
         bind_user(db_arg, "p1")
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(alerts_service, "evaluate_assignment", boom)
-    counts = alerts_service.run_sweep(db, now=now)
+    monkeypatch.setattr(alert_sweep, "evaluate_assignment", boom)
+    counts = alert_sweep.run_sweep(db, now=now)
 
     assert counts["errors"] == 1
     assert db.user_conn is None
@@ -379,8 +406,8 @@ def test_sweep_continues_after_one_player_failure(api, monkeypatch):
             raise RuntimeError("boom")
         return real_evaluate(db_arg, assignment, now=now)
 
-    monkeypatch.setattr(alerts_service, "evaluate_assignment", flaky)
-    counts = alerts_service.run_sweep(db, now=now)
+    monkeypatch.setattr(alert_sweep, "evaluate_assignment", flaky)
+    counts = alert_sweep.run_sweep(db, now=now)
 
     assert counts["errors"] == 1
     assert counts["evaluated"] == 1

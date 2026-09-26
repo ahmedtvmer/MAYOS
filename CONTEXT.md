@@ -72,7 +72,10 @@ A scheduled training day that no workout satisfied within its grace period. One 
 A run of consecutive missed expected days, measured over the sequence of expected days. Paused and non-expected days are skipped and neither break nor extend it. It drives coach alerts.
 
 **Coach alert**:
-A catalog-side notification that an assigned player has a missed-day streak of at least two days. It has new, acknowledged, and resolved states, and deduplicates on the streak's start date so retries never duplicate it.
+A catalog-side notification of a coaching fact about an assigned player, such as a missed-day streak of at least two days or a due follow-up. It has new, acknowledged, and resolved states, and deduplicates on a kind-specific key so retries never duplicate it.
 
 **Check-in**:
 A contact recorded by the coach and visible to both coach and player, including contact outside MAYOS. It starts the interval until the next follow-up is due.
+
+**Follow-up due**:
+The state of an assignment whose most recent check-in (or assignment start) is at least the weekly cadence in the past, measured in the player's timezone.

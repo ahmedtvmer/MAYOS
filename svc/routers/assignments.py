@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from agent.ProgramState import GeneratedProgramSchema
 from service import assignments as assignment_service
+from service import check_ins as check_ins_service
 from service import coach_history as coach_history_service
 from service import coach_programs as coach_programs_service
 from service import program_requests as program_requests_service
@@ -39,7 +40,11 @@ from svc.schemas import (
     AssignmentOut,
     AssignmentRedeemIn,
     AssignmentRedeemOut,
+    CheckInIn,
+    CheckInOut,
     CoachAssignmentsOut,
+    CoachCheckInCreateOut,
+    CoachCheckInListOut,
     CoachExerciseHistoryOut,
     CoachIdentityOut,
     CoachNoticeListOut,
@@ -49,6 +54,7 @@ from svc.schemas import (
     CoachPlayerSummaryOut,
     CoachProgramRequestListOut,
     CoachRosterEntryOut,
+    PlayerCheckInListOut,
     PlayerNoticeListOut,
     PlayerProgramRequestIn,
     PlayerProgramRequestListOut,
@@ -190,6 +196,52 @@ async def read_assigned_player_exercise_history(
         return history
 
     return CoachExerciseHistoryOut(**await asyncio.to_thread(_run))
+
+
+@coach_router.post(
+    "/{assignment_id}/check-ins", response_model=CoachCheckInCreateOut
+)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def create_assignment_check_in(
+    request: Request,
+    assignment_id: str,
+    body: CheckInIn,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Records an immutable check-in for an actively assigned player (ADR 031)."""
+
+    def _run():
+        result = check_ins_service.create_check_in(
+            db, coach.account_id, assignment_id, body.model_dump()
+        )
+        if not result["ok"]:
+            if result.get("denied"):
+                raise _no_active_assignment()
+            raise _bad_request(result["error"])
+        return result
+
+    result = await asyncio.to_thread(_run)
+    return CoachCheckInCreateOut(
+        check_in=CheckInOut(**result["check_in"]),
+        next_follow_up_on=result["next_follow_up_on"],
+    )
+
+
+@coach_router.get("/{assignment_id}/check-ins", response_model=CoachCheckInListOut)
+async def list_assignment_check_ins(
+    assignment_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Lists an actively assigned player's check-ins, newest date first (catalog-only)."""
+
+    rows = await asyncio.to_thread(
+        check_ins_service.list_coach_check_ins, db, coach.account_id, assignment_id
+    )
+    if rows is None:
+        raise _no_active_assignment()
+    return CoachCheckInListOut(check_ins=[CheckInOut(**row) for row in rows])
 
 
 @coach_router.get("/notices", response_model=CoachNoticeListOut)
@@ -399,6 +451,23 @@ async def read_my_assignment(
 
     assignment = await asyncio.to_thread(assignment_service.get_player_assignment, db, player.account_id)
     return _assignment_out(assignment) if assignment is not None else None
+
+
+@player_router.get("/me/check-ins", response_model=PlayerCheckInListOut)
+async def list_my_check_ins(
+    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Lists the caller's check-ins across all assignments, including ended ones.
+
+    The rows survive unassignment, so the player keeps their check-in history even
+    after the former coach's access ends (ADR 031).
+    """
+
+    rows = await asyncio.to_thread(
+        check_ins_service.list_player_check_ins, db, player.account_id
+    )
+    return PlayerCheckInListOut(check_ins=[CheckInOut(**row) for row in rows])
 
 
 @player_router.get("/notices", response_model=PlayerNoticeListOut)
