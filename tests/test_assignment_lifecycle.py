@@ -93,7 +93,7 @@ def _make_coach(client, db, username, capacity=10, email=None):
         == 200
     )
     if email:
-        db.set_account_email(username, email)
+        db.set_account_email(db.get_active_account_by_username(username)["account_id"], email)
     return headers, registered["access_token"], _subject(registered["access_token"])
 
 
@@ -426,6 +426,33 @@ def test_identity_fault_degrades_username_and_email_still_sent(api, monkeypatch)
     assert body["assignment"]["coach"]["display_name"] == "coach"
     assert body["email_sent"] is True
     assert calls == [("coach@example.com", "coach", "p1")]
+
+
+def test_redemption_email_looks_up_by_account_id_not_ledger_id(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, _, _ = _make_coach(client, db, "coach", capacity=5)
+    coach = db.get_active_account_by_username("coach")
+    assert coach["account_id"] != coach["ledger_id"]
+
+    saved = client.post("/auth/email", headers=coach_headers, json={"email": "coach@example.com"})
+    assert saved.status_code == 200, saved.text
+
+    token = _issue(client, coach_headers)["token"]
+    player = _register(client, "p1")
+    headers = _authed(player["access_token"])
+
+    calls = []
+
+    def _record(to_email, coach_display_name, player_username):
+        calls.append((to_email, coach_display_name, player_username))
+        return True
+
+    monkeypatch.setattr(assignment_service, "send_assignment_redemption_email", _record)
+
+    redeemed = _redeem(client, headers, token)
+    assert redeemed.status_code == 200, redeemed.text
+    assert redeemed.json()["email_sent"] is True
+    assert calls == [("coach@example.com", "Coach coach", "p1")]
 
 
 def test_email_notice_is_generic_and_contains_no_training_data(caplog):

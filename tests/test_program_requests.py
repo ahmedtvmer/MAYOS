@@ -93,7 +93,7 @@ def _make_coach(client, db, username, capacity=10, email=None):
         == 200
     )
     if email:
-        db.set_account_email(username, email)
+        db.set_account_email(db.get_active_account_by_username(username)["account_id"], email)
     return headers
 
 
@@ -246,6 +246,40 @@ def test_create_substitution_records_exact_target_and_leaves_program(api, monkey
 
     listed = client.get("/assignments/me/program-requests", headers=player_headers).json()["requests"]
     assert [row["request_id"] for row in listed] == [body["request_id"]]
+
+
+def test_program_request_email_looks_up_by_account_id_not_ledger_id(api, monkeypatch):
+    client, db, _ = api
+    coach_headers = _make_coach(client, db, "coach", capacity=5)
+    coach = db.get_active_account_by_username("coach")
+    assert coach["account_id"] != coach["ledger_id"]
+
+    saved = client.post("/auth/email", headers=coach_headers, json={"email": "coach@example.com"})
+    assert saved.status_code == 200, saved.text
+
+    token = client.post("/coach/assignments/invites", headers=coach_headers).json()["token"]
+    player = _register(client, "p1")
+    player_headers = _authed(player["access_token"])
+    redeemed = client.post(
+        "/assignments/invites/redeem", headers=player_headers, json={"token": token, "consent": True}
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    assignment_id = redeemed.json()["assignment"]["assignment_id"]
+
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+
+    calls = []
+
+    def _record(to_email, coach_display_name, player_username):
+        calls.append((to_email, coach_display_name, player_username))
+        return True
+
+    monkeypatch.setattr(program_requests_service, "send_program_request_email", _record)
+
+    created = _create(client, player_headers, **_substitution())
+    assert created.status_code == 200, created.text
+    assert calls == [("coach@example.com", "Coach coach", "p1")]
 
 
 def test_create_split_change_records_desired_fields(api, monkeypatch):

@@ -197,7 +197,7 @@ def _notify_coach(
     try:
         coach_account = db.get_account(coach_account_id)
         if coach_account:
-            to_email = db.get_account_email(coach_account["ledger_id"])
+            to_email = db.get_account_email(coach_account["account_id"])
             if to_email:
                 display_name = coach_identity(db, coach_account_id, coach_account)["display_name"]
                 send_program_request_email(to_email, display_name, player_username)
