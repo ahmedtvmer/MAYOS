@@ -73,6 +73,17 @@ FakeMayosApi _fake() {
   return fake;
 }
 
+/// A brand-new player with no program, schedule, volume, or records, so the
+/// Home empty states can be captured.
+FakeMayosApi _emptyPlayerFake() {
+  final FakeMayosApi fake = _fake();
+  fake.noActiveProgram = true;
+  fake.scheduleEmpty = true;
+  fake.volumeEmpty = true;
+  fake.recordsEmpty = true;
+  return fake;
+}
+
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     {int attempts = 40}) async {
   for (int i = 0; i < attempts; i++) {
@@ -157,6 +168,26 @@ Future<void> _writeAuthCapture(WidgetTester tester, String name) async {
   await tester.runAsync(() async {
     final Directory out =
         Directory('${Directory.current.parent.path}/docs/design-review/52');
+    await out.create(recursive: true);
+    final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
+    final ByteData? data =
+        await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    if (data == null) {
+      return;
+    }
+    await File('${out.path}/$name.png').writeAsBytes(data.buffer.asUint8List());
+  });
+}
+
+/// Writes a #53 Home/Program/exercise-detail capture to
+/// `docs/design-review/53/`.
+Future<void> _writeRedesignCapture(WidgetTester tester, String name) async {
+  final RenderRepaintBoundary boundary =
+      tester.renderObject<RenderRepaintBoundary>(find.byKey(_boundaryKey));
+  await tester.runAsync(() async {
+    final Directory out =
+        Directory('${Directory.current.parent.path}/docs/design-review/53');
     await out.create(recursive: true);
     final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
     final ByteData? data =
@@ -451,8 +482,66 @@ Future<void> _pumpSplash(WidgetTester tester, Size size, ThemeMode mode) async {
 }
 
 Future<void> _pumpShell(
-    WidgetTester tester, _Surface surface, Size size, ThemeMode mode) async {
+    WidgetTester tester, _Surface surface, Size size, ThemeMode mode,
+    {FakeMayosApi? fake}) async {
+  // Navigate at a large viewport (bottom-bar hit-testing is reliable there),
+  // then resize to the capture size so the layout is exercised at the target.
+  _setSize(tester, const Size(1080, 2400));
+  final FakeMayosApi activeFake = fake ?? _fake();
+  final InMemoryTokenStore tokens = InMemoryTokenStore();
+  await tokens.save('token-alice');
+  await tester.pumpWidget(
+    RepaintBoundary(
+      key: _boundaryKey,
+      child: ProviderScope(
+        overrides: <Override>[
+          tokenStoreProvider.overrideWithValue(tokens),
+          themeModeStoreProvider
+              .overrideWithValue(InMemoryThemeModeStore(mode)),
+          draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
+          workoutCacheStoreProvider
+              .overrideWithValue(InMemoryWorkoutCacheStore()),
+          chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
+          apiClientProvider.overrideWith((ref) {
+            final ApiClient client = ApiClient(
+              tokens: ref.watch(tokenStoreProvider),
+              baseUrl: 'http://test.local',
+              adapter: activeFake.adapter,
+            );
+            client.onUnauthorized =
+                ref.watch(unauthorizedEventsProvider).signal;
+            return client;
+          }),
+        ],
+        child: const MayosApp(),
+      ),
+    ),
+  );
+  await _pumpUntilFound(tester, find.text('Home'));
+
+  if (surface.tab == 1) {
+    await tester.tap(find.text('Program'));
+    await tester.pump(const Duration(milliseconds: 400));
+    await _pumpUntilFound(tester, find.text('Upper/Lower 4x'));
+  }
+  if (surface.tab == 0) {
+    await _pumpUntilFound(tester, find.text('This week'));
+  }
+  if (surface.name == 'settings') {
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await _pumpUntilFound(tester, find.text('Appearance'));
+  }
   _setSize(tester, size);
+  await tester.pump(const Duration(milliseconds: 200));
+  await _precacheBrandImages(tester);
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
+/// Pumps the app, opens Program, and taps the first exercise to reach the
+/// read-only exercise detail from a program day (#53).
+Future<void> _pumpExerciseDetail(
+    WidgetTester tester, Size size, ThemeMode mode) async {
+  _setSize(tester, const Size(1080, 2400));
   final FakeMayosApi fake = _fake();
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
@@ -484,20 +573,12 @@ Future<void> _pumpShell(
     ),
   );
   await _pumpUntilFound(tester, find.text('Home'));
-
-  if (surface.tab != null) {
-    await tester.tap(find.text(surface.tab == 0 ? 'Home' : 'Program'));
-    await tester.pump(const Duration(milliseconds: 400));
-    await _pumpUntilFound(
-        tester,
-        surface.tab == 0
-            ? find.text('Weekly weighted sets')
-            : find.text('Upper/Lower 4x'));
-  }
-  if (surface.name == 'settings') {
-    await tester.tap(find.byIcon(Icons.settings_outlined));
-    await _pumpUntilFound(tester, find.text('Appearance'));
-  }
+  await tester.tap(find.text('Program'));
+  await _pumpUntilFound(tester, find.text('Day 1: Upper 1'));
+  await tester.tap(find.text('Bench Press'));
+  await _pumpUntilFound(tester, find.text('Overview'));
+  _setSize(tester, size);
+  await tester.pump(const Duration(milliseconds: 200));
   await _precacheBrandImages(tester);
   await tester.pump(const Duration(milliseconds: 300));
 }
@@ -597,5 +678,66 @@ void main() {
       );
       await _writeAuthCapture(tester, 'auth-login-keyboard-$theme-360x640');
     }, skip: skipCapture);
+  }
+
+  // #53 Home/Program/exercise-detail redesign captures (docs/design-review/53).
+  // Home with real data and Home for a brand-new player with no data.
+  for (final Size size in sizes) {
+    for (final ThemeMode mode in modes) {
+      final String theme = mode == ThemeMode.dark ? 'dark' : 'light';
+      final String sizeTag = '${size.width.toInt()}x${size.height.toInt()}';
+
+      testWidgets('redesign home $theme $sizeTag', (WidgetTester tester) async {
+        await _pumpShell(
+          tester,
+          const _Surface('home', 0),
+          size,
+          mode,
+        );
+        await _writeRedesignCapture(tester, 'home-$theme-$sizeTag');
+      }, skip: skipCapture);
+
+      testWidgets('redesign home empty $theme $sizeTag',
+          (WidgetTester tester) async {
+        await _pumpShell(
+          tester,
+          const _Surface('home', 0),
+          size,
+          mode,
+          fake: _emptyPlayerFake(),
+        );
+        await _writeRedesignCapture(tester, 'home-empty-$theme-$sizeTag');
+      }, skip: skipCapture);
+
+      testWidgets('redesign program $theme $sizeTag',
+          (WidgetTester tester) async {
+        await _pumpShell(
+          tester,
+          const _Surface('program', 1),
+          size,
+          mode,
+        );
+        await _writeRedesignCapture(tester, 'program-$theme-$sizeTag');
+      }, skip: skipCapture);
+
+      testWidgets('redesign exercise overview $theme $sizeTag',
+          (WidgetTester tester) async {
+        await _pumpExerciseDetail(tester, size, mode);
+        await _writeRedesignCapture(
+            tester, 'exercise-overview-$theme-$sizeTag');
+      }, skip: skipCapture);
+
+      testWidgets('redesign exercise technique $theme $sizeTag',
+          (WidgetTester tester) async {
+        await _pumpExerciseDetail(tester, size, mode);
+        await tester.tap(find.text('Technique'));
+        // Two pumps: the first builds the new target, the second advances the
+        // segmented control's implicit animation to its end state.
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump(const Duration(milliseconds: 300));
+        await _writeRedesignCapture(
+            tester, 'exercise-technique-$theme-$sizeTag');
+      }, skip: skipCapture);
+    }
   }
 }

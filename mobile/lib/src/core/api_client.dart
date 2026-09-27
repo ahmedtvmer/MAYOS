@@ -850,8 +850,8 @@ class ApiClient {
   /// Acknowledges the hosted-processing disclosure before any answer is saved
   /// (`POST /onboarding/intake/disclosure`, ADR 016/036).
   Future<OnboardingIntake> acknowledgeIntakeDisclosure() async {
-    final response = await _send(
-        () => _dio.post<dynamic>('/onboarding/intake/disclosure'));
+    final response =
+        await _send(() => _dio.post<dynamic>('/onboarding/intake/disclosure'));
     return _parseBody(response.data, OnboardingIntake.fromJson,
         'The service returned invalid onboarding intake data.');
   }
@@ -871,8 +871,8 @@ class ApiClient {
   /// Writes the confirmed profile and creates the first program once
   /// (`POST /onboarding/intake/confirm`, #50).
   Future<IntakeConfirmation> confirmIntake() async {
-    final response = await _send(
-        () => _dio.post<dynamic>('/onboarding/intake/confirm'));
+    final response =
+        await _send(() => _dio.post<dynamic>('/onboarding/intake/confirm'));
     return _parseBody(response.data, IntakeConfirmation.fromJson,
         'The service returned invalid onboarding confirmation data.');
   }
@@ -933,6 +933,48 @@ class ApiClient {
     }
     return _parseBodyList(data['exercises'], ExerciseCatalogEntry.fromJson,
         'The service returned invalid exercise data.');
+  }
+
+  /// Read-only catalog detail for one exercise (`GET /workouts/exercises/{id}`, #53).
+  Future<ExerciseCatalogDetail> exerciseCatalogDetail(String exerciseId) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+          '/workouts/exercises/${Uri.encodeComponent(exerciseId)}'),
+    );
+    return _parseBody(response.data, ExerciseCatalogDetail.fromJson,
+        'The service returned invalid exercise data.');
+  }
+
+  /// Progression history for one exercise (`GET /dashboard/exercises/{id}/history`).
+  Future<ExerciseHistory> exerciseHistory(String exerciseId) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+          '/dashboard/exercises/${Uri.encodeComponent(exerciseId)}/history'),
+    );
+    return _parseBody(response.data, ExerciseHistory.fromJson,
+        'The service returned invalid exercise history data.');
+  }
+
+  /// The player's most recent committed session, or null when none (#53).
+  ///
+  /// Home derives the next program day from this real ledger value; a 404 means
+  /// the player has no committed sessions yet, not an error.
+  Future<LatestSession?> latestSession() async {
+    try {
+      final response = await _send(
+        () => _dio.get<dynamic>('/workouts/sessions/latest'),
+      );
+      final dynamic data = response.data;
+      if (data is! Map<String, dynamic>) {
+        throw const ApiException('The service returned invalid session data.');
+      }
+      return LatestSession.fromJson(data);
+    } on ApiException catch (error) {
+      if (error.statusCode == 404) {
+        return null;
+      }
+      rethrow;
+    }
   }
 
   /// Commits one workout, creating it (201) or replaying a stored commit (200).

@@ -3531,6 +3531,39 @@ class DatabaseManager:
             "gif_path": row[7],
         }
 
+    def get_exercise_catalog_detail(self, exercise_id: str) -> dict[str, Any] | None:
+        """One catalog exercise for the read-only exercise-detail view (#53).
+
+        ``category`` mirrors ``body_part`` in the source data (they are the same
+        field upstream), so the client sees the real value under both names.
+        Primary muscles come from ``target_muscle``; secondary muscles come from
+        the ``exercise_secondary_muscles`` table. Instructions are the catalog's
+        stored (English) text.
+        """
+        entry = self.get_exercise_catalog_entry(exercise_id)
+        if entry is None:
+            return None
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "SELECT muscle FROM exercise_secondary_muscles WHERE exercise_id = ? ORDER BY muscle",
+                (str(exercise_id),),
+            )
+            secondary = [str(row[0]) for row in cursor.fetchall()]
+        target = entry.get("target_muscle")
+        return {
+            "id": entry["id"],
+            "name": entry["name"],
+            "category": entry["body_part"],
+            "body_part": entry["body_part"],
+            "equipment": entry["equipment"],
+            "primary_muscles": [target] if target else [],
+            "secondary_muscles": secondary,
+            "instructions": entry.get("instructions"),
+            "image_path": entry.get("image_path"),
+            "gif_path": entry.get("gif_path"),
+        }
+
     def save_training_program(
         self, program_data: dict, published_by_coach_account_id: str | None = None
     ) -> str:
@@ -3865,6 +3898,32 @@ class DatabaseManager:
             sets_payload,
         )
         self._commit_ledger()
+
+    def get_latest_committed_session(self) -> dict[str, Any] | None:
+        """The player's most recent committed session, for Home's next day (#53).
+
+        Reads only the ledger identity columns. ``split_name`` is the day name
+        written at commit; ``day_order`` is not stored on the ledger, so it is
+        reported as null and the client matches the program day by name. Ordering
+        is by performed date, then commit start time, then rowid as a stable tie.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT id, session_date, split_name, program_version
+            FROM workout_sessions
+            ORDER BY session_date DESC, started_at DESC, rowid DESC
+            LIMIT 1
+        """)
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            "session_id": row[0],
+            "session_date": row[1],
+            "split_name": row[2],
+            "day_order": None,
+            "program_version": row[3],
+        }
 
     def get_latest_session_summary(self) -> dict[str, Any] | None:
         cursor = self.conn.cursor()

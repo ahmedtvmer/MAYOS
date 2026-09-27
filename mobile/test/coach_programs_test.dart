@@ -119,7 +119,7 @@ void main() {
     await _pumpUntilFound(tester, find.text('Version 6'));
 
     expect(find.text('Version 6'), findsOneWidget);
-    expect(find.text('Published by your coach'), findsOneWidget);
+    expect(find.text('Former coach'), findsOneWidget);
   });
 
   testWidgets('self-service regeneration is refused with the server message',

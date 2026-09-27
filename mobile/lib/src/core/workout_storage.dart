@@ -158,8 +158,14 @@ abstract class WorkoutCacheStore {
   Future<void> writePrescription(
       String accountId, int dayOrder, Prescription prescription);
 
-  /// Erases the cached active program and every cached prescription for one
-  /// account (ADR 020/039).
+  /// The last-known committed session, cached so Home can derive the next day
+  /// offline (#53).
+  Future<LatestSession?> readLatestSession(String accountId);
+
+  Future<void> writeLatestSession(String accountId, LatestSession session);
+
+  /// Erases the cached active program, every cached prescription, and the
+  /// cached latest session for one account (ADR 020/039).
   Future<void> deleteForAccount(String accountId);
 }
 
@@ -213,16 +219,41 @@ class SecureWorkoutCacheStore implements WorkoutCacheStore {
       );
 
   @override
+  Future<LatestSession?> readLatestSession(String accountId) async {
+    final dynamic decoded = await _store.readJson('latest_session.$accountId');
+    if (decoded is! Map<String, dynamic>) {
+      return null;
+    }
+    try {
+      return LatestSession.fromJson(decoded);
+    } on FormatException {
+      return null;
+    } on TypeError {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> writeLatestSession(String accountId, LatestSession session) =>
+      _store.writeJson(
+        key: 'latest_session.$accountId',
+        value: session.toJson(),
+      );
+
+  @override
   Future<void> deleteForAccount(String accountId) async {
     await _store.deleteExactOrPrefixed(
         'program.$accountId', 'program.$accountId.');
     await _store.deleteByPrefix('prescription.$accountId.');
+    await _store.deleteExactOrPrefixed(
+        'latest_session.$accountId', 'latest_session.$accountId.');
   }
 }
 
 class InMemoryWorkoutCacheStore implements WorkoutCacheStore {
   final Map<String, TrainingProgram> _programs = <String, TrainingProgram>{};
   final Map<String, Prescription> _prescriptions = <String, Prescription>{};
+  final Map<String, LatestSession> _latestSessions = <String, LatestSession>{};
 
   @override
   Future<TrainingProgram?> readProgram(String accountId) async =>
@@ -245,8 +276,19 @@ class InMemoryWorkoutCacheStore implements WorkoutCacheStore {
   }
 
   @override
+  Future<LatestSession?> readLatestSession(String accountId) async =>
+      _latestSessions[accountId];
+
+  @override
+  Future<void> writeLatestSession(
+      String accountId, LatestSession session) async {
+    _latestSessions[accountId] = session;
+  }
+
+  @override
   Future<void> deleteForAccount(String accountId) async {
     _programs.remove(accountId);
+    _latestSessions.remove(accountId);
     _prescriptions
         .removeWhere((String key, _) => key.startsWith('$accountId.'));
   }

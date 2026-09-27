@@ -1,22 +1,55 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/models.dart';
+import '../../../core/theme/mayos_spacing.dart';
+import '../../../core/theme/mayos_theme.dart';
+import '../../../core/theme/mayos_typography.dart';
+import '../../../core/ui/mayos_button.dart';
+import '../../../core/ui/mayos_card.dart';
+import '../../../core/ui/mayos_section_header.dart';
 import '../../../providers.dart';
+import '../../../router.dart';
+import 'home_planning.dart';
 
-class _DashboardData {
-  const _DashboardData({required this.volume, required this.records});
-
-  final Map<String, double> volume;
-  final List<PersonalRecord> records;
-}
-
+/// The player Home tab: current program, the next ordered session, real
+/// seven-day volume and recent personal records, with honest empty states.
+///
+/// No readiness, chart, body metric, recommendation, or invented name appears
+/// here; every figure is a real value from the service.
 class DashboardTab extends ConsumerStatefulWidget {
   const DashboardTab({super.key});
 
   @override
   ConsumerState<DashboardTab> createState() => _DashboardTabState();
+}
+
+class _DashboardData {
+  const _DashboardData({
+    required this.program,
+    required this.schedule,
+    required this.volume,
+    required this.records,
+    this.latestSession,
+    this.partialError,
+  });
+
+  final TrainingProgram? program;
+  final TrainingSchedule? schedule;
+  final Map<String, double> volume;
+  final List<PersonalRecord> records;
+
+  /// The player's most recent committed session from the ledger (or its cached
+  /// last-known value offline), used to derive the next program day (#53).
+  final LatestSession? latestSession;
+
+  /// Set when a non-fatal section failed to load so the body can say so instead
+  /// of silently showing an empty section.
+  final String? partialError;
 }
 
 class _DashboardTabState extends ConsumerState<DashboardTab> {
@@ -30,13 +63,50 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
 
   Future<_DashboardData> _load() async {
     final ApiClient api = ref.read(apiClientProvider);
-    final List<Object> results = await Future.wait<Object>(<Future<Object>>[
-      api.volume(),
-      api.personalRecords(),
-    ]);
+    // A missing program is an honest empty state, not an error, so the active
+    // program call may return null; a transport failure still throws.
+    final TrainingProgram? program = await api.activeProgram();
+    TrainingSchedule? schedule;
+    Map<String, double> volume = const <String, double>{};
+    List<PersonalRecord> records = const <PersonalRecord>[];
+    LatestSession? latestSession;
+    String? partialError;
+    final String? accountId =
+        ref.read(authControllerProvider).session?.account.accountId;
+    final cache = ref.read(workoutCacheStoreProvider);
+    try {
+      schedule = await api.trainingSchedule();
+    } on ApiException catch (error) {
+      partialError = error.message;
+    }
+    try {
+      volume = await api.volume();
+    } on ApiException catch (error) {
+      partialError ??= error.message;
+    }
+    try {
+      records = await api.personalRecords();
+    } on ApiException catch (error) {
+      partialError ??= error.message;
+    }
+    try {
+      latestSession = await api.latestSession();
+      if (latestSession != null && accountId != null) {
+        // Cache the real ledger value so the next day still resolves offline.
+        unawaited(cache.writeLatestSession(accountId, latestSession));
+      }
+    } on ApiException {
+      // Offline: fall back to the last-known committed session.
+      latestSession =
+          accountId == null ? null : await cache.readLatestSession(accountId);
+    }
     return _DashboardData(
-      volume: results[0] as Map<String, double>,
-      records: results[1] as List<PersonalRecord>,
+      program: program,
+      schedule: schedule,
+      volume: volume,
+      records: records,
+      latestSession: latestSession,
+      partialError: partialError,
     );
   }
 
@@ -46,89 +116,557 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     await future;
   }
 
+  void _openExercise(ProgramExercise exercise, int dayOrder) {
+    context.push('$exerciseDetailPath/${exercise.exerciseId}?day=$dayOrder');
+  }
+
+  void _openDrafts() => context.push(workoutsPath);
+
+  void _openProgram() => ref.read(playerShellTabProvider.notifier).state = 1;
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<_DashboardData>(
       future: _future,
       builder: (BuildContext context, AsyncSnapshot<_DashboardData> snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const _HomeSkeleton();
         }
         if (snapshot.hasError) {
           final Object error = snapshot.error!;
           final String message = error is ApiException
               ? error.message
-              : 'Could not load your dashboard.';
+              : 'Could not load your home.';
           return _ErrorView(message: message, onRetry: _refresh);
         }
-        final _DashboardData data = snapshot.data!;
-        final double total =
-            data.volume.values.fold<double>(0, (double a, double b) => a + b);
-        final List<MapEntry<String, double>> muscles = data.volume.entries
-            .where((MapEntry<String, double> entry) => entry.value > 0)
-            .toList(growable: false)
-          ..sort((MapEntry<String, double> a, MapEntry<String, double> b) =>
-              b.value.compareTo(a.value));
-
-        return RefreshIndicator(
+        final List<WorkoutDraft> drafts =
+            ref.watch(draftSyncServiceProvider).drafts;
+        final LatestSession? latest = snapshot.data!.latestSession;
+        return _HomeBody(
+          data: snapshot.data!,
           onRefresh: _refresh,
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: <Widget>[
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text('Weekly weighted sets',
-                          style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${total.toStringAsFixed(1)} sets',
-                        style: Theme.of(context).textTheme.headlineMedium,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text('Weighted sets by muscle',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              if (muscles.isEmpty)
-                const Text('No sets logged in the last 7 days.')
-              else
-                ...muscles.map(
-                  (MapEntry<String, double> entry) => ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(entry.key),
-                    trailing: Text('${entry.value.toStringAsFixed(1)} sets'),
-                  ),
-                ),
-              const SizedBox(height: 16),
-              Text('Recent personal records',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              if (data.records.isEmpty)
-                const Text('No personal records yet.')
-              else
-                ...data.records.map(
-                  (PersonalRecord record) => ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(record.name),
-                    subtitle: Text(record.recordType),
-                    trailing: Text(
-                      '${record.value.toStringAsFixed(1)} kg × ${record.reps}',
-                    ),
-                  ),
-                ),
-            ],
-          ),
+          onOpenExercise: _openExercise,
+          onOpenDrafts: _openDrafts,
+          onOpenProgram: _openProgram,
+          draftsEnabled: ref.watch(offlineWorkoutDraftsEnabledProvider),
+          trainedDays: <TrainedDay>[
+            if (latest != null) TrainedDay.fromLatestSession(latest),
+            for (final WorkoutDraft draft in drafts)
+              TrainedDay.fromDraft(draft),
+          ],
+          pendingDrafts: drafts.where((WorkoutDraft d) => d.isUnsynced).length,
         );
       },
+    );
+  }
+}
+
+class _HomeBody extends StatelessWidget {
+  const _HomeBody({
+    required this.data,
+    required this.onRefresh,
+    required this.onOpenExercise,
+    required this.onOpenDrafts,
+    required this.onOpenProgram,
+    required this.draftsEnabled,
+    required this.trainedDays,
+    required this.pendingDrafts,
+  });
+
+  final _DashboardData data;
+  final Future<void> Function() onRefresh;
+  final void Function(ProgramExercise exercise, int dayOrder) onOpenExercise;
+  final VoidCallback onOpenDrafts;
+  final VoidCallback onOpenProgram;
+  final bool draftsEnabled;
+  final List<TrainedDay> trainedDays;
+  final int pendingDrafts;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final DateTime now = DateTime.now();
+    final TrainingProgram? program = data.program;
+    final ProgramDay? nextDay =
+        program == null ? null : selectNextDay(program, trainedDays);
+
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(MayosSpacing.lg, MayosSpacing.md,
+            MayosSpacing.lg, MayosSpacing.xxl),
+        children: <Widget>[
+          Text(
+            greetingFor(now),
+            style: MayosTypography.display.copyWith(
+              fontSize: 34,
+              color: c.textPrimary,
+            ),
+          ),
+          if (data.partialError != null) ...<Widget>[
+            const SizedBox(height: MayosSpacing.sm),
+            _InlineNotice(message: data.partialError!),
+          ],
+          const SizedBox(height: MayosSpacing.xl),
+          _ProgramSection(program: program, onOpenProgram: onOpenProgram),
+          if (pendingDrafts > 0) ...<Widget>[
+            const SizedBox(height: MayosSpacing.md),
+            _DraftsBanner(count: pendingDrafts, onTap: onOpenDrafts),
+          ],
+          // No program means no next session to show: the Program tab owns the
+          // generate flow, and a training day cannot be derived without one.
+          if (nextDay != null) ...<Widget>[
+            const SizedBox(height: MayosSpacing.xl),
+            _NextSessionSection(
+              day: nextDay,
+              label: nextSessionLabel(data.schedule, now),
+              onOpenExercise: onOpenExercise,
+              logEnabled: draftsEnabled,
+            ),
+          ],
+          const SizedBox(height: MayosSpacing.xl),
+          _VolumeSection(volume: data.volume),
+          const SizedBox(height: MayosSpacing.xl),
+          _RecordsSection(records: data.records),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProgramSection extends StatelessWidget {
+  const _ProgramSection({required this.program, required this.onOpenProgram});
+
+  final TrainingProgram? program;
+  final VoidCallback onOpenProgram;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final TrainingProgram? active = program;
+    if (active == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text('No active program',
+              style: MayosTypography.sectionHeading
+                  .copyWith(color: c.textPrimary)),
+          const SizedBox(height: MayosSpacing.xs),
+          Text(
+            'Generate a program to see your next session here.',
+            style:
+                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          ),
+          const SizedBox(height: MayosSpacing.md),
+          MayosButton(
+            label: 'Go to Program',
+            icon: Icons.auto_awesome,
+            variant: MayosButtonVariant.secondary,
+            expand: false,
+            onPressed: onOpenProgram,
+          ),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          active.programName,
+          style: MayosTypography.pageHeading.copyWith(color: c.textPrimary),
+        ),
+        const SizedBox(height: MayosSpacing.xs),
+        Text(
+          '${active.splitType} · ${active.weeklyFrequency} '
+          '${active.weeklyFrequency == 1 ? 'day' : 'days'}/week',
+          style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+        ),
+      ],
+    );
+  }
+}
+
+class _NextSessionSection extends StatelessWidget {
+  const _NextSessionSection({
+    required this.day,
+    required this.label,
+    required this.onOpenExercise,
+    required this.logEnabled,
+  });
+
+  final ProgramDay day;
+  final String label;
+  final void Function(ProgramExercise exercise, int dayOrder) onOpenExercise;
+  final bool logEnabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final ProgramDay current = day;
+    return MayosCard(
+      padding: const EdgeInsets.all(MayosSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          // The single "Next session" label (with the expected weekday when a
+          // schedule exists) lives here as the card eyebrow; there is no
+          // duplicate section heading.
+          Text(
+            label,
+            style: MayosTypography.caption.copyWith(color: c.textMuted),
+          ),
+          const SizedBox(height: MayosSpacing.xxs),
+          Text(
+            current.dayName,
+            style: MayosTypography.exerciseTitle.copyWith(
+              fontSize: 18,
+              color: c.textPrimary,
+            ),
+          ),
+          const SizedBox(height: MayosSpacing.sm),
+          for (final ProgramExercise exercise in current.exercises)
+            _NextSessionExercise(
+              exercise: exercise,
+              onTap: () => onOpenExercise(exercise, current.dayOrder),
+            ),
+          if (current.hasCardio) ...<Widget>[
+            const SizedBox(height: MayosSpacing.xs),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Icon(Icons.directions_run, size: 16, color: c.textMuted),
+                const SizedBox(width: MayosSpacing.xs),
+                Expanded(
+                  child: Text(
+                    current.cardio!,
+                    style: MayosTypography.bodySecondary
+                        .copyWith(color: c.textSecondary),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (logEnabled) ...<Widget>[
+            const SizedBox(height: MayosSpacing.md),
+            MayosButton(
+              label: 'Log workout',
+              icon: Icons.edit_note,
+              onPressed: () =>
+                  context.go('$logWorkoutPath/${current.dayOrder}'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _NextSessionExercise extends StatelessWidget {
+  const _NextSessionExercise({required this.exercise, required this.onTap});
+
+  final ProgramExercise exercise;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: MayosRadii.smallRadius,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: MayosSpacing.xs),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              exercise.exerciseName,
+              style:
+                  MayosTypography.exerciseTitle.copyWith(color: c.textPrimary),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              exercise.prescription,
+              style: MayosTypography.bodySecondary
+                  .copyWith(color: c.textSecondary),
+            ),
+            Text(
+              exercise.restLabel,
+              style: MayosTypography.caption.copyWith(color: c.textMuted),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VolumeSection extends StatelessWidget {
+  const _VolumeSection({required this.volume});
+
+  final Map<String, double> volume;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final List<MapEntry<String, double>> muscles = volume.entries
+        .where((MapEntry<String, double> entry) => entry.value > 0)
+        .toList(growable: false)
+      ..sort((MapEntry<String, double> a, MapEntry<String, double> b) =>
+          b.value.compareTo(a.value));
+    final double total =
+        volume.values.fold<double>(0, (double a, double b) => a + b);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        MayosSectionHeader(title: 'This week'),
+        if (muscles.isEmpty)
+          Text(
+            'No sets logged in the last 7 days.',
+            style:
+                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          )
+        else ...<Widget>[
+          Text(
+            '${_formatValue(total)} weighted sets',
+            style: MayosTypography.numericSmall.copyWith(color: c.textPrimary),
+          ),
+          const SizedBox(height: MayosSpacing.md),
+          for (final MapEntry<String, double> entry in muscles)
+            _VolumeRow(
+              muscle: entry.key,
+              value: entry.value,
+              fraction: entry.value / muscles.first.value,
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+class _VolumeRow extends StatelessWidget {
+  const _VolumeRow({
+    required this.muscle,
+    required this.value,
+    required this.fraction,
+  });
+
+  final String muscle;
+  final double value;
+  final double fraction;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  muscle,
+                  style: MayosTypography.bodySecondary
+                      .copyWith(color: c.textPrimary),
+                ),
+              ),
+              Text(
+                _formatValue(value),
+                style: MayosTypography.numericSmall
+                    .copyWith(color: c.textSecondary),
+              ),
+            ],
+          ),
+          const SizedBox(height: MayosSpacing.xs),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: SizedBox(
+              height: 6,
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: fraction.clamp(0.0, 1.0),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(color: c.accent),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecordsSection extends StatelessWidget {
+  const _RecordsSection({required this.records});
+
+  final List<PersonalRecord> records;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        MayosSectionHeader(title: 'Personal records'),
+        if (records.isEmpty)
+          Text(
+            'No personal records yet.',
+            style:
+                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          )
+        else
+          for (final PersonalRecord record in records)
+            Padding(
+              padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          record.name,
+                          style: MayosTypography.body
+                              .copyWith(color: c.textPrimary),
+                        ),
+                        Text(
+                          record.recordType,
+                          style: MayosTypography.caption
+                              .copyWith(color: c.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    '${_formatValue(record.value)} kg × ${record.reps}',
+                    style: MayosTypography.numericSmall
+                        .copyWith(color: c.textPrimary),
+                  ),
+                ],
+              ),
+            ),
+      ],
+    );
+  }
+}
+
+class _DraftsBanner extends StatelessWidget {
+  const _DraftsBanner({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Material(
+      color: c.accentSubtle,
+      borderRadius: MayosRadii.mediumRadius,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: MayosRadii.mediumRadius,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: MayosSpacing.md, vertical: MayosSpacing.sm),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.cloud_upload_outlined, size: 18, color: c.accent),
+              const SizedBox(width: MayosSpacing.xs),
+              Expanded(
+                child: Text(
+                  '$count ${count == 1 ? 'workout draft' : 'workout drafts'} '
+                  'waiting to sync',
+                  style: MayosTypography.bodySecondary
+                      .copyWith(color: c.textPrimary),
+                ),
+              ),
+              Icon(Icons.chevron_right, size: 20, color: c.textSecondary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineNotice extends StatelessWidget {
+  const _InlineNotice({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Icon(Icons.info_outline, size: 16, color: c.textSecondary),
+        const SizedBox(width: MayosSpacing.xs),
+        Expanded(
+          child: Text(
+            message,
+            style:
+                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HomeSkeleton extends StatelessWidget {
+  const _HomeSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+          MayosSpacing.lg, MayosSpacing.md, MayosSpacing.lg, MayosSpacing.xxl),
+      children: const <Widget>[
+        _SkeletonBlock(widthFactor: 0.7, height: 34),
+        SizedBox(height: MayosSpacing.xl),
+        _SkeletonBlock(widthFactor: 0.5, height: 24),
+        SizedBox(height: MayosSpacing.sm),
+        _SkeletonBlock(widthFactor: 0.6, height: 14),
+        SizedBox(height: MayosSpacing.xl),
+        _SkeletonBlock(widthFactor: 1.0, height: 160),
+        SizedBox(height: MayosSpacing.xl),
+        _SkeletonBlock(widthFactor: 0.5, height: 18),
+        SizedBox(height: MayosSpacing.md),
+        _SkeletonBlock(widthFactor: 1.0, height: 10),
+        SizedBox(height: MayosSpacing.sm),
+        _SkeletonBlock(widthFactor: 1.0, height: 10),
+        SizedBox(height: MayosSpacing.sm),
+        _SkeletonBlock(widthFactor: 1.0, height: 10),
+      ],
+    );
+  }
+}
+
+class _SkeletonBlock extends StatelessWidget {
+  const _SkeletonBlock({required this.widthFactor, required this.height});
+
+  final double widthFactor;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: FractionallySizedBox(
+        widthFactor: widthFactor,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: c.surfaceSunken,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: SizedBox(height: height),
+        ),
+      ),
     );
   }
 }
@@ -141,21 +679,35 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(MayosSpacing.xl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton(
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: MayosTypography.body.copyWith(color: c.textPrimary),
+            ),
+            const SizedBox(height: MayosSpacing.md),
+            MayosButton(
+              label: 'Retry',
+              variant: MayosButtonVariant.secondary,
+              expand: false,
               onPressed: onRetry,
-              child: const Text('Retry'),
             ),
           ],
         ),
       ),
     );
   }
+}
+
+String _formatValue(double value) {
+  if (value == value.roundToDouble()) {
+    return value.round().toString();
+  }
+  return value.toStringAsFixed(1);
 }

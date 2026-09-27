@@ -60,6 +60,30 @@ async def search_exercises(
     return await asyncio.to_thread(_run)
 
 
+@router.get("/exercises/{exercise_id}")
+async def read_exercise_catalog_detail(
+    exercise_id: str,
+    player: Annotated[str, Depends(get_current_trainee)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """One catalog exercise for the read-only exercise-detail view (#53).
+
+    Returns name, category (= body_part in the source data), body_part,
+    equipment, primary + secondary muscles, instructions, and the stored media
+    paths. The media paths are exposed so the client can gate display behind its
+    build-time media flag; no media is bundled or served by this endpoint.
+    """
+
+    def _run():
+        bind_request(db, player)
+        detail = db.get_exercise_catalog_detail(exercise_id)
+        if detail is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown exercise id.")
+        return detail
+
+    return await asyncio.to_thread(_run)
+
+
 @router.get("/prescription")
 async def read_prescription(
     day_order: int,
@@ -141,6 +165,32 @@ async def commit_session(
     if not result.created:
         return JSONResponse(status_code=status.HTTP_200_OK, content=result.body)
     return result.body
+
+
+@router.get("/sessions/latest")
+async def read_latest_session(
+    player: Annotated[str, Depends(get_current_trainee)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """The player's most recent committed session, or 404 when none (#53).
+
+    Home uses this to derive the next program day: the session carries the day
+    name (``split_name``) written at commit, and ``day_order`` when the ledger
+    stores one. It is a read-only identity lookup, scoped to the player's own
+    ledger.
+    """
+
+    def _run():
+        bind_request(db, player)
+        return db.get_latest_committed_session()
+
+    result = await asyncio.to_thread(_run)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No committed sessions.",
+        )
+    return result
 
 
 @router.get("/sessions/by-client-id/{client_session_id}")

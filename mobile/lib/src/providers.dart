@@ -104,6 +104,12 @@ final Provider<ChatCacheStore> chatCacheStoreProvider =
             ? SecureChatCacheStore()
             : InMemoryChatCacheStore());
 
+/// The selected bottom-navigation tab in the player shell (0 = Home,
+/// 1 = Program). Home's no-program state points at Program so the player can
+/// generate a program through the existing Program-tab flow.
+final StateProvider<int> playerShellTabProvider =
+    StateProvider<int>((ref) => 0);
+
 /// Processes the logged-in account's drafts on login, after a save, on demand,
 /// and periodically while the app is in the foreground (ADR 020/033).
 final ChangeNotifierProvider<DraftSyncService> draftSyncServiceProvider =

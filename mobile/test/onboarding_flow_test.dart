@@ -388,9 +388,9 @@ void main() {
 
     await _pumpUntilFound(tester, find.byKey(const Key('onboarding_confirm')));
     await tester.tap(find.byKey(const Key('onboarding_confirm')));
-    await _pumpUntilFound(tester, find.text('Weekly weighted sets'));
+    await _pumpUntilFound(tester, find.textContaining('Next session'));
 
-    expect(find.text('Weekly weighted sets'), findsOneWidget);
+    expect(find.textContaining('Next session'), findsOneWidget);
     expect(fake.intakeStatus, 'confirmed');
     expect(fake.profileExists, isTrue);
   });

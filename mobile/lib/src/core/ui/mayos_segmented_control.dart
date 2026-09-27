@@ -92,11 +92,13 @@ class _SegmentButton<T> extends StatelessWidget {
           decoration: BoxDecoration(
             color: selected ? c.surfaceElevated : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
+            // The selected state is a single surface (fill + hairline border).
+            // A drop shadow here read as a second layer beneath the pill in
+            // light mode, so it is deliberately omitted.
             border: Border.all(
               color: selected ? c.selectedBorder : Colors.transparent,
               width: 1.2,
             ),
-            boxShadow: selected ? c.shadows : null,
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,

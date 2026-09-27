@@ -70,6 +70,16 @@ class FakeMayosApi {
   // simulation for the Program tab's cache fallback, ADR 020/033).
   bool activeProgramFails = false;
   bool coachControlsProgram = false;
+  // When true `GET /programs/active` returns an empty body (no active program).
+  bool noActiveProgram = false;
+  // When true the volume and personal-records endpoints return empty, so the
+  // Home empty states can be captured and tested.
+  bool volumeEmpty = false;
+  bool recordsEmpty = false;
+  // `GET /workouts/sessions/latest` (#53): null means "no committed sessions"
+  // (404); when set, the map is returned as the player's latest session.
+  Map<String, dynamic>? latestSessionBody;
+  bool latestSessionFails = false;
   final List<Map<String, dynamic>> playerNotices = <Map<String, dynamic>>[];
 
   // Player program requests and coach resolution (#28).
@@ -172,6 +182,9 @@ class FakeMayosApi {
     if (path.startsWith('/workouts/sessions/by-client-id/')) {
       return _sessionByClientId(request);
     }
+    if (path == '/workouts/sessions/latest') {
+      return _latestSession(request);
+    }
     if (path.startsWith('/workouts/sessions/') &&
         path.endsWith('/performed-date')) {
       return _correctPerformedDate(request);
@@ -181,6 +194,12 @@ class FakeMayosApi {
     }
     if (path == '/workouts/exercises') {
       return _searchExercises(request);
+    }
+    if (path.startsWith('/workouts/exercises/')) {
+      return _exerciseDetail(request);
+    }
+    if (path.startsWith('/dashboard/exercises/') && path.endsWith('/history')) {
+      return _dashboardExerciseHistory(request);
     }
     if (path == '/workouts/sessions') {
       return _commitSession(request);
@@ -1536,7 +1555,8 @@ class FakeMayosApi {
   }
 
   // The named decision contract mirrored from service/intake.py (#50).
-  static const List<Map<String, dynamic>> _intakeSchema = <Map<String, dynamic>>[
+  static const List<Map<String, dynamic>> _intakeSchema =
+      <Map<String, dynamic>>[
     <String, dynamic>{
       'name': 'gender',
       'type': 'enum',
@@ -1549,10 +1569,9 @@ class FakeMayosApi {
         'male':
             'Standard split family by weekly frequency: full body at 1-3 days, '
                 'upper/lower at 4 days, Arnold x Upper/Lower at 5 days.',
-        'female':
-            'Glute/lower-body-biased family by weekly frequency: '
-                'glute-specialised full body at 1-3 days, lower (glute bias) / '
-                'upper & core at 4-5 days.',
+        'female': 'Glute/lower-body-biased family by weekly frequency: '
+            'glute-specialised full body at 1-3 days, lower (glute bias) / '
+            'upper & core at 4-5 days.',
       },
     },
     <String, dynamic>{
@@ -1569,10 +1588,38 @@ class FakeMayosApi {
         'long_torso': 'Longer torso, shorter legs',
       },
     },
-    <String, dynamic>{'name': 'age', 'type': 'int', 'required': true, 'profile_field': 'age', 'minimum': 12, 'maximum': 100},
-    <String, dynamic>{'name': 'height_cm', 'type': 'float', 'required': true, 'profile_field': 'height_cm', 'minimum': 100, 'maximum': 250},
-    <String, dynamic>{'name': 'weight_kg', 'type': 'float', 'required': true, 'profile_field': 'weight_kg', 'minimum': 30, 'maximum': 250},
-    <String, dynamic>{'name': 'training_age_years', 'type': 'float', 'required': true, 'profile_field': 'training_age_years', 'minimum': 0, 'maximum': 70},
+    <String, dynamic>{
+      'name': 'age',
+      'type': 'int',
+      'required': true,
+      'profile_field': 'age',
+      'minimum': 12,
+      'maximum': 100
+    },
+    <String, dynamic>{
+      'name': 'height_cm',
+      'type': 'float',
+      'required': true,
+      'profile_field': 'height_cm',
+      'minimum': 100,
+      'maximum': 250
+    },
+    <String, dynamic>{
+      'name': 'weight_kg',
+      'type': 'float',
+      'required': true,
+      'profile_field': 'weight_kg',
+      'minimum': 30,
+      'maximum': 250
+    },
+    <String, dynamic>{
+      'name': 'training_age_years',
+      'type': 'float',
+      'required': true,
+      'profile_field': 'training_age_years',
+      'minimum': 0,
+      'maximum': 70
+    },
     <String, dynamic>{
       'name': 'current_goal',
       'type': 'text',
@@ -1587,9 +1634,19 @@ class FakeMayosApi {
       'required': true,
       'profile_field': 'long_term_goal',
       'hint': 'What do you want to achieve over the longer term?',
-      'examples': <String>['stronger and more muscular', 'stay healthy and pain-free'],
+      'examples': <String>[
+        'stronger and more muscular',
+        'stay healthy and pain-free'
+      ],
     },
-    <String, dynamic>{'name': 'weekly_frequency', 'type': 'int', 'required': true, 'profile_field': 'weekly_frequency', 'minimum': 1, 'maximum': 5},
+    <String, dynamic>{
+      'name': 'weekly_frequency',
+      'type': 'int',
+      'required': true,
+      'profile_field': 'weekly_frequency',
+      'minimum': 1,
+      'maximum': 5
+    },
     <String, dynamic>{
       'name': 'equipment_access',
       'type': 'text',
@@ -1612,14 +1669,23 @@ class FakeMayosApi {
       'required': true,
       'profile_field': 'stress_and_sleep',
       'hint': 'How are your stress and sleep?',
-      'examples': <String>['moderate stress, 7 hours sleep', 'low stress, 8 hours sleep'],
+      'examples': <String>[
+        'moderate stress, 7 hours sleep',
+        'low stress, 8 hours sleep'
+      ],
     },
-    <String, dynamic>{'name': 'rep_preference', 'type': 'enum', 'required': false, 'profile_field': 'rep_preference', 'allowed_values': <String>['low', 'balanced', 'high'],
+    <String, dynamic>{
+      'name': 'rep_preference',
+      'type': 'enum',
+      'required': false,
+      'profile_field': 'rep_preference',
+      'allowed_values': <String>['low', 'balanced', 'high'],
       'option_descriptions': <String, String>{
         'low': 'Lower rep targets: compounds 5-8, isolation 8-12.',
         'balanced': 'Default rep targets: compounds 6-10, isolation 10-15.',
         'high': 'Higher rep targets: compounds 8-12, isolation 12-20.',
-      }},
+      }
+    },
   ];
 
   Map<String, dynamic> _intakeView() {
@@ -1746,7 +1812,8 @@ class FakeMayosApi {
           .toList(growable: false);
       if (missing.isNotEmpty) {
         return FakeResponse(400, <String, dynamic>{
-          'detail': 'Missing required onboarding answers: ${missing.join(', ')}.'
+          'detail':
+              'Missing required onboarding answers: ${missing.join(', ')}.'
         });
       }
       intakeStatus = 'confirmed';
@@ -1772,7 +1839,8 @@ class FakeMayosApi {
         request.method == 'PUT') {
       if (intakeStatus == 'confirmed') {
         return const FakeResponse(409, <String, dynamic>{
-          'detail': 'This intake is already confirmed and can no longer be edited.'
+          'detail':
+              'This intake is already confirmed and can no longer be edited.'
         });
       }
       if (!intakeDisclosureAcknowledged) {
@@ -1786,14 +1854,16 @@ class FakeMayosApi {
       final Object? value = request.body['value'];
       if (intakeRejectField == field) {
         intakeRejectField = null;
-        return FakeResponse(400, <String, dynamic>{'detail': intakeRejectMessage});
+        return FakeResponse(
+            400, <String, dynamic>{'detail': intakeRejectMessage});
       }
       final String? error = _validateIntakeAnswer(field, value);
       if (error != null) {
         return FakeResponse(400, <String, dynamic>{'detail': error});
       }
-      final bool lowercased =
-          field == 'gender' || field == 'proportions' || field == 'rep_preference';
+      final bool lowercased = field == 'gender' ||
+          field == 'proportions' ||
+          field == 'rep_preference';
       intakeAnswers[field] =
           value is String && lowercased ? value.toLowerCase() : value;
       return FakeResponse(200, _intakeView());
@@ -1883,6 +1953,9 @@ class FakeMayosApi {
       return const FakeResponse(
           500, <String, dynamic>{'detail': 'The service is unavailable.'});
     }
+    if (noActiveProgram) {
+      return const FakeResponse(200);
+    }
     return FakeResponse(200, _activeProgramBody());
   }
 
@@ -1943,6 +2016,162 @@ class FakeMayosApi {
             .toList(growable: false);
     return FakeResponse(200, <String, dynamic>{
       'exercises': List<Map<String, dynamic>>.from(matches)
+    });
+  }
+
+  /// ExerciseDB-derived catalog detail for `GET /workouts/exercises/{id}`.
+  static const Map<String, Map<String, dynamic>> _exerciseDetails =
+      <String, Map<String, dynamic>>{
+    'bench_press': <String, dynamic>{
+      'id': 'bench_press',
+      'name': 'Bench Press',
+      'category': 'Chest',
+      'body_part': 'Chest',
+      'equipment': 'barbell',
+      'primary_muscles': <String>['Chest'],
+      'secondary_muscles': <String>['Triceps', 'Shoulders'],
+      'instructions': 'Lie on a flat bench with your feet on the floor.\n'
+          'Grip the bar slightly wider than shoulder width.\n'
+          'Lower the bar to your chest, then press it back up.',
+      'image_path': 'images/bench_press.jpg',
+      'gif_path': 'videos/bench_press.gif',
+    },
+    'overhead_press': <String, dynamic>{
+      'id': 'overhead_press',
+      'name': 'Overhead Press',
+      'category': 'Shoulders',
+      'body_part': 'Shoulders',
+      'equipment': 'barbell',
+      'primary_muscles': <String>['Shoulders'],
+      'secondary_muscles': <String>['Triceps'],
+      'instructions': 'Press the bar overhead from shoulder height.',
+      'image_path': 'images/overhead_press.jpg',
+      'gif_path': 'videos/overhead_press.gif',
+    },
+    'barbell_row': <String, dynamic>{
+      'id': 'barbell_row',
+      'name': 'Barbell Row',
+      'category': 'Back',
+      'body_part': 'Back',
+      'equipment': 'barbell',
+      'primary_muscles': <String>['Back'],
+      'secondary_muscles': <String>['Biceps'],
+      'instructions': 'Hinge at the hips and row the bar to your torso.',
+      'image_path': 'images/barbell_row.jpg',
+      'gif_path': 'videos/barbell_row.gif',
+    },
+    'lat_pulldown': <String, dynamic>{
+      'id': 'lat_pulldown',
+      'name': 'Lat Pulldown',
+      'category': 'Back',
+      'body_part': 'Back',
+      'equipment': 'cable',
+      'primary_muscles': <String>['Back'],
+      'secondary_muscles': <String>['Biceps'],
+      'instructions': 'Pull the bar down to your upper chest.',
+      'image_path': 'images/lat_pulldown.jpg',
+      'gif_path': 'videos/lat_pulldown.gif',
+    },
+    'band_pull_apart': <String, dynamic>{
+      'id': 'band_pull_apart',
+      'name': 'Band Pull-Apart',
+      'category': 'Shoulders',
+      'body_part': 'Shoulders',
+      'equipment': 'band',
+      'primary_muscles': <String>['Shoulders'],
+      'secondary_muscles': <String>['Upper Back'],
+      'instructions': 'Hold a band in front and pull the ends apart.',
+      'image_path': 'images/band_pull_apart.jpg',
+      'gif_path': 'videos/band_pull_apart.gif',
+    },
+    'bicep_curl': <String, dynamic>{
+      'id': 'bicep_curl',
+      'name': 'Bicep Curl',
+      'category': 'Upper Arms',
+      'body_part': 'Upper Arms',
+      'equipment': 'dumbbell',
+      'primary_muscles': <String>['Biceps'],
+      'secondary_muscles': <String>[],
+      'instructions': 'Curl the weight up and lower it under control.',
+      'image_path': 'images/bicep_curl.jpg',
+      'gif_path': 'videos/bicep_curl.gif',
+    },
+    'cable_fly': <String, dynamic>{
+      'id': 'cable_fly',
+      'name': 'Cable Fly',
+      'category': 'Chest',
+      'body_part': 'Chest',
+      'equipment': 'cable',
+      'primary_muscles': <String>['Chest'],
+      'secondary_muscles': <String>[],
+      'instructions': 'Bring the cable handles together in front of you.',
+      'image_path': 'images/cable_fly.jpg',
+      'gif_path': 'videos/cable_fly.gif',
+    },
+    'machine_row': <String, dynamic>{
+      'id': 'machine_row',
+      'name': 'Machine Row',
+      'category': 'Back',
+      'body_part': 'Back',
+      'equipment': 'machine',
+      'primary_muscles': <String>['Back'],
+      'secondary_muscles': <String>[],
+      'instructions': '',
+      'image_path': 'images/machine_row.jpg',
+      'gif_path': 'videos/machine_row.gif',
+    },
+  };
+
+  FakeResponse _exerciseDetail(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    final String id = request.path.replaceFirst('/workouts/exercises/', '');
+    final Map<String, dynamic>? detail = _exerciseDetails[id];
+    if (detail == null) {
+      return const FakeResponse(
+          404, <String, dynamic>{'detail': 'Unknown exercise id.'});
+    }
+    return FakeResponse(200, detail);
+  }
+
+  /// `GET /dashboard/exercises/{id}/history`: one real progression point by
+  /// default, so the history tab renders; other exercises return empty history.
+  FakeResponse _dashboardExerciseHistory(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    final String id = request.path
+        .replaceFirst('/dashboard/exercises/', '')
+        .replaceFirst('/history', '');
+    if (id == 'bench_press') {
+      return FakeResponse(200, <String, dynamic>{
+        'history': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'date': '2026-09-20',
+            'weight_kg': 100.0,
+            'reps': 5,
+            'rpe': 8.0,
+            'e1rm': 120.0,
+          },
+        ],
+        'caption': 'Latest Recorded: **100.0 kg × 5 reps @ RPE 8.0**',
+        'records': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'record_type': 'max_weight',
+            'reps': 5,
+            'value': 100.0,
+            'achieved_at': '2026-09-20T10:00:00Z',
+          },
+        ],
+      });
+    }
+    return FakeResponse(200, <String, dynamic>{
+      'history': <dynamic>[],
+      'caption': null,
+      'records': <dynamic>[],
     });
   }
 
@@ -2009,6 +2238,25 @@ class FakeMayosApi {
       'active_program_version_at_sync': active,
       'is_historical_program': requested > 0 && requested < active,
     };
+  }
+
+  /// `GET /workouts/sessions/latest` (#53): the most recent committed session,
+  /// or 404 when [latestSessionBody] is null.
+  FakeResponse _latestSession(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (latestSessionFails) {
+      return const FakeResponse(
+          503, <String, dynamic>{'detail': 'The service is unavailable.'});
+    }
+    final Map<String, dynamic>? body = latestSessionBody;
+    if (body == null) {
+      return const FakeResponse(
+          404, <String, dynamic>{'detail': 'No committed sessions.'});
+    }
+    return FakeResponse(200, body);
   }
 
   FakeResponse _sessionByClientId(FakeRequest request) {
@@ -2108,6 +2356,9 @@ class FakeMayosApi {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
     }
+    if (volumeEmpty) {
+      return const FakeResponse(200, <String, dynamic>{});
+    }
     // Weighted working-set counts (primary 1.0, secondary +0.5), not kilograms.
     return const FakeResponse(
         200, <String, dynamic>{'Chest': 12.5, 'Back': 9.0});
@@ -2117,6 +2368,9 @@ class FakeMayosApi {
     if (!_authorized(request)) {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (recordsEmpty) {
+      return const FakeResponse(200, <Map<String, dynamic>>[]);
     }
     return const FakeResponse(200, <Map<String, dynamic>>[
       <String, dynamic>{
@@ -2170,6 +2424,11 @@ class FakeMayosApi {
       programPublishedByCoachAccountId = null;
       activeProgramFails = false;
       coachControlsProgram = false;
+      noActiveProgram = false;
+      volumeEmpty = false;
+      recordsEmpty = false;
+      latestSessionBody = null;
+      latestSessionFails = false;
       playerNotices.clear();
       programRequests.clear();
       staleProgramRequest = false;

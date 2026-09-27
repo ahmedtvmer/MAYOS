@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/ui/mayos_app_header.dart';
 import '../../../core/ui/mayos_bottom_navigation.dart';
 import '../../../core/ui/mayos_scaffold.dart';
+import '../../../providers.dart';
 import '../../../router.dart';
 import '../dashboard/dashboard_tab.dart';
 import '../program/program_tab.dart';
@@ -23,8 +24,6 @@ class PlayerShell extends ConsumerStatefulWidget {
 }
 
 class _PlayerShellState extends ConsumerState<PlayerShell> {
-  int _index = 0;
-
   static const List<MayosNavItem> _items = <MayosNavItem>[
     MayosNavItem(
       label: 'Home',
@@ -40,6 +39,7 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
 
   @override
   Widget build(BuildContext context) {
+    final int index = ref.watch(playerShellTabProvider);
     return MayosScaffold(
       header: MayosAppHeader(
         actions: <Widget>[
@@ -56,7 +56,7 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
         ],
       ),
       body: IndexedStack(
-        index: _index,
+        index: index,
         children: const <Widget>[
           DashboardTab(),
           ProgramTab(),
@@ -64,8 +64,9 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
       ),
       bottomBar: MayosBottomNavigation(
         items: _items,
-        index: _index,
-        onSelected: (int index) => setState(() => _index = index),
+        index: index,
+        onSelected: (int selected) =>
+            ref.read(playerShellTabProvider.notifier).state = selected,
       ),
     );
   }

@@ -102,10 +102,10 @@ void main() {
     await tester.tap(find.text('I understand'));
     await _pumpUntilFound(tester, find.text('Create my program'));
     await tester.tap(find.text('Create my program'));
-    await _pumpUntilFound(tester, find.text('Weekly weighted sets'));
+    await _pumpUntilFound(tester, find.textContaining('Next session'));
 
-    // Completion is reachable and home renders the player dashboard.
-    expect(find.text('Recent personal records'), findsOneWidget);
+    // Completion is reachable and home renders the player's program.
+    expect(find.text('Upper/Lower 4x'), findsOneWidget);
 
     // Switch to the program tab and see the full automatic program.
     await tester.tap(find.text('Program'));

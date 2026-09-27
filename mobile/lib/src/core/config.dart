@@ -36,3 +36,14 @@ String resolveApiBaseUrl(
 
 String get apiBaseUrl => resolveApiBaseUrl(
     isRelease: kReleaseMode, configured: configuredApiBaseUrl);
+
+/// Build-time gate for ExerciseDB-derived exercise media (#53).
+///
+/// Exercise media is not bundled into the app and its provenance is not yet
+/// resolved (see `docs/design-review/53/MEDIA-PROVENANCE.md`), so this defaults
+/// to OFF. When OFF the exercise-detail hero is a typographic/muscle-group
+/// header; no `Image` widget is ever built. Enable with
+/// `--dart-define=MAYOS_EXERCISE_MEDIA=true` only after a served, rights-cleared
+/// media URL exists.
+const bool mayosExerciseMediaEnabled =
+    String.fromEnvironment('MAYOS_EXERCISE_MEDIA') == 'true';

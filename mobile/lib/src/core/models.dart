@@ -2037,3 +2037,164 @@ class ExerciseCatalogEntry {
   final String id;
   final String name;
 }
+
+/// `GET /workouts/exercises/{exercise_id}`: read-only catalog detail for the
+/// exercise-detail view (#53).
+///
+/// [category] mirrors [bodyPart] in the source data (the same field upstream).
+/// [imagePath]/[gifPath] are the ExerciseDB-derived local file paths stored in
+/// the catalog; they are relative paths, never served URLs, and must not be
+/// rendered without the build-time media flag and a resolved provenance.
+class ExerciseCatalogDetail {
+  const ExerciseCatalogDetail({
+    required this.id,
+    required this.name,
+    required this.category,
+    required this.bodyPart,
+    required this.equipment,
+    required this.primaryMuscles,
+    required this.secondaryMuscles,
+    this.instructions,
+    this.imagePath,
+    this.gifPath,
+  });
+
+  factory ExerciseCatalogDetail.fromJson(Map<String, dynamic> json) =>
+      ExerciseCatalogDetail(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        category: json['category'] as String? ?? '',
+        bodyPart: json['body_part'] as String? ?? '',
+        equipment: json['equipment'] as String? ?? '',
+        primaryMuscles: _stringList(json['primary_muscles']),
+        secondaryMuscles: _stringList(json['secondary_muscles']),
+        instructions: json['instructions'] as String?,
+        imagePath: json['image_path'] as String?,
+        gifPath: json['gif_path'] as String?,
+      );
+
+  final String id;
+  final String name;
+  final String category;
+  final String bodyPart;
+  final String equipment;
+  final List<String> primaryMuscles;
+  final List<String> secondaryMuscles;
+  final String? instructions;
+  final String? imagePath;
+  final String? gifPath;
+
+  bool get hasInstructions =>
+      instructions != null && instructions!.trim().isNotEmpty;
+
+  /// All distinct muscle labels (primary then secondary), for the chips.
+  List<String> get muscles => <String>[
+        ...primaryMuscles,
+        for (final String muscle in secondaryMuscles)
+          if (!primaryMuscles.contains(muscle)) muscle,
+      ];
+
+  /// True only when a media path is a loadable absolute http(s) URL. The catalog
+  /// stores relative ExerciseDB file paths (`images/…`, `videos/…`), which are
+  /// never loadable in-app and must not be turned into invented URLs.
+  bool get hasLoadableMedia => _isHttpUrl(imagePath) || _isHttpUrl(gifPath);
+
+  static bool _isHttpUrl(String? value) =>
+      value != null &&
+      (value.startsWith('https://') || value.startsWith('http://'));
+}
+
+/// One progression point in `GET /dashboard/exercises/{id}/history`.
+class ExerciseHistoryPoint {
+  const ExerciseHistoryPoint({
+    required this.date,
+    required this.weightKg,
+    required this.reps,
+    required this.rpe,
+    required this.e1rm,
+  });
+
+  factory ExerciseHistoryPoint.fromJson(Map<String, dynamic> json) =>
+      ExerciseHistoryPoint(
+        date: json['date'] as String,
+        weightKg: (json['weight_kg'] as num).toDouble(),
+        reps: (json['reps'] as num).toInt(),
+        rpe: (json['rpe'] as num?)?.toDouble() ?? 8.5,
+        e1rm: (json['e1rm'] as num).toDouble(),
+      );
+
+  final String date;
+  final double weightKg;
+  final int reps;
+  final double rpe;
+  final double e1rm;
+}
+
+/// `GET /dashboard/exercises/{id}/history`: progression points, records, caption.
+class ExerciseHistory {
+  const ExerciseHistory({
+    required this.history,
+    required this.records,
+    this.caption,
+  });
+
+  factory ExerciseHistory.fromJson(Map<String, dynamic> json) =>
+      ExerciseHistory(
+        history: (json['history'] as List<dynamic>? ?? const <dynamic>[])
+            .map((dynamic point) =>
+                ExerciseHistoryPoint.fromJson(point as Map<String, dynamic>))
+            .toList(growable: false),
+        records: (json['records'] as List<dynamic>? ?? const <dynamic>[])
+            .map((dynamic record) =>
+                CoachExerciseRecord.fromJson(record as Map<String, dynamic>))
+            .toList(growable: false),
+        caption: json['caption'] as String?,
+      );
+
+  final List<ExerciseHistoryPoint> history;
+  final List<CoachExerciseRecord> records;
+  final String? caption;
+
+  bool get isEmpty => history.isEmpty;
+}
+
+List<String> _stringList(dynamic raw) =>
+    (raw as List<dynamic>? ?? const <dynamic>[])
+        .map((dynamic value) => value.toString())
+        .toList(growable: false);
+
+/// `GET /workouts/sessions/latest`: the player's most recent committed session.
+///
+/// [splitName] is the program day name written at commit; [dayOrder] is null
+/// when the ledger does not store one, so Home matches the program day by name.
+class LatestSession {
+  const LatestSession({
+    required this.sessionId,
+    required this.sessionDate,
+    required this.splitName,
+    this.dayOrder,
+    this.programVersion,
+  });
+
+  factory LatestSession.fromJson(Map<String, dynamic> json) => LatestSession(
+        sessionId: json['session_id'] as String,
+        sessionDate: json['session_date'] as String,
+        splitName: json['split_name'] as String? ?? '',
+        dayOrder: (json['day_order'] as num?)?.toInt(),
+        programVersion: (json['program_version'] as num?)?.toInt(),
+      );
+
+  final String sessionId;
+  final String sessionDate;
+  final String splitName;
+  final int? dayOrder;
+  final int? programVersion;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'session_id': sessionId,
+        'session_date': sessionDate,
+        'split_name': splitName,
+        'day_order': dayOrder,
+        'program_version': programVersion,
+      };
+}
