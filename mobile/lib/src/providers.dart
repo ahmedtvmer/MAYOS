@@ -105,8 +105,8 @@ final Provider<ChatCacheStore> chatCacheStoreProvider =
             : InMemoryChatCacheStore());
 
 /// The selected bottom-navigation tab in the player shell (0 = Home,
-/// 1 = Program). Home's no-program state points at Program so the player can
-/// generate a program through the existing Program-tab flow.
+/// 1 = Program, 2 = Progress). Home's no-program state points at Program so the
+/// player can generate a program through the existing Program-tab flow.
 final StateProvider<int> playerShellTabProvider =
     StateProvider<int>((ref) => 0);
 

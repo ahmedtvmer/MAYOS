@@ -239,6 +239,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
             ExerciseDetailScreen(
           exerciseId: state.pathParameters['id'] ?? '',
           dayOrder: int.tryParse(state.uri.queryParameters['day'] ?? ''),
+          initialTab: state.uri.queryParameters['tab'] ?? 'overview',
         ),
       ),
     ],

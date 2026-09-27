@@ -2104,6 +2104,20 @@ class ExerciseCatalogDetail {
       (value.startsWith('https://') || value.startsWith('http://'));
 }
 
+/// One distinct exercise the player has logged history for
+/// (`GET /dashboard/exercises`, #48).
+class LoggedExercise {
+  const LoggedExercise({required this.id, required this.name});
+
+  factory LoggedExercise.fromJson(Map<String, dynamic> json) => LoggedExercise(
+        id: json['id'] as String,
+        name: json['name'] as String,
+      );
+
+  final String id;
+  final String name;
+}
+
 /// One progression point in `GET /dashboard/exercises/{id}/history`.
 class ExerciseHistoryPoint {
   const ExerciseHistoryPoint({

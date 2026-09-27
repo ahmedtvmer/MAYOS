@@ -76,6 +76,16 @@ class FakeMayosApi {
   // Home empty states can be captured and tested.
   bool volumeEmpty = false;
   bool recordsEmpty = false;
+  // Progress (#48). `GET /dashboard/exercises` lists the exercises the player
+  // has logged; `dashboardExerciseHistories` supplies each one's progression
+  // points; `volumeDaysRequests` records every `days` value the client asked
+  // for so period switching is assertable.
+  List<Map<String, dynamic>> loggedExercises = _defaultLoggedExercises();
+  bool loggedExercisesFails = false;
+  Map<String, Map<String, dynamic>> dashboardExerciseHistories =
+      _defaultDashboardHistories();
+  final List<int> volumeDaysRequests = <int>[];
+  Map<int, Map<String, dynamic>>? volumeByDays;
   // `GET /workouts/sessions/latest` (#53): null means "no committed sessions"
   // (404); when set, the map is returned as the player's latest session.
   Map<String, dynamic>? latestSessionBody;
@@ -197,6 +207,9 @@ class FakeMayosApi {
     }
     if (path.startsWith('/workouts/exercises/')) {
       return _exerciseDetail(request);
+    }
+    if (path == '/dashboard/exercises') {
+      return _loggedExercises(request);
     }
     if (path.startsWith('/dashboard/exercises/') && path.endsWith('/history')) {
       return _dashboardExerciseHistory(request);
@@ -2136,8 +2149,20 @@ class FakeMayosApi {
     return FakeResponse(200, detail);
   }
 
-  /// `GET /dashboard/exercises/{id}/history`: one real progression point by
-  /// default, so the history tab renders; other exercises return empty history.
+  /// `GET /dashboard/exercises`: the exercises the player has logged.
+  FakeResponse _loggedExercises(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (loggedExercisesFails) {
+      return const FakeResponse.networkFailure();
+    }
+    return FakeResponse(200, List<Map<String, dynamic>>.from(loggedExercises));
+  }
+
+  /// `GET /dashboard/exercises/{id}/history`: progression points from the
+  /// configurable [dashboardExerciseHistories]; unknown ids return empty.
   FakeResponse _dashboardExerciseHistory(FakeRequest request) {
     if (!_authorized(request)) {
       return const FakeResponse(
@@ -2146,27 +2171,9 @@ class FakeMayosApi {
     final String id = request.path
         .replaceFirst('/dashboard/exercises/', '')
         .replaceFirst('/history', '');
-    if (id == 'bench_press') {
-      return FakeResponse(200, <String, dynamic>{
-        'history': <Map<String, dynamic>>[
-          <String, dynamic>{
-            'date': '2026-09-20',
-            'weight_kg': 100.0,
-            'reps': 5,
-            'rpe': 8.0,
-            'e1rm': 120.0,
-          },
-        ],
-        'caption': 'Latest Recorded: **100.0 kg × 5 reps @ RPE 8.0**',
-        'records': <Map<String, dynamic>>[
-          <String, dynamic>{
-            'record_type': 'max_weight',
-            'reps': 5,
-            'value': 100.0,
-            'achieved_at': '2026-09-20T10:00:00Z',
-          },
-        ],
-      });
+    final Map<String, dynamic>? history = dashboardExerciseHistories[id];
+    if (history != null) {
+      return FakeResponse(200, history);
     }
     return FakeResponse(200, <String, dynamic>{
       'history': <dynamic>[],
@@ -2174,6 +2181,38 @@ class FakeMayosApi {
       'records': <dynamic>[],
     });
   }
+
+  static List<Map<String, dynamic>> _defaultLoggedExercises() =>
+      <Map<String, dynamic>>[
+        <String, dynamic>{'id': 'bench_press', 'name': 'Bench Press'},
+        <String, dynamic>{'id': 'overhead_press', 'name': 'Overhead Press'},
+      ];
+
+  /// One real progression point for Bench Press by default, so the
+  /// exercise-detail History tab still renders; other ids have no history.
+  static Map<String, Map<String, dynamic>> _defaultDashboardHistories() =>
+      <String, Map<String, dynamic>>{
+        'bench_press': <String, dynamic>{
+          'history': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'date': '2026-09-20',
+              'weight_kg': 100.0,
+              'reps': 5,
+              'rpe': 8.0,
+              'e1rm': 120.0,
+            },
+          ],
+          'caption': 'Latest Recorded: **100.0 kg × 5 reps @ RPE 8.0**',
+          'records': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'record_type': 'max_weight',
+              'reps': 5,
+              'value': 100.0,
+              'achieved_at': '2026-09-20T10:00:00Z',
+            },
+          ],
+        },
+      };
 
   FakeResponse _commitSession(FakeRequest request) {
     if (!_authorized(request)) {
@@ -2356,8 +2395,14 @@ class FakeMayosApi {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
     }
+    final int days = int.tryParse('${request.query['days']}') ?? 7;
+    volumeDaysRequests.add(days);
     if (volumeEmpty) {
       return const FakeResponse(200, <String, dynamic>{});
+    }
+    final Map<String, dynamic>? byDays = volumeByDays?[days];
+    if (byDays != null) {
+      return FakeResponse(200, byDays);
     }
     // Weighted working-set counts (primary 1.0, secondary +0.5), not kilograms.
     return const FakeResponse(
@@ -2427,6 +2472,11 @@ class FakeMayosApi {
       noActiveProgram = false;
       volumeEmpty = false;
       recordsEmpty = false;
+      loggedExercises = _defaultLoggedExercises();
+      loggedExercisesFails = false;
+      dashboardExerciseHistories = _defaultDashboardHistories();
+      volumeDaysRequests.clear();
+      volumeByDays = null;
       latestSessionBody = null;
       latestSessionFails = false;
       playerNotices.clear();

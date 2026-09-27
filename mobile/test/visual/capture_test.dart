@@ -16,6 +16,7 @@ import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/auth/forgot_password_screen.dart';
 import 'package:mayos_mobile/src/features/player/auth/login_screen.dart';
@@ -168,6 +169,25 @@ Future<void> _writeAuthCapture(WidgetTester tester, String name) async {
   await tester.runAsync(() async {
     final Directory out =
         Directory('${Directory.current.parent.path}/docs/design-review/52');
+    await out.create(recursive: true);
+    final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
+    final ByteData? data =
+        await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    if (data == null) {
+      return;
+    }
+    await File('${out.path}/$name.png').writeAsBytes(data.buffer.asUint8List());
+  });
+}
+
+/// Writes a #48 Progress capture to `docs/design-review/48/`.
+Future<void> _writeProgressCapture(WidgetTester tester, String name) async {
+  final RenderRepaintBoundary boundary =
+      tester.renderObject<RenderRepaintBoundary>(find.byKey(_boundaryKey));
+  await tester.runAsync(() async {
+    final Directory out =
+        Directory('${Directory.current.parent.path}/docs/design-review/48');
     await out.create(recursive: true);
     final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
     final ByteData? data =
@@ -583,6 +603,175 @@ Future<void> _pumpExerciseDetail(
   await tester.pump(const Duration(milliseconds: 300));
 }
 
+// ---------------------------------------------------------------------------
+// #48 Progress captures
+// ---------------------------------------------------------------------------
+
+/// Five real-shaped Bench Press sessions for the Strength chart.
+List<Map<String, dynamic>> _capturePoints(int count) => <Map<String, dynamic>>[
+      <String, dynamic>{
+        'date': '2026-06-03',
+        'weight_kg': 95.0,
+        'reps': 5,
+        'rpe': 8.0,
+        'e1rm': 110.0,
+      },
+      <String, dynamic>{
+        'date': '2026-06-10',
+        'weight_kg': 97.5,
+        'reps': 5,
+        'rpe': 8.0,
+        'e1rm': 112.9,
+      },
+      <String, dynamic>{
+        'date': '2026-06-17',
+        'weight_kg': 100.0,
+        'reps': 5,
+        'rpe': 8.0,
+        'e1rm': 115.6,
+      },
+      <String, dynamic>{
+        'date': '2026-06-24',
+        'weight_kg': 102.5,
+        'reps': 3,
+        'rpe': 9.0,
+        'e1rm': 116.8,
+      },
+      <String, dynamic>{
+        'date': '2026-07-01',
+        'weight_kg': 105.0,
+        'reps': 3,
+        'rpe': 9.0,
+        'e1rm': 119.7,
+      },
+    ].take(count).toList(growable: false);
+
+FakeMayosApi _progressFake({int points = 5}) {
+  final FakeMayosApi fake = _fake();
+  fake.loggedExercises = <Map<String, dynamic>>[
+    <String, dynamic>{'id': 'bench_press', 'name': 'Bench Press'},
+    <String, dynamic>{'id': 'overhead_press', 'name': 'Overhead Press'},
+  ];
+  fake.dashboardExerciseHistories = <String, Map<String, dynamic>>{
+    'bench_press': <String, dynamic>{
+      'history': _capturePoints(points),
+      'caption': null,
+      'records': <dynamic>[],
+    },
+  };
+  fake.volumeByDays = <int, Map<String, dynamic>>{
+    7: <String, dynamic>{'Chest': 12.5, 'Back': 9.0, 'Quads': 6.0},
+    28: <String, dynamic>{
+      'Chest': 42.5,
+      'Back': 36.0,
+      'Quads': 30.5,
+      'Shoulders': 18.0,
+      'Hamstrings & Glutes': 12.0,
+    },
+    90: <String, dynamic>{
+      'Chest': 118.5,
+      'Back': 104.0,
+      'Quads': 88.5,
+      'Shoulders': 61.0,
+      'Hamstrings & Glutes': 44.0,
+      'Biceps': 30.0,
+      'Triceps': 27.5,
+    },
+  };
+  return fake;
+}
+
+FakeMayosApi _progressEmptyFake() {
+  final FakeMayosApi fake = _fake();
+  fake.loggedExercises = <Map<String, dynamic>>[];
+  return fake;
+}
+
+class _ProgressSurface {
+  const _ProgressSurface({
+    required this.name,
+    required this.fakeBuilder,
+    this.volume = false,
+    this.empty = false,
+  });
+
+  final String name;
+  final FakeMayosApi Function() fakeBuilder;
+  final bool volume;
+  final bool empty;
+}
+
+final List<_ProgressSurface> _progressSurfaces = <_ProgressSurface>[
+  _ProgressSurface(name: 'strength', fakeBuilder: () => _progressFake()),
+  _ProgressSurface(
+      name: 'strength-single', fakeBuilder: () => _progressFake(points: 1)),
+  _ProgressSurface(
+      name: 'volume', fakeBuilder: () => _progressFake(), volume: true),
+  _ProgressSurface(name: 'empty', fakeBuilder: _progressEmptyFake, empty: true),
+];
+
+/// Pumps the app, opens Progress, optionally switches to a 28-day Volume view,
+/// then captures at [size].
+Future<void> _pumpProgressSurface(
+  WidgetTester tester,
+  _ProgressSurface surface,
+  Size size,
+  ThemeMode mode,
+) async {
+  _setSize(tester, const Size(1080, 2400));
+  final FakeMayosApi fake = surface.fakeBuilder();
+  final InMemoryTokenStore tokens = InMemoryTokenStore();
+  await tokens.save('token-alice');
+  await tester.pumpWidget(
+    RepaintBoundary(
+      key: _boundaryKey,
+      child: ProviderScope(
+        overrides: <Override>[
+          tokenStoreProvider.overrideWithValue(tokens),
+          themeModeStoreProvider
+              .overrideWithValue(InMemoryThemeModeStore(mode)),
+          draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
+          workoutCacheStoreProvider
+              .overrideWithValue(InMemoryWorkoutCacheStore()),
+          chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
+          apiClientProvider.overrideWith((ref) {
+            final ApiClient client = ApiClient(
+              tokens: ref.watch(tokenStoreProvider),
+              baseUrl: 'http://test.local',
+              adapter: fake.adapter,
+            );
+            client.onUnauthorized =
+                ref.watch(unauthorizedEventsProvider).signal;
+            return client;
+          }),
+        ],
+        child: const MayosApp(),
+      ),
+    ),
+  );
+  await _pumpUntilFound(tester, find.text('Home'));
+  await tester.tap(find.descendant(
+    of: find.byType(MayosBottomNavigation),
+    matching: find.text('Progress'),
+  ));
+  await _pumpUntilFound(
+    tester,
+    surface.empty
+        ? find.text('No training history yet')
+        : find.text('Estimated 1RM'),
+  );
+  if (surface.volume) {
+    await tester.tap(find.text('Volume'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('28 days'));
+    await _pumpUntilFound(tester, find.textContaining('Last 28 days'));
+  }
+  _setSize(tester, size);
+  await tester.pump(const Duration(milliseconds: 200));
+  await _precacheBrandImages(tester);
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
 void main() {
   setUpAll(_loadFonts);
 
@@ -738,6 +927,23 @@ void main() {
         await _writeRedesignCapture(
             tester, 'exercise-technique-$theme-$sizeTag');
       }, skip: skipCapture);
+    }
+  }
+
+  // #48 Progress captures (docs/design-review/48): Strength with five real
+  // points, a single point, 28-day Volume, and the empty state.
+  for (final Size size in sizes) {
+    for (final ThemeMode mode in modes) {
+      final String theme = mode == ThemeMode.dark ? 'dark' : 'light';
+      final String sizeTag = '${size.width.toInt()}x${size.height.toInt()}';
+      for (final _ProgressSurface surface in _progressSurfaces) {
+        testWidgets('progress ${surface.name} $theme $sizeTag',
+            (WidgetTester tester) async {
+          await _pumpProgressSurface(tester, surface, size, mode);
+          await _writeProgressCapture(
+              tester, 'progress-${surface.name}-$theme-$sizeTag');
+        }, skip: skipCapture);
+      }
     }
   }
 }

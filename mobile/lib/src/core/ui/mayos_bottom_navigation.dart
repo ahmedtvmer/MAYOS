@@ -103,11 +103,19 @@ class _Destination extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 3),
-            Text(
-              item.label,
-              style: labelStyle.labelSmall?.copyWith(
-                color: color,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            // With three destinations the cells are narrow and large text
+            // scales could wrap a label into a second line, overflowing the
+            // fixed bar height. Keep labels on one line and shrink to fit.
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                item.label,
+                maxLines: 1,
+                softWrap: false,
+                style: labelStyle.labelSmall?.copyWith(
+                  color: color,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                ),
               ),
             ),
           ],

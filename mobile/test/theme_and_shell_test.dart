@@ -172,24 +172,27 @@ void main() {
     expect(dark.systemNavigationBarColor, MayosThemeExtension.dark.canvas);
   });
 
-  testWidgets('bottom navigation exposes only Home and Program',
+  testWidgets('bottom navigation exposes Home, Program, and Progress',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _signedInFake();
     await _pumpApp(tester, fake, store: InMemoryThemeModeStore());
 
     final MayosBottomNavigation nav = tester
         .widget<MayosBottomNavigation>(find.byType(MayosBottomNavigation));
+    // Progress ships now that its flow is backed by real ledger data (#48).
     expect(nav.items.map((MayosNavItem i) => i.label),
-        <String>['Home', 'Program']);
+        <String>['Home', 'Program', 'Progress']);
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Program'), findsOneWidget);
+    // The Progress tab also renders its own serif title, so the label may
+    // appear more than once; the nav items list above is the authoritative check.
+    expect(find.text('Progress'), findsWidgets);
     // Header brand and clear affordances.
     expect(find.text('MAYOS'), findsOneWidget);
     expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
     expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
     // No placeholder destinations.
     expect(find.text('Coach'), findsNothing);
-    expect(find.text('Progress'), findsNothing);
     expect(find.text('Workout'), findsNothing);
   });
 

@@ -23,6 +23,7 @@ class ExerciseDetailScreen extends ConsumerStatefulWidget {
     super.key,
     required this.exerciseId,
     this.dayOrder,
+    this.initialTab = 'overview',
   });
 
   final String exerciseId;
@@ -30,6 +31,9 @@ class ExerciseDetailScreen extends ConsumerStatefulWidget {
   /// The program day the exercise was opened from, so prescription context
   /// (sets × reps, RPE, rest, notes) can be shown. Null when opened elsewhere.
   final int? dayOrder;
+
+  /// Which tab to open on. Progress (#48) opens this screen on `history`.
+  final String initialTab;
 
   @override
   ConsumerState<ExerciseDetailScreen> createState() =>
@@ -52,11 +56,12 @@ class _DetailData {
 
 class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen> {
   late Future<_DetailData> _future;
-  String _tab = 'overview';
+  late String _tab;
 
   @override
   void initState() {
     super.initState();
+    _tab = widget.initialTab;
     _future = _load();
   }
 

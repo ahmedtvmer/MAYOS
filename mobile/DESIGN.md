@@ -135,7 +135,12 @@ effective theme in every surface, including splash and auth screens.
 
 ## Navigation and entry points
 
-- Bottom bar: **Home** and **Program** only.
+- Bottom bar: **Home**, **Program**, and **Progress**. Progress ships because its
+  Strength and Volume views are derived from real persisted ledger data (#48):
+  per-session estimated 1RM (kg) from `GET /dashboard/exercises/{id}/history`,
+  and weighted working sets per muscle over a real 7/28/90-day window from
+  `GET /dashboard/volume?days=N`. There is no Overview tab and no fabricated
+  percentage, body metric, or readiness score.
 - Header: assistant chat and **Settings**.
 - Settings (`/settings`) is the single home for: Profile, Plan, Coaching
   assignment, coach profile / roster / alert center (coach capability) or
@@ -164,3 +169,7 @@ forgot-password, reset-password) in Light and Dark at 360×640 and 412×915 into
 `docs/design-review/51/` and `docs/design-review/52/`. The #52 set also includes
 a login capture with a server error and one with the keyboard inset simulated at
 360×640.
+
+The #48 Progress views (Strength with five real points, a single-point Strength
+view, 28-day Volume, and the empty state) are rendered in Light and Dark at
+360×640 and 412×915 into `docs/design-review/48/`.

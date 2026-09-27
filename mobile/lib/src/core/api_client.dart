@@ -945,6 +945,16 @@ class ApiClient {
         'The service returned invalid exercise data.');
   }
 
+  /// The distinct exercises the player has logged working sets for
+  /// (`GET /dashboard/exercises`, #48).
+  Future<List<LoggedExercise>> loggedExercises() async {
+    final response = await _send(
+      () => _dio.get<dynamic>('/dashboard/exercises'),
+    );
+    return _parseBodyList(response.data, LoggedExercise.fromJson,
+        'The service returned invalid exercise data.');
+  }
+
   /// Progression history for one exercise (`GET /dashboard/exercises/{id}/history`).
   Future<ExerciseHistory> exerciseHistory(String exerciseId) async {
     final response = await _send(

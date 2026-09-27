@@ -9,13 +9,16 @@ import '../../../providers.dart';
 import '../../../router.dart';
 import '../dashboard/dashboard_tab.dart';
 import '../program/program_tab.dart';
+import '../progress/progress_tab.dart';
 
 /// The player navigation shell.
 ///
-/// Bottom navigation is intentionally limited to Home and Program. Settings
-/// opens from the header; every other working surface (coach profile/invite/
-/// assignment, workout drafts, assistant chat, profile, plan, logout) is
-/// reached from Settings or the header, never a placeholder destination.
+/// Bottom navigation is Home, Program, and Progress (#48); Progress ships only
+/// because its Strength and Volume experiences derive from real ledger data.
+/// Settings opens from the header; every other working surface (coach
+/// profile/invite/assignment, workout drafts, assistant chat, profile, plan,
+/// logout) is reached from Settings or the header, never a placeholder
+/// destination.
 class PlayerShell extends ConsumerStatefulWidget {
   const PlayerShell({super.key});
 
@@ -34,6 +37,11 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
       label: 'Program',
       icon: Icons.article_outlined,
       selectedIcon: Icons.article,
+    ),
+    MayosNavItem(
+      label: 'Progress',
+      icon: Icons.insights_outlined,
+      selectedIcon: Icons.insights,
     ),
   ];
 
@@ -60,6 +68,7 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
         children: const <Widget>[
           DashboardTab(),
           ProgramTab(),
+          ProgressTab(),
         ],
       ),
       bottomBar: MayosBottomNavigation(
