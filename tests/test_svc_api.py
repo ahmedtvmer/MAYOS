@@ -35,7 +35,7 @@ def client(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.state.test_db = db
@@ -126,7 +126,7 @@ def test_legacy_claim_flow(client):
     assert client.post("/auth/claim", json={"trainee_id": "legacy", "password": "another-33"}).status_code == 401
     # Hash stored, never plaintext.
     db.switch_user("legacy")
-    stored = db.get_password_hash()
+    stored = db.ledger.get_password_hash()
     assert stored and stored != "new-horse-22" and stored.startswith("$2")
 
 
@@ -145,7 +145,7 @@ def test_cross_user_isolation_with_real_jwt(tmp_path, monkeypatch):
     cat_conn.commit()
     cat_conn.close()
     db = DatabaseManager(
-        catalog_path=catalog_path, users_dir=tmp_path / "users", backups_dir=tmp_path / "backups", active_user="bootstrap"
+        catalog_path=catalog_path, users_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -190,7 +190,7 @@ def _real_jwt_app(tmp_path, monkeypatch):
     cat_conn.commit()
     cat_conn.close()
     db = DatabaseManager(
-        catalog_path=catalog_path, users_dir=tmp_path / "users", backups_dir=tmp_path / "backups", active_user="bootstrap"
+        catalog_path=catalog_path, users_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -204,8 +204,8 @@ def test_active_program_served_for_returning_user(tmp_path, monkeypatch):
             token = api.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"}).json()["access_token"]
             headers = {"Authorization": f"Bearer {token}"}
             db.switch_user("alice")
-            db.upsert_user_profile({"current_goal": "Strength"})
-            db.save_training_program(
+            db.ledger.upsert_user_profile({"current_goal": "Strength"})
+            db.ledger.save_training_program(
                 {
                     "program_name": "Saved Split",
                     "weekly_frequency": 3,
@@ -273,8 +273,8 @@ def test_workout_commit_detects_prs_and_dashboard_serves_them(tmp_path, monkeypa
             ).json()["access_token"]
             headers = {"Authorization": f"Bearer {token}"}
             db.switch_user("alice")
-            db.upsert_user_profile({"current_goal": "Strength"})
-            db.save_training_program(_saved_split_payload())
+            db.ledger.upsert_user_profile({"current_goal": "Strength"})
+            db.ledger.save_training_program(_saved_split_payload())
 
             commit = api.post(
                 "/workouts/sessions",
@@ -321,8 +321,8 @@ def test_session_export_csv_json_and_404(tmp_path, monkeypatch):
             assert api.get("/workouts/sessions/export.json", headers=headers).status_code == 404
 
             db.switch_user("alice")
-            db.upsert_user_profile({"current_goal": "Strength"})
-            db.save_training_program(_saved_split_payload())
+            db.ledger.upsert_user_profile({"current_goal": "Strength"})
+            db.ledger.save_training_program(_saved_split_payload())
             commit = api.post(
                 "/workouts/sessions",
                 headers=headers,
@@ -459,7 +459,7 @@ def test_chat_history_and_turn(client, monkeypatch):
 
     client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
 
-    def fake_turn(state):
+    def fake_turn(state, **kwargs):
         state["response_content"] = "Keep elbows tucked."
         state["program_updated"] = False
         state["messages"] = list(state["messages"]) + [AIMessage(content="Keep elbows tucked.")]
@@ -509,7 +509,7 @@ def test_chat_stream_disconnect_still_persists_reply(client, monkeypatch):
 
     release = threading.Event()
 
-    def slow_turn(state):
+    def slow_turn(state, **kwargs):
         state["response_content"] = "Persisted despite disconnect"
         yield "first-token"
         release.wait(timeout=5)
@@ -561,11 +561,11 @@ def test_onboarding_state_is_server_side(client, monkeypatch):
     client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
     calls = []
 
-    def fake_start(db, trainee_id, player_account_id=None):
+    def fake_start(db, trainee_id, player_account_id=None, ledger=None):
         calls.append(trainee_id)
         return {"messages": [AIMessage(content="Q1?")], "trainee_id": trainee_id, "intake_step": 1, "is_complete": False, "profile_data": None}
 
-    def fake_answer(db, trainee_id, state, user_input, player_account_id=None):
+    def fake_answer(db, trainee_id, state, user_input, player_account_id=None, ledger=None):
         calls.append((trainee_id, user_input))
         state["messages"].append(HumanMessage(content=user_input))
         state["messages"].append(AIMessage(content="Q2?"))
@@ -603,10 +603,10 @@ def test_onboarding_state_survives_restart(client, monkeypatch):
     client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
     seen_states = []
 
-    def fake_start(db, trainee_id, player_account_id=None):
+    def fake_start(db, trainee_id, player_account_id=None, ledger=None):
         return {"messages": [AIMessage(content="Q1?")], "trainee_id": trainee_id, "intake_step": 1, "is_complete": False, "profile_data": None}
 
-    def fake_answer(db, trainee_id, state, user_input, player_account_id=None):
+    def fake_answer(db, trainee_id, state, user_input, player_account_id=None, ledger=None):
         seen_states.append((trainee_id, [m.content for m in state["messages"]], user_input))
         state["messages"].append(HumanMessage(content=user_input))
         state["messages"].append(AIMessage(content="Q2?"))
@@ -629,7 +629,7 @@ def test_onboarding_start_resumes_persisted_progress(client, monkeypatch):
     client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
     answered_from = []
 
-    def fake_start(db, trainee_id, player_account_id=None):
+    def fake_start(db, trainee_id, player_account_id=None, ledger=None):
         return {
             "messages": [AIMessage(content="Q1?")],
             "trainee_id": trainee_id,
@@ -638,7 +638,7 @@ def test_onboarding_start_resumes_persisted_progress(client, monkeypatch):
             "profile_data": None,
         }
 
-    def fake_answer(db, trainee_id, state, user_input, player_account_id=None):
+    def fake_answer(db, trainee_id, state, user_input, player_account_id=None, ledger=None):
         answered_from.append([m.content for m in state["messages"]])
         state["messages"].append(HumanMessage(content=user_input))
         state["messages"].append(AIMessage(content="Q2?"))

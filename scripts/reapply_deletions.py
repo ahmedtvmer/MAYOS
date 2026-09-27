@@ -40,8 +40,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         applied = db.reapply_deletions()
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
         db.catalog_conn.close()
 
     logger.info("Deletion replay complete: %s record(s) rechecked.", applied)

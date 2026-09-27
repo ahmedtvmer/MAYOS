@@ -43,12 +43,16 @@ class InferenceScope:
 
     ``admit`` controls whether the entry point also enforces the per-account
     request/daily-token limit (``False`` for a route that already admitted).
+    ``store`` is the app-owned :class:`~database.database_manager.DatabaseManager`
+    used to admit the request and persist usage; it travels with the scope so no
+    ambient/thread-local store lookup is needed (ADR 041).
     """
 
     account_id: str | None = None
     role: str = "unknown"
     purpose: str | None = None
     admit: bool = True
+    store: Any = None
 
 
 def _max_concurrent() -> int:
@@ -135,9 +139,9 @@ def _usage_scope(scope: InferenceScope) -> Iterator[None]:
     from service.model_limits import admit_model_request, release_admission
     from utils.model_metering import usage_context
 
-    token = admit_model_request(scope.account_id) if scope.admit else None
+    token = admit_model_request(scope.account_id, db=scope.store) if scope.admit else None
     try:
-        with usage_context(scope.account_id, scope.role, scope.purpose):
+        with usage_context(scope.account_id, scope.role, scope.purpose, store=scope.store):
             yield
     finally:
         release_admission(token)

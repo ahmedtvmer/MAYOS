@@ -25,7 +25,6 @@ from utils.logger import MyosLogger
 
 from database.schema.definitions import SchemaMixin
 from database.account_deletion import AccountDeletionMixin
-from database.ledger.auth import LedgerAuthMixin
 from database.registry.accounts import RegistryAccountsMixin
 from database.registry.plans import RegistryPlansMixin
 from database.registry.recovery import RegistryRecoveryMixin
@@ -38,13 +37,6 @@ from database.registry.model_usage import RegistryModelUsageMixin
 from database.exercise_library.lookup import ExerciseLookupMixin
 from database.exercise_library.similarity import ExerciseSimilarityMixin
 from database.exercise_library.seeding import ExerciseSeedingMixin
-from database.ledger.training_program import LedgerTrainingProgramMixin
-from database.ledger.workouts import LedgerWorkoutsMixin
-from database.ledger.schedule import LedgerScheduleMixin
-from database.ledger.profile import LedgerProfileMixin
-from database.ledger.onboarding import LedgerOnboardingMixin
-from database.ledger.chat import LedgerChatMixin
-from database.ledger.debriefs import LedgerDebriefsMixin
 from database.ledger.handle import TrainingLedger
 
 logger = MyosLogger().get_logger(__name__)
@@ -70,14 +62,6 @@ class DatabaseManager(
     ExerciseLookupMixin,
     ExerciseSimilarityMixin,
     ExerciseSeedingMixin,
-    LedgerAuthMixin,
-    LedgerTrainingProgramMixin,
-    LedgerWorkoutsMixin,
-    LedgerScheduleMixin,
-    LedgerProfileMixin,
-    LedgerOnboardingMixin,
-    LedgerChatMixin,
-    LedgerDebriefsMixin,
 ):
     EMBEDDING_DIM = 384
 
@@ -86,7 +70,7 @@ class DatabaseManager(
         catalog_path=None,
         users_dir=None,
         backups_dir=None,
-        active_user: str | None = None,
+        default_ledger_id: str | None = None,
         deletions_path=None,
     ):
         if configured_data_root() is not None:
@@ -103,10 +87,12 @@ class DatabaseManager(
             self.deletions_path = Path(env_deletions)
         else:
             self.deletions_path = self.catalog_path.parent / "deletions.db"
-        self._default_user = self._sanitize_username(active_user) if active_user else "default"
+        # The default ledger id is a convenience for tests/scripts that want a
+        # stable id to open explicitly; the store itself mounts nothing (ADR 041).
+        self.default_ledger_id = self._sanitize_username(default_ledger_id) if default_ledger_id else "default"
         self._catalog_lock = threading.RLock()
-        # The mounted-ledger state is per-instance (and per-thread within it), so
-        # two stores never share an active user or connection.
+        # Catalog transaction depth is per-instance and per-thread. There is no
+        # mounted-ledger state on the store: ledgers live on explicit handles.
         self._local = threading.local()
 
         os.makedirs(self.catalog_path.parent, exist_ok=True)
@@ -126,35 +112,7 @@ class DatabaseManager(
 
         self._initialize_deletions()
 
-        self.switch_user(self._default_user)
-
-        logger.info(f"DatabaseManager initialized with user ledger ({self.active_user}).")
-
-    @property
-    def active_user(self) -> str:
-        return getattr(self._local, "active_user", getattr(self, "_default_user", "default"))
-
-    @active_user.setter
-    def active_user(self, val: str):
-        self._local.active_user = val
-
-    @property
-    def user_conn(self) -> sqlite3.Connection | None:
-        return getattr(self._local, "user_conn", None)
-
-    @user_conn.setter
-    def user_conn(self, val: sqlite3.Connection | None):
-        self._local.user_conn = val
-
-    @property
-    def conn(self) -> sqlite3.Connection:
-        c = self.user_conn
-        if c is None:
-            self.switch_user(self.active_user)
-            c = self.user_conn
-        if c is None:
-            raise RuntimeError(f"No active database connection mounted for user '{self.active_user}'.")
-        return c
+        logger.info("DatabaseManager initialized; ledgers are opened as explicit handles.")
 
     @staticmethod
     def _sanitize_username(username: str) -> str:
@@ -164,9 +122,8 @@ class DatabaseManager(
     def _build_ledger_connection(self, sanitized: str) -> sqlite3.Connection:
         """Opens, migrates and returns a ledger connection for a sanitized id.
 
-        The connect/pragma/attach/migrate sequence lives here once and is shared
-        by ``switch_user`` (thread-local compatibility mount) and ``open_ledger``
-        (explicit handle), so both apply identical gate-side schema work.
+        The connect/pragma/attach/migrate sequence lives here once; ``open_ledger``
+        wraps the result in a :class:`~database.ledger.handle.TrainingLedger`.
         """
         user_db_path = self.users_dir / f"{sanitized}.db"
         new_conn = sqlite3.connect(user_db_path, check_same_thread=False)
@@ -188,37 +145,13 @@ class DatabaseManager(
         prune_user_backups(self.backups_dir / sanitized, max_rolling=3)
         return new_conn
 
-    def switch_user(self, username: str) -> bool:
-        sanitized = self._sanitize_username(username)
-        if not sanitized:
-            return False
-
-        if self._ledger_is_deleted(sanitized):
-            logger.warning(f"Refusing to mount deleted ledger '{sanitized}'.")
-            raise LedgerDeletedError(f"Ledger '{sanitized}' belongs to a deleted account.")
-
-        current_conn = self.user_conn
-        if current_conn is not None and self.active_user == sanitized:
-            return True
-
-        if current_conn is not None:
-            try:
-                current_conn.commit()
-                current_conn.close()
-            except Exception as e:
-                logger.warning(f"Error closing active connection for {self.active_user}: {e}")
-            self.user_conn = None
-
-        self.user_conn = self._build_ledger_connection(sanitized)
-        self.active_user = sanitized
-        return True
-
     def open_ledger(self, ledger_id: str) -> "TrainingLedger":
         """Opens an explicit ledger handle for ``ledger_id`` (ADR 041, phase B).
 
-        Runs the same gate (deleted-ledger refusal) and mount work as
-        ``switch_user`` but returns a :class:`~database.ledger.handle.TrainingLedger`
-        owning its own connection. Use it as a context manager so it closes on exit.
+        Runs the deleted-ledger gate and the mount work (pragmas, catalog attach,
+        lazy migrations, user schema, backup pruning) and returns a
+        :class:`~database.ledger.handle.TrainingLedger` owning its own connection.
+        Use it as a context manager so it closes on exit.
         """
         sanitized = self._sanitize_username(ledger_id)
         if not sanitized:
@@ -227,25 +160,6 @@ class DatabaseManager(
             logger.warning(f"Refusing to open deleted ledger '{sanitized}'.")
             raise LedgerDeletedError(f"Ledger '{sanitized}' belongs to a deleted account.")
         return TrainingLedger(self._build_ledger_connection(sanitized), sanitized, self.backups_dir)
-
-    def unmount_user(self) -> None:
-        """Closes and clears this thread's mounted ledger connection.
-
-        Background work (the alert sweep) shares ``asyncio``'s worker threads
-        with request handlers; without this, a player's ledger connection would
-        stay bound to that thread after the work finishes. Resets the thread to
-        the default identity so the next ``bind_user``/``switch_user`` mounts
-        cleanly.
-        """
-        current_conn = self.user_conn
-        if current_conn is not None:
-            try:
-                current_conn.commit()
-                current_conn.close()
-            except Exception as e:
-                logger.warning(f"Error closing active connection for {self.active_user}: {e}")
-        self.user_conn = None
-        self.active_user = getattr(self, "_default_user", "default")
 
     @contextmanager
     def catalog_locked(self) -> Iterator[sqlite3.Connection]:
@@ -256,9 +170,6 @@ class DatabaseManager(
         """
         with self._catalog_lock:
             yield self.catalog_conn
-
-    def get_connection(self) -> sqlite3.Connection:
-        return self.conn
 
     # Catalog transactions: re-entrant, catalog-lock-held (ADR 032).
     @contextmanager
@@ -295,42 +206,3 @@ class DatabaseManager(
         """Commits a standalone catalog write, or defers to the active transaction."""
         if getattr(self._local, "catalog_tx_depth", 0) == 0:
             self.catalog_conn.commit()
-
-    # Ledger transactions: re-entrant, on the mounted ledger connection (ADR 020/033).
-    @contextmanager
-    def ledger_transaction(self) -> Iterator[None]:
-        """Runs a group of ledger writes atomically.
-
-        Re-entrant: nested calls join the outermost transaction. On error the
-        whole group is rolled back and the exception re-raised.
-        """
-        conn = self.conn
-        depth = getattr(self._local, "ledger_tx_depth", 0)
-        self._local.ledger_tx_depth = depth + 1
-        outermost = depth == 0
-        original_isolation = conn.isolation_level
-        if outermost:
-            conn.isolation_level = None
-            conn.execute("BEGIN IMMEDIATE")
-        try:
-            yield
-        except Exception:
-            if outermost:
-                conn.execute("ROLLBACK")
-            raise
-        else:
-            if outermost:
-                conn.execute("COMMIT")
-        finally:
-            self._local.ledger_tx_depth = depth
-            if outermost:
-                conn.isolation_level = original_isolation
-
-    def _commit_ledger(self) -> None:
-        """Commits a standalone ledger write, or defers to the active transaction."""
-        if getattr(self._local, "ledger_tx_depth", 0) == 0:
-            self.conn.commit()
-
-    def commit_ledger(self) -> None:
-        """Public seam for ledger writers outside this module (e.g. ``agent.progression_engine``)."""
-        self._commit_ledger()

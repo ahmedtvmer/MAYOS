@@ -12,13 +12,16 @@ The folder a module lives in states which store it may touch:
 Anything that needs both belongs in a top-level operation module named for the
 operation (e.g. ``database/account_deletion.py``), which this test does not scan.
 
-Phase B1 (#79): the ``service/`` and ``svc/`` layers must reach the ledger only
-through an explicit handle (``get_ledger`` / ``db.open_ledger``), never the
-thread-local compatibility mount (``bind_user`` / ``bind_request`` /
-``switch_user`` / ``active_user`` / ``unmount_user``). The few call sites that
-still hand off to ``agent/`` code are marked ``# Phase B2:`` and are the only
-permitted exceptions.
+Phase B2 (#79): the thread-local ledger mount and the ``database/store.py``
+context-local provider are gone. Every ledger is reached through an explicit
+:class:`~database.ledger.handle.TrainingLedger` from
+``DatabaseManager.open_ledger``; registry work stays on the app store, which is
+passed explicitly. No production module may import ``bind_user`` /
+``switch_user`` / ``active_user`` / ``unmount_user`` / ``bind_request`` /
+``get_store`` / ``set_store`` again, and no store may be constructed at import
+time.
 """
+import re
 from pathlib import Path
 
 import pytest
@@ -37,17 +40,54 @@ LEDGER_TOKENS = (
 REGISTRY_PACKAGES = ("database/registry", "database/exercise_library")
 LEDGER_PACKAGE = "database/ledger"
 
-#: Thread-local ledger seams service/svc must no longer rely on, except on a
-#: line explicitly marked ``# Phase B2:`` (the agent hand-off sites).
-THREAD_LOCAL_SEAMS = ("bind_user(", "bind_request(", "switch_user(", "active_user", "unmount_user")
-LAYER_PACKAGES = ("service", "svc")
+#: Seams removed with the thread-local mount and the ambient store provider.
+REMOVED_SEAMS = (
+    "bind_user",
+    "bind_request",
+    "switch_user",
+    "unmount_user",
+    "get_store",
+    "set_store",
+    "reset_store",
+)
 
-#: ``service/_base.py`` is the home of the compatibility primitive itself; its
-#: definition is what the other layers may call during the transition.
-COMPAT_PRIMITIVE = Path("service/_base.py")
+#: ``active_user`` is legitimate ledger-internal state (``self.active_user`` in
+#: ``database/ledger/`` backs ``backup_active_user``); it is a removed seam
+#: everywhere else.
+ACTIVE_USER_TOKEN = "active_user"
 
-#: Definition sites of the compatibility primitives are allowed; call sites are not.
-_COMPAT_DEFINITIONS = ("def bind_user(", "def bind_request(")
+#: Production layers that must never reach for a removed seam again.
+LAYER_PACKAGES = ("agent", "service", "svc", "database", "scripts", "utils")
+
+#: A ledger-internal module may keep ``self.active_user``; nothing else may.
+LEDGER_INTERNAL_PREFIX = Path("database/ledger")
+
+#: Store/DatabaseManager attributes the test-only ``conftest`` facade adds for
+#: pre-split tests. Production code must reach a ledger through an explicit
+#: ``open_ledger`` handle, never off the store.
+STORE_FACADE_TOKENS = (".user_conn", ".active_user")
+
+#: ``.conn`` is a ledger handle's own accessor. It is legitimate when the
+#: receiver is a ``TrainingLedger`` (program rules, dashboard reads, the init
+#: script) or a ledger handle passed through a parameter still typed
+#: ``DatabaseManager`` (``progression_engine``); those files are listed here
+#: rather than banning ``.conn`` outright.
+CONN_ALLOWLIST = frozenset({
+    "agent/program_rules.py",
+    "agent/progression_engine.py",
+    "service/dashboard.py",
+    "scripts/intialize_db.py",
+})
+
+#: Layers scanned for reads of the test-only store facade. ``database/ledger/``
+#: is skipped there because ``self.conn`` / ``self.active_user`` are the handle's
+#: own state.
+STORE_FACADE_PACKAGES = LAYER_PACKAGES
+
+#: A module-level ``DatabaseManager(...)`` construction (no indentation).
+MODULE_LEVEL_STORE = re.compile(r"^[A-Za-z_][\w]*\s*=\s*DatabaseManager\(")
+
+PHASE_B2_MARKER = "# Phase B2:"
 
 
 def _modules(package: str) -> list[Path]:
@@ -73,19 +113,72 @@ def test_ledger_modules_never_touch_the_registry():
         assert not offenders, f"{path.relative_to(ROOT)} references registry state: {offenders}"
 
 
-@pytest.mark.parametrize("package", LAYER_PACKAGES)
-def test_service_and_svc_reach_the_ledger_only_through_an_explicit_handle(package):
+def _uses_token(source: str, token: str) -> bool:
+    """Whole-word match so ``active_username`` never trips the ``active_user`` check."""
+    return re.search(rf"\b{re.escape(token)}\b", source) is not None
+
+
+def _reads_stored_ledger(source: str) -> bool:
+    """True when source reads ``.ledger`` as an attribute, not the package path.
+
+    ``database.ledger.handle`` in imports/docstrings is a module path, not a
+    store attribute, so the ``database`` prefix is excluded.
+    """
+    return re.search(r"(?<!database)\.ledger\b(?!\.)", source) is not None
+
+
+@pytest.mark.parametrize("package", STORE_FACADE_PACKAGES)
+def test_layers_never_use_the_test_only_store_facade(package):
+    """Production reaches the ledger via ``open_ledger``, never store attributes.
+
+    ``.ledger`` / ``.user_conn`` / ``.active_user`` are added to a store only by
+    the test ``conftest`` facade; reading them in production would mean the
+    thread-local mount crept back. ``.conn`` on a ledger handle stays legitimate
+    and is allow-listed per file.
+    """
     for path in _modules(package):
-        if path.relative_to(ROOT) == COMPAT_PRIMITIVE:
+        relative = path.relative_to(ROOT)
+        if str(relative).startswith(str(LEDGER_INTERNAL_PREFIX)):
             continue
-        offenders = []
-        for lineno, line in enumerate(path.read_text().splitlines(), start=1):
-            if "# Phase B2:" in line or any(defn in line for defn in _COMPAT_DEFINITIONS):
-                continue
-            for token in THREAD_LOCAL_SEAMS:
-                if token in line:
-                    offenders.append((lineno, token, line.strip()))
+        source = path.read_text()
+        offenders = [token for token in STORE_FACADE_TOKENS if _uses_token(source, token)]
+        if _reads_stored_ledger(source):
+            offenders.append(".ledger")
         assert not offenders, (
-            f"{path.relative_to(ROOT)} uses thread-local ledger state outside a "
-            f"`# Phase B2:` line: {offenders}"
+            f"{relative} reads a test-only store facade attribute: {offenders}"
         )
+        if str(relative) not in CONN_ALLOWLIST:
+            assert not _uses_token(source, ".conn"), (
+                f"{relative} calls .conn off a store; open a ledger handle instead"
+            )
+
+
+@pytest.mark.parametrize("package", LAYER_PACKAGES)
+def test_no_removed_ledger_seams_remain(package):
+    for path in _modules(package):
+        relative = path.relative_to(ROOT)
+        source = path.read_text()
+        offenders = [token for token in REMOVED_SEAMS if _uses_token(source, token)]
+        assert not offenders, f"{relative} uses a removed ledger seam: {offenders}"
+
+        # ``active_user`` survives only as ledger-internal state on the handle.
+        if not str(relative).startswith(str(LEDGER_INTERNAL_PREFIX)):
+            assert not _uses_token(source, ACTIVE_USER_TOKEN), (
+                f"{relative} still references the removed thread-local '{ACTIVE_USER_TOKEN}'"
+            )
+
+
+@pytest.mark.parametrize("package", LAYER_PACKAGES)
+def test_no_phase_b2_markers_remain(package):
+    for path in _modules(package):
+        source = path.read_text()
+        assert PHASE_B2_MARKER not in source, f"{path.relative_to(ROOT)} still carries a Phase B2 marker"
+
+
+@pytest.mark.parametrize("package", LAYER_PACKAGES)
+def test_no_module_level_database_manager_instances(package):
+    for path in _modules(package):
+        for lineno, line in enumerate(path.read_text().splitlines(), start=1):
+            assert not MODULE_LEVEL_STORE.match(line), (
+                f"{path.relative_to(ROOT)}:{lineno} constructs a module-level DatabaseManager"
+            )

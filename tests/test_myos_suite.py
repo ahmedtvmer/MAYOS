@@ -168,7 +168,7 @@ def isolated_db(tmp_path, monkeypatch):
         catalog_path=tmp_path / "catalog.db",
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="test_trainee",
+        default_ledger_id="test_trainee",
     )
     try:
         db.create_catalog_schema()
@@ -191,7 +191,7 @@ def test_database_manager_operations(isolated_db):
     assert mode.lower() == "wal"
 
     # User profile persistence
-    db.upsert_user_profile(
+    db.ledger.upsert_user_profile(
         {
             "gender": "male",
             "proportions": "long_femurs",
@@ -204,7 +204,7 @@ def test_database_manager_operations(isolated_db):
             "stress_and_sleep": "Normal",
         }
     )
-    saved_profile = db.get_user_profile()
+    saved_profile = db.ledger.get_user_profile()
     assert saved_profile["weight_kg"] == 85.0
     assert saved_profile["weekly_frequency"] == 4
 
@@ -213,8 +213,8 @@ def test_database_manager_operations(isolated_db):
     set_id = str(uuid.uuid4())
     now_iso = datetime.now(UTC).isoformat()
 
-    db.log_workout_session(session_id, now_iso[:10], "Lower 1", now_iso, now_iso, 4)
-    db.log_workout_set(set_id, session_id, "ex_dummy", 1, 100.0, 8, 8.5)
+    db.ledger.log_workout_session(session_id, now_iso[:10], "Lower 1", now_iso, now_iso, 4)
+    db.ledger.log_workout_set(set_id, session_id, "ex_dummy", 1, 100.0, 8, 8.5)
 
     # Delete workout session -> workout_sets must cascade
     db.user_conn.execute("DELETE FROM workout_sessions WHERE id = ?", (session_id,))
@@ -261,7 +261,7 @@ def test_stream_assistant_turn_mocked_llm(fresh_store, monkeypatch):
     }
 
     monkeypatch.setattr(graph_module, "llm", _llm_stream_stub(mock_chunks))
-    tokens = list(stream_assistant_turn(state))
+    tokens = list(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
     assert "".join(tokens) == "Maintain scapular retraction throughout the movement."
     assert state["intent"] == "coaching_qa"
     assert state["program_updated"] is False
@@ -289,7 +289,7 @@ def test_stream_assistant_turn_records_generation_telemetry(fresh_store, monkeyp
 
     monkeypatch.setattr(graph_module, "_record_telemetry_event", fake_record)
     monkeypatch.setattr(graph_module, "llm", _llm_stream_stub(mock_chunks))
-    tokens = list(stream_assistant_turn(state))
+    tokens = list(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
     assert "".join(tokens).startswith("Maintain scapular")
     assert captured["intent"] == "coaching_qa"
     assert captured["tokens"] >= 1
@@ -319,7 +319,7 @@ def test_stream_assistant_turn_intercept_records_zero_tokens(fresh_store, monkey
 
     monkeypatch.setattr(graph_module, "_record_telemetry_event", fake_record)
     monkeypatch.setattr(graph_module, "evaluate_clinical_semantic_guard", lambda text, **kwargs: (False, 0.0))
-    tokens = list(stream_assistant_turn(state))
+    tokens = list(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
     assert "".join(tokens)
     assert captured["intent"] == "clinical_intercept"
     # Intercept path records router timing only; generation fields stay defaulted.

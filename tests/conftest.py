@@ -35,20 +35,56 @@ os.environ["OWNER_ALERT_EMAIL"] = ""
 
 
 @pytest.fixture(autouse=True)
-def _isolate_active_store():
-    """Starts every test with no ambient store, so tests cannot leak stores into each other.
+def _test_ledger_facade(monkeypatch):
+    """Test-only convenience: one explicit ``db.ledger`` handle per store.
 
-    Tests that exercise agent graphs or metering call ``database.store.set_store``
-    (directly or via :func:`service._base.bind_user`) with their own fresh store;
-    whatever they set is discarded here so run order cannot change the outcome.
+    Production ``DatabaseManager`` has no mounted ledger: every caller opens a
+    :class:`~database.ledger.handle.TrainingLedger` explicitly (ADR 041). Tests
+    that predate the split construct a store and address its ledger directly;
+    this fixture opens (and closes) the handle those tests name as ``db.ledger``
+    and keeps ``switch_user`` as "reopen ``db.ledger`` for this id". The ledger
+    operations themselves are still called explicitly on the handle object.
     """
-    from database.store import reset_store, set_store
+    from database.database_manager import DatabaseManager
 
-    token = set_store(None)
-    try:
-        yield
-    finally:
-        reset_store(token)
+    handles: list = []
+    original_init = DatabaseManager.__init__
+
+    def _bind(self):
+        self.ledger = self.open_ledger(self.default_ledger_id)
+        handles.append(self.ledger)
+        self.conn = self.ledger.conn
+        self.user_conn = self.ledger.conn
+        self.active_user = self.ledger.ledger_id
+
+    def _switch_user(self, username):
+        if self.ledger is not None:
+            self.ledger.close()
+        self.ledger = self.open_ledger(self._sanitize_username(username))
+        handles.append(self.ledger)
+        self.conn = self.ledger.conn
+        self.user_conn = self.ledger.conn
+        self.active_user = self.ledger.ledger_id
+        return True
+
+    def _create_user_schema(self):
+        return None
+
+    # ``__init__`` only (private, invisible to the public-surface snapshot), so no
+    # public class attributes are added for tests to trip over.
+    def wrapped_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        _bind(self)
+        self.switch_user = _switch_user.__get__(self)
+        self.create_user_schema = _create_user_schema.__get__(self)
+
+    monkeypatch.setattr(DatabaseManager, "__init__", wrapped_init)
+    yield
+    for handle in handles:
+        try:
+            handle.close()
+        except Exception:
+            pass
 
 
 @pytest.fixture
@@ -56,12 +92,12 @@ def fresh_store(tmp_path):
     """A fresh, isolated store bound to temporary registry + ledger paths (ADR 041).
 
     Copies the shipped exercise catalog so agent/program tests have a real
-    exercise library, and publishes the store as the active one for the test.
+    exercise library. The autouse ``_test_ledger_facade`` fixture exposes an
+    explicit ``db.ledger`` handle on it.
     """
     import shutil
 
     from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
-    from database.store import set_store
 
     catalog_path = tmp_path / "catalog.db"
     shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
@@ -70,10 +106,7 @@ def fresh_store(tmp_path):
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
     )
-    set_store(db)
     try:
         yield db
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
         db.catalog_conn.close()

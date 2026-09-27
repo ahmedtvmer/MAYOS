@@ -4,22 +4,30 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage
 
-from service._base import bind_user
+
+def _graph_config(db: Any, ledger: Any) -> dict[str, Any]:
+    """Carries the explicit ledger/store on the LangGraph run config (ADR 041)."""
+    return {"configurable": {"ledger": ledger, "store": db}}
 
 
 def start_onboarding(
     db: Any, trainee_id: str, player_account_id: str | None = None, ledger: Any | None = None
 ) -> dict[str, Any]:
     from agent.onboarding_graph import onboarding_graph
+    from service._base import ledger_scope
     from svc.llm import InferenceScope, run_inference_sync
 
-    clean_id = bind_user(db, trainee_id)  # Phase B2: onboarding graph reads the thread-local ledger
-    state = {"messages": [], "trainee_id": clean_id, "intake_step": 1, "is_complete": False, "profile_data": None}
-    return run_inference_sync(
-        onboarding_graph.invoke,
-        state,
-        scope=InferenceScope(account_id=player_account_id, role="player", purpose="onboarding"),
-    )
+    clean_id = db._sanitize_username(trainee_id)
+    with ledger_scope(db, ledger, clean_id) as handle:
+        state = {"messages": [], "trainee_id": clean_id, "intake_step": 1, "is_complete": False, "profile_data": None}
+        return run_inference_sync(
+            onboarding_graph.invoke,
+            state,
+            config=_graph_config(db, handle),
+            scope=InferenceScope(
+                account_id=player_account_id, role="player", purpose="onboarding", store=db
+            ),
+        )
 
 
 def answer_intake(
@@ -31,18 +39,23 @@ def answer_intake(
     ledger: Any | None = None,
 ) -> dict[str, Any]:
     from agent.onboarding_graph import onboarding_graph
+    from service._base import ledger_scope
     from svc.llm import InferenceScope, run_inference_sync
 
-    clean_id = bind_user(db, trainee_id)  # Phase B2: onboarding graph reads the thread-local ledger
-    state["messages"].append(HumanMessage(content=user_input))
-    state["trainee_id"] = clean_id
-    output = run_inference_sync(
-        onboarding_graph.invoke,
-        state,
-        scope=InferenceScope(account_id=player_account_id, role="player", purpose="onboarding"),
-    )
-    state.update(output)
-    return state
+    clean_id = db._sanitize_username(trainee_id)
+    with ledger_scope(db, ledger, clean_id) as handle:
+        state["messages"].append(HumanMessage(content=user_input))
+        state["trainee_id"] = clean_id
+        output = run_inference_sync(
+            onboarding_graph.invoke,
+            state,
+            config=_graph_config(db, handle),
+            scope=InferenceScope(
+                account_id=player_account_id, role="player", purpose="onboarding", store=db
+            ),
+        )
+        state.update(output)
+        return state
 
 
 def complete_onboarding(
@@ -65,13 +78,14 @@ def complete_onboarding(
         def _resolve_program():
             resolved = ensure_active_program(db, clean_id, player_account_id=player_account_id, ledger=ledger)
             if resolved is None and player_controls_program(db, ledger, player_account_id):
-                bind_user(db, clean_id)  # Phase B2: program pipeline reads the thread-local ledger
-                resolved = generate_program_pipeline()[0]
+                resolved = generate_program_pipeline(ledger=ledger)[0]
             return resolved
 
         program = run_inference_sync(
             _resolve_program,
-            scope=InferenceScope(account_id=player_account_id, role="player", purpose="onboarding_complete"),
+            scope=InferenceScope(
+                account_id=player_account_id, role="player", purpose="onboarding_complete", store=db
+            ),
         )
         if program is None:
             ledger.add_chat_message("assistant", f"Welcome! {COACH_CONTROLLED_ERROR}")

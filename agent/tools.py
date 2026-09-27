@@ -1,10 +1,10 @@
 # agent/tools.py
-from typing import Any
+from typing import Annotated, Any
 
-from langchain_core.tools import tool
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import InjectedToolArg, tool
 
 from agent.UserState import UserProfileSchema
-from database.store import get_store
 from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
@@ -12,6 +12,7 @@ logger = MyosLogger().get_logger(__name__)
 
 @tool(args_schema=UserProfileSchema)
 def save_user_profile(
+    config: Annotated[RunnableConfig, InjectedToolArg],
     proportions: str,
     age: int,
     weight_kg: float,
@@ -48,7 +49,7 @@ def save_user_profile(
     }
 
     try:
-        get_store().upsert_user_profile(profile_data)
+        config["configurable"]["ledger"].upsert_user_profile(profile_data)
         logger.info("User profile successfully upserted into SQLite.")
         return "User profile successfully saved and locked into database."
     except Exception as e:

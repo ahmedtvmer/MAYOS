@@ -59,7 +59,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -136,7 +136,7 @@ def _program_snapshot(db, player="p1"):
     rows = db.conn.execute(
         "SELECT id, is_active, version, weekly_frequency FROM training_programs ORDER BY id"
     ).fetchall()
-    active = db.get_active_program()
+    active = db.ledger.get_active_program()
     return (
         [tuple(row) for row in rows],
         active.version if active else None,
@@ -168,14 +168,14 @@ def test_set_schedule_appends_versions_without_rewriting_earlier_weekdays(api):
     # Historical versions are seeded through the ledger, not the service: the
     # service refuses to backdate, the DB layer stays permissive.
     db.switch_user("p1")
-    db.append_training_schedule(
+    db.ledger.append_training_schedule(
         "p1", [1, 3, 5], "Europe/London", _iso(-20, "Europe/London"), "2026-01-01T00:00:00+00:00"
     )
-    db.append_training_schedule(
+    db.ledger.append_training_schedule(
         "p1", [2, 4], "America/New_York", _iso(-5, "America/New_York"), "2026-01-02T00:00:00+00:00"
     )
-    assert db.get_schedule_effective_on("p1", _iso(-10, "Europe/London"))["weekdays"] == [1, 3, 5]
-    assert db.get_schedule_effective_on("p1", _iso(0, "America/New_York"))["weekdays"] == [2, 4]
+    assert db.ledger.get_schedule_effective_on("p1", _iso(-10, "Europe/London"))["weekdays"] == [1, 3, 5]
+    assert db.ledger.get_schedule_effective_on("p1", _iso(0, "America/New_York"))["weekdays"] == [2, 4]
 
     # A new edit today appends a version; it does not rewrite the earlier ones.
     appended = _put_schedule(client, headers, weekdays=[6], timezone="Asia/Tokyo")
@@ -183,9 +183,9 @@ def test_set_schedule_appends_versions_without_rewriting_earlier_weekdays(api):
     assert appended.json()["version"]["weekdays"] == [6]
     assert appended.json()["current"]["weekdays"] == [6]
 
-    assert db.get_schedule_effective_on("p1", _iso(-10, "Europe/London"))["weekdays"] == [1, 3, 5]
-    assert db.get_schedule_effective_on("p1", _iso(-1, "America/New_York"))["weekdays"] == [2, 4]
-    assert len(db.list_training_schedules("p1")) == 3
+    assert db.ledger.get_schedule_effective_on("p1", _iso(-10, "Europe/London"))["weekdays"] == [1, 3, 5]
+    assert db.ledger.get_schedule_effective_on("p1", _iso(-1, "America/New_York"))["weekdays"] == [2, 4]
+    assert len(db.ledger.list_training_schedules("p1")) == 3
 
     listed = client.get("/profile/schedule", headers=headers)
     assert listed.status_code == 200, listed.text
@@ -199,8 +199,8 @@ def test_set_schedule_does_not_touch_program_frequency_or_day_order(api):
     player = _register(client, "p1")
     headers = _authed(player["access_token"])
     db.switch_user("p1")
-    db.upsert_user_profile({"current_goal": "Strength"})
-    db.save_training_program(_program_payload(frequency=3))
+    db.ledger.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.save_training_program(_program_payload(frequency=3))
     before = _program_snapshot(db)
 
     assert _put_schedule(client, headers, weekdays=[2, 4]).status_code == 200
@@ -234,10 +234,10 @@ def test_same_effective_from_returns_later_created_version(api):
 
     same_day = _iso(-2, "UTC")
     db.switch_user("p1")
-    db.append_training_schedule("p1", [1], "UTC", same_day, "2026-01-01T00:00:00+00:00")
-    second = db.append_training_schedule("p1", [5], "UTC", same_day, "2026-01-02T00:00:00+00:00")
+    db.ledger.append_training_schedule("p1", [1], "UTC", same_day, "2026-01-01T00:00:00+00:00")
+    second = db.ledger.append_training_schedule("p1", [5], "UTC", same_day, "2026-01-02T00:00:00+00:00")
 
-    effective = db.get_schedule_effective_on("p1", same_day)
+    effective = db.ledger.get_schedule_effective_on("p1", same_day)
     assert effective["weekdays"] == [5]
     assert effective["schedule_id"] == second["schedule_id"]
 
@@ -248,20 +248,20 @@ def test_past_effective_from_is_refused_and_history_is_unchanged(api):
     headers = _authed(player["access_token"])
 
     db.switch_user("p1")
-    db.append_training_schedule(
+    db.ledger.append_training_schedule(
         "p1", [1, 3, 5], "UTC", _iso(-20), "2026-01-01T00:00:00+00:00"
     )
 
     refused = _put_schedule(client, headers, weekdays=[2], timezone="UTC", effective_from=_iso(-1))
     assert refused.status_code == 400, refused.text
-    assert db.get_schedule_effective_on("p1", _iso(-10))["weekdays"] == [1, 3, 5]
-    assert len(db.list_training_schedules("p1")) == 1
+    assert db.ledger.get_schedule_effective_on("p1", _iso(-10))["weekdays"] == [1, 3, 5]
+    assert len(db.ledger.list_training_schedules("p1")) == 1
 
     # An edit effective today is allowed and still leaves the past untouched.
     allowed = _put_schedule(client, headers, weekdays=[2, 4], timezone="UTC", effective_from=_iso(0))
     assert allowed.status_code == 200, allowed.text
-    assert db.get_schedule_effective_on("p1", _iso(-10))["weekdays"] == [1, 3, 5]
-    assert db.get_schedule_effective_on("p1", _iso(0))["weekdays"] == [2, 4]
+    assert db.ledger.get_schedule_effective_on("p1", _iso(-10))["weekdays"] == [1, 3, 5]
+    assert db.ledger.get_schedule_effective_on("p1", _iso(0))["weekdays"] == [2, 4]
 
 
 @pytest.mark.parametrize("bad_date", ["20260926", "2026-W39-1", "2026-9-26", "26-09-26"])
@@ -273,7 +273,7 @@ def test_non_canonical_effective_from_is_refused(api, bad_date):
     refused = _put_schedule(client, headers, weekdays=[1], timezone="UTC", effective_from=bad_date)
     assert refused.status_code == 400, refused.text
     db.switch_user("p1")
-    assert db.list_training_schedules("p1") == []
+    assert db.ledger.list_training_schedules("p1") == []
 
 
 def test_set_schedule_defaults_to_player_local_today(api, monkeypatch):
@@ -318,7 +318,7 @@ def test_set_schedule_validation_failures_are_400(api, body):
     refused = client.put("/profile/schedule", headers=headers, json=body)
     assert refused.status_code == 400, refused.text
     db.switch_user("p1")
-    assert db.list_training_schedules("p1") == []
+    assert db.ledger.list_training_schedules("p1") == []
 
 
 # --------------------------------------------------------------------------
@@ -355,8 +355,8 @@ def test_overlapping_pauses_are_both_active_on_covered_date(api):
     assert second.status_code == 201, second.text
 
     db.switch_user("p1")
-    assert len(db.list_training_pauses("p1")) == 2
-    covered = db.list_active_or_upcoming_training_pauses("p1", _iso(4))
+    assert len(db.ledger.list_training_pauses("p1")) == 2
+    covered = db.ledger.list_active_or_upcoming_training_pauses("p1", _iso(4))
     assert {pause["pause_id"] for pause in covered} == {
         first.json()["pause"]["pause_id"],
         second.json()["pause"]["pause_id"],
@@ -379,7 +379,7 @@ def test_invalid_pauses_are_400(api, overrides):
     refused = client.post("/profile/schedule/pauses", headers=headers, json=overrides)
     assert refused.status_code == 400, refused.text
     db.switch_user("p1")
-    assert db.list_training_pauses("p1") == []
+    assert db.ledger.list_training_pauses("p1") == []
 
 
 def test_fourteen_day_pause_is_allowed_and_reason_is_ignored(api):

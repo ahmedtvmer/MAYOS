@@ -68,17 +68,14 @@ def seed_only(csv_path: Path) -> None:
         logger.info("Catalog seed complete: %s exercises, %s muscle mappings.", exercise_count, muscles_count)
         print(f"Catalog seed complete: {exercise_count} exercises, {muscles_count} muscle mappings.")
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
         db.catalog_conn.close()
 
 
 def run_tests(csv_path: Path) -> None:
-    logger.info("Initializing DatabaseManager singleton...")
-    db = DatabaseManager(catalog_path=DEFAULT_CATALOG_PATH, users_dir=DEFAULT_USERS_DIR, active_user="test_user")
+    logger.info("Initializing DatabaseManager...")
+    db = DatabaseManager(catalog_path=DEFAULT_CATALOG_PATH, users_dir=DEFAULT_USERS_DIR)
 
     cat_cursor = db.catalog_conn.cursor()
-    user_cursor = db.user_conn.cursor()
 
     # 1. Test sqlite-vec extension on catalog_conn
     vec_version = cat_cursor.execute("SELECT vec_version()").fetchone()[0]
@@ -98,39 +95,45 @@ def run_tests(csv_path: Path) -> None:
     assert muscles_count > 0, "Failed: exercise_secondary_muscles table is empty."
     logger.info(f"Verification passed: {exercise_count} exercises and {muscles_count} muscle mappings loaded.")
 
-    # 4. Verify foreign keys and cascade delete in user_conn
+    # 4. Verify foreign keys and cascade delete on an explicit ledger handle
     logger.info("Testing foreign key constraints and cascade deletes on user ledger...")
     test_session_id = str(uuid.uuid4())
     test_set_id = str(uuid.uuid4())
-
-    # Query sample exercise ID via transparent view on user_conn
-    sample_exercise_id = user_cursor.execute("SELECT id FROM exercises LIMIT 1").fetchone()[0]
     now_iso = datetime.now(UTC).isoformat()
 
-    # Insert test session into user ledger
-    user_cursor.execute(
-        """
-        INSERT INTO workout_sessions (id, session_date, split_name, started_at)
-        VALUES (?, '2026-09-03', 'Lower', ?)
-    """,
-        (test_session_id, now_iso),
-    )
+    with db.open_ledger("test_user") as ledger:
+        user_conn = ledger.conn
+        user_cursor = user_conn.cursor()
 
-    # Insert test set referencing the session and sample exercise
-    user_cursor.execute(
-        """
-        INSERT INTO workout_sets (id, session_id, exercise_id, set_index, weight_kg, reps, logged_at)
-        VALUES (?, ?, ?, 1, 100.0, 8, ?)
-    """,
-        (test_set_id, test_session_id, sample_exercise_id, now_iso),
-    )
-    db.user_conn.commit()
+        # Query sample exercise ID via transparent view on the ledger connection
+        sample_exercise_id = user_cursor.execute("SELECT id FROM exercises LIMIT 1").fetchone()[0]
 
-    # Delete session and verify set is cascade-deleted
-    user_cursor.execute("DELETE FROM workout_sessions WHERE id = ?", (test_session_id,))
-    db.user_conn.commit()
+        # Insert test session into user ledger
+        user_cursor.execute(
+            """
+            INSERT INTO workout_sessions (id, session_date, split_name, started_at)
+            VALUES (?, '2026-09-03', 'Lower', ?)
+        """,
+            (test_session_id, now_iso),
+        )
 
-    remaining_sets = user_cursor.execute("SELECT COUNT(*) FROM workout_sets WHERE id = ?", (test_set_id,)).fetchone()[0]
+        # Insert test set referencing the session and sample exercise
+        user_cursor.execute(
+            """
+            INSERT INTO workout_sets (id, session_id, exercise_id, set_index, weight_kg, reps, logged_at)
+            VALUES (?, ?, ?, 1, 100.0, 8, ?)
+        """,
+            (test_set_id, test_session_id, sample_exercise_id, now_iso),
+        )
+        user_conn.commit()
+
+        # Delete session and verify set is cascade-deleted
+        user_cursor.execute("DELETE FROM workout_sessions WHERE id = ?", (test_session_id,))
+        user_conn.commit()
+
+        remaining_sets = user_cursor.execute(
+            "SELECT COUNT(*) FROM workout_sets WHERE id = ?", (test_set_id,)
+        ).fetchone()[0]
     assert remaining_sets == 0, "Failed: ON DELETE CASCADE failed. Foreign key enforcement is OFF."
     logger.info("Verification passed: Cascade deletes function properly on user ledger.")
 

@@ -4,10 +4,9 @@ Two contracts share this router: the legacy three-step chat state (``/start``,
 ``/step``, ``/complete``) kept for backward compatibility, and the structured,
 resumable named-answer intake (``/intake``, ADR 021) that the visual flow uses.
 
-The legacy three-step contract runs the onboarding graph, which still resolves
-its ledger through the compatibility mount; those routes therefore keep the
-verified-player thread-local path (``bind_request``) until Phase B2. The
-structured intake routes use the explicit ledger handle.
+Every route reaches the ledger only through an explicit handle: the structured
+intake routes take ``get_ledger``, and the legacy routes open one for the
+request around the onboarding graph (ADR 041).
 """
 
 import asyncio
@@ -19,7 +18,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from service import intake as intake_service
 from service import onboarding as onboarding_service
-from svc.dependencies import account_id_of, bind_request, get_current_trainee, get_db, get_ledger, get_verified_player
+from svc.dependencies import account_id_of, get_current_trainee, get_db, get_ledger, get_verified_player
 from svc.rate_limit import ONBOARDING_LIMIT, limiter
 from svc.schemas import (
     IntakeAnswerIn,
@@ -66,11 +65,11 @@ def _public_view(state: dict[str, Any], only_new: list | None = None) -> dict[st
     return {"intake_step": state.get("intake_step", 1), "is_complete": state.get("is_complete", False), "messages": texts}
 
 
-def _load_or_start(db: Any, trainee: str, account_id: str | None) -> dict[str, Any]:
-    saved = db.load_onboarding_state()
+def _load_or_start(db: Any, ledger: Any, trainee: str, account_id: str | None) -> dict[str, Any]:
+    saved = ledger.load_onboarding_state()
     if saved is not None:
         return _deserialize(db, trainee, saved)
-    return onboarding_service.start_onboarding(db, trainee, player_account_id=account_id)
+    return onboarding_service.start_onboarding(db, trainee, player_account_id=account_id, ledger=ledger)
 
 
 @router.post("/start", response_model=OnboardingStartOut)
@@ -84,12 +83,12 @@ async def start_onboarding(
     """
 
     def _run():
-        bind_request(db, trainee)  # Phase B2: legacy graph reads the thread-local ledger
-        if intake_service.structured_intake_active(db, trainee):
-            raise intake_service.StructuredIntakeActive()
-        state = _load_or_start(db, trainee, account_id_of(trainee))
-        db.save_onboarding_state(_serialize(state))
-        return _public_view(state)
+        with db.open_ledger(str(trainee)) as ledger:
+            if intake_service.structured_intake_active(db, trainee, ledger=ledger):
+                raise intake_service.StructuredIntakeActive()
+            state = _load_or_start(db, ledger, trainee, account_id_of(trainee))
+            ledger.save_onboarding_state(_serialize(state))
+            return _public_view(state)
 
     try:
         return await asyncio.to_thread(_run)
@@ -106,20 +105,22 @@ async def answer_step(
     db: Annotated[Any, Depends(get_db)],
 ):
     def _run():
-        bind_request(db, trainee)  # Phase B2: legacy graph reads the thread-local ledger
-        if intake_service.structured_intake_active(db, trainee):
-            raise intake_service.StructuredIntakeActive()
-        account_id = account_id_of(trainee)
-        state = (
-            onboarding_service.start_onboarding(db, trainee, player_account_id=account_id)
-            if body.reset
-            else _load_or_start(db, trainee, account_id)
-        )
-        seen = len(state.get("messages", []))
-        if body.content:
-            state = onboarding_service.answer_intake(db, trainee, state, body.content, player_account_id=account_id)
-        db.save_onboarding_state(_serialize(state))
-        return _public_view(state, only_new=state.get("messages", [])[seen:])
+        with db.open_ledger(str(trainee)) as ledger:
+            if intake_service.structured_intake_active(db, trainee, ledger=ledger):
+                raise intake_service.StructuredIntakeActive()
+            account_id = account_id_of(trainee)
+            state = (
+                onboarding_service.start_onboarding(db, trainee, player_account_id=account_id, ledger=ledger)
+                if body.reset
+                else _load_or_start(db, ledger, trainee, account_id)
+            )
+            seen = len(state.get("messages", []))
+            if body.content:
+                state = onboarding_service.answer_intake(
+                    db, trainee, state, body.content, player_account_id=account_id, ledger=ledger
+                )
+            ledger.save_onboarding_state(_serialize(state))
+            return _public_view(state, only_new=state.get("messages", [])[seen:])
 
     try:
         return await asyncio.to_thread(_run)
@@ -203,18 +204,22 @@ async def complete_onboarding(
     trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
 ):
     def _run():
-        bind_request(db, trainee)  # Phase B2: onboarding graph reads the thread-local ledger
-        account_id = account_id_of(trainee)
-        saved = db.load_onboarding_state()
-        state = (
-            _deserialize(db, trainee, saved)
-            if saved is not None
-            else onboarding_service.start_onboarding(db, trainee, player_account_id=account_id)
-        )
-        result = onboarding_service.complete_onboarding(db, trainee, state, player_account_id=account_id)
-        db.clear_onboarding_state()
-        program = result["program"]
-        intake_service.record_legacy_completion(db, trainee, program, result.get("program_message"))
+        with db.open_ledger(str(trainee)) as ledger:
+            account_id = account_id_of(trainee)
+            saved = ledger.load_onboarding_state()
+            state = (
+                _deserialize(db, trainee, saved)
+                if saved is not None
+                else onboarding_service.start_onboarding(db, trainee, player_account_id=account_id, ledger=ledger)
+            )
+            result = onboarding_service.complete_onboarding(
+                db, trainee, state, player_account_id=account_id, ledger=ledger
+            )
+            ledger.clear_onboarding_state()
+            program = result["program"]
+            intake_service.record_legacy_completion(
+                db, trainee, program, result.get("program_message"), ledger=ledger
+            )
         if program is None:
             return {"program_name": None, "weekly_frequency": None, "program_message": result["program_message"]}
         return {"program_name": program.program_name, "weekly_frequency": program.weekly_frequency}

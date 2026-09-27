@@ -45,7 +45,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -113,7 +113,7 @@ def _seed_alert(api, days_ago=5, coach_name="coach", player_name="p1"):
     )
     db.catalog_conn.commit()
     db.switch_user(player_name)
-    db.append_training_schedule(
+    db.ledger.append_training_schedule(
         player_name,
         ALL_DAYS,
         "UTC",
@@ -194,16 +194,14 @@ def test_alert_and_roster_reads_never_open_a_player_ledger(api, monkeypatch):
     coach_headers, _, _, _, alert = _seed_alert(api)
     client, db = api
 
-    import svc.dependencies as dependencies
-
     mounted: list[str] = []
-    real_bind_user = dependencies.bind_user
+    real_open_ledger = db.open_ledger
 
-    def spy(db_arg, ledger_id):
+    def spy(ledger_id):
         mounted.append(str(ledger_id))
-        return real_bind_user(db_arg, ledger_id)
+        return real_open_ledger(ledger_id)
 
-    monkeypatch.setattr(dependencies, "bind_user", spy)
+    monkeypatch.setattr(db, "open_ledger", spy)
 
     assert client.get("/coach/alerts", headers=coach_headers).status_code == 200
     assert client.get("/coach/assignments", headers=coach_headers).status_code == 200

@@ -56,7 +56,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -150,7 +150,7 @@ def _counting_saver(db: Any, program_name: str):
     def fake(**kwargs):
         calls["n"] += 1
         program = _program(program_name)
-        db.save_training_program(
+        kwargs["ledger"].save_training_program(
             program.model_dump(),
             published_by_coach_account_id=kwargs.get("published_by_coach_account_id"),
         )
@@ -188,7 +188,7 @@ def _publish(client, coach_headers, assignment_id, **body):
 
 def _active(db, player="p1"):
     db.switch_user(player)
-    return db.get_active_program()
+    return db.ledger.get_active_program()
 
 
 def _program_rows(db, player="p1"):
@@ -254,7 +254,7 @@ def test_active_autogeneration_synthesizes_before_publication(api, monkeypatch):
     client, db, _ = api
     _, player_headers, _, _, _ = _assigned_player(api)
     db.switch_user("p1")
-    db.upsert_user_profile({"rep_preference": "balanced"})
+    db.ledger.upsert_user_profile({"rep_preference": "balanced"})
 
     _, calls = _auto_generation(db, monkeypatch)
     active = client.get("/programs/active", headers=player_headers)
@@ -369,7 +369,7 @@ def test_onboarding_synthesizes_before_publication(api, monkeypatch):
     _assigned_player(api)
     player_account_id = db.get_active_account_by_username("p1")["account_id"]
     db.switch_user("p1")
-    db.upsert_user_profile({"rep_preference": "balanced"})
+    db.ledger.upsert_user_profile({"rep_preference": "balanced"})
 
     _, calls = _auto_generation(db, monkeypatch)
     result = onboarding_service.complete_onboarding(
@@ -452,10 +452,8 @@ def test_assistant_mutation_proceeds_before_publication(api, monkeypatch):
     client, db, _ = api
     _, _, _, _, player_account_id = _assigned_player(api)
 
-    monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
     pipeline = MagicMock(return_value=(_program("Mutated Plan"), "md"))
     monkeypatch.setattr(assistant_graph, "generate_program_pipeline", pipeline)
-    monkeypatch.setattr(db, "clear_chat_history", MagicMock())
     db.switch_user("p1")
 
     state = {
@@ -465,7 +463,7 @@ def test_assistant_mutation_proceeds_before_publication(api, monkeypatch):
         "intent": "program_mutation",
         "intent_metadata": {"target_frequency": None},
     }
-    result = assistant_graph.program_mutation_node(state)
+    result = assistant_graph.program_mutation_node(state, {"configurable": {"ledger": db.ledger, "store": db}})
     assert result["program_updated"] is True
     pipeline.assert_called_once()
 
@@ -479,7 +477,6 @@ def test_assistant_mutation_refused_during_control(api, monkeypatch):
     _coach_generation(db, monkeypatch)
     assert _publish(client, coach_headers, assignment_id).status_code == 200
 
-    monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
     pipeline = MagicMock(return_value=(_program("Mutated Plan"), "md"))
     monkeypatch.setattr(assistant_graph, "generate_program_pipeline", pipeline)
     db.switch_user("p1")
@@ -491,7 +488,7 @@ def test_assistant_mutation_refused_during_control(api, monkeypatch):
         "intent": "program_mutation",
         "intent_metadata": {"target_frequency": None},
     }
-    result = assistant_graph.program_mutation_node(state)
+    result = assistant_graph.program_mutation_node(state, {"configurable": {"ledger": db.ledger, "store": db}})
     assert result["response_content"] == programs_service.COACH_CONTROLLED_ERROR
     pipeline.assert_not_called()
 
@@ -506,10 +503,8 @@ def test_assistant_mutation_proceeds_after_unassignment(api, monkeypatch):
     assert _publish(client, coach_headers, assignment_id).status_code == 200
     _end_assignment(client, player_headers)
 
-    monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
     pipeline = MagicMock(return_value=(_program("Mutated Plan"), "md"))
     monkeypatch.setattr(assistant_graph, "generate_program_pipeline", pipeline)
-    monkeypatch.setattr(db, "clear_chat_history", MagicMock())
     db.switch_user("p1")
 
     state = {
@@ -519,7 +514,7 @@ def test_assistant_mutation_proceeds_after_unassignment(api, monkeypatch):
         "intent": "program_mutation",
         "intent_metadata": {"target_frequency": None},
     }
-    result = assistant_graph.program_mutation_node(state)
+    result = assistant_graph.program_mutation_node(state, {"configurable": {"ledger": db.ledger, "store": db}})
     assert result["program_updated"] is True
     pipeline.assert_called_once()
 
@@ -536,10 +531,9 @@ def test_assistant_swap_proceeds_before_publication(api, monkeypatch):
     assert generated.status_code == 200, generated.text
     assert calls["n"] == 1
 
-    monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
-    swap = MagicMock(return_value=True)
-    monkeypatch.setattr(db, "swap_program_exercise", swap)
     db.switch_user("p1")
+    swap = MagicMock(return_value=True)
+    monkeypatch.setattr(db.ledger, "swap_program_exercise", swap)
 
     state = {
         "messages": [HumanMessage(content="swap bench press for dumbbell press")],
@@ -548,7 +542,7 @@ def test_assistant_swap_proceeds_before_publication(api, monkeypatch):
         "intent": "exercise_substitution",
         "intent_metadata": {"mode": "direct_swap", "source_exercise": "Bench Press", "target_exercise": "Dumbbell Press"},
     }
-    result = assistant_graph.exercise_substitution_node(state)
+    result = assistant_graph.exercise_substitution_node(state, {"configurable": {"ledger": db.ledger, "store": db}})
     assert result["response_content"] != programs_service.COACH_CONTROLLED_ERROR
     swap.assert_called_once()
 
@@ -562,10 +556,9 @@ def test_assistant_swap_refused_during_control(api, monkeypatch):
     _coach_generation(db, monkeypatch)
     assert _publish(client, coach_headers, assignment_id).status_code == 200
 
-    monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
-    swap = MagicMock(return_value=True)
-    monkeypatch.setattr(db, "swap_program_exercise", swap)
     db.switch_user("p1")
+    swap = MagicMock(return_value=True)
+    monkeypatch.setattr(db.ledger, "swap_program_exercise", swap)
 
     state = {
         "messages": [HumanMessage(content="swap bench press for dumbbell press")],
@@ -574,7 +567,7 @@ def test_assistant_swap_refused_during_control(api, monkeypatch):
         "intent": "exercise_substitution",
         "intent_metadata": {"mode": "direct_swap", "source_exercise": "Bench Press", "target_exercise": "Dumbbell Press"},
     }
-    result = assistant_graph.exercise_substitution_node(state)
+    result = assistant_graph.exercise_substitution_node(state, {"configurable": {"ledger": db.ledger, "store": db}})
     assert result["response_content"] == programs_service.COACH_CONTROLLED_ERROR
     swap.assert_not_called()
 
@@ -589,10 +582,9 @@ def test_assistant_swap_proceeds_after_unassignment(api, monkeypatch):
     assert _publish(client, coach_headers, assignment_id).status_code == 200
     _end_assignment(client, player_headers)
 
-    monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
-    swap = MagicMock(return_value=True)
-    monkeypatch.setattr(db, "swap_program_exercise", swap)
     db.switch_user("p1")
+    swap = MagicMock(return_value=True)
+    monkeypatch.setattr(db.ledger, "swap_program_exercise", swap)
 
     state = {
         "messages": [HumanMessage(content="swap bench press for dumbbell press")],
@@ -601,6 +593,6 @@ def test_assistant_swap_proceeds_after_unassignment(api, monkeypatch):
         "intent": "exercise_substitution",
         "intent_metadata": {"mode": "direct_swap", "source_exercise": "Bench Press", "target_exercise": "Dumbbell Press"},
     }
-    result = assistant_graph.exercise_substitution_node(state)
+    result = assistant_graph.exercise_substitution_node(state, {"configurable": {"ledger": db.ledger, "store": db}})
     assert result["response_content"] != programs_service.COACH_CONTROLLED_ERROR
     swap.assert_called_once()

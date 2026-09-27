@@ -42,7 +42,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -110,20 +110,20 @@ def test_public_self_upgrade_is_denied(api):
 
 def test_coach_gate_checks_registry_before_mounting_ledger(api, monkeypatch):
     """ADR 015: a valid non-coach is refused 403 without its ledger being opened."""
-    import svc.dependencies as dependencies
-
     client, db, _ = api
     mounted: list[str] = []
-    real_bind_user = dependencies.bind_user
+    real_open_ledger = db.open_ledger
 
-    def spy(db_arg, trainee_id):
-        mounted.append(str(trainee_id))
-        return real_bind_user(db_arg, trainee_id)
-
-    monkeypatch.setattr(dependencies, "bind_user", spy)
+    def spy(ledger_id):
+        mounted.append(str(ledger_id))
+        return real_open_ledger(ledger_id)
 
     registered = _register(client, "alice")
     headers = _authed(registered["access_token"])
+
+    # Registration legitimately opens the new account's ledger; watch from here on.
+    monkeypatch.setattr(db, "open_ledger", spy)
+
     assert client.get("/coach/profile", headers=headers).status_code == 403
     assert mounted == []
 

@@ -118,7 +118,6 @@ async def _alert_sweep_loop(db: object, interval_seconds: float) -> None:
 async def lifespan(app: FastAPI):
     from database.database_manager import DatabaseManager
     from database.storage import StorageNotReady, validate_data_root
-    from database.store import set_store
     from svc.llm import warmup_llm
 
     _ready.update(model=False, catalog=False, storage=False, draining=False)
@@ -133,9 +132,8 @@ async def lifespan(app: FastAPI):
             validate_data_root()
             _ready["storage"] = True
             db = DatabaseManager()
-            # The app owns the one store; requests and ambient access both see it.
+            # The app owns the one store; requests receive it via get_db.
             app.state.db = db
-            set_store(db)
             # Complete any deletion whose catalog transaction did not finish, so
             # a crash cannot leave a half-deleted account (ADR 015/039).
             await asyncio.to_thread(db.replay_deletions)

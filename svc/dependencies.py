@@ -6,7 +6,6 @@ import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from service._base import bind_user
 from svc.auth import token_claims, token_version_of
 
 _bearer = HTTPBearer(auto_error=False)
@@ -40,15 +39,11 @@ async def get_db(request: Request) -> Any:
     """Returns the one store the application built at startup (ADR 041).
 
     Never constructs a store: the app owns exactly one, created in the lifespan
-    and published on ``app.state``. Also arms ambient store access for agent and
-    metering code that runs on this request's context.
+    and published on ``app.state``. Callers pass it explicitly to service code.
     """
-    from database.store import set_store
-
     store = request.app.state.db
     if store is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database not ready.")
-    set_store(store)
     return store
 
 
@@ -101,15 +96,6 @@ def _resolve_registry_identity(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.") from None
     account = _authorize_account(db, account_id, token_version_of(claims))
     return _RegistryIdentity(claims, account)
-
-
-def _mount_verified_identity(db: Any, identity: _RegistryIdentity) -> VerifiedPlayer:
-    """Mounts the ledger on this thread (compatibility path) and applies the ledger-side jti check."""
-    bind_user(db, identity.account["ledger_id"])  # Phase B2: thread-local mount for agent/ callers
-    claims = identity.claims
-    if db.is_token_revoked(str(claims["jti"])):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked.")
-    return _verified_player(identity)
 
 
 def _verified_player(identity: _RegistryIdentity) -> VerifiedPlayer:
@@ -165,8 +151,14 @@ async def get_current_trainee(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     db: Annotated[Any, Depends(get_db)],
 ) -> str:
-    """Resolves a verified, active player account to its ledger id. Never trusts the body."""
-    return _mount_verified_identity(db, _resolve_registry_identity(credentials, db))
+    """Resolves a verified, active player account to its ledger id. Never trusts the body.
+
+    Every registry check runs first (ADR 025); a revoked ``jti`` is then rejected
+    through a short-lived ledger handle that closes before the handler runs.
+    """
+    player = _verified_player(_resolve_registry_identity(credentials, db))
+    _reject_revoked_token(db, player)
+    return player
 
 
 async def get_current_coach(
@@ -175,25 +167,18 @@ async def get_current_coach(
 ) -> VerifiedPlayer:
     """Resolves a verified account that currently holds the coach capability.
 
-    The capability is read from the durable registry before the ledger is
-    mounted, so a valid player without coaching is refused 403 without opening a
-    ledger. A grant or revocation takes effect without reissuing the token.
+    The capability is read from the durable registry before any ledger is opened,
+    so a valid player without coaching is refused 403 without opening a ledger. A
+    grant or revocation takes effect without reissuing the token.
     """
     identity = _resolve_registry_identity(credentials, db)
     if not identity.account["is_coach"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Coach capability required.")
-    return _mount_verified_identity(db, identity)
+    player = _verified_player(identity)
+    _reject_revoked_token(db, player)
+    return player
 
 
 def account_id_of(trainee: Any) -> str | None:
     """Returns the verified account id carried by the trainee, or None for a bare ledger id."""
     return trainee.account_id if isinstance(trainee, VerifiedPlayer) else None
-
-
-def bind_request(db: Any, trainee_id: str) -> str:
-    """Mounts the verified trainee ledger on this worker thread and sets the request ContextVar."""
-    if isinstance(trainee_id, VerifiedPlayer):
-        account = _authorize_account(db, trainee_id.account_id, trainee_id.session_epoch)
-        if account["ledger_id"] != trainee_id:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
-    return bind_user(db, trainee_id)  # Phase B2: compatibility mount for agent/ callers

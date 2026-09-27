@@ -50,10 +50,9 @@ def ensure_active_program(
         profile = ledger.get_user_profile()
         if not profile:
             return None
-        from service._base import bind_user
-
-        bind_user(db, trainee_id)  # Phase B2: program pipeline reads the thread-local ledger
-        program, _ = generate_program_pipeline(rep_preference_override=profile.get("rep_preference", "balanced"))
+        program, _ = generate_program_pipeline(
+            rep_preference_override=profile.get("rep_preference", "balanced"), ledger=ledger
+        )
         return program
 
 

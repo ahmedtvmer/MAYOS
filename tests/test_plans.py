@@ -47,7 +47,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -214,8 +214,8 @@ def test_plan_change_preserves_account_program_history_and_assignment(api):
 
     # Alice's own program and committed training history.
     db.switch_user("alice")
-    db.upsert_user_profile({"current_goal": "Strength"})
-    db.save_training_program(_saved_split_payload())
+    db.ledger.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.save_training_program(_saved_split_payload())
     commit = client.post("/workouts/sessions", headers=alice_headers, json=_session_payload())
     assert commit.status_code == 201, commit.text
 

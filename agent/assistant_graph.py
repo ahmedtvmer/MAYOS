@@ -44,7 +44,6 @@ from agent.telemetry_reconciler import (
     clean_movement_stem,
     reconcile_telemetry_query,
 )
-from database.store import get_store
 from service import programs as programs_service
 from utils.logger import MyosLogger
 from utils.model_downloader import llm, uses_cloud_backend
@@ -213,17 +212,22 @@ def _explicit_preferred_name(query: str) -> str | None:
     return _valid_preferred_name(match.group(1)) if match else None
 
 
-def hydrate_context_node(state: AssistantState) -> dict[str, Any]:
-    _bind_trainee_connection(state)
-    db = get_store()
-    profile = db.get_user_profile()
+def _graph_context(config: dict[str, Any] | None) -> tuple[Any, Any]:
+    """Resolves the explicit ``(ledger, store)`` handles carried on the run config."""
+    configurable = (config or {}).get("configurable", {}) or {}
+    return configurable.get("ledger"), configurable.get("store")
+
+
+def hydrate_context_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
+    ledger, _ = _graph_context(config)
+    profile = ledger.get_user_profile()
     profile = profile if isinstance(profile, dict) else {}
-    getter = getattr(db, "get_assistant_memory", None)
+    getter = getattr(ledger, "get_assistant_memory", None)
     memory = getter() if callable(getter) else {}
     name = _valid_preferred_name(memory.get("preferred_name")) if isinstance(memory, dict) else None
-    telemetry = state.get("telemetry_context") or db.get_compact_telemetry()
+    telemetry = state.get("telemetry_context") or ledger.get_compact_telemetry()
     recent = " ".join(_get_message_text(m) for m in state.get("messages", [])[-TAIL_WINDOW_SIZE:])
-    comparison = _session_comparison_context() if re.search(r"\b(?:session|workout|performance|compare|comparison|progress|sets?|reps?|rpe|load|heavier|improve)\b", recent, re.IGNORECASE) else None
+    comparison = _session_comparison_context(ledger) if re.search(r"\b(?:session|workout|performance|compare|comparison|progress|sets?|reps?|rpe|load|heavier|improve)\b", recent, re.IGNORECASE) else None
     if comparison is not None:
         telemetry = _comparison_text(comparison, compact=True) + "\n" + str(telemetry or "")
     return {
@@ -234,12 +238,11 @@ def hydrate_context_node(state: AssistantState) -> dict[str, Any]:
     }
 
 
-def _name_response(state: AssistantState) -> str | None:
+def _name_response(state: AssistantState, ledger: Any = None) -> str | None:
     query = _get_message_text(state["messages"][-1]) if state.get("messages") else ""
     name = _explicit_preferred_name(query)
     if name:
-        db = get_store()
-        setter = getattr(db, "set_assistant_memory", None)
+        setter = getattr(ledger, "set_assistant_memory", None)
         if callable(setter):
             setter("preferred_name", name)
         state["preferred_name"] = name
@@ -423,7 +426,7 @@ def _last_history_exchange(messages: Sequence[BaseMessage]) -> str | None:
     return None
 
 
-def router_node(state: AssistantState) -> dict[str, Any]:
+def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     if state.get("pipeline_error"):
         return {"intent": "telemetry_intercept", "intent_metadata": {"response_content": state["pipeline_error"]}}
     messages = state.get("messages", [])
@@ -441,7 +444,7 @@ def router_node(state: AssistantState) -> dict[str, Any]:
     if history_followup is not None and not RE_BANNED_MOVEMENT.search(query) and len(RE_CLAUSE_SPLIT.split(query)) == 1:
         return {"intent": "exercise_history", "intent_metadata": {"raw_query": history_followup}, "active_intents": []}
 
-    name_response = _name_response(state)
+    name_response = _name_response(state, _graph_context(config)[0])
     if name_response:
         return {"intent": "telemetry_intercept", "intent_metadata": {"response_content": name_response}, "preferred_name": state.get("preferred_name")}
 
@@ -511,13 +514,13 @@ def router_node(state: AssistantState) -> dict[str, Any]:
         return {"intent": "coaching_qa", "intent_metadata": {}}
 
 
-def clinical_intercept_node(state: AssistantState) -> dict[str, Any]:
+def clinical_intercept_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     meta = state.get("intent_metadata", {})
     content = DIAGNOSIS_SAFEGUARD_RESPONSE if meta.get("mode") == "diagnosis" else CLINICAL_SAFEGUARD_RESPONSE
     return {"program_updated": False, "response_content": content, "messages": [AIMessage(content=content)]}
 
 
-def banned_movement_node(state: AssistantState) -> dict[str, Any]:
+def banned_movement_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     raw_query = _get_message_text(state["messages"][-1]).lower() if state.get("messages") else ""
     if "behind" in raw_query:
         msg = (
@@ -538,7 +541,7 @@ def banned_movement_node(state: AssistantState) -> dict[str, Any]:
     return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
 
-def telemetry_intercept_node(state: AssistantState) -> dict[str, Any]:
+def telemetry_intercept_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     content = state.get("intent_metadata", {}).get("response_content", "")
     return {"program_updated": False, "response_content": content, "messages": [AIMessage(content=content)]}
 
@@ -566,8 +569,8 @@ def _whole_session_query(query: str) -> bool:
     ))
 
 
-def _session_comparison_context() -> dict[str, Any] | None:
-    getter = getattr(get_store(), "get_session_comparison_context", None)
+def _session_comparison_context(ledger: Any) -> dict[str, Any] | None:
+    getter = getattr(ledger, "get_session_comparison_context", None)
     context = getter() if callable(getter) else None
     return context if isinstance(context, dict) else None
 
@@ -642,11 +645,11 @@ def _comparison_text(context: dict[str, Any], compact: bool = False, exercises=N
     return content
 
 
-def _session_summary_response() -> dict[str, Any]:
-    comparison = _session_comparison_context()
+def _session_summary_response(ledger: Any) -> dict[str, Any]:
+    comparison = _session_comparison_context(ledger)
     if comparison is not None:
         return _response(_comparison_text(comparison))
-    getter = getattr(get_store(), "get_latest_session_summary", None)
+    getter = getattr(ledger, "get_latest_session_summary", None)
     summary = getter() if callable(getter) else None
     if not isinstance(summary, dict) or not summary:
         return _response("I don't have a logged session summary available yet. Log a session and I can review it.")
@@ -690,21 +693,21 @@ def _history_exercise_matches(target: str, entries: list[dict[str, Any]]) -> lis
     return [ex for ex in entries if tokens and tokens <= set(_history_name(ex['name']).split())]
 
 
-def _history_catalog_matches(target: str) -> list[dict[str, Any]]:
-    with get_store().catalog_locked() as conn:
+def _history_catalog_matches(store: Any, target: str) -> list[dict[str, Any]]:
+    with store.catalog_locked() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT id, name FROM exercises ORDER BY name COLLATE NOCASE, id")
         entries = [{"exercise_id": str(row[0]), "name": row[1]} for row in cursor.fetchall()]
     return _history_exercise_matches(target, entries)
 
 
-def exercise_history_node(state: AssistantState) -> dict[str, Any]:
-    db = get_store()
+def exercise_history_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
+    ledger, store = _graph_context(config)
     messages = state.get("messages", [])
     raw_query = state.get("intent_metadata", {}).get("raw_query")
     raw_query = _get_message_text(raw_query) if raw_query else (_get_message_text(messages[-1]) if messages else "")
     if _whole_session_query(raw_query):
-        return _session_summary_response()
+        return _session_summary_response(ledger)
     lookup_query = _supported_history_query(raw_query)
     if RE_HISTORY_SCOPE.search(lookup_query):
         return _response("The requested time period is unavailable in this history lookup. I can compare the latest session with each exercise's previous logged occurrence, but cannot answer that date range.")
@@ -733,7 +736,7 @@ def exercise_history_node(state: AssistantState) -> dict[str, Any]:
     if not target_name or target_name.lower() in {"load", "weight", "it", "that", "lifts", "training"}:
         return _response("Which exercise and variant should I look up in your ledger?")
 
-    comparison = _session_comparison_context()
+    comparison = _session_comparison_context(ledger)
     if not occurrence and comparison is not None:
         entries = comparison.get("exercises") or []
         matches = _history_exercise_matches(target_name, entries)
@@ -741,14 +744,14 @@ def exercise_history_node(state: AssistantState) -> dict[str, Any]:
             return _response(_comparison_text(comparison, exercises=matches))
         if len(matches) > 1:
             return _response("Which exercise variant do you mean? " + ", ".join(f"{ex['name']} [{ex['exercise_id']}]" for ex in matches))
-        catalog = _history_catalog_matches(target_name)
+        catalog = _history_catalog_matches(store, target_name)
         if len(catalog) > 1:
             return _response("Which exercise variant do you mean? " + ", ".join(f"{ex['name']} [{ex['exercise_id']}]" for ex in catalog))
         date = (comparison.get("session") or {}).get("session_date", "unknown date")
         return _response(f"No completed working sets for '{target_name}' in your latest session ({date}). This does not mean it was never logged. Ask for its last logged occurrence to look beyond that session.")
     if not occurrence:
         return _response("Latest-session exercise comparisons are unavailable. Ask explicitly for the last logged occurrence of an exercise to search older records.")
-    candidates = _history_catalog_matches(target_name)
+    candidates = _history_catalog_matches(store, target_name)
     if len(candidates) > 1:
         return _response("Which exercise variant do you mean? " + ", ".join(f"{ex['name']} [{ex['exercise_id']}]" for ex in candidates))
     exercise = {"id": candidates[0]["exercise_id"], "name": candidates[0]["name"]} if candidates else None
@@ -756,7 +759,7 @@ def exercise_history_node(state: AssistantState) -> dict[str, Any]:
         msg = f"I couldn't find '{target_name}' in your movement catalog."
         return {"response_content": msg, "messages": [AIMessage(content=msg)]}
 
-    sets = db.get_last_performance(str(exercise["id"]))
+    sets = ledger.get_last_performance(str(exercise["id"]))
 
     if not sets:
         msg = f"You haven't logged any completed working sets for **{exercise['name']}** yet."
@@ -842,8 +845,8 @@ def _target_is_name_like(target_desc: str, candidates: list[dict[str, Any]]) -> 
 UNSPECIFIC_CHOICE_WORDS = {"one", "two", "three", "first", "second", "third"}
 
 
-def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
-    db = get_store()
+def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
+    ledger, store = _graph_context(config)
     meta = state.get("intent_metadata", {})
     source_name = (meta.get("source_exercise") or "").strip()
     target_desc = (meta.get("target_exercise") or "").strip()
@@ -852,12 +855,10 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
     if not _authorized_action(query, "exercise_substitution"):
         return _response(AUTHORIZATION_RESPONSE)
 
-    if not programs_service.player_controls_program(
-        db, db, state.get("player_account_id")
-    ):  # Phase B2: agent nodes read the thread-local ledger as the handle
+    if not programs_service.player_controls_program(store, ledger, state.get("player_account_id")):
         return _response(programs_service.COACH_CONTROLLED_ERROR)
 
-    active_program = db.get_active_program()
+    active_program = ledger.get_active_program()
     if not active_program:
         msg = "No active routine found in your ledger. Generate a baseline routine first."
         return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
@@ -927,7 +928,7 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
         msg = f"Could not identify **'{raw_source or source_name or query}'** in your active split.\n\n**Active Movements:**\n" + "\n".join(routine_list)
         return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
-    with db.catalog_locked() as conn:
+    with store.catalog_locked() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT body_part, target_muscle, equipment FROM exercises WHERE id = ?", (matched_ex.exercise_id,))
         target_meta = cursor.fetchone()
@@ -935,7 +936,7 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
 
     if not target_desc:
         query_vec = EMBED_MODEL.embed_query(f"{target_muscle} {matched_ex.exercise_name}")
-        raw_candidates = db.search_similar_exercises(query_vec, limit=12)
+        raw_candidates = store.search_similar_exercises(query_vec, limit=12)
         valid_candidates = [
             c for c in raw_candidates
             if str(c["id"]) != str(matched_ex.exercise_id)
@@ -976,13 +977,13 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
     if not target_unspecific:
         name_matches = [
             match
-            for match in db.find_exercises_by_name(resolve_text)
+            for match in store.find_exercises_by_name(resolve_text)
             if str(match["id"]) != str(matched_ex.exercise_id)
         ]
         if not name_matches and resolve_text != target_desc:
             name_matches = [
                 match
-                for match in db.find_exercises_by_name(target_desc)
+                for match in store.find_exercises_by_name(target_desc)
                 if str(match["id"]) != str(matched_ex.exercise_id)
             ]
     compatible_name_match = next(
@@ -996,7 +997,7 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
     if compatible_name_match is not None:
         replacement = compatible_name_match
     elif name_matches:
-        potential = _slot_alternative_lines(db, matched_ex, target_muscle, body_part)
+        potential = _slot_alternative_lines(store, matched_ex, target_muscle, body_part)
         rejected = name_matches[0]
         msg = (
             f"**{rejected['name'].title()}** is in the exercise database, but it targets "
@@ -1012,7 +1013,7 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
         # Raw text is embedded first: abbreviation expansion may inject equipment ("lat pulldown"
         # → "cable lat pulldown") and must not corrupt an already-specific name's ranking.
         def _semantic_replacements(text: str) -> list[dict[str, Any]]:
-            candidates = db.search_similar_exercises(EMBED_MODEL.embed_query(text), limit=20)
+            candidates = store.search_similar_exercises(EMBED_MODEL.embed_query(text), limit=20)
             # Pre-commit Guard: Strict confidence threshold (distance <= 0.27)
             return [
                 c
@@ -1058,7 +1059,7 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
                     replacement = bb_cand
 
     if not replacement:
-        potential = _slot_alternative_lines(db, matched_ex, target_muscle, body_part)
+        potential = _slot_alternative_lines(store, matched_ex, target_muscle, body_part)
         msg = (
             f"Could not find a biomechanically suitable match for **'{raw_target or target_desc}'** "
             f"(I couldn't confidently identify it for your `{target_muscle.title()}` slot).\n\n"
@@ -1076,7 +1077,7 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
         replacement["name"], "compound" if is_compound else "isolation"
     )
 
-    success = db.swap_program_exercise(
+    success = ledger.swap_program_exercise(
         old_exercise_id=matched_ex.exercise_id,
         new_exercise_id=str(replacement["id"]),
         new_notes=new_notes,
@@ -1106,15 +1107,13 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
     return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
 
-def program_mutation_node(state: AssistantState) -> dict[str, Any]:
-    db = get_store()
+def program_mutation_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
+    ledger, store = _graph_context(config)
     query = _get_message_text(state["messages"][-1])
     if not _authorized_action(query, "program_mutation"):
         return _response(AUTHORIZATION_RESPONSE)
 
-    if not programs_service.player_controls_program(
-        db, db, state.get("player_account_id")
-    ):  # Phase B2: agent nodes read the thread-local ledger as the handle
+    if not programs_service.player_controls_program(store, ledger, state.get("player_account_id")):
         return _response(programs_service.COACH_CONTROLLED_ERROR)
 
     meta = state.get("intent_metadata", {})
@@ -1125,9 +1124,9 @@ def program_mutation_node(state: AssistantState) -> dict[str, Any]:
             return _response("Training frequency must be 1–5 days per week (max 5 days). Please choose a supported frequency.")
     freq = requested if requested is not None else supplied
     try:
-        prog, _ = generate_program_pipeline(user_split_override=query, frequency_override=freq)
+        prog, _ = generate_program_pipeline(user_split_override=query, frequency_override=freq, ledger=ledger)
         # Intentional fresh-start: a rebuilt split invalidates routine-specific dialogue context.
-        db.clear_chat_history()
+        ledger.clear_chat_history()
         msg = f"Rebuilt routine: **{prog.program_name}** ({prog.weekly_frequency} Days/Week). Context cleared for new routine."
         return {"program_updated": True, "response_content": msg, "messages": [AIMessage(content=msg)]}
     except Exception as e:
@@ -1136,11 +1135,11 @@ def program_mutation_node(state: AssistantState) -> dict[str, Any]:
         return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
 
-def catalog_search_node(state: AssistantState) -> dict[str, Any]:
-    db = get_store()
+def catalog_search_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
+    _, store = _graph_context(config)
     query = state.get("intent_metadata", {}).get("search_query") or _get_message_text(state["messages"][-1])
     try:
-        candidates = db.search_similar_exercises(EMBED_MODEL.embed_query(query), limit=4)
+        candidates = store.search_similar_exercises(EMBED_MODEL.embed_query(query), limit=4)
         if not candidates or candidates[0].get("distance", 1.0) > 0.85:
             msg = f"No exercises matching '{query}' were found in the catalog."
             return {"response_content": msg, "messages": [AIMessage(content=msg)]}
@@ -1278,7 +1277,7 @@ def _finish_limited(message: Any) -> bool:
     return any(m.get("finish_reason") in {"length", "max_tokens"} or m.get("stop_reason") == "max_tokens" for m in (metadata, info))
 
 
-def generation_node(state: AssistantState) -> dict[str, Any]:
+def generation_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     try:
         payload = build_prompt_payload(state)
         response = llm.invoke(payload)
@@ -1293,16 +1292,16 @@ def generation_node(state: AssistantState) -> dict[str, Any]:
         return _response(PIPELINE_ERROR_RESPONSE)
 
 
-def composite_intent_node(state: AssistantState) -> dict[str, Any]:
+def composite_intent_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     meta = state.get("intent_metadata", {})
     sub_intents = meta.get("sub_intents") or state.get("active_intents") or []
     original_msgs = list(state.get("messages", []))
     original_query = meta.get("raw_query") or (_get_message_text(original_msgs[-1]) if original_msgs else "")
     clinical = _clinical_turn_metadata(original_query, sub_intents)
     if clinical is not None:
-        return clinical_intercept_node({**state, "intent_metadata": clinical})
+        return clinical_intercept_node({**state, "intent_metadata": clinical}, config)
     if not sub_intents:
-        return generation_node(state)
+        return generation_node(state, config)
 
     responses = []
     preceding = []
@@ -1334,7 +1333,7 @@ def composite_intent_node(state: AssistantState) -> dict[str, Any]:
         veto_pending = sub_intent == "banned_movement"
 
         try:
-            res = handler(sub_state)
+            res = handler(sub_state, config)
             if res.get("program_updated"):
                 any_program_updated = True
             content = res.get("response_content", "")
@@ -1354,10 +1353,9 @@ def composite_intent_node(state: AssistantState) -> dict[str, Any]:
 
 
 def _safe_node(handler):
-    def run(state):
+    def run(state, config=None):
         try:
-            _bind_trainee_connection(state)
-            result = handler(state)
+            result = handler(state, config)
             if "response_content" in result and handler is not generation_node:
                 return {**result, **_response(result.get("response_content") or "", result.get("program_updated", False))}
             return result
@@ -1461,25 +1459,24 @@ def _record_telemetry_event(
     _telemetry_handler.flush()
 
 
-def _bind_trainee_connection(state: dict[str, Any]) -> None:
-    """Mounts the stated trainee's ledger on the executing thread before any DB access."""
-    trainee = state.get("trainee_id")
-    db = get_store()
-    switch = getattr(db, "switch_user", None)
-    if trainee and callable(switch) and getattr(db, "active_user", None) != trainee:
-        switch(trainee)
+def stream_assistant_turn(
+    state: dict[str, Any], *, ledger: Any, store: Any
+) -> Generator[str, None, None]:
+    """Streams one assistant turn against the caller-owned ledger handle.
 
-
-def stream_assistant_turn(state: dict[str, Any]) -> Generator[str, None, None]:
+    The graph never reads a thread-local mount: the ledger (and the app store,
+    when exercise-library lookups are needed) travel on the LangGraph ``config``
+    so they stay out of the persisted/serialised state.
+    """
+    config = {"configurable": {"ledger": ledger, "store": store}}
     t_start = time.perf_counter()
     original_messages = list(state.get("messages", []))
     result = None
     visible = []
     scrubber = None
     try:
-        _bind_trainee_connection(state)
-        state.update(hydrate_context_node(state))
-        state.update(router_node(state))
+        state.update(hydrate_context_node(state, config))
+        state.update(router_node(state, config))
         intent = state.get("intent", "coaching_qa")
         router_ms = (time.perf_counter() - t_start) * 1000.0
         handlers = {
@@ -1493,7 +1490,7 @@ def stream_assistant_turn(state: dict[str, Any]) -> Generator[str, None, None]:
             "composite_intent": composite_intent_node,
         }
         if intent in handlers:
-            result = handlers[intent](state)
+            result = handlers[intent](state, config)
             telemetry: dict[str, Any] = {}
         else:
             payload = build_prompt_payload(state)

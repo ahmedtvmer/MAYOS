@@ -13,7 +13,6 @@ from typing import Any
 
 from agent.program_generator import generate_program_pipeline
 from service.assignments import authorized_player_ledger
-from service._base import bind_user
 
 
 def publish_program(
@@ -36,14 +35,16 @@ def publish_program(
     with ledger:
         from svc.llm import InferenceScope, run_inference_sync
 
-        bind_user(db, ledger.ledger_id)  # Phase B2: program pipeline reads the thread-local ledger
         _program, _ = run_inference_sync(
             generate_program_pipeline,
             user_split_override=user_split_override,
             rep_preference_override=rep_preference_override,
             frequency_override=frequency_override,
             published_by_coach_account_id=coach_account_id,
-            scope=InferenceScope(account_id=coach_account_id, role="coach", purpose="coach_program_publish"),
+            ledger=ledger,
+            scope=InferenceScope(
+                account_id=coach_account_id, role="coach", purpose="coach_program_publish", store=db
+            ),
         )
 
         published = ledger.get_active_program()

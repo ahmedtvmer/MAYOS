@@ -1,4 +1,4 @@
-"""Request-identity isolation: ContextVar binding, thread separation, and JWT auth."""
+"""Request-identity isolation: explicit ledger handles, thread separation, and JWT auth."""
 
 import asyncio
 import sqlite3
@@ -11,9 +11,8 @@ import pytest
 from fastapi.security import HTTPAuthorizationCredentials
 
 from database.database_manager import DatabaseManager
-from service._base import bind_user, current_trainee
 from svc.auth import create_access_token, decode_access_token
-from svc.dependencies import bind_request, get_current_trainee
+from svc.dependencies import get_current_trainee
 
 
 @pytest.fixture
@@ -28,38 +27,32 @@ def temp_db_env(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="alice",
+        default_ledger_id="alice",
     )
     try:
-        current_trainee.set(None)
         yield db
     finally:
-        current_trainee.set(None)
-        if db.user_conn is not None:
-            db.user_conn.close()
         db.catalog_conn.close()
 
 
-def test_bind_user_sets_contextvar(temp_db_env):
-    assert bind_user(temp_db_env, "Alice!") == "alice"
-    assert current_trainee.get() == "alice"
+def test_sanitizes_the_ledger_id(temp_db_env):
+    assert temp_db_env._sanitize_username("Alice!") == "alice"
 
 
-def test_concurrent_threads_do_not_leak_identity(temp_db_env):
+def test_concurrent_handles_do_not_leak_identity(temp_db_env):
     db = temp_db_env
-    db.switch_user("alice")
-    db.upsert_user_profile({"current_goal": "alice-goal"})
-    db.switch_user("bob")
-    db.upsert_user_profile({"current_goal": "bob-goal"})
+    with db.open_ledger("alice") as alice:
+        alice.upsert_user_profile({"current_goal": "alice-goal"})
+    with db.open_ledger("bob") as bob:
+        bob.upsert_user_profile({"current_goal": "bob-goal"})
     seen: dict[str, str] = {}
     errors: list[Exception] = []
 
     def run_as(user: str):
         try:
-            bind_request(db, user)
-            profile = db.get_user_profile()
-            seen[user] = (profile or {}).get("current_goal", "")
-            assert current_trainee.get() == user
+            with db.open_ledger(user) as ledger:
+                profile = ledger.get_user_profile()
+                seen[user] = (profile or {}).get("current_goal", "")
         except Exception as exc:  # pragma: no cover - surfaced below
             errors.append(exc)
 
@@ -139,9 +132,8 @@ def test_dependency_rejects_revoked_token(monkeypatch, temp_db_env):
 
 
 def test_revoked_tokens_prune_expired(temp_db_env):
-    temp_db_env.switch_user("alice")
-    temp_db_env.revoke_token("old-jti", "2000-01-01T00:00:00+00:00")
-    temp_db_env.revoke_token("fresh-jti", "2999-01-01T00:00:00+00:00")
-    assert temp_db_env.prune_revoked_tokens("2026-01-01T00:00:00+00:00") == 1
-    assert temp_db_env.is_token_revoked("fresh-jti") is True
-    assert temp_db_env.is_token_revoked("old-jti") is False
+    temp_db_env.ledger.revoke_token("old-jti", "2000-01-01T00:00:00+00:00")
+    temp_db_env.ledger.revoke_token("fresh-jti", "2999-01-01T00:00:00+00:00")
+    assert temp_db_env.ledger.prune_revoked_tokens("2026-01-01T00:00:00+00:00") == 1
+    assert temp_db_env.ledger.is_token_revoked("fresh-jti") is True
+    assert temp_db_env.ledger.is_token_revoked("old-jti") is False

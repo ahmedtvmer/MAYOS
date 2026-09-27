@@ -36,7 +36,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.commit()
     cat_conn.close()
     db = DatabaseManager(
-        catalog_path=catalog_path, users_dir=tmp_path / "users", backups_dir=tmp_path / "backups", active_user="bootstrap"
+        catalog_path=catalog_path, users_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db

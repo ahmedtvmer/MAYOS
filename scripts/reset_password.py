@@ -29,7 +29,6 @@ from database.database_manager import (  # noqa: E402
     DatabaseManager,
 )
 from service import auth as auth_service  # noqa: E402
-from service._base import bind_user  # noqa: E402
 from utils.logger import MyosLogger  # noqa: E402
 
 logger = MyosLogger().get_logger(__name__)
@@ -58,18 +57,18 @@ def reset_password(db: DatabaseManager, trainee_id: str, new_password: str) -> t
         auth_service.validate_password(new_password)
     except ValueError as exc:
         raise SystemExit(f"error: {exc}")
-    bind_user(db, ledger_id)
-    db.set_password_hash(auth_service.hash_password(new_password))
-    ledger_epoch = db.bump_token_version()
-    if account is not None:
-        epoch = db.bump_account_session_epoch(account["account_id"])
-        if epoch is None:
-            raise SystemExit(
-                "error: could not advance the account registry epoch; sessions were NOT revoked."
-            )
-    else:
-        epoch = ledger_epoch
-    db.prune_revoked_tokens(datetime.now(UTC).isoformat())
+    with db.open_ledger(ledger_id) as ledger:
+        ledger.set_password_hash(auth_service.hash_password(new_password))
+        ledger_epoch = ledger.bump_token_version()
+        if account is not None:
+            epoch = db.bump_account_session_epoch(account["account_id"])
+            if epoch is None:
+                raise SystemExit(
+                    "error: could not advance the account registry epoch; sessions were NOT revoked."
+                )
+        else:
+            epoch = ledger_epoch
+        ledger.prune_revoked_tokens(datetime.now(UTC).isoformat())
     return ledger_id, epoch, account is not None
 
 
@@ -94,8 +93,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         clean_id, epoch, enrolled = reset_password(db, args.trainee_id, new_password)
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
         db.catalog_conn.close()
     if enrolled:
         logger.info("Password reset for '%s' (registry session epoch now v%s). All sessions revoked.", clean_id, epoch)

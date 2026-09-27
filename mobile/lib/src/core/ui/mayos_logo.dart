@@ -9,14 +9,12 @@ enum MayosBrandVariant {
   /// Picks by effective theme (see each widget's `auto` mapping).
   auto,
   white,
-  blue,
   black,
 }
 
 String _file(MayosBrandVariant variant, String kind) {
   final String name = switch (variant) {
     MayosBrandVariant.white => 'white',
-    MayosBrandVariant.blue => 'blue',
     MayosBrandVariant.black => 'black',
     MayosBrandVariant.auto => 'black',
   };
@@ -24,8 +22,7 @@ String _file(MayosBrandVariant variant, String kind) {
 }
 
 /// The full mark + wordmark lockup, cropped to its content. Used for the
-/// splash hero. `auto` maps dark→blue (the owner's coloured hero) and
-/// light→black.
+/// splash hero. `auto` maps dark→white and light→black.
 class MayosBrandLockup extends StatelessWidget {
   const MayosBrandLockup({
     super.key,
@@ -40,7 +37,7 @@ class MayosBrandLockup extends StatelessWidget {
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final MayosBrandVariant resolved = variant == MayosBrandVariant.auto
-        ? (c.isDark ? MayosBrandVariant.blue : MayosBrandVariant.black)
+        ? (c.isDark ? MayosBrandVariant.white : MayosBrandVariant.black)
         : variant;
     return Semantics(
       label: 'MAYOS',

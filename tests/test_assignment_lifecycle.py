@@ -44,7 +44,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -124,7 +124,7 @@ def _two_catalog_connections(tmp_path, monkeypatch):
             catalog_path=tmp_path / "catalog.db",
             users_dir=tmp_path / "users",
             backups_dir=tmp_path / "backups",
-            active_user="bootstrap",
+            default_ledger_id="bootstrap",
         )
 
     return build(), build()

@@ -60,7 +60,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -165,9 +165,9 @@ def _prepare_player(client, db, username="p1"):
     player = _register(client, username)
     headers = _authed(player["access_token"])
     db.switch_user(username)
-    db.upsert_user_profile({"current_goal": "Strength"})
-    db.save_training_program(_program_payload())
-    version = db.get_active_program().version
+    db.ledger.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.save_training_program(_program_payload())
+    version = db.ledger.get_active_program().version
     return headers, version
 
 
@@ -393,8 +393,8 @@ def test_older_program_version_syncs_as_history_without_rewriting_active_program
     headers, captured_version = _prepare_player(client, db)
 
     db.switch_user("p1")
-    active_program_id = db.save_training_program(_program_payload_v2())
-    active_version = db.get_active_program().version
+    active_program_id = db.ledger.save_training_program(_program_payload_v2())
+    active_version = db.ledger.get_active_program().version
     assert active_version == captured_version + 1
     v2_rows_before = _program_row_snapshot(db, active_program_id)
 
@@ -420,8 +420,8 @@ def test_older_program_version_syncs_as_history_without_rewriting_active_program
     assert row["active_program_version_at_sync"] == active_version
     # The captured prescription is retained and the newer program stays active,
     # with every v2 program row byte-for-byte unchanged.
-    assert db.get_program_by_version(captured_version) is not None
-    assert db.get_active_program().version == active_version
+    assert db.ledger.get_program_by_version(captured_version) is not None
+    assert db.ledger.get_active_program().version == active_version
     assert _program_row_snapshot(db, active_program_id) == v2_rows_before
     assert (
         db.conn.execute("SELECT COUNT(*) FROM training_programs WHERE is_active = 1").fetchone()[0] == 1
@@ -433,7 +433,7 @@ def test_older_program_version_replay_is_unchanged(api):
     client, db = api
     headers, captured_version = _prepare_player(client, db)
     db.switch_user("p1")
-    db.save_training_program(_program_payload())
+    db.ledger.save_training_program(_program_payload())
 
     first = client.post("/workouts/sessions", headers=headers, json=_sync_body(version=captured_version))
     assert first.status_code == 201, first.text
@@ -470,7 +470,7 @@ def test_revoked_coach_cannot_read_a_workout_synced_after_revocation(api):
     # A newer program is published after the coach is revoked but before the
     # captured draft syncs; the sync still commits as history.
     db.switch_user("p1")
-    db.save_training_program(_program_payload())
+    db.ledger.save_training_program(_program_payload())
     synced = client.post("/workouts/sessions", headers=headers, json=_sync_body(version=captured_version))
     assert synced.status_code == 201, synced.text
 

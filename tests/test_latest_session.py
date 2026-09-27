@@ -49,7 +49,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -116,9 +116,9 @@ def _prepare_player(client, db, username="p1", day_name="Full A"):
     player = _register(client, username)
     headers = _authed(player["access_token"])
     db.switch_user(username)
-    db.upsert_user_profile({"current_goal": "Strength"})
-    db.save_training_program(_program_payload(day_name))
-    version = db.get_active_program().version
+    db.ledger.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.save_training_program(_program_payload(day_name))
+    version = db.ledger.get_active_program().version
     return headers, version
 
 

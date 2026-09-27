@@ -59,7 +59,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -219,16 +219,14 @@ def test_roster_listing_is_catalog_only_and_shape_unchanged(api, monkeypatch):
     coach_headers, _, assignment_id = _assigned_player(api)
     _seed_session(db, "p1", 100.0, 5, "2026-09-24T10:00:00+00:00")
 
-    import svc.dependencies as dependencies
-
     mounted: list[str] = []
-    real_bind_user = dependencies.bind_user
+    real_open_ledger = db.open_ledger
 
-    def spy(db_arg, ledger_id):
+    def spy(ledger_id):
         mounted.append(str(ledger_id))
-        return real_bind_user(db_arg, ledger_id)
+        return real_open_ledger(ledger_id)
 
-    monkeypatch.setattr(dependencies, "bind_user", spy)
+    monkeypatch.setattr(db, "open_ledger", spy)
 
     roster = client.get("/coach/assignments", headers=coach_headers)
     assert roster.status_code == 200, roster.text

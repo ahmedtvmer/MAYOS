@@ -57,7 +57,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -153,7 +153,7 @@ def _coach_generation(db, monkeypatch):
 
     def fake(**kwargs):
         program = _program()
-        db.save_training_program(
+        kwargs["ledger"].save_training_program(
             program.model_dump(),
             published_by_coach_account_id=kwargs.get("published_by_coach_account_id"),
         )
@@ -167,7 +167,7 @@ def _player_generation(db, monkeypatch):
 
     def fake(**kwargs):
         program = _program()
-        db.save_training_program(program.model_dump())
+        kwargs["ledger"].save_training_program(program.model_dump())
         return program, "md"
 
     monkeypatch.setattr("svc.routers.programs.generate_program_pipeline", fake)
@@ -263,10 +263,9 @@ def test_assistant_swap_refused_when_coach_controls_program(api, monkeypatch):
     _coach_generation(db, monkeypatch)
     assert _publish(client, coach_headers, assignment_id).status_code == 200
 
-    monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
-    swap = MagicMock(return_value=True)
-    monkeypatch.setattr(db, "swap_program_exercise", swap)
     db.switch_user("p1")
+    swap = MagicMock(return_value=True)
+    monkeypatch.setattr(db.ledger, "swap_program_exercise", swap)
 
     from langchain_core.messages import HumanMessage
 
@@ -277,7 +276,9 @@ def test_assistant_swap_refused_when_coach_controls_program(api, monkeypatch):
         "intent": "exercise_substitution",
         "intent_metadata": {"mode": "direct_swap", "source_exercise": "Squat", "target_exercise": "Bench Press"},
     }
-    result = assistant_graph.exercise_substitution_node(state)
+    result = assistant_graph.exercise_substitution_node(
+        state, {"configurable": {"ledger": db.ledger, "store": db}}
+    )
     assert result["response_content"] == programs_service.COACH_CONTROLLED_ERROR
     swap.assert_not_called()
 
@@ -291,7 +292,6 @@ def test_assistant_mutation_refused_when_coach_controls_program(api, monkeypatch
     _coach_generation(db, monkeypatch)
     assert _publish(client, coach_headers, assignment_id).status_code == 200
 
-    monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
     pipeline = MagicMock(return_value=(_program(), "md"))
     monkeypatch.setattr(assistant_graph, "generate_program_pipeline", pipeline)
     db.switch_user("p1")
@@ -303,7 +303,9 @@ def test_assistant_mutation_refused_when_coach_controls_program(api, monkeypatch
         "intent": "program_mutation",
         "intent_metadata": {"target_frequency": None},
     }
-    result = assistant_graph.program_mutation_node(state)
+    result = assistant_graph.program_mutation_node(
+        state, {"configurable": {"ledger": db.ledger, "store": db}}
+    )
     assert result["response_content"] == programs_service.COACH_CONTROLLED_ERROR
     pipeline.assert_not_called()
 

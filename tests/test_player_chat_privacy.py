@@ -86,7 +86,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -195,8 +195,8 @@ def test_player_model_input_excludes_identifying_fields(api, monkeypatch):
     assert db.switch_user(username)
     # custom_instructions and preferred_name are stored context, not settable
     # through PUT /profile; write them directly as onboarding/memory would.
-    db.update_user_persona("Direct, grounded, and pragmatic", "Prefer short answers.")
-    db.set_assistant_memory("preferred_name", "Sam")
+    db.ledger.update_user_persona("Direct, grounded, and pragmatic", "Prefer short answers.")
+    db.ledger.set_assistant_memory("preferred_name", "Sam")
 
     llm = _CapturingLLM()
     monkeypatch.setattr(assistant_graph, "llm", llm)
@@ -257,9 +257,9 @@ def test_coach_surfaces_never_expose_player_chat(api):
         json={"checked_in_on": today, "channel": "video", "note": COACH_NOTES},
     ).status_code == 200
     assert db.switch_user("p1")
-    assert any(row["role"] == "assistant" and row["content"] == pointer for row in db.get_chat_history())
-    db.add_chat_message("user", PRIVATE_USER_CHAT)
-    db.add_chat_message("assistant", PRIVATE_ASSISTANT_CHAT)
+    assert any(row["role"] == "assistant" and row["content"] == pointer for row in db.ledger.get_chat_history())
+    db.ledger.add_chat_message("user", PRIVATE_USER_CHAT)
+    db.ledger.add_chat_message("assistant", PRIVATE_ASSISTANT_CHAT)
 
     app = client.app
     base = f"/coach/assignments/{assignment_id}"
@@ -346,7 +346,7 @@ def test_retried_failed_turn_persists_one_user_and_one_assistant(api, monkeypatc
     registered = _register(client, "retryer")
     headers = _authed(registered["access_token"])
 
-    def exploding_turn(state):
+    def exploding_turn(state, **kwargs):
         # Mirrors a failure after the user row is persisted and before any
         # assistant reply: the route emits an `event: error` frame.
         raise RuntimeError("model exploded")
@@ -359,11 +359,11 @@ def test_retried_failed_turn_persists_one_user_and_one_assistant(api, monkeypatc
         raw = stream.read().decode()
     assert "event: error" in raw
     assert db.switch_user("retryer")
-    assert [row["role"] for row in db.get_chat_history()] == ["user"]
+    assert [row["role"] for row in db.ledger.get_chat_history()] == ["user"]
 
     # Retry the identical content: no duplicate user row; the turn now succeeds
     # and the assistant reply is stored.
-    def succeeding_turn(state):
+    def succeeding_turn(state, **kwargs):
         state["response_content"] = "Hi there."
         yield "Hi there."
 
@@ -371,7 +371,7 @@ def test_retried_failed_turn_persists_one_user_and_one_assistant(api, monkeypatc
     with client.stream("POST", "/chat/messages", headers=headers, json={"content": "hello"}) as stream:
         stream.read()
 
-    history = db.get_chat_history()
+    history = db.ledger.get_chat_history()
     assert [row["role"] for row in history] == ["user", "assistant"]
     assert history[0]["content"] == "hello"
     assert history[1]["content"] == "Hi there."

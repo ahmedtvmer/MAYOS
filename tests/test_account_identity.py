@@ -18,7 +18,7 @@ from service import auth as auth_service
 from service import password_reset as reset_service
 from svc.app import create_app
 from svc.auth import create_access_token, revoke_token
-from svc.dependencies import bind_request, get_current_trainee, get_db
+from svc.dependencies import get_current_trainee, get_db
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
 
@@ -41,7 +41,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -145,13 +145,11 @@ def test_account_without_player_capability_fails_closed(api):
     assert client.get("/dashboard/exercises", headers=_authed(registered["access_token"])).status_code == 401
 
 
-def test_worker_bind_rechecks_the_same_account_after_revocation(api):
+def test_old_token_is_rejected_after_account_is_recreated(api):
+    """Recreating a deleted username issues a new account id; the dead token is refused."""
     client, db, _ = api
     registered = _register(client, "alice")
     token = registered["access_token"]
-    verified = asyncio.run(
-        get_current_trainee(HTTPAuthorizationCredentials(scheme="Bearer", credentials=token), db)
-    )
     old_id = _subject(token)
     with db._catalog_lock:
         db.catalog_conn.execute(
@@ -161,7 +159,9 @@ def test_worker_bind_rechecks_the_same_account_after_revocation(api):
         db.catalog_conn.commit()
     assert db.create_account("alice") != old_id
     with pytest.raises(HTTPException) as exc:
-        bind_request(db, verified)
+        asyncio.run(
+            get_current_trainee(HTTPAuthorizationCredentials(scheme="Bearer", credentials=token), db)
+        )
     assert exc.value.status_code == 401
 
 
@@ -284,7 +284,7 @@ def test_deleted_account_recovery_cannot_reset_reused_username(api, monkeypatch)
     # A fresh manager stands in for the post-deletion process: the old ledger and
     # its cached connection are gone, and the username is registered anew.
     fresh_db = DatabaseManager(
-        catalog_path=db.catalog_path, users_dir=db.users_dir, backups_dir=db.backups_dir, active_user="bootstrap"
+        catalog_path=db.catalog_path, users_dir=db.users_dir, backups_dir=db.backups_dir, default_ledger_id="bootstrap"
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: fresh_db
@@ -483,7 +483,7 @@ def test_old_account_id_cannot_change_reused_username_password_or_email(api, mon
     # A fresh manager stands in for the post-deletion process: the old ledger and
     # its cached connections are gone, and the username is registered anew.
     fresh_db = DatabaseManager(
-        catalog_path=db.catalog_path, users_dir=db.users_dir, backups_dir=db.backups_dir, active_user="bootstrap"
+        catalog_path=db.catalog_path, users_dir=db.users_dir, backups_dir=db.backups_dir, default_ledger_id="bootstrap"
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: fresh_db

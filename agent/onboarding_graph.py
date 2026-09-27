@@ -4,12 +4,12 @@ from typing import Annotated, Any, Literal, TypedDict
 
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field, ValidationError
 
 from agent.program_generator import extract_frequency_from_text, validate_frequency
-from database.store import get_store
 from utils.logger import MyosLogger
 from utils.model_downloader import llm
 
@@ -161,7 +161,7 @@ def _advance(next_step: int, profile: dict) -> dict[str, Any]:
     }
 
 
-def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
+def intake_node(state: OnboardingGraphState, config: RunnableConfig | None = None) -> dict[str, Any]:
     messages = state.get("messages", [])
     step = state.get("intake_step", 1)
     profile = dict(state.get("profile_data") or {})
@@ -494,12 +494,12 @@ def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
         except ValueError:
             return _reject(2, "Weekly frequency must be from 1 to 5 days (maximum 5).", profile)
 
-        trainee = state.get("trainee_id") or get_store().active_user or "default"
-        db = get_store()
-        db.switch_user(trainee)
+        ledger = (config or {}).get("configurable", {}).get("ledger")
+        if ledger is None:
+            raise RuntimeError("Onboarding graph requires an explicit ledger handle in config.")
         profile.setdefault("coach_tone", "Direct, grounded, and pragmatic")
         profile.setdefault("custom_instructions", "")
-        db.upsert_user_profile(profile)
+        ledger.upsert_user_profile(profile)
 
         return {
             "messages": [

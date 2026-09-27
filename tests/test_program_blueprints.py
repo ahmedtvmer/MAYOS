@@ -49,13 +49,13 @@ def test_every_blueprint_slot_resolves_to_a_catalog_exercise(blueprint):
     for slot_key in blueprint.slots:
         spec = SLOT_SPECS.get(slot_key)
         assert spec is not None, f"Unknown slot '{slot_key}' in {blueprint.name}"
-        candidates = fetch_slot_candidates(slot_key, "commercial gym", "None", limit=4)
+        candidates = fetch_slot_candidates(slot_key, "commercial gym", "None", limit=4, ledger=db.ledger)
         assert candidates, f"Slot '{slot_key}' ({blueprint.name}) resolved no catalog exercises"
 
 
 @pytest.mark.parametrize("warmup_key", list(WARMUP_SPECS))
 def test_every_warmup_spec_resolves(warmup_key):
-    candidates = fetch_warmup_candidates(warmup_key, "commercial gym", "None", limit=2)
+    candidates = fetch_warmup_candidates(warmup_key, "commercial gym", "None", limit=2, ledger=db.ledger)
     assert candidates, f"Warm-up '{warmup_key}' resolved no catalog exercises"
 
 
@@ -87,7 +87,7 @@ def _generate(
     )
     user = f"test_blueprint_{gender}_{frequency}{tags}_{suffix}"
     db.switch_user(user)
-    db.upsert_user_profile(
+    db.ledger.upsert_user_profile(
         {
             "gender": gender,
             "proportions": "balanced",
@@ -104,7 +104,7 @@ def _generate(
             "stress_and_sleep": recovery,
         }
     )
-    return program_generator.generate_program_pipeline(user_split_override=preference)[0]
+    return program_generator.generate_program_pipeline(user_split_override=preference, ledger=db.ledger)[0]
 
 
 @pytest.mark.parametrize("gender,frequency", [("male", 1), ("male", 3), ("male", 4), ("male", 5), ("female", 3)])
@@ -278,7 +278,7 @@ def test_resolve_split_routes_preferences_deterministically():
 
 def test_schema_round_trip_persists_warmups_and_slots():
     program = _generate("male", 3)
-    loaded = db.get_active_program()
+    loaded = db.ledger.get_active_program()
     assert loaded is not None
     assert loaded.instructions == program.instructions
     for generated_day, stored_day in zip(program.days, loaded.days, strict=True):
@@ -378,7 +378,7 @@ def test_fat_loss_goal_adds_cardio_finisher_to_every_day(gender, frequency):
     for day in program.days:
         assert day.cardio == FAT_LOSS_CARDIO_NOTE, day.day_name
         assert "Fat-loss finisher" in (day.cardio or "")
-    loaded = db.get_active_program()
+    loaded = db.ledger.get_active_program()
     assert loaded is not None
     assert [day.cardio for day in loaded.days] == [FAT_LOSS_CARDIO_NOTE] * len(program.days)
 

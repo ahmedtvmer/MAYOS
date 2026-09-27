@@ -389,7 +389,7 @@ def evaluate_session_prs(
 
 
 def get_progression_signals(db: DatabaseManager) -> str:
-    cursor = db.user_conn.cursor()
+    cursor = db.conn.cursor()
     active_program = db.get_active_program()
     target_ceilings = {}
     if active_program:

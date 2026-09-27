@@ -65,6 +65,40 @@ REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 T = TypeVar("T", bound=BaseModel)
 
 
+def _eval_graph_config(db: Any, ledger: Any) -> dict[str, Any]:
+    """Builds the explicit ``(ledger, store)`` LangGraph config production uses.
+
+    Mirrors ``agent.assistant_graph.stream_assistant_turn`` and
+    ``service.onboarding._graph_config`` (ADR 041): the graphs read no ambient
+    store and no thread-local ledger, so an eval must open its own handle.
+    """
+    return {"configurable": {"ledger": ledger, "store": db}}
+
+
+def _invoke_assistant_graph(state: dict[str, Any]) -> dict[str, Any]:
+    """Invokes the assistant graph under an opened ``(ledger, store)`` config."""
+    from database.database_manager import DatabaseManager
+
+    db = DatabaseManager()
+    try:
+        with db.open_ledger(str(state.get("trainee_id", "eval_user"))) as ledger:
+            return assistant_graph.invoke(state, config=_eval_graph_config(db, ledger))
+    finally:
+        db.catalog_conn.close()
+
+
+def _invoke_onboarding_graph(state: dict[str, Any]) -> dict[str, Any]:
+    """Invokes the onboarding graph under an opened ``(ledger, store)`` config."""
+    from database.database_manager import DatabaseManager
+
+    db = DatabaseManager()
+    try:
+        with db.open_ledger(str(state.get("trainee_id", "eval_user"))) as ledger:
+            return onboarding_graph.invoke(state, config=_eval_graph_config(db, ledger))
+    finally:
+        db.catalog_conn.close()
+
+
 def safe_invoke_judge(judge: Any, system_prompt: str, user_payload: str, schema: type[T]) -> T | None:
     # The hosted judge uses function calling for reliable structured output.
     # The local GGUF judge keeps its default method.
@@ -105,7 +139,7 @@ def generate_qa_candidates(dataset_path: Path) -> list[dict[str, Any]]:
         }
 
         t0 = time.perf_counter()
-        graph_output = assistant_graph.invoke(state)
+        graph_output = _invoke_assistant_graph(state)
         raw_output = graph_output.get("response_content", "")
         cleaned_output = scrub_coach_output(raw_output)
         gen_time = time.perf_counter() - t0
@@ -204,7 +238,7 @@ def generate_onboarding_candidates(dataset_path: Path) -> list[dict[str, Any]]:
         }
 
         t0 = time.perf_counter()
-        result_state = onboarding_graph.invoke(state)
+        result_state = _invoke_onboarding_graph(state)
         gen_time = time.perf_counter() - t0
 
         new_step = result_state.get("intake_step", step)

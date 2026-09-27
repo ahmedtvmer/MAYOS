@@ -132,11 +132,8 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
-    from database.store import set_store
-
-    set_store(db)
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
     with TestClient(app) as client:
@@ -239,7 +236,7 @@ def test_multicall_turn_records_every_call(api):
         fake.invoke("first")
         fake.invoke("second")
 
-    run_inference_sync(work, scope=InferenceScope(account_id=account_id, role="player", purpose="test_multicall"))
+    run_inference_sync(work, scope=InferenceScope(account_id=account_id, role="player", purpose="test_multicall", store=db))
 
     rows = _usage_rows(db, account_id)
     assert len(rows) == 1
@@ -252,7 +249,7 @@ def test_onboarding_step_is_metered(api, monkeypatch):
     fake = _fake_model()
 
     class _FakeGraph:
-        def invoke(self, state):
+        def invoke(self, state, **kwargs):
             fake.invoke("intake")
             messages = list(state.get("messages", [])) + [AIMessage(content="Q1?")]
             return {
@@ -304,7 +301,7 @@ def test_coach_program_publish_is_metered(api, monkeypatch):
     def _wrapped(*args, **kwargs):
         fake.invoke("coach program")
         program = _stub_program()
-        db.save_training_program(
+        kwargs["ledger"].save_training_program(
             program.model_dump(),
             published_by_coach_account_id=kwargs.get("published_by_coach_account_id"),
         )
@@ -329,7 +326,7 @@ def test_cost_computed_from_pricing_json(api, monkeypatch):
     monkeypatch.setenv("MODEL_PRICING_JSON", json.dumps({"test-model": {"input": 1.0, "output": 2.0}}))
     fake = _fake_model("test-model", input_tokens=1_000_000, output_tokens=500_000)
 
-    run_inference_sync(lambda: fake.invoke("x"), scope=InferenceScope(account_id=account_id, role="player", purpose="pricing"))
+    run_inference_sync(lambda: fake.invoke("x"), scope=InferenceScope(account_id=account_id, role="player", purpose="pricing", store=db))
 
     rows = _usage_rows(db, account_id)
     assert rows[0]["model"] == "test-model"
@@ -351,7 +348,7 @@ def test_missing_provider_usage_is_flagged_estimated(api):
 
     run_inference_sync(
         lambda: fake.invoke("a reasonably long prompt"),
-        scope=InferenceScope(account_id=account_id, role="player", purpose="est"),
+        scope=InferenceScope(account_id=account_id, role="player", purpose="est", store=db),
     )
 
     rows = _usage_rows(db, account_id)
@@ -465,7 +462,7 @@ def test_concurrent_admits_are_capped(api, monkeypatch):
     def worker():
         barrier.wait()
         try:
-            admit_model_request(account_id, guard=False)
+            admit_model_request(account_id, guard=False, db=db)
             outcome = True
         except ModelLimitExceeded:
             outcome = False
@@ -492,10 +489,49 @@ def test_admission_guard_resets_when_the_scope_exits(api, monkeypatch):
         return None
 
     # First scope consumes the one slot and then releases its guard token.
-    run_inference_sync(noop, scope=InferenceScope(account_id=account_id, role="player", purpose="one"))
+    run_inference_sync(noop, scope=InferenceScope(account_id=account_id, role="player", purpose="one", store=db))
     # Same reusable context, same account: the limit must be enforced again.
     with pytest.raises(ModelLimitExceeded):
-        run_inference_sync(noop, scope=InferenceScope(account_id=account_id, role="player", purpose="two"))
+        run_inference_sync(noop, scope=InferenceScope(account_id=account_id, role="player", purpose="two", store=db))
+
+
+def test_attributed_admission_without_a_store_fails_closed():
+    """An attributed request with no store must raise, not silently skip the limit."""
+    with pytest.raises(RuntimeError, match="no store"):
+        admit_model_request("player-1", guard=False, db=None)
+
+
+def test_attributed_metering_without_a_store_fails_closed():
+    """An attributed model call with no store must raise, not drop the usage row."""
+    with pytest.raises(RuntimeError, match="no store"):
+        metering_service.record_model_usage(
+            store=None,
+            account_id="player-1",
+            role="player",
+            purpose="test",
+            model="Qwen/Qwen3.5-9B",
+            input_tokens=10,
+            output_tokens=5,
+            estimated=False,
+        )
+
+
+def test_unattributed_calls_still_noop_without_a_store():
+    """Startup/eval calls carry no account; they are dropped, never rejected."""
+    assert admit_model_request(None, guard=False, db=None) is None
+    assert (
+        metering_service.record_model_usage(
+            store=None,
+            account_id=None,
+            role="unknown",
+            purpose=None,
+            model="Qwen/Qwen3.5-9B",
+            input_tokens=10,
+            output_tokens=5,
+            estimated=False,
+        )
+        is None
+    )
 
 
 # --------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 import random
 import re
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -32,7 +33,6 @@ from agent.ProgramState import (
     ProgramExerciseSchema,
     WarmupExerciseSchema,
 )
-from database.store import get_store
 from utils.logger import MyosLogger
 
 load_dotenv()
@@ -76,13 +76,15 @@ def build_warmup_block(
     family: str,
     equipment_access: str,
     limitations: str,
+    *,
+    ledger: Any,
 ) -> list[WarmupExerciseSchema]:
     """Resolves the 2-3 general preparation movements that open every session."""
     keys = WARMUP_FAMILIES.get(family, WARMUP_FAMILIES["full"])
     warmups: list[WarmupExerciseSchema] = []
     seen_ids: set[str] = set()
     for key in keys:
-        for candidate in fetch_warmup_candidates(key, equipment_access, limitations, limit=3):
+        for candidate in fetch_warmup_candidates(key, equipment_access, limitations, limit=3, ledger=ledger):
             candidate_id = str(candidate["id"])
             if candidate_id in seen_ids:
                 continue
@@ -118,6 +120,8 @@ def assemble_deterministic_day(
     rep_preference: str,
     excluded_ids: set[str],
     recovery_cut: bool = False,
+    *,
+    ledger: Any,
 ) -> ProgramDaySchema:
     """Fills every blueprint slot with one catalog movement, honouring slot prescriptions."""
     selected_exercises: list[ProgramExerciseSchema] = []
@@ -130,7 +134,7 @@ def assemble_deterministic_day(
         if spec is None:
             logger.warning(f"Unknown slot '{slot_key}' in day '{day.day_name}' was skipped.")
             continue
-        candidates = fetch_slot_candidates(slot_key, equipment_access, limitations, limit=8)
+        candidates = fetch_slot_candidates(slot_key, equipment_access, limitations, limit=8, ledger=ledger)
         chosen = _pick_candidate(candidates, excluded_ids)
         if chosen is None:
             # A limitation filter can empty the whole pool (back rule vs hinges):
@@ -139,7 +143,7 @@ def assemble_deterministic_day(
                 fallback_spec = SLOT_SPECS.get(fallback_key)
                 if fallback_spec is None:
                     continue
-                fallback_candidates = fetch_slot_candidates(fallback_key, equipment_access, limitations, limit=8)
+                fallback_candidates = fetch_slot_candidates(fallback_key, equipment_access, limitations, limit=8, ledger=ledger)
                 fallback_chosen = _pick_candidate(fallback_candidates, excluded_ids)
                 if fallback_chosen is not None:
                     logger.info(f"Substituted '{fallback_key}' for limited slot '{slot_key}' (day '{day.day_name}').")
@@ -182,7 +186,7 @@ def assemble_deterministic_day(
             spec = SLOT_SPECS.get(slot_key)
             if spec is None:
                 continue
-            for candidate in fetch_slot_candidates(slot_key, equipment_access, limitations, limit=6):
+            for candidate in fetch_slot_candidates(slot_key, equipment_access, limitations, limit=6, ledger=ledger):
                 candidate_id = str(candidate["id"])
                 if any(ex.exercise_id == candidate_id for ex in selected_exercises):
                     continue
@@ -208,7 +212,7 @@ def assemble_deterministic_day(
     return ProgramDaySchema(
         day_order=day.day_order,
         day_name=day.day_name,
-        warmup_exercises=build_warmup_block(day.warmup_family, equipment_access, limitations),
+        warmup_exercises=build_warmup_block(day.warmup_family, equipment_access, limitations, ledger=ledger),
         exercises=selected_exercises,
         cardio=day.cardio,
     )
@@ -291,9 +295,10 @@ def generate_program_pipeline(
     rep_preference_override: str | None = None,
     frequency_override: int | None = None,
     published_by_coach_account_id: str | None = None,
+    *,
+    ledger: Any,
 ) -> tuple[GeneratedProgramSchema, str]:
-    db = get_store()
-    profile = db.get_user_profile()
+    profile = ledger.get_user_profile()
     if not profile:
         raise ValueError("No user profile found in SQLite. Complete intake first.")
 
@@ -308,7 +313,7 @@ def generate_program_pipeline(
         freq = validate_frequency(profile.get("weekly_frequency", 4))
 
     if freq != profile.get("weekly_frequency"):
-        db.update_user_frequency(freq)
+        ledger.update_user_frequency(freq)
 
     clean_split_override = user_split_override
     if user_split_override:
@@ -346,6 +351,7 @@ def generate_program_pipeline(
             rep_preference=rep_pref,
             excluded_ids=set(),
             recovery_cut=recovery_cut,
+            ledger=ledger,
         )
         generated_days.append(day_plan)
 
@@ -361,7 +367,7 @@ def generate_program_pipeline(
         days=generated_days,
     )
 
-    db.save_training_program(
+    ledger.save_training_program(
         program.model_dump(), published_by_coach_account_id=published_by_coach_account_id
     )
 

@@ -48,7 +48,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -570,7 +570,7 @@ def test_commit_session_hook_creates_a_deload_alert(api):
     _, _, _, coach_account_id, player_account_id = _assign(api)
     _, db = api
     db.switch_user("p1")
-    db.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.upsert_user_profile({"current_goal": "Strength"})
     day_plan = ProgramDaySchema(
         day_name="Full A",
         day_order=1,
@@ -602,7 +602,7 @@ def test_commit_session_hook_creates_a_regression_alert(api):
     _, _, _, coach_account_id, player_account_id = _assign(api)
     _, db = api
     db.switch_user("p1")
-    db.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.upsert_user_profile({"current_goal": "Strength"})
     bench = ProgramExerciseSchema(
         exercise_id="bp", exercise_name="Bench Press", target_reps_min=5, target_reps_max=8, target_rpe=8.5
     )

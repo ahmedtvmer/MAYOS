@@ -55,7 +55,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -149,7 +149,7 @@ def _program(frequency=1) -> GeneratedProgramSchema:
 def _coach_generation(db, monkeypatch):
     def fake(**kwargs):
         program = _program()
-        db.save_training_program(
+        kwargs["ledger"].save_training_program(
             program.model_dump(),
             published_by_coach_account_id=kwargs.get("published_by_coach_account_id"),
         )
@@ -163,7 +163,7 @@ def _request_generation(db, monkeypatch):
 
     def fake(**kwargs):
         program = _program(frequency=kwargs.get("frequency_override") or 1)
-        db.save_training_program(
+        kwargs["ledger"].save_training_program(
             program.model_dump(),
             published_by_coach_account_id=kwargs.get("published_by_coach_account_id"),
         )
@@ -227,7 +227,7 @@ def test_create_substitution_records_exact_target_and_leaves_program(api, monkey
 
     # The program was not touched: same single version, same slot.
     db.switch_user("p1")
-    assert db.get_active_program().version == 1
+    assert db.ledger.get_active_program().version == 1
     rows = db.conn.execute("SELECT COUNT(*) FROM training_programs").fetchone()
     assert int(rows[0]) == 1
 
@@ -368,7 +368,7 @@ def test_apply_substitution_publishes_new_version_preserving_provenance(api, mon
     ).fetchall()
     assert [int(row[0]) for row in rows] == [1, 2]
     assert all(row[1] == coach_account_id for row in rows)
-    active = db.get_active_program()
+    active = db.ledger.get_active_program()
     assert active.version == 2
     slot_ids = [ex.exercise_id for day in active.days for ex in day.exercises]
     assert "ohp" in slot_ids and "sq" not in slot_ids
@@ -399,7 +399,7 @@ def test_apply_split_change_publishes_desired_frequency(api, monkeypatch):
     assert applied.status_code == 200, applied.text
 
     db.switch_user("p1")
-    active = db.get_active_program()
+    active = db.ledger.get_active_program()
     assert active.version == 2
     assert active.weekly_frequency == 3
 
@@ -421,7 +421,7 @@ def test_apply_replacement_missing_after_creation_stays_pending(api, monkeypatch
     # The failed pre-claim validation leaves the request pending and the program untouched.
     assert db.get_program_request(request_id)["status"] == "pending"
     db.switch_user("p1")
-    assert db.get_active_program().version == 1
+    assert db.ledger.get_active_program().version == 1
     rows = db.conn.execute("SELECT COUNT(*) FROM training_programs").fetchone()
     assert int(rows[0]) == 1
 
@@ -450,7 +450,7 @@ def test_apply_write_failure_reverts_request_to_pending(api, monkeypatch):
     assert reverted["resolved_at"] is None
     assert reverted["resolved_by"] is None
     db.switch_user("p1")
-    assert db.get_active_program().version == 1
+    assert db.ledger.get_active_program().version == 1
     rows = db.conn.execute("SELECT COUNT(*) FROM training_programs").fetchone()
     assert int(rows[0]) == 1
 
@@ -475,7 +475,7 @@ def test_apply_stale_request_after_new_publication(api, monkeypatch):
     assert listed[0]["status"] == "pending"
 
     db.switch_user("p1")
-    active = db.get_active_program()
+    active = db.ledger.get_active_program()
     assert active.version == 2
     slot_ids = [ex.exercise_id for day in active.days for ex in day.exercises]
     assert "sq" in slot_ids and "ohp" not in slot_ids
@@ -508,7 +508,7 @@ def test_decline_records_response_and_leaves_program(api, monkeypatch):
     assert listed[0]["response"] == "Keep the squat; we will revisit next block."
 
     db.switch_user("p1")
-    assert db.get_active_program().version == 1
+    assert db.ledger.get_active_program().version == 1
 
 
 def test_cancel_pending_then_apply_is_refused(api, monkeypatch):

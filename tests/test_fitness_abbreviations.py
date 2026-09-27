@@ -83,7 +83,6 @@ def _good_morning_db(tmp_path_factory):
     import shutil
 
     from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
-    from database.store import set_store
 
     base = tmp_path_factory.mktemp("good_morning")
     catalog_path = base / "catalog.db"
@@ -93,7 +92,8 @@ def _good_morning_db(tmp_path_factory):
         users_dir=base / "users",
         backups_dir=base / "backups",
     )
-    set_store(db)
+    ledger = db.open_ledger("default")
+    db.ledger = ledger
     profile = {
         "gender": "male",
         "proportions": "balanced",
@@ -103,37 +103,35 @@ def _good_morning_db(tmp_path_factory):
         "primary_goal": "hypertrophy",
         "coach_tone": "Direct, grounded, and pragmatic",
     }
-    db.upsert_user_profile(profile)
+    db.ledger.upsert_user_profile(profile)
 
     # Generate a baseline 4-day split
     from agent.program_generator import generate_program_pipeline
-    generate_program_pipeline(user_split_override=None, frequency_override=4)
+    generate_program_pipeline(user_split_override=None, frequency_override=4, ledger=db.ledger)
 
     # Ensure Day 2 (Lower) or Day 1 has machine seated good morning (ID 3759)
-    active = db.get_active_program()
+    active = db.ledger.get_active_program()
     assert active is not None
 
     # Replace the first exercise of Day 1 with Machine Seated Good Morning for reliable testing
     target_day = active.days[0]
     target_ex = target_day.exercises[0]
 
-    db.swap_program_exercise(
+    db.ledger.swap_program_exercise(
         old_exercise_id=target_ex.exercise_id,
         new_exercise_id="3759",  # machine seated good morning (glutes / upper legs)
         new_notes="Hinge at the hips with neutral spine",
     )
-    yield db
-    if db.user_conn is not None:
-        db.user_conn.close()
-    db.catalog_conn.close()
+    try:
+        yield db
+    finally:
+        db.ledger.close()
+        db.catalog_conn.close()
 
 
 @pytest.fixture
 def db_with_good_morning(_good_morning_db):
-    """Re-publishes the module store as active after the per-test isolation reset."""
-    from database.store import set_store
-
-    set_store(_good_morning_db)
+    """The module store with its live default ledger handle."""
     return _good_morning_db
 
 
@@ -156,13 +154,15 @@ def test_substitution_rdls_confident_install(db_with_good_morning):
         "response_content": None,
     }
 
-    res = exercise_substitution_node(state)
+    res = exercise_substitution_node(
+        state, {"configurable": {"ledger": db_with_good_morning.ledger, "store": db_with_good_morning}}
+    )
     assert res["program_updated"] is True, f"Failed swap: {res.get('response_content')}"
     assert "barbell romanian deadlift" in res["response_content"].lower()
     assert "low glute bridge" not in res["response_content"].lower()
 
     # Check database program slot
-    active_after = db_with_good_morning.get_active_program()
+    active_after = db_with_good_morning.ledger.get_active_program()
     first_ex = active_after.days[0].exercises[0]
     assert first_ex.exercise_name.lower() == "barbell romanian deadlift"
 
@@ -186,12 +186,14 @@ def test_substitution_db_rdl_explicit_variant(db_with_good_morning):
         "response_content": None,
     }
 
-    res = exercise_substitution_node(state)
+    res = exercise_substitution_node(
+        state, {"configurable": {"ledger": db_with_good_morning.ledger, "store": db_with_good_morning}}
+    )
     assert res["program_updated"] is True, f"Failed swap: {res.get('response_content')}"
     assert "dumbbell romanian deadlift" in res["response_content"].lower()
 
     # Check database program slot
-    active_after = db_with_good_morning.get_active_program()
+    active_after = db_with_good_morning.ledger.get_active_program()
     first_ex = active_after.days[0].exercises[0]
     assert first_ex.exercise_name.lower() == "dumbbell romanian deadlift"
 
@@ -215,13 +217,15 @@ def test_substitution_unknown_abbreviation_asks_illustration(db_with_good_mornin
         "response_content": None,
     }
 
-    res = exercise_substitution_node(state)
+    res = exercise_substitution_node(
+        state, {"configurable": {"ledger": db_with_good_morning.ledger, "store": db_with_good_morning}}
+    )
     assert res["program_updated"] is False
     assert "could you provide further illustration" in res["response_content"].lower()
     assert "did you mean one of these alternatives?" in res["response_content"].lower()
 
     # Verify the database was NOT mutated
-    active_after = db_with_good_morning.get_active_program()
+    active_after = db_with_good_morning.ledger.get_active_program()
     first_ex = active_after.days[0].exercises[0]
     assert first_ex.exercise_name.lower() == "dumbbell romanian deadlift"
 

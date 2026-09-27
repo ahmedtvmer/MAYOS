@@ -35,11 +35,10 @@ def sub_db(tmp_path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="default",
+        default_ledger_id="default",
     )
     try:
-        monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
-        db.save_training_program(
+        db.ledger.save_training_program(
             {
                 "program_name": "Resolution Test Split",
                 "weekly_frequency": 3,
@@ -76,7 +75,7 @@ def _state(source: str, target: str) -> dict:
 
 
 def _slot_name(db, index: int) -> str:
-    program = db.get_active_program()
+    program = db.ledger.get_active_program()
     assert program is not None
     return program.days[0].exercises[index].exercise_name.lower()
 
@@ -96,7 +95,7 @@ def test_catalog_name_resolution_tiers(sub_db):
 
 def test_hallucinated_target_refuses_instead_of_installing_sibling(sub_db):
     db = sub_db
-    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", HALLUCINATED_TARGET))
+    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", HALLUCINATED_TARGET), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert res["program_updated"] is False
     assert "could not find a biomechanically suitable match" in res["response_content"].lower()
     assert _slot_name(db, 1) == "reverse grip machine lat pulldown"
@@ -107,14 +106,14 @@ def test_named_catalog_target_installs_without_semantic_search(sub_db, monkeypat
         raise AssertionError("EMBED_MODEL must not be used for a named catalog match")
 
     monkeypatch.setattr(assistant_graph, "EMBED_MODEL", SimpleNamespace(embed_query=_boom, embed_documents=_boom))
-    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", "machine front pulldown"))
+    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", "machine front pulldown"), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert res["program_updated"] is True
     assert "machine front pulldown" in res["response_content"].lower()
     assert _slot_name(sub_db, 1) == "machine front pulldown"
 
 
 def test_punctuation_normalized_target_installs(sub_db):
-    res = exercise_substitution_node(_state("machine chest press", "push up"))
+    res = exercise_substitution_node(_state("machine chest press", "push up"), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert res["program_updated"] is True
     assert "push-up" in res["response_content"].lower()
     assert _slot_name(sub_db, 0) == "push-up"
@@ -122,17 +121,17 @@ def test_punctuation_normalized_target_installs(sub_db):
 
 def test_transcript_replay_second_commit_refuses(sub_db):
     db = sub_db
-    first = exercise_substitution_node(_state("reverse grip machine lat pulldown", "machine front pulldown"))
+    first = exercise_substitution_node(_state("reverse grip machine lat pulldown", "machine front pulldown"), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert first["program_updated"] is True
 
-    second = exercise_substitution_node(_state("machine front pulldown", HALLUCINATED_TARGET))
+    second = exercise_substitution_node(_state("machine front pulldown", HALLUCINATED_TARGET), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert second["program_updated"] is False
     assert _slot_name(db, 1) == "machine front pulldown"
 
 
 def test_muscle_incompatible_named_target_refuses(sub_db):
     db = sub_db
-    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", "barbell bench press"))
+    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", "barbell bench press"), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert res["program_updated"] is False
     assert "is in the exercise database" in res["response_content"]
     assert "pectorals" in res["response_content"].lower()
@@ -141,7 +140,7 @@ def test_muscle_incompatible_named_target_refuses(sub_db):
 
 def test_self_swap_refuses(sub_db):
     db = sub_db
-    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", "reverse grip machine lat pulldown"))
+    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", "reverse grip machine lat pulldown"), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert res["program_updated"] is False
     assert _slot_name(db, 1) == "reverse grip machine lat pulldown"
 
@@ -149,7 +148,7 @@ def test_self_swap_refuses(sub_db):
 @pytest.mark.parametrize("target", ["it", "choice", "one", "two", "three", "first"])
 def test_unspecific_target_refuses_without_junk_match(sub_db, target):
     db = sub_db
-    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", target))
+    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", target), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert res["program_updated"] is False
     assert "could not find a biomechanically suitable match" in res["response_content"].lower()
     assert _slot_name(db, 1) == "reverse grip machine lat pulldown"
@@ -177,7 +176,7 @@ def test_followup_hint_uses_real_catalog_name(sub_db, monkeypatch):
     ]
     monkeypatch.setattr(DatabaseManager, "search_similar_exercises", lambda self, vec, limit=5: variants)
 
-    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", "something easier on my elbows"))
+    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", "something easier on my elbows"), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert res["program_updated"] is True
     assert "swap reverse grip machine lat pulldown for cable lateral pulldown" in res["response_content"]
     assert "swap for cable machine" not in res["response_content"]

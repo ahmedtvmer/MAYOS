@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate trimmed MAYOS brand assets from the supplied originals.
 
-The originals in ``assets/mayos-logo-{white,blue,black}.png`` are never
+The monochrome originals in ``assets/mayos-logo-{white,black}.png`` are never
 modified. This script derives, deterministically:
 
   * ``mobile/assets/brand/mayos-lockup-<variant>.png`` — the mark + wordmark
@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[2]  # repo root
 SRC = ROOT / "assets"
 OUT = ROOT / "mobile" / "assets" / "brand"
 
-VARIANTS = ("white", "blue", "black")
+VARIANTS = ("white", "black")
 
 # Pixels at or above this alpha count as ink. Kept above the faint artifact
 # range so isolated low-alpha marks do not define the content box.

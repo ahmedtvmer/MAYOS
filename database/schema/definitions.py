@@ -43,9 +43,6 @@ class SchemaMixin:
         # Outside the lock block: ensure_account_schema acquires _catalog_lock itself.
         self.ensure_account_schema()
 
-    def create_user_schema(self) -> None:
-        self._create_user_schema_on(self.conn)
-
     def _create_user_schema_on(self, conn) -> None:
         cursor = conn.cursor()
         cursor.executescript("""
@@ -239,10 +236,6 @@ class SchemaMixin:
         if get_user_schema_version(conn) < CURRENT_USER_SCHEMA_VERSION:
             set_user_schema_version(conn, CURRENT_USER_SCHEMA_VERSION)
         conn.commit()
-
-    def create_schema(self) -> None:
-        self.create_catalog_schema()
-        self.create_user_schema()
 
     def ensure_account_schema(self) -> None:
         # Provisioned once at boot; guarded so the auth hot path never re-runs DDL.

@@ -21,7 +21,7 @@ def _bind_store(fresh_store):
     return fresh_store
 
 
-def test_rules():
+def test_rules(fresh_store):
     logger.info("--- 1. Testing Default Presets & Frequency Clamping ---")
     # Test 6-day frequency clamp
     plan_6d = resolve_split(6)
@@ -48,7 +48,11 @@ def test_rules():
 
     logger.info("\n--- 3. Testing Candidate Retrieval & Contraindication Filters ---")
     candidates = fetch_filtered_candidates(
-        body_part="back", equipment_access="commercial gym", limitations="lower back tightness", limit=3
+        body_part="back",
+        equipment_access="commercial gym",
+        limitations="lower back tightness",
+        limit=3,
+        ledger=fresh_store.ledger,
     )
     for c in candidates:
         logger.info(f"  [ID {c['id']}] {c['name']} (Target: {c['target_muscle']})")

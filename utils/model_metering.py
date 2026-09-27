@@ -32,11 +32,16 @@ _CHARS_PER_TOKEN = 4
 
 @dataclass(frozen=True)
 class UsageContext:
-    """The immutable account + role + purpose an inference is attributed to."""
+    """The immutable account + role + purpose an inference is attributed to.
+
+    ``store`` is the app-owned store the usage row is persisted through; it is
+    carried here so metering never reads an ambient/thread-local store (ADR 041).
+    """
 
     account_id: str | None
     role: str
     purpose: str | None
+    store: Any = None
 
 
 _usage_context: contextvars.ContextVar[UsageContext | None] = contextvars.ContextVar(
@@ -51,10 +56,12 @@ def current_usage_context() -> UsageContext:
 
 @contextmanager
 def usage_context(
-    account_id: str | None, role: str = "unknown", purpose: str | None = None
+    account_id: str | None, role: str = "unknown", purpose: str | None = None, store: Any = None
 ) -> Iterator[None]:
     """Sets the usage context for the duration of the block (per thread/task)."""
-    token = _usage_context.set(UsageContext(account_id=account_id, role=role or "unknown", purpose=purpose))
+    token = _usage_context.set(
+        UsageContext(account_id=account_id, role=role or "unknown", purpose=purpose, store=store)
+    )
     try:
         yield
     finally:
@@ -138,6 +145,7 @@ def record_usage(
     try:
         active = context or current_usage_context()
         (_recorder or _no_op_recorder)(
+            store=active.store,
             account_id=active.account_id,
             role=active.role,
             purpose=active.purpose,

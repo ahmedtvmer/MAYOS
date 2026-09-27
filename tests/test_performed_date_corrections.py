@@ -57,7 +57,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -124,9 +124,9 @@ def _prepare_player(client, db, username="p1"):
     player = _register(client, username)
     headers = _authed(player["access_token"])
     db.switch_user(username)
-    db.upsert_user_profile({"current_goal": "Strength"})
-    db.save_training_program(_program_payload())
-    version = db.get_active_program().version
+    db.ledger.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.save_training_program(_program_payload())
+    version = db.ledger.get_active_program().version
     return headers, version
 
 
@@ -229,7 +229,7 @@ def test_in_window_correction_records_edit_and_correction_row(api):
     assert after["uploaded_at"] == before["uploaded_at"]
     assert after["captured_at"] == before["captured_at"]
     assert after["edited_at"] == FIXED_NOW.isoformat()
-    rows = db.list_performed_date_corrections(session_id)
+    rows = db.ledger.list_performed_date_corrections(session_id)
     assert [(row["previous_date"], row["corrected_date"]) for row in rows] == [
         ("2026-09-26", "2026-09-25")
     ]
@@ -253,7 +253,7 @@ def test_correcting_to_the_same_date_is_a_noop(api):
     assert body["corrections"] == []
 
     db.switch_user("p1")
-    assert db.list_performed_date_corrections(session_id) == []
+    assert db.ledger.list_performed_date_corrections(session_id) == []
     assert _session_row(db, session_id)["edited_at"] is None
 
 
@@ -278,7 +278,7 @@ def test_noop_to_the_current_date_wins_over_the_recency_window(api):
     assert body["session_date"] == "2026-09-20"
     assert body["corrections"] == []
     db.switch_user("p1")
-    assert db.list_performed_date_corrections(session_id) == []
+    assert db.ledger.list_performed_date_corrections(session_id) == []
     assert _session_row(db, session_id)["edited_at"] is None
 
 
@@ -300,7 +300,7 @@ def test_correction_after_the_capture_date_is_refused(api):
     assert "future" in resp.json()["detail"].lower()
     db.switch_user("p1")
     assert _session_row(db, session_id)["session_date"] == "2026-09-25"
-    assert db.list_performed_date_corrections(session_id) == []
+    assert db.ledger.list_performed_date_corrections(session_id) == []
 
 
 def test_future_performed_date_is_refused(api):
@@ -317,7 +317,7 @@ def test_future_performed_date_is_refused(api):
     assert "future" in resp.json()["detail"].lower()
     db.switch_user("p1")
     assert _session_row(db, session_id)["session_date"] == "2026-09-26"
-    assert db.list_performed_date_corrections(session_id) == []
+    assert db.ledger.list_performed_date_corrections(session_id) == []
 
 
 def test_date_older_than_the_window_is_refused(api):
@@ -366,7 +366,7 @@ def test_session_older_than_the_window_cannot_be_corrected(api):
     assert "3 days" in resp.json()["detail"]
     db.switch_user("p1")
     assert _session_row(db, session_id)["session_date"] == "2026-09-20"
-    assert db.list_performed_date_corrections(session_id) == []
+    assert db.ledger.list_performed_date_corrections(session_id) == []
 
 
 def test_another_players_session_is_not_correctable(api):
@@ -438,14 +438,14 @@ def _backdate_assignment(db, assignment_id, started_at):
 
 def _seed_schedule(db, player, weekdays, effective_from):
     db.switch_user(player)
-    db.append_training_schedule(
+    db.ledger.append_training_schedule(
         player, weekdays, "UTC", effective_from.isoformat(), "2026-01-01T00:00:00+00:00"
     )
 
 
 def _seed_session(db, player, session_id, session_date, captured_at):
     db.switch_user(player)
-    db.log_workout_session(
+    db.ledger.log_workout_session(
         session_id,
         session_date.isoformat(),
         "Full A",

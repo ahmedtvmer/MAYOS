@@ -14,38 +14,35 @@ logger = MyosLogger().get_logger(__name__)
 def run_test():
     logger.info("--- Starting Phase 2 Program Generation ---")
 
-    # 1. Mount isolated test ledger and seed baseline profile
+    # 1. Open an isolated test ledger and seed baseline profile
     db = DatabaseManager()
-    from database.store import set_store
-
-    set_store(db)
     test_user = "test_generator_trainee"
-    db.switch_user(test_user)
-    db.upsert_user_profile(
-        {
-            "gender": "male",
-            "proportions": "balanced",
-            "age": 22,
-            "weight_kg": 80.0,
-            "height_cm": 180.0,
-            "rep_preference": "balanced",
-            "current_goal": "hypertrophy",
-            "long_term_goal": "progressive overload",
-            "weekly_frequency": 4,
-            "training_age_years": 3.0,
-            "equipment_access": "commercial gym",
-            "injuries_or_limitations": "None",
-            "stress_and_sleep": "normal",
-        }
-    )
+    with db.open_ledger(test_user) as ledger:
+        ledger.upsert_user_profile(
+            {
+                "gender": "male",
+                "proportions": "balanced",
+                "age": 22,
+                "weight_kg": 80.0,
+                "height_cm": 180.0,
+                "rep_preference": "balanced",
+                "current_goal": "hypertrophy",
+                "long_term_goal": "progressive overload",
+                "weekly_frequency": 4,
+                "training_age_years": 3.0,
+                "equipment_access": "commercial gym",
+                "injuries_or_limitations": "None",
+                "stress_and_sleep": "normal",
+            }
+        )
 
-    # 2. Execute program synthesis
-    program, table_view = generate_program_pipeline()
+        # 2. Execute program synthesis
+        program, table_view = generate_program_pipeline(ledger=ledger)
 
-    # 3. Assertions
-    assert program is not None, "Failed: Program generation returned None."
-    assert len(program.days) == 4, f"Expected 4 training days, got {len(program.days)}"
-    assert db.get_active_program() is not None, "Failed: Program not persisted to SQLite."
+        # 3. Assertions
+        assert program is not None, "Failed: Program generation returned None."
+        assert len(program.days) == 4, f"Expected 4 training days, got {len(program.days)}"
+        assert ledger.get_active_program() is not None, "Failed: Program not persisted to SQLite."
 
     logger.info("\n" + "=" * 50)
     logger.info(table_view)
@@ -80,11 +77,10 @@ def test_invalid_frequency_rejected_before_program_writes(monkeypatch, frequency
     database = MagicMock()
     database.get_user_profile.return_value = {"weekly_frequency": frequency if source == "profile" else 4}
     split = MagicMock()
-    monkeypatch.setattr(program_generator, "get_store", lambda _db=database: _db)
     monkeypatch.setattr(program_generator, "resolve_split", split)
     kwargs = {"frequency_override": frequency} if source == "override" else {}
     with pytest.raises(ValueError, match="1 to 5"):
-        generate_program_pipeline(**kwargs)
+        generate_program_pipeline(ledger=database, **kwargs)
     assert database.method_calls == [("get_user_profile", (), {})]
     split.assert_not_called()
 
@@ -93,9 +89,10 @@ def test_invalid_frequency_rejected_before_program_writes(monkeypatch, frequency
 def test_invalid_text_frequency_not_hidden_by_valid_override(monkeypatch, frequency):
     database = MagicMock()
     database.get_user_profile.return_value = {"weekly_frequency": 4}
-    monkeypatch.setattr(program_generator, "get_store", lambda _db=database: _db)
     with pytest.raises(ValueError, match="1 to 5"):
-        generate_program_pipeline(user_split_override=f"switch routine to {frequency} days", frequency_override=3)
+        generate_program_pipeline(
+            user_split_override=f"switch routine to {frequency} days", frequency_override=3, ledger=database
+        )
     assert database.method_calls == [("get_user_profile", (), {})]
 
 

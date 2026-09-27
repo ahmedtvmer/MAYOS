@@ -56,7 +56,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -149,7 +149,7 @@ def _program(name: str = "Coach Plan") -> GeneratedProgramSchema:
 def _fake_coach_generator(db):
     def fake(**kwargs):
         program = _program()
-        db.save_training_program(
+        kwargs["ledger"].save_training_program(
             program.model_dump(),
             published_by_coach_account_id=kwargs.get("published_by_coach_account_id"),
         )
@@ -313,8 +313,8 @@ def test_reapply_never_removes_a_reused_usernames_new_ledger(api):
 
     # The new account can still log a workout against its own ledger.
     db.switch_user(second_ledger)
-    db.upsert_user_profile({"current_goal": "Strength"})
-    db.save_training_program(_saved_split_payload())
+    db.ledger.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.save_training_program(_saved_split_payload())
     commit = client.post(
         "/workouts/sessions",
         headers=_authed(second["access_token"]),

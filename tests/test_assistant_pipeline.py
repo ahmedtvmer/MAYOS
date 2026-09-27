@@ -167,7 +167,7 @@ def test_phase2_streaming_generator_qa(fresh_store, monkeypatch):
     # Stub the module-level proxy: class patches are bypassed when the in-repo
     # mock model is active. A fresh generator per call preserves lazy consumption.
     monkeypatch.setattr("agent.assistant_graph.llm", SimpleNamespace(stream=lambda payload: produce()))
-    generator = stream_assistant_turn(state)
+    generator = stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store)
     first = next(generator)
     assert first == "Keep your elbows tucked."
     assert consumed == [1]
@@ -202,7 +202,7 @@ def test_phase2_streaming_generator_programmatic_bypass(fresh_store):
     ):
         mock_mutation.return_value = {"program_updated": True, "response_content": "Rebuilt routine for 3 days/week."}
 
-        generator = stream_assistant_turn(state)
+        generator = stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store)
         output = list(generator)
 
         mock_llm_stream.assert_not_called()
@@ -238,10 +238,10 @@ def test_phase3_substitution_lookup_candidates(fresh_store):
     mock_conn.cursor.return_value = mock_cur_instance
 
     with (
-        patch.object(fresh_store, "get_active_program", return_value=mock_prog),
+        patch.object(fresh_store.ledger, "get_active_program", return_value=mock_prog),
         patch.object(fresh_store, "catalog_conn", mock_conn),
         patch.object(fresh_store, "search_similar_exercises") as mock_search,
-        patch.object(fresh_store, "swap_program_exercise") as mock_swap,
+        patch.object(fresh_store.ledger, "swap_program_exercise") as mock_swap,
     ):
         mock_search.return_value = [
             {
@@ -267,7 +267,7 @@ def test_phase3_substitution_lookup_candidates(fresh_store):
             },
         ]
 
-        result = exercise_substitution_node(state)
+        result = exercise_substitution_node(state, {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}})
 
         mock_swap.assert_not_called()
         assert result["program_updated"] is False
@@ -303,11 +303,11 @@ def test_phase3_substitution_direct_swap(fresh_store):
     mock_conn.cursor.return_value = mock_cur_instance
 
     with (
-        patch.object(fresh_store, "get_active_program", return_value=mock_prog),
+        patch.object(fresh_store.ledger, "get_active_program", return_value=mock_prog),
         patch.object(fresh_store, "catalog_conn", mock_conn),
         patch.object(fresh_store, "find_exercises_by_name") as mock_find,
         patch.object(fresh_store, "search_similar_exercises") as mock_search,
-        patch.object(fresh_store, "swap_program_exercise", return_value=True) as mock_swap,
+        patch.object(fresh_store.ledger, "swap_program_exercise", return_value=True) as mock_swap,
     ):
         mock_find.return_value = [
             {
@@ -328,7 +328,7 @@ def test_phase3_substitution_direct_swap(fresh_store):
             }
         ]
 
-        result = exercise_substitution_node(state)
+        result = exercise_substitution_node(state, {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}})
 
         mock_swap.assert_called_once_with(
             old_exercise_id="ex_123", new_exercise_id="ex_999", new_notes=mock_swap.call_args[1]["new_notes"]
@@ -365,7 +365,7 @@ def test_component1_medical_red_flag_interceptor(fresh_store):
         }
 
         with patch.object(SafeChatLlamaCpp, "stream") as mock_llm_stream:
-            tokens = list(stream_assistant_turn(state))
+            tokens = list(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
 
             # 1. Must NOT invoke LLM inference
             mock_llm_stream.assert_not_called()

@@ -33,7 +33,7 @@ def test_graph_stream_and_saved_parity(graph, raw):
     graph.llm.stream = MagicMock(return_value=iter([AIMessageChunk(content=raw[:10]), AIMessageChunk(content=raw[10:])]))
     request = state("How many squat reps?")
     original = list(request["messages"])
-    shown = list(graph.stream_assistant_turn(request))
+    shown = list(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db))
     saved = MagicMock()
     saved.add_chat_message("assistant", request["response_content"])
     display = "".join(shown)
@@ -41,7 +41,7 @@ def test_graph_stream_and_saved_parity(graph, raw):
     assert request["messages"][:-1] == original
     assert display == request["messages"][-1].content == saved.add_chat_message.call_args.args[1]
     assert graph.generation_node(state("How many squat reps?"))["response_content"] == display
-    assert graph.assistant_graph.invoke(state("How many squat reps?"))["response_content"] == display
+    assert graph.assistant_graph.invoke(state("How many squat reps?"), config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"] == display
 
 
 def test_partial_failure_preserves_sanitized_display_and_state(graph):
@@ -51,7 +51,7 @@ def test_partial_failure_preserves_sanitized_display_and_state(graph):
         raise RuntimeError("internal database secret")
     graph.llm.stream = MagicMock(return_value=fail())
     request = state("How many squat reps?")
-    shown = "".join(graph.stream_assistant_turn(request))
+    shown = "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db))
     assert shown == "Use controlled reps. [Consult a sports physician regarding joint pain]\n\n" + PIPELINE_ERROR_RESPONSE
     assert shown == request["response_content"] == request["messages"][-1].content
     assert "private" not in shown and "secret" not in shown
@@ -72,8 +72,8 @@ def test_graph_and_stream_failures(graph, stage):
     else:
         graph.llm.invoke.side_effect = RuntimeError("private detail")
         graph.llm.stream = MagicMock(side_effect=RuntimeError("private detail"))
-    assert graph.assistant_graph.invoke(request)["response_content"] == PIPELINE_ERROR_RESPONSE
-    assert list(graph.stream_assistant_turn(request)) == [PIPELINE_ERROR_RESPONSE]
+    assert graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"] == PIPELINE_ERROR_RESPONSE
+    assert list(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)) == [PIPELINE_ERROR_RESPONSE]
 
 
 def test_finish_limit_preserves_partial_answer(graph):
@@ -82,7 +82,7 @@ def test_finish_limit_preserves_partial_answer(graph):
     expected = "Cut off\n\n" + graph.OUTPUT_LIMIT_RESPONSE
     assert graph.generation_node(state("How many squat reps?"))["response_content"] == expected
     request = state("How many squat reps?")
-    assert "".join(graph.stream_assistant_turn(request)) == expected
+    assert "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)) == expected
     assert request["response_content"] == request["messages"][-1].content == expected
 
 
@@ -97,7 +97,7 @@ def test_words_visible_before_sentence_or_generation_finishes(graph):
 
     graph.llm.stream = MagicMock(return_value=produce())
     request = state("How many squat reps?")
-    stream = graph.stream_assistant_turn(request)
+    stream = graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)
     first = next(stream)
     assert first == "Use"
     assert consumed == ["Use "]

@@ -33,7 +33,7 @@ def temp_db_env(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=users_dir,
         backups_dir=backups_dir,
-        active_user="alice",
+        default_ledger_id="alice",
     )
     try:
         assert db.catalog_path == catalog_path
@@ -54,19 +54,19 @@ def test_schema_version_stamping(temp_db_env):
 
 def test_atomic_backup_and_restore(temp_db_env):
     db, users_dir, backups_dir = temp_db_env
-    db.add_chat_message("user", "Hello backup test")
+    db.ledger.add_chat_message("user", "Hello backup test")
 
     snapshot_path = backups_dir / "alice" / "test_snap.db"
     create_atomic_backup(db.conn, snapshot_path)
     assert snapshot_path.is_file()
 
     # Clear chat in active DB
-    db.clear_chat_history()
-    assert len(db.get_chat_history()) == 0
+    db.ledger.clear_chat_history()
+    assert len(db.ledger.get_chat_history()) == 0
 
     # Restore from snapshot
     restore_atomic_backup(snapshot_path, db.conn)
-    history = db.get_chat_history()
+    history = db.ledger.get_chat_history()
     assert len(history) == 1
     assert history[0]["content"] == "Hello backup test"
 
@@ -147,72 +147,72 @@ def test_lazy_migration_execution_and_rollback(temp_db_env, monkeypatch):
 
 def test_assistant_memory_persistence_and_user_separation(temp_db_env):
     db, users_dir, _ = temp_db_env
-    db.upsert_user_profile({})
-    profile = db.get_user_profile()
-    assert db.get_assistant_memory() == {}
-    db.set_assistant_memory("preferred_name", "Alice")
-    db.set_assistant_memory("preferred_name", "O'Connor")
-    assert db.get_assistant_memory() == {"preferred_name": "O'Connor"}
+    db.ledger.upsert_user_profile({})
+    profile = db.ledger.get_user_profile()
+    assert db.ledger.get_assistant_memory() == {}
+    db.ledger.set_assistant_memory("preferred_name", "Alice")
+    db.ledger.set_assistant_memory("preferred_name", "O'Connor")
+    assert db.ledger.get_assistant_memory() == {"preferred_name": "O'Connor"}
     assert db.active_user == "alice"
-    assert db.get_user_profile() == profile
+    assert db.ledger.get_user_profile() == profile
     assert sorted(path.name for path in users_dir.glob("*.db")) == ["alice.db"]
-    db.clear_chat_history()
+    db.ledger.clear_chat_history()
     db.create_user_schema()
-    assert db.get_assistant_memory() == {"preferred_name": "O'Connor"}
+    assert db.ledger.get_assistant_memory() == {"preferred_name": "O'Connor"}
     db.switch_user("bob")
-    assert db.get_assistant_memory() == {}
-    db.set_assistant_memory("preferred_name", "Bob")
+    assert db.ledger.get_assistant_memory() == {}
+    db.ledger.set_assistant_memory("preferred_name", "Bob")
     db.switch_user("alice")
-    assert db.get_assistant_memory() == {"preferred_name": "O'Connor"}
+    assert db.ledger.get_assistant_memory() == {"preferred_name": "O'Connor"}
     db.switch_user("bob")
-    assert db.get_assistant_memory() == {"preferred_name": "Bob"}
+    assert db.ledger.get_assistant_memory() == {"preferred_name": "Bob"}
 
 
 @pytest.mark.parametrize("key", ["name", "username", "custom_instructions", "", "preferred_name'; --"])
 def test_assistant_memory_rejects_unsupported_keys(temp_db_env, key):
     db, _, _ = temp_db_env
     with pytest.raises(ValueError, match="Unsupported"):
-        db.set_assistant_memory(key, "Alice")
-    assert db.get_assistant_memory() == {}
+        db.ledger.set_assistant_memory(key, "Alice")
+    assert db.ledger.get_assistant_memory() == {}
 
 
 @pytest.mark.parametrize("value", [None, 12, True, {}, [], "", "   ", "A" * 61, "Alice\nBob", "A\x00B"])
 def test_assistant_memory_rejects_invalid_values(temp_db_env, value):
     db, _, _ = temp_db_env
-    db.set_assistant_memory("preferred_name", "Alice")
+    db.ledger.set_assistant_memory("preferred_name", "Alice")
     with pytest.raises(ValueError, match="Preferred name"):
-        db.set_assistant_memory("preferred_name", value)
-    assert db.get_assistant_memory() == {"preferred_name": "Alice"}
+        db.ledger.set_assistant_memory("preferred_name", value)
+    assert db.ledger.get_assistant_memory() == {"preferred_name": "Alice"}
 
 
 @pytest.mark.parametrize("value", ["A", "A" * 60, "Élodie", "Anne-Marie", "O'Connor"])
 def test_assistant_memory_accepts_bounded_names(temp_db_env, value):
     db, _, _ = temp_db_env
-    db.set_assistant_memory("preferred_name", value)
-    assert db.get_assistant_memory() == {"preferred_name": value}
+    db.ledger.set_assistant_memory("preferred_name", value)
+    assert db.ledger.get_assistant_memory() == {"preferred_name": value}
 
 
 @pytest.mark.parametrize("version", [0, CURRENT_USER_SCHEMA_VERSION])
 def test_existing_ledger_gets_assistant_memory_idempotently(temp_db_env, version):
     db, _, _ = temp_db_env
-    db.upsert_user_profile({})
-    profile = db.get_user_profile()
-    db.add_chat_message("user", "Preserve history")
-    db.log_workout_session("old", "2026-09-16", "Upper", "2026-09-16T10:00:00", None)
-    db.log_workout_set("old-set", "old", "missing", 1, 10.0, 8, 8.0)
+    db.ledger.upsert_user_profile({})
+    profile = db.ledger.get_user_profile()
+    db.ledger.add_chat_message("user", "Preserve history")
+    db.ledger.log_workout_session("old", "2026-09-16", "Upper", "2026-09-16T10:00:00", None)
+    db.ledger.log_workout_set("old-set", "old", "missing", 1, 10.0, 8, 8.0)
     db.conn.execute("DROP TABLE assistant_memory")
     set_user_schema_version(db.conn, version)
     db.conn.commit()
     db.switch_user("bob")
     db.switch_user("alice")
-    assert db.get_assistant_memory() == {}
-    db.set_assistant_memory("preferred_name", "Alice")
+    assert db.ledger.get_assistant_memory() == {}
+    db.ledger.set_assistant_memory("preferred_name", "Alice")
     db.create_user_schema()
     db.create_user_schema()
-    assert db.get_assistant_memory() == {"preferred_name": "Alice"}
-    assert db.get_user_profile() == profile
-    assert db.get_chat_history()[0]["content"] == "Preserve history"
-    assert db.get_latest_session_summary()["sets_count"] == 1
+    assert db.ledger.get_assistant_memory() == {"preferred_name": "Alice"}
+    assert db.ledger.get_user_profile() == profile
+    assert db.ledger.get_chat_history()[0]["content"] == "Preserve history"
+    assert db.ledger.get_latest_session_summary()["sets_count"] == 1
     assert get_user_schema_version(db.conn) == CURRENT_USER_SCHEMA_VERSION
 
 
@@ -223,9 +223,9 @@ def test_latest_session_summary_uses_real_working_sets(temp_db_env):
         [("bench", "Bench press"), ("row", "Row"), ("warmup", "Warmup only")],
     )
     db.catalog_conn.commit()
-    db.log_workout_session("old", "2026-09-15", "Old", "2026-09-15T12:00:00", None)
-    db.log_workout_set("old-set", "old", "bench", 1, 200, 20, 8)
-    db.log_workout_session("latest'; --", "2026-09-16", "Upper", "2026-09-16T12:00:00", None, 3)
+    db.ledger.log_workout_session("old", "2026-09-15", "Old", "2026-09-15T12:00:00", None)
+    db.ledger.log_workout_set("old-set", "old", "bench", 1, 200, 20, 8)
+    db.ledger.log_workout_session("latest'; --", "2026-09-16", "Upper", "2026-09-16T12:00:00", None, 3)
     for set_id, exercise_id, index, weight, reps, warmup in [
         ("b1", "bench", 1, 100, 8, 0),
         ("b2", "bench", 2, 90, 10, 0),
@@ -234,7 +234,7 @@ def test_latest_session_summary_uses_real_working_sets(temp_db_env):
         ("w1", "warmup", 1, 30, 10, 1),
         ("m1", "missing", 1, 0, 10, 0),
     ]:
-        db.log_workout_set(set_id, "latest'; --", exercise_id, index, weight, reps, 8, warmup)
+        db.ledger.log_workout_set(set_id, "latest'; --", exercise_id, index, weight, reps, 8, warmup)
     expected = {
         "session_id": "latest'; --",
         "session_date": "2026-09-16",
@@ -254,21 +254,21 @@ def test_latest_session_summary_uses_real_working_sets(temp_db_env):
         ],
         "divergences": [],
     }
-    assert db.get_latest_session_summary() == expected
+    assert db.ledger.get_latest_session_summary() == expected
     db.switch_user("bob")
-    assert db.get_latest_session_summary() is None
-    db.log_workout_session("bob", "2026-09-17", "Lower", "2026-09-17T12:00:00", None)
-    assert db.get_latest_session_summary()["split_name"] == "Lower"
+    assert db.ledger.get_latest_session_summary() is None
+    db.ledger.log_workout_session("bob", "2026-09-17", "Lower", "2026-09-17T12:00:00", None)
+    assert db.ledger.get_latest_session_summary()["split_name"] == "Lower"
     db.switch_user("alice")
-    assert db.get_latest_session_summary() == expected
+    assert db.ledger.get_latest_session_summary() == expected
 
 
 def test_latest_session_summary_empty_and_warmup_only(temp_db_env):
     db, _, _ = temp_db_env
-    assert db.get_latest_session_summary() is None
-    db.log_workout_session("old", "2026-09-15", "Old", "2026-09-15T12:00:00", None)
-    db.log_workout_set("old-set", "old", "bench", 1, 100, 8, 8)
-    db.log_workout_session("empty", "2026-09-16", "Empty", "2026-09-16T12:00:00", None, None)
+    assert db.ledger.get_latest_session_summary() is None
+    db.ledger.log_workout_session("old", "2026-09-15", "Old", "2026-09-15T12:00:00", None)
+    db.ledger.log_workout_set("old-set", "old", "bench", 1, 100, 8, 8)
+    db.ledger.log_workout_session("empty", "2026-09-16", "Empty", "2026-09-16T12:00:00", None, None)
     expected = {
         "session_id": "empty",
         "session_date": "2026-09-16",
@@ -284,9 +284,9 @@ def test_latest_session_summary_empty_and_warmup_only(temp_db_env):
         "exercises": [],
         "divergences": [],
     }
-    assert db.get_latest_session_summary() == expected
-    db.log_workout_set("warmup", "empty", "bench", 1, 20, 10, 5, 1)
-    assert db.get_latest_session_summary() == expected
+    assert db.ledger.get_latest_session_summary() == expected
+    db.ledger.log_workout_set("warmup", "empty", "bench", 1, 20, 10, 5, 1)
+    assert db.ledger.get_latest_session_summary() == expected
 
 
 def test_latest_session_summary_deterministic_ordering(temp_db_env):
@@ -295,20 +295,20 @@ def test_latest_session_summary_deterministic_ordering(temp_db_env):
         ("latest-date", "2026-09-16", "2026-09-16T08:00:00"),
         ("backdated", "2026-09-15", "2026-09-17T12:00:00"),
     ]:
-        db.log_workout_session(session_id, date, session_id, started_at, None)
-    assert db.get_latest_session_summary()["split_name"] == "latest-date"
-    db.log_workout_session("later-start", "2026-09-16", "Later start", "2026-09-16T10:00:00", None)
-    db.log_workout_session("early-start", "2026-09-16", "Early start", "2026-09-16T07:00:00", None)
-    assert db.get_latest_session_summary()["split_name"] == "Later start"
-    db.log_workout_session("tie", "2026-09-16", "Tie", "2026-09-16T10:00:00", None)
-    assert db.get_latest_session_summary()["split_name"] == "Tie"
-    assert db.get_latest_session_summary()["split_name"] == "Tie"
+        db.ledger.log_workout_session(session_id, date, session_id, started_at, None)
+    assert db.ledger.get_latest_session_summary()["split_name"] == "latest-date"
+    db.ledger.log_workout_session("later-start", "2026-09-16", "Later start", "2026-09-16T10:00:00", None)
+    db.ledger.log_workout_session("early-start", "2026-09-16", "Early start", "2026-09-16T07:00:00", None)
+    assert db.ledger.get_latest_session_summary()["split_name"] == "Later start"
+    db.ledger.log_workout_session("tie", "2026-09-16", "Tie", "2026-09-16T10:00:00", None)
+    assert db.ledger.get_latest_session_summary()["split_name"] == "Tie"
+    assert db.ledger.get_latest_session_summary()["split_name"] == "Tie"
 
 
 def test_session_comparison_empty_and_user_isolation(temp_db_env):
     db, _, _ = temp_db_env
-    assert db.get_session_comparison_context() is None
-    db.log_workout_session("empty", "2026-09-16", "Upper", "2026-09-16T08:00:00", None, None, "Rested")
+    assert db.ledger.get_session_comparison_context() is None
+    db.ledger.log_workout_session("empty", "2026-09-16", "Upper", "2026-09-16T08:00:00", None, None, "Rested")
     expected = {
         "best_set_convention": "heaviest weight, then most reps, then earliest set_index",
         "session": {
@@ -322,13 +322,13 @@ def test_session_comparison_empty_and_user_isolation(temp_db_env):
         "previous_session": None,
         "exercises": [],
     }
-    assert db.get_session_comparison_context() == expected
-    db.log_workout_set("warmup", "empty", "bench", 0, 20, 10, 5, 1)
-    assert db.get_session_comparison_context() == expected
+    assert db.ledger.get_session_comparison_context() == expected
+    db.ledger.log_workout_set("warmup", "empty", "bench", 0, 20, 10, 5, 1)
+    assert db.ledger.get_session_comparison_context() == expected
     db.switch_user("bob")
-    assert db.get_session_comparison_context() is None
+    assert db.ledger.get_session_comparison_context() is None
     db.switch_user("alice")
-    assert db.get_session_comparison_context() == expected
+    assert db.ledger.get_session_comparison_context() == expected
 
 
 def test_session_comparison_exact_baselines_and_bounded_queries(temp_db_env):
@@ -345,7 +345,7 @@ def test_session_comparison_exact_baselines_and_bounded_queries(temp_db_env):
         ("current'; --", "2026-09-16", "2026-09-16T10:00:00"),
         ("backdated", "2026-09-15", "2026-09-17T12:00:00"),
     ]:
-        db.log_workout_session(session_id, date, session_id, start, None, 3, session_id + " notes")
+        db.ledger.log_workout_session(session_id, date, session_id, start, None, 3, session_id + " notes")
     for set_id, session_id, exercise_id, index, weight, reps, rpe, warmup in [
         ("older", "older", "bench", 1, 150, 20, 8, 0),
         ("b2", "baseline", "bench", 2, 90, 8, 8, 0),
@@ -364,15 +364,15 @@ def test_session_comparison_exact_baselines_and_bounded_queries(temp_db_env):
         ("current-row", "current'; --", "row", 1, 50, 10, 8, 0),
         ("backdated-set", "backdated", "bench", 1, 500, 50, 8, 0),
     ]:
-        db.log_workout_set(set_id, session_id, exercise_id, index, weight, reps, rpe, warmup)
-    summary = db.get_latest_session_summary()
+        db.ledger.log_workout_set(set_id, session_id, exercise_id, index, weight, reps, rpe, warmup)
+    summary = db.ledger.get_latest_session_summary()
     queries = []
     db.conn.set_trace_callback(queries.append)
     try:
-        context = db.get_session_comparison_context()
+        context = db.ledger.get_session_comparison_context()
     finally:
         db.conn.set_trace_callback(None)
-    assert db.get_latest_session_summary() == summary
+    assert db.ledger.get_latest_session_summary() == summary
     assert context["session"]["id"] == "current'; --"
     assert context["session"]["session_notes"] == "current'; -- notes"
     assert context["previous_session"]["id"] == "global-previous"
@@ -419,13 +419,13 @@ def test_session_comparison_exact_baselines_and_bounded_queries(temp_db_env):
 def test_session_comparison_same_day_rowid_ties(temp_db_env):
     db, _, _ = temp_db_env
     for session_id, start in [("first", "10:00:00"), ("earlier", "07:00:00"), ("tie", "10:00:00")]:
-        db.log_workout_session(session_id, "2026-09-16", "Upper", "2026-09-16T" + start, None)
-        db.log_workout_set(session_id, session_id, "bench", 1, 100, 8, 8)
-    context = db.get_session_comparison_context()
+        db.ledger.log_workout_session(session_id, "2026-09-16", "Upper", "2026-09-16T" + start, None)
+        db.ledger.log_workout_set(session_id, session_id, "bench", 1, 100, 8, 8)
+    context = db.ledger.get_session_comparison_context()
     assert context["session"]["id"] == "tie"
     assert context["previous_session"]["id"] == "first"
     assert context["exercises"][0]["previous"]["session"]["id"] == "first"
-    assert db.get_session_comparison_context() == context
+    assert db.ledger.get_session_comparison_context() == context
 
 
 @pytest.mark.parametrize(
@@ -448,10 +448,10 @@ def test_session_comparison_same_day_rowid_ties(temp_db_env):
 def test_session_comparison_strength_requires_best_set_rpe(temp_db_env, previous, current, status):
     db, _, _ = temp_db_env
     for session_id, date, values in [("previous", "2026-09-15", previous), ("current", "2026-09-16", current)]:
-        db.log_workout_session(session_id, date, "Upper", date + "T10:00:00", None)
-        db.log_workout_set(session_id, session_id, "bench", 1, *values)
-        db.log_workout_set(session_id + "-backoff", session_id, "bench", 2, 0, 1, 8)
-    exercise = db.get_session_comparison_context()["exercises"][0]
+        db.ledger.log_workout_session(session_id, date, "Upper", date + "T10:00:00", None)
+        db.ledger.log_workout_set(session_id, session_id, "bench", 1, *values)
+        db.ledger.log_workout_set(session_id + "-backoff", session_id, "bench", 2, 0, 1, 8)
+    exercise = db.ledger.get_session_comparison_context()["exercises"][0]
     assert exercise["status"] == status
     assert exercise["deltas"]["load_kg"] == current[0] - previous[0]
     assert exercise["deltas"]["reps"] == current[1] - previous[1]
@@ -467,10 +467,10 @@ def test_session_comparison_strength_requires_best_set_rpe(temp_db_env, previous
 def test_session_comparison_volume_and_sets_do_not_decide_strength(temp_db_env, extra_session):
     db, _, _ = temp_db_env
     for session_id, date in [("previous", "2026-09-15"), ("current", "2026-09-16")]:
-        db.log_workout_session(session_id, date, "Upper", date + "T10:00:00", None)
-        db.log_workout_set(session_id, session_id, "bench", 1, 100, 8, 8)
-    db.log_workout_set("extra", extra_session, "bench", 2, 80, 10, 8)
-    exercise = db.get_session_comparison_context()["exercises"][0]
+        db.ledger.log_workout_session(session_id, date, "Upper", date + "T10:00:00", None)
+        db.ledger.log_workout_set(session_id, session_id, "bench", 1, 100, 8, 8)
+    db.ledger.log_workout_set("extra", extra_session, "bench", 2, 80, 10, 8)
+    exercise = db.ledger.get_session_comparison_context()["exercises"][0]
     sign = 1 if extra_session == "current" else -1
     assert exercise["deltas"] == {"load_kg": 0, "reps": 0, "sets": sign, "volume_kg": sign * 800, "e1rm": 0}
     assert exercise["status"] == "unchanged"
@@ -494,15 +494,15 @@ def test_v1_to_v2_adds_password_hash_preserving_data(temp_db_env):
     conn.close()
     # Fresh manager so the legacy file migrates on mount.
     migrated = DatabaseManager(
-        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="legacy"
+        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, default_ledger_id="legacy"
     )
     try:
         assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION
         tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         assert "auth_credentials" in tables
-        assert migrated.get_user_profile()["current_goal"] == "Strength"
-        assert migrated.get_password_hash() is None
-        assert migrated.get_token_version() == 1
+        assert migrated.ledger.get_user_profile()["current_goal"] == "Strength"
+        assert migrated.ledger.get_password_hash() is None
+        assert migrated.ledger.get_token_version() == 1
     finally:
         if migrated.user_conn is not None:
             migrated.user_conn.close()
@@ -531,15 +531,15 @@ def test_v2_to_v3_adds_token_version_preserving_hash(temp_db_env):
     conn.commit()
     conn.close()
     migrated = DatabaseManager(
-        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v2user"
+        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, default_ledger_id="v2user"
     )
     try:
         assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION
-        assert migrated.get_password_hash() == "$2b$12$fakehash"
-        assert migrated.get_token_version() == 1
-        assert migrated.bump_token_version() == 2
-        assert migrated.get_token_version() == 2
-        assert migrated.get_password_hash() == "$2b$12$fakehash"
+        assert migrated.ledger.get_password_hash() == "$2b$12$fakehash"
+        assert migrated.ledger.get_token_version() == 1
+        assert migrated.ledger.bump_token_version() == 2
+        assert migrated.ledger.get_token_version() == 2
+        assert migrated.ledger.get_password_hash() == "$2b$12$fakehash"
     finally:
         if migrated.user_conn is not None:
             migrated.user_conn.close()
@@ -578,7 +578,7 @@ def test_v3_to_v4_backfills_personal_records(temp_db_env):
     conn.close()
 
     migrated = DatabaseManager(
-        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v3lifter"
+        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, default_ledger_id="v3lifter"
     )
     try:
         assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION
@@ -639,7 +639,7 @@ def test_v4_to_v5_adds_program_slot_and_warmup_columns(temp_db_env):
     conn.close()
 
     migrated = DatabaseManager(
-        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v4lifter"
+        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, default_ledger_id="v4lifter"
     )
     try:
         assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION
@@ -681,7 +681,7 @@ def test_v5_to_v6_backfills_stable_program_versions(temp_db_env):
     conn.close()
 
     migrated = DatabaseManager(
-        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v5lifter"
+        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, default_ledger_id="v5lifter"
     )
     try:
         assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 12
@@ -722,25 +722,25 @@ def test_v6_to_v7_adds_session_divergences(temp_db_env):
     conn.close()
 
     migrated = DatabaseManager(
-        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v6lifter"
+        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, default_ledger_id="v6lifter"
     )
     try:
         assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 12
         tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         assert "session_divergences" in tables
-        migrated.record_session_divergences(
+        migrated.ledger.record_session_divergences(
             "s1",
             [{"kind": "skipped", "exercise_id": "bench", "exercise_name": "Bench Press"}],
             "2026-01-01T10:06:00+00:00",
         )
-        rows = migrated.list_session_divergences("s1")
+        rows = migrated.ledger.list_session_divergences("s1")
         assert [(r["kind"], r["exercise_id"], r["exercise_name"]) for r in rows] == [
             ("skipped", "bench", "Bench Press")
         ]
         # Divergences are session history: deleting the session cascades them away.
         migrated.conn.execute("DELETE FROM workout_sessions WHERE id = 's1'")
         migrated.conn.commit()
-        assert migrated.list_session_divergences("s1") == []
+        assert migrated.ledger.list_session_divergences("s1") == []
     finally:
         if migrated.user_conn is not None:
             migrated.user_conn.close()
@@ -769,16 +769,16 @@ def test_v7_to_v8_adds_training_schedules_and_pauses(temp_db_env):
     conn.close()
 
     migrated = DatabaseManager(
-        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v7lifter"
+        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, default_ledger_id="v7lifter"
     )
     try:
         assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 12
         tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         assert {"training_schedules", "training_pauses"} <= tables
-        migrated.append_training_schedule("v7lifter", [1, 3], "UTC", "2026-01-01", "2026-01-01T00:00:00+00:00")
-        assert migrated.get_schedule_effective_on("v7lifter", "2026-02-01")["weekdays"] == [1, 3]
-        migrated.schedule_training_pause("v7lifter", "2026-02-01", "2026-02-03", "2026-01-31T00:00:00+00:00")
-        active = migrated.list_active_or_upcoming_training_pauses("v7lifter", "2026-02-02")
+        migrated.ledger.append_training_schedule("v7lifter", [1, 3], "UTC", "2026-01-01", "2026-01-01T00:00:00+00:00")
+        assert migrated.ledger.get_schedule_effective_on("v7lifter", "2026-02-01")["weekdays"] == [1, 3]
+        migrated.ledger.schedule_training_pause("v7lifter", "2026-02-01", "2026-02-03", "2026-01-31T00:00:00+00:00")
+        active = migrated.ledger.list_active_or_upcoming_training_pauses("v7lifter", "2026-02-02")
         assert [(p["starts_on"], p["ends_on"]) for p in active] == [("2026-02-01", "2026-02-03")]
     finally:
         if migrated.user_conn is not None:
@@ -812,7 +812,7 @@ def test_v8_to_v9_adds_offline_sync_columns_and_session_commits(temp_db_env):
     conn.close()
 
     migrated = DatabaseManager(
-        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v8lifter"
+        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, default_ledger_id="v8lifter"
     )
     try:
         assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 12
@@ -824,12 +824,12 @@ def test_v8_to_v9_adds_offline_sync_columns_and_session_commits(temp_db_env):
         assert migrated.conn.execute(
             "SELECT client_session_id FROM workout_sessions WHERE id = 'legacy'"
         ).fetchone()[0] is None
-        migrated.record_session_commit("client-1", "legacy", '{"session_id": "legacy"}', "2026-01-01T10:01:00+00:00")
-        assert migrated.get_session_commit("client-1")["response_json"] == '{"session_id": "legacy"}'
-        assert migrated.get_session_commit("nope") is None
+        migrated.ledger.record_session_commit("client-1", "legacy", '{"session_id": "legacy"}', "2026-01-01T10:01:00+00:00")
+        assert migrated.ledger.get_session_commit("client-1")["response_json"] == '{"session_id": "legacy"}'
+        assert migrated.ledger.get_session_commit("nope") is None
         # Re-initialising the schema is idempotent.
         migrated.create_user_schema()
-        assert migrated.get_session_commit("client-1")["session_id"] == "legacy"
+        assert migrated.ledger.get_session_commit("client-1")["session_id"] == "legacy"
     finally:
         if migrated.user_conn is not None:
             migrated.user_conn.close()
@@ -860,7 +860,7 @@ def test_v9_to_v10_adds_active_program_version_at_sync(temp_db_env):
     conn.close()
 
     migrated = DatabaseManager(
-        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v9lifter"
+        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, default_ledger_id="v9lifter"
     )
     try:
         assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 12
@@ -909,7 +909,7 @@ def test_v10_to_v11_adds_edited_at_and_performed_date_corrections(temp_db_env):
     conn.close()
 
     migrated = DatabaseManager(
-        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v10lifter"
+        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, default_ledger_id="v10lifter"
     )
     try:
         assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 12
@@ -924,17 +924,17 @@ def test_v10_to_v11_adds_edited_at_and_performed_date_corrections(temp_db_env):
         assert row["uploaded_at"] == "2026-01-01T10:05:00+00:00"
         assert row["edited_at"] is None
         # A correction records previous/corrected dates and cascades with its session.
-        migrated.update_session_performed_date("legacy", "2026-01-02", "2026-01-02T09:00:00+00:00")
-        migrated.record_performed_date_correction(
+        migrated.ledger.update_session_performed_date("legacy", "2026-01-02", "2026-01-02T09:00:00+00:00")
+        migrated.ledger.record_performed_date_correction(
             "legacy", "2026-01-01", "2026-01-02", "2026-01-02T09:00:00+00:00"
         )
-        corrections = migrated.list_performed_date_corrections("legacy")
+        corrections = migrated.ledger.list_performed_date_corrections("legacy")
         assert [(c["previous_date"], c["corrected_date"]) for c in corrections] == [
             ("2026-01-01", "2026-01-02")
         ]
         migrated.conn.execute("DELETE FROM workout_sessions WHERE id = 'legacy'")
         migrated.conn.commit()
-        assert migrated.list_performed_date_corrections("legacy") == []
+        assert migrated.ledger.list_performed_date_corrections("legacy") == []
         # Re-initialising the schema is idempotent.
         migrated.create_user_schema()
         assert "performed_date_corrections" in {
@@ -965,19 +965,19 @@ def test_v11_to_v12_adds_structured_intake_tables(temp_db_env):
     conn.close()
 
     migrated = DatabaseManager(
-        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v11lifter"
+        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, default_ledger_id="v11lifter"
     )
     try:
         assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 12
         tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         assert {"intake_answers", "intake_state"} <= tables
         # The new ledger helpers round-trip through the migrated tables.
-        migrated.save_intake_answer("gender", "female", prefilled=True)
-        answers = migrated.load_intake_answers()
+        migrated.ledger.save_intake_answer("gender", "female", prefilled=True)
+        answers = migrated.ledger.load_intake_answers()
         assert answers["gender"]["value"] == "female"
         assert answers["gender"]["prefilled"] is True
-        migrated.save_intake_state(disclosure_acknowledged=1)
-        assert migrated.get_intake_state()["disclosure_acknowledged"] is True
+        migrated.ledger.save_intake_state(disclosure_acknowledged=1)
+        assert migrated.ledger.get_intake_state()["disclosure_acknowledged"] is True
         # Re-initialising the schema is idempotent.
         migrated.create_user_schema()
         assert "intake_answers" in {
@@ -991,11 +991,11 @@ def test_v11_to_v12_adds_structured_intake_tables(temp_db_env):
 
 def test_onboarding_state_roundtrip_and_clear(temp_db_env):
     db, _, _ = temp_db_env
-    assert db.load_onboarding_state() is None
-    db.save_onboarding_state({"intake_step": 2, "is_complete": False, "profile_data": {"age": 30}, "messages": [{"role": "assistant", "content": "Q?"}]})
-    loaded = db.load_onboarding_state()
+    assert db.ledger.load_onboarding_state() is None
+    db.ledger.save_onboarding_state({"intake_step": 2, "is_complete": False, "profile_data": {"age": 30}, "messages": [{"role": "assistant", "content": "Q?"}]})
+    loaded = db.ledger.load_onboarding_state()
     assert loaded == {"intake_step": 2, "is_complete": False, "profile_data": {"age": 30}, "messages": [{"role": "assistant", "content": "Q?"}]}
-    db.save_onboarding_state({"intake_step": 3, "is_complete": True, "profile_data": None, "messages": []})
-    assert db.load_onboarding_state()["intake_step"] == 3
-    db.clear_onboarding_state()
-    assert db.load_onboarding_state() is None
+    db.ledger.save_onboarding_state({"intake_step": 3, "is_complete": True, "profile_data": None, "messages": []})
+    assert db.ledger.load_onboarding_state()["intake_step"] == 3
+    db.ledger.clear_onboarding_state()
+    assert db.ledger.load_onboarding_state() is None

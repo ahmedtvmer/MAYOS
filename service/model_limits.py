@@ -112,11 +112,18 @@ def admit_model_request(
     thread/turn is a no-op and returns ``None``; otherwise a token is returned
     for the caller to hand to :func:`release_admission` when the scope exits.
 
-    ``db`` is the app-owned store; when omitted the active store is used (it was
-    published by the caller's ``bind_user`` or the startup lifespan, ADR 041).
+    ``db`` is the app-owned store used for the day-to-date token check; callers
+    pass it explicitly (ADR 041). An attributed call (``account_id`` set) with
+    no store raises rather than silently skipping the daily token ceiling;
+    unattributed calls are never limited.
     """
     if not account_id:
         return None
+    if db is None:
+        raise RuntimeError(
+            f"Account {account_id!r} admission has no store for the daily token check; "
+            "refusing to skip the limit (ADR 041)."
+        )
     if guard and _admitted.get() == account_id:
         return None
 
@@ -128,10 +135,7 @@ def admit_model_request(
         if request_limit > 0 and in_window >= request_limit:
             raise ModelLimitExceeded(REQUEST_LIMIT_DETAIL)
         if token_limit > 0:
-            from database.store import get_store
-
-            store = db if db is not None else get_store()
-            used = store.sum_model_tokens_for_account(account_id, utc_day_start_iso())
+            used = db.sum_model_tokens_for_account(account_id, utc_day_start_iso())
             if used >= token_limit:
                 raise ModelLimitExceeded(DAILY_TOKEN_LIMIT_DETAIL)
         _request_window.setdefault(account_id, deque()).append(now)

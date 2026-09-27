@@ -53,8 +53,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = coach_service.issue_coach_invite(db, args.username, ttl_minutes=args.ttl_minutes)
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
         db.catalog_conn.close()
 
     if not result["ok"]:

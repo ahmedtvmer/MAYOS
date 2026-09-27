@@ -41,9 +41,8 @@ def graph(monkeypatch):
     module.llm = SimpleNamespace(n_ctx=2048, max_tokens=200, client=SimpleNamespace(tokenize=lambda data, **kwargs: list(range((len(data) + 3) // 4))), invoke=MagicMock(return_value=AIMessage(content="Use controlled reps.")))
     module.reconcile_telemetry_query = MagicMock(return_value=None)
     module._record_telemetry_event = MagicMock()
-    # The isolated graph resolves its store through ``get_store``; inject the mock.
+    # The isolated graph receives its ledger/store explicitly on each call's config.
     module.db = MagicMock()
-    module.get_store = lambda: module.db
     # Locked catalog reads yield the (mocked) shared connection, mirroring DatabaseManager.catalog_locked.
     module.db.catalog_locked.return_value.__enter__.return_value = module.db.catalog_conn
     return module
@@ -76,11 +75,11 @@ def test_explicit_name_and_recall(graph, query):
     name = query.split()[-1]
     graph.db.get_assistant_memory.return_value = {}
     request = state(query)
-    assert "".join(graph.stream_assistant_turn(request)) == f"Nice to meet you, {name}."
+    assert "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)) == f"Nice to meet you, {name}."
     graph.db.set_assistant_memory.assert_called_once_with("preferred_name", name)
     graph.db.get_assistant_memory.return_value = {"preferred_name": name}
     recall = state("what's my name?")
-    assert "".join(graph.stream_assistant_turn(recall)) == f"You asked me to call you {name}."
+    assert "".join(graph.stream_assistant_turn(recall, ledger=graph.db, store=graph.db)) == f"You asked me to call you {name}."
     assert recall["messages"][-1].content == recall["response_content"]
     graph.llm.invoke.assert_not_called()
 
@@ -94,7 +93,7 @@ def test_whole_session_summary(graph, query):
     }
     request = state(query)
     assert graph.router_node(request)["intent"] == "exercise_history"
-    display = "".join(graph.stream_assistant_turn(request))
+    display = "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db))
     assert "3 working sets, 900 kg total volume" in display
     assert "Bench Press: 3 sets, 30 total reps, 900 kg volume" in display
     assert "comparison is needed" in display
@@ -105,7 +104,7 @@ def test_whole_session_summary(graph, query):
 
 def test_missing_session_is_not_an_exercise_clarification(graph):
     graph.db.get_latest_session_summary.return_value = None
-    response = graph.exercise_history_node(state("my last session"))["response_content"]
+    response = graph.exercise_history_node(state("my last session"), {"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
     assert "don't have a logged session summary" in response
     graph.db.find_exercise_by_name.assert_not_called()
 
@@ -116,7 +115,7 @@ def test_history_followup_routes_to_exercise_history(graph, comparison, query):
     routed = graph.router_node(request)
     assert routed["intent"] == "exercise_history"
     request.update(routed)
-    result = graph.assistant_graph.invoke(request)
+    result = graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})
     assert result["response_content"] == result["messages"][-1].content
     assert "Machine Leg Extension" not in result["response_content"]
     assert "Which exercise" not in result["response_content"]
@@ -128,7 +127,7 @@ def test_history_followup_matches_catalog_when_absent_from_session(graph, compar
     graph.db.catalog_conn.cursor.return_value.fetchall.return_value = [("leg-ext", "Machine Leg Extension"), ("leg-curl", "Lying Leg Curl")]
     graph.db.get_last_performance.return_value = [{"set_index": 1, "weight_kg": 50, "reps": 10, "rpe": 8}]
     request = state(query, [HumanMessage(content="how was my perfomance last session?"), AIMessage(content="summary")])
-    result = graph.assistant_graph.invoke(request)["response_content"]
+    result = graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
     assert "No completed working sets for '" in result
     assert "latest session (2026-09-17)" in result
     assert "does not mean it was never logged" in result
@@ -143,8 +142,8 @@ def test_reported_two_turn_session_review(graph, comparison, mode):
 
     def turn(request):
         if mode == "graph":
-            return graph.assistant_graph.invoke(request)
-        display = "".join(graph.stream_assistant_turn(request))
+            return graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})
+        display = "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db))
         assert display == request["response_content"]
         return request
 
@@ -168,7 +167,7 @@ def test_history_followup_inherits_occurrence_scope(graph, comparison):
     graph.db.catalog_conn.cursor.return_value.fetchall.return_value = [("squat", "Squat"), ("leg-press", "Leg Press")]
     graph.db.get_last_performance.return_value = [{"set_index": 1, "weight_kg": 80, "reps": 6, "rpe": 7}]
     request = state("what about leg press", [HumanMessage(content="last logged occurrence of squat"), AIMessage(content="occurrence data")])
-    result = graph.assistant_graph.invoke(request)["response_content"]
+    result = graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
     assert "Last logged occurrence for Leg Press" in result
     graph.db.get_last_performance.assert_called_once_with("leg-press")
 
@@ -199,35 +198,21 @@ def test_history_followup_defers_to_intercepts_and_compound(graph, comparison, q
     assert intent != "exercise_history" or query.startswith("what about upright")
 
 
-def test_trainee_connection_bound_on_foreign_thread(graph, comparison, monkeypatch):
+def test_turn_uses_the_passed_ledger_handle_on_a_foreign_thread(graph, comparison):
     import threading
 
-    calls = []
-    graph.db.active_user = "someone-else"
-
-    def record_switch(user):
-        calls.append(user)
-        graph.db.active_user = user
-
-    graph.db.switch_user = record_switch
+    graph.db.switch_user = MagicMock()
     request = {**state("how did I do in my last session?"), "trainee_id": "alice"}
     outcome = {}
 
     def run():
-        outcome["display"] = "".join(graph.stream_assistant_turn(request))
+        outcome["display"] = "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db))
 
     thread = threading.Thread(target=run)
     thread.start()
     thread.join()
     assert "Barbell Bench Press" in outcome["display"]
-    assert calls == ["alice"]
-
-
-def test_trainee_connection_not_reswitched_when_already_bound(graph, comparison):
-    graph.db.active_user = "alice"
-    graph.db.switch_user = MagicMock()
-    request = {**state("how did I do in my last session?"), "trainee_id": "alice"}
-    "".join(graph.stream_assistant_turn(request))
+    graph.db.get_session_comparison_context.assert_called()
     graph.db.switch_user.assert_not_called()
 
 
@@ -336,11 +321,11 @@ def comparison(graph):
 def test_comparison_all_exercises_deterministic(graph, comparison, query, mode):
     request = state(query)
     if mode == "graph":
-        result = graph.assistant_graph.invoke(request)
+        result = graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})
         display = result["response_content"]
         assert result["messages"][-1].content == display
     else:
-        display = "".join(graph.stream_assistant_turn(request))
+        display = "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db))
         assert display == request["response_content"] == request["messages"][-1].content
     for exercise in comparison["exercises"]:
         assert exercise["name"] in display
@@ -361,7 +346,7 @@ def test_comparison_all_exercises_deterministic(graph, comparison, query, mode):
 @pytest.mark.parametrize("target", ["barbell bench press", "ex-0", "bench press"])
 def test_exercise_latest_scope_uses_current_ids_first(graph, comparison, target):
     request = state(f"how did I do on {target} last session?")
-    result = graph.assistant_graph.invoke(request)["response_content"]
+    result = graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
     assert "Barbell Bench Press [ex-0]" in result
     assert "Set 1: 100 kg × 8 reps @ RPE 8" in result
     assert "Set 2: 95 kg × 10 reps @ RPE 8" in result
@@ -377,7 +362,7 @@ def test_exercise_latest_scope_uses_current_ids_first(graph, comparison, target)
 def test_latest_scope_never_substitutes_old_or_wrong_variant(graph, comparison, target):
     graph.db.catalog_conn.cursor.return_value.fetchall.return_value = [("old", "Incline Barbell Bench Press"), ("squat", "Squat")]
     graph.db.get_last_performance.return_value = [{"set_index": 1, "weight_kg": 900, "reps": 10, "rpe": 8}]
-    result = graph.exercise_history_node(state(f"how did I do on {target} last session?"))["response_content"]
+    result = graph.exercise_history_node(state(f"how did I do on {target} last session?"), {"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
     assert "No completed working sets" in result
     assert "latest session (2026-09-17)" in result
     assert "900" not in result
@@ -387,7 +372,7 @@ def test_latest_scope_never_substitutes_old_or_wrong_variant(graph, comparison, 
 @pytest.mark.parametrize("duplicate_name", ["Incline Barbell Bench Press", "Barbell Bench Press"])
 def test_ambiguous_current_variants_require_id(graph, comparison, duplicate_name):
     comparison["exercises"].append({**comparison["exercises"][0], "exercise_id": "other", "name": duplicate_name})
-    result = graph.exercise_history_node(state("how did I do on bench press last session?"))["response_content"]
+    result = graph.exercise_history_node(state("how did I do on bench press last session?"), {"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
     assert "Which exercise variant" in result
     assert "[ex-0]" in result and "[other]" in result
     graph.db.get_last_performance.assert_not_called()
@@ -395,7 +380,7 @@ def test_ambiguous_current_variants_require_id(graph, comparison, duplicate_name
 
 @pytest.mark.parametrize("query", ["compare my last session to last month", "how did I do on bench press yesterday", "compare between 2026-09-01 and 2026-09-10", "how did I do on squat over time"])
 def test_unsupported_history_dates_are_truthful(graph, comparison, query):
-    result = graph.exercise_history_node(state(query))["response_content"]
+    result = graph.exercise_history_node(state(query), {"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
     assert "requested time period is unavailable" in result
     graph.db.get_last_performance.assert_not_called()
 
@@ -403,7 +388,7 @@ def test_unsupported_history_dates_are_truthful(graph, comparison, query):
 def test_explicit_older_occurrence_is_labeled(graph, comparison):
     graph.db.catalog_conn.cursor.return_value.fetchall.return_value = [("squat", "Squat")]
     graph.db.get_last_performance.return_value = [{"set_index": 1, "weight_kg": 80, "reps": 6, "rpe": None}]
-    result = graph.exercise_history_node(state("last logged occurrence of squat"))["response_content"]
+    result = graph.exercise_history_node(state("last logged occurrence of squat"), {"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
     assert "Last logged occurrence for Squat" in result
     assert "may predate your latest session" in result
     assert "RPE missing" in result
@@ -413,7 +398,7 @@ def test_explicit_older_occurrence_is_labeled(graph, comparison):
 
 def test_comparison_hydration_followup_and_budget(graph, comparison):
     request = state("what should I focus on next?", [HumanMessage(content="review my last session"), AIMessage(content="Recorded exercises reviewed.")])
-    request.update(graph.hydrate_context_node(request))
+    request.update(graph.hydrate_context_node(request, {"configurable": {"ledger": graph.db, "store": graph.db}}))
     for exercise in comparison["exercises"]:
         assert exercise["name"] in request["telemetry_context"]
     assert "baseline=2026-09-10" in request["telemetry_context"]
@@ -428,7 +413,7 @@ def test_comparison_hydration_followup_and_budget(graph, comparison):
 
 def test_comparison_empty_working_sets(graph, comparison):
     comparison["exercises"] = []
-    result = graph.assistant_graph.invoke(state("my last session"))["response_content"]
+    result = graph.assistant_graph.invoke(state("my last session"), config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
     assert "0 working sets" in result
     assert "No completed working sets" in result
     assert "no progress assessment" in result
@@ -438,7 +423,7 @@ def test_comparison_empty_working_sets(graph, comparison):
 def test_comparison_missing_rpe_never_asserts_progress(graph, comparison, missing_side):
     exercise = comparison["exercises"][0]
     exercise[missing_side]["sets"][0]["rpe"] = None
-    result = graph.exercise_history_node(state("how did I do on bench press last session?"))["response_content"]
+    result = graph.exercise_history_node(state("how did I do on bench press last session?"), {"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
     assert "RPE missing" in result
     assert "status: insufficient_data" in result
     assert "Status: improvement" not in result

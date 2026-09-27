@@ -143,6 +143,7 @@ def evaluate_spend_alert(
 
 def record_model_usage(
     *,
+    store: Any = None,
     account_id: str | None,
     role: str,
     purpose: str | None,
@@ -151,11 +152,22 @@ def record_model_usage(
     output_tokens: int,
     estimated: bool,
 ) -> None:
-    """Computes cost and persists one metered call (called by the metering callback)."""
-    cost = compute_cost(model, input_tokens, output_tokens)
-    from database.store import get_store
+    """Computes cost and persists one metered call (called by the metering callback).
 
-    get_store().record_model_usage(
+    The app-owned ``store`` travels on the usage context set by the inference
+    entry points (ADR 041). An **unattributed** call with no store (startup) is
+    dropped; an attributed call (``account_id`` set) with no store is a
+    programming error and raises rather than silently losing the usage row.
+    """
+    if store is None:
+        if account_id:
+            raise RuntimeError(
+                f"Model usage for account {account_id!r} has no store to persist to; "
+                "refusing to drop the row (ADR 041)."
+            )
+        return
+    cost = compute_cost(model, input_tokens, output_tokens)
+    store.record_model_usage(
         account_id=account_id,
         role=role,
         model=model,

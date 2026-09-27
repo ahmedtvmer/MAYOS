@@ -44,14 +44,14 @@ def update_profile(
             if player_controls_program(db, ledger, player_account_id):
                 from svc.llm import InferenceScope, run_inference_sync
 
-                from service._base import bind_user
-
-                bind_user(db, ledger.ledger_id)  # Phase B2: program pipeline reads the thread-local ledger
                 program, _ = run_inference_sync(
                     generate_program_pipeline,
                     rep_preference_override=updated.get("rep_preference", "balanced"),
                     frequency_override=int(updated.get("weekly_frequency", 4)),
-                    scope=InferenceScope(account_id=player_account_id, role="player", purpose="profile_rebuild"),
+                    ledger=ledger,
+                    scope=InferenceScope(
+                        account_id=player_account_id, role="player", purpose="profile_rebuild", store=db
+                    ),
                 )
             else:
                 program_blocked = True

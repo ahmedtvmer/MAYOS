@@ -32,7 +32,7 @@ stream_assistant_turn = _real_handler("stream_assistant_turn")
 
 @pytest.fixture
 def db_fixture(tmp_path, monkeypatch):
-    from agent import assistant_graph, program_generator, program_rules
+    from agent import program_generator
     from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
 
     catalog_path = tmp_path / "catalog.db"
@@ -41,11 +41,9 @@ def db_fixture(tmp_path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="default",
+        default_ledger_id="default",
     )
     try:
-        for module in (assistant_graph, program_generator, program_rules):
-            monkeypatch.setattr(module, "get_store", lambda _db=db: _db)
         profile = {
             "gender": "male",
             "proportions": "balanced",
@@ -55,9 +53,9 @@ def db_fixture(tmp_path, monkeypatch):
             "primary_goal": "hypertrophy",
             "coach_tone": "Direct, grounded, and pragmatic",
         }
-        db.upsert_user_profile(profile)
+        db.ledger.upsert_user_profile(profile)
         random.seed(11)
-        program_generator.generate_program_pipeline(user_split_override=None, frequency_override=4)
+        program_generator.generate_program_pipeline(user_split_override=None, frequency_override=4, ledger=db.ledger)
         yield db
     finally:
         if db.user_conn is not None:
@@ -67,7 +65,7 @@ def db_fixture(tmp_path, monkeypatch):
 
 def test_inquisitive_mutation_guard(db_fixture):
     """Verifies that hypothetical/inquisitive questions do not wipe or mutate the routine."""
-    active_before = db_fixture.get_active_program()
+    active_before = db_fixture.ledger.get_active_program()
     assert active_before is not None
 
     inquisitive_queries = [
@@ -90,24 +88,24 @@ def test_inquisitive_mutation_guard(db_fixture):
             "program_updated": False,
             "response_content": None,
         }
-        res = router_node(state)
+        res = router_node(state, {"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
         # Must NOT be classified as program_mutation
         assert res.get("intent") != "program_mutation", f"Query '{query}' was incorrectly classified as program_mutation"
 
         # Defense-in-depth: Even if passed to program_mutation_node directly, it should reject
-        mutation_res = program_mutation_node(state)
+        mutation_res = program_mutation_node(state, {"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
         assert mutation_res["program_updated"] is False
         assert "explicit directive" in mutation_res["response_content"].lower()
 
     # Verify database program was completely untouched
-    active_after = db_fixture.get_active_program()
+    active_after = db_fixture.ledger.get_active_program()
     assert active_after.program_name == active_before.program_name
     assert active_after.weekly_frequency == active_before.weekly_frequency
 
 
 def test_invalid_exercise_swap_guard(db_fixture):
     """Verifies that non-exercises (e.g. 'pizza') are rejected by vector distance <= 0.32 guard without DB mutation."""
-    active_before = db_fixture.get_active_program()
+    active_before = db_fixture.ledger.get_active_program()
     first_day = active_before.days[0]
     target_ex = first_day.exercises[0]
 
@@ -128,12 +126,12 @@ def test_invalid_exercise_swap_guard(db_fixture):
         "response_content": None,
     }
 
-    res = exercise_substitution_node(state)
+    res = exercise_substitution_node(state, {"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
     assert res["program_updated"] is False
     assert "could not find a biomechanically suitable match" in res["response_content"].lower()
 
     # Check database program slot is still the original exercise
-    active_after = db_fixture.get_active_program()
+    active_after = db_fixture.ledger.get_active_program()
     reloaded_ex = active_after.days[0].exercises[0]
     assert reloaded_ex.exercise_name == target_ex.exercise_name
 
@@ -157,7 +155,7 @@ def test_fuzzy_threshold_elevation(db_fixture):
         "response_content": None,
     }
 
-    res = exercise_substitution_node(state)
+    res = exercise_substitution_node(state, {"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
     assert res["program_updated"] is False
     assert "could not identify" in res["response_content"].lower()
     assert "active movements:" in res["response_content"].lower()
@@ -165,7 +163,7 @@ def test_fuzzy_threshold_elevation(db_fixture):
 
 def test_composite_intent_history_and_swap(db_fixture):
     """Verifies compound query combining exercise history and exercise substitution."""
-    active_prog = db_fixture.get_active_program()
+    active_prog = db_fixture.ledger.get_active_program()
     press_slots = [ex for day in active_prog.days for ex in day.exercises if "press" in ex.exercise_name.lower()]
     assert press_slots, "seeded program composition must contain a press slot for this composite swap"
     first_ex = press_slots[0]
@@ -175,14 +173,14 @@ def test_composite_intent_history_and_swap(db_fixture):
 
     now = datetime.now(UTC).isoformat()
     session_id = str(uuid.uuid4())
-    db_fixture.log_workout_session(
+    db_fixture.ledger.log_workout_session(
         session_id=session_id,
         session_date="2026-09-15",
         split_name="Upper",
         started_at=now,
         completed_at=now,
     )
-    db_fixture.log_workout_set(
+    db_fixture.ledger.log_workout_set(
         set_id=str(uuid.uuid4()),
         session_id=session_id,
         exercise_id=str(first_ex.exercise_id),
@@ -206,7 +204,7 @@ def test_composite_intent_history_and_swap(db_fixture):
         "response_content": None,
     }
 
-    route_res = router_node(state)
+    route_res = router_node(state, {"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
     assert route_res["intent"] == "composite_intent"
     sub_intents = route_res["intent_metadata"]["sub_intents"]
     assert len(sub_intents) == 2
@@ -214,7 +212,7 @@ def test_composite_intent_history_and_swap(db_fixture):
     assert sub_intents[1]["intent"] == "exercise_substitution"
 
     state.update(route_res)
-    comp_res = composite_intent_node(state)
+    comp_res = composite_intent_node(state, {"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
 
     assert comp_res["program_updated"] is True
     assert "---" in comp_res["response_content"]
@@ -224,7 +222,7 @@ def test_composite_intent_history_and_swap(db_fixture):
 
 def test_composite_intent_multiple_swaps(db_fixture):
     """Verifies two exercise substitutions processed together in one prompt."""
-    active_prog = db_fixture.get_active_program()
+    active_prog = db_fixture.ledger.get_active_program()
     ex1 = active_prog.days[0].exercises[0]
     ex2 = active_prog.days[0].exercises[1]
 
@@ -242,7 +240,7 @@ def test_composite_intent_multiple_swaps(db_fixture):
         "response_content": None,
     }
 
-    route_res = router_node(state)
+    route_res = router_node(state, {"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
     assert route_res["intent"] == "composite_intent"
     sub_intents = route_res["intent_metadata"]["sub_intents"]
     assert len(sub_intents) == 2
@@ -265,10 +263,10 @@ def test_composite_intent_banned_and_history(db_fixture):
         "response_content": None,
     }
 
-    route_res = router_node(state)
+    route_res = router_node(state, {"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
     assert route_res["intent"] == "composite_intent"
     state.update(route_res)
-    comp_res = composite_intent_node(state)
+    comp_res = composite_intent_node(state, {"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
 
     assert "VETO: Behind-the-neck" in comp_res["response_content"]
     assert "---" in comp_res["response_content"]
@@ -285,7 +283,7 @@ def test_composite_streaming_turn(db_fixture):
         "telemetry_context": None,
     }
 
-    chunks = list(stream_assistant_turn(state))
+    chunks = list(stream_assistant_turn(state, ledger=db_fixture.ledger, store=db_fixture))
     full_output = "".join(chunks)
     assert "VETO: Behind-the-neck" in full_output
     assert "---" in full_output
@@ -295,9 +293,9 @@ def test_composite_streaming_turn(db_fixture):
 def _isolated_turn(graph, query, mode):
     request = {"messages": [HumanMessage(content=query)], "telemetry_context": "Recorded session.", "intent_metadata": {}}
     if mode == "graph":
-        result = graph.assistant_graph.invoke(request)
+        result = graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})
         return result["response_content"], result
-    display = "".join(graph.stream_assistant_turn(request))
+    display = "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db))
     assert display == request["response_content"] == request["messages"][-1].content
     return display, request
 
@@ -341,7 +339,7 @@ def test_isolated_direct_composite_preflights_before_mutations(graph, explicit_c
         {"intent": "exercise_substitution", "query": "swap bench press for incline press"},
         {"intent": "clinical_intercept" if explicit_clinical_intent else "coaching_qa", "query": clinical},
     ]}}
-    result = graph.composite_intent_node(request)
+    result = graph.composite_intent_node(request, {"configurable": {"ledger": graph.db, "store": graph.db}})
     assert result["response_content"] == graph.CLINICAL_SAFEGUARD_RESPONSE
     assert result["program_updated"] is False
     graph.llm.invoke.assert_not_called()
@@ -370,7 +368,7 @@ def test_isolated_dependent_clause_keeps_original_and_preceding_response(graph):
         {"intent": "coaching_qa", "query": "should I use the second one?"},
     ]}}
     graph.catalog_search_node = MagicMock(return_value=graph._response("1. Bench press\n2. Cable fly"))
-    graph.composite_intent_node(request)
+    graph.composite_intent_node(request, {"configurable": {"ledger": graph.db, "store": graph.db}})
     text = "\n".join(message.content for message in graph.llm.invoke.call_args.args[0])
     assert request["messages"][0].content in text
     assert "2. Cable fly" in text
@@ -381,11 +379,11 @@ def test_isolated_dependent_clause_keeps_original_and_preceding_response(graph):
 def test_isolated_two_independent_mutations_still_execute(graph):
     query = "switch routine to 3 days; swap bench press for incline press"
     request = {"messages": [HumanMessage(content=query)], "intent_metadata": {}}
-    request.update(graph.router_node(request))
+    request.update(graph.router_node(request, {"configurable": {"ledger": graph.db, "store": graph.db}}))
     assert request["intent"] == "composite_intent"
     graph.program_mutation_node = MagicMock(return_value=graph._response("Routine rebuilt.", True))
     graph.exercise_substitution_node = MagicMock(return_value=graph._response("Movement replaced.", True))
-    result = graph.composite_intent_node(request)
+    result = graph.composite_intent_node(request, {"configurable": {"ledger": graph.db, "store": graph.db}})
     assert result["program_updated"] is True
     assert "Routine rebuilt." in result["response_content"]
     assert "Movement replaced." in result["response_content"]

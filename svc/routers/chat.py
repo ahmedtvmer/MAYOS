@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from agent.assistant_graph import stream_assistant_turn
 from service import chat as chat_service
 from service.model_limits import admit_model_request
-from svc.dependencies import account_id_of, bind_request, get_db, get_ledger, get_verified_player
+from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
 from svc.llm import InferenceScope, bound_stream
 from svc.rate_limit import CHAT_LIMIT, limiter
 from svc.schemas import ChatMessageIn
@@ -61,12 +61,10 @@ def _run_turn(
 
     The route already admitted this account for one request, so the stream is
     admitted with ``admit=False`` (it still runs under the account/role usage
-    context, so every model call in the turn is attributed). The assistant graph
-    still resolves its ledger through the compatibility mount, applied here to
-    the same ledger id.
+    context, so every model call in the turn is attributed). The worker threads
+    the same explicit ledger handle through the assistant graph's run config.
     """
     try:
-        bind_request(db, trainee)  # Phase B2: the assistant graph resolves the thread-local ledger
         with db.open_ledger(str(trainee)) as ledger:
             profile = ledger.get_user_profile() or {}
             history = chat_service.prepare_user_turn(db, content, ledger)
@@ -81,7 +79,11 @@ def _run_turn(
             for piece in bound_stream(
                 stream_assistant_turn,
                 state,
-                scope=InferenceScope(account_id=account_id, role="player", purpose="chat", admit=False),
+                ledger=ledger,
+                store=db,
+                scope=InferenceScope(
+                    account_id=account_id, role="player", purpose="chat", admit=False, store=db
+                ),
             ):
                 out.put(("token", piece))
             chat_service.persist_assistant_message(ledger, state.get("response_content"))

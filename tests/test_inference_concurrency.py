@@ -42,7 +42,7 @@ def client(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -130,7 +130,7 @@ def test_chat_endpoint_streaming_is_bounded(client, monkeypatch):
     from svc.routers import chat as chat_router
 
     def install_double(work):
-        def fake_turn(state):
+        def fake_turn(state, **kwargs):
             work()
             state["response_content"] = "pong"
             yield "pong"
@@ -155,7 +155,7 @@ def test_onboarding_endpoint_invoke_is_bounded(client, monkeypatch):
     from agent import onboarding_graph as onboarding_module
 
     def install_double(work):
-        def fake_invoke(state):
+        def fake_invoke(state, **kwargs):
             work()
             return {
                 "messages": [AIMessage(content="Q1?")],

@@ -30,7 +30,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.commit()
     cat_conn.close()
     db = DatabaseManager(
-        catalog_path=catalog_path, users_dir=tmp_path / "users", backups_dir=tmp_path / "backups", active_user="bootstrap"
+        catalog_path=catalog_path, users_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -290,6 +290,17 @@ def test_admin_cli_revokes_enrolled_account_sessions(api):
     account_id = pyjwt.decode(token, TEST_JWT_SECRET, algorithms=["HS256"])["sub"]
     assert client.get("/dashboard/exercises", headers=_authed(token)).status_code == 200
 
+    # Seed an already-expired revocation row: the CLI must prune it for an
+    # enrolled account too, not only for a bare local ledger.
+    ledger_path = db.users_dir / "alice.db"
+    seed = sqlite3.connect(ledger_path)
+    seed.execute(
+        "INSERT INTO revoked_tokens (jti, expires_at, revoked_at) VALUES (?, ?, ?)",
+        ("expired-jti", "2000-01-01T00:00:00+00:00", "2000-01-01T00:00:00+00:00"),
+    )
+    seed.commit()
+    seed.close()
+
     script = Path(__file__).resolve().parent.parent / "scripts" / "reset_password.py"
     env = dict(os.environ)
     env["SKIP_LLM_LOAD"] = "true"
@@ -308,6 +319,15 @@ def test_admin_cli_revokes_enrolled_account_sessions(api):
     )
     assert proc.returncode == 0, proc.stderr
     assert "all sessions revoked" in proc.stdout.lower()
+
+    checked = sqlite3.connect(ledger_path)
+    try:
+        remaining = checked.execute(
+            "SELECT COUNT(*) FROM revoked_tokens WHERE jti = 'expired-jti'"
+        ).fetchone()[0]
+    finally:
+        checked.close()
+    assert remaining == 0  # prune_revoked_tokens ran for the enrolled account
 
     # The enrolled account's registry epoch advanced, so the old token is dead.
     assert db.get_account(account_id)["session_epoch"] == 2
@@ -331,7 +351,7 @@ def test_fresh_catalog_boot_creates_account_tables(tmp_path: Path, monkeypatch):
     # monkeypatch restores the singleton/thread-local after this test, so
     # module-level DatabaseManager() consumers in other test files stay intact.
     db = DatabaseManager(
-        catalog_path=catalog_path, users_dir=tmp_path / "users", backups_dir=tmp_path / "backups", active_user="bootstrap"
+        catalog_path=catalog_path, users_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
     )
     try:
         tables = {

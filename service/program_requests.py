@@ -264,15 +264,15 @@ def apply_request(
             else:
                 from svc.llm import InferenceScope, run_inference_sync
 
-                from service._base import bind_user
-
-                bind_user(db, ledger.ledger_id)  # Phase B2: program pipeline reads the thread-local ledger
                 run_inference_sync(
                     generate_program_pipeline,
                     frequency_override=request["desired_weekly_frequency"],
                     user_split_override=request["desired_split_preference"],
                     published_by_coach_account_id=coach_account_id,
-                    scope=InferenceScope(account_id=coach_account_id, role="coach", purpose="coach_program_request"),
+                    ledger=ledger,
+                    scope=InferenceScope(
+                        account_id=coach_account_id, role="coach", purpose="coach_program_request", store=db
+                    ),
                 )
         except Exception:
             logger.exception(

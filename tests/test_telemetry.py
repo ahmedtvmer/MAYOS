@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest.mock import MagicMock
 
 from langchain_core.messages import HumanMessage
 
@@ -13,7 +14,7 @@ def test_fast_path_telemetry_logging():
     state = {"messages": [HumanMessage(content="I felt a sharp pop in my shoulder")], "trainee_id": "ci_test_user"}
 
     # Consume generator to trigger routing and logging
-    list(stream_assistant_turn(state))
+    list(stream_assistant_turn(state, ledger=MagicMock(), store=MagicMock()))
 
     assert LOG_PATH.exists(), "Telemetry log file was not created"
     log_content = LOG_PATH.read_text(encoding="utf-8")

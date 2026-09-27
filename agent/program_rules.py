@@ -16,7 +16,6 @@ from agent.program_blueprints import (
     resolve_split_type,
 )
 from agent.ProgramState import CustomDayPlan, DynamicSplitPlan
-from database.store import get_store
 from utils.model_downloader import llm
 
 load_dotenv()
@@ -279,8 +278,10 @@ def _fetch_by_sql(
     limit: int,
     extra_exclude: str = "",
     name_rank: tuple[str, ...] = (),
+    *,
+    ledger: Any,
 ) -> list[dict[str, Any]]:
-    conn = get_store().get_connection()
+    conn = ledger.conn
     cursor = conn.cursor()
 
     where = [f"({sql})"]
@@ -323,6 +324,8 @@ def fetch_slot_candidates(
     equipment_access: str = "commercial gym",
     limitations: str = "None",
     limit: int = 6,
+    *,
+    ledger: Any,
 ) -> list[dict[str, Any]]:
     """Resolves a movement slot against the catalog, ranked by the slot's equipment preference."""
     spec = SLOT_SPECS.get(slot_key)
@@ -336,6 +339,7 @@ def fetch_slot_candidates(
         limit,
         extra_exclude=spec.exclude_sql,
         name_rank=spec.name_rank,
+        ledger=ledger,
     )
     for item in candidates:
         item["slot_key"] = slot_key
@@ -347,6 +351,8 @@ def fetch_warmup_candidates(
     equipment_access: str = "commercial gym",
     limitations: str = "None",
     limit: int = 4,
+    *,
+    ledger: Any,
 ) -> list[dict[str, Any]]:
     """Resolves a general warm-up movement (Pallof, scapula push plus, glute bridge, ...)."""
     spec = WARMUP_SPECS.get(warmup_key)
@@ -359,6 +365,7 @@ def fetch_warmup_candidates(
         equipment_access,
         limitations,
         limit,
+        ledger=ledger,
     )
     for item in candidates:
         item["warmup_key"] = warmup_key
@@ -371,8 +378,10 @@ def fetch_filtered_candidates(
     limitations: str = "None",
     limit: int = 4,
     body_part: str | None = None,
+    *,
+    ledger: Any,
 ) -> list[dict[str, Any]]:
-    conn = get_store().get_connection()
+    conn = ledger.conn
     cursor = conn.cursor()
 
     target = (muscle_group or body_part or "").strip().lower()

@@ -52,7 +52,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -117,7 +117,7 @@ def _backdate_assignment(db, assignment_id, started_at):
 
 def _seed_schedule(db, player, weekdays, effective_from):
     db.switch_user(player)
-    db.append_training_schedule(
+    db.ledger.append_training_schedule(
         player, weekdays, "UTC", effective_from.isoformat(), "2026-01-01T00:00:00+00:00"
     )
 
@@ -125,7 +125,7 @@ def _seed_schedule(db, player, weekdays, effective_from):
 def _seed_session(db, player, session_date):
     db.switch_user(player)
     now_iso = session_date.isoformat() + "T10:00:00+00:00"
-    db.log_workout_session(
+    db.ledger.log_workout_session(
         uuid.uuid4().hex, session_date.isoformat(), "Full A", now_iso, now_iso, 4, ""
     )
 
@@ -271,7 +271,7 @@ def test_commit_hook_resolves_alert_when_an_expected_day_is_satisfied(api):
     assert len(db.list_coach_alerts(coach_account_id, ("new",))) == 1
 
     db.switch_user("p1")
-    db.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.upsert_user_profile({"current_goal": "Strength"})
     player_account_id = db.get_active_account_by_username("p1")["account_id"]
     day_plan = ProgramDaySchema(
         day_name="Full A",
@@ -305,10 +305,10 @@ def test_commit_session_defaults_to_the_player_local_today(api, monkeypatch):
     client, db = api
     _register(client, "p1")
     db.switch_user("p1")
-    db.append_training_schedule(
+    db.ledger.append_training_schedule(
         "p1", ALL_DAYS, "Pacific/Kiritimati", "2026-01-01", "2026-01-01T00:00:00+00:00"
     )
-    db.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.upsert_user_profile({"current_goal": "Strength"})
     # UTC 2026-09-20T12:00Z is already 2026-09-21 for a UTC+14 player.
     local_day = date(2026, 9, 21)
     monkeypatch.setattr(workouts_service, "local_today", lambda db_arg, trainee, **kwargs: local_day)

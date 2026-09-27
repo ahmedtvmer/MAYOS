@@ -9,7 +9,7 @@ from typing import Any
 
 import bcrypt
 
-from service._base import bind_user, ledger_scope
+from service._base import ledger_scope
 
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 128
@@ -58,7 +58,6 @@ def register_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
     ledger_id = account.get("ledger_id") or clean_id
     with db.open_ledger(ledger_id) as ledger:
         ledger.set_password_hash(hash_password(password))
-        bind_user(db, ledger_id)  # Phase B2: login issues a session for the thread-local ledger
     account = db.get_account(account_id) or account
     return {
         "ok": True,
@@ -80,7 +79,6 @@ def login_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
         if not isinstance(password, str) or not verify_password(password, stored):
             return {"ok": False, "error": INVALID_CREDENTIALS}
         profile = ledger.get_user_profile()
-        bind_user(db, account["ledger_id"])  # Phase B2: login issues a session for the thread-local ledger
         return {
             "ok": True,
             "trainee_id": account["ledger_id"],
@@ -110,7 +108,6 @@ def claim_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
         if ledger.get_password_hash() is not None:
             return {"ok": False, "error": INVALID_CREDENTIALS}
         ledger.set_password_hash(hash_password(password))
-        bind_user(db, account["ledger_id"])  # Phase B2: login issues a session for the thread-local ledger
         return {
             "ok": True,
             "trainee_id": account["ledger_id"],

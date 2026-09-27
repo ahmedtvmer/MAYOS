@@ -90,7 +90,7 @@ def api(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -118,7 +118,7 @@ def _spy_generation(db: Any, monkeypatch) -> dict[str, Any]:
     def fake(**kwargs):
         calls["n"] += 1
         program = _program()
-        db.save_training_program(program.model_dump())
+        kwargs["ledger"].save_training_program(program.model_dump())
         return program, "markdown"
 
     monkeypatch.setattr("service.programs.generate_program_pipeline", fake)
@@ -132,11 +132,11 @@ def _spy_generation_from_profile(db: Any, monkeypatch) -> dict[str, Any]:
 
     def fake(**kwargs):
         seen["n"] += 1
-        profile = db.get_user_profile()
+        profile = kwargs["ledger"].get_user_profile()
         seen["gender"] = profile["gender"]
         seen["weekly_frequency"] = profile["weekly_frequency"]
         program = _program(frequency=profile["weekly_frequency"])
-        db.save_training_program(program.model_dump())
+        kwargs["ledger"].save_training_program(program.model_dump())
         return program, "markdown"
 
     monkeypatch.setattr("service.programs.generate_program_pipeline", fake)
@@ -379,11 +379,11 @@ def test_confirm_writes_profile_and_creates_program_once(api, monkeypatch):
 
     # The program was generated from the confirmed values.
     db.switch_user("alice")
-    profile = db.get_user_profile()
+    profile = db.ledger.get_user_profile()
     assert profile["gender"] == "female"
     assert profile["weekly_frequency"] == 4
     assert profile["proportions"] == "long_legs"
-    assert db.get_active_program() is not None
+    assert db.ledger.get_active_program() is not None
 
     # Re-confirming replays the stored result and never generates again.
     again = client.post("/onboarding/intake/confirm", headers=headers)
@@ -412,13 +412,13 @@ def test_editing_before_confirm_flows_into_profile_and_program(api, monkeypatch)
     assert confirmed.status_code == 200, confirmed.text
 
     db.switch_user("editor")
-    profile = db.get_user_profile()
+    profile = db.ledger.get_user_profile()
     assert profile["weekly_frequency"] == 4
     assert profile["gender"] == "female"
     # Generation read the edited values, and the saved program matches.
     assert seen["weekly_frequency"] == 4
     assert seen["gender"] == "female"
-    assert db.get_active_program().weekly_frequency == 4
+    assert db.ledger.get_active_program().weekly_frequency == 4
 
 
 def test_concurrent_confirm_generates_exactly_one_program(api, monkeypatch):
@@ -437,7 +437,7 @@ def test_concurrent_confirm_generates_exactly_one_program(api, monkeypatch):
         started.set()
         assert release.wait(timeout=10), "generation was never released"
         program = _program()
-        db.save_training_program(program.model_dump())
+        kwargs["ledger"].save_training_program(program.model_dump())
         return program, "markdown"
 
     monkeypatch.setattr("service.programs.generate_program_pipeline", fake)
@@ -479,7 +479,7 @@ def test_failed_generation_releases_claim_for_retry(api, monkeypatch):
             state["fail"] = False
             raise ModelLimitExceeded("Too many AI requests. Please wait a minute and try again.")
         program = _program()
-        db.save_training_program(program.model_dump())
+        kwargs["ledger"].save_training_program(program.model_dump())
         return program, "markdown"
 
     monkeypatch.setattr("service.programs.generate_program_pipeline", fake)
@@ -519,7 +519,7 @@ def test_legacy_prefill_maps_unambiguous_values_and_asks_again(api):
     client, db, _ = api
     headers = _register(client, "legacy")
     db.switch_user("legacy")
-    db.save_onboarding_state(
+    db.ledger.save_onboarding_state(
         {
             "intake_step": 3,
             "is_complete": False,
@@ -559,7 +559,7 @@ def test_legacy_prefill_keeps_explicit_proportions(api):
     client, db, _ = api
     headers = _register(client, "legacy")
     db.switch_user("legacy")
-    db.save_onboarding_state(
+    db.ledger.save_onboarding_state(
         {
             "intake_step": 1,
             "is_complete": False,
@@ -576,7 +576,7 @@ def test_completed_account_is_confirmed_and_unaffected(api, monkeypatch):
     client, db, _ = api
     headers = _register(client, "done")
     db.switch_user("done")
-    db.upsert_user_profile(
+    db.ledger.upsert_user_profile(
         {
             "gender": "male",
             "proportions": "balanced",
@@ -594,7 +594,7 @@ def test_completed_account_is_confirmed_and_unaffected(api, monkeypatch):
         }
     )
     # A profile *and* an active program is the only confirmed synthesis (2c).
-    db.save_training_program(_program().model_dump())
+    db.ledger.save_training_program(_program().model_dump())
     calls = _spy_generation(db, monkeypatch)
 
     view = client.get("/onboarding/intake", headers=headers).json()
@@ -614,7 +614,7 @@ def test_profile_without_program_resumes_in_progress_then_confirms(api, monkeypa
     client, db, _ = api
     headers = _register(client, "graphonly")
     db.switch_user("graphonly")
-    db.upsert_user_profile(
+    db.ledger.upsert_user_profile(
         {
             "gender": "male",
             "proportions": "balanced",
@@ -652,7 +652,7 @@ def test_legacy_complete_marks_structured_intake_confirmed(api, monkeypatch):
     client, db, _ = api
     headers = _register(client, "legacycomplete")
     db.switch_user("legacycomplete")
-    db.save_onboarding_state(
+    db.ledger.save_onboarding_state(
         {"intake_step": 3, "is_complete": True, "profile_data": {"gender": "female"}, "messages": []}
     )
     _ack(client, headers)
@@ -678,7 +678,7 @@ def test_legacy_routes_refused_while_structured_intake_active(api, monkeypatch):
 
     from service import onboarding as onboarding_service
 
-    def fake_start(db, trainee_id, player_account_id=None):
+    def fake_start(db, trainee_id, player_account_id=None, ledger=None):
         return {
             "messages": [AIMessage(content="Q1?")],
             "trainee_id": trainee_id,
@@ -748,11 +748,10 @@ def generation_db(tmp_path: Path, monkeypatch):
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
-        active_user="bootstrap",
+        default_ledger_id="bootstrap",
     )
     from agent import program_generator
 
-    monkeypatch.setattr(program_generator, "get_store", lambda _db=db: _db)
     yield db, program_generator
     if db.user_conn is not None:
         db.user_conn.close()
@@ -781,8 +780,8 @@ def test_proportions_do_not_change_generated_program(generation_db, monkeypatch)
     programs = {}
     for proportions in ("long_legs", "balanced", "long_torso"):
         db.switch_user(f"prop_{proportions}")
-        db.upsert_user_profile(_generation_profile(proportions=proportions))
-        program, _ = program_generator.generate_program_pipeline()
+        db.ledger.upsert_user_profile(_generation_profile(proportions=proportions))
+        program, _ = program_generator.generate_program_pipeline(ledger=db.ledger)
         programs[proportions] = program.model_dump()
 
     assert programs["long_legs"] == programs["balanced"] == programs["long_torso"]
@@ -795,11 +794,11 @@ def test_specialization_still_changes_the_split(generation_db, monkeypatch):
     _stub_day_assembly(program_generator, monkeypatch)
 
     db.switch_user("spec_male")
-    db.upsert_user_profile(_generation_profile(gender="male"))
-    male, _ = program_generator.generate_program_pipeline()
+    db.ledger.upsert_user_profile(_generation_profile(gender="male"))
+    male, _ = program_generator.generate_program_pipeline(ledger=db.ledger)
 
     db.switch_user("spec_female")
-    db.upsert_user_profile(_generation_profile(gender="female"))
-    female, _ = program_generator.generate_program_pipeline()
+    db.ledger.upsert_user_profile(_generation_profile(gender="female"))
+    female, _ = program_generator.generate_program_pipeline(ledger=db.ledger)
 
     assert male.split_type != female.split_type

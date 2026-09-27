@@ -26,10 +26,12 @@ def test_profile_flow(fresh_store):
         "stress_and_sleep": "Medium stress, 7 hours sleep",
     }
 
-    result = save_user_profile.invoke(raw_payload)
+    result = save_user_profile.invoke(
+        raw_payload, config={"configurable": {"ledger": fresh_store.ledger}}
+    )
     logger.info(f"Tool Output: {result}")
 
-    saved = fresh_store.get_user_profile()
+    saved = fresh_store.ledger.get_user_profile()
     logger.info("\nSaved SQLite Record:")
     for k, v in saved.items():
         logger.info(f"  {k}: {v}")

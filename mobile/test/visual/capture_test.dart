@@ -111,10 +111,8 @@ Future<void> _precacheBrandImages(WidgetTester tester) async {
   final BuildContext context = tester.element(find.byType(MaterialApp));
   const List<String> assets = <String>[
     'assets/brand/mayos-lockup-white.png',
-    'assets/brand/mayos-lockup-blue.png',
     'assets/brand/mayos-lockup-black.png',
     'assets/brand/mayos-mark-white.png',
-    'assets/brand/mayos-mark-blue.png',
     'assets/brand/mayos-mark-black.png',
   ];
   await tester.runAsync(() async {
@@ -233,6 +231,25 @@ Future<void> _write54Capture(WidgetTester tester, String name) async {
   await tester.runAsync(() async {
     final Directory out =
         Directory('${Directory.current.parent.path}/docs/design-review/54');
+    await out.create(recursive: true);
+    final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
+    final ByteData? data =
+        await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    if (data == null) {
+      return;
+    }
+    await File('${out.path}/$name.png').writeAsBytes(data.buffer.asUint8List());
+  });
+}
+
+/// Writes a #109 logo-lockup capture to `docs/design-review/109/`.
+Future<void> _write109Capture(WidgetTester tester, String name) async {
+  final RenderRepaintBoundary boundary =
+      tester.renderObject<RenderRepaintBoundary>(find.byKey(_boundaryKey));
+  await tester.runAsync(() async {
+    final Directory out =
+        Directory('${Directory.current.parent.path}/docs/design-review/109');
     await out.create(recursive: true);
     final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
     final ByteData? data =
@@ -1314,5 +1331,30 @@ void main() {
           tester, const _Surface('settings', null), small, ThemeMode.system);
       await _write54Capture(tester, 'settings-system-$tag-360x640');
     }, skip: skipCapture);
+  }
+
+  // -------------------------------------------------------------------------
+  // #109 monochrome logo lockup captures (docs/design-review/109): the splash
+  // and the shell header on Home, in both themes at a narrow 320x640 and a
+  // common 412x915.
+  // -------------------------------------------------------------------------
+  const List<Size> logo109Sizes = <Size>[Size(320, 640), Size(412, 915)];
+  for (final Size size in logo109Sizes) {
+    for (final ThemeMode mode in modes) {
+      final String theme = mode == ThemeMode.dark ? 'dark' : 'light';
+      final String sizeTag = '${size.width.toInt()}x${size.height.toInt()}';
+
+      testWidgets('109 logo splash $theme $sizeTag',
+          (WidgetTester tester) async {
+        await _pumpSplash(tester, size, mode);
+        await _write109Capture(tester, 'splash-$theme-$sizeTag');
+      }, skip: skipCapture);
+
+      testWidgets('109 logo home header $theme $sizeTag',
+          (WidgetTester tester) async {
+        await _pumpShell(tester, const _Surface('home', 0), size, mode);
+        await _write109Capture(tester, 'home-$theme-$sizeTag');
+      }, skip: skipCapture);
+    }
   }
 }

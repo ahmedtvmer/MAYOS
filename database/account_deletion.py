@@ -293,8 +293,8 @@ class AccountDeletionMixin:
             # The username was reused by a new account after the recorded
             # deletion; its ledger is not the deleted account's and must survive.
             return
-        if self.active_user == sanitized and self.user_conn is not None:
-            self.unmount_user()
+        # Ledgers live on explicit handles and are closed by their owners before
+        # deletion runs (ADR 041); the store holds no connection to unmount here.
         for suffix in ("", "-wal", "-shm"):
             path = self.users_dir / f"{sanitized}.db{suffix}"
             try:

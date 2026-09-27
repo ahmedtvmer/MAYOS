@@ -41,8 +41,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         counts = alerts_service.run_sweep(db)
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
         db.catalog_conn.close()
 
     logger.info("Alert sweep complete: %s", counts)
