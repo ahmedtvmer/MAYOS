@@ -38,6 +38,14 @@ A mutually consented coaching relationship between a coach and a player. A playe
 **Invite code**:
 A single-use invitation issued by a coach. The first player to redeem it may accept an assignment with that coach.
 
+**Exercise library**:
+The shared reference set of exercises that programs, substitutions, and search draw from. It is the same for every account and holds no personal data.
+_Avoid_: Exercise catalog
+
+**Training ledger**:
+An account's private record of its own training: program, workouts, schedule, onboarding answers, and assistant chat. It is separate from the shared coaching data (accounts, assignments, alerts, check-ins), and a coach reaches it only through an active assignment.
+_Avoid_: User database, user DB
+
 **Training program**:
 The player's current structured selection of training days and exercises.
 
