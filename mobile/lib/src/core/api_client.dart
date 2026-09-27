@@ -840,6 +840,43 @@ class ApiClient {
     return OnboardingCompletion.fromJson(response.data as Map<String, dynamic>);
   }
 
+  /// The structured, resumable intake contract (`GET /onboarding/intake`, #50).
+  Future<OnboardingIntake> onboardingIntake() async {
+    final response = await _send(() => _dio.get<dynamic>('/onboarding/intake'));
+    return _parseBody(response.data, OnboardingIntake.fromJson,
+        'The service returned invalid onboarding intake data.');
+  }
+
+  /// Acknowledges the hosted-processing disclosure before any answer is saved
+  /// (`POST /onboarding/intake/disclosure`, ADR 016/036).
+  Future<OnboardingIntake> acknowledgeIntakeDisclosure() async {
+    final response = await _send(
+        () => _dio.post<dynamic>('/onboarding/intake/disclosure'));
+    return _parseBody(response.data, OnboardingIntake.fromJson,
+        'The service returned invalid onboarding intake data.');
+  }
+
+  /// Validates and saves one named intake answer
+  /// (`PUT /onboarding/intake/answers/{field}`, #50). Idempotent until confirmed.
+  Future<OnboardingIntake> saveIntakeAnswer(String field, Object? value) async {
+    final response = await _send(
+      () => _dio.put<dynamic>(
+          '/onboarding/intake/answers/${Uri.encodeComponent(field)}',
+          data: <String, dynamic>{'value': value}),
+    );
+    return _parseBody(response.data, OnboardingIntake.fromJson,
+        'The service returned invalid onboarding intake data.');
+  }
+
+  /// Writes the confirmed profile and creates the first program once
+  /// (`POST /onboarding/intake/confirm`, #50).
+  Future<IntakeConfirmation> confirmIntake() async {
+    final response = await _send(
+        () => _dio.post<dynamic>('/onboarding/intake/confirm'));
+    return _parseBody(response.data, IntakeConfirmation.fromJson,
+        'The service returned invalid onboarding confirmation data.');
+  }
+
   Future<TrainingProgram?> activeProgram() async {
     final response = await _send(() => _dio.get<dynamic>('/programs/active'));
     final dynamic data = response.data;

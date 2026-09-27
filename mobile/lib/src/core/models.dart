@@ -1046,6 +1046,192 @@ class OnboardingCompletion {
   bool get hasProgram => programName != null && weeklyFrequency != null;
 }
 
+/// One named decision in the structured onboarding intake (`GET /onboarding/intake`).
+///
+/// [type] is the domain kind (`enum`/`int`/`float`/`text`); [allowedValues],
+/// [minimum], and [maximum] describe the same validation the server enforces.
+/// [prefilled] marks a value mapped from an incomplete legacy three-step intake.
+class IntakeField {
+  const IntakeField({
+    required this.name,
+    required this.type,
+    required this.isRequired,
+    required this.profileField,
+    this.allowedValues = const <String>[],
+    this.minimum,
+    this.maximum,
+    this.explanation,
+    this.hint,
+    this.examples = const <String>[],
+    this.answer,
+    this.prefilled = false,
+    this.answered = false,
+    this.updatedAt,
+  });
+
+  factory IntakeField.fromJson(Map<String, dynamic> json) {
+    final Object? name = json['name'];
+    if (name is! String || name.isEmpty) {
+      throw const FormatException('Onboarding intake field is missing its name.');
+    }
+    return IntakeField(
+      name: name,
+      type: json['type'] as String? ?? 'text',
+      isRequired: json['required'] as bool? ?? false,
+      profileField: json['profile_field'] as String? ?? '',
+      allowedValues: (json['allowed_values'] as List<dynamic>? ?? const [])
+          .map((dynamic v) => v.toString())
+          .toList(growable: false),
+      minimum: (json['minimum'] as num?)?.toDouble(),
+      maximum: (json['maximum'] as num?)?.toDouble(),
+      explanation: json['explanation'] as String?,
+      hint: json['hint'] as String?,
+      examples: (json['examples'] as List<dynamic>? ?? const [])
+          .map((dynamic v) => v.toString())
+          .toList(growable: false),
+      answer: json['answer'],
+      prefilled: json['prefilled'] as bool? ?? false,
+      answered: json['answered'] as bool? ?? false,
+      updatedAt: json['updated_at'] as String?,
+    );
+  }
+
+  final String name;
+  final String type;
+  final bool isRequired;
+  final String profileField;
+  final List<String> allowedValues;
+  final double? minimum;
+  final double? maximum;
+  final String? explanation;
+  final String? hint;
+  final List<String> examples;
+  final Object? answer;
+  final bool prefilled;
+  final bool answered;
+  final String? updatedAt;
+}
+
+/// Resume progress over the named intake decisions.
+class IntakeProgress {
+  const IntakeProgress({
+    required this.answeredRequired,
+    required this.requiredTotal,
+    required this.answered,
+    required this.totalFields,
+    this.nextUnanswered,
+  });
+
+  factory IntakeProgress.fromJson(Map<String, dynamic> json) => IntakeProgress(
+        answeredRequired: (json['answered_required'] as num?)?.toInt() ?? 0,
+        requiredTotal: (json['required_total'] as num?)?.toInt() ?? 0,
+        answered: (json['answered'] as num?)?.toInt() ?? 0,
+        totalFields: (json['total_fields'] as num?)?.toInt() ?? 0,
+        nextUnanswered: json['next_unanswered'] as String?,
+      );
+
+  final int answeredRequired;
+  final int requiredTotal;
+  final int answered;
+  final int totalFields;
+  final String? nextUnanswered;
+
+  bool get isComplete => answeredRequired >= requiredTotal;
+}
+
+/// The stored first-program result, present once the intake is confirmed.
+class IntakeProgram {
+  const IntakeProgram({this.programName, this.weeklyFrequency, this.programMessage});
+
+  factory IntakeProgram.fromJson(Map<String, dynamic> json) => IntakeProgram(
+        programName: json['program_name'] as String?,
+        weeklyFrequency: (json['weekly_frequency'] as num?)?.toInt(),
+        programMessage: json['program_message'] as String?,
+      );
+
+  final String? programName;
+  final int? weeklyFrequency;
+  final String? programMessage;
+
+  bool get hasProgram => programName != null && weeklyFrequency != null;
+}
+
+/// `GET /onboarding/intake`: the contract, saved answers, progress, and status.
+class OnboardingIntake {
+  const OnboardingIntake({
+    required this.status,
+    required this.disclosureAcknowledged,
+    required this.fields,
+    required this.progress,
+    this.program,
+  });
+
+  factory OnboardingIntake.fromJson(Map<String, dynamic> json) {
+    final Object? status = json['status'];
+    if (status is! String || status.isEmpty) {
+      throw const FormatException('Onboarding intake is missing its status.');
+    }
+    final Object? rawFields = json['fields'];
+    if (rawFields is! List) {
+      throw const FormatException('Onboarding intake is missing its fields.');
+    }
+    return OnboardingIntake(
+      status: status,
+      disclosureAcknowledged: json['disclosure_acknowledged'] as bool? ?? false,
+      fields: rawFields
+          .map((dynamic f) => IntakeField.fromJson(f as Map<String, dynamic>))
+          .toList(growable: false),
+      progress: IntakeProgress.fromJson(
+          json['progress'] as Map<String, dynamic>? ?? const {}),
+      program: json['program'] == null
+          ? null
+          : IntakeProgram.fromJson(json['program'] as Map<String, dynamic>),
+    );
+  }
+
+  final String status;
+  final bool disclosureAcknowledged;
+  final List<IntakeField> fields;
+  final IntakeProgress progress;
+  final IntakeProgram? program;
+
+  bool get isConfirmed => status == 'confirmed';
+
+  IntakeField? field(String name) {
+    for (final IntakeField field in fields) {
+      if (field.name == name) {
+        return field;
+      }
+    }
+    return null;
+  }
+}
+
+/// `POST /onboarding/intake/confirm`: the confirmed first-program result.
+class IntakeConfirmation {
+  const IntakeConfirmation({
+    required this.status,
+    this.programName,
+    this.weeklyFrequency,
+    this.programMessage,
+  });
+
+  factory IntakeConfirmation.fromJson(Map<String, dynamic> json) =>
+      IntakeConfirmation(
+        status: json['status'] as String? ?? 'confirmed',
+        programName: json['program_name'] as String?,
+        weeklyFrequency: (json['weekly_frequency'] as num?)?.toInt(),
+        programMessage: json['program_message'] as String?,
+      );
+
+  final String status;
+  final String? programName;
+  final int? weeklyFrequency;
+  final String? programMessage;
+
+  bool get hasProgram => programName != null && weeklyFrequency != null;
+}
+
 /// `GET /profile`: the player's stored training profile. Only the fields the
 /// profile editor writes are modeled; unknown keys are ignored.
 class PlayerProfile {

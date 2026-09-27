@@ -138,6 +138,14 @@ class FakeMayosApi {
   // When true, completion returns null program fields (coach-controlled edge).
   bool nullOnboardingProgram = false;
 
+  // Structured, resumable onboarding intake (#50).
+  bool intakeDisclosureAcknowledged = false;
+  String intakeStatus = 'in_progress';
+  Map<String, Object?> intakeAnswers = <String, Object?>{};
+  Map<String, dynamic>? intakeProgram;
+  // When true, `GET /onboarding/intake` omits the required `fields` key.
+  bool intakeMalformed = false;
+
   FakeResponse _handle(FakeRequest request) {
     final String path = request.path;
     if (_isOfflineRequest(request)) {
@@ -196,6 +204,9 @@ class FakeMayosApi {
     }
     if (path.startsWith('/coach/assignments/') && path.contains('/player/')) {
       return _coachPlayerHistory(request);
+    }
+    if (path.startsWith('/onboarding/intake')) {
+      return _onboardingIntake(request);
     }
     switch (path) {
       case '/auth/register':
@@ -1519,6 +1530,242 @@ class FakeMayosApi {
     });
   }
 
+  // The named decision contract mirrored from service/intake.py (#50).
+  static const List<Map<String, dynamic>> _intakeSchema = <Map<String, dynamic>>[
+    <String, dynamic>{
+      'name': 'gender',
+      'type': 'enum',
+      'required': true,
+      'profile_field': 'gender',
+      'allowed_values': <String>['male', 'female'],
+      'explanation':
+          'Your specialization is required and selects the default split family.',
+    },
+    <String, dynamic>{
+      'name': 'proportions',
+      'type': 'enum',
+      'required': true,
+      'profile_field': 'proportions',
+      'allowed_values': <String>['long_legs', 'balanced', 'long_torso'],
+      'explanation':
+          'Relative leg and torso length is coaching context only and does not change the program.',
+    },
+    <String, dynamic>{'name': 'age', 'type': 'int', 'required': true, 'profile_field': 'age', 'minimum': 12, 'maximum': 100},
+    <String, dynamic>{'name': 'height_cm', 'type': 'float', 'required': true, 'profile_field': 'height_cm', 'minimum': 100, 'maximum': 250},
+    <String, dynamic>{'name': 'weight_kg', 'type': 'float', 'required': true, 'profile_field': 'weight_kg', 'minimum': 30, 'maximum': 250},
+    <String, dynamic>{'name': 'training_age_years', 'type': 'float', 'required': true, 'profile_field': 'training_age_years', 'minimum': 0, 'maximum': 70},
+    <String, dynamic>{
+      'name': 'current_goal',
+      'type': 'text',
+      'required': true,
+      'profile_field': 'current_goal',
+      'hint': 'What are you training for right now?',
+      'examples': <String>['build glutes and legs', 'get stronger', 'lose fat'],
+    },
+    <String, dynamic>{
+      'name': 'long_term_goal',
+      'type': 'text',
+      'required': true,
+      'profile_field': 'long_term_goal',
+      'hint': 'What do you want to achieve over the longer term?',
+      'examples': <String>['stronger and more muscular', 'stay healthy and pain-free'],
+    },
+    <String, dynamic>{'name': 'weekly_frequency', 'type': 'int', 'required': true, 'profile_field': 'weekly_frequency', 'minimum': 1, 'maximum': 5},
+    <String, dynamic>{
+      'name': 'equipment_access',
+      'type': 'text',
+      'required': true,
+      'profile_field': 'equipment_access',
+      'hint': 'What equipment can you train with?',
+      'examples': <String>['commercial gym', 'home gym', 'bodyweight only'],
+    },
+    <String, dynamic>{
+      'name': 'injuries_or_limitations',
+      'type': 'text',
+      'required': true,
+      'profile_field': 'injuries_or_limitations',
+      'hint': "List any injuries or limitations. 'None' is a valid answer.",
+      'examples': <String>['None', 'left knee pain on deep squats'],
+    },
+    <String, dynamic>{
+      'name': 'stress_and_sleep',
+      'type': 'text',
+      'required': true,
+      'profile_field': 'stress_and_sleep',
+      'hint': 'How are your stress and sleep?',
+      'examples': <String>['moderate stress, 7 hours sleep', 'low stress, 8 hours sleep'],
+    },
+    <String, dynamic>{'name': 'rep_preference', 'type': 'enum', 'required': false, 'profile_field': 'rep_preference', 'allowed_values': <String>['low', 'balanced', 'high']},
+  ];
+
+  Map<String, dynamic> _intakeView() {
+    final List<Map<String, dynamic>> fields = _intakeSchema.map((spec) {
+      final String name = spec['name'] as String;
+      final bool answered = intakeAnswers.containsKey(name);
+      return <String, dynamic>{
+        ...spec,
+        'minimum': spec['minimum'],
+        'maximum': spec['maximum'],
+        'explanation': spec['explanation'],
+        'answer': intakeAnswers[name],
+        'prefilled': false,
+        'answered': answered,
+        'updated_at': answered ? '2026-01-01T00:00:00+00:00' : null,
+      };
+    }).toList(growable: false);
+    final List<String> required = _intakeSchema
+        .where((Map<String, dynamic> s) => s['required'] == true)
+        .map((Map<String, dynamic> s) => s['name'] as String)
+        .toList(growable: false);
+    final int answeredRequired =
+        required.where(intakeAnswers.containsKey).length;
+    String? nextUnanswered;
+    for (final String name in required) {
+      if (!intakeAnswers.containsKey(name)) {
+        nextUnanswered = name;
+        break;
+      }
+    }
+    return <String, dynamic>{
+      'status': intakeStatus,
+      'disclosure_acknowledged': intakeDisclosureAcknowledged,
+      'fields': fields,
+      'progress': <String, dynamic>{
+        'answered_required': answeredRequired,
+        'required_total': required.length,
+        'answered': intakeAnswers.length,
+        'total_fields': _intakeSchema.length,
+        'next_unanswered': nextUnanswered,
+      },
+      'program': intakeStatus == 'confirmed' ? intakeProgram : null,
+    };
+  }
+
+  String? _validateIntakeAnswer(String field, Object? value) {
+    Map<String, dynamic>? spec;
+    for (final Map<String, dynamic> candidate in _intakeSchema) {
+      if (candidate['name'] == field) {
+        spec = candidate;
+        break;
+      }
+    }
+    if (spec == null) {
+      return "Unknown onboarding field '$field'.";
+    }
+    final String type = spec['type'] as String;
+    if (type == 'enum') {
+      final List<String> allowed =
+          (spec['allowed_values'] as List<String>?) ?? const <String>[];
+      if (value is! String || !allowed.contains(value.toLowerCase())) {
+        return "Invalid value for '$field': must be one of ${allowed.join(', ')}.";
+      }
+    } else if (type == 'int' || type == 'float') {
+      final num? parsed = value is num ? value : num.tryParse('$value');
+      if (parsed == null) {
+        return "Invalid value for '$field': must be a number.";
+      }
+      if (type == 'int' && parsed != parsed.roundToDouble()) {
+        return "Invalid value for '$field': must be a whole number.";
+      }
+      final num? min = spec['minimum'] as num?;
+      final num? max = spec['maximum'] as num?;
+      if ((min != null && parsed < min) || (max != null && parsed > max)) {
+        return "Invalid value for '$field': out of range.";
+      }
+    } else {
+      if (value is! String || value.trim().length < 2) {
+        return "Invalid value for '$field': must be at least 2 characters.";
+      }
+    }
+    return null;
+  }
+
+  FakeResponse _onboardingIntake(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    final String path = request.path;
+    if (path == '/onboarding/intake' && request.method == 'GET') {
+      if (intakeMalformed) {
+        // Missing the required `fields` key; the client must fail parsing.
+        return const FakeResponse(200, <String, dynamic>{
+          'status': 'in_progress',
+          'disclosure_acknowledged': false,
+        });
+      }
+      return FakeResponse(200, _intakeView());
+    }
+    if (path == '/onboarding/intake/disclosure' && request.method == 'POST') {
+      intakeDisclosureAcknowledged = true;
+      return FakeResponse(200, _intakeView());
+    }
+    if (path == '/onboarding/intake/confirm' && request.method == 'POST') {
+      if (intakeStatus == 'confirmed') {
+        return FakeResponse(200, <String, dynamic>{
+          'status': 'confirmed',
+          'program_name': intakeProgram?['program_name'],
+          'weekly_frequency': intakeProgram?['weekly_frequency'],
+          'program_message': intakeProgram?['program_message'],
+        });
+      }
+      if (!intakeDisclosureAcknowledged) {
+        return const FakeResponse(403, <String, dynamic>{
+          'detail':
+              'Acknowledge the hosted-processing disclosure before creating your program.'
+        });
+      }
+      final List<String> missing = _intakeSchema
+          .where((Map<String, dynamic> s) => s['required'] == true)
+          .map((Map<String, dynamic> s) => s['name'] as String)
+          .where((String name) => !intakeAnswers.containsKey(name))
+          .toList(growable: false);
+      if (missing.isNotEmpty) {
+        return FakeResponse(400, <String, dynamic>{
+          'detail': 'Missing required onboarding answers: ${missing.join(', ')}.'
+        });
+      }
+      intakeStatus = 'confirmed';
+      profileExists = true;
+      intakeProgram = <String, dynamic>{
+        'program_name': 'Upper/Lower 4x',
+        'weekly_frequency': 4,
+        'program_message': null,
+      };
+      return FakeResponse(200, <String, dynamic>{
+        'status': 'confirmed',
+        ...intakeProgram!,
+      });
+    }
+    if (path.startsWith('/onboarding/intake/answers/') &&
+        request.method == 'PUT') {
+      if (intakeStatus == 'confirmed') {
+        return const FakeResponse(409, <String, dynamic>{
+          'detail': 'This intake is already confirmed and can no longer be edited.'
+        });
+      }
+      if (!intakeDisclosureAcknowledged) {
+        return const FakeResponse(403, <String, dynamic>{
+          'detail':
+              'Acknowledge the hosted-processing disclosure before saving onboarding answers.'
+        });
+      }
+      final String field = Uri.decodeComponent(
+          path.substring('/onboarding/intake/answers/'.length));
+      final Object? value = request.body['value'];
+      final String? error = _validateIntakeAnswer(field, value);
+      if (error != null) {
+        return FakeResponse(400, <String, dynamic>{'detail': error});
+      }
+      final bool lowercased =
+          field == 'gender' || field == 'proportions' || field == 'rep_preference';
+      intakeAnswers[field] =
+          value is String && lowercased ? value.toLowerCase() : value;
+      return FakeResponse(200, _intakeView());
+    }
+    return const FakeResponse(404, <String, dynamic>{'detail': 'Not found.'});
+  }
+
   Map<String, dynamic> _activeProgramBody() => <String, dynamic>{
         'program_name': 'Upper/Lower 4x',
         'split_type': 'Upper/Lower',
@@ -1906,6 +2153,10 @@ class FakeMayosApi {
       _assistantMessages = <String>[];
       _onboardingComplete = false;
       nullOnboardingProgram = false;
+      intakeDisclosureAcknowledged = false;
+      intakeStatus = 'in_progress';
+      intakeAnswers = <String, Object?>{};
+      intakeProgram = null;
       committedSessions.clear();
       sessionCommits.clear();
       commitRequests = 0;

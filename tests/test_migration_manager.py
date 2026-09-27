@@ -52,7 +52,7 @@ def temp_db_env(tmp_path: Path, monkeypatch):
 def test_schema_version_stamping(temp_db_env):
     db, users_dir, _ = temp_db_env
     version = get_user_schema_version(db.conn)
-    assert version == CURRENT_USER_SCHEMA_VERSION == 11
+    assert version == CURRENT_USER_SCHEMA_VERSION == 12
 
 
 def test_atomic_backup_and_restore(temp_db_env):
@@ -484,7 +484,7 @@ def test_v1_to_v2_adds_password_hash_preserving_data(temp_db_env):
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
-    assert CURRENT_USER_SCHEMA_VERSION == 11
+    assert CURRENT_USER_SCHEMA_VERSION == 12
     db, users_dir, _ = temp_db_env
     # Craft a legacy v1 ledger: no password_hash column, stamped v1.
     legacy_path = users_dir / "legacy.db"
@@ -520,7 +520,7 @@ def test_v2_to_v3_adds_token_version_preserving_hash(temp_db_env):
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
-    assert CURRENT_USER_SCHEMA_VERSION == 11
+    assert CURRENT_USER_SCHEMA_VERSION == 12
     db, users_dir, _ = temp_db_env
     # Craft a v2 ledger: auth_credentials without token_version, stamped v2.
     legacy_path = users_dir / "v2user.db"
@@ -560,7 +560,7 @@ def test_v3_to_v4_backfills_personal_records(temp_db_env):
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
-    assert CURRENT_USER_SCHEMA_VERSION == 11
+    assert CURRENT_USER_SCHEMA_VERSION == 12
     db, users_dir, _ = temp_db_env
     legacy_path = users_dir / "v3lifter.db"
     conn = sqlite3.connect(legacy_path)
@@ -702,7 +702,7 @@ def test_v5_to_v6_backfills_stable_program_versions(temp_db_env):
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v5lifter"
     )
     try:
-        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 11
+        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 12
         program_cols = {r[1] for r in migrated.conn.execute("PRAGMA table_info(training_programs)")}
         assert {"version", "published_by_coach_account_id"}.issubset(program_cols)
         rows = migrated.conn.execute(
@@ -746,7 +746,7 @@ def test_v6_to_v7_adds_session_divergences(temp_db_env):
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v6lifter"
     )
     try:
-        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 11
+        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 12
         tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         assert "session_divergences" in tables
         migrated.record_session_divergences(
@@ -796,7 +796,7 @@ def test_v7_to_v8_adds_training_schedules_and_pauses(temp_db_env):
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v7lifter"
     )
     try:
-        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 11
+        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 12
         tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         assert {"training_schedules", "training_pauses"} <= tables
         migrated.append_training_schedule("v7lifter", [1, 3], "UTC", "2026-01-01", "2026-01-01T00:00:00+00:00")
@@ -842,7 +842,7 @@ def test_v8_to_v9_adds_offline_sync_columns_and_session_commits(temp_db_env):
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v8lifter"
     )
     try:
-        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 11
+        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 12
         columns = {r[1] for r in migrated.conn.execute("PRAGMA table_info(workout_sessions)")}
         assert {"client_session_id", "performed_timezone", "program_version", "captured_at", "uploaded_at"} <= columns
         tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
@@ -893,7 +893,7 @@ def test_v9_to_v10_adds_active_program_version_at_sync(temp_db_env):
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v9lifter"
     )
     try:
-        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 11
+        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 12
         columns = {r[1] for r in migrated.conn.execute("PRAGMA table_info(workout_sessions)")}
         assert "active_program_version_at_sync" in columns
         # Existing rows keep a NULL active version, so they are never read as historical.
@@ -945,7 +945,7 @@ def test_v10_to_v11_adds_edited_at_and_performed_date_corrections(temp_db_env):
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v10lifter"
     )
     try:
-        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 11
+        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 12
         columns = {r[1] for r in migrated.conn.execute("PRAGMA table_info(workout_sessions)")}
         assert "edited_at" in columns
         tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
@@ -971,6 +971,51 @@ def test_v10_to_v11_adds_edited_at_and_performed_date_corrections(temp_db_env):
         # Re-initialising the schema is idempotent.
         migrated.create_user_schema()
         assert "performed_date_corrections" in {
+            row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        }
+    finally:
+        if migrated.user_conn is not None:
+            migrated.user_conn.close()
+        migrated.catalog_conn.close()
+
+
+def test_v11_to_v12_adds_structured_intake_tables(temp_db_env):
+    from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
+
+    assert CURRENT_USER_SCHEMA_VERSION == 12
+    db, users_dir, _ = temp_db_env
+    legacy_path = users_dir / "v11lifter.db"
+    conn = sqlite3.connect(legacy_path)
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE user_profile (id INTEGER PRIMARY KEY, gender TEXT, updated_at TEXT NOT NULL);
+        INSERT INTO user_profile VALUES (1, 'male', '2026-01-01T00:00:00+00:00');
+    """
+    )
+    conn.execute("PRAGMA user_version = 11")
+    conn.commit()
+    conn.close()
+
+    DatabaseManager._instance = None
+    DatabaseManager._local = threading.local()
+    migrated = DatabaseManager(
+        catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v11lifter"
+    )
+    try:
+        assert get_user_schema_version(migrated.conn) == CURRENT_USER_SCHEMA_VERSION == 12
+        tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        assert {"intake_answers", "intake_state"} <= tables
+        # The new ledger helpers round-trip through the migrated tables.
+        migrated.save_intake_answer("gender", "female", prefilled=True)
+        answers = migrated.load_intake_answers()
+        assert answers["gender"]["value"] == "female"
+        assert answers["gender"]["prefilled"] is True
+        migrated.save_intake_state(disclosure_acknowledged=1)
+        assert migrated.get_intake_state()["disclosure_acknowledged"] is True
+        # Re-initialising the schema is idempotent.
+        migrated.create_user_schema()
+        assert "intake_answers" in {
             row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
     finally:

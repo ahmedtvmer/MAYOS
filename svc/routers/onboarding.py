@@ -1,15 +1,29 @@
-"""Onboarding intake. Conversation state persists in the per-user ledger, keyed implicitly."""
+"""Onboarding intake.
+
+Two contracts share this router: the legacy three-step chat state (``/start``,
+``/step``, ``/complete``) kept for backward compatibility, and the structured,
+resumable named-answer intake (``/intake``, ADR 021) that the visual flow uses.
+"""
 
 import asyncio
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from langchain_core.messages import AIMessage, HumanMessage
 
+from service import intake as intake_service
 from service import onboarding as onboarding_service
 from svc.dependencies import account_id_of, bind_request, get_current_trainee, get_db
 from svc.rate_limit import ONBOARDING_LIMIT, limiter
-from svc.schemas import OnboardingStartOut, OnboardingStepIn, OnboardingStepOut
+from svc.schemas import (
+    IntakeAnswerIn,
+    IntakeConfirmOut,
+    IntakeOut,
+    OnboardingStartOut,
+    OnboardingStepIn,
+    OnboardingStepOut,
+)
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 
@@ -66,11 +80,16 @@ async def start_onboarding(
 
     def _run():
         bind_request(db, trainee)
+        if intake_service.structured_intake_active(db):
+            raise intake_service.StructuredIntakeActive()
         state = _load_or_start(db, trainee, account_id_of(trainee))
         db.save_onboarding_state(_serialize(state))
         return _public_view(state)
 
-    return await asyncio.to_thread(_run)
+    try:
+        return await asyncio.to_thread(_run)
+    except intake_service.StructuredIntakeActive:
+        return JSONResponse(status_code=409, content={"error": "structured_intake_active"})
 
 
 @router.post("/step", response_model=OnboardingStepOut)
@@ -83,6 +102,8 @@ async def answer_step(
 ):
     def _run():
         bind_request(db, trainee)
+        if intake_service.structured_intake_active(db):
+            raise intake_service.StructuredIntakeActive()
         account_id = account_id_of(trainee)
         state = (
             onboarding_service.start_onboarding(db, trainee, player_account_id=account_id)
@@ -95,7 +116,85 @@ async def answer_step(
         db.save_onboarding_state(_serialize(state))
         return _public_view(state, only_new=state.get("messages", [])[seen:])
 
+    try:
+        return await asyncio.to_thread(_run)
+    except intake_service.StructuredIntakeActive:
+        return JSONResponse(status_code=409, content={"error": "structured_intake_active"})
+
+
+@router.get("/intake", response_model=IntakeOut)
+async def read_intake(
+    trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
+):
+    """The named intake contract, saved answers, legacy prefill markers, and progress."""
+
+    def _run():
+        bind_request(db, trainee)
+        return intake_service.build_view(db, trainee)
+
     return await asyncio.to_thread(_run)
+
+
+@router.post("/intake/disclosure", response_model=IntakeOut)
+async def acknowledge_intake_disclosure(
+    trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
+):
+    """Records the hosted-processing disclosure before any answer is accepted (ADR 016/036)."""
+
+    def _run():
+        bind_request(db, trainee)
+        return intake_service.acknowledge_disclosure(db, trainee)
+
+    return await asyncio.to_thread(_run)
+
+
+@router.put("/intake/answers/{field}", response_model=IntakeOut)
+@limiter.limit(ONBOARDING_LIMIT)
+async def save_intake_answer(
+    request: Request,
+    field: str,
+    body: IntakeAnswerIn,
+    trainee: Annotated[str, Depends(get_current_trainee)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Validates and saves one named answer; idempotent until confirmed (ADR 021)."""
+
+    def _run():
+        bind_request(db, trainee)
+        try:
+            return intake_service.save_answer(db, trainee, field, body.value)
+        except intake_service.IntakeDisclosureRequired as exc:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from None
+        except intake_service.IntakeAlreadyConfirmed as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from None
+        except intake_service.IntakeValidationError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+
+    return await asyncio.to_thread(_run)
+
+
+@router.post("/intake/confirm", response_model=IntakeConfirmOut)
+@limiter.limit(ONBOARDING_LIMIT)
+async def confirm_intake(
+    request: Request,
+    trainee: Annotated[str, Depends(get_current_trainee)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Writes the confirmed profile and creates the first program exactly once (ADR 021)."""
+
+    def _run():
+        bind_request(db, trainee)
+        try:
+            return intake_service.confirm_intake(db, trainee, player_account_id=account_id_of(trainee))
+        except intake_service.IntakeDisclosureRequired as exc:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from None
+        except intake_service.IntakeValidationError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+
+    try:
+        return await asyncio.to_thread(_run)
+    except intake_service.IntakeConfirmInProgress:
+        return JSONResponse(status_code=409, content={"error": "confirm_in_progress"})
 
 
 @router.post("/complete")
@@ -114,6 +213,7 @@ async def complete_onboarding(
         result = onboarding_service.complete_onboarding(db, trainee, state, player_account_id=account_id)
         db.clear_onboarding_state()
         program = result["program"]
+        intake_service.record_legacy_completion(db, program, result.get("program_message"))
         if program is None:
             return {"program_name": None, "weekly_frequency": None, "program_message": result["program_message"]}
         return {"program_name": program.program_name, "weekly_frequency": program.weekly_frequency}

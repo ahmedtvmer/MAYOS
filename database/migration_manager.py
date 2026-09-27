@@ -10,7 +10,7 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_USER_SCHEMA_VERSION: int = 11
+CURRENT_USER_SCHEMA_VERSION: int = 12
 
 #: Performed-date correction DDL (ADR 035). Kept in one place so the
 #: fresh-create path (``DatabaseManager.create_user_schema``) and the v10->v11
@@ -26,6 +26,32 @@ PERFORMED_DATE_CORRECTIONS_DDL: tuple[str, ...] = (
     ")",
     "CREATE INDEX IF NOT EXISTS idx_performed_date_corrections_session"
     " ON performed_date_corrections(session_id)",
+)
+
+#: Structured onboarding intake DDL (ADR 021). ``intake_answers`` stores one
+#: named, validated decision per row (the value as JSON) with the timestamp it
+#: was last written and whether a legacy three-step intake prefilled it.
+#: ``intake_state`` is the single-row status row: in_progress vs confirmed, the
+#: hosted-processing disclosure acknowledgement, and the replayed confirmation
+#: result so a re-confirm never generates a second program. Kept in one place so
+#: the fresh-create path and the v11->v12 migration cannot drift apart.
+INTAKE_DDL: tuple[str, ...] = (
+    "CREATE TABLE IF NOT EXISTS intake_answers ("
+    " field TEXT PRIMARY KEY,"
+    " value TEXT NOT NULL,"
+    " prefilled INTEGER NOT NULL DEFAULT 0,"
+    " updated_at TEXT NOT NULL"
+    ")",
+    "CREATE TABLE IF NOT EXISTS intake_state ("
+    " id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),"
+    " status TEXT NOT NULL DEFAULT 'in_progress',"
+    " disclosure_acknowledged INTEGER NOT NULL DEFAULT 0,"
+    " confirmed_at TEXT,"
+    " program_name TEXT,"
+    " weekly_frequency INTEGER,"
+    " program_message TEXT,"
+    " updated_at TEXT NOT NULL"
+    ")",
 )
 
 
@@ -306,6 +332,19 @@ def _migrate_v10_to_v11(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _migrate_v11_to_v12(conn: sqlite3.Connection) -> None:
+    """Adds structured, resumable onboarding intake tables (ADR 021).
+
+    ``intake_answers`` keeps one named decision per row (with per-field
+    ``updated_at`` and a legacy-prefill marker); ``intake_state`` is the single
+    status row (in_progress/confirmed, disclosure acknowledgement, and the
+    stored confirmation result). Existing accounts keep their profile and
+    onboarding state untouched: the intake read synthesizes their current values.
+    """
+    for statement in INTAKE_DDL:
+        conn.execute(statement)
+
+
 def get_user_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -402,6 +441,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     8: _migrate_v8_to_v9,
     9: _migrate_v9_to_v10,
     10: _migrate_v10_to_v11,
+    11: _migrate_v11_to_v12,
 }
 
 

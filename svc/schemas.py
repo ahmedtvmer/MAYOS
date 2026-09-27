@@ -53,6 +53,12 @@ __all__ = [
     "ExerciseSetsIn",
     "ForgotPasswordIn",
     "GeneratedProgramSchema",
+    "IntakeAnswerIn",
+    "IntakeConfirmOut",
+    "IntakeFieldOut",
+    "IntakeOut",
+    "IntakeProgressOut",
+    "IntakeProgramOut",
     "MessageOut",
     "OnboardingStartOut",
     "OnboardingStepIn",
@@ -708,6 +714,68 @@ class OnboardingStartOut(BaseModel):
 
 class OnboardingStepOut(OnboardingStartOut):
     pass
+
+
+class IntakeAnswerIn(BaseModel):
+    """One named onboarding answer; validation is the service's (field-specific)."""
+
+    value: Any
+
+
+class IntakeFieldOut(BaseModel):
+    """One named onboarding decision: contract, current answer, and prefill marker."""
+
+    name: str
+    type: str
+    required: bool
+    allowed_values: list[str] = []
+    minimum: float | None = None
+    maximum: float | None = None
+    profile_field: str
+    explanation: str | None = None
+    hint: str | None = None
+    examples: list[str] = []
+    answer: Any | None = None
+    prefilled: bool = False
+    answered: bool = False
+    updated_at: str | None = None
+
+
+class IntakeProgressOut(BaseModel):
+    """Resume progress over the required decisions."""
+
+    answered_required: int
+    required_total: int
+    answered: int
+    total_fields: int
+    next_unanswered: str | None = None
+
+
+class IntakeProgramOut(BaseModel):
+    """The stored first-program result, returned once the intake is confirmed."""
+
+    program_name: str | None = None
+    weekly_frequency: int | None = None
+    program_message: str | None = None
+
+
+class IntakeOut(BaseModel):
+    """`GET /onboarding/intake` and the answer endpoints' updated read-back."""
+
+    status: str
+    disclosure_acknowledged: bool
+    fields: list[IntakeFieldOut]
+    progress: IntakeProgressOut
+    program: IntakeProgramOut | None = None
+
+
+class IntakeConfirmOut(BaseModel):
+    """`POST /onboarding/intake/confirm`: the confirmed first-program result."""
+
+    status: str
+    program_name: str | None = None
+    weekly_frequency: int | None = None
+    program_message: str | None = None
 
 
 class HealthOut(BaseModel):
