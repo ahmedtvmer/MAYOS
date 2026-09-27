@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/connectivity_message.dart';
+import '../../../core/theme/mayos_spacing.dart';
+import '../../../core/ui/mayos_button.dart';
+import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
+import 'auth_widgets.dart';
 
 /// Logged-out reset screen for the App Link / hosted fallback.
 ///
@@ -74,6 +79,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       await ref
           .read(authControllerProvider.notifier)
           .completePasswordReset(token: token, newPassword: password);
+      TextInput.finishAutofillContext();
       if (mounted) {
         context.go('$loginPath?reset=1');
       }
@@ -90,63 +96,50 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Reset password')),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              const Text('Choose a new password for your account.'),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _token,
-                readOnly: true,
-                decoration: const InputDecoration(labelText: 'Reset code'),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _password,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'New password'),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _confirm,
-                obscureText: true,
-                onSubmitted: (_) => _busy ? null : _submit(),
-                decoration:
-                    const InputDecoration(labelText: 'Confirm password'),
-              ),
-              const SizedBox(height: 16),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    _error!,
-                    style:
-                        TextStyle(color: Theme.of(context).colorScheme.error),
-                  ),
-                ),
-              FilledButton(
-                onPressed: _busy ? null : _submit,
-                child: _busy
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Set new password'),
-              ),
-              TextButton(
-                onPressed: _busy ? null : () => context.go(forgotPasswordPath),
-                child: const Text('Request a new link'),
-              ),
-            ],
-          ),
-        ),
+    return AuthScaffold(
+      title: 'Reset password',
+      lead: 'Choose a new password for your account.',
+      message: _error == null ? null : AuthInlineNotice(message: _error!),
+      primary: MayosButton(
+        key: const Key('reset_submit'),
+        label: 'Set new password',
+        loading: _busy,
+        onPressed: _busy ? null : _submit,
       ),
+      links: <Widget>[
+        AuthLink(
+          label: 'Request a new link',
+          onPressed: _busy ? null : () => context.go(forgotPasswordPath),
+        ),
+      ],
+      children: <Widget>[
+        MayosTextField(
+          fieldKey: const Key('reset_token'),
+          controller: _token,
+          label: 'Reset code',
+          readOnly: true,
+        ),
+        const SizedBox(height: MayosSpacing.md),
+        AuthPasswordField(
+          fieldKey: const Key('reset_password'),
+          toggleKey: const Key('reset_password_toggle'),
+          controller: _password,
+          label: 'New password',
+          helperText: 'At least 8 characters',
+          textInputAction: TextInputAction.next,
+          autofillHints: const <String>[AutofillHints.newPassword],
+        ),
+        const SizedBox(height: MayosSpacing.md),
+        AuthPasswordField(
+          fieldKey: const Key('reset_confirm'),
+          toggleKey: const Key('reset_confirm_toggle'),
+          controller: _confirm,
+          label: 'Confirm password',
+          textInputAction: TextInputAction.done,
+          autofillHints: const <String>[AutofillHints.newPassword],
+          onSubmitted: (_) => _busy ? null : _submit(),
+        ),
+      ],
     );
   }
 }

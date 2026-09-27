@@ -9,6 +9,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
@@ -16,10 +17,16 @@ import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
+import 'package:mayos_mobile/src/features/player/auth/forgot_password_screen.dart';
+import 'package:mayos_mobile/src/features/player/auth/login_screen.dart';
+import 'package:mayos_mobile/src/features/player/auth/recovery_email_screen.dart';
+import 'package:mayos_mobile/src/features/player/auth/register_screen.dart';
+import 'package:mayos_mobile/src/features/player/auth/reset_password_screen.dart';
 import 'package:mayos_mobile/src/features/player/onboarding/onboarding_screen.dart';
 import 'package:mayos_mobile/src/features/player/onboarding/onboarding_widgets.dart';
 import 'package:mayos_mobile/src/features/shared/splash_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
+import 'package:mayos_mobile/src/router.dart';
 
 import '../support/fake_mayos_api.dart';
 
@@ -141,6 +148,154 @@ Future<void> _writeOnboardingCapture(WidgetTester tester, String name) async {
     }
     await File('${out.path}/$name.png').writeAsBytes(data.buffer.asUint8List());
   });
+}
+
+/// Writes a #52 auth/recovery capture to `docs/design-review/52/`.
+Future<void> _writeAuthCapture(WidgetTester tester, String name) async {
+  final RenderRepaintBoundary boundary =
+      tester.renderObject<RenderRepaintBoundary>(find.byKey(_boundaryKey));
+  await tester.runAsync(() async {
+    final Directory out =
+        Directory('${Directory.current.parent.path}/docs/design-review/52');
+    await out.create(recursive: true);
+    final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
+    final ByteData? data =
+        await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    if (data == null) {
+      return;
+    }
+    await File('${out.path}/$name.png').writeAsBytes(data.buffer.asUint8List());
+  });
+}
+
+// ---------------------------------------------------------------------------
+// #52 authentication and recovery-email captures
+// ---------------------------------------------------------------------------
+
+/// One auth/recovery surface to capture, with an optional interaction.
+class _AuthSurface {
+  const _AuthSurface(this.name, this.initialLocation, this.heading,
+      {this.fieldKey, this.serverError = false});
+
+  final String name;
+  final String initialLocation;
+  final String heading;
+  final String? fieldKey;
+  final bool serverError;
+}
+
+final List<_AuthSurface> _authSurfaces = <_AuthSurface>[
+  const _AuthSurface('login', loginPath, 'Log in', fieldKey: 'login_username'),
+  const _AuthSurface('register', registerPath, 'Create account',
+      fieldKey: 'register_username'),
+  const _AuthSurface('recovery-email', recoveryEmailPath, 'Recovery email',
+      fieldKey: 'recovery_email'),
+  const _AuthSurface('forgot-password', forgotPasswordPath, 'Forgot password',
+      fieldKey: 'forgot_email'),
+  const _AuthSurface('reset-password',
+      '$resetPasswordPath?token=MAYOS-RESET-CODE', 'Set new password',
+      fieldKey: 'reset_password'),
+];
+
+GoRouter _authRouter(String initialLocation) {
+  return GoRouter(
+    initialLocation: initialLocation,
+    routes: <RouteBase>[
+      GoRoute(
+        path: loginPath,
+        builder: (BuildContext context, GoRouterState state) =>
+            const LoginScreen(),
+      ),
+      GoRoute(
+        path: registerPath,
+        builder: (BuildContext context, GoRouterState state) =>
+            const RegisterScreen(),
+      ),
+      GoRoute(
+        path: recoveryEmailPath,
+        builder: (BuildContext context, GoRouterState state) =>
+            const RecoveryEmailScreen(),
+      ),
+      GoRoute(
+        path: forgotPasswordPath,
+        builder: (BuildContext context, GoRouterState state) =>
+            const ForgotPasswordScreen(),
+      ),
+      GoRoute(
+        path: resetPasswordPath,
+        builder: (BuildContext context, GoRouterState state) =>
+            ResetPasswordScreen(
+          token: state.uri.queryParameters['token'] ?? '',
+        ),
+      ),
+    ],
+  );
+}
+
+Override _authApiOverride(FakeMayosApi fake) {
+  return apiClientProvider.overrideWith((ref) {
+    final ApiClient client = ApiClient(
+      tokens: ref.watch(tokenStoreProvider),
+      baseUrl: 'http://test.local',
+      adapter: fake.adapter,
+    );
+    client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
+    return client;
+  });
+}
+
+Future<void> _pumpAuthSurface(
+  WidgetTester tester,
+  _AuthSurface surface,
+  Size size,
+  ThemeMode mode, {
+  bool keyboardInset = false,
+}) async {
+  _setSize(tester, size);
+  final FakeMayosApi fake = FakeMayosApi();
+  final InMemoryTokenStore tokens = InMemoryTokenStore();
+  await tester.pumpWidget(
+    RepaintBoundary(
+      key: _boundaryKey,
+      child: ProviderScope(
+        overrides: <Override>[
+          tokenStoreProvider.overrideWithValue(tokens),
+          themeModeStoreProvider
+              .overrideWithValue(InMemoryThemeModeStore(mode)),
+          chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
+          _authApiOverride(fake),
+        ],
+        child: MaterialApp.router(
+          debugShowCheckedModeBanner: false,
+          theme: MayosTheme.light,
+          darkTheme: MayosTheme.dark,
+          themeMode: mode,
+          routerConfig: _authRouter(surface.initialLocation),
+        ),
+      ),
+    ),
+  );
+  await _pumpUntilFound(tester, find.text(surface.heading));
+
+  if (surface.serverError && surface.fieldKey != null) {
+    await tester.enterText(find.byKey(Key('login_username')), 'alice');
+    await tester.enterText(find.byKey(Key('login_password')), 'wrong');
+    await tester.tap(find.byKey(const Key('login_submit')));
+    await _pumpUntilFound(tester, find.text('Invalid username or password.'));
+  }
+
+  if (keyboardInset && surface.fieldKey != null) {
+    await tester.tap(find.byKey(Key(surface.fieldKey!)));
+    await tester.pump(const Duration(milliseconds: 100));
+    tester.view.viewInsets =
+        FakeViewPadding(bottom: 300 * tester.view.devicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pump(const Duration(milliseconds: 200));
+  }
+
+  await _precacheBrandImages(tester);
+  await tester.pump(const Duration(milliseconds: 300));
 }
 
 // ---------------------------------------------------------------------------
@@ -395,5 +550,52 @@ void main() {
         }, skip: skipCapture);
       }
     }
+  }
+
+  // #52 authentication and recovery-email captures (docs/design-review/52).
+  for (final Size size in sizes) {
+    for (final ThemeMode mode in modes) {
+      final String theme = mode == ThemeMode.dark ? 'dark' : 'light';
+      final String sizeTag = '${size.width.toInt()}x${size.height.toInt()}';
+      for (final _AuthSurface surface in _authSurfaces) {
+        testWidgets('auth ${surface.name} $theme $sizeTag',
+            (WidgetTester tester) async {
+          await _pumpAuthSurface(tester, surface, size, mode);
+          await _writeAuthCapture(
+              tester, 'auth-${surface.name}-$theme-$sizeTag');
+        }, skip: skipCapture);
+      }
+    }
+  }
+
+  // Extra login states at the small phone size: a server error and the
+  // keyboard inset simulated with a focused field.
+  const Size small = Size(360, 640);
+  for (final ThemeMode mode in modes) {
+    final String theme = mode == ThemeMode.dark ? 'dark' : 'light';
+    testWidgets('auth login server error $theme 360x640',
+        (WidgetTester tester) async {
+      await _pumpAuthSurface(
+        tester,
+        const _AuthSurface('login', loginPath, 'Log in',
+            fieldKey: 'login_username', serverError: true),
+        small,
+        mode,
+      );
+      await _writeAuthCapture(tester, 'auth-login-server-error-$theme-360x640');
+    }, skip: skipCapture);
+
+    testWidgets('auth login keyboard $theme 360x640',
+        (WidgetTester tester) async {
+      await _pumpAuthSurface(
+        tester,
+        const _AuthSurface('login', loginPath, 'Log in',
+            fieldKey: 'login_username'),
+        small,
+        mode,
+        keyboardInset: true,
+      );
+      await _writeAuthCapture(tester, 'auth-login-keyboard-$theme-360x640');
+    }, skip: skipCapture);
   }
 }

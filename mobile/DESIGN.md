@@ -114,6 +114,16 @@ warm off-white canvas (`#F6F5F2`) with white elevated surfaces and navy text.
 Screens consume these and the tokens; there are no hard-coded brand or
 light/dark literal colors outside `core/theme/`.
 
+The authentication and recovery screens share one composition in
+`features/player/auth/auth_widgets.dart` (issue #52): `AuthScaffold` (brand
+lockup hero, editorial heading, short sans line, scrolling body, pinned action
+bar), `AuthHeading`, `AuthInlineNotice`, `AuthActionBar`, and
+`AuthPasswordField` (obscured by default with a labelled 48dp visibility
+toggle). Login, registration, the recovery-email gate, forgot-password and
+reset-password all use it and keep the onboarding look. The hero maps
+dark→blue lockup and light→black lockup automatically, and shrinks on small
+phones or when the keyboard reduces the viewport.
+
 ## Theme mode
 
 `MayosThemeStore` (`SecureThemeModeStore` / `InMemoryThemeModeStore`) persists
@@ -147,3 +157,10 @@ CAPTURE=1 flutter test --tags capture test/visual/capture_test.dart
 The harness is tagged and skipped by default. It loads the bundled fonts (and
 the Material icon font) via `FontLoader` so captures use real type, not Ahem
 boxes.
+
+The same harness renders the #51 onboarding surfaces and the #52
+authentication/recovery surfaces (login, registration, recovery-email gate,
+forgot-password, reset-password) in Light and Dark at 360×640 and 412×915 into
+`docs/design-review/51/` and `docs/design-review/52/`. The #52 set also includes
+a login capture with a server error and one with the keyboard inset simulated at
+360×640.

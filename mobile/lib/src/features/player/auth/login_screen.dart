@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/theme/mayos_spacing.dart';
+import '../../../core/ui/mayos_button.dart';
+import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
+import 'auth_widgets.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -38,6 +43,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             password: _password.text,
             rememberMe: _rememberMe,
           );
+      TextInput.finishAutofillContext();
     } on ApiException catch (error) {
       if (mounted) {
         setState(() => _error = error.message);
@@ -54,79 +60,61 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final bool resetJustCompleted =
         GoRouterState.of(context).uri.queryParameters['reset'] == '1';
     final String? notice = ref.watch(authControllerProvider).notice;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Log in')),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              if (resetJustCompleted)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    'Password changed. Sign in with your new password.',
-                  ),
-                )
-              else if (notice != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(notice),
-                ),
-              TextField(
-                controller: _username,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(labelText: 'Username'),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _password,
-                obscureText: true,
-                onSubmitted: (_) => _busy ? null : _submit(),
-                decoration: const InputDecoration(labelText: 'Password'),
-              ),
-              CheckboxListTile(
-                value: _rememberMe,
-                onChanged: _busy
-                    ? null
-                    : (bool? value) =>
-                        setState(() => _rememberMe = value ?? false),
-                title: const Text('Keep me signed in'),
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
-              ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    _error!,
-                    style:
-                        TextStyle(color: Theme.of(context).colorScheme.error),
-                  ),
-                ),
-              FilledButton(
-                onPressed: _busy ? null : _submit,
-                child: _busy
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Log in'),
-              ),
-              TextButton(
-                onPressed: _busy ? null : () => context.go(registerPath),
-                child: const Text('Create an account'),
-              ),
-              TextButton(
-                onPressed: _busy ? null : () => context.go(forgotPasswordPath),
-                child: const Text('Forgot password?'),
-              ),
-            ],
-          ),
-        ),
+    return AuthScaffold(
+      title: 'Log in',
+      lead: 'Sign in to keep training and pick up where you left off.',
+      message: _error == null ? null : AuthInlineNotice(message: _error!),
+      primary: MayosButton(
+        key: const Key('login_submit'),
+        label: 'Log in',
+        loading: _busy,
+        onPressed: _busy ? null : _submit,
       ),
+      links: <Widget>[
+        AuthLink(
+          label: 'Create an account',
+          onPressed: _busy ? null : () => context.go(registerPath),
+        ),
+        AuthLink(
+          label: 'Forgot password?',
+          onPressed: _busy ? null : () => context.go(forgotPasswordPath),
+        ),
+      ],
+      children: <Widget>[
+        if (resetJustCompleted)
+          const AuthInlineNotice(
+            kind: AuthNoticeKind.success,
+            message: 'Password changed. Sign in with your new password.',
+          )
+        else if (notice != null)
+          AuthInlineNotice(kind: AuthNoticeKind.info, message: notice),
+        if (resetJustCompleted || notice != null)
+          const SizedBox(height: MayosSpacing.md),
+        MayosTextField(
+          fieldKey: const Key('login_username'),
+          controller: _username,
+          label: 'Username',
+          enabled: !_busy,
+          textInputAction: TextInputAction.next,
+          keyboardType: TextInputType.text,
+          autofillHints: const <String>[AutofillHints.username],
+        ),
+        const SizedBox(height: MayosSpacing.md),
+        AuthPasswordField(
+          fieldKey: const Key('login_password'),
+          toggleKey: const Key('login_password_toggle'),
+          controller: _password,
+          textInputAction: TextInputAction.done,
+          autofillHints: const <String>[AutofillHints.password],
+          onSubmitted: (_) => _busy ? null : _submit(),
+        ),
+        AuthConsentRow(
+          label: 'Keep me signed in',
+          value: _rememberMe,
+          enabled: !_busy,
+          onChanged: (bool value) => setState(() => _rememberMe = value),
+        ),
+      ],
     );
   }
 }

@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/theme/mayos_spacing.dart';
+import '../../../core/ui/mayos_button.dart';
+import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
+import 'auth_widgets.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -44,6 +49,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             password: _password.text,
             rememberMe: _rememberMe,
           );
+      TextInput.finishAutofillContext();
     } on ApiException catch (error) {
       if (mounted) {
         setState(() => _error = error.message);
@@ -57,74 +63,58 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Create account')),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              TextField(
-                controller: _username,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(labelText: 'Username'),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _password,
-                obscureText: true,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                  helperText: 'At least 8 characters',
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _confirm,
-                obscureText: true,
-                onSubmitted: (_) => _busy ? null : _submit(),
-                decoration:
-                    const InputDecoration(labelText: 'Confirm password'),
-              ),
-              CheckboxListTile(
-                value: _rememberMe,
-                onChanged: _busy
-                    ? null
-                    : (bool? value) =>
-                        setState(() => _rememberMe = value ?? false),
-                title: const Text('Keep me signed in'),
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
-              ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    _error!,
-                    style:
-                        TextStyle(color: Theme.of(context).colorScheme.error),
-                  ),
-                ),
-              FilledButton(
-                onPressed: _busy ? null : _submit,
-                child: _busy
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Create account'),
-              ),
-              TextButton(
-                onPressed: _busy ? null : () => context.go(loginPath),
-                child: const Text('I already have an account'),
-              ),
-            ],
-          ),
-        ),
+    return AuthScaffold(
+      title: 'Create account',
+      lead: 'Set up your MAYOS account to start training.',
+      message: _error == null ? null : AuthInlineNotice(message: _error!),
+      primary: MayosButton(
+        key: const Key('register_submit'),
+        label: 'Create account',
+        loading: _busy,
+        onPressed: _busy ? null : _submit,
       ),
+      links: <Widget>[
+        AuthLink(
+          label: 'I already have an account',
+          onPressed: _busy ? null : () => context.go(loginPath),
+        ),
+      ],
+      children: <Widget>[
+        MayosTextField(
+          fieldKey: const Key('register_username'),
+          controller: _username,
+          label: 'Username',
+          enabled: !_busy,
+          textInputAction: TextInputAction.next,
+          keyboardType: TextInputType.text,
+          autofillHints: const <String>[AutofillHints.newUsername],
+        ),
+        const SizedBox(height: MayosSpacing.md),
+        AuthPasswordField(
+          fieldKey: const Key('register_password'),
+          toggleKey: const Key('register_password_toggle'),
+          controller: _password,
+          helperText: 'At least 8 characters',
+          textInputAction: TextInputAction.next,
+          autofillHints: const <String>[AutofillHints.newPassword],
+        ),
+        const SizedBox(height: MayosSpacing.md),
+        AuthPasswordField(
+          fieldKey: const Key('register_confirm'),
+          toggleKey: const Key('register_confirm_toggle'),
+          controller: _confirm,
+          label: 'Confirm password',
+          textInputAction: TextInputAction.done,
+          autofillHints: const <String>[AutofillHints.newPassword],
+          onSubmitted: (_) => _busy ? null : _submit(),
+        ),
+        AuthConsentRow(
+          label: 'Keep me signed in',
+          value: _rememberMe,
+          enabled: !_busy,
+          onChanged: (bool value) => setState(() => _rememberMe = value),
+        ),
+      ],
     );
   }
 }
