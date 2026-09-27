@@ -6,6 +6,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from service import account_deletion as deletion_service
 from service import auth as auth_service
 from service import password_reset as reset_service
 from service import plans as plans_service
@@ -14,6 +15,7 @@ from svc.dependencies import VerifiedPlayer, bind_request, get_current_trainee, 
 from svc.rate_limit import PASSWORD_LIMIT, REGISTER_LIMIT, LOGIN_LIMIT, RESET_LIMIT, limiter
 from svc.schemas import (
     AccountCapabilitiesOut,
+    AccountDeleteIn,
     AccountOut,
     AccountPlansOut,
     EmailUpdateIn,
@@ -175,6 +177,32 @@ async def change_password(
 
     changed_id = await asyncio.to_thread(_run)
     return MessageOut(message=f"Password updated for {changed_id}. All sessions revoked; please log in again.")
+
+
+@router.delete("/account", response_model=MessageOut)
+@limiter.limit(PASSWORD_LIMIT)
+async def delete_account(
+    request: Request,
+    body: AccountDeleteIn,
+    trainee: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Password-confirmed, irreversible deletion of the caller's account (ADR 015/039).
+
+    A wrong password changes nothing and returns a generic 400 (never 401, which
+    clients read as session expiry). On success every session is invalidated in
+    the durable registry, the live ledger and its backups are removed, and the
+    username becomes reusable only as a new immutable account.
+    """
+
+    def _run():
+        result = deletion_service.delete_account(db, trainee.account_id, body.password)
+        if not result["ok"]:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
+        return result
+
+    await asyncio.to_thread(_run)
+    return MessageOut(message="Account deleted. All sessions have been ended.")
 
 
 @router.get("/email", response_model=RecoveryEmailOut)

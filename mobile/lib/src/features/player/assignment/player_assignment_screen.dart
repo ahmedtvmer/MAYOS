@@ -418,7 +418,9 @@ class _PlayerAssignmentScreenState
                   subtitle: Text(
                     <String>[
                       if (checkIn.coachUsername != null)
-                        'Coach ${checkIn.coachUsername}',
+                        checkIn.coachUsername == 'Former coach'
+                            ? 'Former coach'
+                            : 'Coach ${checkIn.coachUsername}',
                       if (checkIn.assignmentStatus == 'ended')
                         'assignment ended',
                       if (checkIn.note != null && checkIn.note!.isNotEmpty)

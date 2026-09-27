@@ -19,3 +19,14 @@ os.environ["LLM_API_KEY"] = ""
 os.environ["LLM_API_BASE"] = ""
 os.environ["LLM_EXTRA_BODY"] = ""
 os.environ["LLM_ENABLE_THINKING"] = ""
+
+# Same for outbound email: a developer `.env` with real SMTP settings must not
+# make tests send mail. ``service/email_sender._deliver`` treats an empty
+# SMTP_HOST as its console backend, so pinning it empty makes delivery hermetic.
+os.environ["SMTP_HOST"] = ""
+os.environ["SMTP_PORT"] = ""
+os.environ["SMTP_USE_TLS"] = ""
+os.environ["SMTP_USER"] = ""
+os.environ["SMTP_PASSWORD"] = ""
+os.environ["SMTP_FROM"] = ""
+os.environ["OWNER_ALERT_EMAIL"] = ""

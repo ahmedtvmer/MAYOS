@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/account_data_eraser.dart';
 import 'core/api_client.dart';
 import 'core/chat_storage.dart';
 import 'core/config.dart';
@@ -21,10 +22,20 @@ final Provider<UnauthorizedEvents> unauthorizedEventsProvider =
   return events;
 });
 
+/// Signals an `account_deleted` 401 so the app erases the account's protected
+/// local data instead of offering the logout keep/discard prompt (ADR 039).
+final Provider<AccountDeletedEvents> accountDeletedEventsProvider =
+    Provider<AccountDeletedEvents>((ref) {
+  final AccountDeletedEvents events = AccountDeletedEvents();
+  ref.onDispose(events.dispose);
+  return events;
+});
+
 final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
   final TokenStore tokens = ref.watch(tokenStoreProvider);
   final ApiClient client = ApiClient(tokens: tokens, baseUrl: apiBaseUrl);
   client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
+  client.onAccountDeleted = ref.watch(accountDeletedEventsProvider).signal;
   return client;
 });
 
@@ -34,6 +45,11 @@ final Provider<AuthRepository> authRepositoryProvider =
     api: ref.watch(apiClientProvider),
     tokens: ref.watch(tokenStoreProvider),
     chatCache: ref.watch(chatCacheStoreProvider),
+    eraser: AccountDataEraser(
+      drafts: ref.watch(draftStoreProvider),
+      workoutCache: ref.watch(workoutCacheStoreProvider),
+      chatCache: ref.watch(chatCacheStoreProvider),
+    ),
   ),
 );
 
@@ -42,6 +58,7 @@ final StateNotifierProvider<AuthController, AuthState> authControllerProvider =
   return AuthController(
     ref.watch(authRepositoryProvider),
     ref.watch(unauthorizedEventsProvider),
+    ref.watch(accountDeletedEventsProvider),
   );
 });
 

@@ -17,6 +17,11 @@ abstract class DraftStore {
 
   Future<void> write(String accountId, List<WorkoutDraft> drafts);
 
+  /// Erases every protected draft (and any quarantined raw value) for one
+  /// account. Account deletion removes the account's drafts on the deleting
+  /// device and on another device once it learns the account is gone (ADR 020/039).
+  Future<void> deleteForAccount(String accountId);
+
   /// Set when the last [read] quarantined unreadable raw storage instead of
   /// silently discarding it, so the UI can surface a warning. Cleared once a
   /// [write] for that account succeeds.
@@ -81,6 +86,13 @@ class SecureDraftStore implements DraftStore {
     ]);
     _quarantined.remove(accountId);
   }
+
+  @override
+  Future<void> deleteForAccount(String accountId) async {
+    await _store.deleteExactOrPrefixed(
+        'drafts.$accountId', 'drafts.$accountId.');
+    _quarantined.remove(accountId);
+  }
 }
 
 /// In-memory fake for tests. Sharing one instance across provider containers
@@ -124,6 +136,13 @@ class InMemoryDraftStore implements DraftStore {
     _byAccount[accountId] = List<WorkoutDraft>.of(drafts);
     _quarantined.remove(accountId);
   }
+
+  @override
+  Future<void> deleteForAccount(String accountId) async {
+    _byAccount.remove(accountId);
+    _corrupt.remove(accountId);
+    _quarantined.remove(accountId);
+  }
 }
 
 /// Protected, account-separated cache of the active program and its
@@ -138,6 +157,10 @@ abstract class WorkoutCacheStore {
 
   Future<void> writePrescription(
       String accountId, int dayOrder, Prescription prescription);
+
+  /// Erases the cached active program and every cached prescription for one
+  /// account (ADR 020/039).
+  Future<void> deleteForAccount(String accountId);
 }
 
 class SecureWorkoutCacheStore implements WorkoutCacheStore {
@@ -188,6 +211,13 @@ class SecureWorkoutCacheStore implements WorkoutCacheStore {
         key: 'prescription.$accountId.$dayOrder',
         value: prescription.toJson(),
       );
+
+  @override
+  Future<void> deleteForAccount(String accountId) async {
+    await _store.deleteExactOrPrefixed(
+        'program.$accountId', 'program.$accountId.');
+    await _store.deleteByPrefix('prescription.$accountId.');
+  }
 }
 
 class InMemoryWorkoutCacheStore implements WorkoutCacheStore {
@@ -212,5 +242,12 @@ class InMemoryWorkoutCacheStore implements WorkoutCacheStore {
   Future<void> writePrescription(
       String accountId, int dayOrder, Prescription prescription) async {
     _prescriptions['$accountId.$dayOrder'] = prescription;
+  }
+
+  @override
+  Future<void> deleteForAccount(String accountId) async {
+    _programs.remove(accountId);
+    _prescriptions
+        .removeWhere((String key, _) => key.startsWith('$accountId.'));
   }
 }

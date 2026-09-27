@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import '../../../core/account_data_eraser.dart';
 import '../../../core/api_client.dart';
 import '../../../core/chat_storage.dart';
 import '../../../core/models.dart';
@@ -8,13 +11,16 @@ class AuthRepository {
   AuthRepository({
     required ApiClient api,
     required TokenStore tokens,
+    required AccountDataEraser eraser,
     ChatCacheStore? chatCache,
   })  : _api = api,
         _tokens = tokens,
+        _eraser = eraser,
         _chatCache = chatCache;
 
   final ApiClient _api;
   final TokenStore _tokens;
+  final AccountDataEraser _eraser;
   final ChatCacheStore? _chatCache;
 
   Future<AccountSession> register({
@@ -42,20 +48,99 @@ class AuthRepository {
   /// Restores a persisted session, or returns null when there is no live one.
   ///
   /// A 401 clears the stale token; any other failure (for example, no network)
-  /// propagates so the caller can keep the token for a later retry.
+  /// propagates so the caller can keep the token for a later retry. A 401 that
+  /// carries `account_deleted` erases that account's protected local data before
+  /// clearing the session (ADR 039).
   Future<AccountSession?> restore() async {
     final String? token = await _tokens.read();
     if (token == null || token.isEmpty) {
       return null;
     }
     try {
-      return await _currentSession();
+      final AccountSession session = await _currentSession();
+      await _saveAccountId(session.account.accountId);
+      return session;
     } on ApiException catch (error) {
       if (error.statusCode == 401) {
-        await _tokens.clear();
+        if (error.errorCode == 'account_deleted') {
+          await handleAccountDeleted();
+        } else {
+          await _tokens.clear();
+        }
         return null;
       }
       rethrow;
+    }
+  }
+
+  /// Confirms deletion with the password, then erases this account's protected
+  /// local data and clears the session.
+  ///
+  /// The server call must succeed first, so a wrong password or an offline
+  /// attempt changes nothing locally (ADR 039).
+  Future<void> deleteAccount(String password) async {
+    final String? accountId = await _localAccountId();
+    await _api.deleteAccount(password);
+    await eraseAllLocalData(accountId);
+    await _tokens.clear();
+  }
+
+  /// Handles a request that reported `account_deleted`: erase the account's
+  /// protected local data and clear the local session (ADR 039).
+  Future<void> handleAccountDeleted() async {
+    final String? accountId = await _localAccountId();
+    await eraseAllLocalData(accountId);
+    await _tokens.clear();
+  }
+
+  /// The single erase path for both account-deletion flows (ADR 039).
+  Future<void> eraseAllLocalData(String? accountId) async {
+    if (accountId == null || accountId.isEmpty) {
+      return;
+    }
+    await _eraser.erase(accountId);
+  }
+
+  /// The immutable account id for local-key lookup: the persisted id, or the
+  /// stored token's unverified `sub` claim (a pre-upgrade install stores no id).
+  ///
+  /// The claim is decoded without signature verification and used only to find
+  /// this device's account-namespaced keys; it never authorises a request.
+  Future<String?> _localAccountId() async {
+    final String? stored = await _tokens.readAccountId();
+    if (stored != null && stored.isNotEmpty) {
+      return stored;
+    }
+    return _unverifiedSubject(await _tokens.read());
+  }
+
+  static String? _unverifiedSubject(String? token) {
+    if (token == null || token.isEmpty) {
+      return null;
+    }
+    final List<String> parts = token.split('.');
+    if (parts.length < 2) {
+      return null;
+    }
+    try {
+      final String payload =
+          utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+      final dynamic decoded = jsonDecode(payload);
+      if (decoded is Map && decoded['sub'] is String) {
+        final String sub = decoded['sub'] as String;
+        return sub.isEmpty ? null : sub;
+      }
+    } on Object {
+      // A malformed token has no usable subject.
+    }
+    return null;
+  }
+
+  Future<void> _saveAccountId(String accountId) async {
+    try {
+      await _tokens.saveAccountId(accountId);
+    } on Object {
+      // The account id is a convenience for deletion; never block a session.
     }
   }
 
@@ -131,7 +216,9 @@ class AuthRepository {
       Future<AuthTokens> Function() authenticate) async {
     final AuthTokens auth = await authenticate();
     await _tokens.save(auth.accessToken);
-    return _currentSession();
+    final AccountSession session = await _currentSession();
+    await _saveAccountId(session.account.accountId);
+    return session;
   }
 
   Future<AccountSession> _currentSession() async {

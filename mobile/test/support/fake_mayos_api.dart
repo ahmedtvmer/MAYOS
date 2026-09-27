@@ -15,6 +15,12 @@ class FakeMayosApi {
   String? currentUsername;
   bool tokenValid = true;
   bool coach = false;
+  // Account deletion (issue #40). `accountDeleted` makes every authenticated
+  // request answer 401 `{"error": "account_deleted"}`, as a device holding an
+  // old token would see; the password delete endpoint is handled below.
+  bool accountDeleted = false;
+  int deleteAccountRequests = 0;
+  String? lastDeletePassword;
   String lifterPlan = 'free';
   String coachPlan = 'free';
   bool profileExists = false;
@@ -137,6 +143,13 @@ class FakeMayosApi {
     if (_isOfflineRequest(request)) {
       return const FakeResponse.networkFailure();
     }
+    // Once an account is deleted, every authenticated request reports the
+    // account_deleted signal (a validly signed but dead token), including the
+    // draft-sync lookups and commits.
+    if (accountDeleted && request.headers['Authorization'] is String) {
+      return const FakeResponse(
+          401, <String, dynamic>{'error': 'account_deleted'});
+    }
     if (path == '/chat/history') {
       return _chatHistoryResponse(request);
     }
@@ -202,6 +215,8 @@ class FakeMayosApi {
         return _forgotPassword(request);
       case '/auth/reset-password':
         return _resetPassword(request);
+      case '/auth/account':
+        return _deleteAccount(request);
       case '/coach/invite/redeem':
         return _redeemCoachInvite(request);
       case '/coach/profile':
@@ -349,6 +364,25 @@ class FakeMayosApi {
     issuedToken = null;
     return FakeResponse(
         200, <String, dynamic>{'message': 'Password reset. Please log in.'});
+  }
+
+  FakeResponse _deleteAccount(FakeRequest request) {
+    deleteAccountRequests++;
+    lastDeletePassword = request.body['password'] as String?;
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (passwords[currentUsername] != lastDeletePassword) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'Invalid credentials.'});
+    }
+    // The account is gone: all sessions are dead and every authenticated
+    // request now answers account_deleted.
+    accountDeleted = true;
+    tokenValid = false;
+    issuedToken = null;
+    return FakeResponse(200, <String, dynamic>{'message': 'Account deleted.'});
   }
 
   FakeResponse _redeemCoachInvite(FakeRequest request) {
@@ -1820,6 +1854,7 @@ class FakeMayosApi {
     currentUsername = username;
     issuedToken = 'token-$username';
     tokenValid = true;
+    accountDeleted = false;
     if (fresh) {
       coach = false;
       lifterPlan = 'free';

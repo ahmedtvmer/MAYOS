@@ -361,10 +361,25 @@ done
 
 ### 2. Automated Backup Archive
 
+Back up the catalog and ledgers, but **never** roll `deletions.db` back with them:
+
 ```bash
+# Catalog + ledgers (restorable as a point-in-time snapshot).
 tar -czvf "myos_backup_$(date +%Y%m%d_%H%M%S).tar.gz" \
   ./db/catalog.db ./db/users/*.db
+
+# The deletion record is append-only and kept OUTSIDE that snapshot. Copy it to
+# a separate, append-only location (e.g. object storage with versioning); do not
+# restore an older copy over a newer one.
+cp ./db/deletions.db "/backups/deletions/deletions_$(date +%Y%m%d_%H%M%S).db"
 ```
+
+> **Why `deletions.db` must outlive the catalog snapshot (ADR 015/039).** The
+> durable deletion record is what stops a restored catalog from resurrecting an
+> account its owner deleted. It deliberately lives beside the catalog but outside
+> every catalog snapshot. Restoring it alongside the catalog (or restoring an
+> older copy over the live one) can undo deletions. The restore procedure below
+> therefore keeps the **current** `deletions.db` and replays it.
 
 ### 3. Migration Snapshots (ADR 005)
 
@@ -373,12 +388,29 @@ Lazy schema migrations already produce **atomic online snapshots** via `sqlite3.
 ### 4. Restoring a Ledger
 
 1. Stop the stack: `docker compose down`
-2. Extract into `./db/users/<username>.db` (and restore `catalog.db` if account recovery data is needed).
-3. Remove dangling WAL/SHM files:
+2. Extract the catalog and ledgers (e.g. `./db/catalog.db` and `./db/users/<ledger_id>.db`).
+3. **Keep the current `db/deletions.db`** — do not overwrite it with a backup copy.
+4. Remove dangling WAL/SHM files:
    ```bash
-   rm -f ./db/users/<username>.db-wal ./db/users/<username>.db-shm
+   rm -f ./db/users/<ledger_id>.db-wal ./db/users/<ledger_id>.db-shm
    ```
-4. Restart: `docker compose up -d`. A ledger newer than the engine's target schema is refused with a clear upgrade message; an older one migrates automatically with a snapshot taken first.
+5. Run the full deletion replay, then start the stack:
+   ```bash
+   python scripts/reapply_deletions.py \
+     --catalog db/catalog.db --users-dir db/users --backups-dir db/backups
+   docker compose up -d
+   ```
+   A ledger newer than the engine's target schema is refused with a clear upgrade
+   message; an older one migrates automatically with a snapshot taken first.
+6. **The replay force-deletes every recorded account.** If the restored catalog
+   reintroduced a deleted account, its row is forced back to `status='deleted'`
+   (epoch bumped, relationships ended/cleared) and its ledger and
+   `db/backups/<ledger_id>/` are removed again. This is automatic at service
+   startup too (an incremental replay), but the explicit full replay after a
+   restore is the guaranteed path because a restored catalog may postdate the
+   records' `applied_at` markers. If a deleted username now points at a new
+   account, the replay keys on the immutable `account_id`, so the new account is
+   untouched. See ADR 039.
 
 ---
 
@@ -416,9 +448,16 @@ and normal requests all use the volume:
 
 ```
 /data/catalog.db      # shared catalog + account/recovery identity
+/data/deletions.db    # durable account-deletion records (outside catalog snapshots)
 /data/users/<id>.db   # per-account ledgers (WAL)
 /data/backups/<id>/   # migration/rolling snapshots
 ```
+
+The deletion-record path is overridable with `MAYOS_DELETIONS_DB` (or the
+`deletions_path` constructor argument); it defaults to `deletions.db` beside the
+catalog, so it lives on the same durable volume and is removed/restored with it.
+Account deletion removes the account's ledger plus `backups/<id>/` and writes to
+this file; every startup replays it (ADR 039).
 
 `MAYOS_REQUIRE_PERSISTENT_DATA=true` makes `validate_data_root()` fail closed when
 `/data` is missing, not a directory, not writable, or not a real mount, and

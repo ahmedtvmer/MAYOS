@@ -36,6 +36,14 @@ def run_sweep(db: Any, now: datetime | None = None) -> dict[str, int]:
         "spend_alert_fired": 0,
         "errors": 0,
     }
+    # Finish any deletion whose catalog transaction did not complete, so an
+    # interrupted deletion resolves on the next sweep without a restart
+    # (ADR 039). Incremental: already-applied records are skipped.
+    try:
+        db.replay_deletions()
+    except Exception:
+        counts["errors"] += 1
+        logger.exception("Deletion replay failed during the sweep")
     for assignment in db.list_all_active_assignments():
         result: dict[str, Any] | None = None
         try:

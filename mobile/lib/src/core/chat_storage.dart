@@ -20,6 +20,10 @@ abstract class ChatCacheStore {
   Future<bool> readDisclosureAccepted(String accountId);
 
   Future<void> writeDisclosureAccepted(String accountId);
+
+  /// Erases both the cached history and the disclosure acceptance for one
+  /// account (account deletion removes the account's protected data, ADR 039).
+  Future<void> deleteAccount(String accountId);
 }
 
 class SecureChatCacheStore implements ChatCacheStore {
@@ -69,6 +73,12 @@ class SecureChatCacheStore implements ChatCacheStore {
   @override
   Future<void> writeDisclosureAccepted(String accountId) =>
       _store.writeString(_disclosureKey(accountId), 'true');
+
+  @override
+  Future<void> deleteAccount(String accountId) async {
+    await _store.delete(_historyKey(accountId));
+    await _store.delete(_disclosureKey(accountId));
+  }
 }
 
 class InMemoryChatCacheStore implements ChatCacheStore {
@@ -102,5 +112,11 @@ class InMemoryChatCacheStore implements ChatCacheStore {
   @override
   Future<void> writeDisclosureAccepted(String accountId) async {
     _accepted.add(accountId);
+  }
+
+  @override
+  Future<void> deleteAccount(String accountId) async {
+    _history.remove(accountId);
+    _accepted.remove(accountId);
   }
 }

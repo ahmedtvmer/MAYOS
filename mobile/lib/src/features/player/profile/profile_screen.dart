@@ -42,6 +42,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _noticeIsError = false;
 
   final TextEditingController _timezone = TextEditingController();
+  final TextEditingController _deletePassword = TextEditingController();
   final Set<int> _weekdays = <int>{};
   TrainingSchedule _schedule = const TrainingSchedule();
   List<ScheduledPause> _pauses = const <ScheduledPause>[];
@@ -74,6 +75,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   void dispose() {
     _timezone.dispose();
+    _deletePassword.dispose();
     super.dispose();
   }
 
@@ -255,6 +257,93 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _pauseNoticeIsError = true;
       });
     }
+  }
+
+  /// Password-confirmed, irreversible account deletion (ADR 015/039).
+  ///
+  /// The player sees exactly what is removed, including unsynced drafts on this
+  /// device, and must confirm with their password. A wrong password or an
+  /// offline attempt changes nothing.
+  Future<void> _confirmDeleteAccount() async {
+    _deletePassword.clear();
+    bool busy = false;
+    String? error;
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) =>
+            AlertDialog(
+          title: const Text('Delete account?'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                  'This permanently deletes your account and its active data: '
+                  'training history, program, coaching assignment, recovery '
+                  'email, and any unsynced drafts on this device. '
+                  'This cannot be undone.',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  key: const Key('delete_account_password_field'),
+                  controller: _deletePassword,
+                  obscureText: true,
+                  enabled: !busy,
+                  decoration: const InputDecoration(labelText: 'Password'),
+                ),
+                if (error != null) ...<Widget>[
+                  const SizedBox(height: 12),
+                  Text(
+                    error!,
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: busy ? null : () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const Key('delete_account_confirm_button'),
+              onPressed: busy
+                  ? null
+                  : () async {
+                      setDialogState(() {
+                        busy = true;
+                        error = null;
+                      });
+                      try {
+                        await ref
+                            .read(authControllerProvider.notifier)
+                            .deleteAccount(_deletePassword.text);
+                        if (dialogContext.mounted) {
+                          Navigator.of(dialogContext).pop();
+                        }
+                      } on ApiException catch (failure) {
+                        setDialogState(() {
+                          busy = false;
+                          error = mutationFailureMessage(failure);
+                        });
+                      }
+                    },
+              child: busy
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Delete account'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -454,6 +543,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         else
           for (final ScheduledPause pause in _pauses)
             Text('Pause: ${pause.startsOn} → ${pause.endsOn}'),
+        const SizedBox(height: 32),
+        const Divider(),
+        const SizedBox(height: 8),
+        Text('Danger zone', style: theme.textTheme.titleLarge),
+        const SizedBox(height: 4),
+        Text(
+          'Deleting your account permanently removes it and its active data, '
+          'including unsynced drafts on this device. It cannot be undone.',
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          key: const Key('delete_account_button'),
+          onPressed: _confirmDeleteAccount,
+          icon: const Icon(Icons.delete_forever_outlined),
+          label: const Text('Delete account'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: theme.colorScheme.error,
+          ),
+        ),
       ],
     );
   }

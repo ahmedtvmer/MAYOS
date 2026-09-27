@@ -89,6 +89,11 @@ class ApiClient {
   /// Invoked when an authenticated request fails with 401.
   void Function()? onUnauthorized;
 
+  /// Invoked when an authenticated request fails with 401 carrying the
+  /// `account_deleted` signal, so the app can erase that account's protected
+  /// local data without the logout keep/discard prompt (ADR 039).
+  void Function()? onAccountDeleted;
+
   Dio get dio => _dio;
 
   Future<void> _attachToken(
@@ -107,7 +112,12 @@ class ApiClient {
   void _handleError(DioException error, ErrorInterceptorHandler handler) {
     final bool skipped = error.requestOptions.extra[_skipAuth] == true;
     if (!skipped && error.response?.statusCode == 401) {
-      onUnauthorized?.call();
+      final dynamic data = error.response?.data;
+      if (data is Map && data['error'] == 'account_deleted') {
+        onAccountDeleted?.call();
+      } else {
+        onUnauthorized?.call();
+      }
     }
     handler.next(error);
   }
@@ -648,6 +658,20 @@ class ApiClient {
 
   Future<void> logout() async {
     await _send(() => _dio.post<dynamic>('/auth/logout'));
+  }
+
+  /// Password-confirmed, irreversible account deletion (`DELETE /auth/account`).
+  ///
+  /// A wrong password is a plain 400 refusal that changes nothing; a transport
+  /// failure raises [ApiException] with a null status code. On success every
+  /// server session is ended and the account's ledger removed (ADR 015/039).
+  Future<void> deleteAccount(String password) async {
+    await _send(
+      () => _dio.delete<dynamic>(
+        '/auth/account',
+        data: <String, dynamic>{'password': password},
+      ),
+    );
   }
 
   /// The account's recovery email, or null when none is set (ADR 007).

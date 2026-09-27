@@ -53,6 +53,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final bool resetJustCompleted =
         GoRouterState.of(context).uri.queryParameters['reset'] == '1';
+    final String? notice = ref.watch(authControllerProvider).notice;
     return Scaffold(
       appBar: AppBar(title: const Text('Log in')),
       body: SafeArea(
@@ -67,6 +68,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: Text(
                     'Password changed. Sign in with your new password.',
                   ),
+                )
+              else if (notice != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(notice),
                 ),
               TextField(
                 controller: _username,

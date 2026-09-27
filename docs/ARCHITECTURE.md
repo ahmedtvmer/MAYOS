@@ -261,6 +261,21 @@ Hosted-model metering and the closed-trial owner alert also live catalog-side, s
 
 Per-account request and daily-token limits are enforced before any model call or stream starts; the metering callback is attached to every model the downloader builds, so `invoke`, structured output, and streaming all meter themselves.
 
+### Durable Deletion Records (ADR 015/039)
+
+Account deletion must survive a restore of the catalog snapshot, so the deletion
+record lives in a small separate SQLite file beside the catalog
+(`db/deletions.db`, `MAYOS_DELETIONS_DB`) — **outside** every catalog backup and
+never rolled back with it. A deletion writes the record first, then ends the
+account in the catalog (revoking every token via the session epoch and clearing
+its relationships), then removes the live ledger and its `db/backups/<id>/`
+directory. Startup and the hourly sweep run an incremental replay (an
+`applied_at` marker skips completed records); the restore path runs the full
+replay (`scripts/reapply_deletions.py`). This means an old token or a restored
+catalog cannot resurrect the identity or its ledger. See
+[`AUTHENTICATION.md`](AUTHENTICATION.md) §12 and
+[`DEPLOYMENT.md`](DEPLOYMENT.md) §9 for the restore procedure.
+
 ---
 
 ## 5. Token Streaming & Tool-Call Sanitization Flow

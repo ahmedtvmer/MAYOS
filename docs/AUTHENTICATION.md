@@ -237,6 +237,7 @@ Delivery failures are logged and swallowed; the client response stays generic. T
 | `POST /auth/claim` | — | 5/min | Single-use per ledger |
 | `POST /auth/logout` | Bearer | — | Revokes presenting `jti`; 204 |
 | `POST /auth/change-password` | Bearer | 10/min | Revokes **all** sessions; 400 on failure |
+| `DELETE /auth/account` | Bearer | 10/min | Password-confirmed durable deletion (ADR 039); 400 generic on wrong password |
 | `GET /auth/email` | Bearer | — | `{"email": str \| null}` |
 | `POST /auth/email` | Bearer | 10/min | Normalizes; 400 on invalid/conflict |
 | `POST /auth/forgot-password` | — | 3/hour | Always 202 with generic message |
@@ -260,6 +261,7 @@ Rate-limit keys combine the client IP with a bearer-token suffix when present, s
 | `SMTP_HOST` | unset | Unset ⇒ console-dev backend |
 | `SMTP_PORT` / `SMTP_USE_TLS` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | `587` / `true` / — / — / `no-reply@myos.local` | SMTP transport |
 | `RATE_LIMIT_LOGIN` / `_REGISTER` / `_PASSWORD` / `_RESET` | `5/min` / `5/min` / `10/min` / `3/hour` | Overrides |
+| `MAYOS_DELETIONS_DB` | `<catalog dir>/deletions.db` | Durable deletion-record store, kept **outside** catalog snapshots (ADR 039) |
 
 ---
 
@@ -272,4 +274,39 @@ Rate-limit keys combine the client IP with a bearer-token suffix when present, s
 
 ---
 
-*Related: ADR 006 (token-version session epoch) and ADR 007 (catalog-side recovery identity) in [`DECISIONS.md`](../DECISIONS.md); deployment configuration in [`DEPLOYMENT.md`](DEPLOYMENT.md).*
+## 12. Durable Account Deletion (ADR 015/039)
+
+An account holder deletes their account with `DELETE /auth/account` carrying `{"password": "..."}` (rate-limited with the password limit). A wrong password returns a generic `400 Invalid credentials.` and changes nothing. On success every session is dead and the account's active data is gone. The full decision and per-table breakdown are ADR 039; the operator-facing recovery details are in [`DEPLOYMENT.md`](DEPLOYMENT.md).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant App as Flutter app
+    participant API as FastAPI /auth
+    participant DB as Catalog
+    participant DEL as deletions.db
+    participant FS as Users / backups
+
+    App->>API: DELETE /auth/account {password} (Bearer)
+    API->>DB: verify password (bcrypt, ledger)
+    API->>DEL: (a) write durable deletion record FIRST
+    API->>DB: (b) one transaction: status='deleted', deleted_at, session_epoch+1, clear recovery/invites/coach profile, end assignments, delete relationships
+    API->>FS: (c) close conn, remove ledger (.db/-wal/-shm) + backups/<ledger>/
+    API-->>App: 200 "Account deleted. All sessions have been ended."
+    Note over DEL,DB: Any later startup/restore replays the record, so an old token or a restored catalog snapshot cannot resurrect the identity
+```
+
+Key properties:
+
+* **Revoke-all + fail closed.** The catalog transaction bumps `session_epoch`, so every bearer and remember-me token fails verification (Section 4/5). The partially-deleted account also fails closed because `deleted_at` is authoritative (a non-NULL `deleted_at` wins over a stale `status='active'`).
+* **Crash-safe and resumable, never rolled back.** The durable record is written before any catalog change and carries an `applied_at` marker. Service startup and the hourly sweep run an incremental replay that completes only not-yet-applied records (so an interrupted deletion resolves without a restart); the restore path runs the full replay (`scripts/reapply_deletions.py`) which re-checks every record. `deletions.db` is kept **outside** the catalog/ledger backup archive, backed up separately and append-only, and is never restored over a newer copy — so a restore cannot undo a deletion. A replayed record never removes a ledger that a reused username's **new** account owns.
+* **Username reuse only as a new account.** The partial unique username index (`WHERE deleted_at IS NULL`) frees the name; registering it again creates a new immutable `account_id` with an empty ledger, and the old `sub` still resolves to the deleted id, never the new account. A reused username also gets a **distinct `ledger_id`/ledger path** (`<username>-<account_id[:12]>`), so replaying the old deletion record can never remove the new account's ledger.
+* **Deletion signal for other devices.** An authenticated request whose token signature verifies but whose subject is deleted returns `401 {"error": "account_deleted"}` (distinct from the ordinary `{"detail": ...}` 401 for expiry/revocation). The Flutter client uses it to erase that account's protected local data — drafts, cached program/prescriptions, cached chat history, and disclosure acceptance — without the logout keep/discard prompt, then clears the session. An ordinary 401 keeps the normal logout behavior.
+
+### Information disclosure
+
+`account_deleted` is disclosed only to a caller holding a **validly signed token** for that account: the JWT signature and required claims are verified before the registry records are consulted, so an attacker who has not obtained the token learns nothing, and an unknown account still returns the generic `401 Invalid or expired token.`
+
+---
+
+*Related: ADR 006 (token-version session epoch), ADR 007 (catalog-side recovery identity), and ADR 015/039 (durable account deletion) in [`DECISIONS.md`](../DECISIONS.md); deployment configuration in [`DEPLOYMENT.md`](DEPLOYMENT.md).*

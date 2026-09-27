@@ -52,12 +52,16 @@ def register_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
     account_id = db.create_account(clean_id)
     if account_id is None:
         return {"ok": False, "error": "This Trainee ID already exists. Please log in."}
-    bind_user(db, clean_id)
-    db.set_password_hash(hash_password(password))
     account = db.get_account(account_id) or {}
+    # A reused username gets a fresh ledger id (see DatabaseManager.create_account),
+    # so always mount the account's own ledger rather than the username.
+    ledger_id = account.get("ledger_id") or clean_id
+    bind_user(db, ledger_id)
+    db.set_password_hash(hash_password(password))
+    account = db.get_account(account_id) or account
     return {
         "ok": True,
-        "trainee_id": clean_id,
+        "trainee_id": ledger_id,
         "account_id": account_id,
         "session_epoch": account.get("session_epoch", 1),
     }

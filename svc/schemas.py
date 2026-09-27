@@ -481,6 +481,12 @@ class PasswordChangeIn(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
+class AccountDeleteIn(BaseModel):
+    """Password confirmation for an in-app, irreversible account deletion (ADR 015/039)."""
+
+    password: str = Field(min_length=1, max_length=128)
+
+
 class EmailUpdateIn(BaseModel):
     email: str = Field(min_length=3, max_length=254)
 

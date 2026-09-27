@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
+import 'package:mayos_mobile/src/core/account_data_eraser.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_models.dart';
 import 'package:mayos_mobile/src/core/connectivity_message.dart';
@@ -359,6 +360,11 @@ void main() {
           tokens: tokens, baseUrl: 'http://test.local', adapter: fake.adapter),
       tokens: tokens,
       chatCache: store,
+      eraser: AccountDataEraser(
+        drafts: InMemoryDraftStore(),
+        workoutCache: InMemoryWorkoutCacheStore(),
+        chatCache: store,
+      ),
     );
 
     await repository.logout(accountId: 'account-alice');

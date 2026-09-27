@@ -45,14 +45,20 @@ def reset_password(db: DatabaseManager, trainee_id: str, new_password: str) -> t
     and ``enrolled`` is ``False`` (legacy behavior preserved).
     """
     clean_id = db._sanitize_username(trainee_id)
-    if not clean_id or not db.user_exists(clean_id):
+    if not clean_id:
+        raise SystemExit(f"error: unknown trainee ledger '{trainee_id}'.")
+    account = db.get_active_account_by_username(clean_id)
+    # An enrolled account may have a ledger id distinct from its (reused)
+    # username; resolve the path through the account, never the username
+    # (ADR 015/039). A bare local ledger has no account and uses its username.
+    ledger_id = account["ledger_id"] if account is not None else clean_id
+    if not db.user_exists(ledger_id):
         raise SystemExit(f"error: unknown trainee ledger '{trainee_id}'.")
     try:
         auth_service.validate_password(new_password)
     except ValueError as exc:
         raise SystemExit(f"error: {exc}")
-    account = db.get_active_account_by_username(clean_id)
-    bind_user(db, clean_id)
+    bind_user(db, ledger_id)
     db.set_password_hash(auth_service.hash_password(new_password))
     ledger_epoch = db.bump_token_version()
     if account is not None:
@@ -64,7 +70,7 @@ def reset_password(db: DatabaseManager, trainee_id: str, new_password: str) -> t
     else:
         epoch = ledger_epoch
     db.prune_revoked_tokens(datetime.now(UTC).isoformat())
-    return clean_id, epoch, account is not None
+    return ledger_id, epoch, account is not None
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -11,17 +11,22 @@ enum AuthStatus { loading, unauthenticated, authenticated }
 
 @immutable
 class AuthState {
-  const AuthState._(this.status, this.session);
+  const AuthState._(this.status, this.session, this.notice);
 
-  const AuthState.loading() : this._(AuthStatus.loading, null);
+  const AuthState.loading() : this._(AuthStatus.loading, null, null);
 
-  const AuthState.unauthenticated() : this._(AuthStatus.unauthenticated, null);
+  const AuthState.unauthenticated([String? notice])
+      : this._(AuthStatus.unauthenticated, null, notice);
 
-  const AuthState.authenticated(AccountSession session)
-      : this._(AuthStatus.authenticated, session);
+  const AuthState.authenticated(AccountSession session, {String? notice})
+      : this._(AuthStatus.authenticated, session, notice);
 
   final AuthStatus status;
   final AccountSession? session;
+
+  /// A one-shot message to show on the login screen (for example, after account
+  /// deletion). It is not a session: [isAuthenticated] ignores it.
+  final String? notice;
 
   bool get isAuthenticated => status == AuthStatus.authenticated;
 
@@ -34,21 +39,32 @@ class UnauthorizedEvents extends ChangeNotifier {
   void signal() => notifyListeners();
 }
 
+/// Signals a 401 carrying `account_deleted` for a validly signed token, so the
+/// app erases that account's protected data instead of offering the logout
+/// keep/discard choice (ADR 039).
+class AccountDeletedEvents extends ChangeNotifier {
+  void signal() => notifyListeners();
+}
+
 class AuthController extends StateNotifier<AuthState> {
-  AuthController(this._repository, this._events)
+  AuthController(this._repository, this._events, this._accountDeletedEvents)
       : super(const AuthState.loading()) {
     _events.addListener(_onUnauthorized);
+    _accountDeletedEvents.addListener(_onAccountDeleted);
   }
 
   final AuthRepository _repository;
   final UnauthorizedEvents _events;
+  final AccountDeletedEvents _accountDeletedEvents;
 
   /// Resolves a persisted session once at startup.
   Future<void> initialize() async {
     try {
       final AccountSession? session = await _repository.restore();
+      // Preserve a notice an account-deleted signal may have set mid-restore so
+      // the login screen can explain why the session ended (ADR 039).
       state = session == null
-          ? const AuthState.unauthenticated()
+          ? AuthState.unauthenticated(state.notice)
           : AuthState.authenticated(session);
     } on ApiException {
       // Network failure during restore: keep the token, ask the user to retry.
@@ -86,6 +102,15 @@ class AuthController extends StateNotifier<AuthState> {
     final String? accountId = state.session?.account.accountId;
     await _repository.logout(accountId: accountId);
     state = const AuthState.unauthenticated();
+  }
+
+  /// Password-confirmed account deletion: on success the server has ended every
+  /// session and removed the ledger, and the repository erased this device's
+  /// protected data. The state moves to login with a confirmation (ADR 039).
+  Future<void> deleteAccount(String password) async {
+    await _repository.deleteAccount(password);
+    state = const AuthState.unauthenticated(
+        'Your account was deleted. Create a new account or sign in.');
   }
 
   /// Requests a reset link and returns the service's constant confirmation.
@@ -223,9 +248,18 @@ class AuthController extends StateNotifier<AuthState> {
     unawaited(_repository.clearSession(accountId: accountId));
   }
 
+  /// A 401 carrying `account_deleted`: erase the account's protected local data
+  /// (no keep/discard prompt) and end the session with an explanation (ADR 039).
+  void _onAccountDeleted() {
+    state = const AuthState.unauthenticated(
+        'This account was deleted. Its data was removed from this device.');
+    unawaited(_repository.handleAccountDeleted());
+  }
+
   @override
   void dispose() {
     _events.removeListener(_onUnauthorized);
+    _accountDeletedEvents.removeListener(_onAccountDeleted);
     super.dispose();
   }
 }

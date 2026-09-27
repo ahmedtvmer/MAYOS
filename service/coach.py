@@ -77,7 +77,7 @@ def issue_coach_invite(
         "ok": True,
         "token": raw_token,
         "account_id": account["account_id"],
-        "username": account["ledger_id"],
+        "username": account["username"],
         "expires_at": expires_at,
     }
 
@@ -98,7 +98,7 @@ def redeem_coach_invite(db: Any, account_id: str, token: str) -> dict[str, Any]:
     return {
         "ok": True,
         "account_id": account["account_id"],
-        "username": account["ledger_id"],
+        "username": account["username"],
         "capabilities": {"player": account["is_player"], "coach": account["is_coach"]},
     }
 

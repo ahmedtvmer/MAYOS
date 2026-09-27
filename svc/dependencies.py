@@ -12,6 +12,20 @@ from svc.auth import token_claims, token_version_of
 _bearer = HTTPBearer(auto_error=False)
 
 
+class AccountDeletedError(HTTPException):
+    """401 that distinguishes a deleted account from an ordinary expiry.
+
+    Raised only after the token's signature verified and its subject is
+    recorded as deleted (durable deletion record or catalog ``deleted_at``), so
+    a device can safely erase local data for that account. The application maps
+    it to a machine-readable ``{"error": "account_deleted"}`` body; ordinary
+    expiry keeps the existing ``{"detail": ...}`` 401 shape (ADR 039).
+    """
+
+    def __init__(self) -> None:
+        super().__init__(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account deleted.")
+
+
 class VerifiedPlayer(str):
     """Ledger id carrying the account identity verified for this request."""
 
@@ -32,9 +46,16 @@ def _authorize_account(db: Any, account_id: str, token_epoch: int) -> dict[str, 
     """Validates the account registry entry before any ledger is mounted.
 
     Raises 401 for an unknown/deleted account, a missing player capability, a
-    stale session epoch, or a ledger that no longer exists.
+    stale session epoch, or a ledger that no longer exists. A deleted account is
+    reported with the distinct :class:`AccountDeletedError` so a device holding a
+    validly signed but dead token can tell "account deleted" from ordinary expiry.
     """
+    if db.is_account_deleted(account_id):
+        # The durable record is authoritative even before/without the catalog row.
+        raise AccountDeletedError()
     account = db.get_account(account_id)
+    if account is not None and account["deleted_at"] is not None:
+        raise AccountDeletedError()
     if not db.is_live_account(account) or not account["is_player"]:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
     if token_epoch != account["session_epoch"]:

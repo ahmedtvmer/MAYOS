@@ -16,6 +16,7 @@ from slowapi.errors import RateLimitExceeded
 from database.storage import storage_status
 from service.model_limits import ModelLimitExceeded
 from service.model_metering import record_model_usage
+from svc.dependencies import AccountDeletedError
 from svc.rate_limit import limiter
 from svc.routers import (
     alerts,
@@ -131,7 +132,10 @@ async def lifespan(app: FastAPI):
         try:
             validate_data_root()
             _ready["storage"] = True
-            DatabaseManager()
+            db = DatabaseManager()
+            # Complete any deletion whose catalog transaction did not finish, so
+            # a crash cannot leave a half-deleted account (ADR 015/039).
+            await asyncio.to_thread(db.replay_deletions)
             _ready["catalog"] = True
         except StorageNotReady:
             logger.exception(
@@ -181,6 +185,16 @@ def create_app() -> FastAPI:
     async def model_limit_handler(request: Request, exc: ModelLimitExceeded):
         """One 429 shape for every per-account model limit refusal (ADR 038)."""
         return JSONResponse(status_code=429, content={"detail": exc.detail})
+
+    @app.exception_handler(AccountDeletedError)
+    async def account_deleted_handler(request: Request, exc: AccountDeletedError):
+        """A machine-readable 401 so a device can tell a deleted account from expiry (ADR 039).
+
+        Disclosed only to a holder of a validly signed token for that account
+        (the signature is verified before this is raised), so it reveals nothing
+        to an unauthenticated caller.
+        """
+        return JSONResponse(status_code=401, content={"error": "account_deleted"})
 
     ui_origin = os.getenv("UI_BASE_URL", "http://localhost:8501")
     app.add_middleware(

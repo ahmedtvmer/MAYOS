@@ -41,4 +41,26 @@ class SecureStore {
   Future<String?> readString(String key) => storage.read(key: key);
 
   Future<void> delete(String key) => storage.delete(key: key);
+
+  /// Deletes [key] exactly and every key beginning with [prefix] (an explicit
+  /// delimiter, e.g. `account.`), so one account id that is a prefix of another
+  /// can never erase the other account's data (ADR 039).
+  Future<void> deleteExactOrPrefixed(String key, String prefix) async {
+    await storage.delete(key: key);
+    await deleteByPrefix(prefix);
+  }
+
+  /// Deletes every stored key beginning with [prefix].
+  ///
+  /// Used to erase all account-namespaced values for one account (drafts,
+  /// cached program/prescriptions, chat history/disclosure) without touching
+  /// another account's protected storage (ADR 020/039).
+  Future<void> deleteByPrefix(String prefix) async {
+    final Map<String, String> all = await storage.readAll();
+    for (final String key in all.keys.toList(growable: false)) {
+      if (key.startsWith(prefix)) {
+        await storage.delete(key: key);
+      }
+    }
+  }
 }
