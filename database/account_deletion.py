@@ -1,0 +1,327 @@
+"""AccountDeletionMixin (database split, #78).
+
+Extracted from DatabaseManager; behaviour is unchanged.
+"""
+
+import os
+import shutil
+import sqlite3
+import threading
+from datetime import UTC, datetime
+from typing import Any
+
+from utils.logger import MyosLogger
+
+logger = MyosLogger().get_logger(__name__)
+
+
+class AccountDeletionMixin:
+    _DELETION_COLUMNS = "account_id, ledger_id, deleted_at, applied_at"
+
+    def _initialize_deletions(self) -> None:
+        """Opens the external deletion ledger and ensures its schema exists."""
+        os.makedirs(self.deletions_path.parent, exist_ok=True)
+        self._deletions_lock = threading.Lock()
+        self.deletions_conn = sqlite3.connect(self.deletions_path, check_same_thread=False)
+        self.deletions_conn.execute("PRAGMA journal_mode = WAL;")
+        self.deletions_conn.execute("PRAGMA busy_timeout = 5000;")
+        with self._deletions_lock:
+            self.deletions_conn.execute(
+                "CREATE TABLE IF NOT EXISTS account_deletions ("
+                " account_id TEXT PRIMARY KEY,"
+                " ledger_id TEXT NOT NULL,"
+                " deleted_at TEXT NOT NULL,"
+                " applied_at TEXT)"
+            )
+            columns = {row[1] for row in self.deletions_conn.execute("PRAGMA table_info(account_deletions)")}
+            if "applied_at" not in columns:
+                self.deletions_conn.execute("ALTER TABLE account_deletions ADD COLUMN applied_at TEXT")
+            self.deletions_conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_deletions_ledger ON account_deletions(ledger_id)"
+            )
+            self.deletions_conn.commit()
+
+    def record_account_deletion(
+        self, account_id: str, ledger_id: str, deleted_at: str | None = None
+    ) -> None:
+        """Appends (or refreshes) a durable deletion record. Idempotent on the account id.
+
+        A re-record preserves an existing ``applied_at`` marker; a new record
+        starts unapplied so startup/sweep replay completes it.
+        """
+        if not account_id:
+            return
+        now = deleted_at or datetime.now(UTC).isoformat()
+        with self._deletions_lock:
+            self.deletions_conn.execute(
+                "INSERT INTO account_deletions (account_id, ledger_id, deleted_at, applied_at)"
+                " VALUES (?, ?, ?, NULL)"
+                " ON CONFLICT(account_id) DO UPDATE SET"
+                " ledger_id = excluded.ledger_id, deleted_at = excluded.deleted_at",
+                (str(account_id), str(ledger_id), now),
+            )
+            self.deletions_conn.commit()
+
+    def is_account_deleted(self, account_id: str) -> bool:
+        """True when a durable deletion record exists, even before the catalog commit lands."""
+        if not account_id:
+            return False
+        conn = getattr(self, "deletions_conn", None)
+        if conn is None:
+            return False
+        with self._deletions_lock:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM account_deletions WHERE account_id = ?", (str(account_id),))
+            return cursor.fetchone() is not None
+
+    def _ledger_is_deleted(self, ledger_id: str) -> bool:
+        """True when ``ledger_id`` is recorded deleted and no live account owns it.
+
+        Cheap indexed lookup: an empty result means the ledger was never deleted;
+        otherwise a live owner (a reused username's new account) overrides the
+        record, so mounting it is allowed.
+        """
+        conn = getattr(self, "deletions_conn", None)
+        if conn is None:
+            return False
+        sanitized = self._sanitize_username(ledger_id)
+        with self._deletions_lock:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM account_deletions WHERE ledger_id = ? LIMIT 1", (sanitized,))
+            recorded = cursor.fetchone() is not None
+        if not recorded:
+            return False
+        return not self._ledger_owned_by_live_account(sanitized)
+
+    def list_account_deletions(self) -> list[dict[str, Any]]:
+        """Every durable deletion record, oldest-first."""
+        conn = getattr(self, "deletions_conn", None)
+        if conn is None:
+            return []
+        with self._deletions_lock:
+            cursor = conn.cursor()
+            cursor.execute(f"SELECT {self._DELETION_COLUMNS} FROM account_deletions ORDER BY deleted_at ASC")
+            return [
+                {
+                    "account_id": str(row[0]),
+                    "ledger_id": str(row[1]),
+                    "deleted_at": str(row[2]),
+                    "applied_at": row[3],
+                }
+                for row in cursor.fetchall()
+            ]
+
+    def _mark_deletion_applied(self, account_id: str) -> None:
+        """Marks one record as fully applied (catalog + files) for incremental replay."""
+        with self._deletions_lock:
+            self.deletions_conn.execute(
+                "UPDATE account_deletions SET applied_at = ? WHERE account_id = ?",
+                (datetime.now(UTC).isoformat(), str(account_id)),
+            )
+            self.deletions_conn.commit()
+
+    def delete_account(self, account_id: str, now_iso: str | None = None) -> dict[str, Any]:
+        """Durably deletes an account: record, catalog rows, then ledger/backup files.
+
+        Ordering makes an interrupted deletion fail closed and resumable: the
+        record is written before any catalog change, so a later startup/restore
+        replay (:meth:`replay_deletions`) finishes the job. An unknown account is
+        refused and never recorded.
+        """
+        now = now_iso or datetime.now(UTC).isoformat()
+        account = self.get_account(account_id)
+        if account is None:
+            return {"ok": False, "error": "Account not found."}
+        ledger_id = account["ledger_id"]
+        # (a) durable record first.
+        self.record_account_deletion(str(account_id), ledger_id, now)
+        # (b) catalog: mark deleted, revoke sessions, end relationships.
+        self._force_delete_account_catalog(str(account_id), now)
+        # (c) live ledger + any user-specific backup copies.
+        self._remove_account_files(ledger_id)
+        self._mark_deletion_applied(str(account_id))
+        # model_usage rows keep the opaque account id for billing reconciliation
+        # (documented in ADR 039); they carry no username or contact details.
+        return {"ok": True, "account_id": str(account_id), "ledger_id": ledger_id, "deleted_at": now}
+
+    def _force_delete_account_catalog(self, account_id: str, now_iso: str) -> None:
+        """Forces one account's catalog state to deleted in a single transaction.
+
+        Idempotent: calling it again (startup/restore replay) leaves an already
+        deleted row alone rather than bumping the epoch further. Assignments are
+        ended but retained so the player keeps their history and the deleted
+        coach is presented as "Former coach"; relationships that exist only to
+        serve the account are removed.
+        """
+        account_id = str(account_id)
+        with self.catalog_transaction():
+            conn = self.catalog_conn
+            cursor = conn.cursor()
+            cursor.execute("SELECT username FROM accounts WHERE account_id = ?", (account_id,))
+            username_row = cursor.fetchone()
+            legacy_username = str(username_row[0]) if username_row is not None else account_id
+            # The account's assignments, collected before anything is removed.
+            cursor.execute(
+                "SELECT assignment_id FROM assignments"
+                " WHERE coach_account_id = ? OR player_account_id = ?",
+                (account_id, account_id),
+            )
+            assignment_ids = [str(row[0]) for row in cursor.fetchall()]
+            cursor.execute(
+                "UPDATE accounts SET status = 'deleted', deleted_at = ?,"
+                " session_epoch = CASE WHEN deleted_at IS NULL THEN session_epoch + 1 ELSE session_epoch END,"
+                " is_coach = 0"
+                " WHERE account_id = ?",
+                (now_iso, account_id),
+            )
+            # Recovery identity and single-use credentials. Live rows are keyed by
+            # immutable account id; legacy rows may be keyed by the (now reusable)
+            # username. Clear the legacy keys only when no *other* live account
+            # already owns that username, so a reincarnated account's recovery
+            # rows are never touched (ADR 015/039).
+            cursor.execute(
+                "SELECT 1 FROM accounts"
+                " WHERE username = ? AND status = 'active' AND deleted_at IS NULL LIMIT 1",
+                (legacy_username,),
+            )
+            username_reused_live = cursor.fetchone() is not None
+            legacy_key = account_id if username_reused_live else legacy_username
+            cursor.execute(
+                "DELETE FROM trainee_emails WHERE trainee_id = ? OR trainee_id = ?",
+                (account_id, legacy_key),
+            )
+            cursor.execute(
+                "DELETE FROM password_reset_tokens WHERE trainee_id = ? OR trainee_id = ?",
+                (account_id, legacy_key),
+            )
+            cursor.execute("DELETE FROM coach_invites WHERE account_id = ?", (account_id,))
+            cursor.execute("DELETE FROM coach_profiles WHERE account_id = ?", (account_id,))
+            cursor.execute("DELETE FROM account_plans WHERE account_id = ?", (account_id,))
+            cursor.execute(
+                "DELETE FROM assignment_invites"
+                " WHERE coach_account_id = ? OR redeemed_by_account_id = ?",
+                (account_id, account_id),
+            )
+            # Notices attached to the deleted account's assignments are removed on
+            # both sides: their copy contains the deleted, now-reusable username.
+            if assignment_ids:
+                placeholders = ",".join("?" for _ in assignment_ids)
+                cursor.execute(
+                    f"DELETE FROM assignment_notices"
+                    f" WHERE account_id = ? OR assignment_id IN ({placeholders})",
+                    (account_id, *assignment_ids),
+                )
+            else:
+                cursor.execute("DELETE FROM assignment_notices WHERE account_id = ?", (account_id,))
+            cursor.execute(
+                "DELETE FROM program_requests WHERE coach_account_id = ? OR player_account_id = ?",
+                (account_id, account_id),
+            )
+            cursor.execute(
+                "DELETE FROM check_ins WHERE player_account_id = ?", (account_id,)
+            )
+            # Assignments are ended (reason 'account_deleted') but retained, so the
+            # player's published program keeps its provenance and former-coach
+            # attribution can be rendered (ADR 026/039).
+            if assignment_ids:
+                placeholders = ",".join("?" for _ in assignment_ids)
+                cursor.execute(
+                    f"UPDATE assignments SET status = 'ended', ended_at = ?, ended_by = 'account_deleted'"
+                    f" WHERE assignment_id IN ({placeholders}) AND status = 'active'",
+                    (now_iso, *assignment_ids),
+                )
+                cursor.execute(
+                    f"DELETE FROM roster_attendance WHERE assignment_id IN ({placeholders})",
+                    assignment_ids,
+                )
+                cursor.execute(
+                    f"DELETE FROM alert_signal_state WHERE assignment_id IN ({placeholders})",
+                    assignment_ids,
+                )
+                cursor.execute(
+                    f"DELETE FROM progression_alert_sessions WHERE assignment_id IN ({placeholders})",
+                    assignment_ids,
+                )
+                cursor.execute(
+                    f"DELETE FROM coach_alerts WHERE assignment_id IN ({placeholders})",
+                    assignment_ids,
+                )
+            cursor.execute(
+                "DELETE FROM coach_alerts WHERE coach_account_id = ? OR player_account_id = ?",
+                (account_id, account_id),
+            )
+
+    def _ledger_owned_by_live_account(self, ledger_id: str) -> bool:
+        """True when a live account currently maps to ``ledger_id``.
+
+        A deleted account's username (and therefore its ledger id/file) can be
+        reused by a new immutable account, so a replayed deletion must never
+        remove a ledger that now belongs to a live account (ADR 015/039).
+        """
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "SELECT 1 FROM accounts"
+                " WHERE ledger_id = ? AND status = 'active' AND deleted_at IS NULL"
+                " LIMIT 1",
+                (str(ledger_id),),
+            )
+            return cursor.fetchone() is not None
+
+    def _remove_account_files(self, ledger_id: str) -> None:
+        """Closes this thread's connection, then removes the live ledger and backups.
+
+        Fails closed on an empty, non-canonical, or reserved (``default``) ledger
+        id, so a bad record can never delete an unrelated or shared ledger.
+        """
+        raw = "" if ledger_id is None else str(ledger_id)
+        if not raw.strip():
+            logger.warning("Refusing to remove ledger files for an empty ledger id.")
+            return
+        sanitized = self._sanitize_username(raw)
+        if sanitized != raw or sanitized == "default":
+            logger.warning(f"Refusing to remove ledger files for non-canonical ledger id '{raw}'.")
+            return
+        if self._ledger_owned_by_live_account(sanitized):
+            # The username was reused by a new account after the recorded
+            # deletion; its ledger is not the deleted account's and must survive.
+            return
+        if self.active_user == sanitized and self.user_conn is not None:
+            self.unmount_user()
+        for suffix in ("", "-wal", "-shm"):
+            path = self.users_dir / f"{sanitized}.db{suffix}"
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as exc:
+                logger.warning(f"Failed to remove ledger file {path}: {exc}")
+        user_backup_dir = self.backups_dir / sanitized
+        if user_backup_dir.is_dir():
+            try:
+                shutil.rmtree(user_backup_dir)
+            except OSError as exc:
+                logger.warning(f"Failed to remove ledger backups {user_backup_dir}: {exc}")
+
+    def replay_deletions(self, *, full: bool = False) -> int:
+        """Replays durable deletion records; returns how many were processed.
+
+        Incremental (``full=False``, the startup/sweep path) skips records already
+        marked applied, so a deletion whose catalog transaction failed completes
+        on the next pass without a restart. A full replay (``full=True``, used
+        after a restore that may have rolled the catalog back) re-checks every
+        record regardless of its marker.
+        """
+        records = self.list_account_deletions()
+        applied = 0
+        for record in records:
+            if not full and record.get("applied_at") is not None:
+                continue
+            self._force_delete_account_catalog(record["account_id"], record["deleted_at"])
+            self._remove_account_files(record["ledger_id"])
+            self._mark_deletion_applied(record["account_id"])
+            applied += 1
+        return applied
+
+    def reapply_deletions(self) -> int:
+        """Full deletion replay for the restore path; re-checks every record."""
+        return self.replay_deletions(full=True)

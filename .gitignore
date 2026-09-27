@@ -13,6 +13,8 @@ pyproject.toml
 # Virtual environments
 .venv
 data
+!tests/data/
+!tests/data/database_manager_public_surface.json
 .env
 db
 models/

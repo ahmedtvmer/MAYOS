@@ -13,7 +13,7 @@ image is shown in production.
 - `data/exercises.csv` — the ExerciseDB source export (includes the
   `gifUrl`/`image` fields and per-language `instructions/N` columns).
 - `data/processed_exercises.csv` — the seed CSV the catalog database loads
-  (`database/database_manager.py` `DEFAULT_CSV_PATH`). It stores `image_path`
+  (`database/shared.py` `DEFAULT_CSV_PATH`). It stores `image_path`
   and `gif_path` as **local relative paths** (`images/0001-….jpg`,
   `videos/0001-….gif`) and English-only `instructions` text.
 - `data/images/` (1,324 `.jpg`) and `data/videos/` (1,324 `.gif`) — the
