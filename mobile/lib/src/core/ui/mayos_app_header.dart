@@ -29,18 +29,16 @@ class MayosAppHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
-    // Symmetric horizontal padding keeps the centred brand on the screen's
-    // mid-line (the right-aligned actions sit inside the same inset).
-    const EdgeInsets padding = EdgeInsets.fromLTRB(
-        MayosSpacing.sm, MayosSpacing.sm, MayosSpacing.sm, MayosSpacing.xs);
-
     // The default shell header shows the brand alone, centred on the screen so
     // it is independent of how many actions sit on the right. Titled sub-pages
     // keep the left-aligned back button + title row.
     final bool centredBrand = showLogo && !showBack && title == null;
     if (centredBrand) {
+      // Symmetric horizontal padding keeps the centred brand on the screen's
+      // mid-line (the right-aligned actions sit inside the same inset).
       return Padding(
-        padding: padding,
+        padding: const EdgeInsets.fromLTRB(
+            MayosSpacing.sm, MayosSpacing.sm, MayosSpacing.sm, MayosSpacing.xs),
         child: Stack(
           alignment: Alignment.center,
           children: <Widget>[
@@ -56,7 +54,8 @@ class MayosAppHeader extends StatelessWidget {
     }
 
     return Padding(
-      padding: padding,
+      padding: const EdgeInsets.fromLTRB(
+          MayosSpacing.lg, MayosSpacing.sm, MayosSpacing.xs, MayosSpacing.xs),
       child: Row(
         children: <Widget>[
           if (showBack)
