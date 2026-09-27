@@ -29,3 +29,9 @@ tests/eval/datasets/_tmp_gen_qa.json
 logs/
 programs/
 .agents/
+
+# Local tooling (machine-specific)
+.pytest_cwd/
+.claude/worktrees/
+.claude/.cc-writes/
+.claude/skills/claude-delegate
