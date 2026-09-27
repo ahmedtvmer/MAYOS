@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/active_program.dart';
 import '../../../core/api_client.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/models.dart';
@@ -15,9 +16,6 @@ import '../../../core/ui/mayos_card.dart';
 import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
-
-/// A cache read on the offline path may never block indefinitely.
-const Duration _cacheReadTimeout = Duration(seconds: 3);
 
 class ProgramTab extends ConsumerStatefulWidget {
   const ProgramTab({super.key});
@@ -61,33 +59,23 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     final String? accountId = _accountId;
     final WorkoutCacheStore cache = ref.read(workoutCacheStoreProvider);
     try {
-      final TrainingProgram? online =
-          await ref.read(apiClientProvider).activeProgram();
-      if (online != null && accountId != null) {
-        unawaited(_cacheProgram(cache, accountId, online));
-      }
+      final ActiveProgram result = await loadActiveProgram(
+        api: ref.read(apiClientProvider),
+        cache: cache,
+        accountId: accountId,
+      );
       if (!mounted) return;
       setState(() {
-        _program = online;
-        _fromCache = false;
+        _program = result.program;
+        _fromCache = result.fromCache;
         _loading = false;
       });
     } on ApiException catch (error) {
-      final TrainingProgram? cached =
-          accountId == null ? null : await _readCachedProgram(cache, accountId);
       if (!mounted) return;
-      if (cached != null) {
-        setState(() {
-          _program = cached;
-          _fromCache = true;
-          _loading = false;
-        });
-      } else {
-        setState(() {
-          _loadError = error.message;
-          _loading = false;
-        });
-      }
+      setState(() {
+        _loadError = error.message;
+        _loading = false;
+      });
     }
     // Coach provenance: an active assignment means the publishing coach is
     // still the player's coach; without one, the coach is former (#40/#53).
@@ -114,7 +102,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
           await ref.read(apiClientProvider).playerGenerateProgram();
       final String? accountId = _accountId;
       if (accountId != null) {
-        unawaited(_cacheProgram(
+        unawaited(cacheActiveProgram(
             ref.read(workoutCacheStoreProvider), accountId, program));
       }
       if (!mounted) return;
@@ -129,27 +117,6 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         _generating = false;
         _actionError = mutationFailureMessage(error);
       });
-    }
-  }
-
-  /// Caching the fetched program is fire-and-forget: a slow or failing store
-  /// must never hide (or delay showing) an otherwise-successful online fetch
-  /// (ADR 020/033).
-  Future<void> _cacheProgram(WorkoutCacheStore cache, String accountId,
-      TrainingProgram program) async {
-    try {
-      await cache.writeProgram(accountId, program);
-    } on Object {
-      // Offline logging simply won't have this program cached; not fatal here.
-    }
-  }
-
-  Future<TrainingProgram?> _readCachedProgram(
-      WorkoutCacheStore cache, String accountId) async {
-    try {
-      return await cache.readProgram(accountId).timeout(_cacheReadTimeout);
-    } on Object {
-      return null;
     }
   }
 

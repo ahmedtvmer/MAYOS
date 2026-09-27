@@ -9,7 +9,8 @@ enum MayosButtonVariant { primary, secondary, tertiary }
 ///
 /// Primary is a filled blue CTA; secondary is outlined; tertiary is a quiet
 /// text action. All variants keep a >=48dp target, show a pressed state, and
-/// swap their label for a spinner while [loading].
+/// swap their label for a spinner while [loading]. [destructive] paints a
+/// primary button in the danger colour (account deletion, discards).
 class MayosButton extends StatelessWidget {
   const MayosButton({
     super.key,
@@ -19,6 +20,7 @@ class MayosButton extends StatelessWidget {
     this.icon,
     this.loading = false,
     this.expand = true,
+    this.destructive = false,
     this.semanticsLabel,
   });
 
@@ -28,11 +30,13 @@ class MayosButton extends StatelessWidget {
   final IconData? icon;
   final bool loading;
   final bool expand;
+  final bool destructive;
   final String? semanticsLabel;
 
   @override
   Widget build(BuildContext context) {
     final bool enabled = onPressed != null && !loading;
+    final MayosThemeExtension c = MayosTheme.of(context);
     final Widget child = loading
         ? SizedBox(
             height: 18,
@@ -40,8 +44,8 @@ class MayosButton extends StatelessWidget {
             child: CircularProgressIndicator(
               strokeWidth: 2,
               color: variant == MayosButtonVariant.primary
-                  ? MayosTheme.of(context).onAccent
-                  : MayosTheme.of(context).accent,
+                  ? (destructive ? c.onDanger : c.onAccent)
+                  : c.accent,
             ),
           )
         : _content(context);
@@ -49,6 +53,12 @@ class MayosButton extends StatelessWidget {
     final Widget button = switch (variant) {
       MayosButtonVariant.primary => FilledButton(
           onPressed: enabled ? onPressed : null,
+          style: destructive
+              ? FilledButton.styleFrom(
+                  backgroundColor: c.danger,
+                  foregroundColor: c.onDanger,
+                )
+              : null,
           child: child,
         ),
       MayosButtonVariant.secondary => OutlinedButton(

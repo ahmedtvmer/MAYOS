@@ -7,6 +7,12 @@ import '../../../core/api_client.dart';
 import '../../../core/chat_models.dart';
 import '../../../core/chat_storage.dart';
 import '../../../core/models.dart';
+import '../../../core/theme/mayos_spacing.dart';
+import '../../../core/theme/mayos_theme.dart';
+import '../../../core/ui/mayos_button.dart';
+import '../../../core/ui/mayos_card.dart';
+import '../../../core/ui/mayos_scaffold.dart';
+import '../../../core/ui/mayos_text_field.dart';
 import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
 
@@ -320,30 +326,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Assistant'),
-        actions: <Widget>[
-          IconButton(
-            key: const Key('chat_clear'),
-            tooltip: 'Clear chat history',
-            onPressed: _messages.isEmpty ? null : _confirmClear,
-            icon: const Icon(Icons.delete_outline),
-          ),
-        ],
-      ),
+    return MayosScaffold(
+      title: 'Assistant',
+      showBack: true,
+      actions: <Widget>[
+        IconButton(
+          key: const Key('chat_clear'),
+          tooltip: 'Clear chat history',
+          onPressed: _messages.isEmpty ? null : _confirmClear,
+          icon: const Icon(Icons.delete_outline),
+        ),
+      ],
       body: _disclosureLoaded && _loadingHistory && _messages.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: <Widget>[
-                if (!_disclosureAccepted) _disclosureCard(),
-                if (_offline) _OfflineChatBanner(onRetry: _retryHistory),
-                if (_historyError != null)
-                  _ErrorBanner(
-                    message: _historyError!,
-                    onRetry: _loadHistory,
-                  ),
-                Expanded(child: _messageList()),
+                // The gate, banners, and history share one scroll view so the
+                // composer stays docked at the bottom at any text scale (#54).
+                Expanded(child: _scrollableBody()),
                 if (_sendError != null)
                   _ErrorBanner(
                     key: const Key('chat_send_error'),
@@ -357,31 +357,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _disclosureCard() {
-    return Card(
-      key: const Key('chat_disclosure'),
-      margin: const EdgeInsets.all(12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(MayosSpacing.md),
+      child: MayosCard(
+        key: const Key('chat_disclosure'),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Row(
               children: <Widget>[
-                const Icon(Icons.privacy_tip_outlined, size: 18),
-                const SizedBox(width: 8),
-                Text('Before you start',
-                    style: Theme.of(context).textTheme.titleMedium),
+                Icon(Icons.privacy_tip_outlined, size: 18, color: c.accent),
+                const SizedBox(width: MayosSpacing.xs),
+                Expanded(
+                  child: Text('Before you start',
+                      style: Theme.of(context).textTheme.titleMedium),
+                ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: MayosSpacing.xs),
             const Text(hostedChatDisclosure),
-            const SizedBox(height: 12),
+            const SizedBox(height: MayosSpacing.sm),
             Align(
               alignment: Alignment.centerRight,
-              child: FilledButton(
+              child: MayosButton(
                 key: const Key('chat_disclosure_accept'),
+                label: 'I understand',
+                expand: false,
                 onPressed: _acceptDisclosure,
-                child: const Text('I understand'),
               ),
             ),
           ],
@@ -390,63 +393,97 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  Widget _messageList() {
-    if (_messages.isEmpty && _streamingText == null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            _disclosureAccepted
-                ? 'Ask your assistant about training, technique, or your program.'
-                : 'Accept the disclosure to start chatting.',
-            textAlign: TextAlign.center,
+  /// The disclosure gate, transient banners, and message history in one
+  /// scroll view. A short history is anchored to the top of the remaining
+  /// space; the composer below is always pinned to the bottom (#54).
+  Widget _scrollableBody() {
+    final List<Widget> banners = <Widget>[
+      if (!_disclosureAccepted) _disclosureCard(),
+      if (_offline) _OfflineChatBanner(onRetry: _retryHistory),
+      if (_historyError != null)
+        _ErrorBanner(message: _historyError!, onRetry: _loadHistory),
+    ];
+    final bool empty = _messages.isEmpty && _streamingText == null;
+    return CustomScrollView(
+      slivers: <Widget>[
+        if (banners.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Column(children: banners),
           ),
+        if (empty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: _emptyState(),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.all(MayosSpacing.md),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                _buildMessageItem,
+                childCount: _messages.length + (_streamingText != null ? 1 : 0),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _emptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(MayosSpacing.xl),
+        child: Text(
+          _disclosureAccepted
+              ? 'Ask your assistant about training, technique, or your program.'
+              : 'Accept the disclosure to start chatting.',
+          textAlign: TextAlign.center,
         ),
+      ),
+    );
+  }
+
+  Widget _buildMessageItem(BuildContext context, int index) {
+    if (index >= _messages.length) {
+      final String text = _streamingText ?? '';
+      return _bubble(
+        context,
+        role: 'assistant',
+        child: text.isEmpty ? const _TypingIndicator() : Text(text),
       );
     }
-    final bool showStreaming = _streamingText != null;
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: _messages.length + (showStreaming ? 1 : 0),
-      itemBuilder: (BuildContext context, int index) {
-        if (index >= _messages.length) {
-          final String text = _streamingText ?? '';
-          return _bubble(
-            context,
-            role: 'assistant',
-            child: text.isEmpty ? const _TypingIndicator() : Text(text),
-          );
-        }
-        final ChatMessage message = _messages[index];
-        if (message.isDebriefPointer) {
-          return _DebriefCard(message: message);
-        }
-        return _bubble(
-          context,
-          role: message.role,
-          child: Text(message.content),
-        );
-      },
+    final ChatMessage message = _messages[index];
+    if (message.isDebriefPointer) {
+      return _DebriefCard(message: message);
+    }
+    return _bubble(
+      context,
+      role: message.role,
+      child: Text(message.content),
     );
   }
 
   Widget _bubble(BuildContext context,
       {required String role, required Widget child}) {
     final bool user = role == 'user';
-    final ColorScheme colors = Theme.of(context).colorScheme;
+    final MayosThemeExtension c = MayosTheme.of(context);
     return Align(
       alignment: user ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        margin: const EdgeInsets.symmetric(vertical: MayosSpacing.xxs),
+        padding: const EdgeInsets.symmetric(
+            horizontal: MayosSpacing.sm, vertical: MayosSpacing.xs),
         constraints:
             BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
         decoration: BoxDecoration(
-          color:
-              user ? colors.primaryContainer : colors.surfaceContainerHighest,
+          color: user ? c.accent : c.secondarySurface,
           borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: user ? c.accent : c.border),
         ),
-        child: child,
+        child: DefaultTextStyle.merge(
+          style: TextStyle(color: user ? c.onAccent : c.textPrimary),
+          child: child,
+        ),
       ),
     );
   }
@@ -459,41 +496,56 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             : _offline
                 ? 'Chat needs a connection.'
                 : null;
+    final MayosThemeExtension c = MayosTheme.of(context);
     return SafeArea(
+      key: const Key('chat_composer_bar'),
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+        padding: const EdgeInsets.fromLTRB(MayosSpacing.sm, MayosSpacing.xxs,
+            MayosSpacing.sm, MayosSpacing.xs),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: <Widget>[
             Expanded(
-              child: TextField(
-                key: const Key('chat_composer'),
+              child: MayosTextField(
+                fieldKey: const Key('chat_composer'),
                 controller: _controller,
                 enabled: _composerEnabled,
                 minLines: 1,
                 maxLines: 4,
                 textInputAction: TextInputAction.newline,
-                decoration: InputDecoration(
-                  hintText: _offline ? 'Offline' : 'Message your assistant',
-                  helperText: helper,
-                  border: const OutlineInputBorder(),
-                ),
+                hint: _offline ? 'Offline' : 'Message your assistant',
+                helperText: helper,
                 onSubmitted: (_) => _send(),
               ),
             ),
-            const SizedBox(width: 8),
-            IconButton.filled(
-              key: const Key('chat_send'),
-              tooltip: 'Send',
-              onPressed: _composerEnabled ? _send : null,
-              icon: _sending
-                  ? const SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.send),
+            const SizedBox(width: MayosSpacing.xs),
+            Semantics(
+              label: 'Send',
+              button: true,
+              child: IconButton.filled(
+                key: const Key('chat_send'),
+                tooltip: 'Send',
+                style: IconButton.styleFrom(
+                  backgroundColor: c.accent,
+                  foregroundColor: c.onAccent,
+                  disabledBackgroundColor: c.surfaceSunken,
+                  disabledForegroundColor: c.textDisabled,
+                  minimumSize:
+                      const Size(kMayosMinTapTarget, kMayosMinTapTarget),
+                ),
+                onPressed: _composerEnabled ? _send : null,
+                icon: _sending
+                    ? SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: c.onAccent,
+                        ),
+                      )
+                    : const Icon(Icons.send),
+              ),
             ),
           ],
         ),
@@ -509,13 +561,30 @@ class _DebriefCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      key: const Key('chat_debrief'),
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      child: ListTile(
-        leading: const Icon(Icons.assignment_turned_in_outlined),
-        title: const Text('Session debrief'),
-        subtitle: Text(message.content),
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: MayosSpacing.xs),
+      child: MayosCard(
+        key: const Key('chat_debrief'),
+        color: c.accentSubtle,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Icon(Icons.assignment_turned_in_outlined, color: c.accent),
+            const SizedBox(width: MayosSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text('Session debrief',
+                      style: Theme.of(context).textTheme.titleSmall),
+                  const SizedBox(height: MayosSpacing.xxs),
+                  Text(message.content),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -535,31 +604,38 @@ class _OfflineChatBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
     return Container(
       key: const Key('chat_offline_banner'),
       width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: const EdgeInsets.fromLTRB(
+          MayosSpacing.md, MayosSpacing.sm, MayosSpacing.md, 0),
+      padding: const EdgeInsets.symmetric(
+          horizontal: MayosSpacing.md, vertical: MayosSpacing.xs),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.errorContainer,
-        borderRadius: BorderRadius.circular(8),
+        color: c.secondarySurface,
+        borderRadius: MayosRadii.mediumRadius,
+        border: Border.all(color: c.border),
       ),
       child: Row(
         children: <Widget>[
-          Icon(Icons.cloud_off,
-              size: 18, color: Theme.of(context).colorScheme.onErrorContainer),
-          const SizedBox(width: 8),
+          Icon(Icons.cloud_off, size: 18, color: c.textSecondary),
+          const SizedBox(width: MayosSpacing.xs),
           Expanded(
             child: Text(
               'Offline — showing saved chat history. Sending needs a connection.',
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.onErrorContainer),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: c.textSecondary),
             ),
           ),
-          TextButton(
+          MayosButton(
             key: const Key('chat_offline_retry'),
+            label: 'Retry',
+            variant: MayosButtonVariant.tertiary,
+            expand: false,
             onPressed: onRetry,
-            child: const Text('Retry'),
           ),
         ],
       ),
@@ -575,22 +651,36 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: const EdgeInsets.fromLTRB(
+          MayosSpacing.md, MayosSpacing.sm, MayosSpacing.md, 0),
+      padding: const EdgeInsets.symmetric(
+          horizontal: MayosSpacing.md, vertical: MayosSpacing.xs),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.errorContainer,
-        borderRadius: BorderRadius.circular(8),
+        color: c.secondarySurface,
+        borderRadius: MayosRadii.mediumRadius,
+        border: Border.all(color: c.danger),
       ),
       child: Row(
         children: <Widget>[
-          Expanded(child: Text(message)),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: c.danger),
+            ),
+          ),
           if (onRetry != null)
-            TextButton(
+            MayosButton(
               key: const Key('chat_retry'),
+              label: 'Retry',
+              variant: MayosButtonVariant.tertiary,
+              expand: false,
               onPressed: onRetry,
-              child: const Text('Retry'),
             ),
         ],
       ),

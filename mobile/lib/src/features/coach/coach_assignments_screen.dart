@@ -4,7 +4,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
 import '../../core/models.dart';
+import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
+import '../../core/theme/mayos_typography.dart';
+import '../../core/ui/mayos_button.dart';
+import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import 'coach_player_history_screen.dart';
@@ -92,13 +96,16 @@ class _CoachAssignmentsScreenState
         content: Text(
             '${entry.playerUsername} will lose coaching immediately and can no longer be seen by you.'),
         actions: <Widget>[
-          TextButton(
+          MayosButton(
+            label: 'Cancel',
+            variant: MayosButtonVariant.tertiary,
+            expand: false,
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
           ),
-          FilledButton(
+          MayosButton(
+            label: 'Revoke',
+            expand: false,
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Revoke'),
           ),
         ],
       ),
@@ -151,13 +158,16 @@ class _CoachAssignmentsScreenState
             'Every assignment ends immediately and your coach capability is removed. '
             'Your own player training data is kept.'),
         actions: <Widget>[
-          TextButton(
+          MayosButton(
+            label: 'Cancel',
+            variant: MayosButtonVariant.tertiary,
+            expand: false,
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
           ),
-          FilledButton(
+          MayosButton(
+            label: 'Disable coaching',
+            expand: false,
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Disable coaching'),
           ),
         ],
       ),
@@ -191,55 +201,53 @@ class _CoachAssignmentsScreenState
       return const SizedBox.shrink();
     }
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
       child: Text(
         _error!,
-        style: TextStyle(color: Theme.of(context).colorScheme.error),
+        style: MayosTypography.bodySecondary
+            .copyWith(color: MayosTheme.of(context).danger),
       ),
     );
   }
 
   Widget _inviteCard(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
     final AssignmentInvite? invite = _invite;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text('Player invite',
-                style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            const Text(
-              'Create a single-use code and give it to one player. It expires and can '
-              'only be redeemed while you have roster room; the exact expiry is shown '
-              'when the code is issued.',
+    return MayosCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text('Player invite',
+              style: MayosTypography.sectionHeading
+                  .copyWith(color: c.textPrimary)),
+          const SizedBox(height: MayosSpacing.xs),
+          Text(
+            'Create a single-use code and give it to one player. It expires and can '
+            'only be redeemed while you have roster room; the exact expiry is shown '
+            'when the code is issued.',
+            style:
+                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          ),
+          const SizedBox(height: MayosSpacing.sm),
+          MayosButton(
+            label: 'Create invite code',
+            icon: Icons.add,
+            loading: _issuing,
+            onPressed: _issuing ? null : _issue,
+          ),
+          if (invite != null) ...<Widget>[
+            const SizedBox(height: MayosSpacing.md),
+            SelectableText(
+              invite.token,
+              style: MayosTypography.numeric.copyWith(color: c.textPrimary),
             ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: _issuing ? null : _issue,
-              icon: _issuing
-                  ? const SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.add),
-              label: const Text('Create invite code'),
-            ),
-            if (invite != null) ...<Widget>[
-              const SizedBox(height: 16),
-              SelectableText(
-                invite.token,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 4),
-              Text('Expires ${invite.expiresAt}'),
-              Text(
-                  '${invite.remaining} of ${invite.capacity} roster slots free'),
-            ],
+            const SizedBox(height: MayosSpacing.xxs),
+            Text('Expires ${invite.expiresAt}',
+                style: MayosTypography.caption.copyWith(color: c.textMuted)),
+            Text('${invite.remaining} of ${invite.capacity} roster slots free',
+                style: MayosTypography.caption.copyWith(color: c.textMuted)),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -248,52 +256,58 @@ class _CoachAssignmentsScreenState
     if (_notices.isEmpty) {
       return const SizedBox.shrink();
     }
+    final MayosThemeExtension c = MayosTheme.of(context);
     final int unread =
         _notices.where((AssignmentNotice n) => n.isUnread).length;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: <Widget>[
-                Text('Notices', style: Theme.of(context).textTheme.titleMedium),
-                if (unread > 0)
-                  TextButton(
-                    onPressed: _markRead,
-                    child: const Text('Mark all read'),
-                  ),
-              ],
-            ),
-            for (final AssignmentNotice notice in _notices)
-              ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(notice.isUnread
-                    ? Icons.notifications_active
-                    : Icons.notifications_none),
-                title: Text(notice.message),
-                subtitle: Text(notice.createdAt),
+    return MayosCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text('Notices',
+                    style: MayosTypography.sectionHeading
+                        .copyWith(color: c.textPrimary)),
               ),
-          ],
-        ),
+              if (unread > 0)
+                MayosButton(
+                  label: 'Mark all read',
+                  variant: MayosButtonVariant.tertiary,
+                  expand: false,
+                  onPressed: _markRead,
+                ),
+            ],
+          ),
+          for (final AssignmentNotice notice in _notices)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                notice.isUnread
+                    ? Icons.notifications_active
+                    : Icons.notifications_none,
+                color: notice.isUnread ? c.accent : c.textMuted,
+              ),
+              title: Text(notice.message),
+              subtitle: Text(notice.createdAt),
+            ),
+        ],
       ),
     );
   }
 
-  Widget _badge(
-      BuildContext context, String label, Color color, Color foreground) {
+  Widget _badge(String label, Color color, Color foreground) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding:
+          const EdgeInsets.symmetric(horizontal: MayosSpacing.xs, vertical: 2),
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: MayosRadii.pillRadius,
       ),
       child: Text(
         label,
-        style: TextStyle(color: foreground, fontSize: 12),
+        style: MayosTypography.caption.copyWith(color: foreground),
       ),
     );
   }
@@ -307,72 +321,75 @@ class _CoachAssignmentsScreenState
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         if (entry.alertsNew > 0)
-          _badge(context, '${entry.alertsNew}', tokens.danger, tokens.onDanger),
+          _badge('${entry.alertsNew}', tokens.danger, tokens.onDanger),
         if (entry.alertsNew > 0 && entry.alertsAcknowledged > 0)
           const SizedBox(width: 4),
         if (entry.alertsAcknowledged > 0)
-          _badge(context, '${entry.alertsAcknowledged}', tokens.warning,
-              tokens.onWarning),
+          _badge(
+              '${entry.alertsAcknowledged}', tokens.warning, tokens.onWarning),
       ],
     );
   }
 
   Widget _assignmentsCard(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text('Active assignments',
-                      style: Theme.of(context).textTheme.titleMedium),
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return MayosCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text('Active assignments',
+                    style: MayosTypography.sectionHeading
+                        .copyWith(color: c.textPrimary)),
+              ),
+              MayosButton(
+                label: 'Alert center',
+                icon: Icons.notifications_outlined,
+                variant: MayosButtonVariant.tertiary,
+                expand: false,
+                onPressed: () => context.push(coachAlertsPath),
+              ),
+            ],
+          ),
+          const SizedBox(height: MayosSpacing.xs),
+          if (_assignments.isEmpty)
+            Text('No assigned players yet.',
+                style: MayosTypography.bodySecondary
+                    .copyWith(color: c.textSecondary))
+          else
+            for (final CoachRosterEntry entry in _assignments)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.person_outline, color: c.textSecondary),
+                title: Text(entry.playerUsername),
+                subtitle: Text('Since ${entry.startedAt}'),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (BuildContext context) =>
+                        CoachPlayerHistoryScreen(entry: entry),
+                  ),
                 ),
-                TextButton.icon(
-                  onPressed: () => context.push(coachAlertsPath),
-                  icon: const Icon(Icons.notifications_outlined),
-                  label: const Text('Alert center'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (_assignments.isEmpty)
-              const Text('No assigned players yet.')
-            else
-              for (final CoachRosterEntry entry in _assignments)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.person_outline),
-                  title: Text(entry.playerUsername),
-                  subtitle: Text('Since ${entry.startedAt}'),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (BuildContext context) =>
-                          CoachPlayerHistoryScreen(entry: entry),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    _rosterBadges(context, entry),
+                    const SizedBox(width: MayosSpacing.xs),
+                    MayosButton(
+                      label: _busyAssignmentId == entry.assignmentId
+                          ? 'Revoking…'
+                          : 'Revoke',
+                      variant: MayosButtonVariant.tertiary,
+                      expand: false,
+                      onPressed: _busyAssignmentId == entry.assignmentId
+                          ? null
+                          : () => _revoke(entry),
                     ),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      _rosterBadges(context, entry),
-                      const SizedBox(width: 8),
-                      TextButton(
-                        onPressed: _busyAssignmentId == entry.assignmentId
-                            ? null
-                            : () => _revoke(entry),
-                        child: Text(
-                          _busyAssignmentId == entry.assignmentId
-                              ? 'Revoking…'
-                              : 'Revoke',
-                        ),
-                      ),
-                    ],
-                  ),
+                  ],
                 ),
-          ],
-        ),
+              ),
+        ],
       ),
     );
   }
@@ -383,25 +400,21 @@ class _CoachAssignmentsScreenState
       return const Center(child: CircularProgressIndicator());
     }
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: MayosSpacing.screen,
       children: <Widget>[
         _errorBanner(context),
         _inviteCard(context),
-        const SizedBox(height: 12),
+        const SizedBox(height: MayosSpacing.sm),
         _noticesCard(context),
-        const SizedBox(height: 12),
+        const SizedBox(height: MayosSpacing.sm),
         _assignmentsCard(context),
-        const SizedBox(height: 24),
-        OutlinedButton.icon(
+        const SizedBox(height: MayosSpacing.xl),
+        MayosButton(
+          label: 'Disable coaching',
+          icon: Icons.logout,
+          variant: MayosButtonVariant.secondary,
+          loading: _disabling,
           onPressed: _disabling ? null : _disable,
-          icon: const Icon(Icons.logout),
-          label: _disabling
-              ? const SizedBox(
-                  height: 18,
-                  width: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Disable coaching'),
         ),
       ],
     );

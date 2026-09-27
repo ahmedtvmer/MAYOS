@@ -3,7 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
 import '../../core/models.dart';
+import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
+import '../../core/theme/mayos_typography.dart';
+import '../../core/ui/mayos_button.dart';
+import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
 
 /// Coach alert centre (#31): lists missed expected-day alerts with their new /
@@ -98,11 +102,11 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
     final Color color = switch (alert.state) {
       'new' => tokens.danger,
       'acknowledged' => tokens.warning,
-      _ => Theme.of(context).colorScheme.outline,
+      _ => tokens.textMuted,
     };
     return Chip(
       label: Text(alert.stateLabel),
-      labelStyle: TextStyle(color: color, fontSize: 12),
+      labelStyle: MayosTypography.caption.copyWith(color: color),
       visualDensity: VisualDensity.compact,
       side: BorderSide(color: color),
       backgroundColor: Colors.transparent,
@@ -110,48 +114,50 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
   }
 
   Widget _alertCard(BuildContext context, CoachAlert alert) {
+    final MayosThemeExtension c = MayosTheme.of(context);
     final bool busy = _busyAlertId == alert.alertId;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+      child: MayosCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Row(
               children: <Widget>[
                 Expanded(
-                  child: Text(alert.playerUsername,
-                      style: Theme.of(context).textTheme.titleMedium),
+                  child: Text(
+                    alert.playerUsername,
+                    style: MayosTypography.exerciseTitle
+                        .copyWith(color: c.textPrimary),
+                  ),
                 ),
                 _stateChip(context, alert),
               ],
             ),
-            const SizedBox(height: 4),
-            Text(alert.description),
+            const SizedBox(height: MayosSpacing.xxs),
+            Text(alert.description,
+                style: MayosTypography.body.copyWith(color: c.textPrimary)),
             if (alert.resolvedBy != null)
-              Text('Resolved by ${alert.resolvedBy}',
-                  style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 8),
+              Text(
+                'Resolved by ${alert.resolvedBy}',
+                style: MayosTypography.caption.copyWith(color: c.textMuted),
+              ),
+            const SizedBox(height: MayosSpacing.xs),
             Row(
               children: <Widget>[
                 if (alert.isNew)
-                  TextButton(
+                  MayosButton(
+                    label: 'Acknowledge',
+                    variant: MayosButtonVariant.tertiary,
+                    expand: false,
                     onPressed: busy ? null : () => _acknowledge(alert),
-                    child: const Text('Acknowledge'),
                   ),
                 if (!alert.isResolved)
-                  FilledButton(
+                  MayosButton(
+                    label: 'Resolve',
+                    expand: false,
+                    loading: busy,
                     onPressed: busy ? null : () => _resolve(alert),
-                    child: const Text('Resolve'),
-                  ),
-                if (busy)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 12),
-                    child: SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
                   ),
               ],
             ),
@@ -166,22 +172,23 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
+    final MayosThemeExtension c = MayosTheme.of(context);
     final List<CoachAlert> visible = _alerts
         .where((CoachAlert alert) => _visibleStates.contains(alert.state))
         .toList(growable: false);
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: MayosSpacing.screen,
       children: <Widget>[
         if (_error != null)
           Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
             child: Text(
               _error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              style: MayosTypography.bodySecondary.copyWith(color: c.danger),
             ),
           ),
         Wrap(
-          spacing: 8,
+          spacing: MayosSpacing.xs,
           children: <Widget>[
             for (final String state in _states)
               FilterChip(
@@ -197,9 +204,11 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
               ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: MayosSpacing.sm),
         if (visible.isEmpty)
-          const Text('No alerts to show.')
+          Text('No alerts to show.',
+              style: MayosTypography.bodySecondary
+                  .copyWith(color: c.textSecondary))
         else
           for (final CoachAlert alert in visible) _alertCard(context, alert),
       ],

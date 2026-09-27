@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
 import '../../core/models.dart';
+import '../../core/theme/mayos_spacing.dart';
+import '../../core/theme/mayos_theme.dart';
 import '../../providers.dart';
 
 /// Coach drill-down (#25): one actively assigned player's sessions, volume,
@@ -318,7 +320,7 @@ class _CoachPlayerHistoryScreenState
       if (_checkInError != null) ...<Widget>[
         Text(
           _checkInError!,
-          style: TextStyle(color: Theme.of(context).colorScheme.error),
+          style: TextStyle(color: MayosTheme.of(context).danger),
         ),
         const SizedBox(height: 12),
       ],
@@ -357,7 +359,7 @@ class _CoachPlayerHistoryScreenState
       if (_requestError != null) ...<Widget>[
         Text(
           _requestError!,
-          style: TextStyle(color: Theme.of(context).colorScheme.error),
+          style: TextStyle(color: MayosTheme.of(context).danger),
         ),
         const SizedBox(height: 12),
       ],
@@ -405,7 +407,7 @@ class _CoachPlayerHistoryScreenState
   Widget _section(BuildContext context, String title, List<Widget> children) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(MayosSpacing.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -623,7 +625,7 @@ class _CoachPlayerHistoryScreenState
     if (_error != null) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(MayosSpacing.xl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
@@ -637,12 +639,12 @@ class _CoachPlayerHistoryScreenState
     }
     final CoachPlayerSummary summary = _summary!;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(MayosSpacing.md),
       children: <Widget>[
         if (_publishError != null) ...<Widget>[
           Text(
             _publishError!,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
+            style: TextStyle(color: MayosTheme.of(context).danger),
           ),
           const SizedBox(height: 12),
         ],

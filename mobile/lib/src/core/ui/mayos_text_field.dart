@@ -13,6 +13,7 @@ class MayosTextField extends StatelessWidget {
     this.obscureText = false,
     this.enabled = true,
     this.readOnly = false,
+    this.autofocus = false,
     this.keyboardType,
     this.textInputAction,
     this.textCapitalization = TextCapitalization.none,
@@ -25,7 +26,9 @@ class MayosTextField extends StatelessWidget {
     this.validator,
     this.prefixIcon,
     this.suffixIcon,
+    this.minLines,
     this.maxLines = 1,
+    this.dense = false,
     this.fieldKey,
   });
 
@@ -36,6 +39,7 @@ class MayosTextField extends StatelessWidget {
   final bool obscureText;
   final bool enabled;
   final bool readOnly;
+  final bool autofocus;
   final TextInputType? keyboardType;
   final TextInputAction? textInputAction;
   final TextCapitalization textCapitalization;
@@ -48,7 +52,12 @@ class MayosTextField extends StatelessWidget {
   final String? Function(String?)? validator;
   final Widget? prefixIcon;
   final Widget? suffixIcon;
+  final int? minLines;
   final int maxLines;
+
+  /// Tighter content padding for narrow numeric cells (workout set rows)
+  /// while keeping the themed border and label.
+  final bool dense;
 
   /// Applied to the inner [TextField] so existing test keys keep working.
   final Key? fieldKey;
@@ -62,6 +71,7 @@ class MayosTextField extends StatelessWidget {
       obscureText: obscureText,
       enabled: enabled,
       readOnly: readOnly,
+      autofocus: autofocus,
       keyboardType: keyboardType,
       textInputAction: textInputAction,
       textCapitalization: textCapitalization,
@@ -70,6 +80,7 @@ class MayosTextField extends StatelessWidget {
       enableSuggestions: enableSuggestions,
       onSubmitted: onSubmitted,
       onChanged: onChanged,
+      minLines: minLines,
       maxLines: maxLines,
       decoration: InputDecoration(
         labelText: label,
@@ -77,6 +88,10 @@ class MayosTextField extends StatelessWidget {
         helperText: helperText,
         prefixIcon: prefixIcon,
         suffixIcon: suffixIcon,
+        isDense: dense,
+        contentPadding: dense
+            ? const EdgeInsets.symmetric(horizontal: 10, vertical: 12)
+            : null,
         border: const OutlineInputBorder(),
       ),
     );

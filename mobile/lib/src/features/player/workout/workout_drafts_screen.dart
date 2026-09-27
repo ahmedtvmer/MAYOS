@@ -4,7 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_client.dart';
 import '../../../core/models.dart';
 import '../../../core/performed_date_window.dart';
+import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
+import '../../../core/theme/mayos_typography.dart';
+import '../../../core/ui/mayos_button.dart';
+import '../../../core/ui/mayos_card.dart';
 import '../../../providers.dart';
 import 'draft_sync_service.dart';
 
@@ -19,55 +23,68 @@ class WorkoutDraftsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final MayosThemeExtension c = MayosTheme.of(context);
     if (!ref.watch(offlineWorkoutDraftsEnabledProvider)) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(MayosSpacing.xl),
           child: Text(
             'Offline workout drafts are available in the Android app.',
             textAlign: TextAlign.center,
+            style: MayosTypography.body.copyWith(color: c.textSecondary),
           ),
         ),
       );
     }
     final DraftSyncService sync = ref.watch(draftSyncServiceProvider);
     final List<WorkoutDraft> drafts = sync.drafts;
+    final int pending = drafts.where((WorkoutDraft d) => d.isUnsynced).length;
+    final int synced = drafts.where((WorkoutDraft d) => d.isSynced).length;
     return Column(
       children: <Widget>[
         Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
+          padding: const EdgeInsets.fromLTRB(MayosSpacing.lg, MayosSpacing.md,
+              MayosSpacing.lg, MayosSpacing.xs),
+          child: Wrap(
+            spacing: MayosSpacing.sm,
+            runSpacing: MayosSpacing.xs,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            alignment: WrapAlignment.spaceBetween,
             children: <Widget>[
-              Expanded(
-                child: Text(
-                  drafts.isEmpty
-                      ? 'No drafts yet.'
-                      : '${drafts.where((WorkoutDraft d) => d.isUnsynced).length} pending · ${drafts.where((WorkoutDraft d) => d.isSynced).length} synced',
-                ),
+              Text(
+                drafts.isEmpty
+                    ? 'No drafts yet.'
+                    : '$pending pending · $synced synced',
+                style: MayosTypography.bodySecondary
+                    .copyWith(color: c.textSecondary),
               ),
-              FilledButton.tonalIcon(
+              MayosButton(
+                label: 'Sync now',
+                icon: Icons.sync,
+                variant: MayosButtonVariant.secondary,
+                expand: false,
+                loading: sync.isSyncing,
                 onPressed: sync.isSyncing ? null : sync.syncNow,
-                icon: sync.isSyncing
-                    ? const SizedBox(
-                        height: 16,
-                        width: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.sync),
-                label: const Text('Sync now'),
               ),
             ],
           ),
         ),
         Expanded(
           child: drafts.isEmpty
-              ? const Center(
-                  child: Text(
-                    'Workouts you log offline appear here until they sync.',
-                    textAlign: TextAlign.center,
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(MayosSpacing.xl),
+                    child: Text(
+                      'Workouts you log offline appear here until they sync.',
+                      textAlign: TextAlign.center,
+                      style:
+                          MayosTypography.body.copyWith(color: c.textSecondary),
+                    ),
                   ),
                 )
               : ListView(
+                  padding: const EdgeInsets.fromLTRB(
+                      MayosSpacing.lg, 0, MayosSpacing.lg, MayosSpacing.xxl),
                   children: <Widget>[
                     for (final WorkoutDraft draft in drafts)
                       _DraftTile(draft: draft),
@@ -86,55 +103,86 @@ class _DraftTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final MayosThemeExtension c = MayosTheme.of(context);
     final DraftSyncService sync = ref.watch(draftSyncServiceProvider);
-    return Card(
-      child: ListTile(
-        leading: _statusIcon(context),
-        title: Text('${draft.dayName} · ${draft.performedDate}'),
-        subtitle: Column(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+      child: MayosCard(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(
-                '${draft.workingSetCount} working sets · ${draft.statusLabel}'),
-            if (draft.versionDifferenceLabel != null)
-              Text(
-                draft.versionDifferenceLabel!,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            if (draft.lastError != null && draft.needsAttention)
-              Text(
-                draft.lastError!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            if (!draft.isSynced && !draft.inFlight)
-              IconButton(
-                tooltip: 'Edit date',
-                onPressed: () => _editPendingDate(context, ref),
-                icon: const Icon(Icons.edit_calendar_outlined),
-              ),
-            if (draft.needsAttention)
-              IconButton(
-                tooltip: 'Retry',
-                onPressed: () => sync.retryDraft(draft.clientSessionId),
-                icon: const Icon(Icons.refresh),
-              ),
-            if (draft.isSynced && draft.serverSessionId != null)
-              IconButton(
-                tooltip: 'Correct date',
-                onPressed: () => _correctSyncedDate(context, ref),
-                icon: const Icon(Icons.history_toggle_off),
-              ),
-            if (draft.isUnsynced)
-              IconButton(
-                tooltip: 'Discard draft',
-                onPressed: () => sync.discardDraft(draft.clientSessionId),
-                icon: const Icon(Icons.delete_outline),
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                _statusIcon(context),
+                const SizedBox(width: MayosSpacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        '${draft.dayName} · ${draft.performedDate}',
+                        style: MayosTypography.exerciseTitle
+                            .copyWith(color: c.textPrimary),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${draft.workingSetCount} working sets · ${draft.statusLabel}',
+                        style: MayosTypography.bodySecondary
+                            .copyWith(color: c.textSecondary),
+                      ),
+                      if (draft.versionDifferenceLabel != null) ...<Widget>[
+                        const SizedBox(height: 2),
+                        Text(
+                          draft.versionDifferenceLabel!,
+                          style: MayosTypography.caption
+                              .copyWith(color: c.textMuted),
+                        ),
+                      ],
+                      if (draft.lastError != null &&
+                          draft.needsAttention) ...<Widget>[
+                        const SizedBox(height: 2),
+                        Text(
+                          draft.lastError!,
+                          style:
+                              MayosTypography.caption.copyWith(color: c.danger),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: MayosSpacing.xs),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: <Widget>[
+                if (!draft.isSynced && !draft.inFlight)
+                  IconButton(
+                    icon: const Icon(Icons.edit_calendar_outlined),
+                    tooltip: 'Edit date',
+                    onPressed: () => _editPendingDate(context, ref),
+                  ),
+                if (draft.needsAttention)
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Retry',
+                    onPressed: () => sync.retryDraft(draft.clientSessionId),
+                  ),
+                if (draft.isSynced && draft.serverSessionId != null)
+                  IconButton(
+                    icon: const Icon(Icons.history_toggle_off),
+                    tooltip: 'Correct date',
+                    onPressed: () => _correctSyncedDate(context, ref),
+                  ),
+                if (draft.isUnsynced)
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: 'Discard draft',
+                    onPressed: () => sync.discardDraft(draft.clientSessionId),
+                  ),
+              ],
+            ),
           ],
         ),
       ),

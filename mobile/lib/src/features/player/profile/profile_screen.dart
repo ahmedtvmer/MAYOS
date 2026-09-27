@@ -5,6 +5,12 @@ import '../../../core/api_client.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/device_timezone.dart';
 import '../../../core/models.dart';
+import '../../../core/theme/mayos_spacing.dart';
+import '../../../core/theme/mayos_theme.dart';
+import '../../../core/theme/mayos_typography.dart';
+import '../../../core/ui/mayos_button.dart';
+import '../../../core/ui/mayos_section_header.dart';
+import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
 
 /// Mirrors the server's `MAX_PAUSE_DAYS` in `service/schedule.py`; the client
@@ -285,32 +291,38 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   'email, and any unsynced drafts on this device. '
                   'This cannot be undone.',
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  key: const Key('delete_account_password_field'),
+                const SizedBox(height: MayosSpacing.md),
+                MayosTextField(
+                  fieldKey: const Key('delete_account_password_field'),
                   controller: _deletePassword,
                   obscureText: true,
                   enabled: !busy,
-                  decoration: const InputDecoration(labelText: 'Password'),
+                  label: 'Password',
                 ),
                 if (error != null) ...<Widget>[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: MayosSpacing.sm),
                   Text(
                     error!,
-                    style:
-                        TextStyle(color: Theme.of(context).colorScheme.error),
+                    style: MayosTypography.bodySecondary
+                        .copyWith(color: MayosTheme.of(context).danger),
                   ),
                 ],
               ],
             ),
           ),
           actions: <Widget>[
-            TextButton(
+            MayosButton(
+              label: 'Cancel',
+              variant: MayosButtonVariant.tertiary,
+              expand: false,
               onPressed: busy ? null : () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
             ),
-            FilledButton(
+            MayosButton(
               key: const Key('delete_account_confirm_button'),
+              label: 'Delete account',
+              destructive: true,
+              expand: false,
+              loading: busy,
               onPressed: busy
                   ? null
                   : () async {
@@ -332,13 +344,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         });
                       }
                     },
-              child: busy
-                  ? const SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Delete account'),
             ),
           ],
         ),
@@ -351,34 +356,38 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
+    final MayosThemeExtension c = MayosTheme.of(context);
     if (_loadError != null) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(MayosSpacing.xl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Text(_loadError!, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              FilledButton(onPressed: _load, child: const Text('Retry')),
+              const SizedBox(height: MayosSpacing.md),
+              MayosButton(
+                label: 'Retry',
+                variant: MayosButtonVariant.secondary,
+                expand: false,
+                onPressed: _load,
+              ),
             ],
           ),
         ),
       );
     }
-    final ThemeData theme = Theme.of(context);
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: MayosSpacing.screen,
       children: <Widget>[
-        Text('Training profile', style: theme.textTheme.titleLarge),
-        const SizedBox(height: 4),
-        Text(
-          'Saving changes can rebuild your program.',
-          style: theme.textTheme.bodySmall,
+        const MayosSectionHeader(
+          title: 'Training profile',
+          subtitle: 'Saving changes can rebuild your program.',
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: MayosSpacing.md),
         DropdownButtonFormField<int>(
           initialValue: _weeklyFrequency,
+          isExpanded: true,
           decoration: const InputDecoration(
             labelText: 'Training days per week',
             border: OutlineInputBorder(),
@@ -392,9 +401,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               : (int? value) =>
                   setState(() => _weeklyFrequency = value ?? _weeklyFrequency),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: MayosSpacing.sm),
         DropdownButtonFormField<String>(
           initialValue: _repPreference,
+          isExpanded: true,
           decoration: const InputDecoration(
             labelText: 'Rep preference',
             border: OutlineInputBorder(),
@@ -402,7 +412,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           items: <DropdownMenuItem<String>>[
             for (final String preference in _repPreferences)
               DropdownMenuItem<String>(
-                  value: preference, child: Text(preference)),
+                  value: preference,
+                  child: Text(preference, overflow: TextOverflow.ellipsis)),
           ],
           onChanged: _saving
               ? null
@@ -410,38 +421,32 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   setState(() => _repPreference = value ?? _repPreference),
         ),
         if (_notice != null) ...<Widget>[
-          const SizedBox(height: 12),
+          const SizedBox(height: MayosSpacing.sm),
           Text(
             _notice!,
             style: _noticeIsError
-                ? TextStyle(color: theme.colorScheme.error)
-                : theme.textTheme.bodyMedium,
+                ? MayosTypography.bodySecondary.copyWith(color: c.danger)
+                : MayosTypography.body,
           ),
         ],
-        const SizedBox(height: 20),
-        FilledButton(
+        const SizedBox(height: MayosSpacing.lg),
+        MayosButton(
+          label: 'Save profile',
+          loading: _saving,
           onPressed: _saving ? null : _save,
-          child: _saving
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Save profile'),
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: MayosSpacing.xxl),
         const Divider(),
-        const SizedBox(height: 8),
-        Text('Training schedule', style: theme.textTheme.titleLarge),
-        const SizedBox(height: 4),
-        Text(
-          'Expected weekdays and timezone, separate from your program.',
-          style: theme.textTheme.bodySmall,
+        const SizedBox(height: MayosSpacing.sm),
+        const MayosSectionHeader(
+          title: 'Training schedule',
+          subtitle:
+              'Expected weekdays and timezone, separate from your program.',
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: MayosSpacing.md),
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: MayosSpacing.xs,
+          runSpacing: MayosSpacing.xs,
           children: <Widget>[
             for (int day = 1; day <= 7; day++)
               FilterChip(
@@ -460,108 +465,100 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
           ],
         ),
-        const SizedBox(height: 12),
-        TextField(
-          key: const Key('timezone_field'),
+        const SizedBox(height: MayosSpacing.sm),
+        MayosTextField(
+          fieldKey: const Key('timezone_field'),
           controller: _timezone,
           enabled: !_savingSchedule,
-          decoration: const InputDecoration(
-            labelText: 'Timezone',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Timezone',
         ),
         if (_scheduleNotice != null) ...<Widget>[
-          const SizedBox(height: 12),
+          const SizedBox(height: MayosSpacing.sm),
           Text(
             _scheduleNotice!,
             style: _scheduleNoticeIsError
-                ? TextStyle(color: theme.colorScheme.error)
-                : theme.textTheme.bodyMedium,
+                ? MayosTypography.bodySecondary.copyWith(color: c.danger)
+                : MayosTypography.body,
           ),
         ],
-        const SizedBox(height: 12),
-        FilledButton(
+        const SizedBox(height: MayosSpacing.sm),
+        MayosButton(
           key: const Key('save_schedule_button'),
+          label: 'Save schedule',
+          loading: _savingSchedule,
           onPressed: _savingSchedule ? null : _saveSchedule,
-          child: _savingSchedule
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Save schedule'),
         ),
-        const SizedBox(height: 24),
-        Text('Training pause', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 8),
+        const SizedBox(height: MayosSpacing.xl),
+        const MayosSectionHeader(title: 'Training pause'),
         Row(
           children: <Widget>[
             Expanded(
-              child: OutlinedButton(
+              child: MayosButton(
                 key: const Key('pause_start_button'),
+                label: 'Start: ${_formatDate(_pauseStart)}',
+                variant: MayosButtonVariant.secondary,
                 onPressed:
                     _schedulingPause ? null : () => _pickPauseDate(start: true),
-                child: Text('Start: ${_formatDate(_pauseStart)}'),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: MayosSpacing.xs),
             Expanded(
-              child: OutlinedButton(
+              child: MayosButton(
                 key: const Key('pause_end_button'),
+                label: 'End: ${_formatDate(_pauseEnd)}',
+                variant: MayosButtonVariant.secondary,
                 onPressed: _schedulingPause
                     ? null
                     : () => _pickPauseDate(start: false),
-                child: Text('End: ${_formatDate(_pauseEnd)}'),
               ),
             ),
           ],
         ),
         if (_pauseNotice != null) ...<Widget>[
-          const SizedBox(height: 12),
+          const SizedBox(height: MayosSpacing.sm),
           Text(
             _pauseNotice!,
             style: _pauseNoticeIsError
-                ? TextStyle(color: theme.colorScheme.error)
-                : theme.textTheme.bodyMedium,
+                ? MayosTypography.bodySecondary.copyWith(color: c.danger)
+                : MayosTypography.body,
           ),
         ],
-        const SizedBox(height: 12),
-        FilledButton(
+        const SizedBox(height: MayosSpacing.sm),
+        MayosButton(
           key: const Key('schedule_pause_button'),
+          label: 'Schedule pause',
+          loading: _schedulingPause,
           onPressed: _schedulingPause ? null : _schedulePause,
-          child: _schedulingPause
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Schedule pause'),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: MayosSpacing.sm),
         if (_pauses.isEmpty)
-          const Text('No scheduled pauses.')
+          Text('No scheduled pauses.',
+              style: MayosTypography.bodySecondary
+                  .copyWith(color: c.textSecondary))
         else
           for (final ScheduledPause pause in _pauses)
-            Text('Pause: ${pause.startsOn} → ${pause.endsOn}'),
-        const SizedBox(height: 32),
+            Text(
+              'Pause: ${pause.startsOn} → ${pause.endsOn}',
+              style: MayosTypography.body.copyWith(color: c.textPrimary),
+            ),
+        const SizedBox(height: MayosSpacing.xxl),
         const Divider(),
-        const SizedBox(height: 8),
-        Text('Danger zone', style: theme.textTheme.titleLarge),
-        const SizedBox(height: 4),
-        Text(
-          'Deleting your account permanently removes it and its active data, '
-          'including unsynced drafts on this device. It cannot be undone.',
-          style: theme.textTheme.bodySmall,
+        const SizedBox(height: MayosSpacing.sm),
+        const MayosSectionHeader(
+          title: 'Danger zone',
+          subtitle: 'Deleting your account permanently removes it and its '
+              'active data, including unsynced drafts on this device. It '
+              'cannot be undone.',
         ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
+        const SizedBox(height: MayosSpacing.sm),
+        MayosButton(
           key: const Key('delete_account_button'),
+          label: 'Delete account',
+          icon: Icons.delete_forever_outlined,
+          variant: MayosButtonVariant.secondary,
+          destructive: true,
+          expand: false,
           onPressed: _confirmDeleteAccount,
-          icon: const Icon(Icons.delete_forever_outlined),
-          label: const Text('Delete account'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: theme.colorScheme.error,
-          ),
         ),
       ],
     );

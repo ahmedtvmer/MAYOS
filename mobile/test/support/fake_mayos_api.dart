@@ -1579,12 +1579,11 @@ class FakeMayosApi {
       'explanation':
           'Your specialization is required and selects the default split family.',
       'option_descriptions': <String, String>{
-        'male':
-            'Standard split family by weekly frequency: full body at 1-3 days, '
-                'upper/lower at 4 days, Arnold x Upper/Lower at 5 days.',
-        'female': 'Glute/lower-body-biased family by weekly frequency: '
-            'glute-specialised full body at 1-3 days, lower (glute bias) / '
-            'upper & core at 4-5 days.',
+        'male': 'Balanced upper- and lower-body training by frequency: full '
+            'body at 1-3 days, upper/lower at 4 days, Arnold-style at 5 days.',
+        'female': 'Glute- and lower-body-focused by frequency: '
+            'glute-specialised full body at 1-3 days, lower-body (glute bias) '
+            'and upper body + core at 4-5 days.',
       },
     },
     <String, dynamic>{

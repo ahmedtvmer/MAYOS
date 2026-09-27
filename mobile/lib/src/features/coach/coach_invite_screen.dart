@@ -3,6 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
+import '../../core/theme/mayos_spacing.dart';
+import '../../core/theme/mayos_theme.dart';
+import '../../core/ui/mayos_button.dart';
+import '../../core/ui/mayos_scaffold.dart';
+import '../../core/ui/mayos_text_field.dart';
 import '../../providers.dart';
 import '../../router.dart';
 
@@ -57,47 +62,48 @@ class _CoachInviteScreenState extends ConsumerState<CoachInviteScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Coach invite')),
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return MayosScaffold(
+      title: 'Coach invite',
+      showBack: true,
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: MayosSpacing.screen,
         children: <Widget>[
           Text(
             'Enter your invite code',
             style: Theme.of(context).textTheme.titleLarge,
           ),
-          const SizedBox(height: 8),
-          const Text(
+          const SizedBox(height: MayosSpacing.xs),
+          Text(
             'This owner-issued code enables the coach capability on your own account. '
             'It is single-use and expires. Entering it does not assign you to a coach.',
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(color: c.textSecondary),
           ),
-          const SizedBox(height: 16),
-          TextField(
+          const SizedBox(height: MayosSpacing.md),
+          MayosTextField(
             controller: _token,
             autocorrect: false,
             enableSuggestions: false,
-            decoration: const InputDecoration(
-              labelText: 'Invite code',
-              border: OutlineInputBorder(),
-            ),
+            label: 'Invite code',
           ),
           if (_error != null) ...<Widget>[
-            const SizedBox(height: 12),
+            const SizedBox(height: MayosSpacing.sm),
             Text(
               _error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: c.danger),
             ),
           ],
-          const SizedBox(height: 20),
-          FilledButton(
+          const SizedBox(height: MayosSpacing.lg),
+          MayosButton(
+            label: 'Enable coaching',
+            loading: _submitting,
             onPressed: _submitting ? null : _submit,
-            child: _submitting
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Enable coaching'),
           ),
         ],
       ),

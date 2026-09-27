@@ -67,6 +67,10 @@ class _ProgressLineChartState extends State<ProgressLineChart> {
   static const double _padLeft = 42;
   static const double _padRight = 14;
 
+  /// Horizontal room kept inside the plot so an edge marker (and its selected
+  /// ring) is never clipped by the canvas edge (#54).
+  static const double _markerInset = 8;
+
   int? _hitTest(Offset position, double width) {
     final int count = widget.points.length;
     if (count == 0) {
@@ -75,12 +79,13 @@ class _ProgressLineChartState extends State<ProgressLineChart> {
     if (count == 1) {
       return 0;
     }
-    final double chartWidth = width - _padLeft - _padRight;
+    final double plotLeft = _padLeft + _markerInset;
+    final double chartWidth = width - _padLeft - _padRight - _markerInset * 2;
     if (chartWidth <= 0) {
       return null;
     }
     final double fraction =
-        ((position.dx - _padLeft) / chartWidth).clamp(0.0, 1.0);
+        ((position.dx - plotLeft) / chartWidth).clamp(0.0, 1.0);
     return (fraction * (count - 1)).round().clamp(0, count - 1);
   }
 
@@ -170,12 +175,16 @@ class _ProgressLinePainter extends CustomPainter {
     const double padTop = 12;
     const double padRight = 14;
     const double padBottom = 26;
+    const double markerInset = 8;
     final double left = padLeft;
     final double top = padTop;
     final double right = math.max(left + 1, size.width - padRight);
     final double bottom = math.max(top + 1, size.height - padBottom);
-    final double chartWidth = right - left;
     final double chartHeight = bottom - top;
+
+    // The plotted x-range is inset so an edge marker is never clipped (#54).
+    final double plotLeft = left + markerInset;
+    final double plotRight = math.max(plotLeft, right - markerInset);
 
     double minValue = points.first.value;
     double maxValue = points.first.value;
@@ -183,33 +192,22 @@ class _ProgressLinePainter extends CustomPainter {
       minValue = math.min(minValue, point.value);
       maxValue = math.max(maxValue, point.value);
     }
-    final double span = maxValue - minValue;
-    if (span < 0.001) {
-      final double pad = maxValue.abs() < 1 ? 1.0 : maxValue.abs() * 0.05;
-      minValue -= pad;
-      maxValue += pad;
-    } else {
-      final double pad = span * 0.1;
-      minValue -= pad;
-      maxValue += pad;
-    }
+    final AxisTicks ticks = niceAxisTicks(minValue, maxValue);
+    final double tickMin = ticks.min;
+    final double tickMax = ticks.max;
+    final double tickSpan = tickMax - tickMin;
 
     double yFor(double value) =>
-        bottom - ((value - minValue) / (maxValue - minValue)) * chartHeight;
+        bottom - ((value - tickMin) / tickSpan) * chartHeight;
     double xFor(int index) => points.length == 1
-        ? left + chartWidth / 2
-        : left + chartWidth * index / (points.length - 1);
+        ? (plotLeft + plotRight) / 2
+        : plotLeft + (plotRight - plotLeft) * index / (points.length - 1);
 
     final Paint gridPaint = Paint()
       ..color = gridColor
       ..strokeWidth = 1;
 
-    final List<double> gridValues = <double>[
-      maxValue,
-      (minValue + maxValue) / 2,
-      minValue,
-    ];
-    for (final double value in gridValues) {
+    for (final double value in ticks.values) {
       final double y = yFor(value);
       canvas.drawLine(Offset(left, y), Offset(right, y), gridPaint);
       _paintText(
@@ -221,16 +219,18 @@ class _ProgressLinePainter extends CustomPainter {
       );
     }
 
-    _paintText(canvas, shortDate(points.first.date), Offset(left, bottom + 6),
-        alignTop: true);
-    if (points.length > 1) {
-      _paintText(
-        canvas,
-        shortDate(points.last.date),
-        Offset(right, bottom + 6),
-        alignRight: true,
-        alignTop: true,
-      );
+    // The x labels are drawn first/last; the first is dropped when the two
+    // would collide at narrow widths or large text scale (#54).
+    final TextPainter firstLabel = _layoutText(shortDate(points.first.date));
+    final TextPainter? lastLabel =
+        points.length > 1 ? _layoutText(shortDate(points.last.date)) : null;
+    final bool showFirst = lastLabel == null ||
+        left + firstLabel.width + 12 <= right - lastLabel.width;
+    if (showFirst) {
+      firstLabel.paint(canvas, Offset(left, bottom + 6));
+    }
+    if (lastLabel != null) {
+      lastLabel.paint(canvas, Offset(right - lastLabel.width, bottom + 6));
     }
 
     final int? selected = selectedIndex;
@@ -247,7 +247,7 @@ class _ProgressLinePainter extends CustomPainter {
 
     canvas.save();
     canvas.clipRect(
-        Rect.fromLTWH(left, 0, chartWidth * progress + 0.5, size.height));
+        Rect.fromLTWH(0, 0, size.width * progress + 0.5, size.height));
 
     final Paint linePaint = Paint()
       ..color = color
@@ -284,31 +284,30 @@ class _ProgressLinePainter extends CustomPainter {
     canvas.restore();
   }
 
+  TextPainter _layoutText(String text) => TextPainter(
+        text: TextSpan(
+          text: text,
+          style: MayosTypography.caption.copyWith(color: labelColor),
+        ),
+        textDirection: textDirection,
+        textScaler: textScaler,
+        maxLines: 1,
+      )..layout();
+
   void _paintText(
     Canvas canvas,
     String text,
     Offset anchor, {
     bool alignRight = false,
-    bool alignTop = false,
     bool centerVertically = false,
   }) {
-    final TextPainter painter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: MayosTypography.caption.copyWith(color: labelColor),
-      ),
-      textDirection: textDirection,
-      textScaler: textScaler,
-      maxLines: 1,
-    )..layout();
+    final TextPainter painter = _layoutText(text);
     double dx = anchor.dx;
     double dy = anchor.dy;
     if (alignRight) {
       dx -= painter.width;
     }
-    if (alignTop) {
-      // anchor.dy is the top of the label area.
-    } else if (centerVertically) {
+    if (centerVertically) {
       dy -= painter.height / 2;
     } else {
       dy -= painter.height;
@@ -372,4 +371,83 @@ String _formatValue(double value) {
     return value.round().toString();
   }
   return value.toStringAsFixed(1);
+}
+
+/// The rounded [min]/[max] bounds and the gridline [values] derived from them.
+class AxisTicks {
+  const AxisTicks({
+    required this.min,
+    required this.max,
+    required this.values,
+  });
+
+  final double min;
+  final double max;
+  final List<double> values;
+}
+
+/// Chooses rounded ("nice") axis bounds and gridlines around the data range so
+/// labels read as whole numbers (e.g. 110 / 115 / 120) rather than arbitrary
+/// values (#54).
+AxisTicks niceAxisTicks(double dataMin, double dataMax) {
+  double lo = dataMin;
+  double hi = dataMax;
+  if (hi - lo < 0.001) {
+    final double pad = math.max(hi.abs() * 0.05, 1.0);
+    lo -= pad;
+    hi += pad;
+  }
+  double step = _niceStep((hi - lo) / 3);
+  double niceMin = (lo / step).floor() * step;
+  double niceMax = (hi / step).ceil() * step;
+  List<double> values = _tickValues(niceMin, niceMax, step);
+  // Keep the gridlines sparse enough that labels never crowd vertically.
+  while (values.length > 6) {
+    step *= 2;
+    niceMin = (lo / step).floor() * step;
+    niceMax = (hi / step).ceil() * step;
+    values = _tickValues(niceMin, niceMax, step);
+  }
+  return AxisTicks(min: niceMin, max: niceMax, values: values);
+}
+
+List<double> _tickValues(double min, double max, double step) {
+  final List<double> values = <double>[];
+  for (double value = min; value <= max + step * 0.5; value += step) {
+    values.add(_round(value));
+  }
+  if (values.length < 2) {
+    values.add(_round(max));
+  }
+  return values;
+}
+
+/// Trims floating-point noise so `0.30000000000000004` prints as `0.3`.
+double _round(double value) {
+  final double rounded = (value * 1e6).roundToDouble() / 1e6;
+  return rounded == 0 ? 0 : rounded;
+}
+
+/// The nearest "nice" step (1, 2, 2.5, 5 or 10 × a power of ten) at or above
+/// [raw].
+double _niceStep(double raw) {
+  if (!raw.isFinite || raw <= 0) {
+    return 1;
+  }
+  final double exponent = (math.log(raw) / math.ln10).floorToDouble();
+  final double pow10 = math.pow(10, exponent).toDouble();
+  final double fraction = raw / pow10;
+  final double nice;
+  if (fraction <= 1) {
+    nice = 1;
+  } else if (fraction <= 2) {
+    nice = 2;
+  } else if (fraction <= 2.5) {
+    nice = 2.5;
+  } else if (fraction <= 5) {
+    nice = 5;
+  } else {
+    nice = 10;
+  }
+  return nice * pow10;
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/models.dart';
+import 'core/ui/mayos_scaffold.dart';
 import 'features/coach/coach_alerts_screen.dart';
 import 'features/coach/coach_assignments_screen.dart';
 import 'features/coach/coach_invite_screen.dart';
@@ -167,16 +168,20 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: planPath,
-        builder: (BuildContext context, GoRouterState state) => Scaffold(
-          appBar: AppBar(title: const Text('Plan')),
-          body: const PlanScreen(),
+        builder: (BuildContext context, GoRouterState state) =>
+            const MayosScaffold(
+          title: 'Plan',
+          showBack: true,
+          body: PlanScreen(),
         ),
       ),
       GoRoute(
         path: profilePath,
-        builder: (BuildContext context, GoRouterState state) => Scaffold(
-          appBar: AppBar(title: const Text('Profile')),
-          body: const ProfileScreen(),
+        builder: (BuildContext context, GoRouterState state) =>
+            const MayosScaffold(
+          title: 'Profile',
+          showBack: true,
+          body: ProfileScreen(),
         ),
       ),
       GoRoute(
@@ -191,43 +196,54 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: coachPath,
-        builder: (BuildContext context, GoRouterState state) => Scaffold(
-          appBar: AppBar(title: const Text('Coach')),
-          body: const CoachProfileScreen(),
+        builder: (BuildContext context, GoRouterState state) =>
+            const MayosScaffold(
+          title: 'Coach',
+          showBack: true,
+          body: CoachProfileScreen(),
         ),
       ),
       GoRoute(
         path: coachAssignmentsPath,
-        builder: (BuildContext context, GoRouterState state) => Scaffold(
-          appBar: AppBar(title: const Text('Assignments')),
-          body: const CoachAssignmentsScreen(),
+        builder: (BuildContext context, GoRouterState state) =>
+            const MayosScaffold(
+          title: 'Assignments',
+          showBack: true,
+          body: CoachAssignmentsScreen(),
         ),
       ),
       GoRoute(
         path: coachAlertsPath,
-        builder: (BuildContext context, GoRouterState state) => Scaffold(
-          appBar: AppBar(title: const Text('Alert center')),
-          body: const CoachAlertsScreen(),
+        builder: (BuildContext context, GoRouterState state) =>
+            const MayosScaffold(
+          title: 'Alert center',
+          showBack: true,
+          body: CoachAlertsScreen(),
         ),
       ),
       GoRoute(
         path: assignmentPath,
-        builder: (BuildContext context, GoRouterState state) => Scaffold(
-          appBar: AppBar(title: const Text('Coaching')),
-          body: const PlayerAssignmentScreen(),
+        builder: (BuildContext context, GoRouterState state) =>
+            const MayosScaffold(
+          title: 'Coaching',
+          showBack: true,
+          body: PlayerAssignmentScreen(),
         ),
       ),
       GoRoute(
         path: workoutsPath,
-        builder: (BuildContext context, GoRouterState state) => Scaffold(
-          appBar: AppBar(title: const Text('Workouts')),
-          body: const WorkoutDraftsScreen(),
+        builder: (BuildContext context, GoRouterState state) =>
+            const MayosScaffold(
+          title: 'Workouts',
+          showBack: true,
+          body: WorkoutDraftsScreen(),
         ),
       ),
       GoRoute(
         path: '$logWorkoutPath/:day',
-        builder: (BuildContext context, GoRouterState state) => Scaffold(
-          appBar: AppBar(title: const Text('Log workout')),
+        builder: (BuildContext context, GoRouterState state) => MayosScaffold(
+          title: 'Log workout',
+          showBack: true,
           body: WorkoutLoggerScreen(
             dayOrder: int.tryParse(state.pathParameters['day'] ?? '') ?? 1,
           ),

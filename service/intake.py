@@ -42,11 +42,10 @@ MAX_TEXT_LENGTH = 500
 #: collects no custom split preference, so the gender-selected default family is
 #: the whole split effect for the intake path.
 SPECIALIZATION_EXPLANATION = (
-    "Your specialization is required. It selects the default split family used "
-    "for automatic generation: female uses the glute/lower-body-biased splits "
-    "(female full body at 1-3 days; female upper/lower at 4-5 days), while male "
-    "uses the standard pool (full body at 1-3 days, upper/lower at 4 days, "
-    "Arnold-family at 5 days)."
+    "Your specialization is required. It sets the default training split we "
+    "build for you: female trainees get glute- and lower-body-focused splits, "
+    "male trainees get our standard balanced splits, and your weekly frequency "
+    "decides the exact layout."
 )
 
 PROPORTIONS_EXPLANATION = (
@@ -60,12 +59,13 @@ PROPORTIONS_EXPLANATION = (
 #: family for the chosen weekly frequency.
 SPECIALIZATION_OPTION_DESCRIPTIONS: dict[str, str] = {
     "male": (
-        "Standard split family by weekly frequency: full body at 1-3 days, "
-        "upper/lower at 4 days, Arnold x Upper/Lower at 5 days."
+        "Balanced upper- and lower-body training by frequency: full body at "
+        "1-3 days, upper/lower at 4 days, Arnold-style at 5 days."
     ),
     "female": (
-        "Glute/lower-body-biased family by weekly frequency: glute-specialised "
-        "full body at 1-3 days, lower (glute bias) / upper & core at 4-5 days."
+        "Glute- and lower-body-focused by frequency: glute-specialised full "
+        "body at 1-3 days, lower-body (glute bias) and upper body + core at "
+        "4-5 days."
     ),
 }
 

@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models.dart';
+import '../../../core/theme/mayos_spacing.dart';
+import '../../../core/theme/mayos_theme.dart';
+import '../../../core/theme/mayos_typography.dart';
+import '../../../core/ui/mayos_card.dart';
+import '../../../core/ui/mayos_section_header.dart';
 import '../../../providers.dart';
 
 /// Truthful, currently-implemented core benefits per capability. Deliberately
@@ -46,31 +51,31 @@ class PlanScreen extends ConsumerWidget {
           benefits: _coachFreeBenefits,
         ),
     ];
+    final MayosThemeExtension c = MayosTheme.of(context);
     if (cards.isEmpty) {
-      return const Center(child: Text('No plan is available for this account.'));
-    }
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: <Widget>[
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 640),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Text(
-                  'Lifter and Coach plans are independent.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 16),
-                for (final Widget card in cards) ...<Widget>[
-                  card,
-                  const SizedBox(height: 16),
-                ],
-              ],
-            ),
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(MayosSpacing.xl),
+          child: Text(
+            'No plan is available for this account.',
+            textAlign: TextAlign.center,
+            style: MayosTypography.body.copyWith(color: c.textSecondary),
           ),
         ),
+      );
+    }
+    return ListView(
+      padding: MayosSpacing.screen,
+      children: <Widget>[
+        Text(
+          'Lifter and Coach plans are independent.',
+          style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+        ),
+        const SizedBox(height: MayosSpacing.md),
+        for (final Widget card in cards) ...<Widget>[
+          card,
+          const SizedBox(height: MayosSpacing.md),
+        ],
       ],
     );
   }
@@ -89,38 +94,41 @@ class _PlanCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final TextTheme textTheme = Theme.of(context).textTheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text('$capability ${plan.label}', style: textTheme.titleLarge),
-            if (plan.isFree) ...<Widget>[
-              const SizedBox(height: 4),
-              Text(
-                'Ongoing plan — not a trial.',
-                style: textTheme.bodySmall,
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return MayosCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          MayosSectionHeader(
+            title: '$capability ${plan.label}',
+            subtitle: plan.isFree ? 'Ongoing plan — not a trial.' : null,
+            padding: EdgeInsets.zero,
+          ),
+          const SizedBox(height: MayosSpacing.sm),
+          Text(
+            "What's included",
+            style: MayosTypography.label.copyWith(color: c.textSecondary),
+          ),
+          const SizedBox(height: MayosSpacing.xs),
+          for (final String benefit in benefits)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: MayosSpacing.xxs),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Icon(Icons.check_circle_outline, size: 20, color: c.accent),
+                  const SizedBox(width: MayosSpacing.xs),
+                  Expanded(
+                    child: Text(
+                      benefit,
+                      style:
+                          MayosTypography.body.copyWith(color: c.textPrimary),
+                    ),
+                  ),
+                ],
               ),
-            ],
-            const SizedBox(height: 12),
-            Text("What's included", style: textTheme.titleSmall),
-            const SizedBox(height: 8),
-            for (final String benefit in benefits)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    const Icon(Icons.check_circle_outline, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(benefit)),
-                  ],
-                ),
-              ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }

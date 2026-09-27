@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/active_program.dart';
 import '../../../core/api_client.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
@@ -36,6 +37,7 @@ class _DashboardData {
     required this.records,
     this.latestSession,
     this.partialError,
+    this.programFromCache = false,
   });
 
   final TrainingProgram? program;
@@ -46,6 +48,9 @@ class _DashboardData {
   /// The player's most recent committed session from the ledger (or its cached
   /// last-known value offline), used to derive the next program day (#53).
   final LatestSession? latestSession;
+
+  /// True when [program] is the offline cached copy after a failed fetch (#54).
+  final bool programFromCache;
 
   /// Set when a non-fatal section failed to load so the body can say so instead
   /// of silently showing an empty section.
@@ -63,17 +68,24 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
 
   Future<_DashboardData> _load() async {
     final ApiClient api = ref.read(apiClientProvider);
-    // A missing program is an honest empty state, not an error, so the active
-    // program call may return null; a transport failure still throws.
-    final TrainingProgram? program = await api.activeProgram();
+    final String? accountId =
+        ref.read(authControllerProvider).session?.account.accountId;
+    final cache = ref.read(workoutCacheStoreProvider);
+    // The active program is shared with the Program tab so an offline launch
+    // falls back to the cached copy identically (#54). A missing program is an
+    // honest empty state, not an error; a transport failure with no cache
+    // rethrows and becomes the Home error state.
+    final ActiveProgram active = await loadActiveProgram(
+      api: api,
+      cache: cache,
+      accountId: accountId,
+    );
+    final TrainingProgram? program = active.program;
     TrainingSchedule? schedule;
     Map<String, double> volume = const <String, double>{};
     List<PersonalRecord> records = const <PersonalRecord>[];
     LatestSession? latestSession;
     String? partialError;
-    final String? accountId =
-        ref.read(authControllerProvider).session?.account.accountId;
-    final cache = ref.read(workoutCacheStoreProvider);
     try {
       schedule = await api.trainingSchedule();
     } on ApiException catch (error) {
@@ -107,6 +119,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
       records: records,
       latestSession: latestSession,
       partialError: partialError,
+      programFromCache: active.fromCache,
     );
   }
 
@@ -203,7 +216,11 @@ class _HomeBody extends StatelessWidget {
               color: c.textPrimary,
             ),
           ),
-          if (data.partialError != null) ...<Widget>[
+          if (data.programFromCache) ...<Widget>[
+            const SizedBox(height: MayosSpacing.sm),
+            const _InlineNotice(
+                message: 'Offline — showing your saved program.'),
+          ] else if (data.partialError != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
             _InlineNotice(message: data.partialError!),
           ],

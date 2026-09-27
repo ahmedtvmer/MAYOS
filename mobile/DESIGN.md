@@ -173,3 +173,13 @@ a login capture with a server error and one with the keyboard inset simulated at
 The #48 Progress views (Strength with five real points, a single-point Strength
 view, 28-day Volume, and the empty state) are rendered in Light and Dark at
 360×640 and 412×915 into `docs/design-review/48/`.
+
+The #54 cross-screen verification set renders splash, authentication (login,
+registration, recovery-email gate), representative onboarding (disclosure,
+specialization, proportions, a numeric step, review), Home, Program, exercise
+detail, Progress, Settings, chat, workout logger, and workout drafts in Light
+and Dark at 360×640 and 412×915, plus a 2.0× text set and Settings under a
+dark/light System theme, into `docs/design-review/54/`. Its review index and
+per-item findings live in `docs/design-review/54/README.md`; the companion
+`mobile/test/design_review_54_test.dart` asserts no overflow at 2.0× text for
+every captured screen.

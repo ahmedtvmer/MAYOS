@@ -4,6 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_client.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/models.dart';
+import '../../../core/theme/mayos_spacing.dart';
+import '../../../core/theme/mayos_theme.dart';
+import '../../../core/theme/mayos_typography.dart';
+import '../../../core/ui/mayos_button.dart';
+import '../../../core/ui/mayos_card.dart';
+import '../../../core/ui/mayos_section_header.dart';
+import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
 
 /// Player-side coaching assignment (#24).
@@ -170,13 +177,16 @@ class _PlayerAssignmentScreenState
         content: const Text(
             'Your coach will immediately lose access to your training history.'),
         actions: <Widget>[
-          TextButton(
+          MayosButton(
+            label: 'Cancel',
+            variant: MayosButtonVariant.tertiary,
+            expand: false,
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
           ),
-          FilledButton(
+          MayosButton(
+            label: 'End assignment',
+            expand: false,
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('End assignment'),
           ),
         ],
       ),
@@ -278,74 +288,82 @@ class _PlayerAssignmentScreenState
   }
 
   Widget _programRequestsCard(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 20),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: <Widget>[
-                  Expanded(
-                    child: Text('Program requests',
-                        style: Theme.of(context).textTheme.titleMedium),
-                  ),
-                  TextButton.icon(
-                    onPressed: _requestingChange ? null : _requestChange,
-                    icon: _requestingChange
-                        ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.add),
-                    label: const Text('Request a change'),
-                  ),
-                ],
+      padding: const EdgeInsets.only(top: MayosSpacing.lg),
+      child: MayosCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            MayosSectionHeader(
+              title: 'Program requests',
+              padding: EdgeInsets.zero,
+              trailing: MayosButton(
+                label: 'Request a change',
+                icon: Icons.add,
+                variant: MayosButtonVariant.tertiary,
+                expand: false,
+                loading: _requestingChange,
+                onPressed: _requestingChange ? null : _requestChange,
               ),
-              if (_requestError != null) ...<Widget>[
-                Text(
-                  _requestError!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-                const SizedBox(height: 12),
-              ],
-              if (_programRequests.isEmpty)
-                const Text('No program requests yet.')
-              else
-                for (final ProgramRequest request in _programRequests)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Row(
-                          children: <Widget>[
-                            Chip(label: Text(request.statusLabel)),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(request.description),
-                            ),
-                          ],
-                        ),
-                        Text('Reason: ${request.reason}'),
-                        if (request.hasResponse)
-                          Text('Coach: ${request.response}'),
-                        if (request.isPending)
-                          TextButton(
-                            onPressed: _cancellingRequestId == request.requestId
-                                ? null
-                                : () => _cancelRequest(request),
-                            child: const Text('Cancel request'),
-                          ),
-                      ],
-                    ),
-                  ),
+            ),
+            if (_requestError != null) ...<Widget>[
+              Text(
+                _requestError!,
+                style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+              ),
+              const SizedBox(height: MayosSpacing.sm),
             ],
-          ),
+            if (_programRequests.isEmpty)
+              Text(
+                'No program requests yet.',
+                style: MayosTypography.bodySecondary
+                    .copyWith(color: c.textSecondary),
+              )
+            else
+              for (final ProgramRequest request in _programRequests)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          Chip(label: Text(request.statusLabel)),
+                          const SizedBox(width: MayosSpacing.xs),
+                          Expanded(
+                            child: Text(
+                              request.description,
+                              style: MayosTypography.body
+                                  .copyWith(color: c.textPrimary),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        'Reason: ${request.reason}',
+                        style: MayosTypography.caption
+                            .copyWith(color: c.textMuted),
+                      ),
+                      if (request.hasResponse)
+                        Text(
+                          'Coach: ${request.response}',
+                          style: MayosTypography.caption
+                              .copyWith(color: c.textSecondary),
+                        ),
+                      if (request.isPending)
+                        MayosButton(
+                          label: 'Cancel request',
+                          variant: MayosButtonVariant.tertiary,
+                          expand: false,
+                          onPressed: _cancellingRequestId == request.requestId
+                              ? null
+                              : () => _cancelRequest(request),
+                        ),
+                    ],
+                  ),
+                ),
+          ],
         ),
       ),
     );
@@ -355,40 +373,41 @@ class _PlayerAssignmentScreenState
     if (_notices.isEmpty) {
       return const SizedBox.shrink();
     }
+    final MayosThemeExtension c = MayosTheme.of(context);
     final int unread =
         _notices.where((AssignmentNotice notice) => notice.isUnread).length;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: <Widget>[
-                  Text('Notices',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  if (unread > 0)
-                    TextButton(
+      padding: const EdgeInsets.only(bottom: MayosSpacing.md),
+      child: MayosCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            MayosSectionHeader(
+              title: 'Notices',
+              padding: EdgeInsets.zero,
+              trailing: unread > 0
+                  ? MayosButton(
+                      label: 'Mark all read',
+                      variant: MayosButtonVariant.tertiary,
+                      expand: false,
                       onPressed: _markNoticesRead,
-                      child: const Text('Mark all read'),
-                    ),
-                ],
-              ),
-              for (final AssignmentNotice notice in _notices)
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(notice.isUnread
+                    )
+                  : null,
+            ),
+            for (final AssignmentNotice notice in _notices)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  notice.isUnread
                       ? Icons.notifications_active
-                      : Icons.notifications_none),
-                  title: Text(notice.message),
-                  subtitle: Text('${notice.kind} · ${notice.createdAt}'),
+                      : Icons.notifications_none,
+                  color: notice.isUnread ? c.accent : c.textMuted,
                 ),
-            ],
-          ),
+                title: Text(notice.message),
+                subtitle: Text('${notice.kind} · ${notice.createdAt}'),
+              ),
+          ],
         ),
       ),
     );
@@ -398,38 +417,33 @@ class _PlayerAssignmentScreenState
     if (_checkIns.isEmpty) {
       return const SizedBox.shrink();
     }
+    final MayosThemeExtension c = MayosTheme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 20),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text('Check-ins', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              for (final CheckIn checkIn in _checkIns)
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.handshake_outlined),
-                  title:
-                      Text('${checkIn.checkedInOn} · ${checkIn.channelLabel}'),
-                  subtitle: Text(
-                    <String>[
-                      if (checkIn.coachUsername != null)
-                        checkIn.coachUsername == 'Former coach'
-                            ? 'Former coach'
-                            : 'Coach ${checkIn.coachUsername}',
-                      if (checkIn.assignmentStatus == 'ended')
-                        'assignment ended',
-                      if (checkIn.note != null && checkIn.note!.isNotEmpty)
-                        checkIn.note!,
-                    ].join(' · '),
-                  ),
+      padding: const EdgeInsets.only(top: MayosSpacing.lg),
+      child: MayosCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            MayosSectionHeader(title: 'Check-ins', padding: EdgeInsets.zero),
+            for (final CheckIn checkIn in _checkIns)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.handshake_outlined, color: c.textSecondary),
+                title: Text('${checkIn.checkedInOn} · ${checkIn.channelLabel}'),
+                subtitle: Text(
+                  <String>[
+                    if (checkIn.coachUsername != null)
+                      checkIn.coachUsername == 'Former coach'
+                          ? 'Former coach'
+                          : 'Coach ${checkIn.coachUsername}',
+                    if (checkIn.assignmentStatus == 'ended') 'assignment ended',
+                    if (checkIn.note != null && checkIn.note!.isNotEmpty)
+                      checkIn.note!,
+                  ].join(' · '),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
@@ -440,23 +454,25 @@ class _PlayerAssignmentScreenState
       return const SizedBox.shrink();
     }
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
       child: Text(
         _error!,
-        style: TextStyle(color: Theme.of(context).colorScheme.error),
+        style: MayosTypography.bodySecondary
+            .copyWith(color: MayosTheme.of(context).danger),
       ),
     );
   }
 
   Widget _activeAssignment(BuildContext context, Assignment assignment) {
+    final MayosThemeExtension c = MayosTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('Your coach', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
-        Card(
+        const MayosSectionHeader(title: 'Your coach'),
+        MayosCard(
           child: ListTile(
-            leading: const Icon(Icons.person_outline),
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.person_outline, color: c.textSecondary),
             title: Text(assignment.coach.displayName),
             subtitle: Text(
               assignment.coach.specialization.isEmpty
@@ -465,22 +481,20 @@ class _PlayerAssignmentScreenState
             ),
           ),
         ),
-        const SizedBox(height: 8),
-        const Text(
+        const SizedBox(height: MayosSpacing.sm),
+        Text(
           'While this assignment is active, your coach can view your current and '
           'historical training data. Ending it revokes that access immediately.',
+          style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
         ),
-        const SizedBox(height: 20),
-        OutlinedButton.icon(
+        const SizedBox(height: MayosSpacing.lg),
+        MayosButton(
+          label: 'End assignment',
+          icon: Icons.link_off,
+          variant: MayosButtonVariant.secondary,
+          expand: false,
+          loading: _ending,
           onPressed: _ending ? null : _end,
-          icon: const Icon(Icons.link_off),
-          label: _ending
-              ? const SizedBox(
-                  height: 18,
-                  width: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('End assignment'),
         ),
         _programRequestsCard(context),
       ],
@@ -488,66 +502,59 @@ class _PlayerAssignmentScreenState
   }
 
   Widget _inviteSection(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
     final AssignmentInvitePreview? preview = _preview;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('Coach assignment', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
-        const Text(
+        const MayosSectionHeader(title: 'Coach assignment'),
+        Text(
           'Enter a coach invite code. Your coach can only see your training data '
           'after you accept, and access ends when either of you ends the assignment.',
+          style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
         ),
-        const SizedBox(height: 16),
-        TextField(
-          key: const Key('assignment_code_field'),
+        const SizedBox(height: MayosSpacing.md),
+        MayosTextField(
+          fieldKey: const Key('assignment_code_field'),
           controller: _code,
           autocorrect: false,
           enableSuggestions: false,
           onChanged: _onCodeChanged,
-          decoration: const InputDecoration(
-            labelText: 'Invite code',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Invite code',
         ),
-        const SizedBox(height: 12),
-        FilledButton(
+        const SizedBox(height: MayosSpacing.sm),
+        MayosButton(
+          label: 'Preview access',
+          loading: _previewing,
           onPressed: _previewing || _redeeming ? null : _previewCode,
-          child: _previewing
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Preview access'),
         ),
         if (preview != null) ...<Widget>[
-          const Divider(height: 32),
+          const Divider(height: MayosSpacing.xxl),
           Text(
             'Your coach will be ${preview.coach.displayName}',
-            style: Theme.of(context).textTheme.titleMedium,
+            style:
+                MayosTypography.sectionHeading.copyWith(color: c.textPrimary),
           ),
           if (preview.coach.bio.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 4),
-            Text(preview.coach.bio),
+            const SizedBox(height: MayosSpacing.xxs),
+            Text(preview.coach.bio,
+                style: MayosTypography.bodySecondary
+                    .copyWith(color: c.textSecondary)),
           ],
           if (preview.coach.specialization.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 4),
-            Text(preview.coach.specialization),
+            const SizedBox(height: MayosSpacing.xxs),
+            Text(preview.coach.specialization,
+                style: MayosTypography.caption.copyWith(color: c.textMuted)),
           ],
-          const SizedBox(height: 12),
-          Text(preview.access.description),
-          const SizedBox(height: 16),
-          FilledButton.icon(
+          const SizedBox(height: MayosSpacing.sm),
+          Text(preview.access.description,
+              style: MayosTypography.body.copyWith(color: c.textPrimary)),
+          const SizedBox(height: MayosSpacing.md),
+          MayosButton(
+            label: 'Accept assignment',
+            icon: Icons.check,
+            loading: _redeeming,
             onPressed: _redeeming ? null : _consent,
-            icon: _redeeming
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.check),
-            label: const Text('Accept assignment'),
           ),
         ],
       ],
@@ -560,7 +567,7 @@ class _PlayerAssignmentScreenState
       return const Center(child: CircularProgressIndicator());
     }
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: MayosSpacing.screen,
       children: <Widget>[
         _errorBanner(context),
         _noticesCard(context),
@@ -656,6 +663,7 @@ class _ProgramRequestDialogState extends State<_ProgramRequestDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
     return AlertDialog(
       title: const Text('Request a program change'),
       content: SingleChildScrollView(
@@ -679,29 +687,24 @@ class _ProgramRequestDialogState extends State<_ProgramRequestDialog> {
                 _localError = null;
               }),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: MayosSpacing.md),
             if (_kind == 'exercise_substitution') ...<Widget>[
-              TextField(
-                key: const Key('program_request_day_field'),
+              MayosTextField(
+                fieldKey: const Key('program_request_day_field'),
                 controller: _day,
-                decoration: const InputDecoration(
-                    labelText: 'Day name', border: OutlineInputBorder()),
+                label: 'Day name',
               ),
-              const SizedBox(height: 16),
-              TextField(
-                key: const Key('program_request_exercise_field'),
+              const SizedBox(height: MayosSpacing.md),
+              MayosTextField(
+                fieldKey: const Key('program_request_exercise_field'),
                 controller: _exercise,
-                decoration: const InputDecoration(
-                    labelText: 'Current exercise id',
-                    border: OutlineInputBorder()),
+                label: 'Current exercise id',
               ),
-              const SizedBox(height: 16),
-              TextField(
-                key: const Key('program_request_replacement_field'),
+              const SizedBox(height: MayosSpacing.md),
+              MayosTextField(
+                fieldKey: const Key('program_request_replacement_field'),
                 controller: _replacement,
-                decoration: const InputDecoration(
-                    labelText: 'Replacement exercise id',
-                    border: OutlineInputBorder()),
+                label: 'Replacement exercise id',
               ),
             ] else ...<Widget>[
               DropdownButtonFormField<int>(
@@ -716,42 +719,42 @@ class _ProgramRequestDialogState extends State<_ProgramRequestDialog> {
                 onChanged: (int? value) =>
                     setState(() => _frequency = value ?? _frequency),
               ),
-              const SizedBox(height: 16),
-              TextField(
-                key: const Key('program_request_split_field'),
+              const SizedBox(height: MayosSpacing.md),
+              MayosTextField(
+                fieldKey: const Key('program_request_split_field'),
                 controller: _preference,
-                decoration: const InputDecoration(
-                    labelText: 'Split preference (optional)',
-                    border: OutlineInputBorder()),
+                label: 'Split preference (optional)',
               ),
             ],
-            const SizedBox(height: 16),
-            TextField(
-              key: const Key('program_request_reason_field'),
+            const SizedBox(height: MayosSpacing.md),
+            MayosTextField(
+              fieldKey: const Key('program_request_reason_field'),
               controller: _reason,
               maxLines: 2,
-              decoration: const InputDecoration(
-                  labelText: 'Reason', border: OutlineInputBorder()),
+              label: 'Reason',
             ),
             if (_localError != null) ...<Widget>[
-              const SizedBox(height: 12),
+              const SizedBox(height: MayosSpacing.sm),
               Text(
                 _localError!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+                style: MayosTypography.bodySecondary.copyWith(color: c.danger),
               ),
             ],
           ],
         ),
       ),
       actions: <Widget>[
-        TextButton(
+        MayosButton(
+          label: 'Cancel',
+          variant: MayosButtonVariant.tertiary,
+          expand: false,
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
         ),
-        FilledButton(
+        MayosButton(
           key: const Key('program_request_submit_button'),
+          label: 'Submit request',
+          expand: false,
           onPressed: _submit,
-          child: const Text('Submit request'),
         ),
       ],
     );

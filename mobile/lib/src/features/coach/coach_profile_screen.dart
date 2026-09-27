@@ -3,6 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
 import '../../core/models.dart';
+import '../../core/theme/mayos_spacing.dart';
+import '../../core/theme/mayos_theme.dart';
+import '../../core/theme/mayos_typography.dart';
+import '../../core/ui/mayos_button.dart';
 import '../../providers.dart';
 
 /// Coach profile editor (#23): display name, bio, specialization, capacity.
@@ -129,33 +133,40 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
     if (_loadError != null) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(MayosSpacing.xl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Text(_loadError!, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              FilledButton(onPressed: _load, child: const Text('Retry')),
+              const SizedBox(height: MayosSpacing.md),
+              MayosButton(
+                label: 'Retry',
+                variant: MayosButtonVariant.secondary,
+                expand: false,
+                onPressed: _load,
+              ),
             ],
           ),
         ),
       );
     }
+    final MayosThemeExtension c = MayosTheme.of(context);
     return Form(
       key: _formKey,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: MayosSpacing.screen,
         children: <Widget>[
           Text(
             'Coach profile',
-            style: Theme.of(context).textTheme.titleLarge,
+            style: MayosTypography.pageHeading.copyWith(color: c.textPrimary),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: MayosSpacing.xxs),
           Text(
             'These details describe you as a coach.',
-            style: Theme.of(context).textTheme.bodySmall,
+            style:
+                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: MayosSpacing.md),
           TextFormField(
             controller: _displayName,
             maxLength: _maxDisplayName,
@@ -165,7 +176,7 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
             ),
             validator: _validateDisplayName,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: MayosSpacing.sm),
           TextFormField(
             controller: _specialization,
             maxLength: _maxSpecialization,
@@ -175,7 +186,7 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
               border: OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: MayosSpacing.sm),
           TextFormField(
             controller: _bio,
             maxLength: _maxBio,
@@ -185,7 +196,7 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
               border: OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: MayosSpacing.sm),
           TextFormField(
             controller: _capacity,
             keyboardType: TextInputType.number,
@@ -197,22 +208,17 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
             validator: _validateCapacity,
           ),
           if (_saveError != null) ...<Widget>[
-            const SizedBox(height: 12),
+            const SizedBox(height: MayosSpacing.sm),
             Text(
               _saveError!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              style: MayosTypography.bodySecondary.copyWith(color: c.danger),
             ),
           ],
-          const SizedBox(height: 20),
-          FilledButton(
+          const SizedBox(height: MayosSpacing.lg),
+          MayosButton(
+            label: 'Save profile',
+            loading: _saving,
             onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Save profile'),
           ),
         ],
       ),

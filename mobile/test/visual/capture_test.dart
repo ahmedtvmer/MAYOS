@@ -13,6 +13,8 @@ import 'package:go_router/go_router.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
+import 'package:mayos_mobile/src/core/device_timezone.dart';
+import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
@@ -221,8 +223,217 @@ Future<void> _writeRedesignCapture(WidgetTester tester, String name) async {
 }
 
 // ---------------------------------------------------------------------------
-// #52 authentication and recovery-email captures
+// #54 cross-screen verification captures
 // ---------------------------------------------------------------------------
+
+/// Writes a #54 verification capture to `docs/design-review/54/`.
+Future<void> _write54Capture(WidgetTester tester, String name) async {
+  final RenderRepaintBoundary boundary =
+      tester.renderObject<RenderRepaintBoundary>(find.byKey(_boundaryKey));
+  await tester.runAsync(() async {
+    final Directory out =
+        Directory('${Directory.current.parent.path}/docs/design-review/54');
+    await out.create(recursive: true);
+    final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
+    final ByteData? data =
+        await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    if (data == null) {
+      return;
+    }
+    await File('${out.path}/$name.png').writeAsBytes(data.buffer.asUint8List());
+  });
+}
+
+/// Overrides shared by every #54 full-app capture.
+List<Override> _appOverrides({
+  required FakeMayosApi fake,
+  required InMemoryTokenStore tokens,
+  required ThemeMode mode,
+  DraftStore? draftStore,
+  WorkoutCacheStore? cacheStore,
+  ChatCacheStore? chatCache,
+}) {
+  return <Override>[
+    tokenStoreProvider.overrideWithValue(tokens),
+    themeModeStoreProvider.overrideWithValue(InMemoryThemeModeStore(mode)),
+    draftStoreProvider.overrideWithValue(draftStore ?? InMemoryDraftStore()),
+    workoutCacheStoreProvider
+        .overrideWithValue(cacheStore ?? InMemoryWorkoutCacheStore()),
+    chatCacheStoreProvider
+        .overrideWithValue(chatCache ?? InMemoryChatCacheStore()),
+    deviceTimezoneProvider.overrideWithValue(Future<String>.value('UTC')),
+    deviceTimezoneOrNullProvider
+        .overrideWithValue(Future<String?>.value('UTC')),
+    apiClientProvider.overrideWith((ref) {
+      final ApiClient client = ApiClient(
+        tokens: ref.watch(tokenStoreProvider),
+        baseUrl: 'http://test.local',
+        adapter: fake.adapter,
+      );
+      client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
+      return client;
+    }),
+  ];
+}
+
+/// Pumps the app, opens Settings, and taps the given tile to reach a sub-screen.
+Future<void> _pumpViaSettings(
+  WidgetTester tester,
+  Size size,
+  ThemeMode mode,
+  String tile,
+  Finder ready,
+  FakeMayosApi fake, {
+  DraftStore? draftStore,
+}) async {
+  _setSize(tester, const Size(1080, 2400));
+  final InMemoryTokenStore tokens = InMemoryTokenStore();
+  await tokens.save('token-alice');
+  await tester.pumpWidget(
+    RepaintBoundary(
+      key: _boundaryKey,
+      child: ProviderScope(
+        overrides: _appOverrides(
+          fake: fake,
+          tokens: tokens,
+          mode: mode,
+          draftStore: draftStore,
+        ),
+        child: const MayosApp(),
+      ),
+    ),
+  );
+  await _pumpUntilFound(tester, find.text('Home'));
+  await tester.tap(find.byIcon(Icons.settings_outlined));
+  await _pumpUntilFound(tester, find.text('Appearance'));
+  await tester.tap(find.text(tile));
+  await _pumpUntilFound(tester, ready);
+  _setSize(tester, size);
+  await tester.pump(const Duration(milliseconds: 200));
+  await _precacheBrandImages(tester);
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
+/// A chat conversation capture: an accepted disclosure and two real messages.
+Future<void> _pumpChat54(WidgetTester tester, Size size, ThemeMode mode) async {
+  _setSize(tester, const Size(1080, 2400));
+  final FakeMayosApi fake = _fake();
+  fake.chatHistory.addAll(<Map<String, dynamic>>[
+    <String, dynamic>{
+      'id': 'chat-1',
+      'role': 'user',
+      'content': 'How should I warm up for bench press?',
+      'created_at': '2026-09-26T12:00:00Z',
+    },
+    <String, dynamic>{
+      'id': 'chat-2',
+      'role': 'assistant',
+      'content': 'Ramp with the empty bar, then about 60% for five, then your '
+          'working weight. Keep your elbows tucked.',
+      'created_at': '2026-09-26T12:00:01Z',
+    },
+  ]);
+  final InMemoryTokenStore tokens = InMemoryTokenStore();
+  await tokens.save('token-alice');
+  final InMemoryChatCacheStore chatCache = InMemoryChatCacheStore();
+  await chatCache.writeDisclosureAccepted('account-alice');
+  await tester.pumpWidget(
+    RepaintBoundary(
+      key: _boundaryKey,
+      child: ProviderScope(
+        overrides: _appOverrides(
+          fake: fake,
+          tokens: tokens,
+          mode: mode,
+          chatCache: chatCache,
+        ),
+        child: const MayosApp(),
+      ),
+    ),
+  );
+  await _pumpUntilFound(tester, find.text('Home'));
+  await tester.tap(find.byIcon(Icons.chat_bubble_outline));
+  await _pumpUntilFound(
+      tester, find.text('How should I warm up for bench press?'));
+  _setSize(tester, size);
+  await tester.pump(const Duration(milliseconds: 200));
+  await _precacheBrandImages(tester);
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
+/// The workout logger for Day 1, reached from the Program tab.
+Future<void> _pumpLogger54(
+    WidgetTester tester, Size size, ThemeMode mode) async {
+  _setSize(tester, const Size(1080, 2400));
+  final FakeMayosApi fake = _fake();
+  final InMemoryTokenStore tokens = InMemoryTokenStore();
+  await tokens.save('token-alice');
+  await tester.pumpWidget(
+    RepaintBoundary(
+      key: _boundaryKey,
+      child: ProviderScope(
+        overrides: _appOverrides(fake: fake, tokens: tokens, mode: mode),
+        child: const MayosApp(),
+      ),
+    ),
+  );
+  await _pumpUntilFound(tester, find.text('Home'));
+  await tester.tap(find.text('Program'));
+  await _pumpUntilFound(tester, find.text('Day 1: Upper 1'));
+  await tester.tap(find.text('Log workout'));
+  await _pumpUntilFound(tester, find.text('Performed date'));
+  _setSize(tester, size);
+  await tester.pump(const Duration(milliseconds: 200));
+  await _precacheBrandImages(tester);
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
+/// The workout drafts list with one pending draft, reached from Settings.
+Future<void> _pumpDrafts54(
+    WidgetTester tester, Size size, ThemeMode mode) async {
+  final InMemoryDraftStore draftStore = InMemoryDraftStore();
+  await draftStore.write('account-alice', <WorkoutDraft>[
+    WorkoutDraft(
+      clientSessionId: 'draft-capture-1',
+      accountId: 'account-alice',
+      performedDate: '2026-09-26',
+      performedTimezone: 'UTC',
+      programVersion: 1,
+      dayOrder: 1,
+      dayName: 'Upper 1',
+      capturedAt: '2026-09-26T11:00:00.000Z',
+      exercises: <DraftExercise>[
+        DraftExercise(
+          exercise: <String, dynamic>{
+            'exercise_id': 'bench_press',
+            'exercise_name': 'Bench Press',
+            'target_sets': 3,
+            'target_reps_min': 5,
+            'target_reps_max': 8,
+            'target_rpe': 8.5,
+            'rest_seconds': 180,
+            'notes': null,
+          },
+          sets: const <WorkoutSetLog>[
+            WorkoutSetLog(weightKg: 100, reps: 5, rpe: 8),
+          ],
+        ),
+      ],
+      readiness: 4,
+      updatedAt: '2026-09-26T11:00:00.000Z',
+    ),
+  ]);
+  await _pumpViaSettings(
+    tester,
+    size,
+    mode,
+    'Workout drafts',
+    find.textContaining('pending'),
+    _fake()..commitFails = true,
+    draftStore: draftStore,
+  );
+}
 
 /// One auth/recovery surface to capture, with an optional interaction.
 class _AuthSurface {
@@ -945,5 +1156,163 @@ void main() {
         }, skip: skipCapture);
       }
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // #54 cross-screen verification captures (docs/design-review/54).
+  // -------------------------------------------------------------------------
+  const List<_AuthSurface> auth54 = <_AuthSurface>[
+    _AuthSurface('login', loginPath, 'Log in', fieldKey: 'login_username'),
+    _AuthSurface('register', registerPath, 'Create account',
+        fieldKey: 'register_username'),
+    _AuthSurface('recovery-email', recoveryEmailPath, 'Recovery email',
+        fieldKey: 'recovery_email'),
+  ];
+  const List<_OnboardingSurface> onboarding54 = <_OnboardingSurface>[
+    _OnboardingSurface(name: 'disclosure', acknowledged: false),
+    _OnboardingSurface(name: 'specialization', acknowledged: true),
+    _OnboardingSurface(
+      name: 'proportions',
+      acknowledged: true,
+      answers: _throughGender,
+      select: 'proportions_option_balanced',
+    ),
+    _OnboardingSurface(
+        name: 'numeric', acknowledged: true, answers: _throughProportions),
+    _OnboardingSurface(
+        name: 'review', acknowledged: true, answers: _allRequired),
+  ];
+
+  for (final Size size in sizes) {
+    for (final ThemeMode mode in modes) {
+      final String theme = mode == ThemeMode.dark ? 'dark' : 'light';
+      final String sizeTag = '${size.width.toInt()}x${size.height.toInt()}';
+
+      testWidgets('54 splash $theme $sizeTag', (WidgetTester tester) async {
+        await _pumpSplash(tester, size, mode);
+        await _write54Capture(tester, 'splash-$theme-$sizeTag');
+      }, skip: skipCapture);
+
+      for (final _AuthSurface surface in auth54) {
+        testWidgets('54 auth ${surface.name} $theme $sizeTag',
+            (WidgetTester tester) async {
+          await _pumpAuthSurface(tester, surface, size, mode);
+          await _write54Capture(tester, 'auth-${surface.name}-$theme-$sizeTag');
+        }, skip: skipCapture);
+      }
+
+      for (final _OnboardingSurface surface in onboarding54) {
+        testWidgets('54 onboarding ${surface.name} $theme $sizeTag',
+            (WidgetTester tester) async {
+          await _pumpOnboardingSurface(tester, surface, size, mode);
+          await _write54Capture(
+              tester, 'onboarding-${surface.name}-$theme-$sizeTag');
+        }, skip: skipCapture);
+      }
+
+      for (final _Surface surface in surfaces) {
+        testWidgets('54 ${surface.name} $theme $sizeTag',
+            (WidgetTester tester) async {
+          await _pumpShell(tester, surface, size, mode);
+          await _write54Capture(tester, '${surface.name}-$theme-$sizeTag');
+        }, skip: skipCapture);
+      }
+
+      testWidgets('54 exercise detail $theme $sizeTag',
+          (WidgetTester tester) async {
+        await _pumpExerciseDetail(tester, size, mode);
+        await _write54Capture(tester, 'exercise-detail-$theme-$sizeTag');
+      }, skip: skipCapture);
+
+      testWidgets('54 progress strength $theme $sizeTag',
+          (WidgetTester tester) async {
+        await _pumpProgressSurface(tester, _progressSurfaces.first, size, mode);
+        await _write54Capture(tester, 'progress-strength-$theme-$sizeTag');
+      }, skip: skipCapture);
+
+      testWidgets('54 chat $theme $sizeTag', (WidgetTester tester) async {
+        await _pumpChat54(tester, size, mode);
+        await _write54Capture(tester, 'chat-$theme-$sizeTag');
+      }, skip: skipCapture);
+
+      testWidgets('54 workout logger $theme $sizeTag',
+          (WidgetTester tester) async {
+        await _pumpLogger54(tester, size, mode);
+        await _write54Capture(tester, 'workout-logger-$theme-$sizeTag');
+      }, skip: skipCapture);
+
+      testWidgets('54 workout drafts $theme $sizeTag',
+          (WidgetTester tester) async {
+        await _pumpDrafts54(tester, size, mode);
+        await _write54Capture(tester, 'workout-drafts-$theme-$sizeTag');
+      }, skip: skipCapture);
+    }
+  }
+
+  // Text-scale 2.0 set at 360x640 in Light for the four highest-risk screens.
+  testWidgets('54 home text-scale 2.0 360x640 light',
+      (WidgetTester tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pumpShell(tester, const _Surface('home', 0), small, ThemeMode.light);
+    await _write54Capture(tester, 'home-light-360x640-textscale2');
+  }, skip: skipCapture);
+
+  testWidgets('54 onboarding proportions text-scale 2.0 360x640 light',
+      (WidgetTester tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pumpOnboardingSurface(
+      tester,
+      const _OnboardingSurface(
+        name: 'proportions',
+        acknowledged: true,
+        answers: _throughGender,
+        select: 'proportions_option_balanced',
+      ),
+      small,
+      ThemeMode.light,
+    );
+    await _write54Capture(tester, 'onboarding-proportions-light-360x640-textscale2');
+  }, skip: skipCapture);
+
+  testWidgets('54 login text-scale 2.0 360x640 light',
+      (WidgetTester tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pumpAuthSurface(
+      tester,
+      const _AuthSurface('login', loginPath, 'Log in',
+          fieldKey: 'login_username'),
+      small,
+      ThemeMode.light,
+    );
+    await _write54Capture(tester, 'auth-login-light-360x640-textscale2');
+  }, skip: skipCapture);
+
+  testWidgets('54 settings text-scale 2.0 360x640 light',
+      (WidgetTester tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pumpShell(
+        tester, const _Surface('settings', null), small, ThemeMode.light);
+    await _write54Capture(tester, 'settings-light-360x640-textscale2');
+  }, skip: skipCapture);
+
+  // System theme demonstrated by capturing Settings under a dark and a light
+  // platform brightness with System selected.
+  for (final Brightness brightness in <Brightness>[
+    Brightness.dark,
+    Brightness.light,
+  ]) {
+    final String tag = brightness == Brightness.dark ? 'dark' : 'light';
+    testWidgets('54 settings system under $tag platform brightness',
+        (WidgetTester tester) async {
+      tester.platformDispatcher.platformBrightnessTestValue = brightness;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+      await _pumpShell(
+          tester, const _Surface('settings', null), small, ThemeMode.system);
+      await _write54Capture(tester, 'settings-system-$tag-360x640');
+    }, skip: skipCapture);
   }
 }

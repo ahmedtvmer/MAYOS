@@ -6,6 +6,14 @@ import '../../../core/api_client.dart';
 import '../../../core/device_timezone.dart';
 import '../../../core/models.dart';
 import '../../../core/performed_date_window.dart';
+import '../../../core/theme/mayos_spacing.dart';
+import '../../../core/theme/mayos_theme.dart';
+import '../../../core/theme/mayos_typography.dart';
+import '../../../core/ui/mayos_button.dart';
+import '../../../core/ui/mayos_card.dart';
+import '../../../core/ui/mayos_section_header.dart';
+import '../../../core/ui/mayos_settings_tile.dart';
+import '../../../core/ui/mayos_text_field.dart';
 import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
@@ -262,7 +270,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     if (!ref.watch(offlineWorkoutDraftsEnabledProvider)) {
       return const Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: EdgeInsets.all(MayosSpacing.xl),
           child: Text(
             'Offline workout logging is available in the Android app.',
             textAlign: TextAlign.center,
@@ -276,35 +284,41 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     if (_loadError != null) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(MayosSpacing.xl),
           child: Text(_loadError!, textAlign: TextAlign.center),
         ),
       );
     }
     final ProgramDay day = _day!;
+    final MayosThemeExtension c = MayosTheme.of(context);
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: MayosSpacing.screen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          if (_fromCache)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
-              child: Text('Offline: showing your cached program.'),
-            ),
-          Text(day.dayName, style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.event_outlined),
-            title: const Text('Performed date'),
-            subtitle: Text(
-                '${_performedDate.year}-${_performedDate.month.toString().padLeft(2, '0')}-'
-                '${_performedDate.day.toString().padLeft(2, '0')}'),
-            trailing: const Icon(Icons.edit_outlined),
-            onTap: _pickDate,
+          if (_fromCache) ...<Widget>[
+            const _OfflineLoggerNotice(),
+            const SizedBox(height: MayosSpacing.sm),
+          ],
+          Text(
+            day.dayName,
+            style: MayosTypography.pageHeading.copyWith(color: c.textPrimary),
           ),
-          Text('Readiness: $_readiness/5'),
+          const SizedBox(height: MayosSpacing.sm),
+          MayosCard(
+            padding: EdgeInsets.zero,
+            child: MayosSettingsTile(
+              icon: Icons.event_outlined,
+              title: 'Performed date',
+              subtitle:
+                  '${_performedDate.year}-${_performedDate.month.toString().padLeft(2, '0')}-'
+                  '${_performedDate.day.toString().padLeft(2, '0')}',
+              trailing: Icon(Icons.edit_outlined, size: 20, color: c.textMuted),
+              onTap: _pickDate,
+            ),
+          ),
+          const SizedBox(height: MayosSpacing.lg),
+          MayosSectionHeader(title: 'Readiness: $_readiness/5'),
           Slider(
             value: _readiness.toDouble(),
             min: 1,
@@ -314,43 +328,44 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
             onChanged: (double value) =>
                 setState(() => _readiness = value.round()),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: MayosSpacing.sm),
           ..._exercises.map(_buildExerciseCard),
-          OutlinedButton.icon(
-            onPressed: _addUnplanned,
-            icon: const Icon(Icons.add),
-            label: const Text('Add unplanned exercise'),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _notes,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              labelText: 'Notes (pumps, joint aches, fatigue)',
-              border: OutlineInputBorder(),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: MayosButton(
+              label: 'Add unplanned exercise',
+              icon: Icons.add,
+              variant: MayosButtonVariant.secondary,
+              expand: false,
+              onPressed: _addUnplanned,
             ),
           ),
+          const SizedBox(height: MayosSpacing.lg),
+          MayosTextField(
+            controller: _notes,
+            maxLines: 3,
+            label: 'Notes (pumps, joint aches, fatigue)',
+          ),
           if (_blockReason != null) ...<Widget>[
-            const SizedBox(height: 8),
-            Text(_blockReason!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            const SizedBox(height: MayosSpacing.sm),
+            Text(
+              _blockReason!,
+              style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+            ),
           ],
           if (_saveError != null) ...<Widget>[
-            const SizedBox(height: 8),
-            Text(_saveError!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            const SizedBox(height: MayosSpacing.sm),
+            Text(
+              _saveError!,
+              style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+            ),
           ],
-          const SizedBox(height: 16),
-          FilledButton.icon(
+          const SizedBox(height: MayosSpacing.lg),
+          MayosButton(
+            label: 'Finish and save draft',
+            icon: Icons.check,
+            loading: _saving,
             onPressed: _saving || _blockReason != null ? null : _finish,
-            icon: _saving
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.check),
-            label: const Text('Finish and save draft'),
           ),
         ],
       ),
@@ -358,21 +373,25 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   }
 
   Widget _buildExerciseCard(_LogExercise exercise) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: MayosSpacing.md),
+      child: MayosCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Row(
               children: <Widget>[
                 Expanded(
-                  child: Text(exercise.exerciseName,
-                      style: Theme.of(context).textTheme.titleMedium),
+                  child: Text(
+                    exercise.exerciseName,
+                    style: MayosTypography.exerciseTitle
+                        .copyWith(color: c.textPrimary),
+                  ),
                 ),
                 if (exercise.unplanned)
                   const Padding(
-                    padding: EdgeInsets.only(right: 4),
+                    padding: EdgeInsets.only(right: MayosSpacing.xxs),
                     child: Chip(label: Text('Unplanned')),
                   ),
                 Checkbox(
@@ -384,20 +403,24 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
               ],
             ),
             if (exercise.targetLabel != null)
-              Text(exercise.targetLabel!,
-                  style: Theme.of(context).textTheme.bodySmall),
+              Text(
+                exercise.targetLabel!,
+                style: MayosTypography.caption.copyWith(color: c.textMuted),
+              ),
             if (!exercise.skipped) ...<Widget>[
-              const SizedBox(height: 8),
+              const SizedBox(height: MayosSpacing.sm),
               ...exercise.sets.asMap().entries.map(
                     (MapEntry<int, _EditableSet> entry) =>
                         _buildSetRow(exercise, entry.key, entry.value),
                   ),
               Align(
                 alignment: Alignment.centerLeft,
-                child: TextButton.icon(
+                child: MayosButton(
+                  label: 'Add set',
+                  icon: Icons.add,
+                  variant: MayosButtonVariant.tertiary,
+                  expand: false,
                   onPressed: () => setState(exercise.addSet),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add set'),
                 ),
               ),
             ],
@@ -408,44 +431,47 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   }
 
   Widget _buildSetRow(_LogExercise exercise, int index, _EditableSet set) {
+    final MayosThemeExtension c = MayosTheme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: MayosSpacing.xxs),
       child: Row(
         children: <Widget>[
           SizedBox(width: 24, child: Text('${index + 1}')),
           Expanded(
-            child: TextField(
+            child: MayosTextField(
               controller: set.weight,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'kg', isDense: true),
+              label: 'kg',
+              dense: true,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: MayosSpacing.xs),
           Expanded(
-            child: TextField(
+            child: MayosTextField(
               controller: set.reps,
               keyboardType: TextInputType.number,
-              decoration:
-                  const InputDecoration(labelText: 'reps', isDense: true),
+              label: 'reps',
+              dense: true,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: MayosSpacing.xs),
           Expanded(
-            child: TextField(
+            child: MayosTextField(
               controller: set.rpe,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              decoration:
-                  const InputDecoration(labelText: 'RPE', isDense: true),
+              label: 'RPE',
+              dense: true,
             ),
           ),
           IconButton(
             tooltip: set.isWarmup ? 'Warm-up set' : 'Working set',
             onPressed: () => setState(() => set.isWarmup = !set.isWarmup),
-            icon: Icon(set.isWarmup
-                ? Icons.local_fire_department
-                : Icons.fitness_center),
+            icon: Icon(
+              set.isWarmup ? Icons.local_fire_department : Icons.fitness_center,
+              color: set.isWarmup ? c.accent : null,
+            ),
           ),
           IconButton(
             tooltip: 'Remove set',
@@ -453,6 +479,38 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
                 ? null
                 : () => setState(() => exercise.removeSet(index)),
             icon: const Icon(Icons.close),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The offline banner for the logger, matching the Program tab's treatment.
+class _OfflineLoggerNotice extends StatelessWidget {
+  const _OfflineLoggerNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: MayosSpacing.md, vertical: MayosSpacing.sm),
+      decoration: BoxDecoration(
+        color: c.secondarySurface,
+        borderRadius: MayosRadii.mediumRadius,
+        border: Border.all(color: c.border),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.cloud_off, size: 18, color: c.textSecondary),
+          const SizedBox(width: MayosSpacing.xs),
+          Expanded(
+            child: Text(
+              'Offline: showing your cached program.',
+              style: MayosTypography.bodySecondary
+                  .copyWith(color: c.textSecondary),
+            ),
           ),
         ],
       ),
@@ -628,6 +686,7 @@ class _UnplannedExerciseDialogState
 
   @override
   Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
     return AlertDialog(
       title: const Text('Add unplanned exercise'),
       content: SizedBox(
@@ -636,26 +695,25 @@ class _UnplannedExerciseDialogState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            TextField(
+            MayosTextField(
               controller: _query,
               autofocus: true,
               textInputAction: TextInputAction.search,
               onSubmitted: (_) => _search(),
-              decoration: const InputDecoration(
-                labelText: 'Search the exercise catalog',
-              ),
+              label: 'Search the exercise catalog',
             ),
             if (_searching)
               const Padding(
-                padding: EdgeInsets.only(top: 12),
+                padding: EdgeInsets.only(top: MayosSpacing.sm),
                 child: Center(child: CircularProgressIndicator()),
               ),
             if (_error != null)
               Padding(
-                padding: const EdgeInsets.only(top: 12),
+                padding: const EdgeInsets.only(top: MayosSpacing.sm),
                 child: Text(
                   _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  style:
+                      MayosTypography.bodySecondary.copyWith(color: c.danger),
                 ),
               ),
             if (_results.isNotEmpty)
@@ -676,13 +734,17 @@ class _UnplannedExerciseDialogState
         ),
       ),
       actions: <Widget>[
-        TextButton(
+        MayosButton(
+          label: 'Cancel',
+          variant: MayosButtonVariant.tertiary,
+          expand: false,
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
         ),
-        FilledButton(
+        MayosButton(
+          label: 'Search',
+          expand: false,
+          loading: _searching,
           onPressed: _searching ? null : _search,
-          child: const Text('Search'),
         ),
       ],
     );

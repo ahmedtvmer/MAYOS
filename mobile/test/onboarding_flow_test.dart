@@ -230,9 +230,9 @@ void main() {
 
     // Gender cards carry the per-value training effect from the schema.
     expect(
-      find.text('Glute/lower-body-biased family by weekly frequency: '
-          'glute-specialised full body at 1-3 days, lower (glute bias) / '
-          'upper & core at 4-5 days.'),
+      find.text('Glute- and lower-body-focused by frequency: '
+          'glute-specialised full body at 1-3 days, lower-body (glute bias) '
+          'and upper body + core at 4-5 days.'),
       findsOneWidget,
     );
 
