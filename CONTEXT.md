@@ -23,11 +23,20 @@ The customer-facing Free or Pro plan for coaching features and capacity. It does
 **Free plan**:
 An ongoing, usable Lifter or Coach plan. It is distinct from the time-limited closed trial or a promotional free period.
 
+**Closed trial**:
+The free, invitation-only period before public launch, during which no plan is sold.
+
+**Founding coach**:
+A coach who joined during the closed trial and therefore qualifies for the founding promotion at public launch. Joining during the trial is necessary but the promotion itself decides the status.
+
 **AI allowance**:
 The number of assistant requests available to an account for a given period. An account with both player and coach capabilities has separate Lifter and Coach allowances.
 
 **Active account**:
 An account that completed a workout or recorded a coaching action in the previous 30 days. A login alone does not make an account active.
+
+**Coaching action**:
+A recorded act of coaching by a coach for a player on an active assignment: recording a check-in, publishing a program, resolving a program request, or acknowledging or resolving a coach alert. Issuing invites and reading player history are not coaching actions.
 
 **Roster briefing**:
 An on-demand coach view that summarizes which assigned players need attention across the roster. It is distinct from a conversation about one selected player.
