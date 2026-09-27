@@ -213,11 +213,28 @@ def test_intake_contract_lists_fields_and_explanations(api):
     assert gender["allowed_values"] == ["male", "female"]
     assert gender["required"] is True
     assert gender["explanation"] and "female" in gender["explanation"]
-    assert _field(view, "proportions")["allowed_values"] == [
+    # Every enum value carries the training-effect description shown on its card.
+    assert set(gender["option_descriptions"]) == {"male", "female"}
+    assert all(gender["option_descriptions"].values())
+    assert "frequency" in gender["option_descriptions"]["female"]
+    proportions = _field(view, "proportions")
+    assert proportions["allowed_values"] == [
         "long_legs",
         "balanced",
         "long_torso",
     ]
+    assert set(proportions["option_descriptions"]) == {
+        "long_legs",
+        "balanced",
+        "long_torso",
+    }
+    assert all(proportions["option_descriptions"].values())
+    assert set(_field(view, "rep_preference")["option_descriptions"]) == {
+        "low",
+        "balanced",
+        "high",
+    }
+    assert _field(view, "age")["option_descriptions"] == {}
     assert _field(view, "rep_preference")["required"] is False
     assert view["progress"]["required_total"] == 12
     assert view["progress"]["next_unanswered"] == "gender"

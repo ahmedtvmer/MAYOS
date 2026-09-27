@@ -75,32 +75,36 @@ void main() {
     await _pumpUntilFound(tester, find.text('Enter a valid email address.'));
     expect(_sawOnboardingCall(fake), isFalse);
 
-    // A valid email unlocks the gate; the disclosure still blocks onboarding.
+    // A valid email unlocks the gate; the hosted-processing disclosure still
+    // gates every answer.
     await tester.enterText(find.byType(TextField), 'alice@example.com');
     await tester.tap(find.text('Save email'));
     await _pumpUntilFound(tester, find.text('Hosted AI processing'));
-    expect(_sawOnboardingCall(fake), isFalse);
+    expect(fake.intakeAnswers, isEmpty);
+    expect(fake.intakeDisclosureAcknowledged, isFalse);
 
-    // Consent, then onboarding begins.
-    await tester.tap(find.text('Continue'));
-    await _pumpUntilFound(tester, find.text('Set up your training'));
-    expect(_sawOnboardingCall(fake), isTrue);
-
-    // Answer onboarding until the program can be built.
-    for (int i = 0;
-        i < 4 && find.text('Build my program').evaluate().isEmpty;
-        i++) {
-      await tester.enterText(find.byType(TextField), 'Four days');
-      await tester.tap(find.byIcon(Icons.send));
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-    await tester.tap(find.text('Build my program'));
-    await _pumpUntilFound(tester, find.text('Upper/Lower 4x'));
-
-    // Completion panel is reachable, then Continue routes home via capabilities.
-    expect(find.text('Continue'), findsOneWidget);
-    await tester.tap(find.text('Continue'));
+    // The structured intake resumes saved answers; confirming builds the first
+    // program and lands home.
+    fake.intakeAnswers.addAll(<String, Object>{
+      'gender': 'female',
+      'proportions': 'long_legs',
+      'age': 29,
+      'height_cm': 168.0,
+      'weight_kg': 64.5,
+      'training_age_years': 3.0,
+      'current_goal': 'build glutes and legs',
+      'long_term_goal': 'stronger and more muscular',
+      'weekly_frequency': 4,
+      'equipment_access': 'commercial gym',
+      'injuries_or_limitations': 'None',
+      'stress_and_sleep': 'moderate stress, 7 hours sleep',
+    });
+    await tester.tap(find.text('I understand'));
+    await _pumpUntilFound(tester, find.text('Create my program'));
+    await tester.tap(find.text('Create my program'));
     await _pumpUntilFound(tester, find.text('Weekly weighted sets'));
+
+    // Completion is reachable and home renders the player dashboard.
     expect(find.text('Recent personal records'), findsOneWidget);
 
     // Switch to the program tab and see the full automatic program.

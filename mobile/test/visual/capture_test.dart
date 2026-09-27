@@ -16,6 +16,8 @@ import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
+import 'package:mayos_mobile/src/features/player/onboarding/onboarding_screen.dart';
+import 'package:mayos_mobile/src/features/player/onboarding/onboarding_widgets.dart';
 import 'package:mayos_mobile/src/features/shared/splash_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
@@ -122,6 +124,159 @@ Future<void> _writeCapture(WidgetTester tester, String name) async {
   });
 }
 
+/// Writes a #51 onboarding capture to `docs/design-review/51/`.
+Future<void> _writeOnboardingCapture(WidgetTester tester, String name) async {
+  final RenderRepaintBoundary boundary =
+      tester.renderObject<RenderRepaintBoundary>(find.byKey(_boundaryKey));
+  await tester.runAsync(() async {
+    final Directory out =
+        Directory('${Directory.current.parent.path}/docs/design-review/51');
+    await out.create(recursive: true);
+    final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
+    final ByteData? data =
+        await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    if (data == null) {
+      return;
+    }
+    await File('${out.path}/$name.png').writeAsBytes(data.buffer.asUint8List());
+  });
+}
+
+// ---------------------------------------------------------------------------
+// #51 onboarding captures
+// ---------------------------------------------------------------------------
+
+/// One onboarding surface to capture, with the fake intake state that reaches
+/// it and an optional interaction (for a selected state).
+class _OnboardingSurface {
+  const _OnboardingSurface({
+    required this.name,
+    required this.acknowledged,
+    this.answers = const <String, Object>{},
+    this.select,
+  });
+
+  final String name;
+  final bool acknowledged;
+  final Map<String, Object> answers;
+  final String? select;
+}
+
+const Map<String, Object> _throughGender = <String, Object>{'gender': 'female'};
+
+const Map<String, Object> _throughProportions = <String, Object>{
+  'gender': 'female',
+  'proportions': 'long_legs',
+};
+
+const Map<String, Object> _throughTrainingAge = <String, Object>{
+  'gender': 'female',
+  'proportions': 'long_legs',
+  'age': 29,
+  'height_cm': 168.0,
+  'weight_kg': 64.5,
+  'training_age_years': 3.0,
+};
+
+const Map<String, Object> _throughLongTerm = <String, Object>{
+  ..._throughTrainingAge,
+  'current_goal': 'build glutes and legs',
+  'long_term_goal': 'stronger and more muscular',
+};
+
+const Map<String, Object> _allRequired = <String, Object>{
+  ..._throughLongTerm,
+  'weekly_frequency': 4,
+  'equipment_access': 'commercial gym',
+  'injuries_or_limitations': 'None',
+  'stress_and_sleep': 'moderate stress, 7 hours sleep',
+};
+
+const List<_OnboardingSurface> _onboardingSurfaces = <_OnboardingSurface>[
+  _OnboardingSurface(name: 'disclosure', acknowledged: false),
+  _OnboardingSurface(name: 'gender', acknowledged: true),
+  _OnboardingSurface(
+    name: 'proportions',
+    acknowledged: true,
+    answers: _throughGender,
+    select: 'proportions_option_balanced',
+  ),
+  _OnboardingSurface(
+      name: 'age', acknowledged: true, answers: _throughProportions),
+  _OnboardingSurface(
+      name: 'weekly-frequency', acknowledged: true, answers: _throughLongTerm),
+  _OnboardingSurface(
+      name: 'text-goal', acknowledged: true, answers: _throughTrainingAge),
+  _OnboardingSurface(name: 'review', acknowledged: true, answers: _allRequired),
+];
+
+FakeMayosApi _onboardingFake(_OnboardingSurface surface) {
+  final FakeMayosApi fake = FakeMayosApi();
+  fake.issuedToken = 'token-alice';
+  fake.currentUsername = 'alice';
+  fake.tokenValid = true;
+  fake.profileExists = false;
+  fake.intakeDisclosureAcknowledged = surface.acknowledged;
+  fake.intakeAnswers.addAll(surface.answers);
+  return fake;
+}
+
+Future<void> _pumpOnboardingSurface(
+  WidgetTester tester,
+  _OnboardingSurface surface,
+  Size size,
+  ThemeMode mode,
+) async {
+  _setSize(tester, size);
+  final FakeMayosApi fake = _onboardingFake(surface);
+  final InMemoryTokenStore tokens = InMemoryTokenStore();
+  await tokens.save('token-alice');
+  await tester.pumpWidget(
+    RepaintBoundary(
+      key: _boundaryKey,
+      child: ProviderScope(
+        overrides: <Override>[
+          tokenStoreProvider.overrideWithValue(tokens),
+          themeModeStoreProvider
+              .overrideWithValue(InMemoryThemeModeStore(mode)),
+          draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
+          workoutCacheStoreProvider
+              .overrideWithValue(InMemoryWorkoutCacheStore()),
+          chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
+          apiClientProvider.overrideWith((ref) {
+            final ApiClient client = ApiClient(
+              tokens: ref.watch(tokenStoreProvider),
+              baseUrl: 'http://test.local',
+              adapter: fake.adapter,
+            );
+            client.onUnauthorized =
+                ref.watch(unauthorizedEventsProvider).signal;
+            return client;
+          }),
+        ],
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: MayosTheme.light,
+          darkTheme: MayosTheme.dark,
+          themeMode: mode,
+          home: const OnboardingScreen(),
+        ),
+      ),
+    ),
+  );
+  await _pumpUntilFound(tester, find.byType(OnboardingScaffold));
+  final String? select = surface.select;
+  if (select != null) {
+    // All choices are on screen at these sizes; tap without scrolling so the
+    // capture keeps the heading at the top.
+    await tester.tap(find.byKey(Key(select)));
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+  await _precacheBrandImages(tester);
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
 Future<void> _pumpSplash(WidgetTester tester, Size size, ThemeMode mode) async {
   _setSize(tester, size);
   await tester.pumpWidget(
@@ -221,6 +376,22 @@ void main() {
             (WidgetTester tester) async {
           await _pumpShell(tester, surface, size, mode);
           await _writeCapture(tester, '${surface.name}-$theme-$sizeTag');
+        }, skip: skipCapture);
+      }
+    }
+  }
+
+  // #51 onboarding flow captures (docs/design-review/51).
+  for (final Size size in sizes) {
+    for (final ThemeMode mode in modes) {
+      final String theme = mode == ThemeMode.dark ? 'dark' : 'light';
+      final String sizeTag = '${size.width.toInt()}x${size.height.toInt()}';
+      for (final _OnboardingSurface surface in _onboardingSurfaces) {
+        testWidgets('onboarding ${surface.name} $theme $sizeTag',
+            (WidgetTester tester) async {
+          await _pumpOnboardingSurface(tester, surface, size, mode);
+          await _writeOnboardingCapture(
+              tester, 'onboarding-${surface.name}-$theme-$sizeTag');
         }, skip: skipCapture);
       }
     }

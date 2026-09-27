@@ -50,6 +50,14 @@ void main() {
     expect(initial.disclosureAcknowledged, isFalse);
     expect(initial.field('gender')!.allowedValues, <String>['male', 'female']);
     expect(initial.field('gender')!.isRequired, isTrue);
+    expect(
+      initial.field('gender')!.optionDescriptions.keys,
+      containsAll(<String>['male', 'female']),
+    );
+    expect(
+      initial.field('proportions')!.optionDescriptions['balanced'],
+      isNotEmpty,
+    );
     expect(initial.progress.requiredTotal, 12);
     expect(initial.progress.nextUnanswered, 'gender');
     expect(

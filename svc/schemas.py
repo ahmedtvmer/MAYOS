@@ -735,6 +735,7 @@ class IntakeFieldOut(BaseModel):
     explanation: str | None = None
     hint: str | None = None
     examples: list[str] = []
+    option_descriptions: dict[str, str] = {}
     answer: Any | None = None
     prefilled: bool = False
     answered: bool = False

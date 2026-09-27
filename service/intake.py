@@ -22,7 +22,7 @@ guesswork, defines them:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
@@ -53,6 +53,35 @@ PROPORTIONS_EXPLANATION = (
     "Relative leg and torso length is coaching context only. It does not change "
     "exercise selection, program structure, or training volume."
 )
+
+#: Per-value split-family effect of the male/female choice. Derived directly from
+#: ``agent.program_blueprints.DEFAULT_SPLIT_BY_FREQUENCY`` (via
+#: ``agent.program_rules.get_default_split``): gender picks the default split
+#: family for the chosen weekly frequency.
+SPECIALIZATION_OPTION_DESCRIPTIONS: dict[str, str] = {
+    "male": (
+        "Standard split family by weekly frequency: full body at 1-3 days, "
+        "upper/lower at 4 days, Arnold x Upper/Lower at 5 days."
+    ),
+    "female": (
+        "Glute/lower-body-biased family by weekly frequency: glute-specialised "
+        "full body at 1-3 days, lower (glute bias) / upper & core at 4-5 days."
+    ),
+}
+
+#: Captions for the relative proportion choices. Coaching context only (ADR 011).
+PROPORTIONS_OPTION_DESCRIPTIONS: dict[str, str] = {
+    "long_legs": "Longer legs, shorter torso",
+    "balanced": "Proportional upper and lower body",
+    "long_torso": "Longer torso, shorter legs",
+}
+
+#: Rep-preference effect, derived from ``agent.program_rules.REP_WINDOWS``.
+REP_PREFERENCE_OPTION_DESCRIPTIONS: dict[str, str] = {
+    "low": "Lower rep targets: compounds 5-8, isolation 8-12.",
+    "balanced": "Default rep targets: compounds 6-10, isolation 10-15.",
+    "high": "Higher rep targets: compounds 8-12, isolation 12-20.",
+}
 
 
 class IntakeError(Exception):
@@ -93,6 +122,9 @@ class IntakeField:
     explanation: str | None = None
     hint: str | None = None
     examples: tuple[str, ...] = ()
+    #: Player-facing description per allowed value, written from the actual
+    #: generation rule for that value. Shown on the option card.
+    option_descriptions: dict[str, str] = field(default_factory=dict)
 
 
 #: Ordered list of fields the visual flow collects. Values and ranges reuse the
@@ -101,10 +133,12 @@ INTAKE_FIELDS: tuple[IntakeField, ...] = (
     IntakeField(
         "gender", "enum", True, "gender",
         allowed=("male", "female"), explanation=SPECIALIZATION_EXPLANATION,
+        option_descriptions=SPECIALIZATION_OPTION_DESCRIPTIONS,
     ),
     IntakeField(
         "proportions", "enum", True, "proportions",
         allowed=("long_legs", "balanced", "long_torso"), explanation=PROPORTIONS_EXPLANATION,
+        option_descriptions=PROPORTIONS_OPTION_DESCRIPTIONS,
     ),
     IntakeField("age", "int", True, "age", minimum=12, maximum=100),
     IntakeField("height_cm", "float", True, "height_cm", minimum=100, maximum=250),
@@ -136,7 +170,8 @@ INTAKE_FIELDS: tuple[IntakeField, ...] = (
         hint="How are your stress and sleep?",
         examples=("moderate stress, 7 hours sleep", "low stress, 8 hours sleep"),
     ),
-    IntakeField("rep_preference", "enum", False, "rep_preference", allowed=("low", "balanced", "high")),
+    IntakeField("rep_preference", "enum", False, "rep_preference", allowed=("low", "balanced", "high"),
+                option_descriptions=REP_PREFERENCE_OPTION_DESCRIPTIONS),
 )
 
 FIELD_BY_NAME: dict[str, IntakeField] = {field.name: field for field in INTAKE_FIELDS}
@@ -380,6 +415,7 @@ def build_view(db: Any, trainee_id: str) -> dict[str, Any]:
                 "explanation": spec.explanation,
                 "hint": spec.hint,
                 "examples": list(spec.examples),
+                "option_descriptions": dict(spec.option_descriptions),
                 "answer": entry["value"] if entry else None,
                 "prefilled": bool(entry["prefilled"]) if entry else False,
                 "answered": entry is not None,

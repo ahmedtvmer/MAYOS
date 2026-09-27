@@ -1063,6 +1063,7 @@ class IntakeField {
     this.explanation,
     this.hint,
     this.examples = const <String>[],
+    this.optionDescriptions = const <String, String>{},
     this.answer,
     this.prefilled = false,
     this.answered = false,
@@ -1072,7 +1073,8 @@ class IntakeField {
   factory IntakeField.fromJson(Map<String, dynamic> json) {
     final Object? name = json['name'];
     if (name is! String || name.isEmpty) {
-      throw const FormatException('Onboarding intake field is missing its name.');
+      throw const FormatException(
+          'Onboarding intake field is missing its name.');
     }
     return IntakeField(
       name: name,
@@ -1089,6 +1091,11 @@ class IntakeField {
       examples: (json['examples'] as List<dynamic>? ?? const [])
           .map((dynamic v) => v.toString())
           .toList(growable: false),
+      optionDescriptions:
+          (json['option_descriptions'] as Map<String, dynamic>? ??
+                  const <String, dynamic>{})
+              .map((String key, dynamic v) =>
+                  MapEntry<String, String>(key, v.toString())),
       answer: json['answer'],
       prefilled: json['prefilled'] as bool? ?? false,
       answered: json['answered'] as bool? ?? false,
@@ -1106,6 +1113,10 @@ class IntakeField {
   final String? explanation;
   final String? hint;
   final List<String> examples;
+
+  /// Player-facing description per allowed value, written from the generation
+  /// rule for that value. Empty for fields without enum values.
+  final Map<String, String> optionDescriptions;
   final Object? answer;
   final bool prefilled;
   final bool answered;
@@ -1141,7 +1152,8 @@ class IntakeProgress {
 
 /// The stored first-program result, present once the intake is confirmed.
 class IntakeProgram {
-  const IntakeProgram({this.programName, this.weeklyFrequency, this.programMessage});
+  const IntakeProgram(
+      {this.programName, this.weeklyFrequency, this.programMessage});
 
   factory IntakeProgram.fromJson(Map<String, dynamic> json) => IntakeProgram(
         programName: json['program_name'] as String?,

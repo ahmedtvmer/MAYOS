@@ -145,6 +145,11 @@ class FakeMayosApi {
   Map<String, dynamic>? intakeProgram;
   // When true, `GET /onboarding/intake` omits the required `fields` key.
   bool intakeMalformed = false;
+  // When set, the next answer for this field is refused 400 with a server
+  // message, so the UI's inline server-error path can be exercised.
+  String? intakeRejectField;
+  String intakeRejectMessage =
+      'The service rejected this answer. Adjust it and try again.';
 
   FakeResponse _handle(FakeRequest request) {
     final String path = request.path;
@@ -1540,6 +1545,15 @@ class FakeMayosApi {
       'allowed_values': <String>['male', 'female'],
       'explanation':
           'Your specialization is required and selects the default split family.',
+      'option_descriptions': <String, String>{
+        'male':
+            'Standard split family by weekly frequency: full body at 1-3 days, '
+                'upper/lower at 4 days, Arnold x Upper/Lower at 5 days.',
+        'female':
+            'Glute/lower-body-biased family by weekly frequency: '
+                'glute-specialised full body at 1-3 days, lower (glute bias) / '
+                'upper & core at 4-5 days.',
+      },
     },
     <String, dynamic>{
       'name': 'proportions',
@@ -1549,6 +1563,11 @@ class FakeMayosApi {
       'allowed_values': <String>['long_legs', 'balanced', 'long_torso'],
       'explanation':
           'Relative leg and torso length is coaching context only and does not change the program.',
+      'option_descriptions': <String, String>{
+        'long_legs': 'Longer legs, shorter torso',
+        'balanced': 'Proportional upper and lower body',
+        'long_torso': 'Longer torso, shorter legs',
+      },
     },
     <String, dynamic>{'name': 'age', 'type': 'int', 'required': true, 'profile_field': 'age', 'minimum': 12, 'maximum': 100},
     <String, dynamic>{'name': 'height_cm', 'type': 'float', 'required': true, 'profile_field': 'height_cm', 'minimum': 100, 'maximum': 250},
@@ -1595,7 +1614,12 @@ class FakeMayosApi {
       'hint': 'How are your stress and sleep?',
       'examples': <String>['moderate stress, 7 hours sleep', 'low stress, 8 hours sleep'],
     },
-    <String, dynamic>{'name': 'rep_preference', 'type': 'enum', 'required': false, 'profile_field': 'rep_preference', 'allowed_values': <String>['low', 'balanced', 'high']},
+    <String, dynamic>{'name': 'rep_preference', 'type': 'enum', 'required': false, 'profile_field': 'rep_preference', 'allowed_values': <String>['low', 'balanced', 'high'],
+      'option_descriptions': <String, String>{
+        'low': 'Lower rep targets: compounds 5-8, isolation 8-12.',
+        'balanced': 'Default rep targets: compounds 6-10, isolation 10-15.',
+        'high': 'Higher rep targets: compounds 8-12, isolation 12-20.',
+      }},
   ];
 
   Map<String, dynamic> _intakeView() {
@@ -1727,11 +1751,18 @@ class FakeMayosApi {
       }
       intakeStatus = 'confirmed';
       profileExists = true;
-      intakeProgram = <String, dynamic>{
-        'program_name': 'Upper/Lower 4x',
-        'weekly_frequency': 4,
-        'program_message': null,
-      };
+      intakeProgram = nullOnboardingProgram
+          ? <String, dynamic>{
+              'program_name': null,
+              'weekly_frequency': null,
+              'program_message':
+                  'Your coach controls your program, so none was generated.',
+            }
+          : <String, dynamic>{
+              'program_name': 'Upper/Lower 4x',
+              'weekly_frequency': 4,
+              'program_message': null,
+            };
       return FakeResponse(200, <String, dynamic>{
         'status': 'confirmed',
         ...intakeProgram!,
@@ -1753,6 +1784,10 @@ class FakeMayosApi {
       final String field = Uri.decodeComponent(
           path.substring('/onboarding/intake/answers/'.length));
       final Object? value = request.body['value'];
+      if (intakeRejectField == field) {
+        intakeRejectField = null;
+        return FakeResponse(400, <String, dynamic>{'detail': intakeRejectMessage});
+      }
       final String? error = _validateIntakeAnswer(field, value);
       if (error != null) {
         return FakeResponse(400, <String, dynamic>{'detail': error});

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
@@ -246,12 +247,47 @@ void main() {
   });
 
   testWidgets(
-      'null-program onboarding completion finishes without a fabricated program',
+      'null-program confirmation lands home without a fabricated program',
       (tester) async {
-    final FakeMayosApi fake = _playerFake();
+    final FakeMayosApi fake = FakeMayosApi();
+    fake.issuedToken = 'token-alice';
+    fake.currentUsername = 'alice';
+    fake.tokenValid = true;
+    fake.profileExists = false;
     fake.nullOnboardingProgram = true;
+    fake.intakeDisclosureAcknowledged = true;
+    fake.intakeAnswers.addAll(<String, Object>{
+      'gender': 'female',
+      'proportions': 'long_legs',
+      'age': 29,
+      'height_cm': 168.0,
+      'weight_kg': 64.5,
+      'training_age_years': 3.0,
+      'current_goal': 'build glutes and legs',
+      'long_term_goal': 'stronger and more muscular',
+      'weekly_frequency': 4,
+      'equipment_access': 'commercial gym',
+      'injuries_or_limitations': 'None',
+      'stress_and_sleep': 'moderate stress, 7 hours sleep',
+    });
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     await tokens.save('token-alice');
+    final GoRouter router = GoRouter(
+      initialLocation: '/onboarding',
+      routes: <RouteBase>[
+        GoRoute(
+          path: '/onboarding',
+          builder: (_, __) => const OnboardingScreen(),
+        ),
+        GoRoute(
+          path: '/home',
+          builder: (_, __) => const Scaffold(
+            body: Center(child: Text('HOME')),
+          ),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -259,28 +295,17 @@ void main() {
           tokenStoreProvider.overrideWithValue(tokens),
           _apiOverride(fake),
         ],
-        child: const MaterialApp(home: OnboardingScreen()),
+        child: MaterialApp.router(routerConfig: router),
       ),
     );
 
-    // Disclosure, then onboarding begins.
-    await _pumpUntilFound(tester, find.text('Hosted AI processing'));
-    await tester.tap(find.text('Continue'));
-    await _pumpUntilFound(tester, find.text('Set up your training'));
+    await _pumpUntilFound(tester, find.text('Create my program'));
+    await tester.tap(find.text('Create my program'));
+    await _pumpUntilFound(tester, find.text('HOME'));
 
-    // Answer until the program can be built.
-    for (int i = 0;
-        i < 4 && find.text('Build my program').evaluate().isEmpty;
-        i++) {
-      await tester.enterText(find.byType(TextField), 'Four days');
-      await tester.tap(find.byIcon(Icons.send));
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-    await tester.tap(find.text('Build my program'));
-
-    await _pumpUntilFound(tester, find.text(_coachMessage));
-    expect(find.text(_coachMessage), findsOneWidget);
+    expect(find.text('HOME'), findsOneWidget);
     expect(find.text('Upper/Lower 4x'), findsNothing);
+    expect(fake.intakeProgram!['program_name'], isNull);
     expect(tester.takeException(), isNull);
   });
 
