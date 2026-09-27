@@ -113,7 +113,7 @@ class _VariantATableState extends State<VariantATable> {
     );
   }
 
-  static const List<int> _flex = <int>[2, 5, 3, 3, 2, 3];
+  static const List<int> _flex = <int>[2, 5, 3, 3, 2, 2];
 
   Widget _headerRow(MayosThemeExtension c) {
     final TextStyle st = MayosTypography.caption
@@ -216,7 +216,11 @@ class _VariantATableState extends State<VariantATable> {
               flex: _flex[5],
               child: SizedBox(
                 height: 48,
-                child: IconButton(
+                child: Center(
+                  child: IconButton(
+                  constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+                  padding: EdgeInsets.zero,
+                  iconSize: 20,
                   onPressed: () {
                     if (!s.toggle(ex, set)) {
                       setState(() => _focus = ProtoFocus(ex, set, ProtoField.kg));
@@ -231,6 +235,7 @@ class _VariantATableState extends State<VariantATable> {
                         borderRadius: MayosRadii.smallRadius),
                   ),
                   icon: const Icon(Icons.check),
+                ),
                 ),
               ),
             ),
