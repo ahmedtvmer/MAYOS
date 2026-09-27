@@ -1,10 +1,13 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/account_data_eraser.dart';
 import 'core/api_client.dart';
 import 'core/chat_storage.dart';
 import 'core/config.dart';
+import 'core/theme/theme_mode_controller.dart';
+import 'core/theme/theme_mode_store.dart';
 import 'core/token_store.dart';
 import 'core/workout_storage.dart';
 import 'features/player/auth/auth_controller.dart';
@@ -14,6 +17,16 @@ import 'features/player/workout/draft_sync_service.dart';
 final Provider<TokenStore> tokenStoreProvider = Provider<TokenStore>(
   (ref) => SecureTokenStore(),
 );
+
+/// Device-level appearance persistence (System/Light/Dark).
+final Provider<ThemeModeStore> themeModeStoreProvider =
+    Provider<ThemeModeStore>((ref) => SecureThemeModeStore());
+
+final StateNotifierProvider<ThemeModeController, ThemeMode>
+    themeModeControllerProvider =
+    StateNotifierProvider<ThemeModeController, ThemeMode>((ref) {
+  return ThemeModeController(ref.watch(themeModeStoreProvider));
+});
 
 final Provider<UnauthorizedEvents> unauthorizedEventsProvider =
     Provider<UnauthorizedEvents>((ref) {

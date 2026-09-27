@@ -48,7 +48,7 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Dashboard'));
+  await _pumpUntilFound(tester, find.text('Home'));
 }
 
 FakeMayosApi _signedInFake({required bool coach}) {
@@ -66,6 +66,11 @@ FakeMayosApi _signedInFake({required bool coach}) {
   return fake;
 }
 
+Future<void> _openSettings(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.settings_outlined));
+  await _pumpUntilFound(tester, find.text('Appearance'));
+}
+
 void main() {
   testWidgets('player previews access, consents, then ends the assignment',
       (tester) async {
@@ -76,6 +81,7 @@ void main() {
     await _pumpApp(tester, fake);
 
     // Open the player assignment surface from the app bar.
+    await _openSettings(tester);
     await tester.tap(find.byIcon(Icons.badge_outlined));
     await _pumpUntilFound(tester, find.text('Coach assignment'));
 
@@ -116,6 +122,8 @@ void main() {
     fake.pendingCoachDisplayName = 'Coach A';
     await _pumpApp(tester, fake);
 
+    await _openSettings(tester);
+
     await tester.tap(find.byIcon(Icons.badge_outlined));
     await _pumpUntilFound(tester, find.text('Coach assignment'));
 
@@ -151,11 +159,13 @@ void main() {
     fake.pendingCoachDisplayName = 'Coach Bob';
     await _pumpApp(tester, fake);
 
+    await _openSettings(tester);
+
     await tester.tap(find.byIcon(Icons.badge_outlined));
     await _pumpUntilFound(tester, find.text('Coach assignment'));
 
-    await tester.enterText(find.byKey(const Key('assignment_code_field')),
-        'coach-b-token-123456');
+    await tester.enterText(
+        find.byKey(const Key('assignment_code_field')), 'coach-b-token-123456');
     await tester.tap(find.text('Preview access'));
     await _pumpUntilFound(tester, find.text('Accept assignment'));
 
@@ -186,23 +196,26 @@ void main() {
     fake.assignmentNotices.add(<String, dynamic>{
       'notice_id': 'n1',
       'kind': 'assignment_redeemed',
-      'message': 'bob accepted your coaching invite and is now assigned to you.',
+      'message':
+          'bob accepted your coaching invite and is now assigned to you.',
       'created_at': '2026-09-24T10:00:00Z',
       'read_at': null,
     });
     await _pumpApp(tester, fake);
 
+    await _openSettings(tester);
+
     await tester.tap(find.byIcon(Icons.handshake_outlined));
     await _pumpUntilFound(tester, find.text('Active assignments'));
     expect(find.text('bob'), findsOneWidget);
     expect(
-        find.text('bob accepted your coaching invite and is now assigned to you.'),
+        find.text(
+            'bob accepted your coaching invite and is now assigned to you.'),
         findsOneWidget);
 
     // Issuing shows the one-time bearer code and remaining capacity.
     await tester.tap(find.text('Create invite code'));
-    await _pumpUntilFound(
-        tester, find.text('assignment-invite-token-123456'));
+    await _pumpUntilFound(tester, find.text('assignment-invite-token-123456'));
     expect(fake.issuedAssignmentToken, 'assignment-invite-token-123456');
 
     // Revoke removes the assignment from the console.
@@ -213,11 +226,13 @@ void main() {
     expect(fake.assignments, isEmpty);
 
     // Disabling coaching clears the capability and ends every assignment.
-    fake.meFails = true; // A follow-up account read would fail after the commit.
+    fake.meFails =
+        true; // A follow-up account read would fail after the commit.
     await tester.tap(find.text('Disable coaching'));
     await _pumpUntilFound(tester, find.text('Disable coaching?'));
     await tester.tap(find.widgetWithText(FilledButton, 'Disable coaching'));
-    await _pumpUntilFound(tester, find.text('Coaching disabled. 0 assignment(s) ended.'));
+    await _pumpUntilFound(
+        tester, find.text('Coaching disabled. 0 assignment(s) ended.'));
     expect(fake.coach, isFalse);
     expect(find.byIcon(Icons.handshake_outlined), findsNothing);
   });

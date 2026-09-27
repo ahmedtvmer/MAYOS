@@ -47,7 +47,7 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Dashboard'));
+  await _pumpUntilFound(tester, find.text('Home'));
 }
 
 FakeMayosApi _signedInFake({required bool coach}) {
@@ -75,12 +75,14 @@ FakeMayosApi _coachFake() {
 }
 
 Future<void> _openDrillDown(WidgetTester tester) async {
+  await _openSettings(tester);
   await tester.tap(find.byIcon(Icons.handshake_outlined));
   await _pumpUntilFound(tester, find.text('Active assignments'));
   await tester.tap(find.text('bob'));
 }
 
 Future<void> _openAlertCenter(WidgetTester tester) async {
+  await _openSettings(tester);
   await tester.tap(find.byIcon(Icons.handshake_outlined));
   await _pumpUntilFound(tester, find.text('Active assignments'));
   await tester.tap(find.text('Alert center'));
@@ -88,6 +90,7 @@ Future<void> _openAlertCenter(WidgetTester tester) async {
 }
 
 Future<void> _openPlayerAssignment(WidgetTester tester) async {
+  await _openSettings(tester);
   await tester.tap(find.byIcon(Icons.badge_outlined));
   await _pumpUntilFound(tester, find.text('Check-ins'));
 }
@@ -100,6 +103,11 @@ CheckIn _checkIn(String id, String checkedInOn) => CheckIn(
       createdAt: '2026-09-26T12:00:00Z',
     );
 
+Future<void> _openSettings(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.settings_outlined));
+  await _pumpUntilFound(tester, find.text('Appearance'));
+}
+
 void main() {
   test('check-ins are sorted newest checked_in_on first', () {
     final List<CheckIn> sorted = sortCheckInsNewestFirst(<CheckIn>[
@@ -107,7 +115,8 @@ void main() {
       _checkIn('b', '2026-09-20'),
       _checkIn('c', '2026-09-15'),
     ]);
-    expect(sorted.map((CheckIn c) => c.checkInId).toList(), <String>['b', 'c', 'a']);
+    expect(sorted.map((CheckIn c) => c.checkInId).toList(),
+        <String>['b', 'c', 'a']);
   });
 
   testWidgets('coach records a check-in and it appears in the list',
@@ -123,7 +132,8 @@ void main() {
     await tester.ensureVisible(recordButton);
     await tester.pump();
     await tester.tap(recordButton);
-    await _pumpUntilFound(tester, find.byKey(const Key('check_in_submit_button')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('check_in_submit_button')));
 
     await tester.enterText(
         find.byKey(const Key('check_in_note_field')), 'Talked about sleep');

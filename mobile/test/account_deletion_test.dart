@@ -147,6 +147,11 @@ Future<InMemoryDraftStore> _seedLocalData(
   return drafts;
 }
 
+Future<void> _openSettings(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.settings_outlined));
+  await _pumpUntilFound(tester, find.text('Appearance'));
+}
+
 void main() {
   group('account deletion', () {
     test('delete with the password erases local data and ends the session',
@@ -368,9 +373,11 @@ void main() {
           child: const MayosApp(),
         ),
       );
-      await _pumpUntilFound(tester, find.text('Dashboard'));
+      await _pumpUntilFound(tester, find.text('Home'));
 
-      await tester.tap(find.byTooltip('Profile'));
+      await _openSettings(tester);
+
+      await tester.tap(find.text('Profile'));
       await _pumpUntilFound(tester, find.text('Training profile'));
 
       await tester.scrollUntilVisible(

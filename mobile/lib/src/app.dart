@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/theme/mayos_theme.dart';
 import 'providers.dart';
 import 'router.dart';
 
@@ -28,6 +30,10 @@ class _MayosAppState extends ConsumerState<MayosApp>
     Future<void>.microtask(
       () => ref.read(authControllerProvider.notifier).initialize(),
     );
+    // Load the persisted appearance choice off the first frame.
+    Future<void>.microtask(
+      () => ref.read(themeModeControllerProvider.notifier).initialize(),
+    );
   }
 
   @override
@@ -51,14 +57,36 @@ class _MayosAppState extends ConsumerState<MayosApp>
   @override
   Widget build(BuildContext context) {
     final GoRouter router = ref.watch(routerProvider);
+    final ThemeMode themeMode = ref.watch(themeModeControllerProvider);
+
     return MaterialApp.router(
       title: 'MAYOS',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: Colors.deepOrange,
-        useMaterial3: true,
-      ),
+      theme: MayosTheme.light,
+      darkTheme: MayosTheme.dark,
+      themeMode: themeMode,
       routerConfig: router,
+      builder: (BuildContext context, Widget? child) {
+        final MayosThemeExtension c = _effective(context, themeMode);
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: MayosTheme.overlayStyle(c),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
     );
+  }
+
+  MayosThemeExtension _effective(BuildContext context, ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return MayosThemeExtension.light;
+      case ThemeMode.dark:
+        return MayosThemeExtension.dark;
+      case ThemeMode.system:
+        final Brightness brightness = MediaQuery.platformBrightnessOf(context);
+        return brightness == Brightness.dark
+            ? MayosThemeExtension.dark
+            : MayosThemeExtension.light;
+    }
   }
 }

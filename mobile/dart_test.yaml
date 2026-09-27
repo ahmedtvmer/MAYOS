@@ -1,0 +1,9 @@
+# Declares custom test tags so `--tags capture` is a recognized selector.
+#
+# The `capture` visual-review harness is skipped unless the CAPTURE=1
+# environment variable is set:
+#
+#   cd mobile
+#   CAPTURE=1 flutter test --tags capture test/visual/capture_test.dart
+tags:
+  capture:

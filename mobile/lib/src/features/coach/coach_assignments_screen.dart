@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
 import '../../core/models.dart';
+import '../../core/theme/mayos_theme.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import 'coach_player_history_screen.dart';
@@ -108,9 +109,7 @@ class _CoachAssignmentsScreenState
       _error = null;
     });
     try {
-      await ref
-          .read(apiClientProvider)
-          .revokeAssignment(entry.assignmentId);
+      await ref.read(apiClientProvider).revokeAssignment(entry.assignmentId);
       if (!mounted) return;
       setState(() {
         _busyAssignmentId = null;
@@ -174,7 +173,8 @@ class _CoachAssignmentsScreenState
       if (!mounted) return;
       setState(() => _disabling = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Coaching disabled. $ended assignment(s) ended.')),
+        SnackBar(
+            content: Text('Coaching disabled. $ended assignment(s) ended.')),
       );
       ref.read(authControllerProvider.notifier).markCoachDisabled();
     } on ApiException catch (error) {
@@ -235,7 +235,8 @@ class _CoachAssignmentsScreenState
               ),
               const SizedBox(height: 4),
               Text('Expires ${invite.expiresAt}'),
-              Text('${invite.remaining} of ${invite.capacity} roster slots free'),
+              Text(
+                  '${invite.remaining} of ${invite.capacity} roster slots free'),
             ],
           ],
         ),
@@ -247,7 +248,8 @@ class _CoachAssignmentsScreenState
     if (_notices.isEmpty) {
       return const SizedBox.shrink();
     }
-    final int unread = _notices.where((AssignmentNotice n) => n.isUnread).length;
+    final int unread =
+        _notices.where((AssignmentNotice n) => n.isUnread).length;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -257,8 +259,7 @@ class _CoachAssignmentsScreenState
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: <Widget>[
-                Text('Notices',
-                    style: Theme.of(context).textTheme.titleMedium),
+                Text('Notices', style: Theme.of(context).textTheme.titleMedium),
                 if (unread > 0)
                   TextButton(
                     onPressed: _markRead,
@@ -282,7 +283,8 @@ class _CoachAssignmentsScreenState
     );
   }
 
-  Widget _badge(BuildContext context, String label, Color color) {
+  Widget _badge(
+      BuildContext context, String label, Color color, Color foreground) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
@@ -291,7 +293,7 @@ class _CoachAssignmentsScreenState
       ),
       child: Text(
         label,
-        style: const TextStyle(color: Colors.white, fontSize: 12),
+        style: TextStyle(color: foreground, fontSize: 12),
       ),
     );
   }
@@ -300,15 +302,17 @@ class _CoachAssignmentsScreenState
     if (entry.alertsOpen == 0) {
       return const SizedBox.shrink();
     }
+    final MayosThemeExtension tokens = MayosTheme.of(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         if (entry.alertsNew > 0)
-          _badge(context, '${entry.alertsNew}', Theme.of(context).colorScheme.error),
+          _badge(context, '${entry.alertsNew}', tokens.danger, tokens.onDanger),
         if (entry.alertsNew > 0 && entry.alertsAcknowledged > 0)
           const SizedBox(width: 4),
         if (entry.alertsAcknowledged > 0)
-          _badge(context, '${entry.alertsAcknowledged}', Colors.orange.shade800),
+          _badge(context, '${entry.alertsAcknowledged}', tokens.warning,
+              tokens.onWarning),
       ],
     );
   }

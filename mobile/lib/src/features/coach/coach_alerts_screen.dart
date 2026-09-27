@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
 import '../../core/models.dart';
+import '../../core/theme/mayos_theme.dart';
 import '../../providers.dart';
 
 /// Coach alert centre (#31): lists missed expected-day alerts with their new /
@@ -93,9 +94,10 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
       );
 
   Widget _stateChip(BuildContext context, CoachAlert alert) {
+    final MayosThemeExtension tokens = MayosTheme.of(context);
     final Color color = switch (alert.state) {
-      'new' => Theme.of(context).colorScheme.error,
-      'acknowledged' => Colors.orange.shade800,
+      'new' => tokens.danger,
+      'acknowledged' => tokens.warning,
       _ => Theme.of(context).colorScheme.outline,
     };
     return Chip(

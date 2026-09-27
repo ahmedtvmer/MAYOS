@@ -15,12 +15,13 @@ import 'features/player/auth/recovery_email_screen.dart';
 import 'features/player/auth/register_screen.dart';
 import 'features/player/auth/reset_password_screen.dart';
 import 'features/player/chat/chat_screen.dart';
-import 'features/player/home/player_home_screen.dart';
 import 'features/player/onboarding/onboarding_screen.dart';
 import 'features/player/plan/plan_screen.dart';
 import 'features/player/profile/profile_screen.dart';
+import 'features/player/shell/player_shell.dart';
 import 'features/player/workout/workout_drafts_screen.dart';
 import 'features/player/workout/workout_logger_screen.dart';
+import 'features/settings/settings_screen.dart';
 import 'features/shared/splash_screen.dart';
 import 'providers.dart';
 
@@ -31,6 +32,7 @@ const String resetPasswordPath = '/reset-password';
 const String recoveryEmailPath = '/recovery-email';
 const String onboardingPath = '/onboarding';
 const String homePath = '/home';
+const String settingsPath = '/settings';
 const String planPath = '/plan';
 const String profilePath = '/profile';
 const String coachPath = '/coach';
@@ -154,7 +156,12 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: homePath,
         builder: (BuildContext context, GoRouterState state) =>
-            const PlayerHomeScreen(),
+            const PlayerShell(),
+      ),
+      GoRoute(
+        path: settingsPath,
+        builder: (BuildContext context, GoRouterState state) =>
+            const SettingsScreen(),
       ),
       GoRoute(
         path: planPath,

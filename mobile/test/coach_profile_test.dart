@@ -51,7 +51,7 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Dashboard'));
+  await _pumpUntilFound(tester, find.text('Home'));
 }
 
 /// A signed-in, onboarded player with a recovery email, optionally already a coach.
@@ -70,10 +70,17 @@ FakeMayosApi _signedInFake({required bool coach}) {
   return fake;
 }
 
+Future<void> _openSettings(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.settings_outlined));
+  await _pumpUntilFound(tester, find.text('Appearance'));
+}
+
 void main() {
   testWidgets('coach profile loads, validates, and saves', (tester) async {
     final FakeMayosApi fake = _signedInFake(coach: true);
     await _pumpApp(tester, fake);
+
+    await _openSettings(tester);
 
     await tester.tap(find.byIcon(Icons.groups_outlined));
     await _pumpUntilFound(tester, find.text('Coach profile'));
@@ -115,6 +122,8 @@ void main() {
     fake.coachProfileLoadFails = true;
     await _pumpApp(tester, fake);
 
+    await _openSettings(tester);
+
     await tester.tap(find.byIcon(Icons.groups_outlined));
     await _pumpUntilFound(tester, find.text('The service is unavailable.'));
     expect(find.text('Retry'), findsOneWidget);
@@ -133,6 +142,8 @@ void main() {
 
     // A player has no coach tab until the capability is granted.
     expect(find.byIcon(Icons.groups_outlined), findsNothing);
+
+    await _openSettings(tester);
 
     await tester.tap(find.byIcon(Icons.workspace_premium_outlined));
     await _pumpUntilFound(tester, find.text('Enter your invite code'));
@@ -156,6 +167,8 @@ void main() {
     final FakeMayosApi fake = _signedInFake(coach: false);
     fake.validCoachInviteToken = 'coach-invite-token-123456';
     await _pumpApp(tester, fake);
+
+    await _openSettings(tester);
 
     await tester.tap(find.byIcon(Icons.workspace_premium_outlined));
     await _pumpUntilFound(tester, find.text('Enter your invite code'));
@@ -181,7 +194,9 @@ void main() {
   testWidgets('app resume refreshes live capabilities', (tester) async {
     final FakeMayosApi fake = _signedInFake(coach: false);
     await _pumpApp(tester, fake);
+    await _openSettings(tester);
     expect(find.byIcon(Icons.groups_outlined), findsNothing);
+    expect(find.byIcon(Icons.workspace_premium_outlined), findsOneWidget);
 
     // A grant happened elsewhere while the app was backgrounded.
     fake.coach = true;
@@ -190,5 +205,6 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await _pumpUntilFound(tester, find.byIcon(Icons.groups_outlined));
     expect(find.byIcon(Icons.groups_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.workspace_premium_outlined), findsNothing);
   });
 }

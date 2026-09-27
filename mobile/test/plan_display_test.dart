@@ -50,7 +50,7 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Dashboard'));
+  await _pumpUntilFound(tester, find.text('Home'));
 }
 
 /// A signed-in, onboarded player with a recovery email, optionally a coach.
@@ -66,8 +66,14 @@ FakeMayosApi _signedInFake({required bool coach}) {
 }
 
 Future<void> _openPlan(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('Plan'));
+  await _openSettings(tester);
+  await tester.tap(find.text('Plan'));
   await _pumpUntilFound(tester, find.text('Lifter Free'));
+}
+
+Future<void> _openSettings(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.settings_outlined));
+  await _pumpUntilFound(tester, find.text('Appearance'));
 }
 
 void main() {
@@ -100,7 +106,8 @@ void main() {
     expect(account.plans.withoutCoach().lifter!.isPro, isTrue);
   });
 
-  test('valid plans with malformed capabilities surfaces ApiException', () async {
+  test('valid plans with malformed capabilities surfaces ApiException',
+      () async {
     final FakeApiAdapter adapter = FakeApiAdapter((FakeRequest request) {
       return FakeResponse(200, <String, dynamic>{
         'account_id': 'account-alice',
@@ -165,7 +172,8 @@ void main() {
     final FakeMayosApi fake = _signedInFake(coach: false);
     fake.lifterPlan = 'pro';
     await _pumpApp(tester, fake);
-    await tester.tap(find.byTooltip('Plan'));
+    await _openSettings(tester);
+    await tester.tap(find.text('Plan'));
     await _pumpUntilFound(tester, find.text('Lifter Pro'));
 
     expect(find.text('Lifter Pro'), findsOneWidget);

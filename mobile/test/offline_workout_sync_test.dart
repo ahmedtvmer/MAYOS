@@ -108,6 +108,11 @@ Future<TokenStore> _authedTokens(FakeMayosApi fake) async {
   return tokens;
 }
 
+Future<void> _openSettings(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.settings_outlined));
+  await _pumpUntilFound(tester, find.text('Appearance'));
+}
+
 void main() {
   group('draft storage', () {
     test('persists across a simulated restart (new service, same storage)',
@@ -298,7 +303,8 @@ void main() {
       ]);
 
       await _pumpApp(tester, fake, draftStore: store);
-      await tester.tap(find.byTooltip('Workouts'));
+      await _openSettings(tester);
+      await tester.tap(find.text('Workout drafts'));
       await _pumpUntilFound(
           tester, find.text('Logged against program v1 (current v2)'));
 
@@ -657,7 +663,10 @@ void main() {
       await _pumpApp(tester, fake,
           draftStore: InMemoryDraftStore(), offlineDraftsEnabled: false);
 
-      expect(find.byTooltip('Workouts'), findsNothing);
+      await _openSettings(tester);
+      expect(find.text('Workout drafts'), findsNothing);
+      await tester.tap(find.byTooltip('Back'));
+      await _pumpUntilFound(tester, find.text('Home'));
       await tester.tap(find.text('Program'));
       await _pumpUntilFound(tester, find.text('Upper/Lower 4x'));
       expect(find.text('Log workout'), findsNothing);
@@ -690,7 +699,8 @@ void main() {
           .write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
 
       await _pumpApp(tester, fake, draftStore: store);
-      await tester.tap(find.byTooltip('Log out'));
+      await _openSettings(tester);
+      await tester.tap(find.text('Log out'));
       await _pumpUntilFound(tester, find.text('Unsynced workouts'));
 
       expect(find.text('Keep drafts and log out'), findsOneWidget);
@@ -710,7 +720,8 @@ void main() {
           .write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
 
       await _pumpApp(tester, fake, draftStore: store);
-      await tester.tap(find.byTooltip('Log out'));
+      await _openSettings(tester);
+      await tester.tap(find.text('Log out'));
       await _pumpUntilFound(tester, find.text('Unsynced workouts'));
 
       await tester.tap(find.text('Discard drafts and log out'));
@@ -725,7 +736,7 @@ void main() {
     final InMemoryDraftStore store = InMemoryDraftStore();
     await _pumpApp(tester, fake, draftStore: store);
 
-    await tester.tap(find.byIcon(Icons.fitness_center_outlined));
+    await tester.tap(find.text('Program'));
     await _pumpUntilFound(tester, find.text('Log workout'));
     await tester.tap(find.text('Log workout'));
     await _pumpUntilFound(tester, find.text('Bench Press'));
@@ -748,7 +759,7 @@ void main() {
     final InMemoryDraftStore store = InMemoryDraftStore();
     await _pumpApp(tester, fake, draftStore: store);
 
-    await tester.tap(find.byIcon(Icons.fitness_center_outlined));
+    await tester.tap(find.text('Program'));
     await _pumpUntilFound(tester, find.text('Log workout'));
     await tester.tap(find.text('Log workout'));
     await _pumpUntilFound(tester, find.text('Performed date'));
@@ -976,7 +987,8 @@ void main() {
           .write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
 
       await _pumpApp(tester, fake, draftStore: store);
-      await tester.tap(find.byTooltip('Workouts'));
+      await _openSettings(tester);
+      await tester.tap(find.text('Workout drafts'));
       await _pumpUntilFound(tester, find.byTooltip('Edit date'));
 
       await tester.tap(find.byTooltip('Edit date'));
@@ -997,7 +1009,8 @@ void main() {
       ]);
 
       await _pumpApp(tester, fake, draftStore: store);
-      await tester.tap(find.byTooltip('Workouts'));
+      await _openSettings(tester);
+      await tester.tap(find.text('Workout drafts'));
       await _pumpUntilFound(tester, find.byTooltip('Correct date'));
 
       expect(find.byTooltip('Correct date'), findsOneWidget);
@@ -1070,5 +1083,5 @@ Future<void> _pumpApp(
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Dashboard'));
+  await _pumpUntilFound(tester, find.text('Home'));
 }

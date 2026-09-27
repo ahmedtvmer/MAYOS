@@ -48,7 +48,7 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Dashboard'));
+  await _pumpUntilFound(tester, find.text('Home'));
 }
 
 FakeMayosApi _coachFake() {
@@ -80,23 +80,28 @@ FakeMayosApi _playerFake() {
   return fake;
 }
 
+Future<void> _openSettings(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.settings_outlined));
+  await _pumpUntilFound(tester, find.text('Appearance'));
+}
+
 void main() {
   testWidgets('coach publishes a program and sees the published version',
       (tester) async {
     final FakeMayosApi fake = _coachFake();
     await _pumpApp(tester, fake);
 
+    await _openSettings(tester);
+
     await tester.tap(find.byIcon(Icons.handshake_outlined));
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
-    await _pumpUntilFound(
-        tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
 
     await tester.tap(find.text('Publish program'));
     await _pumpUntilFound(tester, find.text('Rep preference'));
     await tester.tap(find.byKey(const Key('publish_confirm_button')));
-    await _pumpUntilFound(
-        tester, find.text('Published program version 1'));
+    await _pumpUntilFound(tester, find.text('Published program version 1'));
 
     expect(find.text('Published program version 1'), findsOneWidget);
     expect(fake.programVersion, 1);
@@ -154,12 +159,14 @@ void main() {
     });
     await _pumpApp(tester, fake);
 
+    await _openSettings(tester);
+
     await tester.tap(find.byIcon(Icons.badge_outlined));
     await _pumpUntilFound(
         tester, find.text('Your coach published program version 1.'));
 
-    expect(find.text('Your coach published program version 1.'),
-        findsOneWidget);
+    expect(
+        find.text('Your coach published program version 1.'), findsOneWidget);
     expect(find.textContaining('program_published'), findsOneWidget);
 
     await tester.tap(find.text('Mark all read'));

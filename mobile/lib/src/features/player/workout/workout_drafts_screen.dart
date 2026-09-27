@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_client.dart';
 import '../../../core/models.dart';
 import '../../../core/performed_date_window.dart';
+import '../../../core/theme/mayos_theme.dart';
 import '../../../providers.dart';
 import 'draft_sync_service.dart';
 
@@ -88,7 +89,7 @@ class _DraftTile extends ConsumerWidget {
     final DraftSyncService sync = ref.watch(draftSyncServiceProvider);
     return Card(
       child: ListTile(
-        leading: _statusIcon(),
+        leading: _statusIcon(context),
         title: Text('${draft.dayName} · ${draft.performedDate}'),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,12 +187,12 @@ class _DraftTile extends ConsumerWidget {
     );
   }
 
-  Widget _statusIcon() {
+  Widget _statusIcon(BuildContext context) {
     if (draft.isSynced) {
-      return const Icon(Icons.cloud_done, color: Colors.green);
+      return Icon(Icons.cloud_done, color: MayosTheme.of(context).success);
     }
     if (draft.needsAttention) {
-      return const Icon(Icons.error_outline, color: Colors.orange);
+      return Icon(Icons.error_outline, color: MayosTheme.of(context).warning);
     }
     if (draft.inFlight) {
       return const SizedBox(

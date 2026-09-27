@@ -66,7 +66,7 @@ Future<void> _pumpChat(
 }) async {
   await _pumpHome(tester, fake,
       chatCache: store, workoutCache: workoutCache, scopeKey: scopeKey);
-  await tester.tap(find.byTooltip('Assistant chat'));
+  await tester.tap(find.byTooltip('Assistant'));
   await _pumpUntilFound(tester, find.byKey(const Key('chat_composer')));
 }
 
@@ -101,7 +101,7 @@ Future<void> _pumpHome(
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Dashboard'));
+  await _pumpUntilFound(tester, find.text('Home'));
 }
 
 Future<void> _acceptDisclosure(WidgetTester tester) async {
@@ -112,6 +112,11 @@ Future<void> _acceptDisclosure(WidgetTester tester) async {
 
 TextField _composer(WidgetTester tester) =>
     tester.widget<TextField>(find.byKey(const Key('chat_composer')));
+
+Future<void> _openSettings(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.settings_outlined));
+  await _pumpUntilFound(tester, find.text('Appearance'));
+}
 
 void main() {
   group('SseDecoder', () {
@@ -418,7 +423,9 @@ void main() {
     fake.failOffline('PUT', '/profile/schedule');
     await _pumpHome(tester, fake);
 
-    await tester.tap(find.byTooltip('Profile'));
+    await _openSettings(tester);
+
+    await tester.tap(find.text('Profile'));
     await _pumpUntilFound(tester, find.text('Training schedule'));
     await tester.ensureVisible(find.text('Save schedule'));
     await tester.tap(find.text('Save schedule'));

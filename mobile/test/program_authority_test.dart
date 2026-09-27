@@ -29,7 +29,8 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
-Override _apiOverride(FakeMayosApi fake) => apiClientProvider.overrideWith((ref) {
+Override _apiOverride(FakeMayosApi fake) =>
+    apiClientProvider.overrideWith((ref) {
       final ApiClient client = ApiClient(
         tokens: ref.watch(tokenStoreProvider),
         baseUrl: 'http://test.local',
@@ -62,18 +63,19 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
         _apiOverride(fake),
-        deviceTimezoneProvider.overrideWithValue(
-            Future<String>.value('America/New_York')),
+        deviceTimezoneProvider
+            .overrideWithValue(Future<String>.value('America/New_York')),
       ],
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Dashboard'));
+  await _pumpUntilFound(tester, find.text('Home'));
 }
 
 /// Opens the profile editor and changes training days 4 → 3, warranting a rebuild.
 Future<void> _changeTrainingDays(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('Profile'));
+  await _openSettings(tester);
+  await tester.tap(find.text('Profile'));
   await _pumpUntilFound(tester, find.text('Training profile'));
 
   await tester.tap(find.byType(DropdownButtonFormField<int>));
@@ -83,7 +85,8 @@ Future<void> _changeTrainingDays(WidgetTester tester) async {
 }
 
 Future<void> _openProfile(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('Profile'));
+  await _openSettings(tester);
+  await tester.tap(find.text('Profile'));
   await _pumpUntilFound(tester, find.text('Training profile'));
 }
 
@@ -92,6 +95,11 @@ String _todayIso() {
   return '${now.year.toString().padLeft(4, '0')}-'
       '${now.month.toString().padLeft(2, '0')}-'
       '${now.day.toString().padLeft(2, '0')}';
+}
+
+Future<void> _openSettings(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.settings_outlined));
+  await _pumpUntilFound(tester, find.text('Appearance'));
 }
 
 void main() {
@@ -111,8 +119,7 @@ void main() {
     expect(fake.weeklyFrequency, 3);
   });
 
-  testWidgets('normal profile update announces the rebuild',
-      (tester) async {
+  testWidgets('normal profile update announces the rebuild', (tester) async {
     final FakeMayosApi fake = _playerFake();
     await _pumpApp(tester, fake);
 
@@ -125,8 +132,7 @@ void main() {
     expect(fake.weeklyFrequency, 3);
   });
 
-  testWidgets(
-      'saving the schedule leaves the training-days setting untouched',
+  testWidgets('saving the schedule leaves the training-days setting untouched',
       (tester) async {
     final FakeMayosApi fake = _playerFake();
     await _pumpApp(tester, fake);
@@ -191,8 +197,8 @@ void main() {
     await tester.enterText(find.byKey(const Key('timezone_field')), 'London');
     await tester.ensureVisible(find.byKey(const Key('save_schedule_button')));
     await tester.tap(find.byKey(const Key('save_schedule_button')));
-    await _pumpUntilFound(
-        tester, find.text('Enter an IANA timezone, e.g. Europe/London or UTC.'));
+    await _pumpUntilFound(tester,
+        find.text('Enter an IANA timezone, e.g. Europe/London or UTC.'));
 
     // The server was never asked to save an invalid timezone.
     expect(fake.scheduleVersions.first['timezone'], 'Europe/London');

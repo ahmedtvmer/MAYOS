@@ -48,7 +48,7 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Dashboard'));
+  await _pumpUntilFound(tester, find.text('Home'));
 }
 
 FakeMayosApi _signedInFake({required bool coach}) {
@@ -105,8 +105,14 @@ Map<String, dynamic> _request({
     };
 
 Future<void> _openPlayerAssignment(WidgetTester tester) async {
+  await _openSettings(tester);
   await tester.tap(find.byIcon(Icons.badge_outlined));
   await _pumpUntilFound(tester, find.text('Program requests'));
+}
+
+Future<void> _openSettings(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.settings_outlined));
+  await _pumpUntilFound(tester, find.text('Appearance'));
 }
 
 void main() {
@@ -134,7 +140,8 @@ void main() {
 
     expect(fake.programRequests.length, 1);
     expect(fake.programRequests.first['day_name'], 'Upper 1');
-    expect(fake.programRequests.first['replacement_exercise_id'], 'incline_press');
+    expect(
+        fake.programRequests.first['replacement_exercise_id'], 'incline_press');
     expect(fake.programRequests.first['status'], 'pending');
     expect(find.text('Reason: Shoulder discomfort.'), findsOneWidget);
   });
@@ -176,9 +183,11 @@ void main() {
     });
     fake.programVersion = 1;
     fake.programRequests.add(_request(id: 'req-1', status: 'pending'));
-    fake.programRequests.add(
-        _request(id: 'req-2', status: 'pending', reason: 'Knee pain.'));
+    fake.programRequests
+        .add(_request(id: 'req-2', status: 'pending', reason: 'Knee pain.'));
     await _pumpApp(tester, fake);
+
+    await _openSettings(tester);
 
     await tester.tap(find.byIcon(Icons.handshake_outlined));
     await _pumpUntilFound(tester, find.text('Active assignments'));

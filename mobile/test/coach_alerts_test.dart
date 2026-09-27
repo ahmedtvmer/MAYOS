@@ -46,7 +46,7 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Dashboard'));
+  await _pumpUntilFound(tester, find.text('Home'));
 }
 
 FakeMayosApi _coachFake() {
@@ -122,6 +122,7 @@ Map<String, dynamic> _regressionAlert({String state = 'new'}) =>
     };
 
 Future<void> _openRoster(WidgetTester tester) async {
+  await _openSettings(tester);
   await tester.tap(find.byIcon(Icons.handshake_outlined));
   await _pumpUntilFound(tester, find.text('Active assignments'));
 }
@@ -132,9 +133,13 @@ Future<void> _openAlertCenter(WidgetTester tester) async {
   await _pumpUntilFound(tester, find.text('Acknowledge'));
 }
 
+Future<void> _openSettings(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.settings_outlined));
+  await _pumpUntilFound(tester, find.text('Appearance'));
+}
+
 void main() {
-  testWidgets('roster shows new and acknowledged alert badges',
-      (tester) async {
+  testWidgets('roster shows new and acknowledged alert badges', (tester) async {
     final FakeMayosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _openRoster(tester);
@@ -143,15 +148,15 @@ void main() {
     expect(find.text('1'), findsOneWidget);
   });
 
-  testWidgets('coach acknowledges then resolves an alert',
-      (tester) async {
+  testWidgets('coach acknowledges then resolves an alert', (tester) async {
     final FakeMayosApi fake = _coachFake();
     fake.coachAlerts.add(_alert());
     await _pumpApp(tester, fake);
     await _openAlertCenter(tester);
 
     expect(find.text('bob'), findsWidgets);
-    expect(find.text('Missed 2 expected training days (2026-09-20 to 2026-09-21)'),
+    expect(
+        find.text('Missed 2 expected training days (2026-09-20 to 2026-09-21)'),
         findsOneWidget);
 
     await tester.tap(find.text('Acknowledge'));

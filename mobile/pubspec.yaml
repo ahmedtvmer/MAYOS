@@ -22,3 +22,17 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/brand/
+
+  fonts:
+    # MAYOS typography pair (OFL). See mobile/DESIGN.md for provenance and how
+    # to swap the approximation. Variable fonts: weights are selected through
+    # MayosTypography, which sets explicit `fontVariations`.
+    - family: PlayfairDisplay
+      fonts:
+        - asset: assets/fonts/PlayfairDisplay-Variable.ttf
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Variable.ttf

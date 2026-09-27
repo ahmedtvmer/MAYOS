@@ -1,0 +1,72 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../core/ui/mayos_app_header.dart';
+import '../../../core/ui/mayos_bottom_navigation.dart';
+import '../../../core/ui/mayos_scaffold.dart';
+import '../../../router.dart';
+import '../dashboard/dashboard_tab.dart';
+import '../program/program_tab.dart';
+
+/// The player navigation shell.
+///
+/// Bottom navigation is intentionally limited to Home and Program. Settings
+/// opens from the header; every other working surface (coach profile/invite/
+/// assignment, workout drafts, assistant chat, profile, plan, logout) is
+/// reached from Settings or the header, never a placeholder destination.
+class PlayerShell extends ConsumerStatefulWidget {
+  const PlayerShell({super.key});
+
+  @override
+  ConsumerState<PlayerShell> createState() => _PlayerShellState();
+}
+
+class _PlayerShellState extends ConsumerState<PlayerShell> {
+  int _index = 0;
+
+  static const List<MayosNavItem> _items = <MayosNavItem>[
+    MayosNavItem(
+      label: 'Home',
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home,
+    ),
+    MayosNavItem(
+      label: 'Program',
+      icon: Icons.article_outlined,
+      selectedIcon: Icons.article,
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return MayosScaffold(
+      header: MayosAppHeader(
+        actions: <Widget>[
+          IconButton(
+            tooltip: 'Assistant',
+            onPressed: () => context.push(chatPath),
+            icon: const Icon(Icons.chat_bubble_outline),
+          ),
+          IconButton(
+            tooltip: 'Settings',
+            onPressed: () => context.push(settingsPath),
+            icon: const Icon(Icons.settings_outlined),
+          ),
+        ],
+      ),
+      body: IndexedStack(
+        index: _index,
+        children: const <Widget>[
+          DashboardTab(),
+          ProgramTab(),
+        ],
+      ),
+      bottomBar: MayosBottomNavigation(
+        items: _items,
+        index: _index,
+        onSelected: (int index) => setState(() => _index = index),
+      ),
+    );
+  }
+}
