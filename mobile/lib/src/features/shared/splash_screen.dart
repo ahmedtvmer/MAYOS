@@ -38,8 +38,8 @@ class SplashScreen extends StatelessWidget {
                     final double logoHeight =
                         (byWidth < byHeight ? byWidth : byHeight)
                             .clamp(72.0, 120.0);
-                    // The lockup is centred on the padded canvas; the taglines
-                    // are anchored just below its bottom edge so the composition
+                    // The lockup is centred on the padded canvas; the tagline
+                    // is anchored just below its bottom edge so the composition
                     // stays connected without shifting the lockup off centre.
                     const double verticalPadding = MayosSpacing.md;
                     final double stackHeight =
@@ -66,22 +66,12 @@ class SplashScreen extends StatelessWidget {
                               mainAxisSize: MainAxisSize.min,
                               children: <Widget>[
                                 Text(
-                                  'TRAIN BETTER',
+                                  'Progress, Engineered.',
                                   textAlign: TextAlign.center,
-                                  style: MayosTypography.caption.copyWith(
+                                  style: MayosTypography.serifMedium.copyWith(
+                                    fontSize: 20,
+                                    height: 1.2,
                                     color: c.textSecondary,
-                                    letterSpacing: 3.5,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: MayosSpacing.xxs),
-                                Text(
-                                  'THINK DEEPER',
-                                  textAlign: TextAlign.center,
-                                  style: MayosTypography.caption.copyWith(
-                                    color: c.textMuted,
-                                    letterSpacing: 3.5,
-                                    fontWeight: FontWeight.w500,
                                   ),
                                 ),
                                 const SizedBox(height: MayosSpacing.xxl),

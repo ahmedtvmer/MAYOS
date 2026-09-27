@@ -72,7 +72,7 @@ class AuthScaffold extends StatelessWidget {
                     final double byHeight = constraints.maxHeight * 0.17;
                     final double logoHeight =
                         (byWidth < byHeight ? byWidth : byHeight)
-                            .clamp(72.0, 140.0);
+                            .clamp(72.0, 120.0);
                     return SingleChildScrollView(
                       keyboardDismissBehavior:
                           ScrollViewKeyboardDismissBehavior.onDrag,

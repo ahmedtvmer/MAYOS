@@ -63,16 +63,17 @@ small transparent pad, never edit pixels inside the mark or wordmark.
 
 - **Splash hero.** The monochrome lockup is forced **white**
   (`MayosBrandVariant.white`) over the dark gym photo (#110), centred both
-  horizontally and vertically on the screen. The tagline and progress indicator
-  sit below the centre without moving the lockup off it.
+  horizontally and vertically on the screen (72–120dp). The tagline, *Progress,
+  Engineered.*, is set on one line in the brand serif, and it and the progress
+  indicator sit below the centre without moving the lockup off it.
 - **Auth hero.** The logged-out sign-in screens (log in, register, forgot
   password, reset password) also share the wallpaper and force the **white**
   lockup. The recovery-email gate stays on the plain canvas and keeps the
   theme-following `auto` lockup.
 - **Header / small placements.** The vertical lockup's baked wordmark is
-  illegible at ~22dp, so the header uses the documented **clean text
+  illegible at ~24dp, so the header uses the documented **clean text
   treatment**: `MayosBrandMark` (mark-only crop, white on dark / black on
-  light) at 22dp next to a letterspaced `MAYOS` wordmark set in the brand sans
+  light) at 24dp next to a letterspaced `MAYOS` wordmark set in the brand sans
   (Inter) in the theme's primary text colour. The treatment is centred on the
   screen width, independent of the right-aligned actions. Semantics label stays
   "MAYOS".
