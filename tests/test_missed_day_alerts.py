@@ -7,7 +7,6 @@ streak breaks, the catalog-side roster summary, and sweep resilience.
 """
 
 import sqlite3
-import threading
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -36,8 +35,6 @@ def api(tmp_path: Path, monkeypatch):
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     cat_conn = sqlite3.connect(catalog_path)
     cat_conn.execute(

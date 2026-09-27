@@ -89,11 +89,7 @@ def main(argv: list[str] | None = None) -> int:
             print("error: passwords do not match.")
             return 2
 
-    # Fresh singleton state so custom dirs apply even in long-lived shells.
-    DatabaseManager._instance = None
-    import threading
-
-    DatabaseManager._local = threading.local()
+    # A fresh store is built per run, so custom dirs apply even in long-lived shells.
     db = DatabaseManager(catalog_path=args.catalog, users_dir=args.users_dir, backups_dir=args.backups_dir)
     try:
         clean_id, epoch, enrolled = reset_password(db, args.trainee_id, new_password)

@@ -5,15 +5,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 from agent.tools import save_user_profile
-from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
 
-db = DatabaseManager()
 
-
-def test_profile_flow():
+def test_profile_flow(fresh_store):
     # Simulate messy LLM outputs with units and strings
     raw_payload = {
         "proportions": "My lower body is taller",
@@ -32,7 +29,7 @@ def test_profile_flow():
     result = save_user_profile.invoke(raw_payload)
     logger.info(f"Tool Output: {result}")
 
-    saved = db.get_user_profile()
+    saved = fresh_store.get_user_profile()
     logger.info("\nSaved SQLite Record:")
     for k, v in saved.items():
         logger.info(f"  {k}: {v}")

@@ -9,7 +9,6 @@ of player-assistant chat data from every coach response.
 """
 
 import sqlite3
-import threading
 from pathlib import Path
 
 import jwt as pyjwt
@@ -42,8 +41,6 @@ def api(tmp_path: Path, monkeypatch):
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     cat_conn = sqlite3.connect(catalog_path)
     cat_conn.execute(

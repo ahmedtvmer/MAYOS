@@ -1,4 +1,3 @@
-import threading
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -165,8 +164,6 @@ def test_output_scrubber():
 
 @pytest.fixture
 def isolated_db(tmp_path, monkeypatch):
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     db = DatabaseManager(
         catalog_path=tmp_path / "catalog.db",
         users_dir=tmp_path / "users",
@@ -242,7 +239,7 @@ def _llm_stream_stub(chunks):
     return SimpleNamespace(stream=lambda payload: iter(chunks))
 
 
-def test_stream_assistant_turn_mocked_llm(monkeypatch):
+def test_stream_assistant_turn_mocked_llm(fresh_store, monkeypatch):
     from agent import assistant_graph as graph_module
 
     mock_chunks = [
@@ -270,7 +267,7 @@ def test_stream_assistant_turn_mocked_llm(monkeypatch):
     assert state["program_updated"] is False
 
 
-def test_stream_assistant_turn_records_generation_telemetry(monkeypatch):
+def test_stream_assistant_turn_records_generation_telemetry(fresh_store, monkeypatch):
     from agent import assistant_graph as graph_module
 
     mock_chunks = [MagicMock(content="Maintain "), MagicMock(content="scapular retraction.")]
@@ -301,7 +298,7 @@ def test_stream_assistant_turn_records_generation_telemetry(monkeypatch):
     assert captured["tps"] >= 0.0
 
 
-def test_stream_assistant_turn_intercept_records_zero_tokens(monkeypatch):
+def test_stream_assistant_turn_intercept_records_zero_tokens(fresh_store, monkeypatch):
     from agent import assistant_graph as graph_module
 
     state = {

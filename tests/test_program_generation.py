@@ -9,13 +9,16 @@ from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
-db = DatabaseManager()
 
 
 def run_test():
     logger.info("--- Starting Phase 2 Program Generation ---")
 
     # 1. Mount isolated test ledger and seed baseline profile
+    db = DatabaseManager()
+    from database.store import set_store
+
+    set_store(db)
     test_user = "test_generator_trainee"
     db.switch_user(test_user)
     db.upsert_user_profile(
@@ -77,7 +80,7 @@ def test_invalid_frequency_rejected_before_program_writes(monkeypatch, frequency
     database = MagicMock()
     database.get_user_profile.return_value = {"weekly_frequency": frequency if source == "profile" else 4}
     split = MagicMock()
-    monkeypatch.setattr(program_generator, "db", database)
+    monkeypatch.setattr(program_generator, "get_store", lambda _db=database: _db)
     monkeypatch.setattr(program_generator, "resolve_split", split)
     kwargs = {"frequency_override": frequency} if source == "override" else {}
     with pytest.raises(ValueError, match="1 to 5"):
@@ -90,7 +93,7 @@ def test_invalid_frequency_rejected_before_program_writes(monkeypatch, frequency
 def test_invalid_text_frequency_not_hidden_by_valid_override(monkeypatch, frequency):
     database = MagicMock()
     database.get_user_profile.return_value = {"weekly_frequency": 4}
-    monkeypatch.setattr(program_generator, "db", database)
+    monkeypatch.setattr(program_generator, "get_store", lambda _db=database: _db)
     with pytest.raises(ValueError, match="1 to 5"):
         generate_program_pipeline(user_split_override=f"switch routine to {frequency} days", frequency_override=3)
     assert database.method_calls == [("get_user_profile", (), {})]

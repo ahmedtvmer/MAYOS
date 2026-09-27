@@ -13,7 +13,6 @@ from agent.assistant_graph import (
     exercise_substitution_node,
     router_node,
 )
-from database.database_manager import DatabaseManager
 
 
 def test_expand_fitness_abbreviations_lexicon():
@@ -79,9 +78,22 @@ def test_resolve_unknown_abbreviation_with_llm_mock():
 
 
 @pytest.fixture(scope="module")
-def db_with_good_morning():
-    """Sets up a test program in DatabaseManager with Machine Seated Good Morning."""
-    db = DatabaseManager()
+def _good_morning_db(tmp_path_factory):
+    """Builds one store for the module; swaps persist across the ordered tests."""
+    import shutil
+
+    from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
+    from database.store import set_store
+
+    base = tmp_path_factory.mktemp("good_morning")
+    catalog_path = base / "catalog.db"
+    shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
+    db = DatabaseManager(
+        catalog_path=catalog_path,
+        users_dir=base / "users",
+        backups_dir=base / "backups",
+    )
+    set_store(db)
     profile = {
         "gender": "male",
         "proportions": "balanced",
@@ -110,7 +122,19 @@ def db_with_good_morning():
         new_exercise_id="3759",  # machine seated good morning (glutes / upper legs)
         new_notes="Hinge at the hips with neutral spine",
     )
-    return db
+    yield db
+    if db.user_conn is not None:
+        db.user_conn.close()
+    db.catalog_conn.close()
+
+
+@pytest.fixture
+def db_with_good_morning(_good_morning_db):
+    """Re-publishes the module store as active after the per-test isolation reset."""
+    from database.store import set_store
+
+    set_store(_good_morning_db)
+    return _good_morning_db
 
 
 def test_substitution_rdls_confident_install(db_with_good_morning):

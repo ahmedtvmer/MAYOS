@@ -96,7 +96,7 @@ async def post_message(
     # Refuse before the stream starts: the app-wide ModelLimitExceeded handler
     # returns a plain HTTP 429 with a JSON ``detail`` (surfaced verbatim by the
     # mobile client, ADR 036/038).
-    admit_model_request(account_id, guard=False)
+    admit_model_request(account_id, guard=False, db=db)
 
     out: "queue.Queue[tuple[str, Any]]" = queue.Queue()
     worker = threading.Thread(

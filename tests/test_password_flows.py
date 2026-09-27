@@ -2,7 +2,6 @@
 
 import os
 import sqlite3
-import threading
 from pathlib import Path
 
 import pytest
@@ -24,8 +23,6 @@ def api(tmp_path: Path, monkeypatch):
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     cat_conn = sqlite3.connect(catalog_path)
     cat_conn.execute("CREATE TABLE exercises (id TEXT PRIMARY KEY, name TEXT);")
@@ -333,8 +330,6 @@ def test_fresh_catalog_boot_creates_account_tables(tmp_path: Path, monkeypatch):
 
     # monkeypatch restores the singleton/thread-local after this test, so
     # module-level DatabaseManager() consumers in other test files stay intact.
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     db = DatabaseManager(
         catalog_path=catalog_path, users_dir=tmp_path / "users", backups_dir=tmp_path / "backups", active_user="bootstrap"
     )

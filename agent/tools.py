@@ -4,11 +4,10 @@ from typing import Any
 from langchain_core.tools import tool
 
 from agent.UserState import UserProfileSchema
-from database.database_manager import DatabaseManager
+from database.store import get_store
 from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
-db = DatabaseManager()
 
 
 @tool(args_schema=UserProfileSchema)
@@ -49,7 +48,7 @@ def save_user_profile(
     }
 
     try:
-        db.upsert_user_profile(profile_data)
+        get_store().upsert_user_profile(profile_data)
         logger.info("User profile successfully upserted into SQLite.")
         return "User profile successfully saved and locked into database."
     except Exception as e:

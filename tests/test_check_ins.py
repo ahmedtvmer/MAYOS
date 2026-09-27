@@ -8,7 +8,6 @@ check-in, the shifting due date, and the in-place coach_alerts shape migration.
 """
 
 import sqlite3
-import threading
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -55,8 +54,6 @@ def api(tmp_path: Path, monkeypatch):
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     cat_conn = sqlite3.connect(catalog_path)
     cat_conn.execute(
@@ -368,8 +365,6 @@ def test_due_date_shifts_with_check_ins_and_shows_on_the_roster(api):
 
 def test_legacy_coach_alerts_shape_migrates_in_place(tmp_path, monkeypatch):
     monkeypatch.setenv("SKIP_LLM_LOAD", "true")
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     conn = sqlite3.connect(catalog_path)
     conn.execute(
@@ -792,8 +787,6 @@ _LEGACY_COACH_ALERTS_ROW = (
 
 def _prepare_migration_catalog(tmp_path, monkeypatch):
     monkeypatch.setenv("SKIP_LLM_LOAD", "true")
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     conn = sqlite3.connect(catalog_path)
     conn.execute(

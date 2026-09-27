@@ -13,7 +13,6 @@ Usage:
 import argparse
 import os
 import sys
-import threading
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -37,8 +36,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--backups-dir", default=os.getenv("BACKUPS_DIR", str(DEFAULT_BACKUPS_DIR)))
     args = parser.parse_args(argv)
 
-    DatabaseManager._instance = None
-    DatabaseManager._local = threading.local()
     db = DatabaseManager(catalog_path=args.catalog, users_dir=args.users_dir, backups_dir=args.backups_dir)
     try:
         applied = db.reapply_deletions()

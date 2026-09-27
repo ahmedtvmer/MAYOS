@@ -6,36 +6,19 @@ and login touch only SQLite, so no LLM or external service is involved.
 """
 
 import os
-import threading
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from database.database_manager import DatabaseManager
 from database.storage import StorageNotReady, storage_status, validate_data_root
 from svc.app import create_app
 
 
-def _close_db():
-    instance = DatabaseManager._instance
-    if instance is None:
-        return
-    for attr in ("user_conn", "catalog_conn"):
-        conn = getattr(instance, attr, None)
-        if conn is not None:
-            try:
-                conn.close()
-            except Exception:  # pragma: no cover - best-effort cleanup
-                pass
-
-
 def _start_fresh_db(monkeypatch):
-    """Detach the singleton for a test without touching the pre-existing one."""
+    """Reset the process-wide LLM cache; each test builds its own fresh store."""
     from utils import model_downloader as md
 
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     md._llm_instance = None
     md._judge_llm_instance = None
     md._coach_llm_instance = None
@@ -45,7 +28,6 @@ def _start_fresh_db(monkeypatch):
 def clean_db(monkeypatch):
     _start_fresh_db(monkeypatch)
     yield
-    _close_db()
 
 
 def _prepare_env(monkeypatch, data_dir: Path):
@@ -86,9 +68,8 @@ def test_mounted_root_persists_account_across_restart(clean_db, monkeypatch, tmp
     assert (data_dir / "catalog.db").is_file()
     assert (data_dir / "users" / "alice.db").is_file()
 
-    # Simulate an always-on Machine restart: drop the test instance and boot a
-    # fresh app against the same mounted root. The account must survive.
-    _close_db()
+    # Simulate an always-on Machine restart: boot a fresh app against the same
+    # mounted root. The account must survive.
     _start_fresh_db(monkeypatch)
     with TestClient(create_app(), raise_server_exceptions=False) as client:
         duplicate = client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})

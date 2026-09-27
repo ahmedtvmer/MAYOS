@@ -1,7 +1,6 @@
 """Swap target resolution: catalog-name-first installs, hallucinated-name refusals, muscle mismatches."""
 
 import shutil
-import threading
 from types import SimpleNamespace
 
 import pytest
@@ -32,8 +31,6 @@ def _exercise(exercise_id: str) -> dict:
 def sub_db(tmp_path, monkeypatch):
     catalog_path = tmp_path / "catalog.db"
     shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     db = DatabaseManager(
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
@@ -41,7 +38,7 @@ def sub_db(tmp_path, monkeypatch):
         active_user="default",
     )
     try:
-        monkeypatch.setattr(assistant_graph, "db", db)
+        monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
         db.save_training_program(
             {
                 "program_name": "Resolution Test Split",

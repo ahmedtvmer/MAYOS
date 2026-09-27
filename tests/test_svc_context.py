@@ -18,8 +18,6 @@ from svc.dependencies import bind_request, get_current_trainee
 
 @pytest.fixture
 def temp_db_env(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     cat_conn = sqlite3.connect(catalog_path)
     cat_conn.execute("CREATE TABLE exercises (id TEXT PRIMARY KEY, name TEXT);")

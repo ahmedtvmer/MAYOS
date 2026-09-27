@@ -32,12 +32,11 @@ from agent.ProgramState import (
     ProgramExerciseSchema,
     WarmupExerciseSchema,
 )
-from database.database_manager import DatabaseManager
+from database.store import get_store
 from utils.logger import MyosLogger
 
 load_dotenv()
 logger = MyosLogger().get_logger("program_generator")
-db = DatabaseManager()
 
 MECHANIC_CUES = {
     "compound_press": "Control the 2-3s eccentric, pause briefly at full stretch, drive without locking out aggressively.",
@@ -293,6 +292,7 @@ def generate_program_pipeline(
     frequency_override: int | None = None,
     published_by_coach_account_id: str | None = None,
 ) -> tuple[GeneratedProgramSchema, str]:
+    db = get_store()
     profile = db.get_user_profile()
     if not profile:
         raise ValueError("No user profile found in SQLite. Complete intake first.")

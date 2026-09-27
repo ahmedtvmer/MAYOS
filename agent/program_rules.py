@@ -16,11 +16,10 @@ from agent.program_blueprints import (
     resolve_split_type,
 )
 from agent.ProgramState import CustomDayPlan, DynamicSplitPlan
-from database.database_manager import DatabaseManager
+from database.store import get_store
 from utils.model_downloader import llm
 
 load_dotenv()
-db = DatabaseManager()
 
 SLANG_TO_SQL_MAP = {
     "quads": "LOWER(target_muscle) = 'quads'",
@@ -281,7 +280,7 @@ def _fetch_by_sql(
     extra_exclude: str = "",
     name_rank: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
-    conn = db.get_connection()
+    conn = get_store().get_connection()
     cursor = conn.cursor()
 
     where = [f"({sql})"]
@@ -373,7 +372,7 @@ def fetch_filtered_candidates(
     limit: int = 4,
     body_part: str | None = None,
 ) -> list[dict[str, Any]]:
-    conn = db.get_connection()
+    conn = get_store().get_connection()
     cursor = conn.cursor()
 
     target = (muscle_group or body_part or "").strip().lower()

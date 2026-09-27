@@ -3,7 +3,7 @@
 from typing import Annotated, Any, NamedTuple
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from service._base import bind_user
@@ -36,10 +36,20 @@ class VerifiedPlayer(str):
         return value
 
 
-def get_db() -> Any:
-    from database.database_manager import DatabaseManager
+async def get_db(request: Request) -> Any:
+    """Returns the one store the application built at startup (ADR 041).
 
-    return DatabaseManager()
+    Never constructs a store: the app owns exactly one, created in the lifespan
+    and published on ``app.state``. Also arms ambient store access for agent and
+    metering code that runs on this request's context.
+    """
+    from database.store import set_store
+
+    store = request.app.state.db
+    if store is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database not ready.")
+    set_store(store)
+    return store
 
 
 def _authorize_account(db: Any, account_id: str, token_epoch: int) -> dict[str, Any]:

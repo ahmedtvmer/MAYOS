@@ -72,8 +72,6 @@ def api(tmp_path: Path, monkeypatch):
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     cat_conn = sqlite3.connect(catalog_path)
     cat_conn.execute(
@@ -737,8 +735,6 @@ def _generation_profile(**overrides: Any) -> dict[str, Any]:
 @pytest.fixture
 def generation_db(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("SKIP_LLM_LOAD", "true")
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     cat_conn = sqlite3.connect(catalog_path)
     cat_conn.execute(
@@ -756,14 +752,14 @@ def generation_db(tmp_path: Path, monkeypatch):
     )
     from agent import program_generator
 
-    monkeypatch.setattr(program_generator, "db", db)
+    monkeypatch.setattr(program_generator, "get_store", lambda _db=db: _db)
     yield db, program_generator
     if db.user_conn is not None:
         db.user_conn.close()
     db.catalog_conn.close()
 
 
-def _stub_day_assembly(program_generator) -> list[dict[str, Any]]:
+def _stub_day_assembly(program_generator, monkeypatch) -> list[dict[str, Any]]:
     seen: list[dict[str, Any]] = []
 
     def fake_day(**kwargs):
@@ -774,13 +770,13 @@ def _stub_day_assembly(program_generator) -> list[dict[str, Any]]:
             exercises=[_exercise(1), _exercise(2), _exercise(3)],
         )
 
-    program_generator.assemble_deterministic_day = fake_day
+    monkeypatch.setattr(program_generator, "assemble_deterministic_day", fake_day)
     return seen
 
 
 def test_proportions_do_not_change_generated_program(generation_db, monkeypatch):
     db, program_generator = generation_db
-    seen = _stub_day_assembly(program_generator)
+    seen = _stub_day_assembly(program_generator, monkeypatch)
 
     programs = {}
     for proportions in ("long_legs", "balanced", "long_torso"):
@@ -794,9 +790,9 @@ def test_proportions_do_not_change_generated_program(generation_db, monkeypatch)
     assert seen and "proportions" not in seen[0]
 
 
-def test_specialization_still_changes_the_split(generation_db):
+def test_specialization_still_changes_the_split(generation_db, monkeypatch):
     db, program_generator = generation_db
-    _stub_day_assembly(program_generator)
+    _stub_day_assembly(program_generator, monkeypatch)
 
     db.switch_user("spec_male")
     db.upsert_user_profile(_generation_profile(gender="male"))

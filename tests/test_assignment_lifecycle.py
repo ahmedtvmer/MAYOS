@@ -34,8 +34,6 @@ def api(tmp_path: Path, monkeypatch):
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     cat_conn = sqlite3.connect(catalog_path)
     cat_conn.execute("CREATE TABLE exercises (id TEXT PRIMARY KEY, name TEXT);")
@@ -122,8 +120,6 @@ def _two_catalog_connections(tmp_path, monkeypatch):
     monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
 
     def build():
-        monkeypatch.setattr(DatabaseManager, "_instance", None)
-        monkeypatch.setattr(DatabaseManager, "_local", threading.local())
         return DatabaseManager(
             catalog_path=tmp_path / "catalog.db",
             users_dir=tmp_path / "users",

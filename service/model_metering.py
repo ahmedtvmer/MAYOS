@@ -153,9 +153,9 @@ def record_model_usage(
 ) -> None:
     """Computes cost and persists one metered call (called by the metering callback)."""
     cost = compute_cost(model, input_tokens, output_tokens)
-    from database.database_manager import DatabaseManager
+    from database.store import get_store
 
-    DatabaseManager().record_model_usage(
+    get_store().record_model_usage(
         account_id=account_id,
         role=role,
         model=model,

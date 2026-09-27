@@ -23,6 +23,7 @@ import time
 from collections import deque
 from contextvars import ContextVar, Token
 from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,9 @@ def release_admission(token: Token[str | None] | None) -> None:
         _admitted.reset(token)
 
 
-def admit_model_request(account_id: str | None, *, guard: bool = True) -> Token[str | None] | None:
+def admit_model_request(
+    account_id: str | None, *, guard: bool = True, db: Any = None
+) -> Token[str | None] | None:
     """Checks and reserves one request for ``account_id``; raises :class:`ModelLimitExceeded`.
 
     Unattributed calls (``account_id is None``) are never limited. The window
@@ -108,6 +111,9 @@ def admit_model_request(account_id: str | None, *, guard: bool = True) -> Token[
     With ``guard=True`` a second call for the same account inside the same
     thread/turn is a no-op and returns ``None``; otherwise a token is returned
     for the caller to hand to :func:`release_admission` when the scope exits.
+
+    ``db`` is the app-owned store; when omitted the active store is used (it was
+    published by the caller's ``bind_user`` or the startup lifespan, ADR 041).
     """
     if not account_id:
         return None
@@ -122,9 +128,10 @@ def admit_model_request(account_id: str | None, *, guard: bool = True) -> Token[
         if request_limit > 0 and in_window >= request_limit:
             raise ModelLimitExceeded(REQUEST_LIMIT_DETAIL)
         if token_limit > 0:
-            from database.database_manager import DatabaseManager
+            from database.store import get_store
 
-            used = DatabaseManager().sum_model_tokens_for_account(account_id, utc_day_start_iso())
+            store = db if db is not None else get_store()
+            used = store.sum_model_tokens_for_account(account_id, utc_day_start_iso())
             if used >= token_limit:
                 raise ModelLimitExceeded(DAILY_TOKEN_LIMIT_DETAIL)
         _request_window.setdefault(account_id, deque()).append(now)

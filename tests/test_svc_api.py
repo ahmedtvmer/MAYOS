@@ -1,7 +1,6 @@
 """FastAPI route tests: isolated DB, bypassed JWT subject, mocked LLM-bound calls."""
 
 import sqlite3
-import threading
 from pathlib import Path
 
 import pytest
@@ -23,8 +22,6 @@ def client(tmp_path: Path, monkeypatch):
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     cat_conn = sqlite3.connect(catalog_path)
     cat_conn.execute(
@@ -41,6 +38,7 @@ def client(tmp_path: Path, monkeypatch):
         active_user="bootstrap",
     )
     app = create_app()
+    app.state.test_db = db
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_trainee] = lambda: "alice"
     with TestClient(app) as test_client:
@@ -101,11 +99,9 @@ def test_remember_me_token_lifetime(client, monkeypatch):
 
 
 def test_legacy_claim_flow(client):
-    from database.database_manager import DatabaseManager
-
     # Simulate a pre-password ledger: user file exists, no hash stored.
     client.post("/auth/register", json={"trainee_id": "legacy", "password": "correct-horse-1"})
-    db = DatabaseManager()
+    db = client.app.state.test_db
     db.switch_user("legacy")
     db.conn.execute("DELETE FROM auth_credentials WHERE id = 1")
     db.conn.commit()
@@ -125,15 +121,12 @@ def test_legacy_claim_flow(client):
 
 def test_cross_user_isolation_with_real_jwt(tmp_path, monkeypatch):
     import sqlite3
-    import threading
 
     monkeypatch.setenv("SKIP_LLM_LOAD", "true")
     monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     cat_conn = sqlite3.connect(catalog_path)
     cat_conn.execute("CREATE TABLE exercises (id TEXT PRIMARY KEY, name TEXT);")
@@ -167,15 +160,12 @@ def test_cross_user_isolation_with_real_jwt(tmp_path, monkeypatch):
 def _real_jwt_app(tmp_path, monkeypatch):
     """App with real JWT verification (no subject override) on an isolated DB."""
     import sqlite3
-    import threading
 
     monkeypatch.setenv("SKIP_LLM_LOAD", "true")
     monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     cat_conn = sqlite3.connect(catalog_path)
     cat_conn.execute(

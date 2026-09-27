@@ -78,18 +78,7 @@ class DatabaseManager(
     LedgerChatMixin,
     LedgerDebriefsMixin,
 ):
-    _instance = None
     EMBEDDING_DIM = 384
-    _lock: threading.Lock = threading.Lock()
-    _local: threading.local = threading.local()
-
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
-        return cls._instance
 
     def __init__(
         self,
@@ -99,55 +88,46 @@ class DatabaseManager(
         active_user: str | None = None,
         deletions_path=None,
     ):
-        if getattr(self, "_initialized", False):
-            if active_user is not None:
-                sanitized = self._sanitize_username(active_user)
-                if sanitized and sanitized != self.active_user:
-                    self.switch_user(sanitized)
-            return
+        if configured_data_root() is not None:
+            root = validate_data_root()
+        else:
+            root = resolve_data_root()
+        self.catalog_path = Path(catalog_path) if catalog_path is not None else root / "catalog.db"
+        self.users_dir = Path(users_dir) if users_dir is not None else root / "users"
+        self.backups_dir = Path(backups_dir) if backups_dir is not None else root / "backups"
+        env_deletions = os.getenv("MAYOS_DELETIONS_DB", "").strip()
+        if deletions_path is not None:
+            self.deletions_path = Path(deletions_path)
+        elif env_deletions:
+            self.deletions_path = Path(env_deletions)
+        else:
+            self.deletions_path = self.catalog_path.parent / "deletions.db"
+        self._default_user = self._sanitize_username(active_user) if active_user else "default"
+        self._catalog_lock = threading.RLock()
+        # The mounted-ledger state is per-instance (and per-thread within it), so
+        # two stores never share an active user or connection.
+        self._local = threading.local()
 
-        with self._lock:
-            if getattr(self, "_initialized", False):
-                return
+        os.makedirs(self.catalog_path.parent, exist_ok=True)
+        os.makedirs(self.users_dir, exist_ok=True)
+        os.makedirs(self.backups_dir, exist_ok=True)
 
-            if configured_data_root() is not None:
-                root = validate_data_root()
-            else:
-                root = resolve_data_root()
-            self.catalog_path = Path(catalog_path) if catalog_path is not None else root / "catalog.db"
-            self.users_dir = Path(users_dir) if users_dir is not None else root / "users"
-            self.backups_dir = Path(backups_dir) if backups_dir is not None else root / "backups"
-            env_deletions = os.getenv("MAYOS_DELETIONS_DB", "").strip()
-            if deletions_path is not None:
-                self.deletions_path = Path(deletions_path)
-            elif env_deletions:
-                self.deletions_path = Path(env_deletions)
-            else:
-                self.deletions_path = self.catalog_path.parent / "deletions.db"
-            self._default_user = self._sanitize_username(active_user) if active_user else "default"
-            self._catalog_lock = threading.RLock()
+        self.catalog_conn = sqlite3.connect(self.catalog_path, check_same_thread=False)
+        self.catalog_conn.execute("PRAGMA foreign_keys = ON;")
+        self.catalog_conn.execute("PRAGMA journal_mode = WAL;")
+        self.catalog_conn.execute("PRAGMA busy_timeout = 5000;")
+        self.catalog_conn.execute("PRAGMA synchronous = NORMAL;")
+        self.catalog_conn.enable_load_extension(True)
+        sqlite_vec.load(self.catalog_conn)
+        self.catalog_conn.enable_load_extension(False)
 
-            os.makedirs(self.catalog_path.parent, exist_ok=True)
-            os.makedirs(self.users_dir, exist_ok=True)
-            os.makedirs(self.backups_dir, exist_ok=True)
+        self.ensure_account_schema()
 
-            self.catalog_conn = sqlite3.connect(self.catalog_path, check_same_thread=False)
-            self.catalog_conn.execute("PRAGMA foreign_keys = ON;")
-            self.catalog_conn.execute("PRAGMA journal_mode = WAL;")
-            self.catalog_conn.execute("PRAGMA busy_timeout = 5000;")
-            self.catalog_conn.execute("PRAGMA synchronous = NORMAL;")
-            self.catalog_conn.enable_load_extension(True)
-            sqlite_vec.load(self.catalog_conn)
-            self.catalog_conn.enable_load_extension(False)
+        self._initialize_deletions()
 
-            self.ensure_account_schema()
+        self.switch_user(self._default_user)
 
-            self._initialize_deletions()
-
-            self.switch_user(self._default_user)
-
-            self._initialized = True
-            logger.info(f"DatabaseManager initialized with user ledger ({self.active_user}).")
+        logger.info(f"DatabaseManager initialized with user ledger ({self.active_user}).")
 
     @property
     def active_user(self) -> str:

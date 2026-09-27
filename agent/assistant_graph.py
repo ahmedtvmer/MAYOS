@@ -44,7 +44,7 @@ from agent.telemetry_reconciler import (
     clean_movement_stem,
     reconcile_telemetry_query,
 )
-from database.database_manager import DatabaseManager
+from database.store import get_store
 from service import programs as programs_service
 from utils.logger import MyosLogger
 from utils.model_downloader import llm, uses_cloud_backend
@@ -52,7 +52,6 @@ from utils.text_scrubber import CoachOutputScrubber, EMPTY_RESPONSE_FALLBACK, PI
 
 load_dotenv()
 logger = MyosLogger().get_logger(__name__)
-db = DatabaseManager()
 
 TAIL_WINDOW_SIZE = 6
 
@@ -216,6 +215,7 @@ def _explicit_preferred_name(query: str) -> str | None:
 
 def hydrate_context_node(state: AssistantState) -> dict[str, Any]:
     _bind_trainee_connection(state)
+    db = get_store()
     profile = db.get_user_profile()
     profile = profile if isinstance(profile, dict) else {}
     getter = getattr(db, "get_assistant_memory", None)
@@ -238,6 +238,7 @@ def _name_response(state: AssistantState) -> str | None:
     query = _get_message_text(state["messages"][-1]) if state.get("messages") else ""
     name = _explicit_preferred_name(query)
     if name:
+        db = get_store()
         setter = getattr(db, "set_assistant_memory", None)
         if callable(setter):
             setter("preferred_name", name)
@@ -566,7 +567,7 @@ def _whole_session_query(query: str) -> bool:
 
 
 def _session_comparison_context() -> dict[str, Any] | None:
-    getter = getattr(db, "get_session_comparison_context", None)
+    getter = getattr(get_store(), "get_session_comparison_context", None)
     context = getter() if callable(getter) else None
     return context if isinstance(context, dict) else None
 
@@ -645,7 +646,7 @@ def _session_summary_response() -> dict[str, Any]:
     comparison = _session_comparison_context()
     if comparison is not None:
         return _response(_comparison_text(comparison))
-    getter = getattr(db, "get_latest_session_summary", None)
+    getter = getattr(get_store(), "get_latest_session_summary", None)
     summary = getter() if callable(getter) else None
     if not isinstance(summary, dict) or not summary:
         return _response("I don't have a logged session summary available yet. Log a session and I can review it.")
@@ -690,7 +691,7 @@ def _history_exercise_matches(target: str, entries: list[dict[str, Any]]) -> lis
 
 
 def _history_catalog_matches(target: str) -> list[dict[str, Any]]:
-    with db.catalog_locked() as conn:
+    with get_store().catalog_locked() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT id, name FROM exercises ORDER BY name COLLATE NOCASE, id")
         entries = [{"exercise_id": str(row[0]), "name": row[1]} for row in cursor.fetchall()]
@@ -698,6 +699,7 @@ def _history_catalog_matches(target: str) -> list[dict[str, Any]]:
 
 
 def exercise_history_node(state: AssistantState) -> dict[str, Any]:
+    db = get_store()
     messages = state.get("messages", [])
     raw_query = state.get("intent_metadata", {}).get("raw_query")
     raw_query = _get_message_text(raw_query) if raw_query else (_get_message_text(messages[-1]) if messages else "")
@@ -841,6 +843,7 @@ UNSPECIFIC_CHOICE_WORDS = {"one", "two", "three", "first", "second", "third"}
 
 
 def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
+    db = get_store()
     meta = state.get("intent_metadata", {})
     source_name = (meta.get("source_exercise") or "").strip()
     target_desc = (meta.get("target_exercise") or "").strip()
@@ -1102,6 +1105,7 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
 
 
 def program_mutation_node(state: AssistantState) -> dict[str, Any]:
+    db = get_store()
     query = _get_message_text(state["messages"][-1])
     if not _authorized_action(query, "program_mutation"):
         return _response(AUTHORIZATION_RESPONSE)
@@ -1129,6 +1133,7 @@ def program_mutation_node(state: AssistantState) -> dict[str, Any]:
 
 
 def catalog_search_node(state: AssistantState) -> dict[str, Any]:
+    db = get_store()
     query = state.get("intent_metadata", {}).get("search_query") or _get_message_text(state["messages"][-1])
     try:
         candidates = db.search_similar_exercises(EMBED_MODEL.embed_query(query), limit=4)
@@ -1455,6 +1460,7 @@ def _record_telemetry_event(
 def _bind_trainee_connection(state: dict[str, Any]) -> None:
     """Mounts the stated trainee's ledger on the executing thread before any DB access."""
     trainee = state.get("trainee_id")
+    db = get_store()
     switch = getattr(db, "switch_user", None)
     if trainee and callable(switch) and getattr(db, "active_user", None) != trainee:
         switch(trainee)

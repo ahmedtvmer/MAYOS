@@ -96,18 +96,17 @@ def _alert_sweep_interval_seconds() -> float:
         return DEFAULT_ALERT_SWEEP_INTERVAL_SECONDS
 
 
-async def _alert_sweep_loop(interval_seconds: float) -> None:
+async def _alert_sweep_loop(db: object, interval_seconds: float) -> None:
     """Runs the alert sweep once at startup, then every interval, until cancelled.
 
     Evaluations are idempotent and due-ness is computed per player-local day, so
     an hourly cadence is sufficient (ADR 030/031).
     """
-    from database.database_manager import DatabaseManager
     from service.alert_sweep import run_sweep
 
     while True:
         try:
-            await asyncio.to_thread(run_sweep, DatabaseManager())
+            await asyncio.to_thread(run_sweep, db)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -119,6 +118,7 @@ async def _alert_sweep_loop(interval_seconds: float) -> None:
 async def lifespan(app: FastAPI):
     from database.database_manager import DatabaseManager
     from database.storage import StorageNotReady, validate_data_root
+    from database.store import set_store
     from svc.llm import warmup_llm
 
     _ready.update(model=False, catalog=False, storage=False, draining=False)
@@ -133,6 +133,9 @@ async def lifespan(app: FastAPI):
             validate_data_root()
             _ready["storage"] = True
             db = DatabaseManager()
+            # The app owns the one store; requests and ambient access both see it.
+            app.state.db = db
+            set_store(db)
             # Complete any deletion whose catalog transaction did not finish, so
             # a crash cannot leave a half-deleted account (ADR 015/039).
             await asyncio.to_thread(db.replay_deletions)
@@ -151,7 +154,7 @@ async def lifespan(app: FastAPI):
 
     interval_seconds = _alert_sweep_interval_seconds()
     if _ready["catalog"] and _ready["storage"] and not unit_test_mode and interval_seconds > 0:
-        sweep_task = asyncio.create_task(_alert_sweep_loop(interval_seconds))
+        sweep_task = asyncio.create_task(_alert_sweep_loop(app.state.db, interval_seconds))
         logger.info("Alert sweep loop started (every %ss).", interval_seconds)
 
     logger.info(
@@ -178,6 +181,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(title="Mayos Training Engine", version="2.0.0", lifespan=lifespan)
     app.state.limiter = limiter
+    app.state.db = None
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     _register_model_metering()
 

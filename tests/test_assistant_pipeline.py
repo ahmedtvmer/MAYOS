@@ -16,7 +16,6 @@ from agent.assistant_graph import (
     router_node,
     stream_assistant_turn,
 )
-from agent.assistant_graph import db as assistant_db
 from utils.logger import MyosLogger
 from utils.model_downloader import SafeChatLlamaCpp, llm
 
@@ -142,7 +141,7 @@ def test_phase1_tier2_coaching_qa_passthrough():
     logger.info("✅ Phase 1 Tier 2: Zero-LLM coaching Q&A pass-through verified.")
 
 
-def test_phase2_streaming_generator_qa(monkeypatch):
+def test_phase2_streaming_generator_qa(fresh_store, monkeypatch):
     """Validates token streaming, chunk yielding, and in-place state mutation for Q&A."""
     consumed = []
 
@@ -183,7 +182,7 @@ def test_phase2_streaming_generator_qa(monkeypatch):
     logger.info("✅ Phase 2: Conversational token streaming & state updates verified.")
 
 
-def test_phase2_streaming_generator_programmatic_bypass():
+def test_phase2_streaming_generator_programmatic_bypass(fresh_store):
     """Validates that programmatic nodes stream confirmation without invoking llm.stream()."""
     state = {
         "messages": [HumanMessage(content="switch split to 3 days")],
@@ -215,7 +214,7 @@ def test_phase2_streaming_generator_programmatic_bypass():
     logger.info("✅ Phase 2: Programmatic zero-LLM streaming bypass verified.")
 
 
-def test_phase3_substitution_lookup_candidates():
+def test_phase3_substitution_lookup_candidates(fresh_store):
     """Validates that 'lookup_candidates' returns top 3 movements without mutating routine."""
     state = {
         "messages": [HumanMessage(content="alternative for hack squat")],
@@ -239,10 +238,10 @@ def test_phase3_substitution_lookup_candidates():
     mock_conn.cursor.return_value = mock_cur_instance
 
     with (
-        patch("database.database_manager.DatabaseManager.get_active_program", return_value=mock_prog),
-        patch.object(assistant_db, "catalog_conn", mock_conn),
-        patch("database.database_manager.DatabaseManager.search_similar_exercises") as mock_search,
-        patch("database.database_manager.DatabaseManager.swap_program_exercise") as mock_swap,
+        patch.object(fresh_store, "get_active_program", return_value=mock_prog),
+        patch.object(fresh_store, "catalog_conn", mock_conn),
+        patch.object(fresh_store, "search_similar_exercises") as mock_search,
+        patch.object(fresh_store, "swap_program_exercise") as mock_swap,
     ):
         mock_search.return_value = [
             {
@@ -280,7 +279,7 @@ def test_phase3_substitution_lookup_candidates():
     logger.info("✅ Phase 3: Exercise substitution candidate lookups verified.")
 
 
-def test_phase3_substitution_direct_swap():
+def test_phase3_substitution_direct_swap(fresh_store):
     """Validates that 'direct_swap' calls swap_program_exercise and triggers UI sync."""
     state = {
         "messages": [HumanMessage(content="swap hack squat for leg press")],
@@ -304,11 +303,11 @@ def test_phase3_substitution_direct_swap():
     mock_conn.cursor.return_value = mock_cur_instance
 
     with (
-        patch("database.database_manager.DatabaseManager.get_active_program", return_value=mock_prog),
-        patch.object(assistant_db, "catalog_conn", mock_conn),
-        patch("database.database_manager.DatabaseManager.find_exercises_by_name") as mock_find,
-        patch("database.database_manager.DatabaseManager.search_similar_exercises") as mock_search,
-        patch("database.database_manager.DatabaseManager.swap_program_exercise", return_value=True) as mock_swap,
+        patch.object(fresh_store, "get_active_program", return_value=mock_prog),
+        patch.object(fresh_store, "catalog_conn", mock_conn),
+        patch.object(fresh_store, "find_exercises_by_name") as mock_find,
+        patch.object(fresh_store, "search_similar_exercises") as mock_search,
+        patch.object(fresh_store, "swap_program_exercise", return_value=True) as mock_swap,
     ):
         mock_find.return_value = [
             {
@@ -342,7 +341,7 @@ def test_phase3_substitution_direct_swap():
     logger.info("✅ Phase 3: Direct exercise substitution & ledger mutation verified.")
 
 
-def test_component1_medical_red_flag_interceptor():
+def test_component1_medical_red_flag_interceptor(fresh_store):
     """Validates that acute trauma / injury phrases trigger immediate zero-LLM intercept."""
     red_flag_queries = [
         "I felt a sharp pop in my shoulder during the top set",
@@ -380,12 +379,12 @@ def test_component1_medical_red_flag_interceptor():
     logger.info("✅ Component 1: Medical red-flag zero-LLM interceptor verified.")
 
 
-def test_component1_biomechanical_catalog_exclusion():
+def test_component1_biomechanical_catalog_exclusion(fresh_store):
     """Validates that high-risk movement patterns are filtered out of catalog searches."""
     test_vec = [0.0] * 384
 
     # Run catalog search
-    candidates = assistant_db.search_similar_exercises(test_vec, limit=20)
+    candidates = fresh_store.search_similar_exercises(test_vec, limit=20)
 
     for c in candidates:
         name_lower = c["name"].lower()

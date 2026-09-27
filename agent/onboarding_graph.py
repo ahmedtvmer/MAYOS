@@ -9,13 +9,12 @@ from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field, ValidationError
 
 from agent.program_generator import extract_frequency_from_text, validate_frequency
-from database.database_manager import DatabaseManager
+from database.store import get_store
 from utils.logger import MyosLogger
 from utils.model_downloader import llm
 
 load_dotenv()
 logger = MyosLogger().get_logger(__name__)
-db = DatabaseManager()
 
 STEP_PROMPTS: dict[int, str] = {
     1: (
@@ -495,7 +494,8 @@ def intake_node(state: OnboardingGraphState) -> dict[str, Any]:
         except ValueError:
             return _reject(2, "Weekly frequency must be from 1 to 5 days (maximum 5).", profile)
 
-        trainee = state.get("trainee_id") or db.active_user or "default"
+        trainee = state.get("trainee_id") or get_store().active_user or "default"
+        db = get_store()
         db.switch_user(trainee)
         profile.setdefault("coach_tone", "Direct, grounded, and pragmatic")
         profile.setdefault("custom_instructions", "")

@@ -114,8 +114,6 @@ def api(tmp_path: Path, monkeypatch):
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     cat_conn = sqlite3.connect(catalog_path)
     cat_conn.execute(
@@ -136,6 +134,9 @@ def api(tmp_path: Path, monkeypatch):
         backups_dir=tmp_path / "backups",
         active_user="bootstrap",
     )
+    from database.store import set_store
+
+    set_store(db)
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
     with TestClient(app) as client:
@@ -303,7 +304,7 @@ def test_coach_program_publish_is_metered(api, monkeypatch):
     def _wrapped(*args, **kwargs):
         fake.invoke("coach program")
         program = _stub_program()
-        DatabaseManager().save_training_program(
+        db.save_training_program(
             program.model_dump(),
             published_by_coach_account_id=kwargs.get("published_by_coach_account_id"),
         )

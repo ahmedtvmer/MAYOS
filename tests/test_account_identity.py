@@ -31,8 +31,6 @@ def api(tmp_path: Path, monkeypatch):
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     cat_conn = sqlite3.connect(catalog_path)
     cat_conn.execute("CREATE TABLE exercises (id TEXT PRIMARY KEY, name TEXT);")
@@ -285,8 +283,6 @@ def test_deleted_account_recovery_cannot_reset_reused_username(api, monkeypatch)
 
     # A fresh manager stands in for the post-deletion process: the old ledger and
     # its cached connection are gone, and the username is registered anew.
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     fresh_db = DatabaseManager(
         catalog_path=db.catalog_path, users_dir=db.users_dir, backups_dir=db.backups_dir, active_user="bootstrap"
     )
@@ -486,8 +482,6 @@ def test_old_account_id_cannot_change_reused_username_password_or_email(api, mon
 
     # A fresh manager stands in for the post-deletion process: the old ledger and
     # its cached connections are gone, and the username is registered anew.
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     fresh_db = DatabaseManager(
         catalog_path=db.catalog_path, users_dir=db.users_dir, backups_dir=db.backups_dir, active_user="bootstrap"
     )

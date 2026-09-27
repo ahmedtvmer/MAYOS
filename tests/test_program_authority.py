@@ -8,7 +8,6 @@ each before coach publication, during coach control, and after unassignment.
 """
 
 import sqlite3
-import threading
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -39,8 +38,6 @@ def api(tmp_path: Path, monkeypatch):
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     cat_conn = sqlite3.connect(catalog_path)
     cat_conn.execute(
@@ -454,7 +451,7 @@ def test_assistant_mutation_proceeds_before_publication(api, monkeypatch):
     client, db, _ = api
     _, _, _, _, player_account_id = _assigned_player(api)
 
-    monkeypatch.setattr(assistant_graph, "db", db)
+    monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
     pipeline = MagicMock(return_value=(_program("Mutated Plan"), "md"))
     monkeypatch.setattr(assistant_graph, "generate_program_pipeline", pipeline)
     monkeypatch.setattr(db, "clear_chat_history", MagicMock())
@@ -481,7 +478,7 @@ def test_assistant_mutation_refused_during_control(api, monkeypatch):
     _coach_generation(db, monkeypatch)
     assert _publish(client, coach_headers, assignment_id).status_code == 200
 
-    monkeypatch.setattr(assistant_graph, "db", db)
+    monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
     pipeline = MagicMock(return_value=(_program("Mutated Plan"), "md"))
     monkeypatch.setattr(assistant_graph, "generate_program_pipeline", pipeline)
     db.switch_user("p1")
@@ -508,7 +505,7 @@ def test_assistant_mutation_proceeds_after_unassignment(api, monkeypatch):
     assert _publish(client, coach_headers, assignment_id).status_code == 200
     _end_assignment(client, player_headers)
 
-    monkeypatch.setattr(assistant_graph, "db", db)
+    monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
     pipeline = MagicMock(return_value=(_program("Mutated Plan"), "md"))
     monkeypatch.setattr(assistant_graph, "generate_program_pipeline", pipeline)
     monkeypatch.setattr(db, "clear_chat_history", MagicMock())
@@ -538,7 +535,7 @@ def test_assistant_swap_proceeds_before_publication(api, monkeypatch):
     assert generated.status_code == 200, generated.text
     assert calls["n"] == 1
 
-    monkeypatch.setattr(assistant_graph, "db", db)
+    monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
     swap = MagicMock(return_value=True)
     monkeypatch.setattr(db, "swap_program_exercise", swap)
     db.switch_user("p1")
@@ -564,7 +561,7 @@ def test_assistant_swap_refused_during_control(api, monkeypatch):
     _coach_generation(db, monkeypatch)
     assert _publish(client, coach_headers, assignment_id).status_code == 200
 
-    monkeypatch.setattr(assistant_graph, "db", db)
+    monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
     swap = MagicMock(return_value=True)
     monkeypatch.setattr(db, "swap_program_exercise", swap)
     db.switch_user("p1")
@@ -591,7 +588,7 @@ def test_assistant_swap_proceeds_after_unassignment(api, monkeypatch):
     assert _publish(client, coach_headers, assignment_id).status_code == 200
     _end_assignment(client, player_headers)
 
-    monkeypatch.setattr(assistant_graph, "db", db)
+    monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
     swap = MagicMock(return_value=True)
     monkeypatch.setattr(db, "swap_program_exercise", swap)
     db.switch_user("p1")

@@ -4,15 +4,21 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
+import pytest
+
 from agent.program_rules import (
     fetch_filtered_candidates,
     resolve_split,
 )
-from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
-db = DatabaseManager()
+
+
+@pytest.fixture(autouse=True)
+def _bind_store(fresh_store):
+    """Each test runs against its own catalog/ledger store (ADR 041)."""
+    return fresh_store
 
 
 def test_rules():

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import random
 import shutil
-import threading
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -38,8 +37,6 @@ def db_fixture(tmp_path, monkeypatch):
 
     catalog_path = tmp_path / "catalog.db"
     shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     db = DatabaseManager(
         catalog_path=catalog_path,
         users_dir=tmp_path / "users",
@@ -48,7 +45,7 @@ def db_fixture(tmp_path, monkeypatch):
     )
     try:
         for module in (assistant_graph, program_generator, program_rules):
-            monkeypatch.setattr(module, "db", db)
+            monkeypatch.setattr(module, "get_store", lambda _db=db: _db)
         profile = {
             "gender": "male",
             "proportions": "balanced",

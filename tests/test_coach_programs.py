@@ -9,7 +9,6 @@ non-active assignment case.
 """
 
 import sqlite3
-import threading
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -40,8 +39,6 @@ def api(tmp_path: Path, monkeypatch):
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     cat_conn = sqlite3.connect(catalog_path)
     cat_conn.execute(
@@ -266,7 +263,7 @@ def test_assistant_swap_refused_when_coach_controls_program(api, monkeypatch):
     _coach_generation(db, monkeypatch)
     assert _publish(client, coach_headers, assignment_id).status_code == 200
 
-    monkeypatch.setattr(assistant_graph, "db", db)
+    monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
     swap = MagicMock(return_value=True)
     monkeypatch.setattr(db, "swap_program_exercise", swap)
     db.switch_user("p1")
@@ -294,7 +291,7 @@ def test_assistant_mutation_refused_when_coach_controls_program(api, monkeypatch
     _coach_generation(db, monkeypatch)
     assert _publish(client, coach_headers, assignment_id).status_code == 200
 
-    monkeypatch.setattr(assistant_graph, "db", db)
+    monkeypatch.setattr(assistant_graph, "get_store", lambda _db=db: _db)
     pipeline = MagicMock(return_value=(_program(), "md"))
     monkeypatch.setattr(assistant_graph, "generate_program_pipeline", pipeline)
     db.switch_user("p1")

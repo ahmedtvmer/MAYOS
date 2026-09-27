@@ -11,6 +11,12 @@ current_trainee: ContextVar[str | None] = ContextVar("mayos_trainee", default=No
 
 def bind_user(db: Any, trainee_id: str) -> str:
     """Mounts the trainee ledger on the calling thread; returns sanitized id."""
+    from database.store import set_store
+
+    # Every service entry point is handed the store; publishing it here lets the
+    # agent graphs and the metering callback (which have no explicit store)
+    # resolve the same app-owned instance on this thread/task (ADR 041).
+    set_store(db)
     clean_id = db._sanitize_username(trainee_id)
     current_trainee.set(clean_id)
     if db.active_user != clean_id:

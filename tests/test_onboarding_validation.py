@@ -49,7 +49,7 @@ def _assert_step_transition(
     return result
 
 
-def test_onboarding_validation_workflow():
+def test_onboarding_validation_workflow(fresh_store):
     """Validates the multi-step conversational intake state machine end-to-end."""
     logger.info("⚡ Starting Intake Validation Test Suite...")
 
@@ -159,7 +159,7 @@ def _rebind_llm_extractors():
 def test_invalid_frequency_never_advances_or_writes(monkeypatch, frequency, numbered):
     database = MagicMock()
     extractor = MagicMock()
-    monkeypatch.setattr(onboarding, "db", database)
+    monkeypatch.setattr(onboarding, "get_store", lambda _db=database: _db)
     monkeypatch.setattr(onboarding, "step2_extractor", extractor)
     query = (
         f"3strength 4longevity 5: {frequency} days a week 63years"
@@ -180,7 +180,7 @@ def test_invalid_frequency_never_advances_or_writes(monkeypatch, frequency, numb
 @pytest.mark.parametrize("frequency", [1, 5])
 def test_valid_frequency_boundaries_advance_without_writes(monkeypatch, frequency):
     database = MagicMock()
-    monkeypatch.setattr(onboarding, "db", database)
+    monkeypatch.setattr(onboarding, "get_store", lambda _db=database: _db)
     result = onboarding.intake_node({
         "messages": [HumanMessage(content=f"3strength 4longevity 5: {frequency} days a week 63years")],
         "intake_step": 2, "profile_data": {},
@@ -198,7 +198,7 @@ def test_invalid_extracted_frequency_rejected(monkeypatch, frequency):
         current_goal="strength", long_term_goal="health", weekly_frequency=frequency,
         training_age_years=3, rep_preference="balanced", is_off_topic=False,
     )
-    monkeypatch.setattr(onboarding, "db", database)
+    monkeypatch.setattr(onboarding, "get_store", lambda _db=database: _db)
     monkeypatch.setattr(onboarding, "step2_extractor", extractor)
     result = onboarding.intake_node({
         "messages": [HumanMessage(content="My goal is strength and long term health")],
@@ -212,7 +212,7 @@ def test_invalid_extracted_frequency_rejected(monkeypatch, frequency):
 @pytest.mark.parametrize("frequency", [0, 6, 7, 99, None])
 def test_completion_revalidates_frequency_before_database_access(monkeypatch, frequency):
     database = MagicMock()
-    monkeypatch.setattr(onboarding, "db", database)
+    monkeypatch.setattr(onboarding, "get_store", lambda _db=database: _db)
     result = onboarding.intake_node({
         "messages": [HumanMessage(content="7commercial gym 8no injuries 9medium stress, 8 hours sleep")],
         "intake_step": 3, "profile_data": {"weekly_frequency": frequency},
@@ -240,7 +240,7 @@ def _step2_result(monkeypatch, user_input, extracted_rep):
         rep_preference=extracted_rep,
         is_off_topic=False,
     )
-    monkeypatch.setattr(onboarding, "db", database)
+    monkeypatch.setattr(onboarding, "get_store", lambda _db=database: _db)
     monkeypatch.setattr(onboarding, "step2_extractor", extractor)
     result = onboarding.intake_node({
         "messages": [HumanMessage(content=user_input)],
@@ -314,7 +314,7 @@ def test_generic_rep_wording_does_not_authorize_low_or_high(monkeypatch, user_in
 def test_numbered_step2_still_defaults_rep_preference(monkeypatch):
     database = MagicMock()
     extractor = MagicMock()
-    monkeypatch.setattr(onboarding, "db", database)
+    monkeypatch.setattr(onboarding, "get_store", lambda _db=database: _db)
     monkeypatch.setattr(onboarding, "step2_extractor", extractor)
     result = onboarding.intake_node({
         "messages": [HumanMessage(content="3strength 4longevity 54 days per week 63 years lifting")],

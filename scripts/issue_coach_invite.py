@@ -14,7 +14,6 @@ Usage:
 import argparse
 import os
 import sys
-import threading
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -49,9 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.ttl_minutes is not None and args.ttl_minutes <= 0:
         parser.error("--ttl-minutes must be a positive number of minutes.")
 
-    # Fresh singleton state so custom dirs apply even in long-lived shells.
-    DatabaseManager._instance = None
-    DatabaseManager._local = threading.local()
+    # A fresh store is built per run, so custom dirs apply even in long-lived shells.
     db = DatabaseManager(catalog_path=args.catalog, users_dir=args.users_dir, backups_dir=args.backups_dir)
     try:
         result = coach_service.issue_coach_invite(db, args.username, ttl_minutes=args.ttl_minutes)

@@ -28,10 +28,18 @@ from agent.program_blueprints import (
     match_split_keyword,
 )
 from agent.program_rules import fetch_slot_candidates, fetch_warmup_candidates, get_split_plan, resolve_split
-from database.database_manager import DatabaseManager
 from utils.exporter import export_program_to_excel
 
-db = DatabaseManager()
+db = None
+
+
+@pytest.fixture(autouse=True)
+def _bind_store(fresh_store):
+    """Each test runs against its own catalog/ledger store (ADR 041)."""
+    global db
+    db = fresh_store
+    return fresh_store
+
 
 ALL_BLUEPRINTS = FB_DAYS + FEMALE_FB_DAYS + UL_DAYS + ARNOLD_DAYS + ARNOLD_X_UL_DAYS + ANTERIOR_POSTERIOR_DAYS + PPL_DAYS
 

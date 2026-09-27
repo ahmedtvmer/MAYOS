@@ -1,6 +1,5 @@
 # tests/test_migration_manager.py
 import sqlite3
-import threading
 from pathlib import Path
 
 import pytest
@@ -19,8 +18,6 @@ from database.migration_manager import (
 
 @pytest.fixture
 def temp_db_env(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(DatabaseManager, "_instance", None)
-    monkeypatch.setattr(DatabaseManager, "_local", threading.local())
     catalog_path = tmp_path / "catalog.db"
     users_dir = tmp_path / "users"
     backups_dir = tmp_path / "backups"
@@ -480,7 +477,6 @@ def test_session_comparison_volume_and_sets_do_not_decide_strength(temp_db_env, 
 
 
 def test_v1_to_v2_adds_password_hash_preserving_data(temp_db_env):
-    import threading
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
@@ -497,8 +493,6 @@ def test_v1_to_v2_adds_password_hash_preserving_data(temp_db_env):
     conn.commit()
     conn.close()
     # Fresh manager so the legacy file migrates on mount.
-    DatabaseManager._instance = None
-    DatabaseManager._local = threading.local()
     migrated = DatabaseManager(
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="legacy"
     )
@@ -516,7 +510,6 @@ def test_v1_to_v2_adds_password_hash_preserving_data(temp_db_env):
 
 
 def test_v2_to_v3_adds_token_version_preserving_hash(temp_db_env):
-    import threading
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
@@ -537,8 +530,6 @@ def test_v2_to_v3_adds_token_version_preserving_hash(temp_db_env):
     conn.execute("PRAGMA user_version = 2")
     conn.commit()
     conn.close()
-    DatabaseManager._instance = None
-    DatabaseManager._local = threading.local()
     migrated = DatabaseManager(
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v2user"
     )
@@ -556,7 +547,6 @@ def test_v2_to_v3_adds_token_version_preserving_hash(temp_db_env):
 
 
 def test_v3_to_v4_backfills_personal_records(temp_db_env):
-    import threading
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
@@ -587,8 +577,6 @@ def test_v3_to_v4_backfills_personal_records(temp_db_env):
     conn.commit()
     conn.close()
 
-    DatabaseManager._instance = None
-    DatabaseManager._local = threading.local()
     migrated = DatabaseManager(
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v3lifter"
     )
@@ -622,7 +610,6 @@ def test_v3_to_v4_backfills_personal_records(temp_db_env):
 
 
 def test_v4_to_v5_adds_program_slot_and_warmup_columns(temp_db_env):
-    import threading
 
     db, users_dir, _ = temp_db_env
     legacy_path = users_dir / "v4lifter.db"
@@ -651,8 +638,6 @@ def test_v4_to_v5_adds_program_slot_and_warmup_columns(temp_db_env):
     conn.commit()
     conn.close()
 
-    DatabaseManager._instance = None
-    DatabaseManager._local = threading.local()
     migrated = DatabaseManager(
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v4lifter"
     )
@@ -673,7 +658,6 @@ def test_v4_to_v5_adds_program_slot_and_warmup_columns(temp_db_env):
 
 
 def test_v5_to_v6_backfills_stable_program_versions(temp_db_env):
-    import threading
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
@@ -696,8 +680,6 @@ def test_v5_to_v6_backfills_stable_program_versions(temp_db_env):
     conn.commit()
     conn.close()
 
-    DatabaseManager._instance = None
-    DatabaseManager._local = threading.local()
     migrated = DatabaseManager(
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v5lifter"
     )
@@ -718,7 +700,6 @@ def test_v5_to_v6_backfills_stable_program_versions(temp_db_env):
 
 
 def test_v6_to_v7_adds_session_divergences(temp_db_env):
-    import threading
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
@@ -740,8 +721,6 @@ def test_v6_to_v7_adds_session_divergences(temp_db_env):
     conn.commit()
     conn.close()
 
-    DatabaseManager._instance = None
-    DatabaseManager._local = threading.local()
     migrated = DatabaseManager(
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v6lifter"
     )
@@ -769,7 +748,6 @@ def test_v6_to_v7_adds_session_divergences(temp_db_env):
 
 
 def test_v7_to_v8_adds_training_schedules_and_pauses(temp_db_env):
-    import threading
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
@@ -790,8 +768,6 @@ def test_v7_to_v8_adds_training_schedules_and_pauses(temp_db_env):
     conn.commit()
     conn.close()
 
-    DatabaseManager._instance = None
-    DatabaseManager._local = threading.local()
     migrated = DatabaseManager(
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v7lifter"
     )
@@ -811,7 +787,6 @@ def test_v7_to_v8_adds_training_schedules_and_pauses(temp_db_env):
 
 
 def test_v8_to_v9_adds_offline_sync_columns_and_session_commits(temp_db_env):
-    import threading
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
@@ -836,8 +811,6 @@ def test_v8_to_v9_adds_offline_sync_columns_and_session_commits(temp_db_env):
     conn.commit()
     conn.close()
 
-    DatabaseManager._instance = None
-    DatabaseManager._local = threading.local()
     migrated = DatabaseManager(
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v8lifter"
     )
@@ -864,7 +837,6 @@ def test_v8_to_v9_adds_offline_sync_columns_and_session_commits(temp_db_env):
 
 
 def test_v9_to_v10_adds_active_program_version_at_sync(temp_db_env):
-    import threading
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
@@ -887,8 +859,6 @@ def test_v9_to_v10_adds_active_program_version_at_sync(temp_db_env):
     conn.commit()
     conn.close()
 
-    DatabaseManager._instance = None
-    DatabaseManager._local = threading.local()
     migrated = DatabaseManager(
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v9lifter"
     )
@@ -914,7 +884,6 @@ def test_v9_to_v10_adds_active_program_version_at_sync(temp_db_env):
 
 
 def test_v10_to_v11_adds_edited_at_and_performed_date_corrections(temp_db_env):
-    import threading
 
     from database.migration_manager import CURRENT_USER_SCHEMA_VERSION, get_user_schema_version
 
@@ -939,8 +908,6 @@ def test_v10_to_v11_adds_edited_at_and_performed_date_corrections(temp_db_env):
     conn.commit()
     conn.close()
 
-    DatabaseManager._instance = None
-    DatabaseManager._local = threading.local()
     migrated = DatabaseManager(
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v10lifter"
     )
@@ -997,8 +964,6 @@ def test_v11_to_v12_adds_structured_intake_tables(temp_db_env):
     conn.commit()
     conn.close()
 
-    DatabaseManager._instance = None
-    DatabaseManager._local = threading.local()
     migrated = DatabaseManager(
         catalog_path=db.catalog_path, users_dir=users_dir, backups_dir=db.backups_dir, active_user="v11lifter"
     )
