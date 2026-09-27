@@ -61,10 +61,14 @@ small transparent pad, never edit pixels inside the mark or wordmark.
 
 **Placement.**
 
-- **Splash hero.** The monochrome lockup (`auto`) is white on the deep-navy
-  dark canvas and black on the light one, centred both horizontally and
-  vertically on the screen. The tagline and progress indicator sit below the
-  centre without moving the lockup off it.
+- **Splash hero.** The monochrome lockup is forced **white**
+  (`MayosBrandVariant.white`) over the dark gym photo (#110), centred both
+  horizontally and vertically on the screen. The tagline and progress indicator
+  sit below the centre without moving the lockup off it.
+- **Auth hero.** The logged-out sign-in screens (log in, register, forgot
+  password, reset password) also share the wallpaper and force the **white**
+  lockup. The recovery-email gate stays on the plain canvas and keeps the
+  theme-following `auto` lockup.
 - **Header / small placements.** The vertical lockup's baked wordmark is
   illegible at ~22dp, so the header uses the documented **clean text
   treatment**: `MayosBrandMark` (mark-only crop, white on dark / black on
@@ -126,6 +130,33 @@ reset-password all use it and keep the onboarding look. The hero maps
 dark→white lockup and light→black lockup automatically, and shrinks on small
 phones or when the keyboard reduces the viewport.
 
+## Wallpaper (#110)
+
+The splash and the logged-out sign-in screens (log in, register, forgot
+password, reset password) sit on a dark gym photo. It is **not** used on the
+recovery-email gate or any signed-in surface.
+
+- `core/ui/mayos_wallpaper.dart` — `MayosWallpaper`: a full-bleed `Stack` of a
+  solid dark fallback (`darkCanvas`, shown while the photo decodes), the
+  bundled photo under a fixed Gaussian blur, a fixed black scrim, then the
+  screen content. The photo layer carries `MayosWallpaper.photoKey`.
+- Fixed design constants (not user settings): `overlayOpacity = 0.6`
+  (55–65% band) and `blurSigma = 6` (4–8 band). The photo is `BoxFit.cover`, so
+  it never distorts at 320–430 px phone widths or wide web layouts.
+- `MayosTheme.wallpaper` forces the dark tokens and lightens the few colours
+  drawn on the photo (`textSecondary`, `textMuted`, `danger`, field borders,
+  links/progress) so body text clears WCAG AA and UI edges clear non-text
+  contrast. Measured numbers: `assets/ATTRIBUTION.md`.
+- The lockup is forced `MayosBrandVariant.white`, the `Scaffold` background is
+  transparent, the action bar drops its opaque surface, and the status-bar
+  overlay is forced light — so the screen reads white-on-photo whatever the
+  app theme is.
+- `AuthScaffold(wallpaper: true)` is the single opt-in; `wallpaper` defaults to
+  `false`, so the recovery-email gate is untouched.
+
+The photo is bundled from `assets/images/gym-wallpaper.jpg` (free Unsplash
+Licence; source, author and licence in `assets/ATTRIBUTION.md`).
+
 ## Theme mode
 
 `MayosThemeStore` (`SecureThemeModeStore` / `InMemoryThemeModeStore`) persists
@@ -133,7 +164,8 @@ the explicit choice through the existing keystore-backed `SecureStore`, and
 `themeModeControllerProvider` (Riverpod) exposes it. Default is `System`.
 `MayosApp` applies `theme`/`darkTheme`/`themeMode` and wraps the app in an
 `AnnotatedRegion<SystemUiOverlayStyle>` so status and navigation bars follow the
-effective theme in every surface, including splash and auth screens.
+effective theme in every surface. The wallpapered screens override this with a
+light status bar (`MayosWallpaper`), since the photo is always dark.
 
 ## Navigation and entry points
 

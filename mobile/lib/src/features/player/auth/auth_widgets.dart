@@ -6,6 +6,7 @@ import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_logo.dart';
 import '../../../core/ui/mayos_text_field.dart';
+import '../../../core/ui/mayos_wallpaper.dart';
 
 /// The shared MAYOS composition for the authentication and recovery screens.
 ///
@@ -32,6 +33,7 @@ class AuthScaffold extends StatelessWidget {
     this.lead,
     this.links = const <Widget>[],
     this.message,
+    this.wallpaper = false,
   });
 
   final String title;
@@ -43,6 +45,11 @@ class AuthScaffold extends StatelessWidget {
   /// An optional inline notice shown pinned above the primary action.
   final Widget? message;
 
+  /// Draws the dark gym photo backdrop (#110) and forces the white lockup and
+  /// the wallpaper theme. Only the logged-out sign-in surfaces opt in; the
+  /// recovery-email gate stays plain and theme-following.
+  final bool wallpaper;
+
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
@@ -51,8 +58,8 @@ class AuthScaffold extends StatelessWidget {
     // shrunken viewport, so it is dropped while the keyboard is open.
     final bool showHero =
         !(keyboardOpen && MediaQuery.sizeOf(context).height < 700);
-    return Scaffold(
-      backgroundColor: c.canvas,
+    final Widget scaffold = Scaffold(
+      backgroundColor: wallpaper ? Colors.transparent : c.canvas,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: AutofillGroup(
@@ -79,7 +86,12 @@ class AuthScaffold extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           if (showHero) ...<Widget>[
-                            MayosBrandLockup(height: logoHeight),
+                            MayosBrandLockup(
+                              height: logoHeight,
+                              variant: wallpaper
+                                  ? MayosBrandVariant.white
+                                  : MayosBrandVariant.auto,
+                            ),
                             const SizedBox(height: MayosSpacing.xl),
                           ],
                           AuthHeading(title: title, lead: lead),
@@ -105,11 +117,19 @@ class AuthScaffold extends StatelessWidget {
                 message: message,
                 links: keyboardOpen ? const <Widget>[] : links,
                 compact: keyboardOpen,
+                wallpaper: wallpaper,
               ),
             ],
           ),
         ),
       ),
+    );
+    if (!wallpaper) {
+      return scaffold;
+    }
+    return Theme(
+      data: MayosTheme.wallpaper,
+      child: MayosWallpaper(child: scaffold),
     );
   }
 }
@@ -200,6 +220,7 @@ class AuthActionBar extends StatelessWidget {
     this.message,
     this.links = const <Widget>[],
     this.compact = false,
+    this.wallpaper = false,
   });
 
   final Widget primary;
@@ -209,13 +230,16 @@ class AuthActionBar extends StatelessWidget {
   /// Tightens the vertical padding when the keyboard is open.
   final bool compact;
 
+  /// Drops the opaque surface so the photo shows behind the action bar.
+  final bool wallpaper;
+
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: c.canvas,
-        border: Border(top: BorderSide(color: c.border)),
+        color: wallpaper ? Colors.transparent : c.canvas,
+        border: wallpaper ? null : Border(top: BorderSide(color: c.border)),
       ),
       child: SafeArea(
         top: false,

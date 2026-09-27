@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'mayos_colors.dart';
 import 'mayos_theme_extension.dart';
 import 'mayos_typography.dart';
 
@@ -14,6 +15,12 @@ export 'mayos_theme_extension.dart';
 abstract final class MayosTheme {
   static ThemeData get light => _build(MayosThemeExtension.light);
   static ThemeData get dark => _build(MayosThemeExtension.dark);
+
+  /// Dark tokens tuned for the logged-out surfaces drawn on the gym photo
+  /// (#110). Links, progress and focused field edges use a lighter blue so they
+  /// clear WCAG AA / non-text contrast against the photo.
+  static ThemeData get wallpaper =>
+      _build(MayosThemeExtension.wallpaper, linkColor: MayosPalette.wallpaperLink);
 
   /// The active MAYOS semantic tokens.
   static MayosThemeExtension of(BuildContext context) =>
@@ -72,10 +79,13 @@ abstract final class MayosTheme {
     );
   }
 
-  static ThemeData _build(MayosThemeExtension c) {
+  static ThemeData _build(MayosThemeExtension c, {Color? linkColor}) {
     final ColorScheme scheme = _scheme(c);
     final TextTheme textTheme = MayosTypography.textTheme(c);
     final SystemUiOverlayStyle overlay = overlayStyle(c);
+    // Links, progress and focus rings default to the accent; the wallpaper theme
+    // passes a lighter blue so they clear contrast against the photo.
+    final Color link = linkColor ?? c.accent;
 
     final RoundedRectangleBorder cardShape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(16),
@@ -178,7 +188,7 @@ abstract final class MayosTheme {
           minimumSize: const WidgetStatePropertyAll<Size>(Size(48, 48)),
           foregroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.disabled)) return c.textDisabled;
-            return c.accent;
+            return link;
           }),
           overlayColor: WidgetStatePropertyAll<Color>(c.accentSubtle),
           padding: const WidgetStatePropertyAll<EdgeInsets>(
@@ -206,11 +216,11 @@ abstract final class MayosTheme {
             const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         hintStyle: textTheme.bodyMedium?.copyWith(color: c.textMuted),
         labelStyle: textTheme.bodyMedium?.copyWith(color: c.textSecondary),
-        floatingLabelStyle: textTheme.bodySmall?.copyWith(color: c.accent),
+        floatingLabelStyle: textTheme.bodySmall?.copyWith(color: link),
         errorStyle: textTheme.bodySmall?.copyWith(color: c.danger),
         border: inputBorder(c.border),
         enabledBorder: inputBorder(c.border),
-        focusedBorder: inputBorder(c.accent, 1.6),
+        focusedBorder: inputBorder(link, 1.6),
         errorBorder: inputBorder(c.danger),
         focusedErrorBorder: inputBorder(c.danger, 1.6),
         disabledBorder: inputBorder(c.border.withValues(alpha: 0.5)),
@@ -305,7 +315,7 @@ abstract final class MayosTheme {
         trackOutlineWidth: const WidgetStatePropertyAll<double>(1),
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
-        color: c.accent,
+        color: link,
         linearTrackColor: c.surfaceSunken,
         circularTrackColor: c.surfaceSunken,
         linearMinHeight: 4,

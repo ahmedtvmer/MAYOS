@@ -63,6 +63,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return AuthScaffold(
       title: 'Log in',
       lead: 'Sign in to keep training and pick up where you left off.',
+      wallpaper: true,
       message: _error == null ? null : AuthInlineNotice(message: _error!),
       primary: MayosButton(
         key: const Key('login_submit'),

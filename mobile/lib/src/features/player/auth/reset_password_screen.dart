@@ -99,6 +99,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
     return AuthScaffold(
       title: 'Reset password',
       lead: 'Choose a new password for your account.',
+      wallpaper: true,
       message: _error == null ? null : AuthInlineNotice(message: _error!),
       primary: MayosButton(
         key: const Key('reset_submit'),

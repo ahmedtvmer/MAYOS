@@ -66,6 +66,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     return AuthScaffold(
       title: 'Create account',
       lead: 'Set up your MAYOS account to start training.',
+      wallpaper: true,
       message: _error == null ? null : AuthInlineNotice(message: _error!),
       primary: MayosButton(
         key: const Key('register_submit'),

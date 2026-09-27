@@ -157,6 +157,19 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
     ],
   );
 
+  /// Dark tokens for the logged-out surfaces that sit on the gym photo (#110).
+  ///
+  /// Built from [dark] so components keep their dark chrome, with the few
+  /// colours drawn on the photo itself lightened to clear WCAG AA against the
+  /// blurred photo under the 60% black overlay. See `assets/ATTRIBUTION.md`.
+  static final MayosThemeExtension wallpaper = dark.copyWith(
+    textSecondary: MayosPalette.wallpaperTextSecondary,
+    textMuted: MayosPalette.wallpaperTextMuted,
+    danger: MayosPalette.wallpaperDanger,
+    border: MayosPalette.wallpaperBorder,
+    borderStrong: MayosPalette.wallpaperBorderStrong,
+  );
+
   bool get isDark => brightness == Brightness.dark;
 
   @override

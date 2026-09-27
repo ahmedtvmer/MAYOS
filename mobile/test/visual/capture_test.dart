@@ -114,6 +114,7 @@ Future<void> _precacheBrandImages(WidgetTester tester) async {
     'assets/brand/mayos-lockup-black.png',
     'assets/brand/mayos-mark-white.png',
     'assets/brand/mayos-mark-black.png',
+    'assets/images/gym-wallpaper.jpg',
   ];
   await tester.runAsync(() async {
     for (final String asset in assets) {
@@ -250,6 +251,25 @@ Future<void> _write109Capture(WidgetTester tester, String name) async {
   await tester.runAsync(() async {
     final Directory out =
         Directory('${Directory.current.parent.path}/docs/design-review/109');
+    await out.create(recursive: true);
+    final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
+    final ByteData? data =
+        await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    if (data == null) {
+      return;
+    }
+    await File('${out.path}/$name.png').writeAsBytes(data.buffer.asUint8List());
+  });
+}
+
+/// Writes a #110 gym-wallpaper capture to `docs/design-review/110/`.
+Future<void> _write110Capture(WidgetTester tester, String name) async {
+  final RenderRepaintBoundary boundary =
+      tester.renderObject<RenderRepaintBoundary>(find.byKey(_boundaryKey));
+  await tester.runAsync(() async {
+    final Directory out =
+        Directory('${Directory.current.parent.path}/docs/design-review/110');
     await out.create(recursive: true);
     final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
     final ByteData? data =
@@ -1357,4 +1377,47 @@ void main() {
       }, skip: skipCapture);
     }
   }
+
+  // -------------------------------------------------------------------------
+  // #110 gym wallpaper captures (docs/design-review/110): splash, login and
+  // register at 320x640 and 412x915 in both app themes, plus a wide web login.
+  // -------------------------------------------------------------------------
+  const List<_AuthSurface> wallpaper110 = <_AuthSurface>[
+    _AuthSurface('login', loginPath, 'Log in', fieldKey: 'login_username'),
+    _AuthSurface('register', registerPath, 'Create account',
+        fieldKey: 'register_username'),
+  ];
+  const List<Size> wallpaper110Sizes = <Size>[Size(320, 640), Size(412, 915)];
+  for (final Size size in wallpaper110Sizes) {
+    for (final ThemeMode mode in modes) {
+      final String theme = mode == ThemeMode.dark ? 'dark' : 'light';
+      final String sizeTag = '${size.width.toInt()}x${size.height.toInt()}';
+
+      testWidgets('110 wallpaper splash $theme $sizeTag',
+          (WidgetTester tester) async {
+        await _pumpSplash(tester, size, mode);
+        await _write110Capture(tester, 'splash-$theme-$sizeTag');
+      }, skip: skipCapture);
+
+      for (final _AuthSurface surface in wallpaper110) {
+        testWidgets('110 wallpaper ${surface.name} $theme $sizeTag',
+            (WidgetTester tester) async {
+          await _pumpAuthSurface(tester, surface, size, mode);
+          await _write110Capture(tester, '${surface.name}-$theme-$sizeTag');
+        }, skip: skipCapture);
+      }
+    }
+  }
+
+  testWidgets('110 wallpaper login wide 1280x800 light',
+      (WidgetTester tester) async {
+    await _pumpAuthSurface(
+      tester,
+      const _AuthSurface('login', loginPath, 'Log in',
+          fieldKey: 'login_username'),
+      const Size(1280, 800),
+      ThemeMode.light,
+    );
+    await _write110Capture(tester, 'login-light-1280x800');
+  }, skip: skipCapture);
 }

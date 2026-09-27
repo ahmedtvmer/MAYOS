@@ -25,6 +25,7 @@ flutter:
 
   assets:
     - assets/brand/
+    - assets/images/
 
   fonts:
     # MAYOS typography pair (OFL). See mobile/DESIGN.md for provenance and how

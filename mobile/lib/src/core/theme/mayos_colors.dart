@@ -50,4 +50,15 @@ abstract final class MayosPalette {
 
   static const Color white = Color(0xFFFFFFFF);
   static const Color black = Color(0xFF000000);
+
+  // Wallpaper (#110): text and borders drawn directly on the dark gym photo
+  // (60% black overlay + blur). These are lightened from the dark theme so body
+  // text, links and field edges clear WCAG AA against the photo's bright spots.
+  // See `mobile/assets/ATTRIBUTION.md` for the measured contrast numbers.
+  static const Color wallpaperTextSecondary = Color(0xFFC7D0DE);
+  static const Color wallpaperTextMuted = Color(0xFFB7C3D4);
+  static const Color wallpaperDanger = Color(0xFFFCA5A5);
+  static const Color wallpaperBorder = Color(0xFF8598B0);
+  static const Color wallpaperBorderStrong = Color(0xFF9AACC2);
+  static const Color wallpaperLink = Color(0xFFA8C2FF);
 }

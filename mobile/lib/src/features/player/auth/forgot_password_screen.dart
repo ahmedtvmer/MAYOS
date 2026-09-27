@@ -65,6 +65,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       title: 'Forgot password',
       lead: 'Enter your recovery email and we will send a reset link. '
           'Open it on this device to choose a new password.',
+      wallpaper: true,
       message: _error == null ? null : AuthInlineNotice(message: _error!),
       primary: MayosButton(
         key: const Key('forgot_submit'),
