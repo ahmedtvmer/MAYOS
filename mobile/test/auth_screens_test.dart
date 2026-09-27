@@ -10,6 +10,7 @@ import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_logo.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_controller.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_widgets.dart';
 import 'package:mayos_mobile/src/providers.dart';
@@ -306,6 +307,31 @@ void main() {
       reason: 'the brand lockup keeps its MAYOS semantics label',
     );
   });
+
+  for (final String screen in <String>['login', 'register']) {
+    testWidgets('$screen brand lockup is horizontally centred at 360x640',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = _loginFake();
+      await _pumpAuth(tester, fake, size: const Size(360, 640));
+      if (screen == 'register') {
+        await tester.tap(find.text('Create an account'));
+        await _pumpUntilFound(tester, find.text('Create account'));
+      }
+      // Let the route transition settle so only the destination AuthScaffold
+      // remains mounted and it is not measured mid-slide.
+      for (int i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      final double screenCentre = tester.view.physicalSize.width /
+          tester.view.devicePixelRatio /
+          2;
+      final Finder hero = find.descendant(
+        of: find.byType(AuthScaffold),
+        matching: find.byType(MayosBrandLockup),
+      );
+      expect(tester.getCenter(hero).dx, closeTo(screenCentre, 0.5));
+    });
+  }
 
   testWidgets(
       'login keeps both fields and the CTA visible with the keyboard open',

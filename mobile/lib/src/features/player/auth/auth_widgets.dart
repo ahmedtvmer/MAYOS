@@ -86,11 +86,13 @@ class AuthScaffold extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           if (showHero) ...<Widget>[
-                            MayosBrandLockup(
-                              height: logoHeight,
-                              variant: wallpaper
-                                  ? MayosBrandVariant.white
-                                  : MayosBrandVariant.auto,
+                            Center(
+                              child: MayosBrandLockup(
+                                height: logoHeight,
+                                variant: wallpaper
+                                    ? MayosBrandVariant.white
+                                    : MayosBrandVariant.auto,
+                              ),
                             ),
                             const SizedBox(height: MayosSpacing.xl),
                           ],

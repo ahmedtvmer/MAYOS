@@ -68,8 +68,8 @@ small transparent pad, never edit pixels inside the mark or wordmark.
   indicator sit below the centre without moving the lockup off it.
 - **Auth hero.** The logged-out sign-in screens (log in, register, forgot
   password, reset password) also share the wallpaper and force the **white**
-  lockup. The recovery-email gate stays on the plain canvas and keeps the
-  theme-following `auto` lockup.
+  lockup, centred horizontally on the screen. The recovery-email gate stays on
+  the plain canvas and keeps the theme-following `auto` lockup.
 - **Header / small placements.** The vertical lockup's baked wordmark is
   illegible at ~24dp, so the header uses the documented **clean text
   treatment**: `MayosBrandMark` (mark-only crop, white on dark / black on
