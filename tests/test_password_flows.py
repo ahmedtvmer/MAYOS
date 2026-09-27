@@ -30,7 +30,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.commit()
     cat_conn.close()
     db = DatabaseManager(
-        catalog_path=catalog_path, users_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
+        catalog_path=catalog_path, ledgers_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -41,13 +41,13 @@ def api(tmp_path: Path, monkeypatch):
         with TestClient(app) as client:
             yield client, db
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
-def _register(api_client, trainee_id, password="correct-horse-1"):
-    resp = api_client.post("/auth/register", json={"trainee_id": trainee_id, "password": password})
+def _register(api_client, ledger_id, password="correct-horse-1"):
+    resp = api_client.post("/auth/register", json={"trainee_id": ledger_id, "password": password})
     assert resp.status_code == 201, resp.text
     return resp.json()["access_token"]
 
@@ -232,9 +232,9 @@ def test_admin_cli_resets_password_and_revokes_sessions(tmp_path: Path):
 
     import bcrypt
 
-    users_dir = tmp_path / "users"
+    ledgers_dir = tmp_path / "users"
     backups_dir = tmp_path / "backups"
-    users_dir.mkdir(parents=True)
+    ledgers_dir.mkdir(parents=True)
     backups_dir.mkdir(parents=True)
     catalog_path = tmp_path / "catalog.db"
     cat_conn = sqlite3.connect(catalog_path)
@@ -244,7 +244,7 @@ def test_admin_cli_resets_password_and_revokes_sessions(tmp_path: Path):
     cat_conn.close()
 
     # Seed a v3 ledger for "erin" with raw SQL (no DatabaseManager import state).
-    ledger = users_dir / "erin.db"
+    ledger = ledgers_dir / "erin.db"
     conn = sqlite3.connect(ledger)
     conn.execute(
         "CREATE TABLE auth_credentials (id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),"
@@ -261,7 +261,7 @@ def test_admin_cli_resets_password_and_revokes_sessions(tmp_path: Path):
     env = dict(os.environ)
     env["SKIP_LLM_LOAD"] = "true"
     proc = subprocess.run(
-        [sys.executable, str(script), "erin", "--password", "admin-set-horse-9", "--catalog", str(catalog_path), "--users-dir", str(users_dir), "--backups-dir", str(backups_dir)],
+        [sys.executable, str(script), "erin", "--password", "admin-set-horse-9", "--catalog", str(catalog_path), "--users-dir", str(ledgers_dir), "--backups-dir", str(backups_dir)],
         capture_output=True,
         text=True,
         timeout=180,
@@ -292,7 +292,7 @@ def test_admin_cli_revokes_enrolled_account_sessions(api):
 
     # Seed an already-expired revocation row: the CLI must prune it for an
     # enrolled account too, not only for a bare local ledger.
-    ledger_path = db.users_dir / "alice.db"
+    ledger_path = db.ledgers_dir / "alice.db"
     seed = sqlite3.connect(ledger_path)
     seed.execute(
         "INSERT INTO revoked_tokens (jti, expires_at, revoked_at) VALUES (?, ?, ?)",
@@ -309,7 +309,7 @@ def test_admin_cli_revokes_enrolled_account_sessions(api):
             sys.executable, str(script), "alice",
             "--password", "admin-set-horse-9",
             "--catalog", str(db.catalog_path),
-            "--users-dir", str(db.users_dir),
+            "--users-dir", str(db.ledgers_dir),
             "--backups-dir", str(db.backups_dir),
         ],
         capture_output=True,
@@ -351,7 +351,7 @@ def test_fresh_catalog_boot_creates_account_tables(tmp_path: Path, monkeypatch):
     # monkeypatch restores the singleton/thread-local after this test, so
     # module-level DatabaseManager() consumers in other test files stay intact.
     db = DatabaseManager(
-        catalog_path=catalog_path, users_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
+        catalog_path=catalog_path, ledgers_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
     )
     try:
         tables = {
@@ -359,6 +359,6 @@ def test_fresh_catalog_boot_creates_account_tables(tmp_path: Path, monkeypatch):
         }
         assert {"trainee_emails", "password_reset_tokens", "accounts"} <= tables
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()

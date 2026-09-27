@@ -1,4 +1,4 @@
-"""Trainee registration, login, and legacy-claim. Returns plain dicts; no session state.
+"""Player registration, login, and legacy-claim. Returns plain dicts; no session state.
 
 Proof level is password possession. Unknown users and wrong passwords are
 indistinguishable (``Invalid credentials.``); only registration reveals
@@ -33,17 +33,17 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def register_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
+def register_player(db: Any, username: str, password: str) -> dict[str, Any]:
     """Creates an immutable account identity plus its ledger.
 
     A username that already has a live account, or an unenrolled local ledger,
     is refused so existing local ledgers are never silently adopted (issue #42
     owns opted-in import).
     """
-    clean_id = db._sanitize_username(trainee_id)
+    clean_id = db._sanitize_username(username)
     if not clean_id:
         return {"ok": False, "error": "Trainee ID is empty after sanitization."}
-    if db.get_active_account_by_username(clean_id) is not None or db.user_exists(clean_id):
+    if db.get_active_account_by_username(clean_id) is not None or db.ledger_exists(clean_id):
         return {"ok": False, "error": "This Trainee ID already exists. Please log in."}
     try:
         validate_password(password)
@@ -67,10 +67,10 @@ def register_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
     }
 
 
-def login_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
-    clean_id = db._sanitize_username(trainee_id)
+def login_player(db: Any, username: str, password: str) -> dict[str, Any]:
+    clean_id = db._sanitize_username(username)
     account = db.get_active_account_by_username(clean_id) if clean_id else None
-    if account is None or not db.user_exists(account["ledger_id"]):
+    if account is None or not db.ledger_exists(account["ledger_id"]):
         return {"ok": False, "error": INVALID_CREDENTIALS}
     with db.open_ledger(account["ledger_id"]) as ledger:
         stored = ledger.get_password_hash()
@@ -78,7 +78,7 @@ def login_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
             return {"ok": False, "error": INVALID_CREDENTIALS, "code": "claim_required"}
         if not isinstance(password, str) or not verify_password(password, stored):
             return {"ok": False, "error": INVALID_CREDENTIALS}
-        profile = ledger.get_user_profile()
+        profile = ledger.get_player_profile()
         return {
             "ok": True,
             "trainee_id": account["ledger_id"],
@@ -90,15 +90,15 @@ def login_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
         }
 
 
-def claim_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
+def claim_player(db: Any, username: str, password: str) -> dict[str, Any]:
     """One-time password claim for an account whose ledger has no password yet.
 
     Only an enrolled account can be claimed; a bare local ledger is refused so
     it is never silently adopted into a cloud account.
     """
-    clean_id = db._sanitize_username(trainee_id)
+    clean_id = db._sanitize_username(username)
     account = db.get_active_account_by_username(clean_id) if clean_id else None
-    if account is None or not db.user_exists(account["ledger_id"]):
+    if account is None or not db.ledger_exists(account["ledger_id"]):
         return {"ok": False, "error": INVALID_CREDENTIALS}
     try:
         validate_password(password)
@@ -131,7 +131,7 @@ def change_password(
     401 or clients will treat it as session expiry.
     """
     account = db.get_account(account_id)
-    if not db.is_live_account(account) or not account["is_player"] or not db.user_exists(account["ledger_id"]):
+    if not db.is_live_account(account) or not account["is_player"] or not db.ledger_exists(account["ledger_id"]):
         return {"ok": False, "error": "Trainee ledger not found."}
     with ledger_scope(db, ledger, account["ledger_id"]) as handle:
         stored = handle.get_password_hash()

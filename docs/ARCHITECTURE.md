@@ -425,7 +425,7 @@ sequenceDiagram
     autonumber
     actor UI as Flutter Client
     participant API as FastAPI Route
-    participant Dep as get_current_trainee
+    participant Dep as get_current_player
     participant Thread as Worker Thread (asyncio.to_thread)
     participant Graph as Assistant Graph / Service Layer
     participant DB as Thread-Local Ledger

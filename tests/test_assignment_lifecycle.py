@@ -42,7 +42,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
@@ -52,8 +52,8 @@ def api(tmp_path: Path, monkeypatch):
         with TestClient(app) as client:
             yield client, db, tmp_path / "users"
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -93,7 +93,7 @@ def _make_coach(client, db, username, capacity=10, email=None):
         == 200
     )
     if email:
-        db.set_trainee_email(username, email)
+        db.set_account_email(username, email)
     return headers, registered["access_token"], _subject(registered["access_token"])
 
 
@@ -122,7 +122,7 @@ def _two_catalog_connections(tmp_path, monkeypatch):
     def build():
         return DatabaseManager(
             catalog_path=tmp_path / "catalog.db",
-            users_dir=tmp_path / "users",
+            ledgers_dir=tmp_path / "users",
             backups_dir=tmp_path / "backups",
             default_ledger_id="bootstrap",
         )
@@ -389,7 +389,7 @@ def test_email_lookup_fault_is_non_fatal_after_commit(api, monkeypatch):
     def _boom(*_args, **_kwargs):
         raise RuntimeError("email lookup down")
 
-    monkeypatch.setattr(db, "get_trainee_email", _boom)
+    monkeypatch.setattr(db, "get_account_email", _boom)
 
     redeemed = _redeem(client, headers, token)
     assert redeemed.status_code == 200, redeemed.text
@@ -715,11 +715,11 @@ def test_end_requires_authentication(api):
 
 
 def test_disabling_coach_capability_ends_assignments_and_preserves_player_data(api):
-    client, db, users_dir = api
+    client, db, ledgers_dir = api
     coach_headers, _, _ = _make_coach(client, db, "coach", capacity=5)
     # The coach also trains; own player data must survive disabling coaching.
     assert client.put("/profile", json={"current_goal": "Strength"}, headers=coach_headers).status_code == 200
-    assert (users_dir / "coach.db").exists()
+    assert (ledgers_dir / "coach.db").exists()
 
     token = _issue(client, coach_headers)["token"]
     player = _register(client, "p1")

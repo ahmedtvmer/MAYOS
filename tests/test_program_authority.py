@@ -54,7 +54,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
@@ -64,8 +64,8 @@ def api(tmp_path: Path, monkeypatch):
         with TestClient(app) as client:
             yield client, db, tmp_path / "users"
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -254,7 +254,7 @@ def test_active_autogeneration_synthesizes_before_publication(api, monkeypatch):
     client, db, _ = api
     _, player_headers, _, _, _ = _assigned_player(api)
     db.switch_user("p1")
-    db.ledger.upsert_user_profile({"rep_preference": "balanced"})
+    db.ledger.upsert_player_profile({"rep_preference": "balanced"})
 
     _, calls = _auto_generation(db, monkeypatch)
     active = client.get("/programs/active", headers=player_headers)
@@ -369,7 +369,7 @@ def test_onboarding_synthesizes_before_publication(api, monkeypatch):
     _assigned_player(api)
     player_account_id = db.get_active_account_by_username("p1")["account_id"]
     db.switch_user("p1")
-    db.ledger.upsert_user_profile({"rep_preference": "balanced"})
+    db.ledger.upsert_player_profile({"rep_preference": "balanced"})
 
     _, calls = _auto_generation(db, monkeypatch)
     result = onboarding_service.complete_onboarding(

@@ -39,7 +39,7 @@ def db_fixture(tmp_path, monkeypatch):
     shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="default",
     )
@@ -53,13 +53,13 @@ def db_fixture(tmp_path, monkeypatch):
             "primary_goal": "hypertrophy",
             "coach_tone": "Direct, grounded, and pragmatic",
         }
-        db.ledger.upsert_user_profile(profile)
+        db.ledger.upsert_player_profile(profile)
         random.seed(11)
         program_generator.generate_program_pipeline(user_split_override=None, frequency_override=4, ledger=db.ledger)
         yield db
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 

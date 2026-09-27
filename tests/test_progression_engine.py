@@ -36,7 +36,7 @@ def run_tests():
     proj_down = project_next_load(
         last_weight=100.0, last_reps=6, last_rpe=10.0, target_reps=8, target_rpe=8.0, equipment="barbell"
     )
-    assert proj_down["delta_kg"] <= 0, "Failed to protect trainee on RPE 10 overshoot."
+    assert proj_down["delta_kg"] <= 0, "Failed to protect player on RPE 10 overshoot."
     logger.info(
         f"✅ Overshoot Protection: 100kg @ RPE 10.0 -> Next Target: {proj_down['projected_weight']}kg ({proj_down['delta_kg']}kg)"
     )
@@ -73,7 +73,7 @@ def test_progression_baseline_requires_empty_all_time_ledger(days_ago, exposures
                 connection.execute("INSERT INTO workout_sessions VALUES (?, ?)", (str(index), date))
                 if exposures:
                     connection.execute("INSERT INTO workout_sets VALUES (?, 'squat', 80, 8, 8.5, 1, 0)", (str(index),))
-        database = SimpleNamespace(user_conn=connection, conn=connection, get_active_program=lambda: None)
+        database = SimpleNamespace(ledger_conn=connection, conn=connection, get_active_program=lambda: None)
         result = get_progression_signals(database)
         if expected_baseline:
             assert result == "Progression: Establishing baseline loads across routine."

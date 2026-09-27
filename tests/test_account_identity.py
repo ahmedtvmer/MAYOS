@@ -18,7 +18,7 @@ from service import auth as auth_service
 from service import password_reset as reset_service
 from svc.app import create_app
 from svc.auth import create_access_token, revoke_token
-from svc.dependencies import get_current_trainee, get_db
+from svc.dependencies import get_current_player, get_db
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
 
@@ -39,7 +39,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
@@ -49,8 +49,8 @@ def api(tmp_path: Path, monkeypatch):
         with TestClient(app) as client:
             yield client, db, tmp_path / "users"
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -90,13 +90,13 @@ def test_login_reissues_token_for_same_immutable_subject(api):
 
 
 def test_unknown_account_token_fails_closed_without_creating_ledger(api):
-    client, _, users_dir = api
+    client, _, ledgers_dir = api
     ghost_id = uuid.uuid4().hex
     token = create_access_token(ghost_id)
-    before = {p.name for p in users_dir.glob("*.db")}
+    before = {p.name for p in ledgers_dir.glob("*.db")}
     assert client.get("/dashboard/exercises", headers=_authed(token)).status_code == 401
-    assert {p.name for p in users_dir.glob("*.db")} == before
-    assert not (users_dir / f"{ghost_id}.db").exists()
+    assert {p.name for p in ledgers_dir.glob("*.db")} == before
+    assert not (ledgers_dir / f"{ghost_id}.db").exists()
 
 
 def test_old_username_subject_token_is_rejected(api):
@@ -160,7 +160,7 @@ def test_old_token_is_rejected_after_account_is_recreated(api):
     assert db.create_account("alice") != old_id
     with pytest.raises(HTTPException) as exc:
         asyncio.run(
-            get_current_trainee(HTTPAuthorizationCredentials(scheme="Bearer", credentials=token), db)
+            get_current_player(HTTPAuthorizationCredentials(scheme="Bearer", credentials=token), db)
         )
     assert exc.value.status_code == 401
 
@@ -197,7 +197,7 @@ def test_password_reset_bumps_registry_epoch(api):
 
 
 def test_username_can_be_reused_after_deletion(api):
-    client, db, users_dir = api
+    client, db, ledgers_dir = api
     first = _register(client, "alice")
     first_id = _subject(first["access_token"])
     with db._catalog_lock:
@@ -206,7 +206,7 @@ def test_username_can_be_reused_after_deletion(api):
             (datetime.now(UTC).isoformat(), first_id),
         )
         db.catalog_conn.commit()
-    (users_dir / "alice.db").unlink(missing_ok=True)
+    (ledgers_dir / "alice.db").unlink(missing_ok=True)
 
     second = _register(client, "alice")
     second_id = _subject(second["access_token"])
@@ -216,8 +216,8 @@ def test_username_can_be_reused_after_deletion(api):
 
 
 def test_local_ledger_without_account_is_not_adopted(api):
-    client, db, users_dir = api
-    (users_dir / "ghost.db").write_bytes(b"")
+    client, db, ledgers_dir = api
+    (ledgers_dir / "ghost.db").write_bytes(b"")
     resp = client.post("/auth/register", json={"trainee_id": "ghost", "password": "correct-horse-1"})
     assert resp.status_code == 409
     assert db.get_active_account_by_username("ghost") is None
@@ -229,7 +229,7 @@ def _reset_token_count(db):
 
 
 def test_deleted_timestamp_blocks_recovery_and_revocation(api):
-    client, db, users_dir = api
+    client, db, ledgers_dir = api
     registered = _register(client, "alice")
     token = registered["access_token"]
     account_id = _subject(token)
@@ -249,7 +249,7 @@ def test_deleted_timestamp_blocks_recovery_and_revocation(api):
     # Revocation must not mount or write to the dead account's ledger.
     jti = pyjwt.decode(token, TEST_JWT_SECRET, algorithms=["HS256"])["jti"]
     revoke_token(db, token)
-    conn = sqlite3.connect(users_dir / "alice.db")
+    conn = sqlite3.connect(ledgers_dir / "alice.db")
     try:
         assert conn.execute("SELECT COUNT(*) FROM revoked_tokens WHERE jti = ?", (jti,)).fetchone()[0] == 0
     finally:
@@ -257,7 +257,7 @@ def test_deleted_timestamp_blocks_recovery_and_revocation(api):
 
 
 def test_deleted_account_recovery_cannot_reset_reused_username(api, monkeypatch):
-    client, db, users_dir = api
+    client, db, ledgers_dir = api
     first = _register(client, "alice")
     first_id = _subject(first["access_token"])
     first_headers = _authed(first["access_token"])
@@ -279,12 +279,12 @@ def test_deleted_account_recovery_cannot_reset_reused_username(api, monkeypatch)
             (datetime.now(UTC).isoformat(), first_id),
         )
         db.catalog_conn.commit()
-    (users_dir / "alice.db").unlink(missing_ok=True)
+    (ledgers_dir / "alice.db").unlink(missing_ok=True)
 
     # A fresh manager stands in for the post-deletion process: the old ledger and
     # its cached connection are gone, and the username is registered anew.
     fresh_db = DatabaseManager(
-        catalog_path=db.catalog_path, users_dir=db.users_dir, backups_dir=db.backups_dir, default_ledger_id="bootstrap"
+        catalog_path=db.catalog_path, ledgers_dir=db.ledgers_dir, backups_dir=db.backups_dir, default_ledger_id="bootstrap"
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: fresh_db
@@ -317,8 +317,8 @@ def test_deleted_account_recovery_cannot_reset_reused_username(api, monkeypatch)
                 "/auth/login", json={"trainee_id": "alice", "password": "attacker-horse-99"}
             ).status_code == 401
     finally:
-        if fresh_db.user_conn is not None:
-            fresh_db.user_conn.close()
+        if fresh_db.ledger_conn is not None:
+            fresh_db.ledger_conn.close()
         fresh_db.catalog_conn.close()
 
 
@@ -413,7 +413,7 @@ def test_logout_without_credentials_is_idempotent(api):
 
 
 def test_logout_with_stale_epoch_fails_closed(api):
-    client, _, users_dir = api
+    client, _, ledgers_dir = api
     registered = _register(client, "alice")
     token = registered["access_token"]
     assert client.get("/dashboard/exercises", headers=_authed(token)).status_code == 200
@@ -428,7 +428,7 @@ def test_logout_with_stale_epoch_fails_closed(api):
     assert client.post("/auth/logout", headers=_authed(token)).status_code == 401
     # The stale token never reached the ledger write.
     jti = pyjwt.decode(token, TEST_JWT_SECRET, algorithms=["HS256"])["jti"]
-    conn = sqlite3.connect(users_dir / "alice.db")
+    conn = sqlite3.connect(ledgers_dir / "alice.db")
     try:
         assert conn.execute("SELECT COUNT(*) FROM revoked_tokens WHERE jti = ?", (jti,)).fetchone()[0] == 0
     finally:
@@ -436,11 +436,11 @@ def test_logout_with_stale_epoch_fails_closed(api):
 
 
 def test_logout_rejects_unknown_account_without_creating_ledger(api):
-    client, _, users_dir = api
+    client, _, ledgers_dir = api
     token = create_access_token(uuid.uuid4().hex)
-    before = {p.name for p in users_dir.glob("*.db")}
+    before = {p.name for p in ledgers_dir.glob("*.db")}
     assert client.post("/auth/logout", headers=_authed(token)).status_code == 401
-    assert {p.name for p in users_dir.glob("*.db")} == before
+    assert {p.name for p in ledgers_dir.glob("*.db")} == before
 
 
 def test_logout_rejects_deleted_account_and_missing_capability(api):
@@ -466,7 +466,7 @@ def test_logout_rejects_deleted_account_and_missing_capability(api):
 
 def test_old_account_id_cannot_change_reused_username_password_or_email(api, monkeypatch):
     """A stale in-flight request carries a deleted id, not the reused username."""
-    client, db, users_dir = api
+    client, db, ledgers_dir = api
     first = _register(client, "alice")
     first_id = _subject(first["access_token"])
     first_headers = _authed(first["access_token"])
@@ -478,12 +478,12 @@ def test_old_account_id_cannot_change_reused_username_password_or_email(api, mon
             (datetime.now(UTC).isoformat(), first_id),
         )
         db.catalog_conn.commit()
-    (users_dir / "alice.db").unlink(missing_ok=True)
+    (ledgers_dir / "alice.db").unlink(missing_ok=True)
 
     # A fresh manager stands in for the post-deletion process: the old ledger and
     # its cached connections are gone, and the username is registered anew.
     fresh_db = DatabaseManager(
-        catalog_path=db.catalog_path, users_dir=db.users_dir, backups_dir=db.backups_dir, default_ledger_id="bootstrap"
+        catalog_path=db.catalog_path, ledgers_dir=db.ledgers_dir, backups_dir=db.backups_dir, default_ledger_id="bootstrap"
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: fresh_db
@@ -507,6 +507,6 @@ def test_old_account_id_cannot_change_reused_username_password_or_email(api, mon
             ).status_code == 401
             assert second_client.get("/auth/email", headers=_authed(second["access_token"])).json() == {"email": None}
     finally:
-        if fresh_db.user_conn is not None:
-            fresh_db.user_conn.close()
+        if fresh_db.ledger_conn is not None:
+            fresh_db.ledger_conn.close()
         fresh_db.catalog_conn.close()

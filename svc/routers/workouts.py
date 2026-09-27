@@ -33,7 +33,7 @@ def _sets_payload(db: Any, ledger: Any, body: SessionCommitIn) -> list[dict[str,
     payload = []
     for item in body.sets:
         exercise_id = item.exercise.exercise_id
-        if db.get_exercise_catalog_entry(exercise_id) is None:
+        if db.get_exercise_library_entry(exercise_id) is None:
             raise workouts_service.SessionSyncValidationError(f"Unknown exercise id: {exercise_id}.")
         payload.append(
             {
@@ -56,7 +56,7 @@ async def search_exercises(
 
 
 @router.get("/exercises/{exercise_id}")
-async def read_exercise_catalog_detail(
+async def read_exercise_library_detail(
     exercise_id: str,
     player: Annotated[Any, Depends(get_verified_player)],
     db: Annotated[Any, Depends(get_db)],
@@ -68,7 +68,7 @@ async def read_exercise_catalog_detail(
     paths. The media paths are exposed so the client can gate display behind its
     build-time media flag; no media is bundled or served by this endpoint.
     """
-    detail = db.get_exercise_catalog_detail(exercise_id)
+    detail = db.get_exercise_library_detail(exercise_id)
     if detail is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown exercise id.")
     return detail
@@ -253,8 +253,8 @@ async def correct_session_performed_date(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
-async def _stream_session_log(trainee: str, db: Any, ledger: Any, fmt: str) -> StreamingResponse:
-    result = await asyncio.to_thread(sessions_service.export_session_log, db, trainee, fmt, ledger)
+async def _stream_session_log(player: str, db: Any, ledger: Any, fmt: str) -> StreamingResponse:
+    result = await asyncio.to_thread(sessions_service.export_session_log, db, player, fmt, ledger)
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No sessions logged yet.")
     filename, payload = result

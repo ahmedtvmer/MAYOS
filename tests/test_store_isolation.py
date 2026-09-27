@@ -4,9 +4,9 @@ The folder a module lives in states which store it may touch:
 
 - ``database/registry/`` and ``database/exercise_library/`` modules may
   reference the registry connection (``catalog_conn`` / ``_catalog_lock`` /
-  ``catalog_transaction``) but never the ledger connection or active user.
+  ``catalog_transaction``) but never the ledger connection or ledger id.
 - ``database/ledger/`` modules may reference the ledger connection
-  (``user_conn`` / ``conn`` / ``active_user`` / ``ledger_transaction``) but
+  (``ledger_conn`` / ``conn`` / ``ledger_id`` / ``ledger_transaction``) but
   never the registry connection or catalog lock.
 
 Anything that needs both belongs in a top-level operation module named for the
@@ -30,9 +30,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 REGISTRY_TOKENS = (".catalog_conn", "._catalog_lock", ".catalog_transaction")
 LEDGER_TOKENS = (
-    ".user_conn",
+    ".ledger_conn",
     "self.conn",
-    "self.active_user",
+    "self.ledger_id",
     ".ledger_transaction",
     "._local",
 )
@@ -46,26 +46,25 @@ REMOVED_SEAMS = (
     "bind_request",
     "switch_user",
     "unmount_user",
+    "active_user",
     "get_store",
     "set_store",
     "reset_store",
 )
 
-#: ``active_user`` is legitimate ledger-internal state (``self.active_user`` in
-#: ``database/ledger/`` backs ``backup_active_user``); it is a removed seam
-#: everywhere else.
-ACTIVE_USER_TOKEN = "active_user"
-
 #: Production layers that must never reach for a removed seam again.
 LAYER_PACKAGES = ("agent", "service", "svc", "database", "scripts", "utils")
 
-#: A ledger-internal module may keep ``self.active_user``; nothing else may.
+#: A ledger-internal module may keep ``self.ledger_id``; nothing else may read
+#: a ledger handle through the store.
 LEDGER_INTERNAL_PREFIX = Path("database/ledger")
 
 #: Store/DatabaseManager attributes the test-only ``conftest`` facade adds for
 #: pre-split tests. Production code must reach a ledger through an explicit
-#: ``open_ledger`` handle, never off the store.
-STORE_FACADE_TOKENS = (".user_conn", ".active_user")
+#: ``open_ledger`` handle, never off the store. ``_test_ledger_id`` is
+#: deliberately distinctive so production reading a store's ``ledger_id``
+#: cannot masquerade as the facade.
+STORE_FACADE_TOKENS = (".ledger_conn", "._test_ledger_id")
 
 #: ``.conn`` is a ledger handle's own accessor. It is legitimate when the
 #: receiver is a ``TrainingLedger`` (program rules, dashboard reads, the init
@@ -80,7 +79,7 @@ CONN_ALLOWLIST = frozenset({
 })
 
 #: Layers scanned for reads of the test-only store facade. ``database/ledger/``
-#: is skipped there because ``self.conn`` / ``self.active_user`` are the handle's
+#: is skipped there because ``self.conn`` / ``self.ledger_id`` are the handle's
 #: own state.
 STORE_FACADE_PACKAGES = LAYER_PACKAGES
 
@@ -114,7 +113,7 @@ def test_ledger_modules_never_touch_the_registry():
 
 
 def _uses_token(source: str, token: str) -> bool:
-    """Whole-word match so ``active_username`` never trips the ``active_user`` check."""
+    """Whole-word match so ``active_username`` never trips the seam checks."""
     return re.search(rf"\b{re.escape(token)}\b", source) is not None
 
 
@@ -131,10 +130,10 @@ def _reads_stored_ledger(source: str) -> bool:
 def test_layers_never_use_the_test_only_store_facade(package):
     """Production reaches the ledger via ``open_ledger``, never store attributes.
 
-    ``.ledger`` / ``.user_conn`` / ``.active_user`` are added to a store only by
-    the test ``conftest`` facade; reading them in production would mean the
-    thread-local mount crept back. ``.conn`` on a ledger handle stays legitimate
-    and is allow-listed per file.
+    ``.ledger`` / ``.ledger_conn`` / ``._test_ledger_id`` are added to a store
+    only by the test ``conftest`` facade; reading them in production would mean
+    the thread-local mount crept back. ``.conn`` on a ledger handle stays
+    legitimate and is allow-listed per file.
     """
     for path in _modules(package):
         relative = path.relative_to(ROOT)
@@ -160,12 +159,6 @@ def test_no_removed_ledger_seams_remain(package):
         source = path.read_text()
         offenders = [token for token in REMOVED_SEAMS if _uses_token(source, token)]
         assert not offenders, f"{relative} uses a removed ledger seam: {offenders}"
-
-        # ``active_user`` survives only as ledger-internal state on the handle.
-        if not str(relative).startswith(str(LEDGER_INTERNAL_PREFIX)):
-            assert not _uses_token(source, ACTIVE_USER_TOKEN), (
-                f"{relative} still references the removed thread-local '{ACTIVE_USER_TOKEN}'"
-            )
 
 
 @pytest.mark.parametrize("package", LAYER_PACKAGES)

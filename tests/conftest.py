@@ -54,8 +54,8 @@ def _test_ledger_facade(monkeypatch):
         self.ledger = self.open_ledger(self.default_ledger_id)
         handles.append(self.ledger)
         self.conn = self.ledger.conn
-        self.user_conn = self.ledger.conn
-        self.active_user = self.ledger.ledger_id
+        self.ledger_conn = self.ledger.conn
+        self._test_ledger_id = self.ledger.ledger_id
 
     def _switch_user(self, username):
         if self.ledger is not None:
@@ -63,11 +63,11 @@ def _test_ledger_facade(monkeypatch):
         self.ledger = self.open_ledger(self._sanitize_username(username))
         handles.append(self.ledger)
         self.conn = self.ledger.conn
-        self.user_conn = self.ledger.conn
-        self.active_user = self.ledger.ledger_id
+        self.ledger_conn = self.ledger.conn
+        self._test_ledger_id = self.ledger.ledger_id
         return True
 
-    def _create_user_schema(self):
+    def _create_ledger_schema(self):
         return None
 
     # ``__init__`` only (private, invisible to the public-surface snapshot), so no
@@ -76,7 +76,7 @@ def _test_ledger_facade(monkeypatch):
         original_init(self, *args, **kwargs)
         _bind(self)
         self.switch_user = _switch_user.__get__(self)
-        self.create_user_schema = _create_user_schema.__get__(self)
+        self.create_ledger_schema = _create_ledger_schema.__get__(self)
 
     monkeypatch.setattr(DatabaseManager, "__init__", wrapped_init)
     yield
@@ -91,7 +91,7 @@ def _test_ledger_facade(monkeypatch):
 def fresh_store(tmp_path):
     """A fresh, isolated store bound to temporary registry + ledger paths (ADR 041).
 
-    Copies the shipped exercise catalog so agent/program tests have a real
+    Copies the shipped exercise library so agent/program tests have a real
     exercise library. The autouse ``_test_ledger_facade`` fixture exposes an
     explicit ``db.ledger`` handle on it.
     """
@@ -103,7 +103,7 @@ def fresh_store(tmp_path):
     shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
     )
     try:

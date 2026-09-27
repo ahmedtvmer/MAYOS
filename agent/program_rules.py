@@ -95,7 +95,7 @@ def get_target_rep_window(mechanic: str, rep_preference: str = "balanced") -> tu
 
 
 def apply_rep_preference(reps: tuple[int, int], rep_preference: str | None) -> tuple[int, int]:
-    """Shifts the blueprint rep window by the trainee's rep preference (clamped at 4)."""
+    """Shifts the blueprint rep window by the player's rep preference (clamped at 4)."""
     offset = REP_PREFERENCE_OFFSETS.get((rep_preference or "balanced").lower(), (0, 0))
     return (max(4, reps[0] + offset[0]), max(4, reps[1] + offset[1]))
 

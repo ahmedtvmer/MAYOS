@@ -6,13 +6,13 @@ from agent.progression_engine import get_exercise_progression_history, get_weekl
 from service._base import ledger_scope
 
 
-def volume_attribution(db: Any, trainee_id: str, days_lookback: int = 7, ledger: Any | None = None) -> dict[str, float]:
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+def volume_attribution(db: Any, ledger_id: str, days_lookback: int = 7, ledger: Any | None = None) -> dict[str, float]:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         return get_weekly_muscle_volume(ledger, days_lookback=days_lookback)
 
 
-def logged_exercises(db: Any, trainee_id: str, ledger: Any | None = None) -> list[dict[str, str]]:
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+def logged_exercises(db: Any, ledger_id: str, ledger: Any | None = None) -> list[dict[str, str]]:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         cursor = ledger.conn.cursor()
         cursor.execute("""
             SELECT DISTINCT e.id, e.name
@@ -24,9 +24,9 @@ def logged_exercises(db: Any, trainee_id: str, ledger: Any | None = None) -> lis
 
 
 def exercise_history(
-    db: Any, trainee_id: str, exercise_id: str, ledger: Any | None = None
+    db: Any, ledger_id: str, exercise_id: str, ledger: Any | None = None
 ) -> list[dict[str, Any]]:
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         return get_exercise_progression_history(ledger, exercise_id)
 
 
@@ -41,9 +41,9 @@ def latest_record_caption(history: list[dict[str, Any]]) -> str | None:
 
 
 def recent_personal_records(
-    db: Any, trainee_id: str, limit: int = 20, ledger: Any | None = None
+    db: Any, ledger_id: str, limit: int = 20, ledger: Any | None = None
 ) -> list[dict[str, Any]]:
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         cursor = ledger.conn.cursor()
         cursor.execute(
             """
@@ -60,9 +60,9 @@ def recent_personal_records(
 
 
 def exercise_records(
-    db: Any, trainee_id: str, exercise_id: str, ledger: Any | None = None
+    db: Any, ledger_id: str, exercise_id: str, ledger: Any | None = None
 ) -> list[dict[str, Any]]:
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         cursor = ledger.conn.cursor()
         cursor.execute(
             """

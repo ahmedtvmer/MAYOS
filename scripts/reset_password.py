@@ -1,13 +1,13 @@
-"""Admin password reset: set a new password for a trainee ledger from the ops console.
+"""Admin password reset: set a new password for a player ledger from the ops console.
 
 For an enrolled account, revokes ALL sessions by mandatorily advancing the
 catalog registry session epoch (a bare local ledger falls back to the ledger
-token version). Use when a trainee loses access and self-service email recovery
+token version). Use when a player loses access and self-service email recovery
 is unavailable.
 
 Usage:
-    python scripts/reset_password.py <trainee_id> [--password NEWPASS]
-    python scripts/reset_password.py <trainee_id> --users-dir /data/users
+    python scripts/reset_password.py <ledger_id> [--password NEWPASS]
+    python scripts/reset_password.py <ledger_id> --users-dir /data/users
 
 Without --password, the operator is prompted securely (getpass, no echo).
 """
@@ -25,7 +25,7 @@ sys.path.append(str(BASE_DIR))
 from database.database_manager import (  # noqa: E402
     DEFAULT_BACKUPS_DIR,
     DEFAULT_CATALOG_PATH,
-    DEFAULT_USERS_DIR,
+    DEFAULT_LEDGERS_DIR,
     DatabaseManager,
 )
 from service import auth as auth_service  # noqa: E402
@@ -34,7 +34,7 @@ from utils.logger import MyosLogger  # noqa: E402
 logger = MyosLogger().get_logger(__name__)
 
 
-def reset_password(db: DatabaseManager, trainee_id: str, new_password: str) -> tuple[str, int, bool]:
+def reset_password(db: DatabaseManager, ledger_id: str, new_password: str) -> tuple[str, int, bool]:
     """Set a fresh password and revoke the account's sessions.
 
     Returns ``(ledger_id, epoch, enrolled)``. For an enrolled account, ``epoch``
@@ -43,16 +43,16 @@ def reset_password(db: DatabaseManager, trainee_id: str, new_password: str) -> t
     ledger with no registry account, ``epoch`` is the ledger ``token_version``
     and ``enrolled`` is ``False`` (legacy behavior preserved).
     """
-    clean_id = db._sanitize_username(trainee_id)
+    clean_id = db._sanitize_username(ledger_id)
     if not clean_id:
-        raise SystemExit(f"error: unknown trainee ledger '{trainee_id}'.")
+        raise SystemExit(f"error: unknown trainee ledger '{ledger_id}'.")
     account = db.get_active_account_by_username(clean_id)
     # An enrolled account may have a ledger id distinct from its (reused)
     # username; resolve the path through the account, never the username
     # (ADR 015/039). A bare local ledger has no account and uses its username.
     ledger_id = account["ledger_id"] if account is not None else clean_id
-    if not db.user_exists(ledger_id):
-        raise SystemExit(f"error: unknown trainee ledger '{trainee_id}'.")
+    if not db.ledger_exists(ledger_id):
+        raise SystemExit(f"error: unknown trainee ledger '{ledger_id}'.")
     try:
         auth_service.validate_password(new_password)
     except ValueError as exc:
@@ -74,10 +74,10 @@ def reset_password(db: DatabaseManager, trainee_id: str, new_password: str) -> t
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Admin reset of a trainee password (revokes all sessions).")
-    parser.add_argument("trainee_id", help="Trainee ID / username of the ledger.")
+    parser.add_argument("ledger_id", help="Trainee ID / username of the ledger.")
     parser.add_argument("--password", default=None, help="New password (otherwise prompted securely).")
     parser.add_argument("--catalog", default=os.getenv("CATALOG_PATH", str(DEFAULT_CATALOG_PATH)))
-    parser.add_argument("--users-dir", default=os.getenv("USERS_DIR", str(DEFAULT_USERS_DIR)))
+    parser.add_argument("--users-dir", dest="ledgers_dir", default=os.getenv("USERS_DIR", str(DEFAULT_LEDGERS_DIR)))
     parser.add_argument("--backups-dir", default=os.getenv("BACKUPS_DIR", str(DEFAULT_BACKUPS_DIR)))
     args = parser.parse_args(argv)
 
@@ -89,9 +89,9 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     # A fresh store is built per run, so custom dirs apply even in long-lived shells.
-    db = DatabaseManager(catalog_path=args.catalog, users_dir=args.users_dir, backups_dir=args.backups_dir)
+    db = DatabaseManager(catalog_path=args.catalog, ledgers_dir=args.ledgers_dir, backups_dir=args.backups_dir)
     try:
-        clean_id, epoch, enrolled = reset_password(db, args.trainee_id, new_password)
+        clean_id, epoch, enrolled = reset_password(db, args.ledger_id, new_password)
     finally:
         db.catalog_conn.close()
     if enrolled:

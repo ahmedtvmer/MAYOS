@@ -11,7 +11,7 @@ from service import auth as auth_service
 from service import password_reset as reset_service
 from service import plans as plans_service
 from svc.auth import create_access_token, remember_me_hours, revoke_token
-from svc.dependencies import VerifiedPlayer, get_current_trainee, get_db, get_ledger, get_verified_player
+from svc.dependencies import VerifiedPlayer, get_current_player, get_db, get_ledger, get_verified_player
 from svc.rate_limit import PASSWORD_LIMIT, REGISTER_LIMIT, LOGIN_LIMIT, RESET_LIMIT, limiter
 from svc.schemas import (
     AccountCapabilitiesOut,
@@ -36,7 +36,7 @@ _bearer = HTTPBearer(auto_error=False)
 @limiter.limit(REGISTER_LIMIT)
 async def register(request: Request, body: TraineeIn, db: Annotated[Any, Depends(get_db)]):
     def _run():
-        result = auth_service.register_trainee(db, body.trainee_id, body.password)
+        result = auth_service.register_player(db, body.trainee_id, body.password)
         if not result["ok"]:
             status_code = status.HTTP_409_CONFLICT if "already exists" in result["error"] else status.HTTP_400_BAD_REQUEST
             raise HTTPException(status_code=status_code, detail=result["error"])
@@ -57,7 +57,7 @@ async def register(request: Request, body: TraineeIn, db: Annotated[Any, Depends
 @limiter.limit(LOGIN_LIMIT)
 async def login(request: Request, body: TraineeIn, db: Annotated[Any, Depends(get_db)]):
     def _run():
-        result = auth_service.login_trainee(db, body.trainee_id, body.password)
+        result = auth_service.login_player(db, body.trainee_id, body.password)
         if not result["ok"]:
             if result.get("code") == "claim_required":
                 raise HTTPException(
@@ -80,7 +80,7 @@ async def login(request: Request, body: TraineeIn, db: Annotated[Any, Depends(ge
 
 @router.get("/me", response_model=AccountOut)
 async def read_current_account(
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_current_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Returns the authenticated account's identity, capabilities, and plan states.
@@ -93,7 +93,7 @@ async def read_current_account(
     """
 
     def _run():
-        account = db.get_account(trainee.account_id)
+        account = db.get_account(player.account_id)
         if not db.is_live_account(account):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
         return account, plans_service.plans_for_account(db, account)
@@ -113,7 +113,7 @@ async def claim(request: Request, body: TraineeIn, db: Annotated[Any, Depends(ge
     """One-time password claim for enrolled accounts whose ledger has no password yet."""
 
     def _run():
-        result = auth_service.claim_trainee(db, body.trainee_id, body.password)
+        result = auth_service.claim_player(db, body.trainee_id, body.password)
         if not result["ok"]:
             status_code = status.HTTP_400_BAD_REQUEST if "must be" in result["error"] else status.HTTP_401_UNAUTHORIZED
             raise HTTPException(status_code=status_code, detail=result["error"])
@@ -148,7 +148,7 @@ async def logout(
 
     # Registry gate: the shared dependency verifies live account, player
     # capability, and current session epoch before the jti is revoked.
-    await get_current_trainee(credentials, db)
+    await get_current_player(credentials, db)
 
     def _run():
         revoke_token(db, credentials.credentials)

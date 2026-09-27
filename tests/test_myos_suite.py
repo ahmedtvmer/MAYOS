@@ -166,20 +166,20 @@ def test_output_scrubber():
 def isolated_db(tmp_path, monkeypatch):
     db = DatabaseManager(
         catalog_path=tmp_path / "catalog.db",
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="test_trainee",
     )
     try:
         db.create_catalog_schema()
-        db.create_user_schema()
+        db.create_ledger_schema()
         assert db.catalog_path == tmp_path / "catalog.db"
-        assert db.users_dir == tmp_path / "users"
+        assert db.ledgers_dir == tmp_path / "users"
         assert db.backups_dir == tmp_path / "backups"
         yield db
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -187,11 +187,11 @@ def test_database_manager_operations(isolated_db):
     db = isolated_db
 
     # Verify active WAL mode on user ledger
-    mode = db.user_conn.execute("PRAGMA journal_mode;").fetchone()[0]
+    mode = db.ledger_conn.execute("PRAGMA journal_mode;").fetchone()[0]
     assert mode.lower() == "wal"
 
     # User profile persistence
-    db.ledger.upsert_user_profile(
+    db.ledger.upsert_player_profile(
         {
             "gender": "male",
             "proportions": "long_femurs",
@@ -204,7 +204,7 @@ def test_database_manager_operations(isolated_db):
             "stress_and_sleep": "Normal",
         }
     )
-    saved_profile = db.ledger.get_user_profile()
+    saved_profile = db.ledger.get_player_profile()
     assert saved_profile["weight_kg"] == 85.0
     assert saved_profile["weekly_frequency"] == 4
 
@@ -217,10 +217,10 @@ def test_database_manager_operations(isolated_db):
     db.ledger.log_workout_set(set_id, session_id, "ex_dummy", 1, 100.0, 8, 8.5)
 
     # Delete workout session -> workout_sets must cascade
-    db.user_conn.execute("DELETE FROM workout_sessions WHERE id = ?", (session_id,))
-    db.user_conn.commit()
+    db.ledger_conn.execute("DELETE FROM workout_sessions WHERE id = ?", (session_id,))
+    db.ledger_conn.commit()
 
-    count = db.user_conn.execute("SELECT COUNT(*) FROM workout_sets WHERE id = ?", (set_id,)).fetchone()[0]
+    count = db.ledger_conn.execute("SELECT COUNT(*) FROM workout_sets WHERE id = ?", (set_id,)).fetchone()[0]
     assert count == 0
 
 

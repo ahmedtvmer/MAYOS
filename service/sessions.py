@@ -11,10 +11,10 @@ EXPORT_FILENAMES = {"csv": "mayos_session_log.csv", "json": "mayos_session_log.j
 
 
 def export_session_log(
-    db: Any, trainee_id: str, fmt: str, ledger: Any | None = None
+    db: Any, ledger_id: str, fmt: str, ledger: Any | None = None
 ) -> tuple[str, bytes] | None:
-    """Returns (filename, payload) for the trainee's full ledger, or None when it is empty."""
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+    """Returns (filename, payload) for the player's full ledger, or None when it is empty."""
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         rows = ledger.get_session_log()
         if not rows:
             return None

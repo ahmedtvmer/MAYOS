@@ -12,7 +12,7 @@ This module owns the deterministic structure: slot SQL patterns (resolved
 against the catalog by ``agent.program_rules.fetch_slot_candidates``),
 reference-derived prescriptions (warm-up ramps, set profiles, rep windows,
 rests) and the split day templates. Execution guidance is intentionally not
-embedded here: the UI shows the catalog's own form demos and trainees can ask
+embedded here: the UI shows the catalog's own form demos and players can ask
 the coaching assistant for cues.
 """
 
@@ -1241,7 +1241,7 @@ FAT_LOSS_CARDIO_NOTE = (
 
 
 def is_fat_loss_goal(current_goal: str | None, long_term_goal: str | None = None) -> bool:
-    """True when the trainee's stated goal is fat loss (checks both goal fields)."""
+    """True when the player's stated goal is fat loss (checks both goal fields)."""
     for goal in (current_goal, long_term_goal):
         if not goal:
             continue

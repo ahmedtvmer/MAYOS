@@ -7,14 +7,14 @@ from service._base import ledger_scope
 from service.programs import COACH_CONTROLLED_ERROR, player_controls_program
 
 
-def get_profile(db: Any, trainee_id: str, ledger: Any | None = None) -> dict[str, Any] | None:
-    with ledger_scope(db, ledger, trainee_id) as ledger:
-        return ledger.get_user_profile()
+def get_profile(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, Any] | None:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
+        return ledger.get_player_profile()
 
 
 def update_profile(
     db: Any,
-    trainee_id: str,
+    ledger_id: str,
     payload: dict[str, Any],
     player_account_id: str | None = None,
     ledger: Any | None = None,
@@ -25,8 +25,8 @@ def update_profile(
     so while an assigned coach owns the active program it is skipped and the
     response explains that a coach request is needed.
     """
-    with ledger_scope(db, ledger, trainee_id) as ledger:
-        profile = ledger.get_user_profile() or {}
+    with ledger_scope(db, ledger, ledger_id) as ledger:
+        profile = ledger.get_player_profile() or {}
         freq_changed = int(payload.get("weekly_frequency", profile.get("weekly_frequency", 4))) != int(
             profile.get("weekly_frequency", 4)
         )
@@ -37,7 +37,7 @@ def update_profile(
             profile.get("injuries_or_limitations", "None")
         )
         updated = {**profile, **payload}
-        ledger.upsert_user_profile(updated)
+        ledger.upsert_player_profile(updated)
         program = None
         program_blocked = False
         if freq_changed or rep_changed or limits_changed:
@@ -56,7 +56,7 @@ def update_profile(
             else:
                 program_blocked = True
         return {
-            "profile": ledger.get_user_profile(),
+            "profile": ledger.get_player_profile(),
             "program_rebuilt": program is not None,
             "program": program,
             "program_blocked": program_blocked,
@@ -65,14 +65,14 @@ def update_profile(
 
 
 def update_persona(
-    db: Any, trainee_id: str, coach_tone: str, custom_instructions: str, ledger: Any | None = None
+    db: Any, ledger_id: str, coach_tone: str, custom_instructions: str, ledger: Any | None = None
 ) -> dict[str, Any]:
-    with ledger_scope(db, ledger, trainee_id) as ledger:
-        ledger.update_user_persona(coach_tone, custom_instructions)
-        return {"profile": ledger.get_user_profile()}
+    with ledger_scope(db, ledger, ledger_id) as ledger:
+        ledger.update_player_persona(coach_tone, custom_instructions)
+        return {"profile": ledger.get_player_profile()}
 
 
-def reset_profile(db: Any, trainee_id: str, ledger: Any | None = None) -> dict[str, Any]:
-    with ledger_scope(db, ledger, trainee_id) as ledger:
-        ledger.clear_user_profile()
+def reset_profile(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, Any]:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
+        ledger.clear_player_profile()
         return {"ok": True}

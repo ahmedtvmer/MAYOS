@@ -10,7 +10,7 @@ Callers obtain a handle from :meth:`database.database_manager.DatabaseManager.op
 so the connection closes on exit::
 
     with db.open_ledger(ledger_id) as ledger:
-        ledger.get_user_profile()
+        ledger.get_player_profile()
 
 Registry and exercise-library methods stay on the app store; only ledger
 methods live on the handle.
@@ -48,10 +48,9 @@ class TrainingLedger(
 
     def __init__(self, conn: sqlite3.Connection, ledger_id: str, backups_dir: Path):
         self._conn: sqlite3.Connection | None = conn
+        # Ledger mixins read ``self.ledger_id`` and ``self.backups_dir``; keep
+        # them wired to this handle's own ledger.
         self.ledger_id = ledger_id
-        # Ledger mixins (e.g. ``LedgerWorkoutsMixin.backup_active_user``) read
-        # these two attributes; keep them wired to this handle's own ledger.
-        self.active_user = ledger_id
         self.backups_dir = Path(backups_dir)
         # Transaction depth is per-handle and per-thread, mirroring the facade.
         self._local = threading.local()

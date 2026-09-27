@@ -46,7 +46,7 @@ class SearchExercisesInput(BaseModel):
 @tool(args_schema=SearchExercisesInput)
 def search_exercises(query: str) -> str:
     """
-    Searches the exercise catalog using semantic search.
+    Searches the exercise library using semantic search.
     Use this when the user asks for exercise suggestions, alternatives, or movement details.
     """
     query_vector = embed_model.embed_query(query)

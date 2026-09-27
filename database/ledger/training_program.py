@@ -256,7 +256,7 @@ class LedgerTrainingProgramMixin:
         """
         return self._load_program("version = ?", (int(version),))
 
-    def update_user_frequency(self, frequency: int) -> None:
+    def update_player_frequency(self, frequency: int) -> None:
         cursor = self.conn.cursor()
         cursor.execute(
             "UPDATE user_profile SET weekly_frequency = ?, updated_at = ? WHERE id = 1",

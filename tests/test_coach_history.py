@@ -57,7 +57,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
@@ -67,8 +67,8 @@ def api(tmp_path: Path, monkeypatch):
         with TestClient(app) as client:
             yield client, db, tmp_path / "users"
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -128,7 +128,7 @@ def _day_plan():
     )
 
 
-def _seed_session(db, trainee, weight_kg, reps, started_at):
+def _seed_session(db, player, weight_kg, reps, started_at):
     """Commits one real session so volume, history, and PRs are non-empty."""
     day_plan = _day_plan()
     payload = [
@@ -140,7 +140,7 @@ def _seed_session(db, trainee, weight_kg, reps, started_at):
     ]
     return workouts_service.commit_session(
         db,
-        trainee,
+        player,
         day_plan,
         readiness=4,
         session_notes="",

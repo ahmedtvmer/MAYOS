@@ -58,7 +58,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
@@ -68,8 +68,8 @@ def api(tmp_path: Path, monkeypatch):
         with TestClient(app) as client:
             yield client, db
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -165,7 +165,7 @@ def _prepare_player(client, db, username="p1"):
     player = _register(client, username)
     headers = _authed(player["access_token"])
     db.switch_user(username)
-    db.ledger.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.upsert_player_profile({"current_goal": "Strength"})
     db.ledger.save_training_program(_program_payload())
     version = db.ledger.get_active_program().version
     return headers, version

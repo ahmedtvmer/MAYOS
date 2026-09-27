@@ -181,7 +181,7 @@ def _send_redemption_email(
     """Best-effort email after the assignment commits. Never raises into the request."""
     if coach_account is None:
         return False
-    to_email = db.get_trainee_email(coach_account["ledger_id"])
+    to_email = db.get_account_email(coach_account["ledger_id"])
     if not to_email:
         return False
     try:

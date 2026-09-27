@@ -28,14 +28,14 @@ def store(tmp_path: Path):
     conn.close()
     db = DatabaseManager(
         catalog_path=catalog,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
     )
     try:
         yield db
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -49,8 +49,8 @@ def test_handle_isolates_two_players_used_concurrently(store):
             with store.open_ledger(user) as ledger:
                 assert isinstance(ledger, TrainingLedger)
                 assert ledger.ledger_id == user
-                ledger.upsert_user_profile({"current_goal": goal})
-                seen[user] = ledger.get_user_profile()["current_goal"]
+                ledger.upsert_player_profile({"current_goal": goal})
+                seen[user] = ledger.get_player_profile()["current_goal"]
         except Exception as exc:  # pragma: no cover - surfaced below
             errors.append(exc)
 
@@ -67,12 +67,12 @@ def test_handle_isolates_two_players_used_concurrently(store):
     assert seen == {"alice": "alice-goal", "bob": "bob-goal"}
     # Each player's persisted data is only in their own ledger file.
     with store.open_ledger("alice") as alice:
-        assert alice.get_user_profile()["current_goal"] == "alice-goal"
+        assert alice.get_player_profile()["current_goal"] == "alice-goal"
 
 
 def test_handle_closes_its_connection_on_exit(store):
     ledger = store.open_ledger("alice")
-    ledger.upsert_user_profile({"current_goal": "x"})
+    ledger.upsert_player_profile({"current_goal": "x"})
     ledger.close()
     with pytest.raises(RuntimeError):
         _ = ledger.conn

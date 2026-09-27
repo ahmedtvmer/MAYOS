@@ -125,11 +125,11 @@
       "kind": "method",
       "signature": "(self, account_id: str) -> dict[str, typing.Any] | None"
     },
-    "get_exercise_catalog_detail": {
+    "get_exercise_library_detail": {
       "kind": "method",
       "signature": "(self, exercise_id: str) -> dict[str, typing.Any] | None"
     },
-    "get_exercise_catalog_entry": {
+    "get_exercise_library_entry": {
       "kind": "method",
       "signature": "(self, exercise_id: str) -> dict[str, typing.Any] | None"
     },
@@ -149,13 +149,13 @@
       "kind": "method",
       "signature": "(self, assignment_id: str) -> str | None"
     },
-    "get_trainee_by_email": {
+    "get_account_by_email": {
       "kind": "method",
       "signature": "(self, email: str) -> str | None"
     },
-    "get_trainee_email": {
+    "get_account_email": {
       "kind": "method",
-      "signature": "(self, trainee_id: str) -> str | None"
+      "signature": "(self, account_id: str) -> str | None"
     },
     "initialize_and_seed": {
       "kind": "method",
@@ -305,13 +305,13 @@
       "kind": "method",
       "signature": "(self, account_id: str, capability: str, plan: str, status: str = 'active') -> None"
     },
-    "set_trainee_email": {
+    "set_account_email": {
       "kind": "method",
-      "signature": "(self, trainee_id: str, email: str) -> None"
+      "signature": "(self, account_id: str, email: str) -> None"
     },
     "store_reset_token": {
       "kind": "method",
-      "signature": "(self, token_hash: str, trainee_id: str, expires_at: str) -> None"
+      "signature": "(self, token_hash: str, account_id: str, expires_at: str) -> None"
     },
     "sum_model_cost": {
       "kind": "method",
@@ -341,7 +341,7 @@
       "kind": "method",
       "signature": "(self, assignment_id: str, current_missed_streak: int, now_iso: str, timezone: str | None = None) -> None"
     },
-    "user_exists": {
+    "ledger_exists": {
       "kind": "method",
       "signature": "(self, username: str) -> bool"
     }
@@ -351,7 +351,7 @@
     "DEFAULT_BACKUPS_DIR",
     "DEFAULT_CATALOG_PATH",
     "DEFAULT_CSV_PATH",
-    "DEFAULT_USERS_DIR",
+    "DEFAULT_LEDGERS_DIR",
     "DatabaseManager",
     "LedgerDeletedError",
     "_DATA_ROOT",

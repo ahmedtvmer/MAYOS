@@ -36,7 +36,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.commit()
     cat_conn.close()
     db = DatabaseManager(
-        catalog_path=catalog_path, users_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
+        catalog_path=catalog_path, ledgers_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -45,13 +45,13 @@ def api(tmp_path: Path, monkeypatch):
         with TestClient(app) as client:
             yield client, db
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
-def _register(api_client, trainee_id, password="correct-horse-1"):
-    resp = api_client.post("/auth/register", json={"trainee_id": trainee_id, "password": password})
+def _register(api_client, ledger_id, password="correct-horse-1"):
+    resp = api_client.post("/auth/register", json={"trainee_id": ledger_id, "password": password})
     assert resp.status_code == 201, resp.text
     return resp.json()["access_token"]
 

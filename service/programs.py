@@ -33,7 +33,7 @@ def player_controls_program(db: Any, ledger: Any, player_account_id: str | None)
 
 
 def ensure_active_program(
-    db: Any, trainee_id: str, player_account_id: str | None = None, ledger: Any | None = None
+    db: Any, ledger_id: str, player_account_id: str | None = None, ledger: Any | None = None
 ) -> Any:
     """Returns the saved routine, synthesizing one when the profile exists but none is saved.
 
@@ -41,13 +41,13 @@ def ensure_active_program(
     while an assigned coach owns the active program, nothing is synthesized and
     ``None`` is returned with the saved program left untouched.
     """
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         saved = ledger.get_active_program()
         if saved is not None:
             return saved
         if not player_controls_program(db, ledger, player_account_id):
             return None
-        profile = ledger.get_user_profile()
+        profile = ledger.get_player_profile()
         if not profile:
             return None
         program, _ = generate_program_pipeline(
@@ -56,8 +56,8 @@ def ensure_active_program(
         return program
 
 
-def export_active_program(db: Any, trainee_id: str, ledger: Any | None = None) -> tuple[str, bytes] | None:
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+def export_active_program(db: Any, ledger_id: str, ledger: Any | None = None) -> tuple[str, bytes] | None:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         program = ledger.get_active_program()
         if program is None:
             return None

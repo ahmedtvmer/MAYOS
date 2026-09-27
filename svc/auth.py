@@ -68,7 +68,7 @@ def token_version_of(claims: dict[str, Any]) -> int:
 
 
 def decode_access_token(token: str) -> str:
-    """Returns the trainee ``sub`` or raises :class:`jwt.PyJWTError`."""
+    """Returns the player ``sub`` or raises :class:`jwt.PyJWTError`."""
     return str(token_claims(token)["sub"])
 
 
@@ -90,7 +90,7 @@ def revoke_token(db: Any, token: str) -> None:
     if token_version_of(claims) != account["session_epoch"]:
         return
     ledger_id = account["ledger_id"]
-    if not db.user_exists(ledger_id):
+    if not db.ledger_exists(ledger_id):
         return
     exp = claims.get("exp")
     expires_at = (

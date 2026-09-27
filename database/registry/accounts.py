@@ -10,9 +10,9 @@ from typing import Any
 
 
 class RegistryAccountsMixin:
-    def user_exists(self, username: str) -> bool:
+    def ledger_exists(self, username: str) -> bool:
         sanitized = self._sanitize_username(username)
-        return (self.users_dir / f"{sanitized}.db").is_file() if sanitized else False
+        return (self.ledgers_dir / f"{sanitized}.db").is_file() if sanitized else False
 
     _ACCOUNT_COLUMNS = (
         "account_id, username, ledger_id, status, is_player, is_coach, session_epoch, created_at, deleted_at"
@@ -55,7 +55,7 @@ class RegistryAccountsMixin:
         """
         if cursor.execute("SELECT 1 FROM accounts WHERE ledger_id = ? LIMIT 1", (candidate,)).fetchone() is not None:
             return False
-        if (self.users_dir / f"{candidate}.db").exists():
+        if (self.ledgers_dir / f"{candidate}.db").exists():
             return False
         return not (self.backups_dir / candidate).exists()
 

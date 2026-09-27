@@ -47,7 +47,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
@@ -57,8 +57,8 @@ def api(tmp_path: Path, monkeypatch):
         with TestClient(app) as client:
             yield client, db
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -178,7 +178,7 @@ def test_commit_records_skipped_and_unplanned_without_changing_program(api):
     player = _register(client, "p1")
     headers = _authed(player["access_token"])
     db.switch_user("p1")
-    db.ledger.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.upsert_player_profile({"current_goal": "Strength"})
     db.ledger.save_training_program(_program_payload())
     before = _program_fingerprint(db)
 
@@ -217,7 +217,7 @@ def test_all_prescribed_performed_records_no_divergences(api):
     player = _register(client, "p1")
     headers = _authed(player["access_token"])
     db.switch_user("p1")
-    db.ledger.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.upsert_player_profile({"current_goal": "Strength"})
     db.ledger.save_training_program(_program_payload())
 
     commit = client.post(
@@ -279,7 +279,7 @@ def test_duplicate_prescribed_skipped_exercise_records_one_divergence(api):
     player = _register(client, "p1")
     headers = _authed(player["access_token"])
     db.switch_user("p1")
-    db.ledger.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.upsert_player_profile({"current_goal": "Strength"})
     db.ledger.save_training_program(_duplicate_prescription_program_payload())
 
     commit = client.post(
@@ -321,7 +321,7 @@ def _assigned_divergent_player(api):
     assert redeemed.status_code == 200, redeemed.text
     assignment_id = redeemed.json()["assignment"]["assignment_id"]
     db.switch_user("p1")
-    db.ledger.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.upsert_player_profile({"current_goal": "Strength"})
     db.ledger.save_training_program(_program_payload())
     commit = client.post(
         "/workouts/sessions",

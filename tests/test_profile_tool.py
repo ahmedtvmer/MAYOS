@@ -31,7 +31,7 @@ def test_profile_flow(fresh_store):
     )
     logger.info(f"Tool Output: {result}")
 
-    saved = fresh_store.ledger.get_user_profile()
+    saved = fresh_store.ledger.get_player_profile()
     logger.info("\nSaved SQLite Record:")
     for k, v in saved.items():
         logger.info(f"  {k}: {v}")

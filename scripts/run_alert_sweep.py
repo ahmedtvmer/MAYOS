@@ -21,7 +21,7 @@ sys.path.append(str(BASE_DIR))
 from database.database_manager import (  # noqa: E402
     DEFAULT_BACKUPS_DIR,
     DEFAULT_CATALOG_PATH,
-    DEFAULT_USERS_DIR,
+    DEFAULT_LEDGERS_DIR,
     DatabaseManager,
 )
 from service import alert_sweep as alerts_service  # noqa: E402
@@ -33,11 +33,11 @@ logger = MyosLogger().get_logger(__name__)
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the missed expected-day alert sweep once.")
     parser.add_argument("--catalog", default=os.getenv("CATALOG_PATH", str(DEFAULT_CATALOG_PATH)))
-    parser.add_argument("--users-dir", default=os.getenv("USERS_DIR", str(DEFAULT_USERS_DIR)))
+    parser.add_argument("--users-dir", dest="ledgers_dir", default=os.getenv("USERS_DIR", str(DEFAULT_LEDGERS_DIR)))
     parser.add_argument("--backups-dir", default=os.getenv("BACKUPS_DIR", str(DEFAULT_BACKUPS_DIR)))
     args = parser.parse_args(argv)
 
-    db = DatabaseManager(catalog_path=args.catalog, users_dir=args.users_dir, backups_dir=args.backups_dir)
+    db = DatabaseManager(catalog_path=args.catalog, ledgers_dir=args.ledgers_dir, backups_dir=args.backups_dir)
     try:
         counts = alerts_service.run_sweep(db)
     finally:

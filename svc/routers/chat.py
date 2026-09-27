@@ -46,7 +46,7 @@ async def clear_history(
 
 def _run_turn(
     db: Any,
-    trainee: Any,
+    player: Any,
     content: str,
     out: "queue.Queue[tuple[str, Any]]",
     account_id: str | None = None,
@@ -65,16 +65,16 @@ def _run_turn(
     the same explicit ledger handle through the assistant graph's run config.
     """
     try:
-        with db.open_ledger(str(trainee)) as ledger:
-            profile = ledger.get_user_profile() or {}
+        with db.open_ledger(str(player)) as ledger:
+            profile = ledger.get_player_profile() or {}
             history = chat_service.prepare_user_turn(db, content, ledger)
             tail = chat_service.build_tail_messages(history)
             state = chat_service.build_turn_state(
-                str(trainee),
+                str(player),
                 tail,
                 coach_tone=profile.get("coach_tone", "Direct, grounded, and pragmatic"),
                 custom_instructions=profile.get("custom_instructions", ""),
-                player_account_id=account_id_of(trainee),
+                player_account_id=account_id_of(player),
             )
             for piece in bound_stream(
                 stream_assistant_turn,

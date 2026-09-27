@@ -22,7 +22,7 @@ from service import check_ins as check_ins_service
 from service import coach_history as coach_history_service
 from service import coach_programs as coach_programs_service
 from service import program_requests as program_requests_service
-from svc.dependencies import VerifiedPlayer, get_current_coach, get_current_trainee, get_db, get_ledger, get_verified_player
+from svc.dependencies import VerifiedPlayer, get_current_coach, get_current_player, get_db, get_ledger, get_verified_player
 from svc.rate_limit import (
     ASSIGNMENT_INVITE_LIMIT,
     ASSIGNMENT_MUTATE_LIMIT,
@@ -396,7 +396,7 @@ async def decline_assignment_program_request(
 async def preview_assignment_invite(
     request: Request,
     body: AssignmentInviteTokenIn,
-    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_current_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Shows the coach identity and exact access without consuming the code.
@@ -423,7 +423,7 @@ async def preview_assignment_invite(
 async def redeem_assignment_invite(
     request: Request,
     body: AssignmentRedeemIn,
-    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_current_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Explicitly consents to and atomically redeems an assignment invite."""
@@ -444,7 +444,7 @@ async def redeem_assignment_invite(
 
 @player_router.get("/me", response_model=AssignmentOut | None)
 async def read_my_assignment(
-    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_current_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """The caller's active assignment, or ``null`` when none is active."""
@@ -455,7 +455,7 @@ async def read_my_assignment(
 
 @player_router.get("/me/check-ins", response_model=PlayerCheckInListOut)
 async def list_my_check_ins(
-    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_current_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Lists the caller's check-ins across all assignments, including ended ones.
@@ -472,7 +472,7 @@ async def list_my_check_ins(
 
 @player_router.get("/notices", response_model=PlayerNoticeListOut)
 async def list_player_notices(
-    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_current_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Lists the player's assignment notices newest-first."""
@@ -485,7 +485,7 @@ async def list_player_notices(
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def mark_player_notices_read(
     request: Request,
-    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_current_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Marks all of the player's notices read."""
@@ -498,7 +498,7 @@ async def mark_player_notices_read(
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def end_my_assignment(
     request: Request,
-    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_current_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Player ends their active assignment; coach access is revoked immediately."""
@@ -520,7 +520,7 @@ async def end_my_assignment(
 
 @player_router.get("/me/program-requests", response_model=PlayerProgramRequestListOut)
 async def list_my_program_requests(
-    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_current_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Lists the caller's program requests, newest-first."""
@@ -556,7 +556,7 @@ async def create_my_program_request(
 async def cancel_my_program_request(
     request: Request,
     request_id: str,
-    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_current_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Cancels the caller's own pending request."""

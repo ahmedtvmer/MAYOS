@@ -11,13 +11,13 @@ def _graph_config(db: Any, ledger: Any) -> dict[str, Any]:
 
 
 def start_onboarding(
-    db: Any, trainee_id: str, player_account_id: str | None = None, ledger: Any | None = None
+    db: Any, ledger_id: str, player_account_id: str | None = None, ledger: Any | None = None
 ) -> dict[str, Any]:
     from agent.onboarding_graph import onboarding_graph
     from service._base import ledger_scope
     from svc.llm import InferenceScope, run_inference_sync
 
-    clean_id = db._sanitize_username(trainee_id)
+    clean_id = db._sanitize_username(ledger_id)
     with ledger_scope(db, ledger, clean_id) as handle:
         state = {"messages": [], "trainee_id": clean_id, "intake_step": 1, "is_complete": False, "profile_data": None}
         return run_inference_sync(
@@ -32,7 +32,7 @@ def start_onboarding(
 
 def answer_intake(
     db: Any,
-    trainee_id: str,
+    ledger_id: str,
     state: dict[str, Any],
     user_input: str,
     player_account_id: str | None = None,
@@ -42,7 +42,7 @@ def answer_intake(
     from service._base import ledger_scope
     from svc.llm import InferenceScope, run_inference_sync
 
-    clean_id = db._sanitize_username(trainee_id)
+    clean_id = db._sanitize_username(ledger_id)
     with ledger_scope(db, ledger, clean_id) as handle:
         state["messages"].append(HumanMessage(content=user_input))
         state["trainee_id"] = clean_id
@@ -60,7 +60,7 @@ def answer_intake(
 
 def complete_onboarding(
     db: Any,
-    trainee_id: str,
+    ledger_id: str,
     state: dict[str, Any],
     player_account_id: str | None = None,
     ledger: Any | None = None,
@@ -72,7 +72,7 @@ def complete_onboarding(
 
     from service._base import ledger_scope
 
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         clean_id = ledger.ledger_id
 
         def _resolve_program():

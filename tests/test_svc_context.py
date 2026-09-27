@@ -12,7 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 
 from database.database_manager import DatabaseManager
 from svc.auth import create_access_token, decode_access_token
-from svc.dependencies import get_current_trainee
+from svc.dependencies import get_current_player
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def temp_db_env(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="alice",
     )
@@ -42,16 +42,16 @@ def test_sanitizes_the_ledger_id(temp_db_env):
 def test_concurrent_handles_do_not_leak_identity(temp_db_env):
     db = temp_db_env
     with db.open_ledger("alice") as alice:
-        alice.upsert_user_profile({"current_goal": "alice-goal"})
+        alice.upsert_player_profile({"current_goal": "alice-goal"})
     with db.open_ledger("bob") as bob:
-        bob.upsert_user_profile({"current_goal": "bob-goal"})
+        bob.upsert_player_profile({"current_goal": "bob-goal"})
     seen: dict[str, str] = {}
     errors: list[Exception] = []
 
     def run_as(user: str):
         try:
             with db.open_ledger(user) as ledger:
-                profile = ledger.get_user_profile()
+                profile = ledger.get_player_profile()
                 seen[user] = (profile or {}).get("current_goal", "")
         except Exception as exc:  # pragma: no cover - surfaced below
             errors.append(exc)
@@ -100,7 +100,7 @@ def test_dependency_accepts_valid_bearer(monkeypatch, temp_db_env):
     monkeypatch.setenv("JWT_SECRET", "test-secret")
     account_id = temp_db_env.create_account("alice")
     token = create_access_token(account_id)
-    assert asyncio.run(get_current_trainee(_creds(token), temp_db_env)) == "alice"
+    assert asyncio.run(get_current_player(_creds(token), temp_db_env)) == "alice"
 
 
 def test_dependency_rejects_missing_or_bad_token(monkeypatch, temp_db_env):
@@ -108,10 +108,10 @@ def test_dependency_rejects_missing_or_bad_token(monkeypatch, temp_db_env):
 
     monkeypatch.setenv("JWT_SECRET", "test-secret")
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(get_current_trainee(None, temp_db_env))
+        asyncio.run(get_current_player(None, temp_db_env))
     assert exc.value.status_code == 401
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(get_current_trainee(_creds("bogus"), temp_db_env))
+        asyncio.run(get_current_player(_creds("bogus"), temp_db_env))
     assert exc.value.status_code == 401
 
 
@@ -123,10 +123,10 @@ def test_dependency_rejects_revoked_token(monkeypatch, temp_db_env):
     monkeypatch.setenv("JWT_SECRET", "test-secret")
     account_id = temp_db_env.create_account("alice")
     token = create_access_token(account_id)
-    assert asyncio.run(get_current_trainee(_creds(token), temp_db_env)) == "alice"
+    assert asyncio.run(get_current_player(_creds(token), temp_db_env)) == "alice"
     revoke_token(temp_db_env, token)
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(get_current_trainee(_creds(token), temp_db_env))
+        asyncio.run(get_current_player(_creds(token), temp_db_env))
     assert exc.value.status_code == 401
     assert "revoked" in exc.value.detail
 

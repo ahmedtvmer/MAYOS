@@ -5,11 +5,11 @@ Extracted from DatabaseManager; behaviour is unchanged.
 
 import json
 from typing import Any
-from database.migration_manager import CURRENT_USER_SCHEMA_VERSION
+from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION
 from database.migration_manager import INTAKE_DDL
 from database.migration_manager import PERFORMED_DATE_CORRECTIONS_DDL
-from database.migration_manager import get_user_schema_version
-from database.migration_manager import set_user_schema_version
+from database.migration_manager import get_ledger_schema_version
+from database.migration_manager import set_ledger_schema_version
 
 
 class SchemaMixin:
@@ -43,7 +43,7 @@ class SchemaMixin:
         # Outside the lock block: ensure_account_schema acquires _catalog_lock itself.
         self.ensure_account_schema()
 
-    def _create_user_schema_on(self, conn) -> None:
+    def _create_ledger_schema_on(self, conn) -> None:
         cursor = conn.cursor()
         cursor.executescript("""
             PRAGMA foreign_keys = ON;
@@ -233,8 +233,8 @@ class SchemaMixin:
                 revoked_at TEXT NOT NULL
             );
         """ + "\n".join(f"{statement};" for statement in (*PERFORMED_DATE_CORRECTIONS_DDL, *INTAKE_DDL)))
-        if get_user_schema_version(conn) < CURRENT_USER_SCHEMA_VERSION:
-            set_user_schema_version(conn, CURRENT_USER_SCHEMA_VERSION)
+        if get_ledger_schema_version(conn) < CURRENT_LEDGER_SCHEMA_VERSION:
+            set_ledger_schema_version(conn, CURRENT_LEDGER_SCHEMA_VERSION)
         conn.commit()
 
     def ensure_account_schema(self) -> None:

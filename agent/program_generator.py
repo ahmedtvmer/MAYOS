@@ -298,7 +298,7 @@ def generate_program_pipeline(
     *,
     ledger: Any,
 ) -> tuple[GeneratedProgramSchema, str]:
-    profile = ledger.get_user_profile()
+    profile = ledger.get_player_profile()
     if not profile:
         raise ValueError("No user profile found in SQLite. Complete intake first.")
 
@@ -313,7 +313,7 @@ def generate_program_pipeline(
         freq = validate_frequency(profile.get("weekly_frequency", 4))
 
     if freq != profile.get("weekly_frequency"):
-        ledger.update_user_frequency(freq)
+        ledger.update_player_frequency(freq)
 
     clean_split_override = user_split_override
     if user_split_override:

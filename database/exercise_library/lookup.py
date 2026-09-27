@@ -10,7 +10,7 @@ from database.shared import _normalize_exercise_name
 
 
 class ExerciseLookupMixin:
-    def get_exercise_catalog_entry(self, exercise_id: str) -> dict[str, Any] | None:
+    def get_exercise_library_entry(self, exercise_id: str) -> dict[str, Any] | None:
         """One catalog exercise by exact id, with the fields needed to swap it into a program."""
         if not isinstance(exercise_id, str) or not exercise_id:
             return None
@@ -35,7 +35,7 @@ class ExerciseLookupMixin:
             "gif_path": row[7],
         }
 
-    def get_exercise_catalog_detail(self, exercise_id: str) -> dict[str, Any] | None:
+    def get_exercise_library_detail(self, exercise_id: str) -> dict[str, Any] | None:
         """One catalog exercise for the read-only exercise-detail view (#53).
 
         ``category`` mirrors ``body_part`` in the source data (they are the same
@@ -44,7 +44,7 @@ class ExerciseLookupMixin:
         the ``exercise_secondary_muscles`` table. Instructions are the catalog's
         stored (English) text.
         """
-        entry = self.get_exercise_catalog_entry(exercise_id)
+        entry = self.get_exercise_library_entry(exercise_id)
         if entry is None:
             return None
         with self._catalog_lock:

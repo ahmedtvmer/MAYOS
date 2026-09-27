@@ -53,7 +53,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
@@ -63,8 +63,8 @@ def api(tmp_path: Path, monkeypatch):
         with TestClient(app) as client:
             yield client, db, tmp_path / "users"
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -93,7 +93,7 @@ def _make_coach(client, db, username, capacity=10, email=None):
         == 200
     )
     if email:
-        db.set_trainee_email(username, email)
+        db.set_account_email(username, email)
     return headers
 
 
@@ -412,7 +412,7 @@ def test_apply_replacement_missing_after_creation_stays_pending(api, monkeypatch
     created = _create(client, player_headers, **_substitution())
     request_id = created.json()["request_id"]
 
-    monkeypatch.setattr(db, "get_exercise_catalog_entry", lambda exercise_id: None)
+    monkeypatch.setattr(db, "get_exercise_library_entry", lambda exercise_id: None)
 
     result = program_requests_service.apply_request(db, coach_account_id, assignment_id, request_id)
     assert result["ok"] is False

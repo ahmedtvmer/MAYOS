@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from service import assignments as assignment_service
 from service import coach as coach_service
 from service import plans as plans_service
-from svc.dependencies import VerifiedPlayer, get_current_coach, get_current_trainee, get_db
+from svc.dependencies import VerifiedPlayer, get_current_coach, get_current_player, get_db
 from svc.rate_limit import ASSIGNMENT_MUTATE_LIMIT, COACH_INVITE_LIMIT, limiter
 from svc.schemas import (
     AccountCapabilitiesOut,
@@ -34,13 +34,13 @@ router = APIRouter(prefix="/coach", tags=["coach"])
 async def redeem_coach_invite(
     request: Request,
     body: CoachInviteRedeemIn,
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_current_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Authenticated single-use redemption of an owner-issued coach invite."""
 
     def _run():
-        result = coach_service.redeem_coach_invite(db, trainee.account_id, body.token)
+        result = coach_service.redeem_coach_invite(db, player.account_id, body.token)
         if not result["ok"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
         result["plans"] = plans_service.read_plans(db, result["account_id"])
@@ -57,13 +57,13 @@ async def redeem_coach_invite(
 
 @router.get("/profile", response_model=CoachProfileOut)
 async def read_coach_profile(
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Reads the caller's coach profile; coach capability is required."""
 
     def _run():
-        profile = coach_service.get_coach_profile(db, trainee.account_id)
+        profile = coach_service.get_coach_profile(db, coach.account_id)
         if profile is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No coach profile yet.")
         return profile
@@ -74,13 +74,13 @@ async def read_coach_profile(
 @router.put("/profile", response_model=CoachProfileOut)
 async def update_coach_profile(
     body: CoachProfileUpdate,
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Updates display name, bio, specialization, and capacity; coach capability required."""
 
     def _run():
-        result = coach_service.update_coach_profile(db, trainee.account_id, body.model_dump())
+        result = coach_service.update_coach_profile(db, coach.account_id, body.model_dump())
         if not result["ok"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
         return result["profile"]
@@ -92,13 +92,13 @@ async def update_coach_profile(
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def disable_coach_capability(
     request: Request,
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Ends every assignment and clears the coach capability, preserving the player ledger."""
 
     def _run():
-        result = assignment_service.disable_coach_capability(db, trainee.account_id)
+        result = assignment_service.disable_coach_capability(db, coach.account_id)
         if not result["ok"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
         return result

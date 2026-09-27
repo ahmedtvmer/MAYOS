@@ -47,13 +47,13 @@ sequenceDiagram
     participant DB as User Ledger
 
     UI->>API: POST /auth/login {trainee_id, password}
-    API->>SVC: login_trainee()
+    API->>SVC: login_player()
     SVC->>DB: bind_user + get_password_hash()
     alt No stored hash (legacy ledger)
         SVC-->>API: code = claim_required
         API-->>UI: 403 "Ledger predates passwords. Set one to continue."
         UI->>API: POST /auth/claim {trainee_id, new_password}
-        API->>SVC: claim_trainee()
+        API->>SVC: claim_player()
         SVC->>DB: set_password_hash(bcrypt)
         SVC-->>UI: JWT issued
     else Hash present
@@ -81,7 +81,7 @@ Tokens are stateless HS256 JWTs issued by `svc/auth.py`:
 | `tv` | **Session epoch** from the catalog account registry (Section 5) |
 | `iat` / `exp` | Issued-at and expiry; lifetime `JWT_EXPIRY_HOURS` (default **2h**) |
 
-`JWT_SECRET` is mandatory: the service refuses to sign or verify if it is unset (no insecure fallback). Verification (`svc/dependencies.py::get_current_trainee`) enforces, in order:
+`JWT_SECRET` is mandatory: the service refuses to sign or verify if it is unset (no insecure fallback). Verification (`svc/dependencies.py::get_current_player`) enforces, in order:
 
 1. Bearer token present and syntactically valid (`token_claims`: `sub`, `jti`, `tv ≥ 1`).
 2. Catalog registry lookup by `sub`: the account must exist, be live (a non-NULL `deleted_at` wins over a stale `status='active'`), and have the player capability. Missing, deleted, or inactive accounts fail closed **before any ledger is mounted**, so a bad token can never create a ledger as a side effect.

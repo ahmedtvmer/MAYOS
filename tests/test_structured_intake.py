@@ -88,7 +88,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
@@ -98,8 +98,8 @@ def api(tmp_path: Path, monkeypatch):
         with TestClient(app) as client:
             yield client, db, tmp_path
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -132,7 +132,7 @@ def _spy_generation_from_profile(db: Any, monkeypatch) -> dict[str, Any]:
 
     def fake(**kwargs):
         seen["n"] += 1
-        profile = kwargs["ledger"].get_user_profile()
+        profile = kwargs["ledger"].get_player_profile()
         seen["gender"] = profile["gender"]
         seen["weekly_frequency"] = profile["weekly_frequency"]
         program = _program(frequency=profile["weekly_frequency"])
@@ -379,7 +379,7 @@ def test_confirm_writes_profile_and_creates_program_once(api, monkeypatch):
 
     # The program was generated from the confirmed values.
     db.switch_user("alice")
-    profile = db.ledger.get_user_profile()
+    profile = db.ledger.get_player_profile()
     assert profile["gender"] == "female"
     assert profile["weekly_frequency"] == 4
     assert profile["proportions"] == "long_legs"
@@ -412,7 +412,7 @@ def test_editing_before_confirm_flows_into_profile_and_program(api, monkeypatch)
     assert confirmed.status_code == 200, confirmed.text
 
     db.switch_user("editor")
-    profile = db.ledger.get_user_profile()
+    profile = db.ledger.get_player_profile()
     assert profile["weekly_frequency"] == 4
     assert profile["gender"] == "female"
     # Generation read the edited values, and the saved program matches.
@@ -576,7 +576,7 @@ def test_completed_account_is_confirmed_and_unaffected(api, monkeypatch):
     client, db, _ = api
     headers = _register(client, "done")
     db.switch_user("done")
-    db.ledger.upsert_user_profile(
+    db.ledger.upsert_player_profile(
         {
             "gender": "male",
             "proportions": "balanced",
@@ -614,7 +614,7 @@ def test_profile_without_program_resumes_in_progress_then_confirms(api, monkeypa
     client, db, _ = api
     headers = _register(client, "graphonly")
     db.switch_user("graphonly")
-    db.ledger.upsert_user_profile(
+    db.ledger.upsert_player_profile(
         {
             "gender": "male",
             "proportions": "balanced",
@@ -678,10 +678,10 @@ def test_legacy_routes_refused_while_structured_intake_active(api, monkeypatch):
 
     from service import onboarding as onboarding_service
 
-    def fake_start(db, trainee_id, player_account_id=None, ledger=None):
+    def fake_start(db, ledger_id, player_account_id=None, ledger=None):
         return {
             "messages": [AIMessage(content="Q1?")],
-            "trainee_id": trainee_id,
+            "trainee_id": ledger_id,
             "intake_step": 1,
             "is_complete": False,
             "profile_data": None,
@@ -746,15 +746,15 @@ def generation_db(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
     from agent import program_generator
 
     yield db, program_generator
-    if db.user_conn is not None:
-        db.user_conn.close()
+    if db.ledger_conn is not None:
+        db.ledger_conn.close()
     db.catalog_conn.close()
 
 
@@ -780,7 +780,7 @@ def test_proportions_do_not_change_generated_program(generation_db, monkeypatch)
     programs = {}
     for proportions in ("long_legs", "balanced", "long_torso"):
         db.switch_user(f"prop_{proportions}")
-        db.ledger.upsert_user_profile(_generation_profile(proportions=proportions))
+        db.ledger.upsert_player_profile(_generation_profile(proportions=proportions))
         program, _ = program_generator.generate_program_pipeline(ledger=db.ledger)
         programs[proportions] = program.model_dump()
 
@@ -794,11 +794,11 @@ def test_specialization_still_changes_the_split(generation_db, monkeypatch):
     _stub_day_assembly(program_generator, monkeypatch)
 
     db.switch_user("spec_male")
-    db.ledger.upsert_user_profile(_generation_profile(gender="male"))
+    db.ledger.upsert_player_profile(_generation_profile(gender="male"))
     male, _ = program_generator.generate_program_pipeline(ledger=db.ledger)
 
     db.switch_user("spec_female")
-    db.ledger.upsert_user_profile(_generation_profile(gender="female"))
+    db.ledger.upsert_player_profile(_generation_profile(gender="female"))
     female, _ = program_generator.generate_program_pipeline(ledger=db.ledger)
 
     assert male.split_type != female.split_type

@@ -22,7 +22,7 @@ sys.path.append(str(BASE_DIR))
 from database.database_manager import (  # noqa: E402
     DEFAULT_BACKUPS_DIR,
     DEFAULT_CATALOG_PATH,
-    DEFAULT_USERS_DIR,
+    DEFAULT_LEDGERS_DIR,
     DatabaseManager,
 )
 from service import coach as coach_service  # noqa: E402
@@ -41,7 +41,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Invite lifetime in minutes, 5–43200 (default: COACH_INVITE_TTL_MINUTES or 1440).",
     )
     parser.add_argument("--catalog", default=os.getenv("CATALOG_PATH", str(DEFAULT_CATALOG_PATH)))
-    parser.add_argument("--users-dir", default=os.getenv("USERS_DIR", str(DEFAULT_USERS_DIR)))
+    parser.add_argument("--users-dir", dest="ledgers_dir", default=os.getenv("USERS_DIR", str(DEFAULT_LEDGERS_DIR)))
     parser.add_argument("--backups-dir", default=os.getenv("BACKUPS_DIR", str(DEFAULT_BACKUPS_DIR)))
     args = parser.parse_args(argv)
 
@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--ttl-minutes must be a positive number of minutes.")
 
     # A fresh store is built per run, so custom dirs apply even in long-lived shells.
-    db = DatabaseManager(catalog_path=args.catalog, users_dir=args.users_dir, backups_dir=args.backups_dir)
+    db = DatabaseManager(catalog_path=args.catalog, ledgers_dir=args.ledgers_dir, backups_dir=args.backups_dir)
     try:
         result = coach_service.issue_coach_invite(db, args.username, ttl_minutes=args.ttl_minutes)
     finally:

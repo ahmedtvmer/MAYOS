@@ -14,7 +14,7 @@ logger = MyosLogger().get_logger(__name__)
 
 class ExerciseSeedingMixin:
     def initialize_and_seed(self, csv_path=DEFAULT_CSV_PATH) -> None:
-        # The catalog schema only: any per-ledger user schema is created by
+        # The catalog schema only: any per-ledger schema is created by
         # ``open_ledger`` when a handle is actually opened (ADR 041).
         self.create_catalog_schema()
         with self._catalog_lock:

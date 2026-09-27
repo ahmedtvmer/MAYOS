@@ -40,7 +40,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
@@ -50,8 +50,8 @@ def api(tmp_path: Path, monkeypatch):
         with TestClient(app) as client:
             yield client, db, tmp_path / "users"
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -258,13 +258,13 @@ def _register_for(db, username):
 
 
 def test_player_data_is_retained_when_coach_capability_is_added(api):
-    client, db, users_dir = api
+    client, db, ledgers_dir = api
     registered = _register(client, "alice")
     headers = _authed(registered["access_token"])
     account_id = _subject(registered["access_token"])
 
     assert client.put("/profile", json={"current_goal": "Strength"}, headers=headers).status_code == 200
-    ledger_before = (users_dir / "alice.db").read_bytes()
+    ledger_before = (ledgers_dir / "alice.db").read_bytes()
 
     issued = _issue(db, "alice")
     assert client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]}).status_code == 200
@@ -273,7 +273,7 @@ def test_player_data_is_retained_when_coach_capability_is_added(api):
     account = db.get_account(account_id)
     assert account["is_player"] is True and account["is_coach"] is True
     assert client.get("/profile", headers=headers).json()["current_goal"] == "Strength"
-    assert (users_dir / "alice.db").read_bytes() == ledger_before
+    assert (ledgers_dir / "alice.db").read_bytes() == ledger_before
 
 
 def test_coach_profile_defaults_and_roundtrip(api):

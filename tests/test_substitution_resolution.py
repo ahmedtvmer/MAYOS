@@ -33,7 +33,7 @@ def sub_db(tmp_path, monkeypatch):
     shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="default",
     )
@@ -54,8 +54,8 @@ def sub_db(tmp_path, monkeypatch):
         )
         yield db
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 

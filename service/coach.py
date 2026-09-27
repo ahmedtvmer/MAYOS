@@ -62,7 +62,7 @@ def issue_coach_invite(
     """
     clean_id = db._sanitize_username(username)
     account = db.get_active_account_by_username(clean_id) if clean_id else None
-    if account is None or not db.user_exists(account["ledger_id"]):
+    if account is None or not db.ledger_exists(account["ledger_id"]):
         return {"ok": False, "error": f"Unknown account '{username}'."}
     if ttl_minutes is None:
         ttl = coach_invite_ttl()

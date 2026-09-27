@@ -87,7 +87,7 @@ def _generate(
     )
     user = f"test_blueprint_{gender}_{frequency}{tags}_{suffix}"
     db.switch_user(user)
-    db.ledger.upsert_user_profile(
+    db.ledger.upsert_player_profile(
         {
             "gender": gender,
             "proportions": "balanced",

@@ -84,7 +84,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
@@ -94,8 +94,8 @@ def api(tmp_path: Path, monkeypatch):
         with TestClient(app) as client:
             yield client, db
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -138,7 +138,7 @@ def _day_plan():
     )
 
 
-def _seed_session(db, trainee, started_at):
+def _seed_session(db, player, started_at):
     payload = [
         {
             "exercise": _day_plan().exercises[0],
@@ -147,7 +147,7 @@ def _seed_session(db, trainee, started_at):
         }
     ]
     return workouts_service.commit_session(
-        db, trainee, _day_plan(), readiness=4, session_notes="", sets_by_exercise=payload, now_iso=started_at
+        db, player, _day_plan(), readiness=4, session_notes="", sets_by_exercise=payload, now_iso=started_at
     )
 
 
@@ -195,7 +195,7 @@ def test_player_model_input_excludes_identifying_fields(api, monkeypatch):
     assert db.switch_user(username)
     # custom_instructions and preferred_name are stored context, not settable
     # through PUT /profile; write them directly as onboarding/memory would.
-    db.ledger.update_user_persona("Direct, grounded, and pragmatic", "Prefer short answers.")
+    db.ledger.update_player_persona("Direct, grounded, and pragmatic", "Prefer short answers.")
     db.ledger.set_assistant_memory("preferred_name", "Sam")
 
     llm = _CapturingLLM()

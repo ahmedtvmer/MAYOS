@@ -45,7 +45,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
@@ -55,8 +55,8 @@ def api(tmp_path: Path, monkeypatch):
         with TestClient(app) as client:
             yield client, db, tmp_path / "users"
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -172,7 +172,7 @@ def test_plan_state_is_keyed_to_the_immutable_account(api):
 
 
 def test_reused_username_does_not_inherit_deleted_accounts_plan(api):
-    client, db, users_dir = api
+    client, db, ledgers_dir = api
     original = _register(client, "alice")
     original_id = _subject(original["access_token"])
     assert plans_service.set_plan(db, original_id, "lifter", "pro")["ok"]
@@ -183,7 +183,7 @@ def test_reused_username_does_not_inherit_deleted_accounts_plan(api):
             (datetime.now(UTC).isoformat(), original_id),
         )
         db.catalog_conn.commit()
-    (users_dir / "alice.db").unlink(missing_ok=True)
+    (ledgers_dir / "alice.db").unlink(missing_ok=True)
 
     replacement = _register(client, "alice")
     replacement_id = _subject(replacement["access_token"])
@@ -214,7 +214,7 @@ def test_plan_change_preserves_account_program_history_and_assignment(api):
 
     # Alice's own program and committed training history.
     db.switch_user("alice")
-    db.ledger.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.upsert_player_profile({"current_goal": "Strength"})
     db.ledger.save_training_program(_saved_split_payload())
     commit = client.post("/workouts/sessions", headers=alice_headers, json=_session_payload())
     assert commit.status_code == 201, commit.text

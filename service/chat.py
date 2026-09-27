@@ -8,8 +8,8 @@ from agent.chat_markers import chat_message_kind
 from service._base import ledger_scope
 
 
-def get_history(db: Any, trainee_id: str, ledger: Any | None = None) -> list[dict[str, Any]]:
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+def get_history(db: Any, ledger_id: str, ledger: Any | None = None) -> list[dict[str, Any]]:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         history = ledger.get_chat_history()
         # Label the session-commit pointer as a debrief so the client renders it
         # distinctly without re-deriving the wording (ADR 036).
@@ -20,8 +20,8 @@ def get_history(db: Any, trainee_id: str, ledger: Any | None = None) -> list[dic
         return history
 
 
-def add_user_message(db: Any, trainee_id: str, content: str, ledger: Any | None = None) -> None:
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+def add_user_message(db: Any, ledger_id: str, content: str, ledger: Any | None = None) -> None:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         ledger.add_chat_message("user", content)
 
 
@@ -42,8 +42,8 @@ def prepare_user_turn(db: Any, content: str, ledger: Any) -> list[dict[str, Any]
     return history + [{"role": "user", "content": content}]
 
 
-def clear_history(db: Any, trainee_id: str, ledger: Any | None = None) -> None:
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+def clear_history(db: Any, ledger_id: str, ledger: Any | None = None) -> None:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         ledger.clear_chat_history()
 
 
@@ -58,7 +58,7 @@ def build_tail_messages(records: list[dict[str, Any]]) -> list:
 
 
 def build_turn_state(
-    trainee_id: str,
+    ledger_id: str,
     tail_messages: list,
     coach_tone: str = "Direct, grounded, and pragmatic",
     custom_instructions: str = "",
@@ -66,7 +66,7 @@ def build_turn_state(
 ) -> dict[str, Any]:
     return {
         "messages": tail_messages,
-        "trainee_id": trainee_id,
+        "trainee_id": ledger_id,
         "player_account_id": player_account_id,
         "coach_tone": coach_tone,
         "custom_instructions": custom_instructions,

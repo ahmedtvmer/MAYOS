@@ -499,7 +499,7 @@ def intake_node(state: OnboardingGraphState, config: RunnableConfig | None = Non
             raise RuntimeError("Onboarding graph requires an explicit ledger handle in config.")
         profile.setdefault("coach_tone", "Direct, grounded, and pragmatic")
         profile.setdefault("custom_instructions", "")
-        ledger.upsert_user_profile(profile)
+        ledger.upsert_player_profile(profile)
 
         return {
             "messages": [

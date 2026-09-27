@@ -296,17 +296,17 @@ class AccountDeletionMixin:
         # Ledgers live on explicit handles and are closed by their owners before
         # deletion runs (ADR 041); the store holds no connection to unmount here.
         for suffix in ("", "-wal", "-shm"):
-            path = self.users_dir / f"{sanitized}.db{suffix}"
+            path = self.ledgers_dir / f"{sanitized}.db{suffix}"
             try:
                 path.unlink(missing_ok=True)
             except OSError as exc:
                 logger.warning(f"Failed to remove ledger file {path}: {exc}")
-        user_backup_dir = self.backups_dir / sanitized
-        if user_backup_dir.is_dir():
+        ledger_backup_dir = self.backups_dir / sanitized
+        if ledger_backup_dir.is_dir():
             try:
-                shutil.rmtree(user_backup_dir)
+                shutil.rmtree(ledger_backup_dir)
             except OSError as exc:
-                logger.warning(f"Failed to remove ledger backups {user_backup_dir}: {exc}")
+                logger.warning(f"Failed to remove ledger backups {ledger_backup_dir}: {exc}")
 
     def replay_deletions(self, *, full: bool = False) -> int:
         """Replays durable deletion records; returns how many were processed.

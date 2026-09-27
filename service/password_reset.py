@@ -68,9 +68,9 @@ def get_recovery_email(db: Any, account_id: str) -> str | None:
     resolve to a new account that reused its username.
     """
     account = db.get_account(account_id)
-    if not db.is_live_account(account) or not account["is_player"] or not db.user_exists(account["ledger_id"]):
+    if not db.is_live_account(account) or not account["is_player"] or not db.ledger_exists(account["ledger_id"]):
         return None
-    return db.get_trainee_email(account["account_id"])
+    return db.get_account_email(account["account_id"])
 
 
 def set_recovery_email(db: Any, account_id: str, email: str) -> dict[str, Any]:
@@ -81,13 +81,13 @@ def set_recovery_email(db: Any, account_id: str, email: str) -> dict[str, Any]:
     username's new account.
     """
     account = db.get_account(account_id)
-    if not db.is_live_account(account) or not account["is_player"] or not db.user_exists(account["ledger_id"]):
+    if not db.is_live_account(account) or not account["is_player"] or not db.ledger_exists(account["ledger_id"]):
         return {"ok": False, "error": "Trainee ledger not found."}
     normalized = normalize_email(email)
     if normalized is None:
         return {"ok": False, "error": "Enter a valid email address."}
     try:
-        db.set_trainee_email(account["account_id"], normalized)
+        db.set_account_email(account["account_id"], normalized)
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
     return {"ok": True, "trainee_id": account["ledger_id"], "email": normalized}
@@ -101,7 +101,7 @@ def request_password_reset(
 ) -> dict[str, Any]:
     """Logged-out: issue a single-use reset token. Always returns the generic message."""
     normalized = normalize_email(email)
-    recovery_key = db.get_trainee_by_email(normalized) if normalized else None
+    recovery_key = db.get_account_by_email(normalized) if normalized else None
     account = _live_player_account(db, recovery_key) if recovery_key else None
     if account is None:
         return {"ok": True, "message": GENERIC_REQUEST_MESSAGE}
@@ -134,7 +134,7 @@ def reset_password_with_token(db: Any, token: str, new_password: str) -> dict[st
     if recovery_key is None:
         return {"ok": False, "error": GENERIC_TOKEN_ERROR}
     account = _live_player_account(db, recovery_key)
-    if account is None or not db.user_exists(account["ledger_id"]):
+    if account is None or not db.ledger_exists(account["ledger_id"]):
         return {"ok": False, "error": GENERIC_TOKEN_ERROR}
     with db.open_ledger(account["ledger_id"]) as ledger:
         ledger.set_password_hash(auth_service.hash_password(new_password))

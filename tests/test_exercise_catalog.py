@@ -1,4 +1,4 @@
-"""Read-only exercise catalog detail contract tests (ticket #53).
+"""Read-only exercise library detail contract tests (ticket #53).
 
 The exercise-detail screen is backed by `GET /workouts/exercises/{exercise_id}`:
 an authenticated, read-only endpoint that returns the real catalog fields
@@ -46,7 +46,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
@@ -56,8 +56,8 @@ def api(tmp_path: Path, monkeypatch):
         with TestClient(app) as client:
             yield client, db
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 

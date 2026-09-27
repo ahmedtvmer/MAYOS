@@ -10,10 +10,10 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_USER_SCHEMA_VERSION: int = 12
+CURRENT_LEDGER_SCHEMA_VERSION: int = 12
 
 #: Performed-date correction DDL (ADR 035). Kept in one place so the
-#: fresh-create path (``DatabaseManager.create_user_schema``) and the v10->v11
+#: fresh-create path (``DatabaseManager.create_ledger_schema``) and the v10->v11
 #: migration cannot drift apart.
 PERFORMED_DATE_CORRECTIONS_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS performed_date_corrections ("
@@ -286,7 +286,7 @@ def _migrate_v8_to_v9(conn: sqlite3.Connection) -> None:
         )
 
     # Independent of whether a workout_sessions table exists yet; a fresh
-    # ``create_user_schema`` create is idempotent with this.
+    # ``create_ledger_schema`` create is idempotent with this.
     conn.execute("""
         CREATE TABLE IF NOT EXISTS session_commits (
             client_session_id TEXT PRIMARY KEY,
@@ -345,7 +345,7 @@ def _migrate_v11_to_v12(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
-def get_user_schema_version(conn: sqlite3.Connection) -> int:
+def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
     cursor.execute("PRAGMA user_version;")
@@ -353,7 +353,7 @@ def get_user_schema_version(conn: sqlite3.Connection) -> int:
     return int(row[0]) if row else 0
 
 
-def set_user_schema_version(conn: sqlite3.Connection, version: int) -> None:
+def set_ledger_schema_version(conn: sqlite3.Connection, version: int) -> None:
     """Sets the user_version PRAGMA integer."""
     conn.execute(f"PRAGMA user_version = {int(version)};")
 
@@ -395,17 +395,17 @@ def restore_atomic_backup(
     logger.warning(f"Database successfully restored from snapshot: {backup_path.name}")
 
 
-def prune_user_backups(user_backup_dir: Path, max_rolling: int = 3) -> None:
+def prune_ledger_backups(ledger_backup_dir: Path, max_rolling: int = 3) -> None:
     """Enforces the 3+1 retention policy:
 
     - Keeps all immutable pre-migration snapshots (*_pre_v*).
     - Retains only the most recent `max_rolling` (default: 3) automated snapshots.
     """
-    if not user_backup_dir.is_dir():
+    if not ledger_backup_dir.is_dir():
         return
 
     rolling_snapshots = []
-    for f in user_backup_dir.glob("*.db"):
+    for f in ledger_backup_dir.glob("*.db"):
         if "_pre_v" not in f.name:
             rolling_snapshots.append(f)
 
@@ -448,11 +448,11 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
 def apply_lazy_migrations(
     conn: sqlite3.Connection,
     username: str,
-    users_dir: Path,
+    ledgers_dir: Path,
     backups_dir: Path,
-    target_version: int = CURRENT_USER_SCHEMA_VERSION,
+    target_version: int = CURRENT_LEDGER_SCHEMA_VERSION,
 ) -> None:
-    """Evaluates and executes lazy migrations on the mounted user database.
+    """Evaluates and executes lazy migrations on the mounted ledger.
 
     Execution Flow:
     1. Check PRAGMA user_version.
@@ -462,7 +462,7 @@ def apply_lazy_migrations(
        transaction, and update user_version.
     5. If an error occurs, rollback and restore snapshot.
     """
-    current_version = get_user_schema_version(conn)
+    current_version = get_ledger_schema_version(conn)
 
     # Handle legacy databases initialized prior to PRAGMA user_version tracking
     if current_version == 0:
@@ -470,7 +470,7 @@ def apply_lazy_migrations(
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_profile';")
         if cursor.fetchone():
             # Existing legacy v1 database detected
-            set_user_schema_version(conn, 1)
+            set_ledger_schema_version(conn, 1)
             conn.commit()
             current_version = 1
         else:
@@ -487,9 +487,9 @@ def apply_lazy_migrations(
         )
 
     # Migration required: current_version < target_version
-    user_backup_dir = backups_dir / username
+    ledger_backup_dir = backups_dir / username
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-    snapshot_path = user_backup_dir / f"{username}_pre_v{current_version}_to_v{target_version}_{timestamp}.db"
+    snapshot_path = ledger_backup_dir / f"{username}_pre_v{current_version}_to_v{target_version}_{timestamp}.db"
 
     create_atomic_backup(conn, snapshot_path)
 
@@ -505,7 +505,7 @@ def apply_lazy_migrations(
             MIGRATION_REGISTRY[step_version](conn)
             step_version += 1
 
-        set_user_schema_version(conn, target_version)
+        set_ledger_schema_version(conn, target_version)
         conn.commit()
         logger.info(f"Successfully migrated '{username}' ledger to schema v{target_version}.")
     except Exception as exc:

@@ -13,7 +13,7 @@ sys.path.append(str(BASE_DIR))
 from database.database_manager import (  # noqa: E402
     DEFAULT_BACKUPS_DIR,
     DEFAULT_CATALOG_PATH,
-    DEFAULT_USERS_DIR,
+    DEFAULT_LEDGERS_DIR,
     DatabaseManager,
 )
 from utils.logger import MyosLogger  # noqa: E402
@@ -56,7 +56,7 @@ def seed_only(csv_path: Path) -> None:
     logger.info("Seeding catalog on data root '%s' from '%s'...", DEFAULT_CATALOG_PATH.parent, csv_path)
     db = DatabaseManager(
         catalog_path=DEFAULT_CATALOG_PATH,
-        users_dir=DEFAULT_USERS_DIR,
+        ledgers_dir=DEFAULT_LEDGERS_DIR,
         backups_dir=DEFAULT_BACKUPS_DIR,
     )
     try:
@@ -73,7 +73,7 @@ def seed_only(csv_path: Path) -> None:
 
 def run_tests(csv_path: Path) -> None:
     logger.info("Initializing DatabaseManager...")
-    db = DatabaseManager(catalog_path=DEFAULT_CATALOG_PATH, users_dir=DEFAULT_USERS_DIR)
+    db = DatabaseManager(catalog_path=DEFAULT_CATALOG_PATH, ledgers_dir=DEFAULT_LEDGERS_DIR)
 
     cat_cursor = db.catalog_conn.cursor()
 
@@ -102,8 +102,8 @@ def run_tests(csv_path: Path) -> None:
     now_iso = datetime.now(UTC).isoformat()
 
     with db.open_ledger("test_user") as ledger:
-        user_conn = ledger.conn
-        user_cursor = user_conn.cursor()
+        ledger_conn = ledger.conn
+        user_cursor = ledger_conn.cursor()
 
         # Query sample exercise ID via transparent view on the ledger connection
         sample_exercise_id = user_cursor.execute("SELECT id FROM exercises LIMIT 1").fetchone()[0]
@@ -125,11 +125,11 @@ def run_tests(csv_path: Path) -> None:
         """,
             (test_set_id, test_session_id, sample_exercise_id, now_iso),
         )
-        user_conn.commit()
+        ledger_conn.commit()
 
         # Delete session and verify set is cascade-deleted
         user_cursor.execute("DELETE FROM workout_sessions WHERE id = ?", (test_session_id,))
-        user_conn.commit()
+        ledger_conn.commit()
 
         remaining_sets = user_cursor.execute(
             "SELECT COUNT(*) FROM workout_sets WHERE id = ?", (test_set_id,)

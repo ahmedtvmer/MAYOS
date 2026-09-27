@@ -133,7 +133,7 @@ def create_request(
                 return {"ok": False, "error": "That day is not part of your current program."}
             if not _day_contains(active, day_name, exercise_id):
                 return {"ok": False, "error": "That exercise is not in that day of your current program."}
-            if db.get_exercise_catalog_entry(str(replacement_exercise_id)) is None:
+            if db.get_exercise_library_entry(str(replacement_exercise_id)) is None:
                 return {"ok": False, "error": "That replacement exercise was not found."}
             exercise_id = str(exercise_id)
             replacement_exercise_id = str(replacement_exercise_id)
@@ -197,7 +197,7 @@ def _notify_coach(
     try:
         coach_account = db.get_account(coach_account_id)
         if coach_account:
-            to_email = db.get_trainee_email(coach_account["ledger_id"])
+            to_email = db.get_account_email(coach_account["ledger_id"])
             if to_email:
                 display_name = coach_identity(db, coach_account_id, coach_account)["display_name"]
                 send_program_request_email(to_email, display_name, player_username)
@@ -249,7 +249,7 @@ def apply_request(
 
         data = None
         if request["kind"] == EXERCISE_SUBSTITUTION:
-            replacement = db.get_exercise_catalog_entry(request["replacement_exercise_id"])
+            replacement = db.get_exercise_library_entry(request["replacement_exercise_id"])
             data = _swap_slot(active, request["day_name"], request["exercise_id"], replacement) if replacement else None
             if data is None:
                 return {"ok": False, "error": STALE_REQUEST_ERROR, "stale": True}

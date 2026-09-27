@@ -4,13 +4,13 @@ from typing import Annotated, Any
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import InjectedToolArg, tool
 
-from agent.UserState import UserProfileSchema
+from agent.UserState import PlayerProfileSchema
 from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
 
 
-@tool(args_schema=UserProfileSchema)
+@tool(args_schema=PlayerProfileSchema)
 def save_user_profile(
     config: Annotated[RunnableConfig, InjectedToolArg],
     proportions: str,
@@ -49,7 +49,7 @@ def save_user_profile(
     }
 
     try:
-        config["configurable"]["ledger"].upsert_user_profile(profile_data)
+        config["configurable"]["ledger"].upsert_player_profile(profile_data)
         logger.info("User profile successfully upserted into SQLite.")
         return "User profile successfully saved and locked into database."
     except Exception as e:

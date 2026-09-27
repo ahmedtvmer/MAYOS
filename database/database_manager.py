@@ -17,10 +17,10 @@ from database.storage import configured_data_root, resolve_data_root, validate_d
 #: Catalog, ledgers and backups all hang off one data root (``MAYOS_DATA_DIR``).
 _DATA_ROOT = resolve_data_root()
 DEFAULT_CATALOG_PATH = _DATA_ROOT / "catalog.db"
-DEFAULT_USERS_DIR = _DATA_ROOT / "users"
+DEFAULT_LEDGERS_DIR = _DATA_ROOT / "users"
 DEFAULT_BACKUPS_DIR = _DATA_ROOT / "backups"
 
-from database.migration_manager import apply_lazy_migrations, prune_user_backups
+from database.migration_manager import apply_lazy_migrations, prune_ledger_backups
 from utils.logger import MyosLogger
 
 from database.schema.definitions import SchemaMixin
@@ -68,7 +68,7 @@ class DatabaseManager(
     def __init__(
         self,
         catalog_path=None,
-        users_dir=None,
+        ledgers_dir=None,
         backups_dir=None,
         default_ledger_id: str | None = None,
         deletions_path=None,
@@ -78,7 +78,7 @@ class DatabaseManager(
         else:
             root = resolve_data_root()
         self.catalog_path = Path(catalog_path) if catalog_path is not None else root / "catalog.db"
-        self.users_dir = Path(users_dir) if users_dir is not None else root / "users"
+        self.ledgers_dir = Path(ledgers_dir) if ledgers_dir is not None else root / "users"
         self.backups_dir = Path(backups_dir) if backups_dir is not None else root / "backups"
         env_deletions = os.getenv("MAYOS_DELETIONS_DB", "").strip()
         if deletions_path is not None:
@@ -96,7 +96,7 @@ class DatabaseManager(
         self._local = threading.local()
 
         os.makedirs(self.catalog_path.parent, exist_ok=True)
-        os.makedirs(self.users_dir, exist_ok=True)
+        os.makedirs(self.ledgers_dir, exist_ok=True)
         os.makedirs(self.backups_dir, exist_ok=True)
 
         self.catalog_conn = sqlite3.connect(self.catalog_path, check_same_thread=False)
@@ -125,8 +125,8 @@ class DatabaseManager(
         The connect/pragma/attach/migrate sequence lives here once; ``open_ledger``
         wraps the result in a :class:`~database.ledger.handle.TrainingLedger`.
         """
-        user_db_path = self.users_dir / f"{sanitized}.db"
-        new_conn = sqlite3.connect(user_db_path, check_same_thread=False)
+        ledger_db_path = self.ledgers_dir / f"{sanitized}.db"
+        new_conn = sqlite3.connect(ledger_db_path, check_same_thread=False)
         new_conn.row_factory = sqlite3.Row
         new_conn.execute("PRAGMA foreign_keys = ON;")
         new_conn.execute("PRAGMA journal_mode = WAL;")
@@ -140,16 +140,16 @@ class DatabaseManager(
             "CREATE TEMP VIEW IF NOT EXISTS exercise_secondary_muscles AS SELECT * FROM catalog.exercise_secondary_muscles;"
         )
 
-        apply_lazy_migrations(new_conn, sanitized, self.users_dir, self.backups_dir)
-        self._create_user_schema_on(new_conn)
-        prune_user_backups(self.backups_dir / sanitized, max_rolling=3)
+        apply_lazy_migrations(new_conn, sanitized, self.ledgers_dir, self.backups_dir)
+        self._create_ledger_schema_on(new_conn)
+        prune_ledger_backups(self.backups_dir / sanitized, max_rolling=3)
         return new_conn
 
     def open_ledger(self, ledger_id: str) -> "TrainingLedger":
         """Opens an explicit ledger handle for ``ledger_id`` (ADR 041, phase B).
 
         Runs the deleted-ledger gate and the mount work (pragmas, catalog attach,
-        lazy migrations, user schema, backup pruning) and returns a
+        lazy migrations, ledger schema, backup pruning) and returns a
         :class:`~database.ledger.handle.TrainingLedger` owning its own connection.
         Use it as a context manager so it closes on exit.
         """

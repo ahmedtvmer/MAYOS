@@ -193,7 +193,7 @@ class LedgerDebriefsMixin:
         return row[0] if row else None
 
     def get_compact_telemetry(self) -> str:
-        prof = self.get_user_profile() or {}
+        prof = self.get_player_profile() or {}
         gender = prof.get("gender", "male").capitalize()
         age = prof.get("age", "?")
         wt = prof.get("weight_kg", "?")

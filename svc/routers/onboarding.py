@@ -18,7 +18,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from service import intake as intake_service
 from service import onboarding as onboarding_service
-from svc.dependencies import account_id_of, get_current_trainee, get_db, get_ledger, get_verified_player
+from svc.dependencies import account_id_of, get_current_player, get_db, get_ledger, get_verified_player
 from svc.rate_limit import ONBOARDING_LIMIT, limiter
 from svc.schemas import (
     IntakeAnswerIn,
@@ -45,14 +45,14 @@ def _serialize(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _deserialize(db: Any, trainee: str, data: dict[str, Any]) -> dict[str, Any]:
+def _deserialize(db: Any, player: str, data: dict[str, Any]) -> dict[str, Any]:
     messages = [
         AIMessage(content=item["content"]) if item["role"] == "assistant" else HumanMessage(content=item["content"])
         for item in data.get("messages", [])
     ]
     return {
         "messages": messages,
-        "trainee_id": trainee,
+        "trainee_id": player,
         "intake_step": data.get("intake_step", 1),
         "is_complete": data.get("is_complete", False),
         "profile_data": data.get("profile_data"),
@@ -65,16 +65,16 @@ def _public_view(state: dict[str, Any], only_new: list | None = None) -> dict[st
     return {"intake_step": state.get("intake_step", 1), "is_complete": state.get("is_complete", False), "messages": texts}
 
 
-def _load_or_start(db: Any, ledger: Any, trainee: str, account_id: str | None) -> dict[str, Any]:
+def _load_or_start(db: Any, ledger: Any, player: str, account_id: str | None) -> dict[str, Any]:
     saved = ledger.load_onboarding_state()
     if saved is not None:
-        return _deserialize(db, trainee, saved)
-    return onboarding_service.start_onboarding(db, trainee, player_account_id=account_id, ledger=ledger)
+        return _deserialize(db, player, saved)
+    return onboarding_service.start_onboarding(db, player, player_account_id=account_id, ledger=ledger)
 
 
 @router.post("/start", response_model=OnboardingStartOut)
 async def start_onboarding(
-    trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
+    player: Annotated[str, Depends(get_current_player)], db: Annotated[Any, Depends(get_db)]
 ):
     """Starts intake, or resumes saved progress with the assistant prompts so far.
 
@@ -83,10 +83,10 @@ async def start_onboarding(
     """
 
     def _run():
-        with db.open_ledger(str(trainee)) as ledger:
-            if intake_service.structured_intake_active(db, trainee, ledger=ledger):
+        with db.open_ledger(str(player)) as ledger:
+            if intake_service.structured_intake_active(db, player, ledger=ledger):
                 raise intake_service.StructuredIntakeActive()
-            state = _load_or_start(db, ledger, trainee, account_id_of(trainee))
+            state = _load_or_start(db, ledger, player, account_id_of(player))
             ledger.save_onboarding_state(_serialize(state))
             return _public_view(state)
 
@@ -101,23 +101,23 @@ async def start_onboarding(
 async def answer_step(
     request: Request,
     body: OnboardingStepIn,
-    trainee: Annotated[str, Depends(get_current_trainee)],
+    player: Annotated[str, Depends(get_current_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
     def _run():
-        with db.open_ledger(str(trainee)) as ledger:
-            if intake_service.structured_intake_active(db, trainee, ledger=ledger):
+        with db.open_ledger(str(player)) as ledger:
+            if intake_service.structured_intake_active(db, player, ledger=ledger):
                 raise intake_service.StructuredIntakeActive()
-            account_id = account_id_of(trainee)
+            account_id = account_id_of(player)
             state = (
-                onboarding_service.start_onboarding(db, trainee, player_account_id=account_id, ledger=ledger)
+                onboarding_service.start_onboarding(db, player, player_account_id=account_id, ledger=ledger)
                 if body.reset
-                else _load_or_start(db, ledger, trainee, account_id)
+                else _load_or_start(db, ledger, player, account_id)
             )
             seen = len(state.get("messages", []))
             if body.content:
                 state = onboarding_service.answer_intake(
-                    db, trainee, state, body.content, player_account_id=account_id, ledger=ledger
+                    db, player, state, body.content, player_account_id=account_id, ledger=ledger
                 )
             ledger.save_onboarding_state(_serialize(state))
             return _public_view(state, only_new=state.get("messages", [])[seen:])
@@ -201,24 +201,24 @@ async def confirm_intake(
 
 @router.post("/complete")
 async def complete_onboarding(
-    trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
+    player: Annotated[str, Depends(get_current_player)], db: Annotated[Any, Depends(get_db)]
 ):
     def _run():
-        with db.open_ledger(str(trainee)) as ledger:
-            account_id = account_id_of(trainee)
+        with db.open_ledger(str(player)) as ledger:
+            account_id = account_id_of(player)
             saved = ledger.load_onboarding_state()
             state = (
-                _deserialize(db, trainee, saved)
+                _deserialize(db, player, saved)
                 if saved is not None
-                else onboarding_service.start_onboarding(db, trainee, player_account_id=account_id, ledger=ledger)
+                else onboarding_service.start_onboarding(db, player, player_account_id=account_id, ledger=ledger)
             )
             result = onboarding_service.complete_onboarding(
-                db, trainee, state, player_account_id=account_id, ledger=ledger
+                db, player, state, player_account_id=account_id, ledger=ledger
             )
             ledger.clear_onboarding_state()
             program = result["program"]
             intake_service.record_legacy_completion(
-                db, trainee, program, result.get("program_message"), ledger=ledger
+                db, player, program, result.get("program_message"), ledger=ledger
             )
         if program is None:
             return {"program_name": None, "weekly_frequency": None, "program_message": result["program_message"]}

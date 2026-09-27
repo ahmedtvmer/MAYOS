@@ -18,7 +18,7 @@ def run_test():
     db = DatabaseManager()
     test_user = "test_generator_trainee"
     with db.open_ledger(test_user) as ledger:
-        ledger.upsert_user_profile(
+        ledger.upsert_player_profile(
             {
                 "gender": "male",
                 "proportions": "balanced",
@@ -57,7 +57,7 @@ from pydantic import ValidationError
 
 from agent import program_generator
 from agent.ProgramState import GeneratedProgramSchema, ProgramSchema
-from agent.UserState import UserProfileSchema
+from agent.UserState import PlayerProfileSchema
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -75,28 +75,28 @@ def test_frequency_extraction_preserves_unsupported_requests(text, expected):
 @pytest.mark.parametrize("source", ["override", "profile"])
 def test_invalid_frequency_rejected_before_program_writes(monkeypatch, frequency, source):
     database = MagicMock()
-    database.get_user_profile.return_value = {"weekly_frequency": frequency if source == "profile" else 4}
+    database.get_player_profile.return_value = {"weekly_frequency": frequency if source == "profile" else 4}
     split = MagicMock()
     monkeypatch.setattr(program_generator, "resolve_split", split)
     kwargs = {"frequency_override": frequency} if source == "override" else {}
     with pytest.raises(ValueError, match="1 to 5"):
         generate_program_pipeline(ledger=database, **kwargs)
-    assert database.method_calls == [("get_user_profile", (), {})]
+    assert database.method_calls == [("get_player_profile", (), {})]
     split.assert_not_called()
 
 
 @pytest.mark.parametrize("frequency", ["0", "6", "7", "14", "zero", "six", "twelve", "twenty-one", "one hundred"])
 def test_invalid_text_frequency_not_hidden_by_valid_override(monkeypatch, frequency):
     database = MagicMock()
-    database.get_user_profile.return_value = {"weekly_frequency": 4}
+    database.get_player_profile.return_value = {"weekly_frequency": 4}
     with pytest.raises(ValueError, match="1 to 5"):
         generate_program_pipeline(
             user_split_override=f"switch routine to {frequency} days", frequency_override=3, ledger=database
         )
-    assert database.method_calls == [("get_user_profile", (), {})]
+    assert database.method_calls == [("get_player_profile", (), {})]
 
 
-@pytest.mark.parametrize("schema", [UserProfileSchema, ProgramSchema, GeneratedProgramSchema])
+@pytest.mark.parametrize("schema", [PlayerProfileSchema, ProgramSchema, GeneratedProgramSchema])
 @pytest.mark.parametrize("frequency", [0, 6, 7, 12, -1])
 def test_frequency_schema_bounds(schema, frequency):
     data = {

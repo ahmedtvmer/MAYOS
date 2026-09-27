@@ -10,7 +10,7 @@ sys.path.append(str(BASE_DIR))
 from database.database_manager import DatabaseManager
 
 
-def simulate_trainee_session(user_id: int):
+def simulate_player_session(user_id: int):
     db = DatabaseManager()
     username = f"stress_user_{user_id}"
 
@@ -38,7 +38,7 @@ def run_concurrency():
     workers = 10
     print(f"⚡ Testing WAL Concurrency across {workers} simultaneous threads...")
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(simulate_trainee_session, i) for i in range(workers)]
+        futures = [executor.submit(simulate_player_session, i) for i in range(workers)]
         results = [f.result() for f in concurrent.futures.as_completed(futures)]
     assert all(results)
     print(f"✅ Successfully completed {workers} simultaneous user sessions without write contention or locks.")

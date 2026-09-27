@@ -9,7 +9,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from database.database_manager import DatabaseManager
 from svc.app import create_app
-from svc.dependencies import VerifiedPlayer, get_current_trainee, get_db, get_verified_player
+from svc.dependencies import VerifiedPlayer, get_current_player, get_db, get_verified_player
 
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
@@ -33,14 +33,14 @@ def client(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
     app = create_app()
     app.state.test_db = db
     app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[get_current_trainee] = lambda: "alice"
+    app.dependency_overrides[get_current_player] = lambda: "alice"
 
     def _verified_player():
         account = db.get_active_account_by_username("alice")
@@ -54,8 +54,8 @@ def client(tmp_path: Path, monkeypatch):
     app.dependency_overrides[get_verified_player] = _verified_player
     with TestClient(app) as test_client:
         yield test_client
-    if db.user_conn is not None:
-        db.user_conn.close()
+    if db.ledger_conn is not None:
+        db.ledger_conn.close()
     db.catalog_conn.close()
 
 
@@ -145,7 +145,7 @@ def test_cross_user_isolation_with_real_jwt(tmp_path, monkeypatch):
     cat_conn.commit()
     cat_conn.close()
     db = DatabaseManager(
-        catalog_path=catalog_path, users_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
+        catalog_path=catalog_path, ledgers_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -163,8 +163,8 @@ def test_cross_user_isolation_with_real_jwt(tmp_path, monkeypatch):
             # No token at all is rejected.
             assert api.get("/profile").status_code in {401, 403}
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -190,7 +190,7 @@ def _real_jwt_app(tmp_path, monkeypatch):
     cat_conn.commit()
     cat_conn.close()
     db = DatabaseManager(
-        catalog_path=catalog_path, users_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
+        catalog_path=catalog_path, ledgers_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
@@ -204,7 +204,7 @@ def test_active_program_served_for_returning_user(tmp_path, monkeypatch):
             token = api.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"}).json()["access_token"]
             headers = {"Authorization": f"Bearer {token}"}
             db.switch_user("alice")
-            db.ledger.upsert_user_profile({"current_goal": "Strength"})
+            db.ledger.upsert_player_profile({"current_goal": "Strength"})
             db.ledger.save_training_program(
                 {
                     "program_name": "Saved Split",
@@ -227,8 +227,8 @@ def test_active_program_served_for_returning_user(tmp_path, monkeypatch):
             assert resp.status_code == 200
             assert resp.json()["program_name"] == "Saved Split"
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -273,7 +273,7 @@ def test_workout_commit_detects_prs_and_dashboard_serves_them(tmp_path, monkeypa
             ).json()["access_token"]
             headers = {"Authorization": f"Bearer {token}"}
             db.switch_user("alice")
-            db.ledger.upsert_user_profile({"current_goal": "Strength"})
+            db.ledger.upsert_player_profile({"current_goal": "Strength"})
             db.ledger.save_training_program(_saved_split_payload())
 
             commit = api.post(
@@ -303,8 +303,8 @@ def test_workout_commit_detects_prs_and_dashboard_serves_them(tmp_path, monkeypa
             history = api.get("/dashboard/exercises/sq/history", headers=headers).json()
             assert history["records"]
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -321,7 +321,7 @@ def test_session_export_csv_json_and_404(tmp_path, monkeypatch):
             assert api.get("/workouts/sessions/export.json", headers=headers).status_code == 404
 
             db.switch_user("alice")
-            db.ledger.upsert_user_profile({"current_goal": "Strength"})
+            db.ledger.upsert_player_profile({"current_goal": "Strength"})
             db.ledger.save_training_program(_saved_split_payload())
             commit = api.post(
                 "/workouts/sessions",
@@ -359,8 +359,8 @@ def test_session_export_csv_json_and_404(tmp_path, monkeypatch):
             assert session["exercises"][0]["exercise_name"] == "Squat"
             assert session["exercises"][0]["sets"][0]["e1rm_kg"] == 131.67
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -374,8 +374,8 @@ def test_logout_revokes_token(tmp_path, monkeypatch):
             assert api.post("/auth/logout", headers=headers).status_code == 204
             assert api.get("/dashboard/exercises", headers=headers).status_code == 401
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -403,8 +403,8 @@ def test_revoked_token_rejected_on_routes_without_a_ledger(tmp_path, monkeypatch
             assert api.post("/auth/email", headers=headers, json={"email": "b@example.com"}).status_code == 401
             assert api.get("/workouts/exercises", params={"query": "squat"}, headers=headers).status_code == 401
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -418,8 +418,8 @@ def test_expired_token_rejected(tmp_path, monkeypatch):
             stale = create_access_token("alice", expires_hours=-1)
             assert api.get("/dashboard/exercises", headers={"Authorization": f"Bearer {stale}"}).status_code == 401
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -561,12 +561,12 @@ def test_onboarding_state_is_server_side(client, monkeypatch):
     client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
     calls = []
 
-    def fake_start(db, trainee_id, player_account_id=None, ledger=None):
-        calls.append(trainee_id)
-        return {"messages": [AIMessage(content="Q1?")], "trainee_id": trainee_id, "intake_step": 1, "is_complete": False, "profile_data": None}
+    def fake_start(db, ledger_id, player_account_id=None, ledger=None):
+        calls.append(ledger_id)
+        return {"messages": [AIMessage(content="Q1?")], "trainee_id": ledger_id, "intake_step": 1, "is_complete": False, "profile_data": None}
 
-    def fake_answer(db, trainee_id, state, user_input, player_account_id=None, ledger=None):
-        calls.append((trainee_id, user_input))
+    def fake_answer(db, ledger_id, state, user_input, player_account_id=None, ledger=None):
+        calls.append((ledger_id, user_input))
         state["messages"].append(HumanMessage(content=user_input))
         state["messages"].append(AIMessage(content="Q2?"))
         return state
@@ -603,11 +603,11 @@ def test_onboarding_state_survives_restart(client, monkeypatch):
     client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
     seen_states = []
 
-    def fake_start(db, trainee_id, player_account_id=None, ledger=None):
-        return {"messages": [AIMessage(content="Q1?")], "trainee_id": trainee_id, "intake_step": 1, "is_complete": False, "profile_data": None}
+    def fake_start(db, ledger_id, player_account_id=None, ledger=None):
+        return {"messages": [AIMessage(content="Q1?")], "trainee_id": ledger_id, "intake_step": 1, "is_complete": False, "profile_data": None}
 
-    def fake_answer(db, trainee_id, state, user_input, player_account_id=None, ledger=None):
-        seen_states.append((trainee_id, [m.content for m in state["messages"]], user_input))
+    def fake_answer(db, ledger_id, state, user_input, player_account_id=None, ledger=None):
+        seen_states.append((ledger_id, [m.content for m in state["messages"]], user_input))
         state["messages"].append(HumanMessage(content=user_input))
         state["messages"].append(AIMessage(content="Q2?"))
         return state
@@ -629,16 +629,16 @@ def test_onboarding_start_resumes_persisted_progress(client, monkeypatch):
     client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
     answered_from = []
 
-    def fake_start(db, trainee_id, player_account_id=None, ledger=None):
+    def fake_start(db, ledger_id, player_account_id=None, ledger=None):
         return {
             "messages": [AIMessage(content="Q1?")],
-            "trainee_id": trainee_id,
+            "trainee_id": ledger_id,
             "intake_step": 1,
             "is_complete": False,
             "profile_data": None,
         }
 
-    def fake_answer(db, trainee_id, state, user_input, player_account_id=None, ledger=None):
+    def fake_answer(db, ledger_id, state, user_input, player_account_id=None, ledger=None):
         answered_from.append([m.content for m in state["messages"]])
         state["messages"].append(HumanMessage(content=user_input))
         state["messages"].append(AIMessage(content="Q2?"))

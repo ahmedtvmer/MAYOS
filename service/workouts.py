@@ -310,14 +310,14 @@ def _is_barbell(exercise: Any) -> bool:
     return "barbell" in exercise.exercise_name.lower() or "barbell" in str(getattr(exercise, "equipment", "")).lower()
 
 
-def evaluate_fatigue(db: Any, trainee_id: str, ledger: Any | None = None) -> dict[str, Any]:
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+def evaluate_fatigue(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, Any]:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         return evaluate_systemic_fatigue(ledger)
 
 
-def build_prescription(db: Any, trainee_id: str, day_plan: Any, ledger: Any | None = None) -> dict[str, Any]:
+def build_prescription(db: Any, ledger_id: str, day_plan: Any, ledger: Any | None = None) -> dict[str, Any]:
     """Auto-regulated targets per exercise for the given training day."""
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         return _build_prescription(ledger, day_plan)
 
 
@@ -368,7 +368,7 @@ def _build_prescription(ledger: Any, day_plan: Any) -> dict[str, Any]:
 
 def _persist_session(
     db: Any,
-    trainee_id: str,
+    ledger_id: str,
     day_plan: Any,
     readiness: int,
     session_notes: str,
@@ -389,7 +389,7 @@ def _persist_session(
     landed, which may be newer than the captured ``sync.program_version`` for a
     historical-sync session (ADR 034).
     """
-    profile = ledger.get_user_profile() or {}
+    profile = ledger.get_player_profile() or {}
 
     ledger.log_workout_session(
         session_id=session_id,
@@ -615,7 +615,7 @@ def committed_session(ledger: Any, client_session_id: str | None) -> CommitOutco
     return _commit_outcome_from_row(existing) if existing is not None else None
 
 
-def session_state(db: Any, trainee_id: str, session_id: Any, body: dict[str, Any], ledger: Any | None = None) -> dict[str, Any]:
+def session_state(db: Any, ledger_id: str, session_id: Any, body: dict[str, Any], ledger: Any | None = None) -> dict[str, Any]:
     """The stored commit body overlaid with the live session's corrected state (ADR 035).
 
     The idempotency record is immutable, so the reconciliation read overlays the
@@ -623,7 +623,7 @@ def session_state(db: Any, trainee_id: str, session_id: Any, body: dict[str, Any
     history (the same key the coach responses use). A body whose session is
     absent from this ledger is returned unchanged.
     """
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         session = ledger.get_workout_session(session_id) if isinstance(session_id, str) else None
         if session is None:
             return body
@@ -637,7 +637,7 @@ def session_state(db: Any, trainee_id: str, session_id: Any, body: dict[str, Any
 
 def commit_session(
     db: Any,
-    trainee_id: str,
+    ledger_id: str,
     day_plan: Any,
     readiness: int,
     session_notes: str,
@@ -659,16 +659,16 @@ def commit_session(
     afterwards and are best-effort (ADR 030/032/033). This is the legacy,
     always-creates path (no idempotency record); ``created`` is always ``True``.
     """
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         sync = sync or SyncMetadata()
         session_id = session_id or str(uuid.uuid4())
         now_iso = now_iso or _now().isoformat()
-        today_date = today_date or local_today(db, trainee_id, ledger=ledger).isoformat()
+        today_date = today_date or local_today(db, ledger_id, ledger=ledger).isoformat()
 
         with ledger.ledger_transaction():
             body = _persist_session(
                 db,
-                trainee_id,
+                ledger_id,
                 day_plan,
                 readiness,
                 session_notes,
@@ -688,7 +688,7 @@ def commit_session(
 
 def commit_logged_session(
     db: Any,
-    trainee_id: str,
+    ledger_id: str,
     day_order: int,
     readiness: int,
     session_notes: str,
@@ -714,7 +714,7 @@ def commit_logged_session(
     loser replays the winner's response. Post-commit hooks run only when this
     call performed the commit, for historical sessions too (ADR 034).
     """
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         client_session_id = sync.client_session_id
         replayed = committed_session(ledger, client_session_id)
         if replayed is not None:
@@ -737,7 +737,7 @@ def commit_logged_session(
 
                 body = _persist_session(
                     db,
-                    trainee_id,
+                    ledger_id,
                     day_plan,
                     readiness,
                     session_notes,
@@ -766,7 +766,7 @@ def commit_logged_session(
 
 def correct_performed_date(
     db: Any,
-    trainee_id: str,
+    ledger_id: str,
     session_id: str,
     performed_date: Any,
     *,
@@ -791,7 +791,7 @@ def correct_performed_date(
     re-runs, after the transaction exits, so a correction can resolve or open a
     missed-day alert. Progression alerts and PRs are intentionally not recomputed.
     """
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         now_iso = now_iso or _now().isoformat()
 
         with ledger.ledger_transaction():
@@ -821,7 +821,7 @@ def correct_performed_date(
                 performed_date,
                 session_date=previous_date,
                 performed_timezone=session.get("performed_timezone"),
-                schedule_timezone=latest_schedule_timezone(db, trainee_id, ledger=ledger),
+                schedule_timezone=latest_schedule_timezone(db, ledger_id, ledger=ledger),
                 capture_instant=capture_instant,
             )
 

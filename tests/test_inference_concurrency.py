@@ -16,7 +16,7 @@ from langchain_core.messages import AIMessage
 
 from database.database_manager import DatabaseManager
 from svc.app import create_app
-from svc.dependencies import VerifiedPlayer, get_current_trainee, get_db, get_verified_player
+from svc.dependencies import VerifiedPlayer, get_current_player, get_db, get_verified_player
 from svc.llm import reset_inference_gate
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
@@ -40,7 +40,7 @@ def client(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
@@ -55,12 +55,12 @@ def client(tmp_path: Path, monkeypatch):
         player.jti = "test-jti"
         return player
 
-    app.dependency_overrides[get_current_trainee] = lambda: _verified_player()
+    app.dependency_overrides[get_current_player] = lambda: _verified_player()
     app.dependency_overrides[get_verified_player] = _verified_player
     with TestClient(app) as test_client:
         yield test_client
-    if db.user_conn is not None:
-        db.user_conn.close()
+    if db.ledger_conn is not None:
+        db.ledger_conn.close()
     db.catalog_conn.close()
 
 

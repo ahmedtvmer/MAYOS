@@ -54,7 +54,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
@@ -64,8 +64,8 @@ def api(tmp_path: Path, monkeypatch):
         with TestClient(app) as client:
             yield client, db, tmp_path / "users"
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -173,7 +173,7 @@ def _delete(client, token, password):
 
 
 def test_wrong_password_changes_nothing(api):
-    client, db, users_dir = api
+    client, db, ledgers_dir = api
     registered = _register(client, "alice")
     token = registered["access_token"]
     account_id = _subject(token)
@@ -183,13 +183,13 @@ def test_wrong_password_changes_nothing(api):
     assert wrong.json()["detail"] == "Invalid credentials."
     assert db.is_live_account(db.get_account(account_id))
     assert not db.is_account_deleted(account_id)
-    assert (users_dir / "alice.db").exists()
+    assert (ledgers_dir / "alice.db").exists()
     # The token still works: nothing was revoked.
     assert client.get("/dashboard/exercises", headers=_authed(token)).status_code == 200
 
 
 def test_deletion_invalidates_all_sessions_and_removes_ledger(api):
-    client, db, users_dir = api
+    client, db, ledgers_dir = api
     registered = _register(client, "alice", remember_me=True)
     token = registered["access_token"]
     account_id = _subject(token)
@@ -214,20 +214,20 @@ def test_deletion_invalidates_all_sessions_and_removes_ledger(api):
         assert resp.json() == {"error": "account_deleted"}
 
     # Ledger files (db + -wal + -shm) and the user-specific backup dir are gone.
-    assert not (users_dir / "alice.db").exists()
-    assert not (users_dir / "alice.db-wal").exists()
-    assert not (users_dir / "alice.db-shm").exists()
+    assert not (ledgers_dir / "alice.db").exists()
+    assert not (ledgers_dir / "alice.db-wal").exists()
+    assert not (ledgers_dir / "alice.db-shm").exists()
     assert not (db.backups_dir / "alice").exists()
-    assert not db.user_exists("alice")
+    assert not db.ledger_exists("alice")
 
     # Recovery identity and reset tokens are cleared.
-    assert db.get_trainee_email(account_id) is None
+    assert db.get_account_email(account_id) is None
     assert _scalar(db, "SELECT COUNT(*) FROM password_reset_tokens WHERE trainee_id = ?", (account_id,)) == 0
 
 
 def test_delete_account_holds_no_ledger_handle_while_removing_files(api, monkeypatch):
     """Deletion must not unlink the ledger while a handle to it is open (defect #3)."""
-    client, db, users_dir = api
+    client, db, ledgers_dir = api
     registered = _register(client, "alice")
     token = registered["access_token"]
 
@@ -258,12 +258,12 @@ def test_delete_account_holds_no_ledger_handle_while_removing_files(api, monkeyp
     monkeypatch.setattr(db, "_remove_account_files", checking_remove)
 
     assert _delete(client, token, "correct-horse-1").status_code == 200
-    assert not (users_dir / "alice.db").exists()
+    assert not (ledgers_dir / "alice.db").exists()
     assert observed["open"] == []
 
 
 def test_username_reuse_creates_a_new_immutable_account(api):
-    client, db, users_dir = api
+    client, db, ledgers_dir = api
     first = _register(client, "alice")
     first_token = first["access_token"]
     first_id = _subject(first_token)
@@ -286,7 +286,7 @@ def test_username_reuse_creates_a_new_immutable_account(api):
 
 
 def test_reapply_never_removes_a_reused_usernames_new_ledger(api):
-    client, db, users_dir = api
+    client, db, ledgers_dir = api
     first = _register(client, "alice")
     first_id = _subject(first["access_token"])
     assert _delete(client, first["access_token"], "correct-horse-1").status_code == 200
@@ -300,20 +300,20 @@ def test_reapply_never_removes_a_reused_usernames_new_ledger(api):
     second_ledger = db.get_account(second_id)["ledger_id"]
     first_ledger = db.get_account(first_id)["ledger_id"]
     assert second_ledger != first_ledger
-    assert (users_dir / f"{second_ledger}.db").exists()
-    assert not (users_dir / f"{first_ledger}.db").exists()
+    assert (ledgers_dir / f"{second_ledger}.db").exists()
+    assert not (ledgers_dir / f"{first_ledger}.db").exists()
 
     # A later startup/restore replay of the old deletion record leaves the new
     # account's ledger untouched, and it remains fully usable.
     assert db.reapply_deletions() >= 1
-    assert (users_dir / f"{second_ledger}.db").exists()
-    assert db.user_exists(second_ledger)
+    assert (ledgers_dir / f"{second_ledger}.db").exists()
+    assert db.ledger_exists(second_ledger)
     assert db.get_account(second_id)["deleted_at"] is None
     assert client.get("/auth/me", headers=_authed(second["access_token"])).status_code == 200
 
     # The new account can still log a workout against its own ledger.
     db.switch_user(second_ledger)
-    db.ledger.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.upsert_player_profile({"current_goal": "Strength"})
     db.ledger.save_training_program(_saved_split_payload())
     commit = client.post(
         "/workouts/sessions",
@@ -373,7 +373,7 @@ def _saved_split_payload():
 
 
 def test_player_deletion_ends_assignments_and_clears_relationships(api):
-    client, db, users_dir = api
+    client, db, ledgers_dir = api
     coach_headers, coach_id = _make_coach(client, db, "coach")
     player = _register(client, "alice")
     player_token = player["access_token"]
@@ -410,7 +410,7 @@ def test_player_deletion_ends_assignments_and_clears_relationships(api):
 
 
 def test_deleted_coach_becomes_former_coach_and_returns_program_authority(api, monkeypatch):
-    client, db, users_dir = api
+    client, db, ledgers_dir = api
     coach_headers, coach_id = _make_coach(client, db, "coachx")
     player = _register(client, "bob")
     player_token = player["access_token"]
@@ -459,7 +459,7 @@ def test_deleted_coach_becomes_former_coach_and_returns_program_authority(api, m
 
 
 def test_interrupted_deletion_fails_closed_and_completes_on_reapply(api, monkeypatch):
-    client, db, users_dir = api
+    client, db, ledgers_dir = api
     registered = _register(client, "alice")
     token = registered["access_token"]
     account_id = _subject(token)
@@ -484,7 +484,7 @@ def test_interrupted_deletion_fails_closed_and_completes_on_reapply(api, monkeyp
     monkeypatch.setattr(db, "_force_delete_account_catalog", original)
     assert db.replay_deletions() >= 1
     assert db.get_account(account_id)["deleted_at"] is not None
-    assert not db.user_exists("alice")
+    assert not db.ledger_exists("alice")
     assert db.replay_deletions() == 0
 
 
@@ -500,17 +500,17 @@ def test_full_replay_rechecks_applied_records(api):
 
 
 def test_restore_reapplies_durable_deletion(api):
-    client, db, users_dir = api
+    client, db, ledgers_dir = api
     registered = _register(client, "alice")
     token = registered["access_token"]
     account_id = _subject(token)
 
     # Snapshot the live catalog before deletion, as a disaster-recovery backup would.
-    snapshot = users_dir.parent / "catalog_snapshot.db"
+    snapshot = ledgers_dir.parent / "catalog_snapshot.db"
     create_atomic_backup(db.catalog_conn, snapshot)
 
     assert _delete(client, token, "correct-horse-1").status_code == 200
-    assert not (users_dir / "alice.db").exists()
+    assert not (ledgers_dir / "alice.db").exists()
 
     # Restoring the pre-deletion catalog must not resurrect the account: the
     # durable record lives outside the snapshot and is reapplied.
@@ -518,7 +518,7 @@ def test_restore_reapplies_durable_deletion(api):
     assert db.get_account(account_id)["deleted_at"] is None  # snapshot had it live
     assert db.reapply_deletions() >= 1
     assert db.get_account(account_id)["deleted_at"] is not None
-    assert not db.user_exists("alice")
+    assert not db.ledger_exists("alice")
     assert client.get("/auth/me", headers=_authed(token)).json() == {"error": "account_deleted"}
 
 
@@ -574,10 +574,10 @@ def test_delete_unknown_account_is_refused_and_not_recorded(api):
 
 
 def test_remove_account_files_refuses_unsafe_ledger_ids(api):
-    _, db, users_dir = api
-    (users_dir / "default.db").write_bytes(b"keep")
-    (users_dir / "Weird Name.db").write_bytes(b"keep")
-    (users_dir / "alice.db").write_bytes(b"keep")
+    _, db, ledgers_dir = api
+    (ledgers_dir / "default.db").write_bytes(b"keep")
+    (ledgers_dir / "Weird Name.db").write_bytes(b"keep")
+    (ledgers_dir / "alice.db").write_bytes(b"keep")
 
     db._remove_account_files("")
     db._remove_account_files("   ")
@@ -585,22 +585,22 @@ def test_remove_account_files_refuses_unsafe_ledger_ids(api):
     db._remove_account_files("Weird Name")
     db._remove_account_files("Alice")  # non-canonical (uppercase) is refused
 
-    assert (users_dir / "default.db").exists()
-    assert (users_dir / "Weird Name.db").exists()
-    assert (users_dir / "alice.db").exists()
+    assert (ledgers_dir / "default.db").exists()
+    assert (ledgers_dir / "Weird Name.db").exists()
+    assert (ledgers_dir / "alice.db").exists()
 
 
 def test_binding_a_deleted_ledger_is_refused_and_not_recreated(api):
-    client, db, users_dir = api
+    client, db, ledgers_dir = api
     registered = _register(client, "alice")
     account_id = _subject(registered["access_token"])
     ledger_id = db.get_account(account_id)["ledger_id"]
     assert _delete(client, registered["access_token"], "correct-horse-1").status_code == 200
-    assert not (users_dir / f"{ledger_id}.db").exists()
+    assert not (ledgers_dir / f"{ledger_id}.db").exists()
 
     with pytest.raises(LedgerDeletedError):
         db.switch_user(ledger_id)
-    assert not (users_dir / f"{ledger_id}.db").exists()
+    assert not (ledgers_dir / f"{ledger_id}.db").exists()
 
 
 def test_assignment_notices_for_the_deleted_account_assignments_are_removed(api):
@@ -646,7 +646,7 @@ def test_replay_preserves_a_reused_usernames_recovery_rows(api):
     # A full replay of the old record must not clear the new live account's
     # username-keyed rows.
     assert db.reapply_deletions() >= 1
-    assert db.get_trainee_email(second_id) == "second@example.com"
+    assert db.get_account_email(second_id) == "second@example.com"
     with db._catalog_lock:
         legacy = db.catalog_conn.execute("SELECT 1 FROM trainee_emails WHERE trainee_id = 'alice'").fetchone()
     assert legacy is not None

@@ -15,7 +15,7 @@ class OnboardingState(TypedDict):
     profile_data: dict[str, Any] | None
 
 
-class UserProfileSchema(BaseModel):
+class PlayerProfileSchema(BaseModel):
     gender: Literal["male", "female"] = Field(
         default="male", description="Biological sex/gender for physique prioritization: 'male' or 'female'"
     )

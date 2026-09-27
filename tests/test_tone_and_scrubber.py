@@ -62,7 +62,7 @@ def test_graph_and_stream_failures(graph, stage):
     request = state("How many squat reps?")
     if stage == "hydrate":
         request["telemetry_context"] = None
-        graph.db.get_user_profile.side_effect = RuntimeError("private detail")
+        graph.db.get_player_profile.side_effect = RuntimeError("private detail")
     elif stage == "router":
         graph.evaluate_clinical_semantic_guard.side_effect = RuntimeError("private detail")
     elif stage == "handler":

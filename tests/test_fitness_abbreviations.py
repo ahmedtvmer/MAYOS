@@ -89,7 +89,7 @@ def _good_morning_db(tmp_path_factory):
     shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=base / "users",
+        ledgers_dir=base / "users",
         backups_dir=base / "backups",
     )
     ledger = db.open_ledger("default")
@@ -103,7 +103,7 @@ def _good_morning_db(tmp_path_factory):
         "primary_goal": "hypertrophy",
         "coach_tone": "Direct, grounded, and pragmatic",
     }
-    db.ledger.upsert_user_profile(profile)
+    db.ledger.upsert_player_profile(profile)
 
     # Generate a baseline 4-day split
     from agent.program_generator import generate_program_pipeline

@@ -8,7 +8,7 @@ from typing import Any
 
 
 class LedgerProfileMixin:
-    def get_user_profile(self, user_id: int = 1) -> dict[str, Any] | None:
+    def get_player_profile(self, user_id: int = 1) -> dict[str, Any] | None:
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM user_profile WHERE id = ?", (user_id,))
         row = cursor.fetchone()
@@ -34,7 +34,7 @@ class LedgerProfileMixin:
         )
         self.conn.commit()
 
-    def upsert_user_profile(self, profile_data: dict, user_id: int = 1) -> None:
+    def upsert_player_profile(self, profile_data: dict, user_id: int = 1) -> None:
         now = datetime.now(UTC).isoformat()
         cursor = self.conn.cursor()
         params = {
@@ -79,12 +79,12 @@ class LedgerProfileMixin:
         )
         self.conn.commit()
 
-    def clear_user_profile(self, user_id: int = 1) -> None:
+    def clear_player_profile(self, user_id: int = 1) -> None:
         cursor = self.conn.cursor()
         cursor.execute("DELETE FROM user_profile WHERE id = ?", (user_id,))
         self.conn.commit()
 
-    def update_user_persona(self, coach_tone: str, custom_instructions: str) -> None:
+    def update_player_persona(self, coach_tone: str, custom_instructions: str) -> None:
         cursor = self.conn.cursor()
         cursor.execute(
             """

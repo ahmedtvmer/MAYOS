@@ -50,7 +50,7 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
-        users_dir=tmp_path / "users",
+        ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
@@ -60,8 +60,8 @@ def api(tmp_path: Path, monkeypatch):
         with TestClient(app) as client:
             yield client, db
     finally:
-        if db.user_conn is not None:
-            db.user_conn.close()
+        if db.ledger_conn is not None:
+            db.ledger_conn.close()
         db.catalog_conn.close()
 
 
@@ -271,7 +271,7 @@ def test_commit_hook_resolves_alert_when_an_expected_day_is_satisfied(api):
     assert len(db.list_coach_alerts(coach_account_id, ("new",))) == 1
 
     db.switch_user("p1")
-    db.ledger.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.upsert_player_profile({"current_goal": "Strength"})
     player_account_id = db.get_active_account_by_username("p1")["account_id"]
     day_plan = ProgramDaySchema(
         day_name="Full A",
@@ -308,10 +308,10 @@ def test_commit_session_defaults_to_the_player_local_today(api, monkeypatch):
     db.ledger.append_training_schedule(
         "p1", ALL_DAYS, "Pacific/Kiritimati", "2026-01-01", "2026-01-01T00:00:00+00:00"
     )
-    db.ledger.upsert_user_profile({"current_goal": "Strength"})
+    db.ledger.upsert_player_profile({"current_goal": "Strength"})
     # UTC 2026-09-20T12:00Z is already 2026-09-21 for a UTC+14 player.
     local_day = date(2026, 9, 21)
-    monkeypatch.setattr(workouts_service, "local_today", lambda db_arg, trainee, **kwargs: local_day)
+    monkeypatch.setattr(workouts_service, "local_today", lambda db_arg, player, **kwargs: local_day)
     day_plan = ProgramDaySchema(
         day_name="Full A",
         day_order=1,
@@ -344,13 +344,13 @@ def test_sweep_skips_a_player_without_a_ledger_and_never_creates_one(api):
         ("ghost-assignment", "coach-x", account_id, (now - timedelta(days=5)).isoformat()),
     )
     db.catalog_conn.commit()
-    assert not db.user_exists("ghost")
+    assert not db.ledger_exists("ghost")
 
     counts = alert_sweep.run_sweep(db, now=now)
 
     assert counts["skipped"] == 1
     assert counts["evaluated"] == 0
-    assert not db.user_exists("ghost")
+    assert not db.ledger_exists("ghost")
 
 
 def test_sweep_opens_no_thread_local_ledger(api):
@@ -362,13 +362,13 @@ def test_sweep_opens_no_thread_local_ledger(api):
     _backdate_assignment(db, assignment_id, started)
     _seed_schedule(db, "p1", ALL_DAYS, started.date() - timedelta(days=1))
 
-    mounted_before = db.user_conn
-    active_before = db.active_user
+    mounted_before = db.ledger_conn
+    active_before = db._test_ledger_id
     alert_sweep.run_sweep(db, now=now)
 
     # The sweep never mounts (or unmounts) a player ledger on the thread.
-    assert db.user_conn is mounted_before
-    assert db.active_user == active_before
+    assert db.ledger_conn is mounted_before
+    assert db._test_ledger_id == active_before
 
 
 def test_sweep_opens_no_thread_local_ledger_even_when_evaluation_raises(api, monkeypatch):
@@ -382,12 +382,12 @@ def test_sweep_opens_no_thread_local_ledger_even_when_evaluation_raises(api, mon
     def boom(db_arg, assignment, now=None):
         raise RuntimeError("boom")
 
-    mounted_before = db.user_conn
+    mounted_before = db.ledger_conn
     monkeypatch.setattr(alert_sweep, "evaluate_assignment", boom)
     counts = alert_sweep.run_sweep(db, now=now)
 
     assert counts["errors"] == 1
-    assert db.user_conn is mounted_before
+    assert db.ledger_conn is mounted_before
 
 
 def test_sweep_continues_after_one_player_failure(api, monkeypatch):

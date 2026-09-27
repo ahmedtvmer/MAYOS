@@ -1,4 +1,4 @@
-"""FastAPI dependencies: database handle and verified trainee identity."""
+"""FastAPI dependencies: database handle and verified player identity."""
 
 from typing import Annotated, Any, NamedTuple
 
@@ -65,7 +65,7 @@ def _authorize_account(db: Any, account_id: str, token_epoch: int) -> dict[str, 
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
     if token_epoch != account["session_epoch"]:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked.")
-    if not db.user_exists(account["ledger_id"]):
+    if not db.ledger_exists(account["ledger_id"]):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
     return account
 
@@ -147,7 +147,7 @@ async def get_ledger(
         yield ledger
 
 
-async def get_current_trainee(
+async def get_current_player(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     db: Annotated[Any, Depends(get_db)],
 ) -> str:
@@ -179,6 +179,6 @@ async def get_current_coach(
     return player
 
 
-def account_id_of(trainee: Any) -> str | None:
-    """Returns the verified account id carried by the trainee, or None for a bare ledger id."""
-    return trainee.account_id if isinstance(trainee, VerifiedPlayer) else None
+def account_id_of(player: Any) -> str | None:
+    """Returns the verified account id carried by the player, or None for a bare ledger id."""
+    return player.account_id if isinstance(player, VerifiedPlayer) else None

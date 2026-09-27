@@ -333,7 +333,7 @@ def _initialize_in_progress_from_profile(ledger: Any, profile: dict[str, Any]) -
         ledger.save_intake_answer(spec.name, profile[spec.profile_key], prefilled=True)
 
 
-def ensure_intake(db: Any, trainee_id: str, ledger: Any | None = None) -> None:
+def ensure_intake(db: Any, ledger_id: str, ledger: Any | None = None) -> None:
     """Creates the structured state on first read/answer, idempotently.
 
     Order of resolution: an existing structured state wins; otherwise a profile
@@ -347,10 +347,10 @@ def ensure_intake(db: Any, trainee_id: str, ledger: Any | None = None) -> None:
     legacy accounts have no structured row, so the contract must synthesize their
     prefill/confirmed state on first read.
     """
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         if ledger.get_intake_state() is not None:
             return
-        profile = ledger.get_user_profile()
+        profile = ledger.get_player_profile()
         if profile:
             active = ledger.get_active_program()
             if active is not None:
@@ -364,13 +364,13 @@ def ensure_intake(db: Any, trainee_id: str, ledger: Any | None = None) -> None:
             ledger.save_intake_answer(name, value, prefilled=True)
 
 
-def structured_intake_active(db: Any, trainee_id: str, ledger: Any | None = None) -> bool:
+def structured_intake_active(db: Any, ledger_id: str, ledger: Any | None = None) -> bool:
     """True when a structured intake row exists in any in-progress/confirmed status.
 
     Accounts with no structured row keep the legacy three-step routes unchanged
     (backward compatibility for the current client until #51 ships).
     """
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         state = ledger.get_intake_state()
     if state is None:
         return False
@@ -378,7 +378,7 @@ def structured_intake_active(db: Any, trainee_id: str, ledger: Any | None = None
 
 
 def record_legacy_completion(
-    db: Any, trainee_id: str, program: Any, program_message: str | None, ledger: Any | None = None
+    db: Any, ledger_id: str, program: Any, program_message: str | None, ledger: Any | None = None
 ) -> None:
     """Marks an existing structured intake confirmed when legacy ``/complete`` runs.
 
@@ -386,7 +386,7 @@ def record_legacy_completion(
     edits are refused 409 and ``POST /intake/confirm`` replays instead of creating
     a second program.
     """
-    with ledger_scope(db, ledger, trainee_id) as ledger:
+    with ledger_scope(db, ledger, ledger_id) as ledger:
         if ledger.get_intake_state() is None:
             return
         ledger.save_intake_state(
@@ -398,10 +398,10 @@ def record_legacy_completion(
         )
 
 
-def build_view(db: Any, trainee_id: str, ledger: Any | None = None) -> dict[str, Any]:
+def build_view(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, Any]:
     """The full intake contract: schema, saved answers, prefill markers, progress."""
-    with ledger_scope(db, ledger, trainee_id) as ledger:
-        ensure_intake(db, trainee_id, ledger=ledger)
+    with ledger_scope(db, ledger, ledger_id) as ledger:
+        ensure_intake(db, ledger_id, ledger=ledger)
         state = ledger.get_intake_state() or {}
         answers = ledger.load_intake_answers()
 
@@ -451,24 +451,24 @@ def build_view(db: Any, trainee_id: str, ledger: Any | None = None) -> dict[str,
     }
 
 
-def acknowledge_disclosure(db: Any, trainee_id: str, ledger: Any | None = None) -> dict[str, Any]:
+def acknowledge_disclosure(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, Any]:
     """Records that the hosted-processing disclosure was accepted before answers."""
-    with ledger_scope(db, ledger, trainee_id) as ledger:
-        ensure_intake(db, trainee_id, ledger=ledger)
+    with ledger_scope(db, ledger, ledger_id) as ledger:
+        ensure_intake(db, ledger_id, ledger=ledger)
         ledger.save_intake_state(disclosure_acknowledged=1)
-    return build_view(db, trainee_id, ledger=ledger)
+    return build_view(db, ledger_id, ledger=ledger)
 
 
 def save_answer(
-    db: Any, trainee_id: str, field_name: str, raw: Any, ledger: Any | None = None
+    db: Any, ledger_id: str, field_name: str, raw: Any, ledger: Any | None = None
 ) -> dict[str, Any]:
     """Validates and persists one answer; refuses after confirmation.
 
     Editing an already-answered field overwrites only that field, so earlier
     answers are never lost. The write is idempotent.
     """
-    with ledger_scope(db, ledger, trainee_id) as ledger:
-        ensure_intake(db, trainee_id, ledger=ledger)
+    with ledger_scope(db, ledger, ledger_id) as ledger:
+        ensure_intake(db, ledger_id, ledger=ledger)
         state = ledger.get_intake_state() or {}
         if state.get("status") == STATUS_CONFIRMED:
             raise IntakeAlreadyConfirmed(
@@ -480,7 +480,7 @@ def save_answer(
             )
         value = validate_answer(field_name, raw)
         ledger.save_intake_answer(field_name, value, prefilled=False)
-    return build_view(db, trainee_id, ledger=ledger)
+    return build_view(db, ledger_id, ledger=ledger)
 
 
 def _confirmation_result(state: dict[str, Any]) -> dict[str, Any]:
@@ -493,7 +493,7 @@ def _confirmation_result(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def confirm_intake(
-    db: Any, trainee_id: str, player_account_id: str | None = None, ledger: Any | None = None
+    db: Any, ledger_id: str, player_account_id: str | None = None, ledger: Any | None = None
 ) -> dict[str, Any]:
     """Writes the confirmed profile and creates the first program, exactly once.
 
@@ -506,8 +506,8 @@ def confirm_intake(
     generation fails (including a model-limit 429), the claim is released back to
     ``in_progress`` and the error re-raised so the player can retry.
     """
-    with ledger_scope(db, ledger, trainee_id) as ledger:
-        ensure_intake(db, trainee_id, ledger=ledger)
+    with ledger_scope(db, ledger, ledger_id) as ledger:
+        ensure_intake(db, ledger_id, ledger=ledger)
         state = ledger.get_intake_state() or {}
         if state.get("status") == STATUS_CONFIRMED:
             return _confirmation_result(state)
@@ -534,11 +534,11 @@ def confirm_intake(
             raise IntakeConfirmInProgress("A program is already being generated for this intake.")
 
         profile = {FIELD_BY_NAME[name].profile_key: answers[name]["value"] for name in answers}
-        ledger.upsert_user_profile(profile)
+        ledger.upsert_player_profile(profile)
 
         try:
             result = onboarding_service.complete_onboarding(
-                db, trainee_id, {}, player_account_id=player_account_id, ledger=ledger
+                db, ledger_id, {}, player_account_id=player_account_id, ledger=ledger
             )
         except BaseException:
             ledger.release_intake_confirmation(datetime.now(UTC).isoformat())

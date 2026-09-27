@@ -106,7 +106,7 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any], now: datetime | Non
         return {"evaluated": False, "skipped": True, "alerts_created": 0, "alerts_resolved": 0, "streak": 0}
 
     ledger_id = account["ledger_id"]
-    if not db.user_exists(ledger_id):
+    if not db.ledger_exists(ledger_id):
         logger.warning(
             "Skipping missed-day evaluation for account %s; no ledger exists.", player_account_id
         )

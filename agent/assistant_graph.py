@@ -220,7 +220,7 @@ def _graph_context(config: dict[str, Any] | None) -> tuple[Any, Any]:
 
 def hydrate_context_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     ledger, _ = _graph_context(config)
-    profile = ledger.get_user_profile()
+    profile = ledger.get_player_profile()
     profile = profile if isinstance(profile, dict) else {}
     getter = getattr(ledger, "get_assistant_memory", None)
     memory = getter() if callable(getter) else {}
@@ -1038,7 +1038,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
                 valid_replacements = _semantic_replacements(target_desc)
 
         if valid_replacements and _target_is_name_like(resolve_text, valid_replacements):
-            # The trainee named an exercise we could not resolve — refuse rather than
+            # The player named an exercise we could not resolve — refuse rather than
             # install the closest lexical sibling.
             valid_replacements = []
         elif valid_replacements:

@@ -1,4 +1,4 @@
-"""Catalog demo media. Public: assets are generic, not per-trainee data."""
+"""Catalog demo media. Public: assets are generic, not per-player data."""
 
 from pathlib import Path
 

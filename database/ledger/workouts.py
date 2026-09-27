@@ -8,17 +8,17 @@ from pathlib import Path
 from datetime import UTC, datetime
 from typing import Any
 from database.migration_manager import create_atomic_backup
-from database.migration_manager import prune_user_backups
+from database.migration_manager import prune_ledger_backups
 
 
 class LedgerWorkoutsMixin:
-    def backup_active_user(self) -> Path:
-        """Creates an on-demand rolling snapshot of the active user ledger."""
+    def backup_ledger(self) -> Path:
+        """Creates an on-demand rolling snapshot of the active player ledger."""
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        user_backup_dir = self.backups_dir / self.active_user
-        backup_path = user_backup_dir / f"{self.active_user}_auto_{timestamp}.db"
+        ledger_backup_dir = self.backups_dir / self.ledger_id
+        backup_path = ledger_backup_dir / f"{self.ledger_id}_auto_{timestamp}.db"
         create_atomic_backup(self.conn, backup_path)
-        prune_user_backups(user_backup_dir, max_rolling=3)
+        prune_ledger_backups(ledger_backup_dir, max_rolling=3)
         return backup_path
 
     @staticmethod
