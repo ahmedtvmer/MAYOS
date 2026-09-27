@@ -439,7 +439,7 @@ def get_progression_signals(db: DatabaseManager) -> str:
 
 
 def evaluate_systemic_fatigue(db_manager) -> dict[str, Any]:
-    cursor = db_manager.user_conn.cursor()
+    cursor = db_manager.conn.cursor()
     cursor.execute("""
         SELECT id, session_date, readiness_score
         FROM workout_sessions

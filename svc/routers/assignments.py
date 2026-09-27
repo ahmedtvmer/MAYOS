@@ -22,7 +22,7 @@ from service import check_ins as check_ins_service
 from service import coach_history as coach_history_service
 from service import coach_programs as coach_programs_service
 from service import program_requests as program_requests_service
-from svc.dependencies import VerifiedPlayer, get_current_coach, get_current_trainee, get_db
+from svc.dependencies import VerifiedPlayer, get_current_coach, get_current_trainee, get_db, get_ledger, get_verified_player
 from svc.rate_limit import (
     ASSIGNMENT_INVITE_LIMIT,
     ASSIGNMENT_MUTATE_LIMIT,
@@ -536,13 +536,14 @@ async def list_my_program_requests(
 async def create_my_program_request(
     request: Request,
     body: PlayerProgramRequestIn,
-    player: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Records a pending exercise-substitution or split-change request; the program is untouched."""
 
     def _run():
-        result = program_requests_service.create_request(db, player.account_id, body.model_dump())
+        result = program_requests_service.create_request(db, player.account_id, body.model_dump(), ledger=ledger)
         if not result["ok"]:
             raise _bad_request(result["error"])
         return result["request"]

@@ -99,7 +99,7 @@ def test_dynamic_progression_logic():
 def test_systemic_fatigue_states():
     mock_db = MagicMock()
     mock_cursor = MagicMock()
-    mock_db.user_conn.cursor.return_value = mock_cursor
+    mock_db.conn.cursor.return_value = mock_cursor
 
     # Case A: Acute readiness floor (Readiness = 1/5)
     mock_cursor.fetchall.side_effect = [[("s1", "2026-09-08", 1), ("s2", "2026-09-06", 4)], [("s1", 8.5)]]

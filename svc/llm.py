@@ -187,7 +187,14 @@ def bound_stream(
     only buffering whole responses.
     """
     with inference_slot(scope=scope):
-        yield from stream_factory(*args, **kwargs)
+        generator = stream_factory(*args, **kwargs)
+        try:
+            yield from generator
+        finally:
+            # The slot must cover the whole stream, not just the first chunk:
+            # close the underlying generator inside the held slot so a
+            # disconnect/abort cannot leave the graph running ungated.
+            generator.close()
 
 
 async def run_inference(

@@ -29,11 +29,9 @@ def _raw_row(**overrides):
     return row
 
 
-def _stub_db(rows):
+def _stub_ledger(rows):
+    """A minimal explicit-ledger stub for the export assembly (Phase B)."""
     return SimpleNamespace(
-        _sanitize_username=lambda name: name,
-        active_user="alice",
-        switch_user=lambda name: None,
         get_session_log=lambda: rows,
         get_session_debrief=lambda session_id: f"Debrief for {session_id}",
     )
@@ -83,7 +81,7 @@ def test_export_sessions_to_json_schema_and_unicode():
 
 
 def test_export_session_log_builds_nested_payload_with_computed_metrics():
-    filename, payload = export_session_log(_stub_db([_raw_row()]), "alice", "json")
+    filename, payload = export_session_log(None, "alice", "json", ledger=_stub_ledger([_raw_row()]))
     assert filename == "mayos_session_log.json"
     decoded = json.loads(payload.decode("utf-8"))
     session = decoded["sessions"][0]
@@ -98,7 +96,7 @@ def test_export_session_log_builds_nested_payload_with_computed_metrics():
 
 
 def test_export_session_log_csv_filename_and_metrics():
-    filename, payload = export_session_log(_stub_db([_raw_row()]), "alice", "csv")
+    filename, payload = export_session_log(None, "alice", "csv", ledger=_stub_ledger([_raw_row()]))
     assert filename == "mayos_session_log.csv"
     text = payload.decode("utf-8")
     assert "131.67" in text and "800.0" in text
@@ -106,4 +104,4 @@ def test_export_session_log_csv_filename_and_metrics():
 
 
 def test_export_session_log_returns_none_when_empty():
-    assert export_session_log(_stub_db([]), "alice", "csv") is None
+    assert export_session_log(None, "alice", "csv", ledger=_stub_ledger([])) is None

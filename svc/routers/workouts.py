@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from service import sessions as sessions_service
 from service import workouts as workouts_service
-from svc.dependencies import account_id_of, bind_request, get_current_trainee, get_db
+from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
 from svc.schemas import SessionCommitIn, SessionPerformedDateCorrectIn, SessionPerformedDateCorrectOut
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
@@ -19,8 +19,8 @@ router = APIRouter(prefix="/workouts", tags=["workouts"])
 EXPORT_MEDIA_TYPES = {"csv": "text/csv", "json": "application/json"}
 
 
-def _day_plan(db: Any, player: str, day_order: int) -> Any:
-    program = db.get_active_program()
+def _day_plan(ledger: Any, day_order: int) -> Any:
+    program = ledger.get_active_program()
     if program is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active program.")
     try:
@@ -29,7 +29,7 @@ def _day_plan(db: Any, player: str, day_order: int) -> Any:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-def _sets_payload(db: Any, body: SessionCommitIn) -> list[dict[str, Any]]:
+def _sets_payload(db: Any, ledger: Any, body: SessionCommitIn) -> list[dict[str, Any]]:
     payload = []
     for item in body.sets:
         exercise_id = item.exercise.exercise_id
@@ -39,7 +39,7 @@ def _sets_payload(db: Any, body: SessionCommitIn) -> list[dict[str, Any]]:
             {
                 "exercise": item.exercise,
                 "sets": [s.model_dump() for s in item.sets],
-                "previous_perf": db.get_last_performance(exercise_id),
+                "previous_perf": ledger.get_last_performance(exercise_id),
             }
         )
     return payload
@@ -48,22 +48,17 @@ def _sets_payload(db: Any, body: SessionCommitIn) -> list[dict[str, Any]]:
 @router.get("/exercises")
 async def search_exercises(
     query: str,
-    player: Annotated[str, Depends(get_current_trainee)],
+    player: Annotated[Any, Depends(get_verified_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Catalog exercises matching ``query``, for picking a real unplanned exercise (#34)."""
-
-    def _run():
-        bind_request(db, player)
-        return {"exercises": db.find_exercises_by_name(query, limit=10)}
-
-    return await asyncio.to_thread(_run)
+    return {"exercises": db.find_exercises_by_name(query, limit=10)}
 
 
 @router.get("/exercises/{exercise_id}")
 async def read_exercise_catalog_detail(
     exercise_id: str,
-    player: Annotated[str, Depends(get_current_trainee)],
+    player: Annotated[Any, Depends(get_verified_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """One catalog exercise for the read-only exercise-detail view (#53).
@@ -73,26 +68,21 @@ async def read_exercise_catalog_detail(
     paths. The media paths are exposed so the client can gate display behind its
     build-time media flag; no media is bundled or served by this endpoint.
     """
-
-    def _run():
-        bind_request(db, player)
-        detail = db.get_exercise_catalog_detail(exercise_id)
-        if detail is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown exercise id.")
-        return detail
-
-    return await asyncio.to_thread(_run)
+    detail = db.get_exercise_catalog_detail(exercise_id)
+    if detail is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown exercise id.")
+    return detail
 
 
 @router.get("/prescription")
 async def read_prescription(
     day_order: int,
-    trainee: Annotated[str, Depends(get_current_trainee)],
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
     def _run():
-        bind_request(db, trainee)
-        return workouts_service.build_prescription(db, trainee, _day_plan(db, trainee, day_order))
+        return workouts_service.build_prescription(db, str(player), _day_plan(ledger, day_order), ledger=ledger)
 
     return await asyncio.to_thread(_run)
 
@@ -100,17 +90,18 @@ async def read_prescription(
 @router.post("/sessions", status_code=status.HTTP_201_CREATED)
 async def commit_session(
     body: SessionCommitIn,
-    player: Annotated[str, Depends(get_current_trainee)],
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
     def _run() -> workouts_service.CommitOutcome:
-        bind_request(db, player)
         if body.client_session_id is None:
             # Legacy online-only contract, unchanged.
-            day_plan = _day_plan(db, player, body.day_order)
+            day_plan = _day_plan(ledger, body.day_order)
             return workouts_service.commit_session(
-                db, player, day_plan, body.readiness, body.session_notes, _sets_payload(db, body),
-                account_id=account_id_of(player),
+                db, str(player), day_plan, body.readiness, body.session_notes,
+                _sets_payload(db, ledger, body),
+                account_id=account_id_of(player), ledger=ledger,
             )
 
         try:
@@ -120,9 +111,7 @@ async def commit_session(
 
         # ADR 033: an existing commit replays its exact stored response before
         # any mutable catalog, day, or program validation, and writes nothing.
-        # The player's ledger is already bound and authenticated above, so a
-        # foreign client session id is never visible here.
-        replayed = workouts_service.committed_session(db, body.client_session_id)
+        replayed = workouts_service.committed_session(ledger, body.client_session_id)
         if replayed is not None:
             return replayed
 
@@ -141,13 +130,14 @@ async def commit_session(
         )
         return workouts_service.commit_logged_session(
             db,
-            player,
+            str(player),
             body.day_order,
             body.readiness,
             body.session_notes,
-            _sets_payload(db, body),
+            _sets_payload(db, ledger, body),
             sync=sync,
             account_id=account_id_of(player),
+            ledger=ledger,
         )
 
     try:
@@ -169,8 +159,8 @@ async def commit_session(
 
 @router.get("/sessions/latest")
 async def read_latest_session(
-    player: Annotated[str, Depends(get_current_trainee)],
-    db: Annotated[Any, Depends(get_db)],
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
 ):
     """The player's most recent committed session, or 404 when none (#53).
 
@@ -179,12 +169,7 @@ async def read_latest_session(
     stores one. It is a read-only identity lookup, scoped to the player's own
     ledger.
     """
-
-    def _run():
-        bind_request(db, player)
-        return db.get_latest_committed_session()
-
-    result = await asyncio.to_thread(_run)
+    result = await asyncio.to_thread(ledger.get_latest_committed_session)
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -196,8 +181,8 @@ async def read_latest_session(
 @router.get("/sessions/by-client-id/{client_session_id}")
 async def read_session_by_client_id(
     client_session_id: str,
-    player: Annotated[str, Depends(get_current_trainee)],
-    db: Annotated[Any, Depends(get_db)],
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
 ):
     """The stored commit response for a client session id, or 404 when never committed.
 
@@ -207,12 +192,13 @@ async def read_session_by_client_id(
     """
 
     def _run():
-        bind_request(db, player)
-        commit = db.get_session_commit(client_session_id)
+        commit = ledger.get_session_commit(client_session_id)
         if commit is None:
             return None
         body = json.loads(commit["response_json"])
-        return workouts_service.session_state(db, body.get("session_id"), body)
+        return workouts_service.session_state(
+            None, str(player), body.get("session_id"), body, ledger=ledger
+        )
 
     result = await asyncio.to_thread(_run)
     if result is None:
@@ -230,12 +216,13 @@ async def read_session_by_client_id(
 async def correct_session_performed_date(
     session_id: str,
     body: SessionPerformedDateCorrectIn,
-    player: Annotated[str, Depends(get_current_trainee)],
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Corrects a recent committed session's performed date (ADR 020/035).
 
-    Only the player's own ledger is bound, so another player's session id is a
+    Only the player's own ledger is opened, so another player's session id is a
     404. A session older than the three-day correction window is a 409; an
     invalid or out-of-window date is a 400. Correcting to the current date is an
     idempotent no-op. A successful correction re-runs the missed-day attendance
@@ -245,10 +232,11 @@ async def correct_session_performed_date(
     def _run():
         result = workouts_service.correct_performed_date(
             db,
-            player,
+            str(player),
             session_id,
             body.performed_date,
             account_id=account_id_of(player),
+            ledger=ledger,
         )
         if result is None:
             raise HTTPException(
@@ -265,12 +253,8 @@ async def correct_session_performed_date(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
-async def _stream_session_log(trainee: str, db: Any, fmt: str) -> StreamingResponse:
-    def _run():
-        bind_request(db, trainee)
-        return sessions_service.export_session_log(db, trainee, fmt)
-
-    result = await asyncio.to_thread(_run)
+async def _stream_session_log(trainee: str, db: Any, ledger: Any, fmt: str) -> StreamingResponse:
+    result = await asyncio.to_thread(sessions_service.export_session_log, db, trainee, fmt, ledger)
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No sessions logged yet.")
     filename, payload = result
@@ -283,13 +267,17 @@ async def _stream_session_log(trainee: str, db: Any, fmt: str) -> StreamingRespo
 
 @router.get("/sessions/export.csv")
 async def export_sessions_csv(
-    trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
 ):
-    return await _stream_session_log(trainee, db, "csv")
+    return await _stream_session_log(str(player), db, ledger, "csv")
 
 
 @router.get("/sessions/export.json")
 async def export_sessions_json(
-    trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
 ):
-    return await _stream_session_log(trainee, db, "json")
+    return await _stream_session_log(str(player), db, ledger, "json")

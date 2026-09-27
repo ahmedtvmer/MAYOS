@@ -311,7 +311,7 @@ def test_commit_session_defaults_to_the_player_local_today(api, monkeypatch):
     db.upsert_user_profile({"current_goal": "Strength"})
     # UTC 2026-09-20T12:00Z is already 2026-09-21 for a UTC+14 player.
     local_day = date(2026, 9, 21)
-    monkeypatch.setattr(workouts_service, "local_today", lambda db_arg, trainee: local_day)
+    monkeypatch.setattr(workouts_service, "local_today", lambda db_arg, trainee, **kwargs: local_day)
     day_plan = ProgramDaySchema(
         day_name="Full A",
         day_order=1,
@@ -353,7 +353,8 @@ def test_sweep_skips_a_player_without_a_ledger_and_never_creates_one(api):
     assert not db.user_exists("ghost")
 
 
-def test_sweep_unbinds_the_ledger_from_the_worker_thread(api):
+def test_sweep_opens_no_thread_local_ledger(api):
+    """Phase B1: the sweep uses explicit ledger handles, not the thread-local mount."""
     client, db = api
     _, _, assignment_id, _ = _assign(api)
     now = datetime.now(UTC)
@@ -361,12 +362,16 @@ def test_sweep_unbinds_the_ledger_from_the_worker_thread(api):
     _backdate_assignment(db, assignment_id, started)
     _seed_schedule(db, "p1", ALL_DAYS, started.date() - timedelta(days=1))
 
+    mounted_before = db.user_conn
+    active_before = db.active_user
     alert_sweep.run_sweep(db, now=now)
 
-    assert db.user_conn is None
+    # The sweep never mounts (or unmounts) a player ledger on the thread.
+    assert db.user_conn is mounted_before
+    assert db.active_user == active_before
 
 
-def test_sweep_unbinds_the_ledger_even_when_evaluation_raises(api, monkeypatch):
+def test_sweep_opens_no_thread_local_ledger_even_when_evaluation_raises(api, monkeypatch):
     client, db = api
     _, _, assignment_id, _ = _assign(api)
     now = datetime.now(UTC)
@@ -374,17 +379,15 @@ def test_sweep_unbinds_the_ledger_even_when_evaluation_raises(api, monkeypatch):
     _backdate_assignment(db, assignment_id, started)
     _seed_schedule(db, "p1", ALL_DAYS, started.date() - timedelta(days=1))
 
-    from service._base import bind_user
-
     def boom(db_arg, assignment, now=None):
-        bind_user(db_arg, "p1")
         raise RuntimeError("boom")
 
+    mounted_before = db.user_conn
     monkeypatch.setattr(alert_sweep, "evaluate_assignment", boom)
     counts = alert_sweep.run_sweep(db, now=now)
 
     assert counts["errors"] == 1
-    assert db.user_conn is None
+    assert db.user_conn is mounted_before
 
 
 def test_sweep_continues_after_one_player_failure(api, monkeypatch):
@@ -410,3 +413,51 @@ def test_sweep_continues_after_one_player_failure(api, monkeypatch):
     assert counts["errors"] == 1
     assert counts["evaluated"] == 1
     assert len(db.list_coach_alerts(db.get_active_account_by_username("coach2")["account_id"], ("new",))) == 1
+
+
+def test_sweep_closes_every_handle_it_opens_even_when_evaluation_raises(api, monkeypatch):
+    """Every handle the sweep opens is closed, including when one player raises (defect #5)."""
+    client, db = api
+    _, _, first_assignment, _ = _assign(api, coach_name="coach1", player_name="p1")
+    _, _, second_assignment, _ = _assign(api, coach_name="coach2", player_name="p2")
+    now = datetime.now(UTC)
+    started = now - timedelta(days=5)
+    for assignment_id, player in ((first_assignment, "p1"), (second_assignment, "p2")):
+        _backdate_assignment(db, assignment_id, started)
+        _seed_schedule(db, player, ALL_DAYS, started.date() - timedelta(days=1))
+
+    opened = []
+    real_open = db.open_ledger
+
+    def tracking_open(ledger_id):
+        handle = real_open(ledger_id)
+        opened.append(handle)
+        return handle
+
+    monkeypatch.setattr(db, "open_ledger", tracking_open)
+
+    # p2 raises *after* its handle is opened, so the failure unwinds through the
+    # with-block that owns the handle.
+    from database.ledger.schedule import LedgerScheduleMixin
+
+    real_pauses = LedgerScheduleMixin.list_training_pauses
+
+    def flaky_pauses(self, ledger_id):
+        if self.ledger_id == "p2":
+            raise RuntimeError("boom")
+        return real_pauses(self, ledger_id)
+
+    monkeypatch.setattr(LedgerScheduleMixin, "list_training_pauses", flaky_pauses)
+
+    counts = alert_sweep.run_sweep(db, now=now)
+
+    def is_open(handle):
+        try:
+            handle.conn
+        except RuntimeError:
+            return False
+        return True
+
+    assert counts["errors"] >= 1
+    assert opened
+    assert all(not is_open(handle) for handle in opened)

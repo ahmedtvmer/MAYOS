@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from agent.assistant_graph import stream_assistant_turn
 from service import chat as chat_service
 from service.model_limits import admit_model_request
-from svc.dependencies import account_id_of, bind_request, get_current_trainee, get_db
+from svc.dependencies import account_id_of, bind_request, get_db, get_ledger, get_verified_player
 from svc.llm import InferenceScope, bound_stream
 from svc.rate_limit import CHAT_LIMIT, limiter
 from svc.schemas import ChatMessageIn
@@ -27,56 +27,64 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 @router.get("/history")
 async def read_history(
-    trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
 ):
-    def _run():
-        bind_request(db, trainee)
-        return chat_service.get_history(db, trainee)
-
-    return await asyncio.to_thread(_run)
+    return await asyncio.to_thread(chat_service.get_history, db, str(player), ledger)
 
 
 @router.delete("/history", status_code=status.HTTP_204_NO_CONTENT)
 async def clear_history(
-    trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
 ):
-    def _run():
-        bind_request(db, trainee)
-        chat_service.clear_history(db, trainee)
-
-    await asyncio.to_thread(_run)
+    await asyncio.to_thread(chat_service.clear_history, db, str(player), ledger)
     return None
 
 
 def _run_turn(
-    db: Any, trainee: str, content: str, out: "queue.Queue[tuple[str, Any]]", account_id: str | None = None
+    db: Any,
+    trainee: Any,
+    content: str,
+    out: "queue.Queue[tuple[str, Any]]",
+    account_id: str | None = None,
 ) -> None:
     """Executes the sync turn on a worker thread, bridging chunks into the queue.
 
+    The worker owns its ledger handle lifetime: it opens one for the duration of
+    the turn, so a client disconnect that closes the request handle can never
+    close the connection mid-write, and the assistant reply is still persisted.
+    Gate-then-mount holds: the request dependency already ran the registry and
+    revocation gate, and ``open_ledger`` repeats the deleted-ledger refusal.
+
     The route already admitted this account for one request, so the stream is
     admitted with ``admit=False`` (it still runs under the account/role usage
-    context, so every model call in the turn is attributed).
+    context, so every model call in the turn is attributed). The assistant graph
+    still resolves its ledger through the compatibility mount, applied here to
+    the same ledger id.
     """
     try:
-        bind_request(db, trainee)
-        profile = db.get_user_profile() or {}
-        history = chat_service.prepare_user_turn(db, content)
-        tail = chat_service.build_tail_messages(history)
-        state = chat_service.build_turn_state(
-            db,
-            trainee,
-            tail,
-            coach_tone=profile.get("coach_tone", "Direct, grounded, and pragmatic"),
-            custom_instructions=profile.get("custom_instructions", ""),
-            player_account_id=account_id_of(trainee),
-        )
-        for piece in bound_stream(
-            stream_assistant_turn,
-            state,
-            scope=InferenceScope(account_id=account_id, role="player", purpose="chat", admit=False),
-        ):
-            out.put(("token", piece))
-        chat_service.persist_assistant_message(db, state.get("response_content"))
+        bind_request(db, trainee)  # Phase B2: the assistant graph resolves the thread-local ledger
+        with db.open_ledger(str(trainee)) as ledger:
+            profile = ledger.get_user_profile() or {}
+            history = chat_service.prepare_user_turn(db, content, ledger)
+            tail = chat_service.build_tail_messages(history)
+            state = chat_service.build_turn_state(
+                str(trainee),
+                tail,
+                coach_tone=profile.get("coach_tone", "Direct, grounded, and pragmatic"),
+                custom_instructions=profile.get("custom_instructions", ""),
+                player_account_id=account_id_of(trainee),
+            )
+            for piece in bound_stream(
+                stream_assistant_turn,
+                state,
+                scope=InferenceScope(account_id=account_id, role="player", purpose="chat", admit=False),
+            ):
+                out.put(("token", piece))
+            chat_service.persist_assistant_message(ledger, state.get("response_content"))
         out.put(("done", {"response_content": state.get("response_content") or "", "program_updated": bool(state.get("program_updated"))}))
     except Exception:
         out.put(("error", {"detail": PIPELINE_ERROR_RESPONSE}))
@@ -89,10 +97,10 @@ def _run_turn(
 async def post_message(
     request: Request,
     body: ChatMessageIn,
-    trainee: Annotated[str, Depends(get_current_trainee)],
+    player: Annotated[Any, Depends(get_verified_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
-    account_id = account_id_of(trainee)
+    account_id = account_id_of(player)
     # Refuse before the stream starts: the app-wide ModelLimitExceeded handler
     # returns a plain HTTP 429 with a JSON ``detail`` (surfaced verbatim by the
     # mobile client, ADR 036/038).
@@ -100,7 +108,7 @@ async def post_message(
 
     out: "queue.Queue[tuple[str, Any]]" = queue.Queue()
     worker = threading.Thread(
-        target=_run_turn, args=(db, trainee, body.content, out, account_id), daemon=True
+        target=_run_turn, args=(db, player, body.content, out, account_id), daemon=True
     )
     worker.start()
 

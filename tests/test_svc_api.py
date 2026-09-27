@@ -9,7 +9,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from database.database_manager import DatabaseManager
 from svc.app import create_app
-from svc.dependencies import get_current_trainee, get_db
+from svc.dependencies import VerifiedPlayer, get_current_trainee, get_db, get_verified_player
 
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
@@ -41,6 +41,17 @@ def client(tmp_path: Path, monkeypatch):
     app.state.test_db = db
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_trainee] = lambda: "alice"
+
+    def _verified_player():
+        account = db.get_active_account_by_username("alice")
+        if account is None:
+            player = VerifiedPlayer("alice", "alice", 1)
+        else:
+            player = VerifiedPlayer(account["ledger_id"], account["account_id"], account["session_epoch"])
+        player.jti = "test-jti"
+        return player
+
+    app.dependency_overrides[get_verified_player] = _verified_player
     with TestClient(app) as test_client:
         yield test_client
     if db.user_conn is not None:
@@ -368,6 +379,35 @@ def test_logout_revokes_token(tmp_path, monkeypatch):
         db.catalog_conn.close()
 
 
+def test_revoked_token_rejected_on_routes_without_a_ledger(tmp_path, monkeypatch):
+    """A logged-out jti is refused by every authenticated route (defect #1).
+
+    Recovery-email and catalog routes depend only on ``get_verified_player`` and
+    never mount a request ledger, so they regressed before that dependency ran the
+    revocation check itself.
+    """
+    app, db = _real_jwt_app(tmp_path, monkeypatch)
+    try:
+        with TestClient(app) as api:
+            token = api.post(
+                "/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"}
+            ).json()["access_token"]
+            headers = {"Authorization": f"Bearer {token}"}
+            assert api.get("/auth/email", headers=headers).status_code == 200
+            assert api.post("/auth/email", headers=headers, json={"email": "a@example.com"}).status_code == 200
+            assert api.get("/workouts/exercises", params={"query": "squat"}, headers=headers).status_code == 200
+
+            assert api.post("/auth/logout", headers=headers).status_code == 204
+
+            assert api.get("/auth/email", headers=headers).status_code == 401
+            assert api.post("/auth/email", headers=headers, json={"email": "b@example.com"}).status_code == 401
+            assert api.get("/workouts/exercises", params={"query": "squat"}, headers=headers).status_code == 401
+    finally:
+        if db.user_conn is not None:
+            db.user_conn.close()
+        db.catalog_conn.close()
+
+
 def test_expired_token_rejected(tmp_path, monkeypatch):
     from svc.auth import create_access_token
 
@@ -457,6 +497,42 @@ def test_chat_error_frame_never_leaks(client, monkeypatch):
         raw = stream.read().decode()
     assert "event: error" in raw
     assert "secret" not in raw
+
+
+def test_chat_stream_disconnect_still_persists_reply(client, monkeypatch):
+    import threading
+    import time
+
+    from svc.routers import chat as chat_router
+
+    client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
+
+    release = threading.Event()
+
+    def slow_turn(state):
+        state["response_content"] = "Persisted despite disconnect"
+        yield "first-token"
+        release.wait(timeout=5)
+
+    monkeypatch.setattr(chat_router, "stream_assistant_turn", slow_turn)
+
+    with client.stream("POST", "/chat/messages", json={"content": "hello"}) as stream:
+        for line in stream.iter_lines():
+            if line.startswith("data:") and "first-token" in line:
+                break
+
+    # The consumer stopped early, so the response (and any request handle) is
+    # closed; the worker must still persist its reply on its own handle.
+    release.set()
+    history = []
+    for _ in range(100):
+        history = client.get("/chat/history").json()
+        if any(message["role"] == "assistant" for message in history):
+            break
+        time.sleep(0.05)
+
+    assistant = [message for message in history if message["role"] == "assistant"]
+    assert assistant and assistant[-1]["content"] == "Persisted despite disconnect"
 
 
 def test_workouts_require_program(client):

@@ -27,7 +27,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from service import onboarding as onboarding_service
-from service._base import bind_user
+from service._base import ledger_scope
 
 STATUS_IN_PROGRESS = "in_progress"
 STATUS_CONFIRMING = "confirming"
@@ -301,9 +301,9 @@ def legacy_prefill(legacy_state: dict[str, Any] | None) -> dict[str, Any]:
     return prefilled
 
 
-def _initialize_confirmed_from_profile(db: Any, profile: dict[str, Any], active: Any) -> None:
+def _initialize_confirmed_from_profile(ledger: Any, profile: dict[str, Any], active: Any) -> None:
     """Synthesizes confirmed intake state for an account with a profile and program."""
-    db.save_intake_state(
+    ledger.save_intake_state(
         status=STATUS_CONFIRMED,
         disclosure_acknowledged=1,
         confirmed_at=profile.get("created_at"),
@@ -313,10 +313,10 @@ def _initialize_confirmed_from_profile(db: Any, profile: dict[str, Any], active:
     for spec in INTAKE_FIELDS:
         if spec.profile_key not in profile or profile[spec.profile_key] is None:
             continue
-        db.save_intake_answer(spec.name, profile[spec.profile_key], prefilled=False)
+        ledger.save_intake_answer(spec.name, profile[spec.profile_key], prefilled=False)
 
 
-def _initialize_in_progress_from_profile(db: Any, profile: dict[str, Any]) -> None:
+def _initialize_in_progress_from_profile(ledger: Any, profile: dict[str, Any]) -> None:
     """Prefills an editable intake from a profile written before completion.
 
     The legacy graph persists the profile at step 3, but the first program is
@@ -326,14 +326,14 @@ def _initialize_in_progress_from_profile(db: Any, profile: dict[str, Any]) -> No
     disclosure is treated as already accepted because a profile can only exist
     after the player completed the legacy intake, so confirming can generate.
     """
-    db.save_intake_state(status=STATUS_IN_PROGRESS, disclosure_acknowledged=1)
+    ledger.save_intake_state(status=STATUS_IN_PROGRESS, disclosure_acknowledged=1)
     for spec in INTAKE_FIELDS:
         if spec.profile_key not in profile or profile[spec.profile_key] is None:
             continue
-        db.save_intake_answer(spec.name, profile[spec.profile_key], prefilled=True)
+        ledger.save_intake_answer(spec.name, profile[spec.profile_key], prefilled=True)
 
 
-def ensure_intake(db: Any, trainee_id: str) -> None:
+def ensure_intake(db: Any, trainee_id: str, ledger: Any | None = None) -> None:
     """Creates the structured state on first read/answer, idempotently.
 
     Order of resolution: an existing structured state wins; otherwise a profile
@@ -347,58 +347,63 @@ def ensure_intake(db: Any, trainee_id: str) -> None:
     legacy accounts have no structured row, so the contract must synthesize their
     prefill/confirmed state on first read.
     """
-    bind_user(db, trainee_id)
-    if db.get_intake_state() is not None:
-        return
-    profile = db.get_user_profile()
-    if profile:
-        active = db.get_active_program()
-        if active is not None:
-            _initialize_confirmed_from_profile(db, profile, active)
-        else:
-            _initialize_in_progress_from_profile(db, profile)
-        return
-    prefilled = legacy_prefill(db.load_onboarding_state())
-    db.save_intake_state(status=STATUS_IN_PROGRESS)
-    for name, value in prefilled.items():
-        db.save_intake_answer(name, value, prefilled=True)
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        if ledger.get_intake_state() is not None:
+            return
+        profile = ledger.get_user_profile()
+        if profile:
+            active = ledger.get_active_program()
+            if active is not None:
+                _initialize_confirmed_from_profile(ledger, profile, active)
+            else:
+                _initialize_in_progress_from_profile(ledger, profile)
+            return
+        prefilled = legacy_prefill(ledger.load_onboarding_state())
+        ledger.save_intake_state(status=STATUS_IN_PROGRESS)
+        for name, value in prefilled.items():
+            ledger.save_intake_answer(name, value, prefilled=True)
 
 
-def structured_intake_active(db: Any) -> bool:
+def structured_intake_active(db: Any, trainee_id: str, ledger: Any | None = None) -> bool:
     """True when a structured intake row exists in any in-progress/confirmed status.
 
     Accounts with no structured row keep the legacy three-step routes unchanged
     (backward compatibility for the current client until #51 ships).
     """
-    state = db.get_intake_state()
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        state = ledger.get_intake_state()
     if state is None:
         return False
     return state.get("status") in {STATUS_IN_PROGRESS, STATUS_CONFIRMING, STATUS_CONFIRMED}
 
 
-def record_legacy_completion(db: Any, program: Any, program_message: str | None) -> None:
+def record_legacy_completion(
+    db: Any, trainee_id: str, program: Any, program_message: str | None, ledger: Any | None = None
+) -> None:
     """Marks an existing structured intake confirmed when legacy ``/complete`` runs.
 
     Stores the same program result the structured confirm stores, so later answer
     edits are refused 409 and ``POST /intake/confirm`` replays instead of creating
     a second program.
     """
-    if db.get_intake_state() is None:
-        return
-    db.save_intake_state(
-        status=STATUS_CONFIRMED,
-        confirmed_at=datetime.now(UTC).isoformat(),
-        program_name=program.program_name if program is not None else None,
-        weekly_frequency=program.weekly_frequency if program is not None else None,
-        program_message=program_message,
-    )
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        if ledger.get_intake_state() is None:
+            return
+        ledger.save_intake_state(
+            status=STATUS_CONFIRMED,
+            confirmed_at=datetime.now(UTC).isoformat(),
+            program_name=program.program_name if program is not None else None,
+            weekly_frequency=program.weekly_frequency if program is not None else None,
+            program_message=program_message,
+        )
 
 
-def build_view(db: Any, trainee_id: str) -> dict[str, Any]:
+def build_view(db: Any, trainee_id: str, ledger: Any | None = None) -> dict[str, Any]:
     """The full intake contract: schema, saved answers, prefill markers, progress."""
-    ensure_intake(db, trainee_id)
-    state = db.get_intake_state() or {}
-    answers = db.load_intake_answers()
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        ensure_intake(db, trainee_id, ledger=ledger)
+        state = ledger.get_intake_state() or {}
+        answers = ledger.load_intake_answers()
 
     fields: list[dict[str, Any]] = []
     for spec in INTAKE_FIELDS:
@@ -446,32 +451,36 @@ def build_view(db: Any, trainee_id: str) -> dict[str, Any]:
     }
 
 
-def acknowledge_disclosure(db: Any, trainee_id: str) -> dict[str, Any]:
+def acknowledge_disclosure(db: Any, trainee_id: str, ledger: Any | None = None) -> dict[str, Any]:
     """Records that the hosted-processing disclosure was accepted before answers."""
-    ensure_intake(db, trainee_id)
-    db.save_intake_state(disclosure_acknowledged=1)
-    return build_view(db, trainee_id)
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        ensure_intake(db, trainee_id, ledger=ledger)
+        ledger.save_intake_state(disclosure_acknowledged=1)
+    return build_view(db, trainee_id, ledger=ledger)
 
 
-def save_answer(db: Any, trainee_id: str, field_name: str, raw: Any) -> dict[str, Any]:
+def save_answer(
+    db: Any, trainee_id: str, field_name: str, raw: Any, ledger: Any | None = None
+) -> dict[str, Any]:
     """Validates and persists one answer; refuses after confirmation.
 
     Editing an already-answered field overwrites only that field, so earlier
     answers are never lost. The write is idempotent.
     """
-    ensure_intake(db, trainee_id)
-    state = db.get_intake_state() or {}
-    if state.get("status") == STATUS_CONFIRMED:
-        raise IntakeAlreadyConfirmed(
-            "This intake is already confirmed and can no longer be edited."
-        )
-    if not state.get("disclosure_acknowledged"):
-        raise IntakeDisclosureRequired(
-            "Acknowledge the hosted-processing disclosure before saving onboarding answers."
-        )
-    value = validate_answer(field_name, raw)
-    db.save_intake_answer(field_name, value, prefilled=False)
-    return build_view(db, trainee_id)
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        ensure_intake(db, trainee_id, ledger=ledger)
+        state = ledger.get_intake_state() or {}
+        if state.get("status") == STATUS_CONFIRMED:
+            raise IntakeAlreadyConfirmed(
+                "This intake is already confirmed and can no longer be edited."
+            )
+        if not state.get("disclosure_acknowledged"):
+            raise IntakeDisclosureRequired(
+                "Acknowledge the hosted-processing disclosure before saving onboarding answers."
+            )
+        value = validate_answer(field_name, raw)
+        ledger.save_intake_answer(field_name, value, prefilled=False)
+    return build_view(db, trainee_id, ledger=ledger)
 
 
 def _confirmation_result(state: dict[str, Any]) -> dict[str, Any]:
@@ -484,7 +493,7 @@ def _confirmation_result(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def confirm_intake(
-    db: Any, trainee_id: str, player_account_id: str | None = None
+    db: Any, trainee_id: str, player_account_id: str | None = None, ledger: Any | None = None
 ) -> dict[str, Any]:
     """Writes the confirmed profile and creates the first program, exactly once.
 
@@ -497,69 +506,70 @@ def confirm_intake(
     generation fails (including a model-limit 429), the claim is released back to
     ``in_progress`` and the error re-raised so the player can retry.
     """
-    ensure_intake(db, trainee_id)
-    state = db.get_intake_state() or {}
-    if state.get("status") == STATUS_CONFIRMED:
-        return _confirmation_result(state)
-    if state.get("status") == STATUS_CONFIRMING:
-        raise IntakeConfirmInProgress("A program is already being generated for this intake.")
-    if not state.get("disclosure_acknowledged"):
-        raise IntakeDisclosureRequired(
-            "Acknowledge the hosted-processing disclosure before creating your program."
-        )
-
-    answers = db.load_intake_answers()
-    missing = [name for name in REQUIRED_FIELDS if name not in answers]
-    if missing:
-        raise IntakeValidationError(
-            "Missing required onboarding answers: " + ", ".join(missing) + "."
-        )
-
-    confirmed_at = datetime.now(UTC).isoformat()
-    if not db.claim_intake_confirmation(confirmed_at):
-        # Lost the race: replay if the winner already confirmed, else report busy.
-        state = db.get_intake_state() or {}
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        ensure_intake(db, trainee_id, ledger=ledger)
+        state = ledger.get_intake_state() or {}
         if state.get("status") == STATUS_CONFIRMED:
             return _confirmation_result(state)
-        raise IntakeConfirmInProgress("A program is already being generated for this intake.")
+        if state.get("status") == STATUS_CONFIRMING:
+            raise IntakeConfirmInProgress("A program is already being generated for this intake.")
+        if not state.get("disclosure_acknowledged"):
+            raise IntakeDisclosureRequired(
+                "Acknowledge the hosted-processing disclosure before creating your program."
+            )
 
-    profile = {FIELD_BY_NAME[name].profile_key: answers[name]["value"] for name in answers}
-    db.upsert_user_profile(profile)
+        answers = ledger.load_intake_answers()
+        missing = [name for name in REQUIRED_FIELDS if name not in answers]
+        if missing:
+            raise IntakeValidationError(
+                "Missing required onboarding answers: " + ", ".join(missing) + "."
+            )
 
-    try:
-        result = onboarding_service.complete_onboarding(
-            db, trainee_id, {}, player_account_id=player_account_id
-        )
-    except BaseException:
-        db.release_intake_confirmation(datetime.now(UTC).isoformat())
-        raise
+        confirmed_at = datetime.now(UTC).isoformat()
+        if not ledger.claim_intake_confirmation(confirmed_at):
+            # Lost the race: replay if the winner already confirmed, else report busy.
+            state = ledger.get_intake_state() or {}
+            if state.get("status") == STATUS_CONFIRMED:
+                return _confirmation_result(state)
+            raise IntakeConfirmInProgress("A program is already being generated for this intake.")
 
-    program = result.get("program")
-    db.clear_onboarding_state()
+        profile = {FIELD_BY_NAME[name].profile_key: answers[name]["value"] for name in answers}
+        ledger.upsert_user_profile(profile)
 
-    if program is None:
-        db.save_intake_state(
+        try:
+            result = onboarding_service.complete_onboarding(
+                db, trainee_id, {}, player_account_id=player_account_id, ledger=ledger
+            )
+        except BaseException:
+            ledger.release_intake_confirmation(datetime.now(UTC).isoformat())
+            raise
+
+        program = result.get("program")
+        ledger.clear_onboarding_state()
+
+        if program is None:
+            ledger.save_intake_state(
+                status=STATUS_CONFIRMED,
+                confirmed_at=confirmed_at,
+                program_message=result.get("program_message"),
+            )
+            return {
+                "status": STATUS_CONFIRMED,
+                "program_name": None,
+                "weekly_frequency": None,
+                "program_message": result.get("program_message"),
+            }
+
+        ledger.save_intake_state(
             status=STATUS_CONFIRMED,
             confirmed_at=confirmed_at,
-            program_message=result.get("program_message"),
+            program_name=program.program_name,
+            weekly_frequency=program.weekly_frequency,
+            program_message=None,
         )
         return {
             "status": STATUS_CONFIRMED,
-            "program_name": None,
-            "weekly_frequency": None,
-            "program_message": result.get("program_message"),
+            "program_name": program.program_name,
+            "weekly_frequency": program.weekly_frequency,
+            "program_message": None,
         }
-
-    db.save_intake_state(
-        status=STATUS_CONFIRMED,
-        confirmed_at=confirmed_at,
-        program_name=program.program_name,
-        weekly_frequency=program.weekly_frequency,
-        program_message=None,
-    )
-    return {
-        "status": STATUS_CONFIRMED,
-        "program_name": program.program_name,
-        "weekly_frequency": program.weekly_frequency,
-        "program_message": None,
-    }

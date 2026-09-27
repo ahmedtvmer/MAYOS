@@ -3,6 +3,11 @@
 Two contracts share this router: the legacy three-step chat state (``/start``,
 ``/step``, ``/complete``) kept for backward compatibility, and the structured,
 resumable named-answer intake (``/intake``, ADR 021) that the visual flow uses.
+
+The legacy three-step contract runs the onboarding graph, which still resolves
+its ledger through the compatibility mount; those routes therefore keep the
+verified-player thread-local path (``bind_request``) until Phase B2. The
+structured intake routes use the explicit ledger handle.
 """
 
 import asyncio
@@ -14,7 +19,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from service import intake as intake_service
 from service import onboarding as onboarding_service
-from svc.dependencies import account_id_of, bind_request, get_current_trainee, get_db
+from svc.dependencies import account_id_of, bind_request, get_current_trainee, get_db, get_ledger, get_verified_player
 from svc.rate_limit import ONBOARDING_LIMIT, limiter
 from svc.schemas import (
     IntakeAnswerIn,
@@ -79,8 +84,8 @@ async def start_onboarding(
     """
 
     def _run():
-        bind_request(db, trainee)
-        if intake_service.structured_intake_active(db):
+        bind_request(db, trainee)  # Phase B2: legacy graph reads the thread-local ledger
+        if intake_service.structured_intake_active(db, trainee):
             raise intake_service.StructuredIntakeActive()
         state = _load_or_start(db, trainee, account_id_of(trainee))
         db.save_onboarding_state(_serialize(state))
@@ -101,8 +106,8 @@ async def answer_step(
     db: Annotated[Any, Depends(get_db)],
 ):
     def _run():
-        bind_request(db, trainee)
-        if intake_service.structured_intake_active(db):
+        bind_request(db, trainee)  # Phase B2: legacy graph reads the thread-local ledger
+        if intake_service.structured_intake_active(db, trainee):
             raise intake_service.StructuredIntakeActive()
         account_id = account_id_of(trainee)
         state = (
@@ -124,28 +129,22 @@ async def answer_step(
 
 @router.get("/intake", response_model=IntakeOut)
 async def read_intake(
-    trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
 ):
     """The named intake contract, saved answers, legacy prefill markers, and progress."""
-
-    def _run():
-        bind_request(db, trainee)
-        return intake_service.build_view(db, trainee)
-
-    return await asyncio.to_thread(_run)
+    return await asyncio.to_thread(intake_service.build_view, db, str(player), ledger)
 
 
 @router.post("/intake/disclosure", response_model=IntakeOut)
 async def acknowledge_intake_disclosure(
-    trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
 ):
     """Records the hosted-processing disclosure before any answer is accepted (ADR 016/036)."""
-
-    def _run():
-        bind_request(db, trainee)
-        return intake_service.acknowledge_disclosure(db, trainee)
-
-    return await asyncio.to_thread(_run)
+    return await asyncio.to_thread(intake_service.acknowledge_disclosure, db, str(player), ledger)
 
 
 @router.put("/intake/answers/{field}", response_model=IntakeOut)
@@ -154,15 +153,15 @@ async def save_intake_answer(
     request: Request,
     field: str,
     body: IntakeAnswerIn,
-    trainee: Annotated[str, Depends(get_current_trainee)],
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Validates and saves one named answer; idempotent until confirmed (ADR 021)."""
 
     def _run():
-        bind_request(db, trainee)
         try:
-            return intake_service.save_answer(db, trainee, field, body.value)
+            return intake_service.save_answer(db, str(player), field, body.value, ledger=ledger)
         except intake_service.IntakeDisclosureRequired as exc:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from None
         except intake_service.IntakeAlreadyConfirmed as exc:
@@ -177,15 +176,17 @@ async def save_intake_answer(
 @limiter.limit(ONBOARDING_LIMIT)
 async def confirm_intake(
     request: Request,
-    trainee: Annotated[str, Depends(get_current_trainee)],
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Writes the confirmed profile and creates the first program exactly once (ADR 021)."""
 
     def _run():
-        bind_request(db, trainee)
         try:
-            return intake_service.confirm_intake(db, trainee, player_account_id=account_id_of(trainee))
+            return intake_service.confirm_intake(
+                db, str(player), player_account_id=account_id_of(player), ledger=ledger
+            )
         except intake_service.IntakeDisclosureRequired as exc:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from None
         except intake_service.IntakeValidationError as exc:
@@ -202,7 +203,7 @@ async def complete_onboarding(
     trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
 ):
     def _run():
-        bind_request(db, trainee)
+        bind_request(db, trainee)  # Phase B2: onboarding graph reads the thread-local ledger
         account_id = account_id_of(trainee)
         saved = db.load_onboarding_state()
         state = (
@@ -213,7 +214,7 @@ async def complete_onboarding(
         result = onboarding_service.complete_onboarding(db, trainee, state, player_account_id=account_id)
         db.clear_onboarding_state()
         program = result["program"]
-        intake_service.record_legacy_completion(db, program, result.get("program_message"))
+        intake_service.record_legacy_completion(db, trainee, program, result.get("program_message"))
         if program is None:
             return {"program_name": None, "weekly_frequency": None, "program_message": result["program_message"]}
         return {"program_name": program.program_name, "weekly_frequency": program.weekly_frequency}

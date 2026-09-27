@@ -21,7 +21,6 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
-from service._base import bind_user
 from service.check_ins import next_follow_up_on
 from service.email_sender import send_assignment_redemption_email
 
@@ -253,12 +252,13 @@ def get_player_assignment(db: Any, player_account_id: str) -> dict[str, Any] | N
     }
 
 
-def bind_assigned_player(db: Any, coach_account_id: str, assignment_id: Any) -> dict[str, Any] | None:
-    """Resolves an active assignment owned by this coach, then mounts its ledger.
+def authorized_player_ledger(db: Any, coach_account_id: str, assignment_id: Any) -> tuple[Any, dict[str, Any]] | None:
+    """Resolves an active assignment owned by this coach, then opens its ledger handle.
 
-    The catalog gate runs first; ``bind_user`` is never reached unless the
-    assignment belongs to this coach and is active. ``None`` covers unknown,
+    The catalog gate runs first; no ledger is opened unless the assignment
+    belongs to this coach and is active (ADR 025). ``None`` covers unknown,
     ended, and other-coach assignments alike so callers deny them identically.
+    Returns ``(ledger, context)``; the caller closes the ledger.
     """
     if not isinstance(assignment_id, str) or not assignment_id:
         return None
@@ -268,8 +268,8 @@ def bind_assigned_player(db: Any, coach_account_id: str, assignment_id: Any) -> 
     player = db.get_account(assignment["player_account_id"])
     if not db.is_live_account(player):
         return None
-    bind_user(db, player["ledger_id"])
-    return {"assignment": assignment, "player": player}
+    ledger = db.open_ledger(player["ledger_id"])
+    return ledger, {"assignment": assignment, "player": player}
 
 
 def end_assignment(db: Any, account_id: str, assignment_id: Any, ended_by: str) -> dict[str, Any]:

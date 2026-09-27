@@ -11,7 +11,7 @@ from service import auth as auth_service
 from service import password_reset as reset_service
 from service import plans as plans_service
 from svc.auth import create_access_token, remember_me_hours, revoke_token
-from svc.dependencies import VerifiedPlayer, bind_request, get_current_trainee, get_db
+from svc.dependencies import VerifiedPlayer, get_current_trainee, get_db, get_ledger, get_verified_player
 from svc.rate_limit import PASSWORD_LIMIT, REGISTER_LIMIT, LOGIN_LIMIT, RESET_LIMIT, limiter
 from svc.schemas import (
     AccountCapabilitiesOut,
@@ -146,10 +146,11 @@ async def logout(
     if credentials is None or not credentials.credentials:
         return None
 
-    trainee = await get_current_trainee(credentials, db)
+    # Registry gate: the shared dependency verifies live account, player
+    # capability, and current session epoch before the jti is revoked.
+    await get_current_trainee(credentials, db)
 
     def _run():
-        bind_request(db, trainee)
         revoke_token(db, credentials.credentials)
 
     await asyncio.to_thread(_run)
@@ -161,14 +162,16 @@ async def logout(
 async def change_password(
     request: Request,
     body: PasswordChangeIn,
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Authenticated password change. Revokes ALL sessions; the client must re-login."""
 
     def _run():
-        bind_request(db, trainee)
-        result = auth_service.change_password(db, trainee.account_id, body.current_password, body.new_password)
+        result = auth_service.change_password(
+            db, player.account_id, body.current_password, body.new_password, ledger=ledger
+        )
         if not result["ok"]:
             # Deliberately 400 (never 401): 401 means "session expired" to clients.
             status_code = status.HTTP_400_BAD_REQUEST
@@ -184,7 +187,7 @@ async def change_password(
 async def delete_account(
     request: Request,
     body: AccountDeleteIn,
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_verified_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Password-confirmed, irreversible deletion of the caller's account (ADR 015/039).
@@ -193,10 +196,14 @@ async def delete_account(
     clients read as session expiry). On success every session is invalidated in
     the durable registry, the live ledger and its backups are removed, and the
     username becomes reusable only as a new immutable account.
+
+    The route holds no ledger handle: the password check opens a short-lived
+    handle that closes before ``db.delete_account`` unlinks the ledger files, so
+    deletion never races an open connection.
     """
 
     def _run():
-        result = deletion_service.delete_account(db, trainee.account_id, body.password)
+        result = deletion_service.delete_account(db, player.account_id, body.password)
         if not result["ok"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
         return result
@@ -207,11 +214,10 @@ async def delete_account(
 
 @router.get("/email", response_model=RecoveryEmailOut)
 async def read_recovery_email(
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
+    player: Annotated[VerifiedPlayer, Depends(get_verified_player)], db: Annotated[Any, Depends(get_db)]
 ):
     def _run():
-        bind_request(db, trainee)
-        return reset_service.get_recovery_email(db, trainee.account_id)
+        return reset_service.get_recovery_email(db, player.account_id)
 
     email = await asyncio.to_thread(_run)
     return RecoveryEmailOut(email=email)
@@ -222,12 +228,11 @@ async def read_recovery_email(
 async def set_recovery_email(
     request: Request,
     body: EmailUpdateIn,
-    trainee: Annotated[VerifiedPlayer, Depends(get_current_trainee)],
+    player: Annotated[VerifiedPlayer, Depends(get_verified_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
     def _run():
-        bind_request(db, trainee)
-        result = reset_service.set_recovery_email(db, trainee.account_id, body.email)
+        result = reset_service.set_recovery_email(db, player.account_id, body.email)
         if not result["ok"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
         return result["email"]

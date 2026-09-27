@@ -225,6 +225,43 @@ def test_deletion_invalidates_all_sessions_and_removes_ledger(api):
     assert _scalar(db, "SELECT COUNT(*) FROM password_reset_tokens WHERE trainee_id = ?", (account_id,)) == 0
 
 
+def test_delete_account_holds_no_ledger_handle_while_removing_files(api, monkeypatch):
+    """Deletion must not unlink the ledger while a handle to it is open (defect #3)."""
+    client, db, users_dir = api
+    registered = _register(client, "alice")
+    token = registered["access_token"]
+
+    opened = []
+    real_open = db.open_ledger
+
+    def tracking_open(ledger_id):
+        handle = real_open(ledger_id)
+        opened.append(handle)
+        return handle
+
+    monkeypatch.setattr(db, "open_ledger", tracking_open)
+
+    def is_open(handle):
+        try:
+            handle.conn
+        except RuntimeError:
+            return False
+        return True
+
+    observed = {}
+    real_remove = db._remove_account_files
+
+    def checking_remove(ledger_id):
+        observed["open"] = [handle for handle in opened if is_open(handle)]
+        return real_remove(ledger_id)
+
+    monkeypatch.setattr(db, "_remove_account_files", checking_remove)
+
+    assert _delete(client, token, "correct-horse-1").status_code == 200
+    assert not (users_dir / "alice.db").exists()
+    assert observed["open"] == []
+
+
 def test_username_reuse_creates_a_new_immutable_account(api):
     client, db, users_dir = api
     first = _register(client, "alice")
@@ -391,8 +428,8 @@ def test_deleted_coach_becomes_former_coach_and_returns_program_authority(api, m
     assert client.post(f"/coach/assignments/{assignment_id}/program", headers=coach_headers, json={}).status_code == 200
 
     # While assigned, the coach owns the program.
-    db.switch_user("bob")
-    assert programs_service.player_controls_program(db, player_id) is False
+    with db.open_ledger("bob") as ledger:
+        assert programs_service.player_controls_program(db, ledger, player_id) is False
 
     assert _delete(client, coach_headers["Authorization"].split(" ", 1)[1], "correct-horse-1").status_code == 200
 
@@ -402,10 +439,10 @@ def test_deleted_coach_becomes_former_coach_and_returns_program_authority(api, m
     assert check_ins[0]["coach_username"] == "Former coach"
 
     # Program provenance is retained, but authority has returned to the player.
-    db.switch_user("bob")
-    active = db.get_active_program()
-    assert active.published_by_coach_account_id == coach_id
-    assert programs_service.player_controls_program(db, player_id) is True
+    with db.open_ledger("bob") as ledger:
+        active = ledger.get_active_program()
+        assert active.published_by_coach_account_id == coach_id
+        assert programs_service.player_controls_program(db, ledger, player_id) is True
 
     # The player can now regenerate self-service (no coach model call needed).
     def fake_player_generation(**kwargs):

@@ -92,11 +92,10 @@ def revoke_token(db: Any, token: str) -> None:
     ledger_id = account["ledger_id"]
     if not db.user_exists(ledger_id):
         return
-    if db.active_user != ledger_id:
-        db.switch_user(ledger_id)
     exp = claims.get("exp")
     expires_at = (
         datetime.fromtimestamp(exp, UTC).isoformat() if isinstance(exp, (int, float)) else datetime.now(UTC).isoformat()
     )
-    db.revoke_token(str(claims["jti"]), expires_at)
-    db.prune_revoked_tokens(datetime.now(UTC).isoformat())
+    with db.open_ledger(ledger_id) as ledger:
+        ledger.revoke_token(str(claims["jti"]), expires_at)
+        ledger.prune_revoked_tokens(datetime.now(UTC).isoformat())

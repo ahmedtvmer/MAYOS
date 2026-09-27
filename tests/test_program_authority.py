@@ -431,7 +431,8 @@ def test_onboarding_coach_controlled_without_saved_program_writes_welcome(api, m
     )
     assert result["program"] is None
     assert result["program_message"] == programs_service.COACH_CONTROLLED_ERROR
-    history = db.get_chat_history()
+    with db.open_ledger("p1") as ledger:
+        history = ledger.get_chat_history()
     assert any(
         message["role"] == "assistant"
         and f"Welcome! {programs_service.COACH_CONTROLLED_ERROR}" in message["content"]

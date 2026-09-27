@@ -16,8 +16,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from agent.program_generator import generate_program_pipeline
-from service._base import bind_user
-from service.assignments import bind_assigned_player, coach_identity
+from service._base import ledger_scope
+from service.assignments import authorized_player_ledger, coach_identity
 from service.email_sender import send_program_request_email
 from service.programs import player_controls_program
 
@@ -83,7 +83,9 @@ def _notify_player(
         logger.exception("Player program-request notice raised unexpectedly")
 
 
-def create_request(db: Any, player_account_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+def create_request(
+    db: Any, player_account_id: str, payload: dict[str, Any], ledger: Any | None = None
+) -> dict[str, Any]:
     """Records a pending request against the player's coach-controlled active program.
 
     Returns ``{"ok": False, "error": ...}`` for a refusal and never writes the
@@ -102,75 +104,75 @@ def create_request(db: Any, player_account_id: str, payload: dict[str, Any]) -> 
     account = db.get_account(player_account_id)
     if not db.is_live_account(account):
         return {"ok": False, "error": DIRECT_CHANGE_ERROR}
-    bind_user(db, account["ledger_id"])
 
-    if player_controls_program(db, player_account_id):
-        return {"ok": False, "error": DIRECT_CHANGE_ERROR}
+    with ledger_scope(db, ledger, account["ledger_id"]) as ledger:
+        if player_controls_program(db, ledger, player_account_id):
+            return {"ok": False, "error": DIRECT_CHANGE_ERROR}
 
-    assignment = db.get_active_assignment_for_player(player_account_id)
-    if assignment is None:
-        return {"ok": False, "error": DIRECT_CHANGE_ERROR}
+        assignment = db.get_active_assignment_for_player(player_account_id)
+        if assignment is None:
+            return {"ok": False, "error": DIRECT_CHANGE_ERROR}
 
-    active = db.get_active_program()
-    if active is None:
-        return {"ok": False, "error": "You do not have an active program to change."}
+        active = ledger.get_active_program()
+        if active is None:
+            return {"ok": False, "error": "You do not have an active program to change."}
 
-    day_name = exercise_id = replacement_exercise_id = None
-    desired_weekly_frequency = None
-    desired_split_preference = None
+        day_name = exercise_id = replacement_exercise_id = None
+        desired_weekly_frequency = None
+        desired_split_preference = None
 
-    if kind == EXERCISE_SUBSTITUTION:
-        day_name = str(payload.get("day_name") or "").strip()
-        exercise_id = payload.get("exercise_id")
-        replacement_exercise_id = payload.get("replacement_exercise_id")
-        if not day_name or not exercise_id or not replacement_exercise_id:
-            return {"ok": False, "error": "Pick the day, the exercise, and its replacement."}
-        if str(replacement_exercise_id) == str(exercise_id):
-            return {"ok": False, "error": "Choose a different replacement exercise."}
-        if _find_day(active, day_name) is None:
-            return {"ok": False, "error": "That day is not part of your current program."}
-        if not _day_contains(active, day_name, exercise_id):
-            return {"ok": False, "error": "That exercise is not in that day of your current program."}
-        if db.get_exercise_catalog_entry(str(replacement_exercise_id)) is None:
-            return {"ok": False, "error": "That replacement exercise was not found."}
-        exercise_id = str(exercise_id)
-        replacement_exercise_id = str(replacement_exercise_id)
-    else:
-        desired_weekly_frequency = payload.get("desired_weekly_frequency")
-        if (
-            isinstance(desired_weekly_frequency, bool)
-            or not isinstance(desired_weekly_frequency, int)
-            or not 1 <= desired_weekly_frequency <= 5
-        ):
-            return {"ok": False, "error": "Weekly frequency must be between 1 and 5."}
-        desired_split_preference = str(payload.get("desired_split_preference") or "").strip() or None
-        if desired_split_preference and len(desired_split_preference) > MAX_SPLIT_PREFERENCE_CHARS:
-            return {"ok": False, "error": f"Keep the split preference under {MAX_SPLIT_PREFERENCE_CHARS} characters."}
+        if kind == EXERCISE_SUBSTITUTION:
+            day_name = str(payload.get("day_name") or "").strip()
+            exercise_id = payload.get("exercise_id")
+            replacement_exercise_id = payload.get("replacement_exercise_id")
+            if not day_name or not exercise_id or not replacement_exercise_id:
+                return {"ok": False, "error": "Pick the day, the exercise, and its replacement."}
+            if str(replacement_exercise_id) == str(exercise_id):
+                return {"ok": False, "error": "Choose a different replacement exercise."}
+            if _find_day(active, day_name) is None:
+                return {"ok": False, "error": "That day is not part of your current program."}
+            if not _day_contains(active, day_name, exercise_id):
+                return {"ok": False, "error": "That exercise is not in that day of your current program."}
+            if db.get_exercise_catalog_entry(str(replacement_exercise_id)) is None:
+                return {"ok": False, "error": "That replacement exercise was not found."}
+            exercise_id = str(exercise_id)
+            replacement_exercise_id = str(replacement_exercise_id)
+        else:
+            desired_weekly_frequency = payload.get("desired_weekly_frequency")
+            if (
+                isinstance(desired_weekly_frequency, bool)
+                or not isinstance(desired_weekly_frequency, int)
+                or not 1 <= desired_weekly_frequency <= 5
+            ):
+                return {"ok": False, "error": "Weekly frequency must be between 1 and 5."}
+            desired_split_preference = str(payload.get("desired_split_preference") or "").strip() or None
+            if desired_split_preference and len(desired_split_preference) > MAX_SPLIT_PREFERENCE_CHARS:
+                return {"ok": False, "error": f"Keep the split preference under {MAX_SPLIT_PREFERENCE_CHARS} characters."}
 
-    now_iso = _now_iso()
-    request_id = uuid.uuid4().hex
-    coach_account_id = assignment["coach_account_id"]
-    db.create_program_request(
-        request_id=request_id,
-        assignment_id=assignment["assignment_id"],
-        coach_account_id=coach_account_id,
-        player_account_id=str(player_account_id),
-        kind=kind,
-        program_version=int(active.version or 0),
-        day_name=day_name,
-        exercise_id=exercise_id,
-        replacement_exercise_id=replacement_exercise_id,
-        desired_weekly_frequency=desired_weekly_frequency,
-        desired_split_preference=desired_split_preference,
-        reason=reason,
-        now_iso=now_iso,
-    )
-    email_sent = _notify_coach(
-        db, coach_account_id, assignment["assignment_id"], account["username"], now_iso
-    )
+        now_iso = _now_iso()
+        request_id = uuid.uuid4().hex
+        coach_account_id = assignment["coach_account_id"]
+        db.create_program_request(
+            request_id=request_id,
+            assignment_id=assignment["assignment_id"],
+            coach_account_id=coach_account_id,
+            player_account_id=str(player_account_id),
+            kind=kind,
+            program_version=int(active.version or 0),
+            day_name=day_name,
+            exercise_id=exercise_id,
+            replacement_exercise_id=replacement_exercise_id,
+            desired_weekly_frequency=desired_weekly_frequency,
+            desired_split_preference=desired_split_preference,
+            reason=reason,
+            now_iso=now_iso,
+        )
+        email_sent = _notify_coach(
+            db, coach_account_id, assignment["assignment_id"], account["username"], now_iso
+        )
 
-    request = db.get_program_request(request_id)
-    return {"ok": True, "request": request, "email_sent": email_sent}
+        request = db.get_program_request(request_id)
+        return {"ok": True, "request": request, "email_sent": email_sent}
 
 
 def _notify_coach(
@@ -223,112 +225,117 @@ def apply_request(
     leaves the program untouched; the pending→applied claim runs before any write
     so a double apply or a racing cancel cannot both succeed.
     """
-    context = bind_assigned_player(db, coach_account_id, assignment_id)
-    if context is None:
+    authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
+    if authorized is None:
         return None
+    ledger, context = authorized
+    with ledger:
+        request = _pending_request(db, coach_account_id, assignment_id, request_id)
+        if request is None:
+            return {"ok": False, "error": REQUEST_NOT_FOUND_ERROR}
+        if request["status"] != "pending":
+            return {"ok": False, "error": NOT_PENDING_ERROR}
 
-    request = _pending_request(db, coach_account_id, assignment_id, request_id)
-    if request is None:
-        return {"ok": False, "error": REQUEST_NOT_FOUND_ERROR}
-    if request["status"] != "pending":
-        return {"ok": False, "error": NOT_PENDING_ERROR}
-
-    active = db.get_active_program()
-    stale = (
-        active is None
-        or int(active.version or 0) != int(request["program_version"])
-        or player_controls_program(db, request["player_account_id"])
-    )
-    if not stale and request["kind"] == EXERCISE_SUBSTITUTION:
-        stale = not _day_contains(active, request["day_name"], request["exercise_id"])
-    if stale:
-        return {"ok": False, "error": STALE_REQUEST_ERROR, "stale": True}
-
-    data = None
-    if request["kind"] == EXERCISE_SUBSTITUTION:
-        replacement = db.get_exercise_catalog_entry(request["replacement_exercise_id"])
-        data = _swap_slot(active, request["day_name"], request["exercise_id"], replacement) if replacement else None
-        if data is None:
+        active = ledger.get_active_program()
+        stale = (
+            active is None
+            or int(active.version or 0) != int(request["program_version"])
+            or player_controls_program(db, ledger, request["player_account_id"])
+        )
+        if not stale and request["kind"] == EXERCISE_SUBSTITUTION:
+            stale = not _day_contains(active, request["day_name"], request["exercise_id"])
+        if stale:
             return {"ok": False, "error": STALE_REQUEST_ERROR, "stale": True}
 
-    claimed = db.resolve_program_request(request_id, "applied", None, coach_account_id, _now_iso())
-    if not claimed["ok"]:
-        return {"ok": False, "error": NOT_PENDING_ERROR}
-
-    try:
+        data = None
         if request["kind"] == EXERCISE_SUBSTITUTION:
-            db.save_training_program(data, published_by_coach_account_id=coach_account_id)
-        else:
-            from svc.llm import InferenceScope, run_inference_sync
+            replacement = db.get_exercise_catalog_entry(request["replacement_exercise_id"])
+            data = _swap_slot(active, request["day_name"], request["exercise_id"], replacement) if replacement else None
+            if data is None:
+                return {"ok": False, "error": STALE_REQUEST_ERROR, "stale": True}
 
-            run_inference_sync(
-                generate_program_pipeline,
-                frequency_override=request["desired_weekly_frequency"],
-                user_split_override=request["desired_split_preference"],
-                published_by_coach_account_id=coach_account_id,
-                scope=InferenceScope(account_id=coach_account_id, role="coach", purpose="coach_program_request"),
-            )
-    except Exception:
-        logger.exception(
-            "Program request %s write failed after claim; reverting to pending", request_id
-        )
-        now_iso = _now_iso()
+        claimed = db.resolve_program_request(request_id, "applied", None, coach_account_id, _now_iso())
+        if not claimed["ok"]:
+            return {"ok": False, "error": NOT_PENDING_ERROR}
+
         try:
-            reverted = db.reopen_program_request(request_id, now_iso)
-            if not reverted["ok"]:
-                logger.error(
-                    "Program request %s could not be reverted to pending (rowcount=%s)",
-                    request_id,
-                    reverted["rowcount"],
+            if request["kind"] == EXERCISE_SUBSTITUTION:
+                ledger.save_training_program(data, published_by_coach_account_id=coach_account_id)
+            else:
+                from svc.llm import InferenceScope, run_inference_sync
+
+                from service._base import bind_user
+
+                bind_user(db, ledger.ledger_id)  # Phase B2: program pipeline reads the thread-local ledger
+                run_inference_sync(
+                    generate_program_pipeline,
+                    frequency_override=request["desired_weekly_frequency"],
+                    user_split_override=request["desired_split_preference"],
+                    published_by_coach_account_id=coach_account_id,
+                    scope=InferenceScope(account_id=coach_account_id, role="coach", purpose="coach_program_request"),
                 )
         except Exception:
-            logger.exception("Program request %s revert raised unexpectedly", request_id)
-        raise
+            logger.exception(
+                "Program request %s write failed after claim; reverting to pending", request_id
+            )
+            now_iso = _now_iso()
+            try:
+                reverted = db.reopen_program_request(request_id, now_iso)
+                if not reverted["ok"]:
+                    logger.error(
+                        "Program request %s could not be reverted to pending (rowcount=%s)",
+                        request_id,
+                        reverted["rowcount"],
+                    )
+            except Exception:
+                logger.exception("Program request %s revert raised unexpectedly", request_id)
+            raise
 
-    published = db.get_active_program()
-    version = published.version if published is not None else None
-    _notify_player(
-        db,
-        request["player_account_id"],
-        request["assignment_id"],
-        f"Your coach applied your program change. Program version {version}.",
-        _now_iso(),
-    )
-    return {"ok": True, "request": db.get_program_request(request_id), "program_version": version}
+        published = ledger.get_active_program()
+        version = published.version if published is not None else None
+        _notify_player(
+            db,
+            request["player_account_id"],
+            request["assignment_id"],
+            f"Your coach applied your program change. Program version {version}.",
+            _now_iso(),
+        )
+        return {"ok": True, "request": db.get_program_request(request_id), "program_version": version}
 
 
 def decline_request(
     db: Any, coach_account_id: str, assignment_id: Any, request_id: Any, response: str
 ) -> dict[str, Any] | None:
     """Declines a pending request with a short player-visible response; program untouched."""
-    context = bind_assigned_player(db, coach_account_id, assignment_id)
-    if context is None:
+    authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
+    if authorized is None:
         return None
+    ledger, context = authorized
+    with ledger:
+        response = str(response or "").strip()
+        if not response:
+            return {"ok": False, "error": "A response is required."}
+        if len(response) > MAX_RESPONSE_CHARS:
+            return {"ok": False, "error": f"Keep the response under {MAX_RESPONSE_CHARS} characters."}
 
-    response = str(response or "").strip()
-    if not response:
-        return {"ok": False, "error": "A response is required."}
-    if len(response) > MAX_RESPONSE_CHARS:
-        return {"ok": False, "error": f"Keep the response under {MAX_RESPONSE_CHARS} characters."}
+        request = _pending_request(db, coach_account_id, assignment_id, request_id)
+        if request is None:
+            return {"ok": False, "error": REQUEST_NOT_FOUND_ERROR}
+        if request["status"] != "pending":
+            return {"ok": False, "error": NOT_PENDING_ERROR}
 
-    request = _pending_request(db, coach_account_id, assignment_id, request_id)
-    if request is None:
-        return {"ok": False, "error": REQUEST_NOT_FOUND_ERROR}
-    if request["status"] != "pending":
-        return {"ok": False, "error": NOT_PENDING_ERROR}
+        claimed = db.resolve_program_request(request_id, "declined", response, coach_account_id, _now_iso())
+        if not claimed["ok"]:
+            return {"ok": False, "error": NOT_PENDING_ERROR}
 
-    claimed = db.resolve_program_request(request_id, "declined", response, coach_account_id, _now_iso())
-    if not claimed["ok"]:
-        return {"ok": False, "error": NOT_PENDING_ERROR}
-
-    _notify_player(
-        db,
-        request["player_account_id"],
-        request["assignment_id"],
-        f"Your coach declined your program change: {response}",
-        _now_iso(),
-    )
-    return {"ok": True, "request": db.get_program_request(request_id)}
+        _notify_player(
+            db,
+            request["player_account_id"],
+            request["assignment_id"],
+            f"Your coach declined your program change: {response}",
+            _now_iso(),
+        )
+        return {"ok": True, "request": db.get_program_request(request_id)}
 
 
 def cancel_request(db: Any, player_account_id: str, request_id: Any) -> dict[str, Any]:

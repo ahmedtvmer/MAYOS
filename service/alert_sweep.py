@@ -22,9 +22,10 @@ __all__ = ["run_sweep"]
 def run_sweep(db: Any, now: datetime | None = None) -> dict[str, int]:
     """Evaluates every active assignment; one player's failure never stops the sweep.
 
-    Missed-day evaluation mounts the player ledger (then always unmounts it);
-    follow-up evaluation is catalog-only and runs even when the missed-day pass
-    skipped or failed, so a due follow-up still fires without a ledger (ADR 031).
+    Missed-day evaluation opens the player's ledger as an explicit handle (closing
+    it when done); follow-up evaluation is catalog-only and runs even when the
+    missed-day pass skipped or failed, so a due follow-up still fires without a
+    ledger (ADR 031).
     """
     now = now or datetime.now(UTC)
     counts = {
@@ -53,8 +54,6 @@ def run_sweep(db: Any, now: datetime | None = None) -> dict[str, int]:
             logger.exception(
                 "Missed-day evaluation failed for assignment %s", assignment.get("assignment_id")
             )
-        finally:
-            db.unmount_user()
         if result is not None:
             if result.get("skipped"):
                 counts["skipped"] += 1

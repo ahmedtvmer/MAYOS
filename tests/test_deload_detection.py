@@ -18,7 +18,7 @@ def test_normal_recovery_state():
         [("s1", "2026-09-01", 4), ("s2", "2026-09-03", 5), ("s3", "2026-09-05", 4)],
         [("s1", 8.0), ("s1", 8.5), ("s2", 8.0), ("s3", 8.5)],
     ]
-    mock_db.user_conn.cursor.return_value = mock_cursor
+    mock_db.conn.cursor.return_value = mock_cursor
 
     res = evaluate_systemic_fatigue(mock_db)
     assert res["deload_recommended"] is False
@@ -34,7 +34,7 @@ def test_rolling_readiness_crash():
         [("s1", "2026-09-01", 2), ("s2", "2026-09-03", 2), ("s3", "2026-09-05", 1)],
         [("s1", 9.0), ("s2", 9.0), ("s3", 9.0)],
     ]
-    mock_db.user_conn.cursor.return_value = mock_cursor
+    mock_db.conn.cursor.return_value = mock_cursor
 
     res = evaluate_systemic_fatigue(mock_db)
     assert res["deload_recommended"] is True
@@ -52,7 +52,7 @@ def test_acute_readiness_floor():
         [("s1", "2026-09-05", 1), ("s2", "2026-09-03", 4), ("s3", "2026-09-01", 4)],
         [("s1", 8.5)],
     ]
-    mock_db.user_conn.cursor.return_value = mock_cursor
+    mock_db.conn.cursor.return_value = mock_cursor
 
     res = evaluate_systemic_fatigue(mock_db)
     assert res["deload_recommended"] is True
@@ -68,7 +68,7 @@ def test_high_exertion_density():
         [("s1", "2026-09-05", 3), ("s2", "2026-09-03", 3), ("s3", "2026-09-01", 3)],
         [("s1", 10.0), ("s1", 10.0), ("s2", 9.5), ("s2", 10.0), ("s3", 8.0), ("s3", 8.5)],
     ]
-    mock_db.user_conn.cursor.return_value = mock_cursor
+    mock_db.conn.cursor.return_value = mock_cursor
 
     res = evaluate_systemic_fatigue(mock_db)
     assert res["deload_recommended"] is True

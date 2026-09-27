@@ -325,22 +325,21 @@ def test_coach_queue_listing_mounts_no_player_ledger(api, monkeypatch):
     created = _create(client, player_headers, **_substitution())
     assert created.status_code == 200, created.text
 
-    import service.assignments as assignments_service
+    opened: list[str] = []
+    real_open_ledger = db.open_ledger
 
-    mounted: list[str] = []
+    def spy(ledger_id):
+        opened.append(str(ledger_id))
+        return real_open_ledger(ledger_id)
 
-    def spy(db_arg, ledger_id):
-        mounted.append(str(ledger_id))
-        return ledger_id
-
-    monkeypatch.setattr(assignments_service, "bind_user", spy)
+    monkeypatch.setattr(db, "open_ledger", spy)
 
     listed = client.get(f"/coach/assignments/{assignment_id}/program-requests", headers=coach_headers)
     assert listed.status_code == 200, listed.text
     rows = listed.json()["requests"]
     assert len(rows) == 1
     assert rows[0]["request_id"] == created.json()["request_id"]
-    assert "p1" not in mounted
+    assert "p1" not in opened
 
 
 # --------------------------------------------------------------------------
@@ -438,7 +437,9 @@ def test_apply_write_failure_reverts_request_to_pending(api, monkeypatch):
     def boom(*args, **kwargs):
         raise ValueError("No user profile found")
 
-    monkeypatch.setattr(db, "save_training_program", boom)
+    from database.ledger.handle import TrainingLedger
+
+    monkeypatch.setattr(TrainingLedger, "save_training_program", boom)
 
     with pytest.raises(ValueError):
         program_requests_service.apply_request(db, coach_account_id, assignment_id, request_id)

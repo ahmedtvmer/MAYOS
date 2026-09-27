@@ -44,7 +44,10 @@ class SchemaMixin:
         self.ensure_account_schema()
 
     def create_user_schema(self) -> None:
-        cursor = self.conn.cursor()
+        self._create_user_schema_on(self.conn)
+
+    def _create_user_schema_on(self, conn) -> None:
+        cursor = conn.cursor()
         cursor.executescript("""
             PRAGMA foreign_keys = ON;
             CREATE TABLE IF NOT EXISTS user_profile (
@@ -233,9 +236,9 @@ class SchemaMixin:
                 revoked_at TEXT NOT NULL
             );
         """ + "\n".join(f"{statement};" for statement in (*PERFORMED_DATE_CORRECTIONS_DDL, *INTAKE_DDL)))
-        if get_user_schema_version(self.conn) < CURRENT_USER_SCHEMA_VERSION:
-            set_user_schema_version(self.conn, CURRENT_USER_SCHEMA_VERSION)
-        self.conn.commit()
+        if get_user_schema_version(conn) < CURRENT_USER_SCHEMA_VERSION:
+            set_user_schema_version(conn, CURRENT_USER_SCHEMA_VERSION)
+        conn.commit()
 
     def create_schema(self) -> None:
         self.create_catalog_schema()

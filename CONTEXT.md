@@ -73,6 +73,24 @@ A player's request for their coach to replace an exercise in a coach-controlled 
 **Unplanned exercise**:
 An exercise the player performed and recorded that was not prescribed in the active program. Recording it does not change the program.
 
+**Reps in reserve (RIR)**:
+The player's own estimate of how many more reps they could have completed in a set. It is the effort measure players see and enter; it is optional, and a blank value means the player did not rate the set.
+_Avoid_: RPE (internal legacy measure; RIR = 10 − RPE)
+
+**Personal record**:
+A player's best result on an exercise, measured as heaviest weight lifted or best estimated one-rep max. An exercise's first recorded session sets the baseline and is never itself a personal record.
+_Avoid_: PR (in prose), PB
+
+**Player mode** / **Coach mode**:
+The two app surfaces of one account: training for oneself, or coaching assigned players. An account holding both capabilities switches between them; neither is a separate account.
+_Avoid_: Lifter UI, coach account
+
+**Linked sign-in**:
+An external identity, such as a Google account, attached to exactly one MAYOS account and usable to sign in to it. It never replaces the account's username. An account always keeps at least one way to sign in, so a Linked sign-in can be removed only while the account has a password.
+
+**Active workout**:
+A workout the player is logging right now and has not yet finished. A device holds at most one, and it survives the app closing. Finishing it produces a Workout draft.
+
 **Workout draft**:
 A workout the player has recorded on their device but has not yet committed to their training history. A draft may be captured without connectivity.
 

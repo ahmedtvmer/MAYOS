@@ -17,7 +17,7 @@ from agent.progression_engine import (
     project_next_load,
 )
 from core.warmup import calculate_warmup_sets
-from service._base import bind_user
+from service._base import ledger_scope
 from service.schedule import latest_schedule_timezone, local_date_in, local_today, parse_iso_date
 from utils.plate_calculator import calculate_barbell_plates
 
@@ -96,7 +96,7 @@ def is_historical_program(
     )
 
 
-def resolve_sync_program(db: Any, active_program: Any, captured_version: int | None) -> Any:
+def resolve_sync_program(db: Any, ledger: Any, active_program: Any, captured_version: int | None) -> Any:
     """The program to commit a draft against, or raise ``ProgramVersionMismatchError`` (ADR 034).
 
     The captured version must exist in the player's ledger and be no newer than
@@ -111,7 +111,7 @@ def resolve_sync_program(db: Any, active_program: Any, captured_version: int | N
     if captured_version == active_version:
         return active_program
     if captured_version < active_version:
-        historical = db.get_program_by_version(captured_version)
+        historical = ledger.get_program_by_version(captured_version)
         if historical is not None:
             return historical
     raise ProgramVersionMismatchError(active_version)
@@ -310,15 +310,19 @@ def _is_barbell(exercise: Any) -> bool:
     return "barbell" in exercise.exercise_name.lower() or "barbell" in str(getattr(exercise, "equipment", "")).lower()
 
 
-def evaluate_fatigue(db: Any, trainee_id: str) -> dict[str, Any]:
-    bind_user(db, trainee_id)
-    return evaluate_systemic_fatigue(db)
+def evaluate_fatigue(db: Any, trainee_id: str, ledger: Any | None = None) -> dict[str, Any]:
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        return evaluate_systemic_fatigue(ledger)
 
 
-def build_prescription(db: Any, trainee_id: str, day_plan: Any) -> dict[str, Any]:
+def build_prescription(db: Any, trainee_id: str, day_plan: Any, ledger: Any | None = None) -> dict[str, Any]:
     """Auto-regulated targets per exercise for the given training day."""
-    bind_user(db, trainee_id)
-    fatigue_info = evaluate_systemic_fatigue(db)
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        return _build_prescription(ledger, day_plan)
+
+
+def _build_prescription(ledger: Any, day_plan: Any) -> dict[str, Any]:
+    fatigue_info = evaluate_systemic_fatigue(ledger)
     targets = []
     for ex_idx, ex in enumerate(day_plan.exercises, start=1):
         is_barbell = _is_barbell(ex)
@@ -327,7 +331,7 @@ def build_prescription(db: Any, trainee_id: str, day_plan: Any) -> dict[str, Any
         if fatigue_info["deload_recommended"]:
             effective_sets = max(1, round(ex.target_sets * fatigue_info["volume_multiplier"]))
             target_rpe_cap = min(target_rpe_cap, fatigue_info["intensity_cap_rpe"] or 10.0)
-        last_perf = db.get_last_performance(ex.exercise_id)
+        last_perf = ledger.get_last_performance(ex.exercise_id)
         entry: dict[str, Any] = {
             "exercise_id": str(ex.exercise_id),
             "exercise_name": ex.exercise_name,
@@ -374,6 +378,7 @@ def _persist_session(
     now_iso: str,
     today_date: str,
     sync: SyncMetadata,
+    ledger: Any,
     active_program_version_at_sync: int | None = None,
 ) -> dict[str, Any]:
     """Writes one session and all of its derived records; the caller owns the transaction.
@@ -384,9 +389,9 @@ def _persist_session(
     landed, which may be newer than the captured ``sync.program_version`` for a
     historical-sync session (ADR 034).
     """
-    profile = db.get_user_profile() or {}
+    profile = ledger.get_user_profile() or {}
 
-    db.log_workout_session(
+    ledger.log_workout_session(
         session_id=session_id,
         session_date=today_date,
         split_name=day_plan.day_name,
@@ -505,7 +510,7 @@ def _persist_session(
             }
         )
 
-    db.log_workout_sets_batch(all_sets_to_batch)
+    ledger.log_workout_sets_batch(all_sets_to_batch)
 
     prescribed_ids = {str(ex.exercise_id) for ex in day_plan.exercises}
     divergences: list[dict[str, str]] = [
@@ -534,14 +539,14 @@ def _persist_session(
             seen_divergences.add(key)
             deduped_divergences.append(divergence)
     divergences = deduped_divergences
-    db.record_session_divergences(session_id, divergences, now_iso)
+    ledger.record_session_divergences(session_id, divergences, now_iso)
 
     pr_events: list[dict[str, Any]] = []
     for item in sets_by_exercise:
         ex_obj = item["exercise"]
         pr_events.extend(
             evaluate_session_prs(
-                db,
+                ledger,
                 session_id,
                 str(ex_obj.exercise_id),
                 item["sets"],
@@ -550,7 +555,7 @@ def _persist_session(
             )
         )
 
-    fatigue_post = evaluate_systemic_fatigue(db)
+    fatigue_post = evaluate_systemic_fatigue(ledger)
     debrief_content = generate_session_debrief(
         split_name=day_plan.day_name,
         readiness=readiness,
@@ -562,13 +567,13 @@ def _persist_session(
         fatigue_info=fatigue_post,
         pr_events=pr_events,
     )
-    db.save_session_debrief(session_id, debrief_content)
+    ledger.save_session_debrief(session_id, debrief_content)
     compact_pointer = (
         f"📋 **Session Logged:** {day_plan.day_name} ({today_date}) | "
         f"{total_working_sets} Sets | Volume: {total_tonnage_kg:,.1f} kg | "
         f"Readiness: {readiness}/5 | Saved to Ledger."
     )
-    db.add_chat_message("assistant", compact_pointer)
+    ledger.add_chat_message("assistant", compact_pointer)
 
     return {
         "session_id": session_id,
@@ -596,7 +601,7 @@ def _commit_outcome_from_row(row: dict[str, Any]) -> CommitOutcome:
     return CommitOutcome(json.loads(row["response_json"]), created=False)
 
 
-def committed_session(db: Any, client_session_id: str | None) -> CommitOutcome | None:
+def committed_session(ledger: Any, client_session_id: str | None) -> CommitOutcome | None:
     """The exact stored outcome for a client session id, if one exists (ADR 020/033).
 
     Callers must use this to replay *before* any mutable catalog, day, or
@@ -606,11 +611,11 @@ def committed_session(db: Any, client_session_id: str | None) -> CommitOutcome |
     """
     if not client_session_id:
         return None
-    existing = db.get_session_commit(client_session_id)
+    existing = ledger.get_session_commit(client_session_id)
     return _commit_outcome_from_row(existing) if existing is not None else None
 
 
-def session_state(db: Any, session_id: Any, body: dict[str, Any]) -> dict[str, Any]:
+def session_state(db: Any, trainee_id: str, session_id: Any, body: dict[str, Any], ledger: Any | None = None) -> dict[str, Any]:
     """The stored commit body overlaid with the live session's corrected state (ADR 035).
 
     The idempotency record is immutable, so the reconciliation read overlays the
@@ -618,15 +623,16 @@ def session_state(db: Any, session_id: Any, body: dict[str, Any]) -> dict[str, A
     history (the same key the coach responses use). A body whose session is
     absent from this ledger is returned unchanged.
     """
-    session = db.get_workout_session(session_id) if isinstance(session_id, str) else None
-    if session is None:
-        return body
-    return {
-        **body,
-        "session_date": session["session_date"],
-        "edited_at": session["edited_at"],
-        "corrections": db.list_performed_date_corrections(session["session_id"]),
-    }
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        session = ledger.get_workout_session(session_id) if isinstance(session_id, str) else None
+        if session is None:
+            return body
+        return {
+            **body,
+            "session_date": session["session_date"],
+            "edited_at": session["edited_at"],
+            "corrections": ledger.list_performed_date_corrections(session["session_id"]),
+        }
 
 
 def commit_session(
@@ -641,6 +647,7 @@ def commit_session(
     today_date: str | None = None,
     account_id: str | None = None,
     sync: SyncMetadata | None = None,
+    ledger: Any | None = None,
 ) -> CommitOutcome:
     """Persists a logged session and returns totals, per-movement analytics, debrief, and pointer.
 
@@ -652,25 +659,26 @@ def commit_session(
     afterwards and are best-effort (ADR 030/032/033). This is the legacy,
     always-creates path (no idempotency record); ``created`` is always ``True``.
     """
-    bind_user(db, trainee_id)
-    sync = sync or SyncMetadata()
-    session_id = session_id or str(uuid.uuid4())
-    now_iso = now_iso or _now().isoformat()
-    today_date = today_date or local_today(db, trainee_id).isoformat()
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        sync = sync or SyncMetadata()
+        session_id = session_id or str(uuid.uuid4())
+        now_iso = now_iso or _now().isoformat()
+        today_date = today_date or local_today(db, trainee_id, ledger=ledger).isoformat()
 
-    with db.ledger_transaction():
-        body = _persist_session(
-            db,
-            trainee_id,
-            day_plan,
-            readiness,
-            session_notes,
-            sets_by_exercise,
-            session_id=session_id,
-            now_iso=now_iso,
-            today_date=today_date,
-            sync=sync,
-        )
+        with ledger.ledger_transaction():
+            body = _persist_session(
+                db,
+                trainee_id,
+                day_plan,
+                readiness,
+                session_notes,
+                sets_by_exercise,
+                session_id=session_id,
+                now_iso=now_iso,
+                today_date=today_date,
+                sync=sync,
+                ledger=ledger,
+            )
 
     _run_post_commit_hooks(
         db, account_id, session_id, today_date, body["exercise_summaries"], body["fatigue_post"]
@@ -689,6 +697,7 @@ def commit_logged_session(
     sync: SyncMetadata,
     account_id: str | None = None,
     now_iso: str | None = None,
+    ledger: Any | None = None,
 ) -> CommitOutcome:
     """Idempotently commits one offline-captured workout (ADR 020/033/034).
 
@@ -705,48 +714,49 @@ def commit_logged_session(
     loser replays the winner's response. Post-commit hooks run only when this
     call performed the commit, for historical sessions too (ADR 034).
     """
-    bind_user(db, trainee_id)
-    client_session_id = sync.client_session_id
-    replayed = committed_session(db, client_session_id)
-    if replayed is not None:
-        return replayed
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        client_session_id = sync.client_session_id
+        replayed = committed_session(ledger, client_session_id)
+        if replayed is not None:
+            return replayed
 
-    now_iso = now_iso or _now().isoformat()
-    session_id = str(uuid.uuid4())
-    try:
-        with db.ledger_transaction():
-            replayed = committed_session(db, client_session_id)
-            if replayed is not None:
-                return replayed
+        now_iso = now_iso or _now().isoformat()
+        session_id = str(uuid.uuid4())
+        try:
+            with ledger.ledger_transaction():
+                replayed = committed_session(ledger, client_session_id)
+                if replayed is not None:
+                    return replayed
 
-            program = db.get_active_program()
-            if program is None:
-                raise DayPlanNotFoundError(day_order)
-            active_version = program.version
-            resolved = resolve_sync_program(db, program, sync.program_version)
-            day_plan = day_plan_from(resolved, day_order)
+                program = ledger.get_active_program()
+                if program is None:
+                    raise DayPlanNotFoundError(day_order)
+                active_version = program.version
+                resolved = resolve_sync_program(db, ledger, program, sync.program_version)
+                day_plan = day_plan_from(resolved, day_order)
 
-            body = _persist_session(
-                db,
-                trainee_id,
-                day_plan,
-                readiness,
-                session_notes,
-                sets_by_exercise,
-                session_id=session_id,
-                now_iso=now_iso,
-                today_date=sync.performed_date,
-                sync=sync,
-                active_program_version_at_sync=active_version,
-            )
-            db.record_session_commit(client_session_id, session_id, json.dumps(body), now_iso)
-            outcome = CommitOutcome(body, created=True)
-    except sqlite3.IntegrityError:
-        # A concurrent duplicate won the unique index; replay its response.
-        existing = db.get_session_commit(client_session_id)
-        if existing is None:
-            raise
-        return _commit_outcome_from_row(existing)
+                body = _persist_session(
+                    db,
+                    trainee_id,
+                    day_plan,
+                    readiness,
+                    session_notes,
+                    sets_by_exercise,
+                    session_id=session_id,
+                    now_iso=now_iso,
+                    today_date=sync.performed_date,
+                    sync=sync,
+                    ledger=ledger,
+                    active_program_version_at_sync=active_version,
+                )
+                ledger.record_session_commit(client_session_id, session_id, json.dumps(body), now_iso)
+                outcome = CommitOutcome(body, created=True)
+        except sqlite3.IntegrityError:
+            # A concurrent duplicate won the unique index; replay its response.
+            existing = ledger.get_session_commit(client_session_id)
+            if existing is None:
+                raise
+            return _commit_outcome_from_row(existing)
 
     _run_post_commit_hooks(
         db, account_id, session_id, sync.performed_date, outcome.body["exercise_summaries"], outcome.body["fatigue_post"]
@@ -762,6 +772,7 @@ def correct_performed_date(
     *,
     account_id: str,
     now_iso: str | None = None,
+    ledger: Any | None = None,
 ) -> dict[str, Any] | None:
     """Corrects one committed session's performed date (ADR 020/035).
 
@@ -780,46 +791,46 @@ def correct_performed_date(
     re-runs, after the transaction exits, so a correction can resolve or open a
     missed-day alert. Progression alerts and PRs are intentionally not recomputed.
     """
-    bind_user(db, trainee_id)
-    now_iso = now_iso or _now().isoformat()
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        now_iso = now_iso or _now().isoformat()
 
-    with db.ledger_transaction():
-        session = db.get_workout_session(session_id)
-        if session is None:
-            return None
+        with ledger.ledger_transaction():
+            session = ledger.get_workout_session(session_id)
+            if session is None:
+                return None
 
-        try:
-            performed = parse_iso_date(performed_date, "performed_date")
-        except ValueError as exc:
-            raise SessionSyncValidationError(str(exc)) from None
-        previous_date = session["session_date"]
-        if performed.isoformat() == previous_date:
-            return {
-                "session_id": session_id,
-                "session_date": previous_date,
-                "previous_date": previous_date,
-                "edited_at": session.get("edited_at"),
-                "changed": False,
-                "corrections": db.list_performed_date_corrections(session_id),
-            }
+            try:
+                performed = parse_iso_date(performed_date, "performed_date")
+            except ValueError as exc:
+                raise SessionSyncValidationError(str(exc)) from None
+            previous_date = session["session_date"]
+            if performed.isoformat() == previous_date:
+                return {
+                    "session_id": session_id,
+                    "session_date": previous_date,
+                    "previous_date": previous_date,
+                    "edited_at": session.get("edited_at"),
+                    "changed": False,
+                    "corrections": ledger.list_performed_date_corrections(session_id),
+                }
 
-        capture_instant = (
-            session.get("captured_at") or session.get("uploaded_at") or session.get("started_at")
-        )
-        performed, previous, _timezone = validate_performed_date_correction(
-            performed_date,
-            session_date=previous_date,
-            performed_timezone=session.get("performed_timezone"),
-            schedule_timezone=latest_schedule_timezone(db, trainee_id),
-            capture_instant=capture_instant,
-        )
+            capture_instant = (
+                session.get("captured_at") or session.get("uploaded_at") or session.get("started_at")
+            )
+            performed, previous, _timezone = validate_performed_date_correction(
+                performed_date,
+                session_date=previous_date,
+                performed_timezone=session.get("performed_timezone"),
+                schedule_timezone=latest_schedule_timezone(db, trainee_id, ledger=ledger),
+                capture_instant=capture_instant,
+            )
 
-        corrected_date = performed.isoformat()
-        db.update_session_performed_date(session_id, corrected_date, now_iso)
-        db.record_performed_date_correction(
-            session_id, previous.isoformat(), corrected_date, now_iso
-        )
-        corrections = db.list_performed_date_corrections(session_id)
+            corrected_date = performed.isoformat()
+            ledger.update_session_performed_date(session_id, corrected_date, now_iso)
+            ledger.record_performed_date_correction(
+                session_id, previous.isoformat(), corrected_date, now_iso
+            )
+            corrections = ledger.list_performed_date_corrections(session_id)
 
     _evaluate_missed_days(db, account_id)
     return {

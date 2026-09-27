@@ -104,12 +104,61 @@ def _resolve_registry_identity(
 
 
 def _mount_verified_identity(db: Any, identity: _RegistryIdentity) -> VerifiedPlayer:
-    """Mounts the ledger and applies the ledger-side ``jti`` revocation check."""
-    claims, account = identity
-    bind_user(db, account["ledger_id"])
+    """Mounts the ledger on this thread (compatibility path) and applies the ledger-side jti check."""
+    bind_user(db, identity.account["ledger_id"])  # Phase B2: thread-local mount for agent/ callers
+    claims = identity.claims
     if db.is_token_revoked(str(claims["jti"])):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked.")
-    return VerifiedPlayer(account["ledger_id"], account["account_id"], token_version_of(claims))
+    return _verified_player(identity)
+
+
+def _verified_player(identity: _RegistryIdentity) -> VerifiedPlayer:
+    """Builds the verified-player marker without opening or mounting a ledger."""
+    claims, account = identity
+    player = VerifiedPlayer(account["ledger_id"], account["account_id"], token_version_of(claims))
+    player.jti = str(claims["jti"])
+    return player
+
+
+def _reject_revoked_token(db: Any, player: VerifiedPlayer) -> None:
+    """Rejects a token whose ``jti`` is revoked, using a short-lived ledger handle.
+
+    The registry gate has already passed, so opening the ledger repeats only the
+    deleted-ledger refusal (ADR 025 gate-then-mount). The handle closes before the
+    request handler runs, which makes every authenticated route reject a
+    logged-out token, not only the routes that open a request-scoped ledger.
+    """
+    with db.open_ledger(str(player)) as ledger:
+        if ledger.is_token_revoked(player.jti):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked.")
+
+
+async def get_verified_player(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    db: Annotated[Any, Depends(get_db)],
+) -> VerifiedPlayer:
+    """Resolves a verified, active player, refusing a revoked token before returning.
+
+    Every registry check runs first (ADR 025); the ``jti`` revocation lookup then
+    runs through a short-lived ledger handle that closes before the handler starts.
+    """
+    player = _verified_player(_resolve_registry_identity(credentials, db))
+    _reject_revoked_token(db, player)
+    return player
+
+
+async def get_ledger(
+    player: Annotated[VerifiedPlayer, Depends(get_verified_player)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Opens the verified player's ledger as an explicit handle for the request.
+
+    ``get_verified_player`` already ran every registry check and refused a revoked
+    ``jti``, so this only mounts; ``open_ledger`` still repeats the deleted-ledger
+    refusal and migrations (ADR 025). The handle closes when the request finishes.
+    """
+    with db.open_ledger(str(player)) as ledger:
+        yield ledger
 
 
 async def get_current_trainee(
@@ -147,4 +196,4 @@ def bind_request(db: Any, trainee_id: str) -> str:
         account = _authorize_account(db, trainee_id.account_id, trainee_id.session_epoch)
         if account["ledger_id"] != trainee_id:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
-    return bind_user(db, trainee_id)
+    return bind_user(db, trainee_id)  # Phase B2: compatibility mount for agent/ callers

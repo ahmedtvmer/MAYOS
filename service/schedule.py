@@ -19,6 +19,8 @@ from datetime import UTC, date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from service._base import ledger_scope
+
 logger = logging.getLogger(__name__)
 
 MAX_PAUSE_DAYS = 14
@@ -53,34 +55,36 @@ def local_date_in(now: datetime, timezone: str) -> date:
     return now.astimezone(ZoneInfo(timezone)).date()
 
 
-def latest_schedule_timezone(db: Any, trainee_id: str) -> str | None:
+def latest_schedule_timezone(db: Any, trainee_id: str, ledger: Any | None = None) -> str | None:
     """The timezone of the most recently created schedule version, if any.
 
     Public so other services (e.g. performed-date correction) resolve a legacy
     session's local day the same way "today" is derived (ADR 029).
     """
-    versions = db.list_training_schedules(trainee_id)
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        versions = ledger.list_training_schedules(trainee_id)
     if not versions:
         return None
     return timezone_for_versions(versions)
 
 
-def local_today(db: Any, trainee_id: str, fallback_timezone: str = "UTC") -> date:
+def local_today(db: Any, trainee_id: str, fallback_timezone: str = "UTC", ledger: Any | None = None) -> date:
     """The player's local date from their latest schedule timezone, else the fallback.
 
     "Today" is the player's day, not the server's UTC day: a player ahead of UTC
     rolls into tomorrow first, and a player behind UTC still has their own today.
     """
-    timezone = latest_schedule_timezone(db, trainee_id) or fallback_timezone
+    timezone = latest_schedule_timezone(db, trainee_id, ledger=ledger) or fallback_timezone
     return local_date_in(datetime.now(UTC), timezone)
 
 
 def current_schedule(
-    db: Any, trainee_id: str, fallback_timezone: str = "UTC"
+    db: Any, trainee_id: str, fallback_timezone: str = "UTC", ledger: Any | None = None
 ) -> tuple[dict[str, Any] | None, date]:
     """The schedule effective on the player's local today, plus that local date."""
-    today = local_today(db, trainee_id, fallback_timezone=fallback_timezone)
-    return db.get_schedule_effective_on(trainee_id, today.isoformat()), today
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        today = local_today(db, trainee_id, fallback_timezone=fallback_timezone, ledger=ledger)
+        return ledger.get_schedule_effective_on(trainee_id, today.isoformat()), today
 
 
 def parse_iso_date(value: Any, field: str) -> date:
@@ -119,17 +123,20 @@ def _validate_timezone(raw: Any) -> str:
     return raw
 
 
-def get_schedule(db: Any, trainee_id: str) -> dict[str, Any]:
+def get_schedule(db: Any, trainee_id: str, ledger: Any | None = None) -> dict[str, Any]:
     """The current schedule, every version, and today's active/upcoming pauses."""
-    current, today = current_schedule(db, trainee_id)
-    return {
-        "current": current,
-        "versions": db.list_training_schedules(trainee_id),
-        "pauses": db.list_active_or_upcoming_training_pauses(trainee_id, today.isoformat()),
-    }
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        current, today = current_schedule(db, trainee_id, ledger=ledger)
+        return {
+            "current": current,
+            "versions": ledger.list_training_schedules(trainee_id),
+            "pauses": ledger.list_active_or_upcoming_training_pauses(trainee_id, today.isoformat()),
+        }
 
 
-def set_schedule(db: Any, trainee_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+def set_schedule(
+    db: Any, trainee_id: str, payload: dict[str, Any], ledger: Any | None = None
+) -> dict[str, Any]:
     """Validates and appends a new schedule version; the program is never touched.
 
     ``effective_from`` may not be earlier than the player's local today, so a new
@@ -138,19 +145,20 @@ def set_schedule(db: Any, trainee_id: str, payload: dict[str, Any]) -> dict[str,
     """
     weekdays = _validate_weekdays(payload.get("weekdays"))
     timezone = _validate_timezone(payload.get("timezone"))
-    today = local_today(db, trainee_id, fallback_timezone=timezone)
-    raw_effective_from = payload.get("effective_from")
-    if raw_effective_from:
-        effective_from = parse_iso_date(raw_effective_from, "effective_from")
-        if effective_from < today:
-            raise ValueError("A schedule cannot take effect in the past.")
-    else:
-        effective_from = today
-    version = db.append_training_schedule(
-        trainee_id, weekdays, timezone, effective_from.isoformat(), _now_iso()
-    )
-    current = db.get_schedule_effective_on(trainee_id, today.isoformat())
-    return {"version": version, "current": current}
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        today = local_today(db, trainee_id, fallback_timezone=timezone, ledger=ledger)
+        raw_effective_from = payload.get("effective_from")
+        if raw_effective_from:
+            effective_from = parse_iso_date(raw_effective_from, "effective_from")
+            if effective_from < today:
+                raise ValueError("A schedule cannot take effect in the past.")
+        else:
+            effective_from = today
+        version = ledger.append_training_schedule(
+            trainee_id, weekdays, timezone, effective_from.isoformat(), _now_iso()
+        )
+        current = ledger.get_schedule_effective_on(trainee_id, today.isoformat())
+        return {"version": version, "current": current}
 
 
 def schedule_pause(
@@ -158,6 +166,7 @@ def schedule_pause(
     trainee_id: str,
     payload: dict[str, Any],
     player_account_id: str | None,
+    ledger: Any | None = None,
 ) -> dict[str, Any]:
     """Validates and stores a prospective pause, then best-effort notifies the coach.
 
@@ -168,24 +177,26 @@ def schedule_pause(
     now_iso = _now_iso()
     starts_on = parse_iso_date(payload.get("starts_on"), "starts_on")
     ends_on = parse_iso_date(payload.get("ends_on"), "ends_on")
-    _, today = current_schedule(db, trainee_id)
-    if starts_on < today:
-        raise ValueError("A pause must start today or later.")
-    if ends_on < starts_on:
-        raise ValueError("A pause must end on or after it starts.")
-    if (ends_on - starts_on).days + 1 > MAX_PAUSE_DAYS:
-        raise ValueError(f"A pause can last at most {MAX_PAUSE_DAYS} days.")
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        _, today = current_schedule(db, trainee_id, ledger=ledger)
+        if starts_on < today:
+            raise ValueError("A pause must start today or later.")
+        if ends_on < starts_on:
+            raise ValueError("A pause must end on or after it starts.")
+        if (ends_on - starts_on).days + 1 > MAX_PAUSE_DAYS:
+            raise ValueError(f"A pause can last at most {MAX_PAUSE_DAYS} days.")
 
-    pause = db.schedule_training_pause(
-        trainee_id, starts_on.isoformat(), ends_on.isoformat(), now_iso
-    )
+        pause = ledger.schedule_training_pause(
+            trainee_id, starts_on.isoformat(), ends_on.isoformat(), now_iso
+        )
     notice_sent = _notify_coach(db, player_account_id, starts_on, ends_on, now_iso)
     return {"pause": pause, "notice_sent": notice_sent}
 
 
-def get_pauses(db: Any, trainee_id: str) -> list[dict[str, Any]]:
+def get_pauses(db: Any, trainee_id: str, ledger: Any | None = None) -> list[dict[str, Any]]:
     """Every pause the player has scheduled, newest first."""
-    return db.list_training_pauses(trainee_id)
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        return ledger.list_training_pauses(trainee_id)
 
 
 def _notify_coach(

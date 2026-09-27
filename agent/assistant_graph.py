@@ -852,7 +852,9 @@ def exercise_substitution_node(state: AssistantState) -> dict[str, Any]:
     if not _authorized_action(query, "exercise_substitution"):
         return _response(AUTHORIZATION_RESPONSE)
 
-    if not programs_service.player_controls_program(db, state.get("player_account_id")):
+    if not programs_service.player_controls_program(
+        db, db, state.get("player_account_id")
+    ):  # Phase B2: agent nodes read the thread-local ledger as the handle
         return _response(programs_service.COACH_CONTROLLED_ERROR)
 
     active_program = db.get_active_program()
@@ -1110,7 +1112,9 @@ def program_mutation_node(state: AssistantState) -> dict[str, Any]:
     if not _authorized_action(query, "program_mutation"):
         return _response(AUTHORIZATION_RESPONSE)
 
-    if not programs_service.player_controls_program(db, state.get("player_account_id")):
+    if not programs_service.player_controls_program(
+        db, db, state.get("player_account_id")
+    ):  # Phase B2: agent nodes read the thread-local ledger as the handle
         return _response(programs_service.COACH_CONTROLLED_ERROR)
 
     meta = state.get("intent_metadata", {})

@@ -15,7 +15,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
 from service import auth as auth_service
-from service._base import bind_user
 from service.email_sender import build_reset_link, send_password_reset_email
 
 logger = logging.getLogger(__name__)
@@ -87,7 +86,6 @@ def set_recovery_email(db: Any, account_id: str, email: str) -> dict[str, Any]:
     normalized = normalize_email(email)
     if normalized is None:
         return {"ok": False, "error": "Enter a valid email address."}
-    bind_user(db, account["ledger_id"])
     try:
         db.set_trainee_email(account["account_id"], normalized)
     except ValueError as exc:
@@ -138,8 +136,8 @@ def reset_password_with_token(db: Any, token: str, new_password: str) -> dict[st
     account = _live_player_account(db, recovery_key)
     if account is None or not db.user_exists(account["ledger_id"]):
         return {"ok": False, "error": GENERIC_TOKEN_ERROR}
-    bind_user(db, account["ledger_id"])
-    db.set_password_hash(auth_service.hash_password(new_password))
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        ledger.set_password_hash(auth_service.hash_password(new_password))
     db.bump_account_session_epoch(account["account_id"])
     db.prune_reset_tokens(now_iso)
     return {"ok": True, "trainee_id": account["ledger_id"]}

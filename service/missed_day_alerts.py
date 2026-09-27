@@ -2,8 +2,8 @@
 
 A coach is alerted when an assigned player misses two consecutive expected
 training days. Evaluation is deterministic and idempotent: it opens the player's
-ledger (the sweep may; roster reads may not), runs the pure attendance evaluation
-(``service.attendance``), and then:
+ledger through an explicit handle (the sweep may; roster reads may not), runs the
+pure attendance evaluation (``service.attendance``), and then:
 
 * creates one ``new`` alert for a qualifying streak and a best-effort coach
   in-app notice (the notice is only written when the alert is first created);
@@ -24,7 +24,6 @@ import uuid
 from datetime import UTC, date, datetime
 from typing import Any
 
-from service._base import bind_user
 from service.attendance import AttendanceEvaluation, evaluate_attendance
 from service.coach_notices import notify_coach, player_display_name
 from service.schedule import local_date_in, timezone_for_versions
@@ -113,14 +112,14 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any], now: datetime | Non
         )
         return {"evaluated": False, "skipped": True, "alerts_created": 0, "alerts_resolved": 0, "streak": 0}
 
-    bind_user(db, ledger_id)
-    versions = db.list_training_schedules(ledger_id)
-    if not versions:
-        db.upsert_roster_attendance(assignment_id, 0, now_iso)
-        return {"evaluated": True, "skipped": False, "alerts_created": 0, "alerts_resolved": 0, "streak": 0}
+    with db.open_ledger(ledger_id) as ledger:
+        versions = ledger.list_training_schedules(ledger_id)
+        if not versions:
+            db.upsert_roster_attendance(assignment_id, 0, now_iso)
+            return {"evaluated": True, "skipped": False, "alerts_created": 0, "alerts_resolved": 0, "streak": 0}
 
-    pauses = db.list_training_pauses(ledger_id)
-    performed = db.list_performed_dates()
+        pauses = ledger.list_training_pauses(ledger_id)
+        performed = ledger.list_performed_dates()
     timezone = timezone_for_versions(versions)
     evaluation = evaluate_attendance(
         versions=versions,
@@ -176,18 +175,15 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any], now: datetime | Non
 def evaluate_for_ledger(db: Any, account_id: str, now: datetime | None = None) -> dict[str, Any] | None:
     """Best-effort evaluation for a player account; ``None`` with no active assignment.
 
-    Always unbinds the player's ledger afterwards so a shared worker thread does
-    not keep it mounted (ADR 030).
+    The player's ledger is opened as an explicit handle and closed when the
+    evaluation finishes, so a shared worker thread keeps no mounted connection.
     """
     if not account_id:
         return None
-    try:
-        assignment = db.get_active_assignment_for_player(account_id)
-        if assignment is None:
-            return None
-        return evaluate_assignment(db, assignment, now=now)
-    finally:
-        db.unmount_user()
+    assignment = db.get_active_assignment_for_player(account_id)
+    if assignment is None:
+        return None
+    return evaluate_assignment(db, assignment, now=now)
 
 
 def present_alert(alert: dict[str, Any]) -> dict[str, Any]:

@@ -3,17 +3,21 @@
 from typing import Any
 
 from agent.program_generator import generate_program_pipeline
-from service._base import bind_user
+from service._base import ledger_scope
 from service.programs import COACH_CONTROLLED_ERROR, player_controls_program
 
 
-def get_profile(db: Any, trainee_id: str) -> dict[str, Any] | None:
-    bind_user(db, trainee_id)
-    return db.get_user_profile()
+def get_profile(db: Any, trainee_id: str, ledger: Any | None = None) -> dict[str, Any] | None:
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        return ledger.get_user_profile()
 
 
 def update_profile(
-    db: Any, trainee_id: str, payload: dict[str, Any], player_account_id: str | None = None
+    db: Any,
+    trainee_id: str,
+    payload: dict[str, Any],
+    player_account_id: str | None = None,
+    ledger: Any | None = None,
 ) -> dict[str, Any]:
     """Upserts the profile; rebuilds the routine when frequency/rep-bias/limits change.
 
@@ -21,49 +25,54 @@ def update_profile(
     so while an assigned coach owns the active program it is skipped and the
     response explains that a coach request is needed.
     """
-    bind_user(db, trainee_id)
-    profile = db.get_user_profile() or {}
-    freq_changed = int(payload.get("weekly_frequency", profile.get("weekly_frequency", 4))) != int(
-        profile.get("weekly_frequency", 4)
-    )
-    rep_changed = payload.get("rep_preference", profile.get("rep_preference", "balanced")) != profile.get(
-        "rep_preference", "balanced"
-    )
-    limits_changed = str(payload.get("injuries_or_limitations", profile.get("injuries_or_limitations", "None"))).strip() != str(
-        profile.get("injuries_or_limitations", "None")
-    )
-    updated = {**profile, **payload}
-    db.upsert_user_profile(updated)
-    program = None
-    program_blocked = False
-    if freq_changed or rep_changed or limits_changed:
-        if player_controls_program(db, player_account_id):
-            from svc.llm import InferenceScope, run_inference_sync
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        profile = ledger.get_user_profile() or {}
+        freq_changed = int(payload.get("weekly_frequency", profile.get("weekly_frequency", 4))) != int(
+            profile.get("weekly_frequency", 4)
+        )
+        rep_changed = payload.get("rep_preference", profile.get("rep_preference", "balanced")) != profile.get(
+            "rep_preference", "balanced"
+        )
+        limits_changed = str(payload.get("injuries_or_limitations", profile.get("injuries_or_limitations", "None"))).strip() != str(
+            profile.get("injuries_or_limitations", "None")
+        )
+        updated = {**profile, **payload}
+        ledger.upsert_user_profile(updated)
+        program = None
+        program_blocked = False
+        if freq_changed or rep_changed or limits_changed:
+            if player_controls_program(db, ledger, player_account_id):
+                from svc.llm import InferenceScope, run_inference_sync
 
-            program, _ = run_inference_sync(
-                generate_program_pipeline,
-                rep_preference_override=updated.get("rep_preference", "balanced"),
-                frequency_override=int(updated.get("weekly_frequency", 4)),
-                scope=InferenceScope(account_id=player_account_id, role="player", purpose="profile_rebuild"),
-            )
-        else:
-            program_blocked = True
-    return {
-        "profile": db.get_user_profile(),
-        "program_rebuilt": program is not None,
-        "program": program,
-        "program_blocked": program_blocked,
-        "program_message": COACH_CONTROLLED_ERROR if program_blocked else None,
-    }
+                from service._base import bind_user
 
-
-def update_persona(db: Any, trainee_id: str, coach_tone: str, custom_instructions: str) -> dict[str, Any]:
-    bind_user(db, trainee_id)
-    db.update_user_persona(coach_tone, custom_instructions)
-    return {"profile": db.get_user_profile()}
+                bind_user(db, ledger.ledger_id)  # Phase B2: program pipeline reads the thread-local ledger
+                program, _ = run_inference_sync(
+                    generate_program_pipeline,
+                    rep_preference_override=updated.get("rep_preference", "balanced"),
+                    frequency_override=int(updated.get("weekly_frequency", 4)),
+                    scope=InferenceScope(account_id=player_account_id, role="player", purpose="profile_rebuild"),
+                )
+            else:
+                program_blocked = True
+        return {
+            "profile": ledger.get_user_profile(),
+            "program_rebuilt": program is not None,
+            "program": program,
+            "program_blocked": program_blocked,
+            "program_message": COACH_CONTROLLED_ERROR if program_blocked else None,
+        }
 
 
-def reset_profile(db: Any, trainee_id: str) -> dict[str, Any]:
-    bind_user(db, trainee_id)
-    db.clear_user_profile()
-    return {"ok": True}
+def update_persona(
+    db: Any, trainee_id: str, coach_tone: str, custom_instructions: str, ledger: Any | None = None
+) -> dict[str, Any]:
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        ledger.update_user_persona(coach_tone, custom_instructions)
+        return {"profile": ledger.get_user_profile()}
+
+
+def reset_profile(db: Any, trainee_id: str, ledger: Any | None = None) -> dict[str, Any]:
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        ledger.clear_user_profile()
+        return {"ok": True}

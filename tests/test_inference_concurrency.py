@@ -16,7 +16,7 @@ from langchain_core.messages import AIMessage
 
 from database.database_manager import DatabaseManager
 from svc.app import create_app
-from svc.dependencies import get_current_trainee, get_db
+from svc.dependencies import VerifiedPlayer, get_current_trainee, get_db, get_verified_player
 from svc.llm import reset_inference_gate
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
@@ -46,9 +46,18 @@ def client(tmp_path: Path, monkeypatch):
     )
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[get_current_trainee] = lambda: "alice"
     with TestClient(app) as test_client:
         test_client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
+    account = db.get_active_account_by_username("alice")
+
+    def _verified_player():
+        player = VerifiedPlayer(account["ledger_id"], account["account_id"], account["session_epoch"])
+        player.jti = "test-jti"
+        return player
+
+    app.dependency_overrides[get_current_trainee] = lambda: _verified_player()
+    app.dependency_overrides[get_verified_player] = _verified_player
+    with TestClient(app) as test_client:
         yield test_client
     if db.user_conn is not None:
         db.user_conn.close()

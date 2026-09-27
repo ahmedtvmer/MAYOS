@@ -9,7 +9,7 @@ from typing import Any
 
 import bcrypt
 
-from service._base import bind_user
+from service._base import bind_user, ledger_scope
 
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 128
@@ -56,8 +56,9 @@ def register_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
     # A reused username gets a fresh ledger id (see DatabaseManager.create_account),
     # so always mount the account's own ledger rather than the username.
     ledger_id = account.get("ledger_id") or clean_id
-    bind_user(db, ledger_id)
-    db.set_password_hash(hash_password(password))
+    with db.open_ledger(ledger_id) as ledger:
+        ledger.set_password_hash(hash_password(password))
+        bind_user(db, ledger_id)  # Phase B2: login issues a session for the thread-local ledger
     account = db.get_account(account_id) or account
     return {
         "ok": True,
@@ -72,22 +73,23 @@ def login_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
     account = db.get_active_account_by_username(clean_id) if clean_id else None
     if account is None or not db.user_exists(account["ledger_id"]):
         return {"ok": False, "error": INVALID_CREDENTIALS}
-    bind_user(db, account["ledger_id"])
-    stored = db.get_password_hash()
-    if stored is None:
-        return {"ok": False, "error": INVALID_CREDENTIALS, "code": "claim_required"}
-    if not isinstance(password, str) or not verify_password(password, stored):
-        return {"ok": False, "error": INVALID_CREDENTIALS}
-    profile = db.get_user_profile()
-    return {
-        "ok": True,
-        "trainee_id": account["ledger_id"],
-        "account_id": account["account_id"],
-        "session_epoch": account["session_epoch"],
-        "has_profile": bool(profile),
-        "profile": profile,
-        "active_program": db.get_active_program() if profile else None,
-    }
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        stored = ledger.get_password_hash()
+        if stored is None:
+            return {"ok": False, "error": INVALID_CREDENTIALS, "code": "claim_required"}
+        if not isinstance(password, str) or not verify_password(password, stored):
+            return {"ok": False, "error": INVALID_CREDENTIALS}
+        profile = ledger.get_user_profile()
+        bind_user(db, account["ledger_id"])  # Phase B2: login issues a session for the thread-local ledger
+        return {
+            "ok": True,
+            "trainee_id": account["ledger_id"],
+            "account_id": account["account_id"],
+            "session_epoch": account["session_epoch"],
+            "has_profile": bool(profile),
+            "profile": profile,
+            "active_program": ledger.get_active_program() if profile else None,
+        }
 
 
 def claim_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
@@ -104,19 +106,22 @@ def claim_trainee(db: Any, trainee_id: str, password: str) -> dict[str, Any]:
         validate_password(password)
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
-    bind_user(db, account["ledger_id"])
-    if db.get_password_hash() is not None:
-        return {"ok": False, "error": INVALID_CREDENTIALS}
-    db.set_password_hash(hash_password(password))
-    return {
-        "ok": True,
-        "trainee_id": account["ledger_id"],
-        "account_id": account["account_id"],
-        "session_epoch": account["session_epoch"],
-    }
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        if ledger.get_password_hash() is not None:
+            return {"ok": False, "error": INVALID_CREDENTIALS}
+        ledger.set_password_hash(hash_password(password))
+        bind_user(db, account["ledger_id"])  # Phase B2: login issues a session for the thread-local ledger
+        return {
+            "ok": True,
+            "trainee_id": account["ledger_id"],
+            "account_id": account["account_id"],
+            "session_epoch": account["session_epoch"],
+        }
 
 
-def change_password(db: Any, account_id: str, current_password: str, new_password: str) -> dict[str, Any]:
+def change_password(
+    db: Any, account_id: str, current_password: str, new_password: str, ledger: Any | None = None
+) -> dict[str, Any]:
     """Authenticated password change. Revokes all sessions via the registry epoch.
 
     ``account_id`` is the immutable id verified from the caller's JWT, never a
@@ -131,19 +136,19 @@ def change_password(db: Any, account_id: str, current_password: str, new_passwor
     account = db.get_account(account_id)
     if not db.is_live_account(account) or not account["is_player"] or not db.user_exists(account["ledger_id"]):
         return {"ok": False, "error": "Trainee ledger not found."}
-    bind_user(db, account["ledger_id"])
-    stored = db.get_password_hash()
-    if stored is None:
-        return {"ok": False, "error": "No password set yet. Claim this ledger first.", "code": "claim_required"}
-    if not isinstance(current_password, str) or not verify_password(current_password, stored):
-        return {"ok": False, "error": "Current password is incorrect.", "code": "bad_current"}
-    try:
-        validate_password(new_password)
-    except ValueError as exc:
-        return {"ok": False, "error": str(exc), "code": "weak_new"}
-    if verify_password(new_password, stored):
-        return {"ok": False, "error": "New password must differ from the current one.", "code": "same_as_current"}
-    db.set_password_hash(hash_password(new_password))
+    with ledger_scope(db, ledger, account["ledger_id"]) as handle:
+        stored = handle.get_password_hash()
+        if stored is None:
+            return {"ok": False, "error": "No password set yet. Claim this ledger first.", "code": "claim_required"}
+        if not isinstance(current_password, str) or not verify_password(current_password, stored):
+            return {"ok": False, "error": "Current password is incorrect.", "code": "bad_current"}
+        try:
+            validate_password(new_password)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc), "code": "weak_new"}
+        if verify_password(new_password, stored):
+            return {"ok": False, "error": "New password must differ from the current one.", "code": "same_as_current"}
+        handle.set_password_hash(hash_password(new_password))
     new_version = db.bump_account_session_epoch(account["account_id"])
     return {
         "ok": True,

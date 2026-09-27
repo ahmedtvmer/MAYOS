@@ -6,48 +6,46 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends
 
 from service import dashboard as dashboard_service
-from svc.dependencies import bind_request, get_current_trainee, get_db
+from svc.dependencies import get_db, get_ledger, get_verified_player
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 @router.get("/volume")
 async def read_volume(
-    trainee: Annotated[str, Depends(get_current_trainee)],
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
     days: int = 7,
 ):
-    def _run():
-        bind_request(db, trainee)
-        return dashboard_service.volume_attribution(db, trainee, days_lookback=max(1, min(days, 90)))
-
-    return await asyncio.to_thread(_run)
+    return await asyncio.to_thread(
+        dashboard_service.volume_attribution,
+        db, str(player), max(1, min(days, 90)), ledger,
+    )
 
 
 @router.get("/exercises")
 async def list_exercises(
-    trainee: Annotated[str, Depends(get_current_trainee)], db: Annotated[Any, Depends(get_db)]
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
 ):
-    def _run():
-        bind_request(db, trainee)
-        return dashboard_service.logged_exercises(db, trainee)
-
-    return await asyncio.to_thread(_run)
+    return await asyncio.to_thread(dashboard_service.logged_exercises, db, str(player), ledger)
 
 
 @router.get("/exercises/{exercise_id}/history")
 async def read_exercise_history(
     exercise_id: str,
-    trainee: Annotated[str, Depends(get_current_trainee)],
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
     def _run():
-        bind_request(db, trainee)
-        history = dashboard_service.exercise_history(db, trainee, exercise_id)
+        history = dashboard_service.exercise_history(db, str(player), exercise_id, ledger=ledger)
         return {
             "history": history,
             "caption": dashboard_service.latest_record_caption(history),
-            "records": dashboard_service.exercise_records(db, trainee, exercise_id),
+            "records": dashboard_service.exercise_records(db, str(player), exercise_id, ledger=ledger),
         }
 
     return await asyncio.to_thread(_run)
@@ -55,12 +53,12 @@ async def read_exercise_history(
 
 @router.get("/personal-records")
 async def read_personal_records(
-    trainee: Annotated[str, Depends(get_current_trainee)],
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
     limit: int = 20,
 ):
-    def _run():
-        bind_request(db, trainee)
-        return dashboard_service.recent_personal_records(db, trainee, limit=max(1, min(limit, 100)))
-
-    return await asyncio.to_thread(_run)
+    return await asyncio.to_thread(
+        dashboard_service.recent_personal_records,
+        db, str(player), max(1, min(limit, 100)), ledger,
+    )

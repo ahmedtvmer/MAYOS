@@ -45,6 +45,7 @@ from database.ledger.profile import LedgerProfileMixin
 from database.ledger.onboarding import LedgerOnboardingMixin
 from database.ledger.chat import LedgerChatMixin
 from database.ledger.debriefs import LedgerDebriefsMixin
+from database.ledger.handle import TrainingLedger
 
 logger = MyosLogger().get_logger(__name__)
 
@@ -160,6 +161,33 @@ class DatabaseManager(
         clean = re.sub(r"[^\w\-]", "", str(username).strip().lower())
         return clean or "default"
 
+    def _build_ledger_connection(self, sanitized: str) -> sqlite3.Connection:
+        """Opens, migrates and returns a ledger connection for a sanitized id.
+
+        The connect/pragma/attach/migrate sequence lives here once and is shared
+        by ``switch_user`` (thread-local compatibility mount) and ``open_ledger``
+        (explicit handle), so both apply identical gate-side schema work.
+        """
+        user_db_path = self.users_dir / f"{sanitized}.db"
+        new_conn = sqlite3.connect(user_db_path, check_same_thread=False)
+        new_conn.row_factory = sqlite3.Row
+        new_conn.execute("PRAGMA foreign_keys = ON;")
+        new_conn.execute("PRAGMA journal_mode = WAL;")
+        new_conn.execute("PRAGMA busy_timeout = 5000;")
+        new_conn.execute("PRAGMA synchronous = NORMAL;")
+
+        escaped_path = str(self.catalog_path.resolve()).replace("'", "''")
+        new_conn.execute(f"ATTACH DATABASE '{escaped_path}' AS catalog;")
+        new_conn.execute("CREATE TEMP VIEW IF NOT EXISTS exercises AS SELECT * FROM catalog.exercises;")
+        new_conn.execute(
+            "CREATE TEMP VIEW IF NOT EXISTS exercise_secondary_muscles AS SELECT * FROM catalog.exercise_secondary_muscles;"
+        )
+
+        apply_lazy_migrations(new_conn, sanitized, self.users_dir, self.backups_dir)
+        self._create_user_schema_on(new_conn)
+        prune_user_backups(self.backups_dir / sanitized, max_rolling=3)
+        return new_conn
+
     def switch_user(self, username: str) -> bool:
         sanitized = self._sanitize_username(username)
         if not sanitized:
@@ -181,30 +209,24 @@ class DatabaseManager(
                 logger.warning(f"Error closing active connection for {self.active_user}: {e}")
             self.user_conn = None
 
+        self.user_conn = self._build_ledger_connection(sanitized)
         self.active_user = sanitized
-        user_db_path = self.users_dir / f"{sanitized}.db"
-
-        new_conn = sqlite3.connect(user_db_path, check_same_thread=False)
-        new_conn.row_factory = sqlite3.Row
-        new_conn.execute("PRAGMA foreign_keys = ON;")
-        new_conn.execute("PRAGMA journal_mode = WAL;")
-        new_conn.execute("PRAGMA busy_timeout = 5000;")
-        new_conn.execute("PRAGMA synchronous = NORMAL;")
-
-        escaped_path = str(self.catalog_path.resolve()).replace("'", "''")
-        new_conn.execute(f"ATTACH DATABASE '{escaped_path}' AS catalog;")
-        new_conn.execute("CREATE TEMP VIEW IF NOT EXISTS exercises AS SELECT * FROM catalog.exercises;")
-        new_conn.execute(
-            "CREATE TEMP VIEW IF NOT EXISTS exercise_secondary_muscles AS SELECT * FROM catalog.exercise_secondary_muscles;"
-        )
-
-        self.user_conn = new_conn
-
-        apply_lazy_migrations(new_conn, sanitized, self.users_dir, self.backups_dir)
-
-        self.create_user_schema()
-        prune_user_backups(self.backups_dir / sanitized, max_rolling=3)
         return True
+
+    def open_ledger(self, ledger_id: str) -> "TrainingLedger":
+        """Opens an explicit ledger handle for ``ledger_id`` (ADR 041, phase B).
+
+        Runs the same gate (deleted-ledger refusal) and mount work as
+        ``switch_user`` but returns a :class:`~database.ledger.handle.TrainingLedger`
+        owning its own connection. Use it as a context manager so it closes on exit.
+        """
+        sanitized = self._sanitize_username(ledger_id)
+        if not sanitized:
+            raise ValueError("A ledger id is required to open a ledger.")
+        if self._ledger_is_deleted(sanitized):
+            logger.warning(f"Refusing to open deleted ledger '{sanitized}'.")
+            raise LedgerDeletedError(f"Ledger '{sanitized}' belongs to a deleted account.")
+        return TrainingLedger(self._build_ledger_connection(sanitized), sanitized, self.backups_dir)
 
     def unmount_user(self) -> None:
         """Closes and clears this thread's mounted ledger connection.

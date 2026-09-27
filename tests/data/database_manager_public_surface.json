@@ -116,7 +116,7 @@
     },
     "delete_account": {
       "kind": "method",
-      "signature": "(self, account_id: str, now_iso: str | None = None) -> dict[str, typing.Any]"
+      "signature": "(self, account_id: str, now_iso: str | None = None, ledger_id: str | None = None) -> dict[str, typing.Any]"
     },
     "disable_coach_account": {
       "kind": "method",
@@ -429,6 +429,10 @@
     "mark_progression_session_processed": {
       "kind": "method",
       "signature": "(self, assignment_id: str, session_id: str, now_iso: str) -> None"
+    },
+    "open_ledger": {
+      "kind": "method",
+      "signature": "(self, ledger_id: str) -> 'TrainingLedger'"
     },
     "prune_assignment_invites": {
       "kind": "method",

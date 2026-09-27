@@ -72,6 +72,12 @@ def _authed(token):
     return {"Authorization": f"Bearer {token}"}
 
 
+def _ledger_read(db, username, fn):
+    """Reads ledger state through an explicit handle (Phase B), closing it after."""
+    with db.open_ledger(username) as ledger:
+        return fn(ledger)
+
+
 def _make_coach(client, db, username, capacity=10):
     registered = _register(client, username)
     headers = _authed(registered["access_token"])
@@ -200,7 +206,7 @@ def test_commit_records_skipped_and_unplanned_without_changing_program(api):
         ("unplanned", "ohp", "Overhead Press"),
     ]
 
-    rows = db.list_session_divergences(body["session_id"])
+    rows = _ledger_read(db, "p1", lambda ledger: ledger.list_session_divergences(body["session_id"]))
     assert _divergence_tuples(rows) == _divergence_tuples(body["divergences"])
     # The program and its active version are untouched by logging a divergence.
     assert _program_fingerprint(db) == before
@@ -231,9 +237,9 @@ def test_all_prescribed_performed_records_no_divergences(api):
     assert commit.status_code == 201, commit.text
     session_id = commit.json()["session_id"]
     assert commit.json()["divergences"] == []
-    assert db.list_session_divergences(session_id) == []
-    assert session_id not in db.list_divergences_by_session()
-    assert db.get_latest_session_summary()["divergences"] == []
+    assert _ledger_read(db, "p1", lambda ledger: ledger.list_session_divergences(session_id)) == []
+    assert session_id not in _ledger_read(db, "p1", lambda ledger: ledger.list_divergences_by_session())
+    assert _ledger_read(db, "p1", lambda ledger: ledger.get_latest_session_summary())["divergences"] == []
 
 
 def test_exercise_with_only_warmup_sets_counts_as_skipped(api):
@@ -264,7 +270,7 @@ def test_exercise_with_only_warmup_sets_counts_as_skipped(api):
         ("skipped", "row", "Row"),
         ("skipped", "sq", "Squat"),
     ]
-    rows = db.list_session_divergences(result.body["session_id"])
+    rows = _ledger_read(db, "p1", lambda ledger: ledger.list_session_divergences(result.body["session_id"]))
     assert _divergence_tuples(rows) == _divergence_tuples(result.body["divergences"])
 
 
@@ -293,7 +299,7 @@ def test_duplicate_prescribed_skipped_exercise_records_one_divergence(api):
     assert _divergence_tuples(body["divergences"]) == [("skipped", "sq", "Squat")]
 
     session_id = body["session_id"]
-    assert _divergence_tuples(db.list_session_divergences(session_id)) == [("skipped", "sq", "Squat")]
+    assert _divergence_tuples(_ledger_read(db, "p1", lambda ledger: ledger.list_session_divergences(session_id))) == [("skipped", "sq", "Squat")]
 
     db.switch_user("p1")
     sessions = db.conn.execute("SELECT COUNT(*) FROM workout_sessions WHERE id = ?", (session_id,)).fetchone()[0]
@@ -356,8 +362,7 @@ def test_player_logger_and_coach_drill_down_show_same_divergences(api):
     assert commit.status_code == 201, commit.text
     player_divergences = commit.json()["divergences"]
 
-    db.switch_user("p1")
-    latest = db.get_latest_session_summary()
+    latest = _ledger_read(db, "p1", lambda ledger: ledger.get_latest_session_summary())
     assert _divergence_tuples(latest["divergences"]) == _divergence_tuples(player_divergences)
 
     summary = client.get(f"/coach/assignments/{assignment_id}/player/summary", headers=coach_headers)

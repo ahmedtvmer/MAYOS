@@ -12,7 +12,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from agent.program_generator import generate_program_pipeline
-from service.assignments import bind_assigned_player
+from service.assignments import authorized_player_ledger
+from service._base import bind_user
 
 
 def publish_program(
@@ -28,30 +29,32 @@ def publish_program(
     Returns the persisted program (carrying its stable version and provenance),
     or ``None`` when the assignment is not active and owned by this coach.
     """
-    context = bind_assigned_player(db, coach_account_id, assignment_id)
-    if context is None:
+    authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
+    if authorized is None:
         return None
+    ledger, context = authorized
+    with ledger:
+        from svc.llm import InferenceScope, run_inference_sync
 
-    from svc.llm import InferenceScope, run_inference_sync
+        bind_user(db, ledger.ledger_id)  # Phase B2: program pipeline reads the thread-local ledger
+        _program, _ = run_inference_sync(
+            generate_program_pipeline,
+            user_split_override=user_split_override,
+            rep_preference_override=rep_preference_override,
+            frequency_override=frequency_override,
+            published_by_coach_account_id=coach_account_id,
+            scope=InferenceScope(account_id=coach_account_id, role="coach", purpose="coach_program_publish"),
+        )
 
-    _program, _ = run_inference_sync(
-        generate_program_pipeline,
-        user_split_override=user_split_override,
-        rep_preference_override=rep_preference_override,
-        frequency_override=frequency_override,
-        published_by_coach_account_id=coach_account_id,
-        scope=InferenceScope(account_id=coach_account_id, role="coach", purpose="coach_program_publish"),
-    )
+        published = ledger.get_active_program()
+        if published is None:
+            raise RuntimeError("Published program is missing from the player ledger after save.")
 
-    published = db.get_active_program()
-    if published is None:
-        raise RuntimeError("Published program is missing from the player ledger after save.")
-
-    db.create_assignment_notice(
-        context["player"]["account_id"],
-        context["assignment"]["assignment_id"],
-        "program_published",
-        f"Your coach published program version {published.version}.",
-        datetime.now(UTC).isoformat(),
-    )
-    return published
+        db.create_assignment_notice(
+            context["player"]["account_id"],
+            context["assignment"]["assignment_id"],
+            "program_published",
+            f"Your coach published program version {published.version}.",
+            datetime.now(UTC).isoformat(),
+        )
+        return published

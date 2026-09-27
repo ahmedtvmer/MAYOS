@@ -5,30 +5,27 @@ from typing import Any
 from langchain_core.messages import AIMessage, HumanMessage
 
 from agent.chat_markers import chat_message_kind
+from service._base import ledger_scope
 
 
-def get_history(db: Any, trainee_id: str) -> list[dict[str, Any]]:
-    from service._base import bind_user
-
-    bind_user(db, trainee_id)
-    history = db.get_chat_history()
-    # Label the session-commit pointer as a debrief so the client renders it
-    # distinctly without re-deriving the wording (ADR 036).
-    for message in history:
-        message["kind"] = chat_message_kind(
-            str(message.get("role", "")), str(message.get("content", ""))
-        )
-    return history
+def get_history(db: Any, trainee_id: str, ledger: Any | None = None) -> list[dict[str, Any]]:
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        history = ledger.get_chat_history()
+        # Label the session-commit pointer as a debrief so the client renders it
+        # distinctly without re-deriving the wording (ADR 036).
+        for message in history:
+            message["kind"] = chat_message_kind(
+                str(message.get("role", "")), str(message.get("content", ""))
+            )
+        return history
 
 
-def add_user_message(db: Any, trainee_id: str, content: str) -> None:
-    from service._base import bind_user
-
-    bind_user(db, trainee_id)
-    db.add_chat_message("user", content)
+def add_user_message(db: Any, trainee_id: str, content: str, ledger: Any | None = None) -> None:
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        ledger.add_chat_message("user", content)
 
 
-def prepare_user_turn(db: Any, content: str) -> list[dict[str, Any]]:
+def prepare_user_turn(db: Any, content: str, ledger: Any) -> list[dict[str, Any]]:
     """Persists a user turn idempotently and returns the full history to run against.
 
     A turn persists the user message *before* the model runs, so a failed turn
@@ -38,18 +35,16 @@ def prepare_user_turn(db: Any, content: str) -> list[dict[str, Any]]:
     runs against the existing history instead. Reusing the stored row also
     means the retried turn sees the same tail context as the original attempt.
     """
-    history = db.get_chat_history()
+    history = ledger.get_chat_history()
     if history and history[-1]["role"] == "user" and history[-1]["content"] == content:
         return history
-    db.add_chat_message("user", content)
+    ledger.add_chat_message("user", content)
     return history + [{"role": "user", "content": content}]
 
 
-def clear_history(db: Any, trainee_id: str) -> None:
-    from service._base import bind_user
-
-    bind_user(db, trainee_id)
-    db.clear_chat_history()
+def clear_history(db: Any, trainee_id: str, ledger: Any | None = None) -> None:
+    with ledger_scope(db, ledger, trainee_id) as ledger:
+        ledger.clear_chat_history()
 
 
 def build_tail_messages(records: list[dict[str, Any]]) -> list:
@@ -63,7 +58,6 @@ def build_tail_messages(records: list[dict[str, Any]]) -> list:
 
 
 def build_turn_state(
-    db: Any,
     trainee_id: str,
     tail_messages: list,
     coach_tone: str = "Direct, grounded, and pragmatic",
@@ -84,6 +78,6 @@ def build_turn_state(
     }
 
 
-def persist_assistant_message(db: Any, response: str | None) -> None:
+def persist_assistant_message(ledger: Any, response: str | None) -> None:
     if response:
-        db.add_chat_message("assistant", response)
+        ledger.add_chat_message("assistant", response)

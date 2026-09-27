@@ -120,29 +120,35 @@ class AccountDeletionMixin:
             )
             self.deletions_conn.commit()
 
-    def delete_account(self, account_id: str, now_iso: str | None = None) -> dict[str, Any]:
+    def delete_account(
+        self, account_id: str, now_iso: str | None = None, ledger_id: str | None = None
+    ) -> dict[str, Any]:
         """Durably deletes an account: record, catalog rows, then ledger/backup files.
 
         Ordering makes an interrupted deletion fail closed and resumable: the
         record is written before any catalog change, so a later startup/restore
         replay (:meth:`replay_deletions`) finishes the job. An unknown account is
         refused and never recorded.
+
+        ``ledger_id`` is the explicit corpus this call operates on (ADR 041,
+        phase B); callers pass the account's ledger id. When omitted, the
+        account's own ledger id is re-resolved from the registry.
         """
         now = now_iso or datetime.now(UTC).isoformat()
         account = self.get_account(account_id)
         if account is None:
             return {"ok": False, "error": "Account not found."}
-        ledger_id = account["ledger_id"]
+        resolved_ledger_id = ledger_id or account["ledger_id"]
         # (a) durable record first.
-        self.record_account_deletion(str(account_id), ledger_id, now)
+        self.record_account_deletion(str(account_id), resolved_ledger_id, now)
         # (b) catalog: mark deleted, revoke sessions, end relationships.
         self._force_delete_account_catalog(str(account_id), now)
         # (c) live ledger + any user-specific backup copies.
-        self._remove_account_files(ledger_id)
+        self._remove_account_files(resolved_ledger_id)
         self._mark_deletion_applied(str(account_id))
         # model_usage rows keep the opaque account id for billing reconciliation
         # (documented in ADR 039); they carry no username or contact details.
-        return {"ok": True, "account_id": str(account_id), "ledger_id": ledger_id, "deleted_at": now}
+        return {"ok": True, "account_id": str(account_id), "ledger_id": resolved_ledger_id, "deleted_at": now}
 
     def _force_delete_account_catalog(self, account_id: str, now_iso: str) -> None:
         """Forces one account's catalog state to deleted in a single transaction.

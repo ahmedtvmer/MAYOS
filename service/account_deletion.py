@@ -11,11 +11,11 @@ layers must NOT map it to 401 or clients will treat it as session expiry.
 from datetime import UTC, datetime
 from typing import Any
 
-from service._base import bind_user
+from service._base import ledger_scope
 from service.auth import INVALID_CREDENTIALS, verify_password
 
 
-def delete_account(db: Any, account_id: str, password: Any) -> dict[str, Any]:
+def delete_account(db: Any, account_id: str, password: Any, ledger: Any | None = None) -> dict[str, Any]:
     """Verifies the password and deletes the account and its active data.
 
     ``account_id`` is the immutable id verified from the caller's JWT, never the
@@ -26,12 +26,12 @@ def delete_account(db: Any, account_id: str, password: Any) -> dict[str, Any]:
     if not db.is_live_account(account) or not account["is_player"]:
         return {"ok": False, "error": INVALID_CREDENTIALS}
 
-    bind_user(db, account["ledger_id"])
-    stored = db.get_password_hash()
-    if stored is None:
-        return {"ok": False, "error": INVALID_CREDENTIALS}
-    if not isinstance(password, str) or not verify_password(password, stored):
-        return {"ok": False, "error": INVALID_CREDENTIALS}
+    with ledger_scope(db, ledger, account["ledger_id"]) as ledger:
+        stored = ledger.get_password_hash()
+        if stored is None:
+            return {"ok": False, "error": INVALID_CREDENTIALS}
+        if not isinstance(password, str) or not verify_password(password, stored):
+            return {"ok": False, "error": INVALID_CREDENTIALS}
 
-    db.delete_account(account["account_id"], datetime.now(UTC).isoformat())
+    db.delete_account(account["account_id"], datetime.now(UTC).isoformat(), ledger_id=account["ledger_id"])
     return {"ok": True, "account_id": account["account_id"], "trainee_id": account["ledger_id"]}
