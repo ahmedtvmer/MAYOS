@@ -38,6 +38,13 @@ An account that completed a workout or recorded a coaching action in the previou
 **Coaching action**:
 A recorded act of coaching by a coach for a player on an active assignment: recording a check-in, publishing a program, resolving a program request, or acknowledging or resolving a coach alert. Issuing invites and reading player history are not coaching actions.
 
+**Roster**:
+A coach's list of players on active assignments. It opens most urgent first, by the roster urgency order.
+
+**Roster urgency order**:
+The fixed, inspectable order of a roster by need for attention. Players are ranked first by new coach alerts plus pending program requests, then by longest missed-day streak, then by the most overdue follow-up, then by the oldest last workout. Username breaks any remaining tie. It uses no weights and no model scores. Acknowledged alerts do not count.
+_Avoid_: priority score
+
 **Roster briefing**:
 An on-demand coach view that summarizes which assigned players need attention across the roster. It is distinct from a conversation about one selected player.
 

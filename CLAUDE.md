@@ -38,3 +38,23 @@ Prefer delegation over direct implementation for implementation tickets.
 The orchestrator should spend tokens on judgment, architectural correctness,
 and final review—not on duplicating work already specified by the issue or
 performed by the implementer.
+
+## Delegation execution
+
+External delegation is synchronous from the orchestrator's perspective.
+
+When using `opencode-delegate`, invoke the relay in the foreground and block
+until it exits.
+
+The orchestrator must produce no reasoning turns, process
+checks, filesystem checks, or tool calls between delegation start and
+delegation completion.
+
+Never background a delegation merely so the orchestrator can wait for it.
+
+There must be exactly two orchestrator phases:
+
+1. Dispatch.
+2. Resume after completion and review.
+
+No intermediate phase exists.
