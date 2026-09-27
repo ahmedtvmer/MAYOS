@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +9,8 @@ import 'features/coach/coach_alerts_screen.dart';
 import 'features/coach/coach_assignments_screen.dart';
 import 'features/coach/coach_invite_screen.dart';
 import 'features/coach/coach_profile_screen.dart';
+// PROTOTYPE (wayfinder #105) — throwaway branch only.
+import 'features/coach/prototype_coach_shell/prototype_coach_screen.dart';
 import 'features/player/assignment/player_assignment_screen.dart';
 import 'features/player/auth/auth_controller.dart';
 import 'features/player/auth/forgot_password_screen.dart';
@@ -52,6 +55,8 @@ const String splashPath = '/splash';
 ///
 /// Returns the location to redirect to, or null to stay.
 String? redirectFor(AuthState auth, String location) {
+  // PROTOTYPE (wayfinder #105): stub-data route, debug builds only.
+  if (kDebugMode && location.startsWith('/prototype/')) return null;
   switch (auth.status) {
     case AuthStatus.loading:
       // A password-recovery deep link must survive the startup resolution, so
@@ -119,6 +124,13 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
           ref.read(authControllerProvider), state.matchedLocation);
     },
     routes: <RouteBase>[
+      if (kDebugMode)
+        GoRoute(
+          path: prototypeCoachPath,
+          builder: (BuildContext context, GoRouterState state) =>
+              PrototypeCoachScreen(
+                  variant: state.uri.queryParameters['variant'] ?? 'A'),
+        ),
       GoRoute(
         path: splashPath,
         builder: (BuildContext context, GoRouterState state) =>
