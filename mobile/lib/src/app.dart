@@ -51,6 +51,10 @@ class _MayosAppState extends ConsumerState<MayosApp>
     } else if (state == AppLifecycleState.paused) {
       // Offline drafts sync only while the app is in the foreground (ADR 020/033).
       ref.read(draftSyncServiceProvider).pauseForeground();
+    } else if (state == AppLifecycleState.detached) {
+      // The coach-assistant transcript is memory-only: drop it as the process
+      // leaves so nothing lingers into a later launch (issue #45).
+      ref.read(coachAssistantControllerProvider.notifier).clear();
     }
   }
 

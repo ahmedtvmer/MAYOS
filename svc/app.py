@@ -24,6 +24,7 @@ from svc.routers import (
     auth,
     chat,
     coach,
+    coach_ai,
     dashboard,
     media,
     onboarding,
@@ -137,6 +138,14 @@ async def lifespan(app: FastAPI):
     sweep_task: asyncio.Task[None] | None = None
     backup_task: asyncio.Task[None] | None = None
     unit_test_mode = os.getenv("SKIP_LLM_LOAD") == "true"
+    # Coach AI is opt-in: with COACH_AI_ENABLED on, a recorded passing privacy
+    # and evaluation report for the current prompt version is required, or the
+    # startup check logs the refusal and the feature stays off (ADR 049).
+    from service.coach_ai import log_enable_gate_at_startup
+
+    gate = log_enable_gate_at_startup()
+    if gate.enabled:
+        logger.info("Coach AI enabled: %s", gate.reason)
     if unit_test_mode:
         logger.info("SKIP_LLM_LOAD set; skipping catalog init and LLM warmup (unit-test mode).")
         _ready["catalog"] = True
@@ -258,6 +267,7 @@ def create_app() -> FastAPI:
     app.include_router(recovery.router)
     app.include_router(public_pages.router)
     app.include_router(coach.router)
+    app.include_router(coach_ai.router)
     app.include_router(assignments.coach_router)
     app.include_router(assignments.player_router)
     app.include_router(alerts.router)

@@ -161,6 +161,22 @@ class FakeMayosApi {
   Map<String, Map<String, dynamic>> coachPlayerHistories =
       _defaultCoachHistories();
 
+  // Coach AI assistant (#45). `coachAiEnabled` is the effective feature state
+  // reported on `/auth/me` AND enforced on the assistant route, so flipping it
+  // off mid-session reproduces the service answering 404 to a stale entry.
+  bool coachAiEnabled = false;
+  // When true the assistant route denies with the generic 403 of an assignment
+  // that is no longer active (revoked/foreign).
+  bool coachAssistantDenied = false;
+  // When true the assistant route answers the app-wide model-limit 429.
+  bool coachAssistantRateLimited = false;
+  String coachAssistantAnswer =
+      'Volume is steady and the records are trending up. Keep the current split.';
+
+  /// Every assistant request body the app sent, for history assertions.
+  final List<Map<String, dynamic>> coachAssistantRequests =
+      <Map<String, dynamic>>[];
+
   /// When true, `GET /auth/me` fails with a transient 500 (token still valid).
   bool meFails = false;
   int _answeredSteps = 0;
@@ -199,6 +215,9 @@ class FakeMayosApi {
     }
     if (path == '/chat/messages') {
       return _chatMessage(request);
+    }
+    if (path.startsWith('/coach/assignments/') && path.endsWith('/assistant')) {
+      return _coachAssistant(request);
     }
     if (path.startsWith('/workouts/sessions/by-client-id/')) {
       return _sessionByClientId(request);
@@ -407,6 +426,7 @@ class FakeMayosApi {
       'trainee_id': currentUsername,
       'capabilities': <String, dynamic>{'player': true, 'coach': coach},
       'plans': _plansBody(),
+      'coach_ai_enabled': coachAiEnabled,
     });
   }
 
@@ -503,6 +523,7 @@ class FakeMayosApi {
       'trainee_id': currentUsername,
       'capabilities': <String, dynamic>{'player': true, 'coach': true},
       'plans': _plansBody(),
+      'coach_ai_enabled': coachAiEnabled,
     });
   }
 
@@ -697,6 +718,55 @@ class FakeMayosApi {
       'status': 'ended',
       'ended_at': '2026-09-24T11:00:00Z',
     });
+  }
+
+  /// `POST /coach/assignments/{id}/assistant` (issue #45): the feature gate
+  /// answers 404 first, then the ADR 025 pair (coach capability + an owned,
+  /// active assignment), then the model-limit 429, then the request bounds.
+  FakeResponse _coachAssistant(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    if (!coachAiEnabled) {
+      return const FakeResponse(
+          404, <String, dynamic>{'detail': 'Coach AI is not available.'});
+    }
+    final String id = request.path
+        .replaceFirst('/coach/assignments/', '')
+        .replaceFirst('/assistant', '');
+    final bool owned = assignments
+        .any((Map<String, dynamic> entry) => entry['assignment_id'] == id);
+    if (coachAssistantDenied || !owned) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'No active assignment.'});
+    }
+    if (coachAssistantRateLimited) {
+      return const FakeResponse(429, <String, dynamic>{
+        'detail': 'Too many AI requests. Please wait a minute and try again.'
+      });
+    }
+    final String question = request.body['question'] as String? ?? '';
+    final List<dynamic> history =
+        request.body['history'] as List<dynamic>? ?? const <dynamic>[];
+    final bool badTurn = history.any((dynamic turn) {
+      final dynamic content =
+          turn is Map<String, dynamic> ? turn['content'] : null;
+      return content is! String || content.isEmpty || content.length > 2000;
+    });
+    if (question.isEmpty ||
+        question.length > 1000 ||
+        history.length > 12 ||
+        badTurn) {
+      return const FakeResponse(
+          422, <String, dynamic>{'detail': 'Invalid assistant request.'});
+    }
+    coachAssistantRequests.add(request.body);
+    return FakeResponse(200, <String, dynamic>{'answer': coachAssistantAnswer});
   }
 
   FakeResponse _coachPlayerHistory(FakeRequest request) {

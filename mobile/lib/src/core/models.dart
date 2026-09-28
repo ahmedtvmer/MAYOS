@@ -66,14 +66,15 @@ class AccountPlans {
   AccountPlans withoutCoach() => AccountPlans(lifter: lifter);
 }
 
-/// Current account identity, capabilities, and independent plan states from
-/// `GET /auth/me`.
+/// Current account identity, capabilities, independent plan states, and the
+/// coach-AI feature state from `GET /auth/me`.
 class Account {
   const Account({
     required this.accountId,
     required this.traineeId,
     required this.capabilities,
     this.plans = const AccountPlans(),
+    this.coachAiEnabled = false,
   });
 
   factory Account.fromJson(Map<String, dynamic> json) {
@@ -89,6 +90,7 @@ class Account {
       traineeId: json['trainee_id'] as String,
       capabilities: capabilities,
       plans: AccountPlans.fromJson(rawPlans),
+      coachAiEnabled: json['coach_ai_enabled'] as bool? ?? false,
     );
   }
 
@@ -98,6 +100,11 @@ class Account {
   final String traineeId;
   final Capabilities capabilities;
   final AccountPlans plans;
+
+  /// The service's effective coach-assistant feature state (ADR 049). When
+  /// false the coach assistant entry point is hidden; the assistant endpoint
+  /// itself answers 404 so a stale entry fails closed.
+  final bool coachAiEnabled;
 
   bool get isCoach => capabilities.coach;
 }
@@ -391,6 +398,27 @@ class CoachRosterEntry {
   final String? nextFollowUpOn;
 
   int get alertsOpen => alertsNew + alertsAcknowledged;
+}
+
+/// One turn of the coach-assistant transcript sent with
+/// `POST /coach/assignments/{assignment_id}/assistant` (issue #45).
+///
+/// The client holds the transcript in memory for one selected player and sends
+/// the last turns with every call; neither the service nor this app persists it.
+class CoachAssistantTurn {
+  const CoachAssistantTurn({required this.role, required this.content});
+
+  /// `coach` for the coach's question, `assistant` for the answer.
+  final String role;
+  final String content;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'role': role,
+        'content': content,
+      };
+
+  @override
+  String toString() => 'CoachAssistantTurn($role)';
 }
 
 /// `GET /coach/alerts`: one catalog-side alert, of more than one kind (ADR 030/031/032).

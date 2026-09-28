@@ -19,7 +19,7 @@ from service.workouts import is_historical_program
 DEFAULT_RECENT_SESSIONS = 10
 
 
-def _schedule_and_pauses(db: Any, ledger: Any, ledger_id: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+def schedule_and_pauses(db: Any, ledger: Any, ledger_id: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     """The player's current expected schedule and their upcoming/active pauses.
 
     Only the underlying ledger rows are read; the caller has already passed the
@@ -36,7 +36,7 @@ def _schedule_and_pauses(db: Any, ledger: Any, ledger_id: str) -> tuple[dict[str
     return schedule, pauses
 
 
-def _recent_sessions(ledger: Any, limit: int) -> list[dict[str, Any]]:
+def recent_sessions(ledger: Any, limit: int) -> list[dict[str, Any]]:
     """Newest-first working-set summaries grouped from the ledger session log."""
     divergences_by_session = ledger.list_divergences_by_session()
     version_by_session = ledger.get_session_program_versions()
@@ -84,7 +84,7 @@ def player_summary(
     ledger, context = authorized
     with ledger:
         ledger_id = context["player"]["ledger_id"]
-        schedule, pauses = _schedule_and_pauses(db, ledger, ledger_id)
+        schedule, pauses = schedule_and_pauses(db, ledger, ledger_id)
         latest_session = ledger.get_latest_session_summary()
         if latest_session is not None:
             latest_session["is_historical_program"] = is_historical_program(
@@ -99,7 +99,7 @@ def player_summary(
                 db, ledger_id, days_lookback=days_lookback, ledger=ledger
             ),
             "latest_session": latest_session,
-            "recent_sessions": _recent_sessions(ledger, DEFAULT_RECENT_SESSIONS),
+            "recent_sessions": recent_sessions(ledger, DEFAULT_RECENT_SESSIONS),
             "schedule": schedule,
             "pauses": pauses,
         }

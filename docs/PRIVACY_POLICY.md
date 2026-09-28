@@ -191,6 +191,39 @@ keep identifying details out of free-text fields.
 AI usage is metered per account and rate-limited, so a runaway client cannot
 consume unlimited model capacity.
 
+### Coach AI analysis (when enabled by the operator)
+
+An optional feature lets your coach ask a short analysis question about you in
+the coach console. It exists **only when the operator has enabled it** (the
+service reports it as available; otherwise the app hides the entry point and
+the request is refused).
+
+When it is enabled, each question sends to the model:
+
+- the coach's own question, plus the recent coach–assistant turns the app is
+  holding in memory for the one selected player — the coach's text, sent
+  exactly as they wrote it; and
+- a telemetry block built from what your coach can already see: your active
+  program's structure and version, your volume totals for the last 7 and 28
+  days, your recent sessions (date, sets, volume, readiness, skipped or
+  unplanned exercises), your personal records, adherence and missed-day
+  figures, coach alerts, your schedule and pauses, and the **dates and
+  channels** of your check-ins.
+
+It does **not** receive: your username or any account id, your recovery email,
+your coach's name or bio, your conversation with the MAYOS assistant, the note
+your coach writes on a check-in, the reason you type on a program request, or
+any other free text you wrote. Every number (volume, estimated maxes,
+adherence, streaks) is calculated by the service before the call; the model is
+told to rely on those figures and to say when the data is not available. It
+gives no medical advice.
+
+Nothing about the exchange is stored. The app keeps the short conversation in
+memory for the one selected player and clears it when the player is switched,
+when the assignment ends, on logout, and when the app closes. The service
+keeps no transcript of these questions and answers — only the per-account
+model usage records described above, attributed to your coach's account.
+
 ## How long we keep your data
 
 - **Live data is kept while your account exists**, and is deleted when you

@@ -42,9 +42,11 @@ __all__ = [
     "acknowledge_alert",
     "evaluate_assignment",
     "evaluate_for_ledger",
+    "evaluate_ledger_attendance",
     "list_alerts",
     "present_alert",
     "resolve_alert",
+    "window_start_for_assignment",
 ]
 
 
@@ -60,12 +62,12 @@ def _parse_instant(value: Any) -> datetime | None:
     return parsed
 
 
-def _window_start(started_at: Any, versions: list[dict[str, Any]], timezone: str) -> date:
+def window_start_for_assignment(started_at: Any, versions: list[dict[str, Any]], timezone: str) -> date:
     """The assignment's local start date, never before the first schedule version.
 
     Expectations cannot predate the first schedule the player ever wrote, so a
     long-running assignment does not retroactively flag days before any schedule
-    existed.
+    existed. Shared by the alert sweep and the coach-AI attendance facts (#45).
     """
     first_effective = min(date.fromisoformat(str(version["effective_from"])) for version in versions)
     started = _parse_instant(started_at)
@@ -86,6 +88,30 @@ def _notify_coach(db: Any, assignment: dict[str, Any], evaluation: AttendanceEva
             f" {evaluation.trailing_streak_last.isoformat()}). Review the alert in your roster."
         ),
         now_iso,
+    )
+
+
+def evaluate_ledger_attendance(
+    ledger: Any, assignment: dict[str, Any], ledger_id: str, now: datetime
+) -> AttendanceEvaluation | None:
+    """ADR 030 evaluation for one player's open ledger; ``None`` without a schedule.
+
+    One place reads the schedule/pauses/performed rows, derives the assignment
+    window, and runs the pure evaluation — shared by the alert sweep
+    (:func:`evaluate_assignment`) and the coach-AI context builder (#45).
+    """
+    versions = ledger.list_training_schedules(ledger_id)
+    if not versions:
+        return None
+    pauses = ledger.list_training_pauses(ledger_id)
+    performed = ledger.list_performed_dates()
+    timezone = timezone_for_versions(versions)
+    return evaluate_attendance(
+        versions=versions,
+        pauses=pauses,
+        performed_dates=performed,
+        window_start=window_start_for_assignment(assignment.get("started_at"), versions, timezone),
+        now=now,
     )
 
 
@@ -113,21 +139,10 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any], now: datetime | Non
         return {"evaluated": False, "skipped": True, "alerts_created": 0, "alerts_resolved": 0, "streak": 0}
 
     with db.open_ledger(ledger_id) as ledger:
-        versions = ledger.list_training_schedules(ledger_id)
-        if not versions:
-            db.upsert_roster_attendance(assignment_id, 0, now_iso)
-            return {"evaluated": True, "skipped": False, "alerts_created": 0, "alerts_resolved": 0, "streak": 0}
-
-        pauses = ledger.list_training_pauses(ledger_id)
-        performed = ledger.list_performed_dates()
-    timezone = timezone_for_versions(versions)
-    evaluation = evaluate_attendance(
-        versions=versions,
-        pauses=pauses,
-        performed_dates=performed,
-        window_start=_window_start(assignment.get("started_at"), versions, timezone),
-        now=now,
-    )
+        evaluation = evaluate_ledger_attendance(ledger, assignment, ledger_id, now)
+    if evaluation is None:
+        db.upsert_roster_attendance(assignment_id, 0, now_iso)
+        return {"evaluated": True, "skipped": False, "alerts_created": 0, "alerts_resolved": 0, "streak": 0}
 
     streak = evaluation.trailing_streak_length
     created = 0

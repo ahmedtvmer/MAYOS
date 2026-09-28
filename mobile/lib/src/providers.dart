@@ -6,10 +6,12 @@ import 'core/account_data_eraser.dart';
 import 'core/api_client.dart';
 import 'core/chat_storage.dart';
 import 'core/config.dart';
+import 'core/models.dart';
 import 'core/theme/theme_mode_controller.dart';
 import 'core/theme/theme_mode_store.dart';
 import 'core/token_store.dart';
 import 'core/workout_storage.dart';
+import 'features/coach/coach_assistant_state.dart';
 import 'features/player/auth/auth_controller.dart';
 import 'features/player/auth/auth_repository.dart';
 import 'features/player/workout/draft_sync_service.dart';
@@ -73,6 +75,34 @@ final StateNotifierProvider<AuthController, AuthState> authControllerProvider =
     ref.watch(unauthorizedEventsProvider),
     ref.watch(accountDeletedEventsProvider),
   );
+});
+
+/// The coach assistant's in-memory transcript for ONE selected player (#45).
+///
+/// It is never written to secure storage, caches, shared preferences, or logs,
+/// so nothing survives app close. The auth listener below clears it on logout,
+/// session teardown, loss of the coach capability, and loss of the feature flag
+/// (a resumed app re-reads `GET /auth/me`); `CoachAssistantController` clears it
+/// on player switch and on a revoked/ended assignment; `MayosApp` clears it on
+/// `AppLifecycleState.detached`.
+final StateNotifierProvider<CoachAssistantController, CoachAssistantTranscript?>
+    coachAssistantControllerProvider =
+    StateNotifierProvider<CoachAssistantController, CoachAssistantTranscript?>(
+        (ref) {
+  final CoachAssistantController controller = CoachAssistantController();
+  ref.listen<AuthState>(authControllerProvider,
+      (AuthState? previous, AuthState next) {
+    final Account? account = next.session?.account;
+    // A signed-out session, a lost coach capability, or a switched-off feature
+    // all end the assistant's context (issue #45).
+    if (!next.isAuthenticated ||
+        account == null ||
+        !account.isCoach ||
+        !account.coachAiEnabled) {
+      controller.clear();
+    }
+  });
+  return controller;
 });
 
 /// Whether this client captures protected offline workout drafts (ADR 020).

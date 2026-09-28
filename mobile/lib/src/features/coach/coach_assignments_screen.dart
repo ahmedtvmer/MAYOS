@@ -24,8 +24,8 @@ class CoachAssignmentsScreen extends ConsumerStatefulWidget {
       _CoachAssignmentsScreenState();
 }
 
-class _CoachAssignmentsScreenState
-    extends ConsumerState<CoachAssignmentsScreen> {
+class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
+    with WidgetsBindingObserver {
   bool _loading = true;
   bool _issuing = false;
   bool _disabling = false;
@@ -38,14 +38,35 @@ class _CoachAssignmentsScreenState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Grants and revocations happen elsewhere: a return to the foreground
+  /// refreshes the roster so a lost assignment drops its assistant transcript
+  /// before the coach can reopen it (issue #45).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _load(showLoader: false);
+    }
+  }
+
+  /// [showLoader] blanks the list while fetching; the background refreshes
+  /// (app resume, drill-down return) keep the current rows until data lands.
+  Future<void> _load({bool showLoader = true}) async {
+    if (showLoader) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final List<CoachRosterEntry> assignments =
           await ref.read(apiClientProvider).coachAssignments();
@@ -57,6 +78,14 @@ class _CoachAssignmentsScreenState
         _notices = notices;
         _loading = false;
       });
+      // The refreshed roster is the authority on what is still assigned: an
+      // assignment that vanished ends the coach assistant's in-memory
+      // transcript for it (issue #45).
+      ref
+          .read(coachAssistantControllerProvider.notifier)
+          .clearUnlessAssigned(<String>[
+        for (final CoachRosterEntry row in assignments) row.assignmentId,
+      ]);
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -126,6 +155,11 @@ class _CoachAssignmentsScreenState
                 row.assignmentId != entry.assignmentId)
             .toList(growable: false);
       });
+      // Revocation ends the assistant's in-memory context for that player too
+      // (issue #45): no further question can be asked about them.
+      ref
+          .read(coachAssistantControllerProvider.notifier)
+          .clearFor(entry.assignmentId);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Revoked ${entry.playerUsername}.')),
       );
@@ -187,6 +221,8 @@ class _CoachAssignmentsScreenState
             content: Text('Coaching disabled. $ended assignment(s) ended.')),
       );
       ref.read(authControllerProvider.notifier).markCoachDisabled();
+      // Every assignment just ended: no assistant context survives it (#45).
+      ref.read(coachAssistantControllerProvider.notifier).clear();
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -365,12 +401,20 @@ class _CoachAssignmentsScreenState
                 leading: Icon(Icons.person_outline, color: c.textSecondary),
                 title: Text(entry.playerUsername),
                 subtitle: Text('Since ${entry.startedAt}'),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (BuildContext context) =>
-                        CoachPlayerHistoryScreen(entry: entry),
-                  ),
-                ),
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (BuildContext context) =>
+                          CoachPlayerHistoryScreen(entry: entry),
+                    ),
+                  );
+                  // The drill-down (and the assistant under it) is closed:
+                  // reload the roster, since a revocation may have landed
+                  // while it was open (issue #45).
+                  if (mounted) {
+                    await _load(showLoader: false);
+                  }
+                },
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[

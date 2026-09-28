@@ -26,6 +26,9 @@ __all__ = [
     "ClaimIn",
     "CoachAlertListOut",
     "CoachAlertOut",
+    "CoachAssistantIn",
+    "CoachAssistantOut",
+    "CoachAssistantTurn",
     "CoachAssignmentsOut",
     "CoachCapabilityDisableOut",
     "CoachCheckInCreateOut",
@@ -138,12 +141,18 @@ class AccountPlansOut(BaseModel):
 
 
 class AccountOut(BaseModel):
-    """Current account identity, capabilities, and plan states, read from the durable registry."""
+    """Current account identity, capabilities, and plan states, read from the durable registry.
+
+    ``coach_ai_enabled`` is the server's effective feature state (flag plus
+    recorded eval/privacy report, ADR 049), so a client can hide the coach
+    assistant entry point when the operator has not enabled it.
+    """
 
     account_id: str
     trainee_id: str
     capabilities: AccountCapabilitiesOut
     plans: AccountPlansOut
+    coach_ai_enabled: bool = False
 
 
 class CoachInviteRedeemIn(BaseModel):
@@ -167,6 +176,36 @@ class CoachProfileUpdate(BaseModel):
     bio: str = Field(default="", max_length=1000)
     specialization: str = Field(default="", max_length=200)
     capacity: int = Field(ge=1, le=200)
+
+
+#: Bounds for the coach assistant request (issue #45). The client holds the
+#: transcript in memory and sends it with every call; the server keeps nothing.
+COACH_QUESTION_MAX_CHARS = 1000
+COACH_HISTORY_MAX_TURNS = 12
+COACH_HISTORY_TURN_MAX_CHARS = 2000
+
+
+class CoachAssistantTurn(BaseModel):
+    """One client-held transcript turn; roles are the coach's and the assistant's."""
+
+    role: Literal["coach", "assistant"]
+    content: str = Field(min_length=1, max_length=COACH_HISTORY_TURN_MAX_CHARS)
+
+
+class CoachAssistantIn(BaseModel):
+    """A coach question with the in-memory transcript for one selected player.
+
+    Nothing here is persisted server-side beyond ADR 038 model-usage metering.
+    """
+
+    question: str = Field(min_length=1, max_length=COACH_QUESTION_MAX_CHARS)
+    history: list[CoachAssistantTurn] = Field(default_factory=list, max_length=COACH_HISTORY_MAX_TURNS)
+
+
+class CoachAssistantOut(BaseModel):
+    """The model's analysis of the selected player's telemetry."""
+
+    answer: str
 
 
 class CoachIdentityOut(BaseModel):

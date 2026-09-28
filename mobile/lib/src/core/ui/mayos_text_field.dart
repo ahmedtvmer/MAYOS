@@ -29,6 +29,7 @@ class MayosTextField extends StatelessWidget {
     this.suffixIcon,
     this.minLines,
     this.maxLines = 1,
+    this.maxLength,
     this.dense = false,
     this.fieldKey,
   });
@@ -57,6 +58,10 @@ class MayosTextField extends StatelessWidget {
   final int? minLines;
   final int maxLines;
 
+  /// When set, the field truncates input and shows a live `n/maxLength`
+  /// counter below it (the coach assistant's 1000-character question, #45).
+  final int? maxLength;
+
   /// Tighter content padding for narrow numeric cells (workout set rows)
   /// while keeping the themed border and label.
   final bool dense;
@@ -84,6 +89,7 @@ class MayosTextField extends StatelessWidget {
       onChanged: onChanged,
       minLines: minLines,
       maxLines: maxLines,
+      maxLength: maxLength,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,

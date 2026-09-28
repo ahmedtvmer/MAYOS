@@ -311,6 +311,7 @@ def test_coach_surfaces_never_expose_player_chat(api):
         f"POST /coach/alerts/{'{alert_id}'}/resolve",
         f"POST /coach/assignments/{'{assignment_id}'}/revoke",
         f"POST /coach/assignments/{'{assignment_id}'}/check-ins",
+        f"POST /coach/assignments/{'{assignment_id}'}/assistant",
         f"POST /coach/assignments/{'{assignment_id}'}/program-requests/{'{request_id}'}/apply",
         f"POST /coach/assignments/{'{assignment_id}'}/program-requests/{'{request_id}'}/decline",
         "POST /coach/assignments/notices/read",

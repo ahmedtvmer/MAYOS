@@ -9,6 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from service import account_deletion as deletion_service
 from service import auth as auth_service
+from service import coach_ai as coach_ai_service
 from service import password_reset as reset_service
 from service import plans as plans_service
 from svc.auth import create_access_token, remember_me_hours, revoke_token
@@ -107,6 +108,7 @@ async def read_current_account(
         trainee_id=account["username"],
         capabilities=AccountCapabilitiesOut(player=account["is_player"], coach=account["is_coach"]),
         plans=AccountPlansOut(**plans),
+        coach_ai_enabled=coach_ai_service.coach_ai_enabled(),
     )
 
 

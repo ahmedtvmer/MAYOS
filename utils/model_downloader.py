@@ -34,6 +34,7 @@ from langchain_community.chat_models import ChatLlamaCpp
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk
 from pydantic import BaseModel
+from utils.env_flags import env_flag
 
 try:  # Optional: only required when LLM_BACKEND=openai.
     from langchain_openai import ChatOpenAI
@@ -120,7 +121,7 @@ _MOCK_FALLBACK_ENV_VARS = ("CI",)
 
 
 def _env_truthy(name: str) -> bool:
-    return os.getenv(name, "").lower() in {"1", "true", "yes"}
+    return env_flag(name)
 
 
 def _should_use_mock(model_type: str) -> bool:
@@ -162,6 +163,20 @@ def _cloud_model_id(model_type: str) -> str:
 def _local_model_id(model_type: str) -> str:
     """The id metered for a local GGUF; local inference is always cost 0."""
     return f"local:{MODEL_REGISTRY[model_type]['repo_id']}"
+
+
+def model_identity(model_type: str = "production") -> tuple[str, str]:
+    """``(model id, backend)`` the configured model of ``model_type`` resolves to.
+
+    The id is the same one metering records: the cloud id for the ``openai``
+    backend (``COACH_MODEL`` for ``"coach"``) and the local registry id
+    otherwise (local mode has no separate coach GGUF, so the production model
+    is aliased). The coach-AI enable gate uses it to bind a recorded eval
+    report to the model it was measured on (ADR 049).
+    """
+    if uses_cloud_backend():
+        return _cloud_model_id(model_type), "openai"
+    return _local_model_id("production"), "local"
 
 
 def _metering_callbacks(model_id: str) -> list[Any]:

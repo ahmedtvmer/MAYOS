@@ -142,6 +142,9 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `MODEL_DAILY_TOKEN_LIMIT` | `200000` | Per-account input+output tokens/UTC day; `0` disables |
 | `MODEL_PRICING_JSON` | built-in defaults | `{model: {"input": usd, "output": usd}}` per 1M tokens; unknown model ⇒ cost 0 + warning |
 | `MODEL_SPEND_ALERT_USD` | `50` | Owner alert when projected month spend reaches this (evaluated on the hourly sweep) |
+| `COACH_AI_ENABLED` | `false` | Enables the optional coach AI assistant (#45); refused unless `COACH_AI_EVAL_REPORT` records a passing **live** report for the current prompt version *and* the configured coach model/backend |
+| `COACH_AI_EVAL_REPORT` | unset | Path to the recorded coach privacy + evaluation report JSON (see §4, "Enabling the optional coach AI assistant") |
+| `RATE_LIMIT_COACH_ASSISTANT` | `30/minute` | Per-client limit on `POST /coach/assignments/{id}/assistant`; the per-account model limits (`MODEL_*`) still apply |
 | `PRIVACY_CONTACT_EMAIL` | unset (⇒ placeholder + warning) | Owner contact rendered on the public privacy policy at `GET /privacy`; unset still serves the page |
 | `OWNER_ALERT_EMAIL` | unset | Alert recipient (set via `fly secrets set` on Fly); unset logs the warning only and retries delivery each sweep |
 | `MODEL_PATH` / `JUDGE_MODEL_PATH` | registry defaults | Explicit GGUF paths (win over `MODEL_DIR` + registry filename) |
@@ -192,6 +195,65 @@ export N_GPU_LAYERS=-1
 python tests/eval/run_evaluation.py --target all --gpu-layers 16
 python tests/eval/run_evaluation.py --generalize --gpu-layers 16
 ```
+
+### Enabling the optional coach AI assistant (issue #45)
+
+`POST /coach/assignments/{assignment_id}/assistant` is **off by default**
+(`COACH_AI_ENABLED=false`): with the flag off the route answers `404` and no
+model is built or called. Enabling it requires **both** gates to be recorded
+for the current prompt version (ADR 049):
+
+1. **Privacy suite** — hermetic, mock model, no network:
+
+   ```bash
+   .venv/bin/python -m pytest tests/test_coach_ai_privacy.py tests/test_coach_ai.py -q
+   ```
+
+2. **Coach evaluation** — fixture cases scored by the deterministic rubric
+   (`tests/eval/coach_rubric.py`) against the *production* prompt. Run it
+   against the hosted coach model and write the enablement report in one step;
+   the runner also runs the privacy suite and records its verdict:
+
+   ```bash
+   # Plumbing run first (in-repo mock model; never passes the gate, exit 0):
+   .venv/bin/python tests/eval/run_coach_evaluation.py --mock --no-privacy
+
+   # Real run: hosted model + privacy suite, records both gates:
+   .venv/bin/python tests/eval/run_coach_evaluation.py --write-report reports/coach_ai_eval.json
+   ```
+
+3. **Enable** — point the service at the recorded report. The service
+   re-validates it (`service.coach_ai.validate_report`, the same validator
+   `--check-report` uses): expected `report_version`, `mode: "live"` (a
+   `mode: "mock"` plumbing report is refused), `pass=true`, `prompt_hash` for
+   the current prompt version, the currently configured coach `model` and
+   `backend`, both gate results — and it re-derives the evaluation verdict from
+   the recorded runs, so a hand-edited `pass` flag cannot disagree with them.
+   If anything is missing it logs
+   `Coach AI requested but refused; the feature stays off: …` and the feature
+   stays off (the flag alone is never enough). The parsed verdict is cached on
+   report path + mtime + size + model + backend, so requests do not re-parse
+   the file; re-recording the report applies on the next request, without a
+   restart:
+
+   ```bash
+   export COACH_AI_ENABLED=true
+   export COACH_AI_EVAL_REPORT=reports/coach_ai_eval.json   # committed or owner-produced
+   ```
+
+Re-check a report without loading any model (CI-friendly, exit 1 when stale,
+mock, recorded for another model, or failing):
+
+```bash
+.venv/bin/python tests/eval/run_coach_evaluation.py --check-report reports/coach_ai_eval.json
+```
+
+Changing the system prompt, the context rendering, or the field selection
+changes `service.coach_ai.prompt_version_hash()` (it hashes the rendered
+canonical fixture, not just the prompt text), and changing `COACH_MODEL` /
+`LLM_BACKEND` changes the model identity the report is bound to — either
+invalidates an existing report: re-run step 2 before enabling again. The report is a JSON file, safe
+to commit — it contains fixture questions/answers, never production data.
 
 ### Production `docker-compose.yaml` (actual — abridged formatting)
 

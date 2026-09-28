@@ -667,6 +667,36 @@ class ApiClient {
         httpResponse.data, ProgramRequest.fromJson, _invalidProgramRequests);
   }
 
+  /// One coach question about [assignmentId] with the client-held transcript
+  /// (`POST /coach/assignments/{id}/assistant`, issue #45, ADR 049).
+  ///
+  /// [history] is the in-memory transcript trimmed to the last turns: the
+  /// service persists nothing about the exchange. A 404 means the feature is
+  /// off server-side, a 403 that the assignment is no longer active.
+  Future<String> coachAssistantAsk({
+    required String assignmentId,
+    required String question,
+    required List<CoachAssistantTurn> history,
+  }) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/assignments/$assignmentId/assistant',
+        data: <String, dynamic>{
+          'question': question,
+          'history': <Map<String, dynamic>>[
+            for (final CoachAssistantTurn turn in history) turn.toJson(),
+          ],
+        },
+      ),
+    );
+    final dynamic data = response.data;
+    if (data is! Map<String, dynamic> || data['answer'] is! String) {
+      throw const ApiException(
+          'The service returned an invalid assistant answer.');
+    }
+    return data['answer'] as String;
+  }
+
   List<ProgramRequest> _parseProgramRequestList(dynamic data) {
     if (data is! Map<String, dynamic> || data['requests'] is! List<dynamic>) {
       throw const ApiException(_invalidProgramRequests);

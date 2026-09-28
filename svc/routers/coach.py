@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from service import assignments as assignment_service
 from service import coach as coach_service
+from service import coach_ai as coach_ai_service
 from service import plans as plans_service
 from svc.dependencies import VerifiedPlayer, get_current_coach, get_current_player, get_db
 from svc.rate_limit import ASSIGNMENT_MUTATE_LIMIT, COACH_INVITE_LIMIT, limiter
@@ -52,6 +53,7 @@ async def redeem_coach_invite(
         trainee_id=result["username"],
         capabilities=AccountCapabilitiesOut(**result["capabilities"]),
         plans=AccountPlansOut(**result["plans"]),
+        coach_ai_enabled=coach_ai_service.coach_ai_enabled(),
     )
 
 

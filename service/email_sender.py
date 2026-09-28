@@ -12,6 +12,8 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 
+from utils.env_flags import env_flag
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,7 +60,7 @@ def _deliver(to_email: str, subject: str, body: str) -> bool:
         message.set_content(body)
         port = int(os.getenv("SMTP_PORT", "587"))
         context = ssl.create_default_context()
-        use_tls = os.getenv("SMTP_USE_TLS", "true").lower() in {"1", "true", "yes"}
+        use_tls = env_flag("SMTP_USE_TLS", True)
         if use_tls:
             with smtplib.SMTP(smtp_host, port, timeout=10) as server:
                 server.starttls(context=context)

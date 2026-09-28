@@ -6,6 +6,7 @@ import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../providers.dart';
+import 'coach_assistant_screen.dart';
 
 /// Coach drill-down (#25): one actively assigned player's sessions, volume,
 /// personal records, and per-exercise history.
@@ -88,6 +89,14 @@ class _CoachPlayerHistoryScreenState
       });
     } on ApiException catch (error) {
       if (!mounted) return;
+      if (error.statusCode == 403) {
+        // The assignment ended or was revoked while this screen was open: the
+        // drill-down is refused, so the assistant's in-memory context for this
+        // player goes with it (issue #45).
+        ref
+            .read(coachAssistantControllerProvider.notifier)
+            .clearFor(widget.entry.assignmentId);
+      }
       setState(() {
         _loading = false;
         _error = error.message;
@@ -598,10 +607,19 @@ class _CoachPlayerHistoryScreenState
   @override
   Widget build(BuildContext context) {
     final CoachRosterEntry entry = widget.entry;
+    final bool assistantEnabled =
+        ref.watch(authControllerProvider).session?.account.coachAiEnabled ??
+            false;
     return Scaffold(
       appBar: AppBar(
         title: Text(entry.playerUsername),
         actions: <Widget>[
+          if (assistantEnabled)
+            TextButton(
+              key: const Key('coach_assistant_entry'),
+              onPressed: _openAssistant,
+              child: const Text('Ask assistant'),
+            ),
           TextButton(
             onPressed: _publishing ? null : _openPublishDialog,
             child: _publishing
@@ -615,6 +633,17 @@ class _CoachPlayerHistoryScreenState
         ],
       ),
       body: _buildBody(context),
+    );
+  }
+
+  /// Opens the in-memory coach assistant for this one player (#45). The entry
+  /// exists only when the service reports the feature enabled.
+  void _openAssistant() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) =>
+            CoachAssistantScreen(entry: widget.entry),
+      ),
     );
   }
 
