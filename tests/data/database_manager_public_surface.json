@@ -57,6 +57,10 @@
       "kind": "method",
       "signature": "(self, token_hash: str, account_id: str, expires_at: str) -> None"
     },
+    "create_ledger_schema_on": {
+      "kind": "method",
+      "signature": "(self, conn) -> None"
+    },
     "create_program_request": {
       "kind": "method",
       "signature": "(self, request_id: str, assignment_id: str, coach_account_id: str, player_account_id: str, kind: str, program_version: int, day_name: str | None, exercise_id: str | None, replacement_exercise_id: str | None, desired_weekly_frequency: int | None, desired_split_preference: str | None, reason: str, now_iso: str) -> str"
@@ -344,6 +348,26 @@
     "ledger_exists": {
       "kind": "method",
       "signature": "(self, username: str) -> bool"
+    },
+    "consume_claim_code": {
+      "kind": "method",
+      "signature": "(self, token_hash: str, account_id: str, now_iso: str) -> bool"
+    },
+    "create_claim_code": {
+      "kind": "method",
+      "signature": "(self, account_id: str, token_hash: str, expires_at: str, created_at: str | None = None) -> None"
+    },
+    "get_account_import_by_fingerprint": {
+      "kind": "method",
+      "signature": "(self, source_fingerprint: str) -> dict[str, typing.Any] | None"
+    },
+    "prune_claim_codes": {
+      "kind": "method",
+      "signature": "(self, now_iso: str) -> int"
+    },
+    "record_account_import": {
+      "kind": "method",
+      "signature": "(self, *, import_id: str, account_id: str, source_fingerprint: str, source_name: str, counts_json: str, opt_in_reference: str, imported_at: str, claim_token_hash: str, claim_expires_at: str) -> None"
     }
   },
   "module_names": [

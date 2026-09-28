@@ -131,7 +131,7 @@ def _snapshot_connection(source: sqlite3.Connection, dest_path: Path) -> None:
         dest.close()
 
 
-def _snapshot_ledger_file(source_path: Path, dest_path: Path) -> None:
+def snapshot_sqlite_file(source_path: Path, dest_path: Path) -> None:
     source = sqlite3.connect(f"file:{source_path}?mode=ro", uri=True)
     try:
         _snapshot_connection(source, dest_path)
@@ -188,7 +188,7 @@ def create_daily_backup(
             source = Path(db.ledgers_dir) / f"{ledger_id}.db"
             if not source.is_file():
                 continue
-            _snapshot_ledger_file(source, staging_ledgers / f"{ledger_id}.db")
+            snapshot_sqlite_file(source, staging_ledgers / f"{ledger_id}.db")
             covered.append(ledger_id)
         # Publish atomically, holding the catalog lock across the re-check and the
         # rename so a concurrent deletion cannot slip between them (defect #2).

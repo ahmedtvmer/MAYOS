@@ -98,6 +98,23 @@ class AuthController extends StateNotifier<AuthState> {
     state = AuthState.authenticated(session);
   }
 
+  /// Claims an imported account with its owner-issued code and signs in, using
+  /// the same authenticated state as a successful login (ADR 019).
+  Future<void> claim({
+    required String username,
+    required String claimCode,
+    required String password,
+    bool rememberMe = false,
+  }) async {
+    final AccountSession session = await _repository.claim(
+      username: username,
+      claimCode: claimCode,
+      password: password,
+      rememberMe: rememberMe,
+    );
+    state = AuthState.authenticated(session);
+  }
+
   Future<void> logout() async {
     final String? accountId = state.session?.account.accountId;
     await _repository.logout(accountId: accountId);

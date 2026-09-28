@@ -14,13 +14,13 @@ Account ids always come from the verified JWT; request bodies never select them.
 Only SHA-256 hashes of codes are stored and neither codes nor notices are logged.
 """
 
-import hashlib
 import logging
 import os
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
+from service._tokens import hash_token
 from service.check_ins import next_follow_up_on
 from service.email_sender import send_assignment_redemption_email
 
@@ -58,10 +58,6 @@ def assignment_invite_ttl() -> timedelta:
     except ValueError:
         minutes = DEFAULT_INVITE_TTL_MINUTES
     return timedelta(minutes=_bounded_ttl_minutes(minutes))
-
-
-def _hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def _valid_token(token: Any) -> bool:
@@ -137,7 +133,7 @@ def issue_assignment_invite(
 
     raw_token = token_factory() if token_factory else secrets.token_urlsafe(32)
     expires_at = (datetime.now(UTC) + ttl).isoformat()
-    db.create_assignment_invite(_hash_token(raw_token), coach_account_id, expires_at)
+    db.create_assignment_invite(hash_token(raw_token), coach_account_id, expires_at)
     return {
         "ok": True,
         "token": raw_token,
@@ -151,7 +147,7 @@ def preview_assignment_invite(db: Any, token: Any, player_account_id: str) -> di
     """Reads the coach identity and access disclosure for a code without consuming it."""
     if not _valid_token(token):
         return {"ok": False, "error": GENERIC_INVITE_ERROR}
-    invite = db.get_assignment_invite(_hash_token(token))
+    invite = db.get_assignment_invite(hash_token(token))
     now_iso = datetime.now(UTC).isoformat()
     if invite is None or invite["used_at"] is not None or invite["expires_at"] <= now_iso:
         return {"ok": False, "error": GENERIC_INVITE_ERROR}
@@ -203,7 +199,7 @@ def redeem_assignment_invite(db: Any, token: Any, player_account_id: str, consen
         return {"ok": False, "error": GENERIC_INVITE_ERROR}
 
     now_iso = datetime.now(UTC).isoformat()
-    result = db.redeem_assignment_invite(_hash_token(token), player_account_id, now_iso)
+    result = db.redeem_assignment_invite(hash_token(token), player_account_id, now_iso)
     if not result["ok"]:
         return {"ok": False, "error": _reason_error(result["reason"])}
 

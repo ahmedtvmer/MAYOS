@@ -6,7 +6,6 @@ uses one generic message for unknown/expired/used tokens. Route layers must
 preserve this (same status code and body shape for both cases).
 """
 
-import hashlib
 import logging
 import os
 import re
@@ -15,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
 from service import auth as auth_service
+from service._tokens import hash_token
 from service.email_sender import build_reset_link, send_password_reset_email
 
 logger = logging.getLogger(__name__)
@@ -39,10 +39,6 @@ def reset_ttl() -> timedelta:
     except ValueError:
         minutes = 30
     return timedelta(minutes=max(5, min(minutes, 120)))
-
-
-def _hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def _live_player_account(db: Any, recovery_key: Any) -> dict[str, Any] | None:
@@ -108,7 +104,7 @@ def request_password_reset(
     raw_token = token_factory() if token_factory else secrets.token_urlsafe(32)
     expires_at = (datetime.now(UTC) + reset_ttl()).isoformat()
     try:
-        db.store_reset_token(_hash_token(raw_token), account["account_id"], expires_at)
+        db.store_reset_token(hash_token(raw_token), account["account_id"], expires_at)
     except Exception:
         logger.exception("Failed to store password-reset token for %s", account["account_id"])
         return {"ok": True, "message": GENERIC_REQUEST_MESSAGE}
@@ -130,7 +126,7 @@ def reset_password_with_token(db: Any, token: str, new_password: str) -> dict[st
     except ValueError as exc:
         return {"ok": False, "error": str(exc), "code": "weak_new"}
     now_iso = datetime.now(UTC).isoformat()
-    recovery_key = db.consume_reset_token(_hash_token(token), now_iso)
+    recovery_key = db.consume_reset_token(hash_token(token), now_iso)
     if recovery_key is None:
         return {"ok": False, "error": GENERIC_TOKEN_ERROR}
     account = _live_player_account(db, recovery_key)

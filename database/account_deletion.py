@@ -202,6 +202,11 @@ class AccountDeletionMixin:
                 (account_id, legacy_key),
             )
             cursor.execute("DELETE FROM coach_invites WHERE account_id = ?", (account_id,))
+            # Import audit and claim codes carry the source file name and the
+            # operator's opt-in reference, so they are removed with the account
+            # rather than kept as an identifying record (ADR 019/015/039).
+            cursor.execute("DELETE FROM account_claim_codes WHERE account_id = ?", (account_id,))
+            cursor.execute("DELETE FROM account_imports WHERE account_id = ?", (account_id,))
             cursor.execute("DELETE FROM coach_profiles WHERE account_id = ?", (account_id,))
             cursor.execute("DELETE FROM account_plans WHERE account_id = ?", (account_id,))
             cursor.execute(

@@ -16,6 +16,7 @@ import 'package:mayos_mobile/src/features/player/auth/auth_widgets.dart';
 import 'package:mayos_mobile/src/providers.dart';
 import 'package:mayos_mobile/src/router.dart';
 
+import 'support/auth_harness.dart';
 import 'support/fake_api_adapter.dart';
 import 'support/fake_mayos_api.dart';
 
@@ -43,30 +44,11 @@ Future<void> _setSize(WidgetTester tester, Size size) async {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
-Widget _app(FakeMayosApi fake, InMemoryTokenStore tokens) {
-  return ProviderScope(
-    overrides: <Override>[
-      tokenStoreProvider.overrideWithValue(tokens),
-      chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
-      apiClientProvider.overrideWith((ref) {
-        final ApiClient client = ApiClient(
-          tokens: ref.watch(tokenStoreProvider),
-          baseUrl: 'http://test.local',
-          adapter: fake.adapter,
-        );
-        client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
-        return client;
-      }),
-    ],
-    child: const MayosApp(),
-  );
-}
-
 Future<ProviderContainer> _pumpAuth(WidgetTester tester, FakeMayosApi fake,
     {Size size = const Size(393, 852)}) async {
   await _setSize(tester, size);
   final InMemoryTokenStore tokens = InMemoryTokenStore();
-  await tester.pumpWidget(_app(fake, tokens));
+  await tester.pumpWidget(authApp(fake, tokens));
   await _pumpUntilFound(tester, find.text('Log in'));
   return ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
 }

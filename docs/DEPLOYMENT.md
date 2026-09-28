@@ -797,3 +797,64 @@ both player and coach capabilities; the same app/login serves both):
 7. Confirm no access-log line contains the token
    (`fly logs | grep reset-password` shows `token=[REDACTED]`), and the hosted
    response carries `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
+
+### 10.10 Opt-in import of a consenting person's training ledger (issue #42, ADR 019)
+
+The owner imports **one** consenting person's legacy ledger at a time. There is
+no bulk mode and no override for a source that looks like development/test data:
+the local data root mixes real histories with dev/test ledgers, so importing it
+wholesale would create unwanted and insecure cloud accounts. The script takes a
+consistent SQLite snapshot, migrates it, creates a new immutable account,
+rewrites the ledger's embedded identity to the new ledger id, verifies per-table
+record counts against the raw source, clears any source password (the person must
+claim), and prints a single-use, expiring claim code exactly once.
+
+**Snapshot locally first.** The source is usually a WAL database. Copying only
+its `.db` file loses every committed row still in the `-wal` file, so take a
+consistent single-file snapshot before uploading anything:
+
+```bash
+# 0a. Locally, snapshot the WAL database into one self-contained file.
+sqlite3 source.db ".backup source-snapshot.db"
+# or: python -c "import sqlite3; \
+#   s=sqlite3.connect('source.db'); d=sqlite3.connect('source-snapshot.db'); s.backup(d); d.close()"
+
+# 0b. Upload the snapshot (out of band; never commit it) to a path OUTSIDE
+#     /data/users, which is the live ledger directory and is refused as a source.
+fly ssh console -a "$APP" -C "mkdir -p /tmp/import"
+fly sftp shell -a "$APP"
+#   put /local/path/source-snapshot.db /tmp/import/source-snapshot.db
+
+# 1. Import. The opt-in reference records how and when the person consented.
+fly ssh console -a "$APP" -C \
+  "python scripts/import_player.py /tmp/import/source-snapshot.db \
+     --username <new-username> \
+     --opt-in-reference '<how/when the person consented>' \
+     --ttl-hours 72"
+
+# 2. Hand the printed claim code to the person out of band. They redeem it in the
+#    app's "Claim imported account" screen with their chosen password.
+```
+
+Notes:
+
+- The script refuses a source named like a fixture (`test*`, `demo*`, `eval*`,
+  `bughunt*`, `seed*`, `fixture*`, `ci_test*`; `default`/`bootstrap`/`alice`/
+  `bob`/`bp` exactly or with a trailing `_`; any `*_default`), a source inside
+  the repo's `tests/` or `data/` directories or inside the live `/data/users`
+  directory, and a source whose snapshot fingerprint was already imported. This
+  is only an accidental-import guard: renaming a file bypasses it, and one
+  explicit file per run is the real guard. It may refuse a real name like
+  `bob.db`; in that case rename the copied snapshot.
+- The script also refuses a new username whose destination ledger file already
+  exists, so it never overwrites an unenrolled `users/<id>.db`.
+- A rolled-back import is a normal durable deletion and leaves an
+  `account_deletions` record plus a deleted `accounts` row (ADR 015/039); the
+  audit row is removed with the account. Re-importing the **same** source after
+  its account was deleted is a genuinely new account.
+- If any per-table record count differs between the raw source snapshot and the
+  imported ledger, the import rolls the new account back through the normal
+  durable deletion path and exits non-zero, so a failed import never leaves a
+  half-imported live account and never deletes or modifies the source.
+- The audit row stores no training data and no contact details. Remove the copied
+  snapshot from `/tmp` after the import.

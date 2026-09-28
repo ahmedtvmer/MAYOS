@@ -1,19 +1,24 @@
-"""Player registration, login, and legacy-claim. Returns plain dicts; no session state.
+"""Player registration, login, and opt-in claim. Returns plain dicts; no session state.
 
 Proof level is password possession. Unknown users and wrong passwords are
 indistinguishable (``Invalid credentials.``); only registration reveals
-ID-taken, which is inherent to signup.
+ID-taken, which is inherent to signup. Claiming an imported account requires the
+owner-issued single-use claim code, and every claim failure shares one generic
+error.
 """
 
+from datetime import UTC, datetime
 from typing import Any
 
 import bcrypt
 
 from service._base import ledger_scope
+from service._tokens import hash_token
 
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 128
 INVALID_CREDENTIALS = "Invalid credentials."
+INVALID_CLAIM = "Invalid or expired claim code."
 
 
 def validate_password(password: Any) -> str:
@@ -90,30 +95,40 @@ def login_player(db: Any, username: str, password: str) -> dict[str, Any]:
         }
 
 
-def claim_player(db: Any, username: str, password: str) -> dict[str, Any]:
-    """One-time password claim for an account whose ledger has no password yet.
+def claim_player(db: Any, username: str, claim_code: str, password: str) -> dict[str, Any]:
+    """One-time password claim for an imported account whose ledger has no password.
 
-    Only an enrolled account can be claimed; a bare local ledger is refused so
-    it is never silently adopted into a cloud account.
+    Requires the owner-issued, account-bound, single-use, expiring claim code
+    (ADR 019). Only an enrolled live player account with a password-less ledger
+    can be claimed; a bare local ledger is refused so it is never silently
+    adopted into a cloud account. Every failure — unknown account, wrong/expired/
+    reused code, already-claimed ledger — returns one generic error so the
+    endpoint cannot be used to enumerate accounts or probe claim state.
     """
+    generic = {"ok": False, "error": INVALID_CLAIM}
     clean_id = db._sanitize_username(username)
-    account = db.get_active_account_by_username(clean_id) if clean_id else None
-    if account is None or not db.ledger_exists(account["ledger_id"]):
-        return {"ok": False, "error": INVALID_CREDENTIALS}
+    if not clean_id or not isinstance(claim_code, str) or not claim_code:
+        return generic
     try:
         validate_password(password)
     except ValueError as exc:
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": str(exc), "code": "weak_new"}
+    account = db.get_active_account_by_username(clean_id)
+    if account is None or not account["is_player"] or not db.ledger_exists(account["ledger_id"]):
+        return generic
+    now_iso = datetime.now(UTC).isoformat()
     with db.open_ledger(account["ledger_id"]) as ledger:
         if ledger.get_password_hash() is not None:
-            return {"ok": False, "error": INVALID_CREDENTIALS}
+            return generic
+        if not db.consume_claim_code(hash_token(claim_code), account["account_id"], now_iso):
+            return generic
         ledger.set_password_hash(hash_password(password))
-        return {
-            "ok": True,
-            "trainee_id": account["ledger_id"],
-            "account_id": account["account_id"],
-            "session_epoch": account["session_epoch"],
-        }
+    return {
+        "ok": True,
+        "trainee_id": account["ledger_id"],
+        "account_id": account["account_id"],
+        "session_epoch": account["session_epoch"],
+    }
 
 
 def change_password(

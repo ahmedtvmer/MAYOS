@@ -30,6 +30,14 @@ void main() {
     expect(redirectFor(const AuthState.unauthenticated(), loginPath), isNull);
     expect(
         redirectFor(const AuthState.unauthenticated(), registerPath), isNull);
+    // The claim surface is public while logged out, and a signed-in device
+    // leaves it for the authenticated area.
+    expect(redirectFor(const AuthState.unauthenticated(), claimPath), isNull);
+    expect(
+      redirectFor(
+          _authenticated(coach: false, onboarded: true), claimPath),
+      homePath,
+    );
   });
 
   test('password-recovery pages stay public through startup and login', () {

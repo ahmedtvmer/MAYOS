@@ -66,12 +66,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       setState(() => _error = _genericFallback);
       return;
     }
-    if (password.length < 8) {
-      setState(() => _error = 'Use at least 8 characters.');
-      return;
-    }
-    if (password != _confirm.text) {
-      setState(() => _error = 'The passwords do not match.');
+    final String? passwordError = validateNewPassword(password, _confirm.text);
+    if (passwordError != null) {
+      setState(() => _error = passwordError);
       return;
     }
     setState(() => _busy = true);

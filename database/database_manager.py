@@ -29,6 +29,7 @@ from database.registry.accounts import RegistryAccountsMixin
 from database.registry.plans import RegistryPlansMixin
 from database.registry.recovery import RegistryRecoveryMixin
 from database.registry.coach_invites import RegistryCoachInvitesMixin
+from database.registry.imports import RegistryImportsMixin
 from database.registry.assignments import RegistryAssignmentsMixin
 from database.registry.program_requests import RegistryProgramRequestsMixin
 from database.registry.coach_alerts import RegistryCoachAlertsMixin
@@ -54,6 +55,7 @@ class DatabaseManager(
     RegistryPlansMixin,
     RegistryRecoveryMixin,
     RegistryCoachInvitesMixin,
+    RegistryImportsMixin,
     RegistryAssignmentsMixin,
     RegistryProgramRequestsMixin,
     RegistryCoachAlertsMixin,

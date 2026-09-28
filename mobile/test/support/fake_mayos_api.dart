@@ -31,6 +31,17 @@ class FakeMayosApi {
   String? validResetToken;
   int forgotRequests = 0;
   String? lastForgotEmail;
+  // Imported-account claim flow (#42). Usernames in `importedUsernames` have no
+  // password yet, so login answers 403 `claim_required`; `claimCodes` holds the
+  // owner-issued code each one redeems through `POST /auth/claim`.
+  final Set<String> importedUsernames = <String>{};
+  final Map<String, String> claimCodes = <String, String>{};
+  int claimRequests = 0;
+  // When true, a claim reaches the service and is refused 400 as too weak.
+  bool claimRejectsWeakPassword = false;
+  // When true, login answers a generic 403 (no `claim_required` code), so the
+  // client must keep the normal error path rather than offering a claim.
+  bool loginForbidden = false;
   // Player profile fields written through `PUT /profile` (#27).
   String repPreference = 'balanced';
   int weeklyFrequency = 4;
@@ -250,6 +261,8 @@ class FakeMayosApi {
         return _register(request);
       case '/auth/login':
         return _login(request);
+      case '/auth/claim':
+        return _claim(request);
       case '/auth/logout':
         return _authorized(request)
             ? const FakeResponse(204)
@@ -334,12 +347,48 @@ class FakeMayosApi {
   FakeResponse _login(FakeRequest request) {
     final String? username = request.body['trainee_id'] as String?;
     final String? password = request.body['password'] as String?;
+    // An imported account with no password yet cannot log in: it must be
+    // claimed first (mirrors the service's 403 claim-required refusal).
+    if (username != null &&
+        importedUsernames.contains(username) &&
+        !passwords.containsKey(username)) {
+      return const FakeResponse(403, <String, dynamic>{
+        'detail': 'This ledger predates passwords. Set one to continue.',
+        'code': 'claim_required',
+      });
+    }
+    if (loginForbidden) {
+      return const FakeResponse(403, <String, dynamic>{
+        'detail': 'Your account is suspended.',
+      });
+    }
     if (username == null || passwords[username] != password) {
       return const FakeResponse(
         401,
         <String, dynamic>{'detail': 'Invalid username or password.'},
       );
     }
+    _beginSession(username);
+    return FakeResponse(200, _tokenBody(username));
+  }
+
+  FakeResponse _claim(FakeRequest request) {
+    claimRequests++;
+    final String? username = request.body['trainee_id'] as String?;
+    final String? code = request.body['claim_code'] as String?;
+    final String? password = request.body['password'] as String?;
+    if (password == null || password.length < 8 || claimRejectsWeakPassword) {
+      return const FakeResponse(
+        400, <String, dynamic>{'detail': 'Password does not meet the requirements.'});
+    }
+    final String? expected = username == null ? null : claimCodes[username];
+    if (expected == null || code != expected) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Invalid or expired claim code.'});
+    }
+    claimCodes.remove(username);
+    importedUsernames.remove(username);
+    passwords[username!] = password;
     _beginSession(username);
     return FakeResponse(200, _tokenBody(username));
   }

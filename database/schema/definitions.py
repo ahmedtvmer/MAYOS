@@ -237,6 +237,15 @@ class SchemaMixin:
             set_ledger_schema_version(conn, CURRENT_LEDGER_SCHEMA_VERSION)
         conn.commit()
 
+    def create_ledger_schema_on(self, conn) -> None:
+        """Public form of :meth:`_create_ledger_schema_on` for off-store callers.
+
+        The opt-in import materialises the current ledger schema on a migrated
+        snapshot connection; it goes through this method rather than the private
+        one so the store's schema rule stays owned here.
+        """
+        self._create_ledger_schema_on(conn)
+
     def ensure_account_schema(self) -> None:
         # Provisioned once at boot; guarded so the auth hot path never re-runs DDL.
         if getattr(self, "_account_schema_ready", False):
@@ -469,6 +478,44 @@ class SchemaMixin:
                     fired_at TEXT NOT NULL,
                     notified_at TEXT
                 );
+
+                -- Opt-in import audit (ADR 019, ticket #42). One row per imported
+                -- source ledger, keyed to the new immutable account id. Only the
+                -- snapshot fingerprint, the source file name, per-table counts,
+                -- the operator's opt-in reference, and the import instant are
+                -- stored: no training data and no contact details. The unique
+                -- fingerprint makes re-running the import a refusal. The row is
+                -- deleted with the account (ADR 015/039), so nothing identifying
+                -- survives deletion; re-importing a deleted account's source is a
+                -- genuinely new account, matching username reuse.
+                CREATE TABLE IF NOT EXISTS account_imports (
+                    import_id TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    source_fingerprint TEXT NOT NULL,
+                    source_name TEXT NOT NULL,
+                    counts_json TEXT NOT NULL,
+                    opt_in_reference TEXT NOT NULL,
+                    imported_at TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_account_imports_fingerprint
+                    ON account_imports(source_fingerprint);
+                CREATE INDEX IF NOT EXISTS idx_account_imports_account
+                    ON account_imports(account_id);
+
+                -- Owner-issued, account-bound single-use claim code for an imported
+                -- account (ADR 019, ticket #42). Only the SHA-256 of the code is
+                -- stored; the raw code is shown once by scripts/import_player.py.
+                -- Redemption is atomic and sets the account's first password.
+                -- Removed with the account, like its import audit row (ADR 045).
+                CREATE TABLE IF NOT EXISTS account_claim_codes (
+                    token_hash TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    used_at TEXT,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_account_claim_codes_account
+                    ON account_claim_codes(account_id);
             """)
             self._create_coach_alerts_schema()
             self._ensure_roster_attendance_timezone()

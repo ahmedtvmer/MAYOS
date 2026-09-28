@@ -23,7 +23,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final TextEditingController _password = TextEditingController();
   bool _rememberMe = false;
   bool _busy = false;
+  bool _claimRequired = false;
   String? _error;
+
+  /// The message shown when login reports an imported, not-yet-claimed account.
+  static const String _claimRequiredMessage =
+      'This account was imported. Claim it with the code from the MAYOS owner '
+      'or team to set a password.';
 
   @override
   void dispose() {
@@ -36,6 +42,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() {
       _busy = true;
       _error = null;
+      _claimRequired = false;
     });
     try {
       await ref.read(authControllerProvider.notifier).login(
@@ -46,13 +53,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       TextInput.finishAutofillContext();
     } on ApiException catch (error) {
       if (mounted) {
-        setState(() => _error = error.message);
+        final bool claimRequired = error.errorCode == 'claim_required';
+        setState(() {
+          _claimRequired = claimRequired;
+          _error = claimRequired ? _claimRequiredMessage : error.message;
+        });
       }
     } finally {
       if (mounted) {
         setState(() => _busy = false);
       }
     }
+  }
+
+  /// Opens the claim screen, prefilling the username the user typed so a
+  /// claim-required account does not have to re-enter it.
+  void _openClaim() {
+    final String username = _username.text.trim();
+    context.go(username.isEmpty
+        ? claimPath
+        : '$claimPath?username=${Uri.encodeComponent(username)}');
   }
 
   @override
@@ -64,7 +84,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       title: 'Log in',
       lead: 'Sign in to keep training and pick up where you left off.',
       wallpaper: true,
-      message: _error == null ? null : AuthInlineNotice(message: _error!),
+      message: _error == null
+          ? null
+          : AuthInlineNotice(
+              kind: _claimRequired ? AuthNoticeKind.info : AuthNoticeKind.error,
+              message: _error!,
+            ),
       primary: MayosButton(
         key: const Key('login_submit'),
         label: 'Log in',
@@ -79,6 +104,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         AuthLink(
           label: 'Forgot password?',
           onPressed: _busy ? null : () => context.go(forgotPasswordPath),
+        ),
+        AuthLink(
+          label: 'Claim imported account',
+          onPressed: _busy ? null : _openClaim,
         ),
       ],
       children: <Widget>[

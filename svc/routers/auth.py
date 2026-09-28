@@ -3,6 +3,7 @@
 import asyncio
 from typing import Annotated, Any
 
+from fastapi.responses import JSONResponse
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -18,6 +19,7 @@ from svc.schemas import (
     AccountDeleteIn,
     AccountOut,
     AccountPlansOut,
+    ClaimIn,
     EmailUpdateIn,
     ForgotPasswordIn,
     MessageOut,
@@ -58,16 +60,17 @@ async def register(request: Request, body: TraineeIn, db: Annotated[Any, Depends
 async def login(request: Request, body: TraineeIn, db: Annotated[Any, Depends(get_db)]):
     def _run():
         result = auth_service.login_player(db, body.trainee_id, body.password)
-        if not result["ok"]:
-            if result.get("code") == "claim_required":
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="This ledger predates passwords. Set one to continue.",
-                )
+        if not result["ok"] and result.get("code") != "claim_required":
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=result["error"])
         return result
 
     result = await asyncio.to_thread(_run)
+    if not result["ok"]:
+        # Machine-readable code so clients can offer the claim flow (#42).
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content={"detail": "This account must be claimed with its claim code.", "code": "claim_required"},
+        )
     return TokenOut(
         access_token=create_access_token(
             result["account_id"],
@@ -109,13 +112,21 @@ async def read_current_account(
 
 @router.post("/claim", response_model=TokenOut)
 @limiter.limit(REGISTER_LIMIT)
-async def claim(request: Request, body: TraineeIn, db: Annotated[Any, Depends(get_db)]):
-    """One-time password claim for enrolled accounts whose ledger has no password yet."""
+async def claim(request: Request, body: ClaimIn, db: Annotated[Any, Depends(get_db)]):
+    """One-time password claim for an imported account with its owner-issued code.
+
+    Requires the single-use, expiring, account-bound claim code (ADR 019). Every
+    failure — unknown account, wrong/expired/reused code, or an already-claimed
+    ledger — returns the same generic 401 so the endpoint cannot enumerate
+    accounts or probe claim state. A too-weak password is a plain 400.
+    """
 
     def _run():
-        result = auth_service.claim_player(db, body.trainee_id, body.password)
+        result = auth_service.claim_player(db, body.trainee_id, body.claim_code, body.password)
         if not result["ok"]:
-            status_code = status.HTTP_400_BAD_REQUEST if "must be" in result["error"] else status.HTTP_401_UNAUTHORIZED
+            status_code = (
+                status.HTTP_400_BAD_REQUEST if result.get("code") == "weak_new" else status.HTTP_401_UNAUTHORIZED
+            )
             raise HTTPException(status_code=status_code, detail=result["error"])
         return result
 

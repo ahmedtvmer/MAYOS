@@ -196,7 +196,7 @@ def test_deletion_during_backup_is_not_republished(api, monkeypatch):
 
     import database.backup as backup_module
 
-    real_snapshot_ledger = backup_module._snapshot_ledger_file
+    real_snapshot_ledger = backup_module.snapshot_sqlite_file
     deleted = {"done": False}
 
     def delete_mid_run(source_path, dest_path):
@@ -208,7 +208,7 @@ def test_deletion_during_backup_is_not_republished(api, monkeypatch):
             # daily copies) are removed, all before this run publishes.
             db.delete_account(account_id, ledger_id="alice")
 
-    monkeypatch.setattr(backup_module, "_snapshot_ledger_file", delete_mid_run)
+    monkeypatch.setattr(backup_module, "snapshot_sqlite_file", delete_mid_run)
 
     summary = create_daily_backup(db)
     day_dir = Path(summary["path"])

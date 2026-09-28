@@ -36,7 +36,7 @@ Password changes update the ledger credential and advance the account's session 
 
 `POST /auth/register` creates an immutable account id in the catalog registry, creates the account's ledger, stores the bcrypt hash, and immediately issues a JWT. `POST /auth/login` proves possession of the password and issues a JWT whose subject is that immutable account id.
 
-An enrolled account whose ledger predates schema v2 may have no `auth_credentials` row. It uses a one-time claim flow. A bare local ledger without an account registry entry cannot be claimed through the API (see ADR 015 and the opted-in import in ADR 019):
+An imported account (ADR 019) or an enrolled account whose ledger has no `auth_credentials` row uses a one-time claim flow. Claiming requires the **single-use, expiring claim code** the owner issues with `scripts/import_player.py`; only the code's SHA-256 is stored, and the raw code is handed over out of band. There is deliberately no code-less password set by username alone, and a bare local ledger without an account registry entry cannot be claimed through the API (see ADR 015/019):
 
 ```mermaid
 sequenceDiagram
@@ -48,13 +48,14 @@ sequenceDiagram
 
     UI->>API: POST /auth/login {trainee_id, password}
     API->>SVC: login_player()
-    SVC->>DB: bind_user + get_password_hash()
-    alt No stored hash (legacy ledger)
+    SVC->>DB: open_ledger + get_password_hash()
+    alt No stored hash (imported / password-less account)
         SVC-->>API: code = claim_required
-        API-->>UI: 403 "Ledger predates passwords. Set one to continue."
-        UI->>API: POST /auth/claim {trainee_id, new_password}
+        API-->>UI: 403 "This ledger predates passwords. Set one to continue."
+        Note over UI: The owner hands the claim code over out of band.
+        UI->>API: POST /auth/claim {trainee_id, claim_code, password}
         API->>SVC: claim_player()
-        SVC->>DB: set_password_hash(bcrypt)
+        SVC->>DB: consume_claim_code(hash) + set_password_hash(bcrypt)
         SVC-->>UI: JWT issued
     else Hash present
         SVC->>SVC: bcrypt.checkpw(password, hash)
@@ -66,7 +67,7 @@ sequenceDiagram
     end
 ```
 
-Claim is **single-use**: once a hash exists, further `/auth/claim` calls return `401 Invalid credentials.`
+Claim is **single-use and account-bound**: redeeming the code marks it used, and once a hash exists further `/auth/claim` calls return `401 Invalid or expired claim code.` Unknown account, wrong/expired/reused code, and an already-claimed ledger all return that same generic 401, so `/auth/claim` itself does not distinguish them. Note that `/auth/login` still returns `403 claim_required` for a password-less ledger by design, so the fact that an account is waiting to be claimed is observable to a caller who already knows its username. A too-weak password is a plain `400`.
 
 ---
 
@@ -233,8 +234,8 @@ Delivery failures are logged and swallowed; the client response stays generic. T
 | Endpoint | Auth | Limits | Notes |
 | :--- | :--- | :--- | :--- |
 | `POST /auth/register` | — | 5/min | 409 if ID taken; 201 + JWT |
-| `POST /auth/login` | — | 5/min | 401 generic; 403 legacy claim |
-| `POST /auth/claim` | — | 5/min | Single-use per ledger |
+| `POST /auth/login` | — | 5/min | 401 generic; 403 claim required |
+| `POST /auth/claim` | — | 5/min | Requires owner-issued single-use claim code; 401 generic |
 | `POST /auth/logout` | Bearer | — | Revokes presenting `jti`; 204 |
 | `POST /auth/change-password` | Bearer | 10/min | Revokes **all** sessions; 400 on failure |
 | `DELETE /auth/account` | Bearer | 10/min | Password-confirmed durable deletion (ADR 039); 400 generic on wrong password |

@@ -1001,10 +1001,14 @@ void main() {
         (WidgetTester tester) async {
       final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
       final InMemoryDraftStore store = InMemoryDraftStore();
+      // The sync service prunes synced drafts whose updatedAt is older than 24h
+      // relative to its real clock, so a fixed stamp turns this into a
+      // date-dependent test.
       await store.write(_accountA, <WorkoutDraft>[
         _draft(accountId: _accountA).copyWith(
           status: DraftStatus.synced,
           serverResponse: <String, dynamic>{'session_id': 'session-1'},
+          updatedAt: DateTime.now().toIso8601String(),
         ),
       ]);
 

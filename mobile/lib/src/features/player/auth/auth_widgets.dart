@@ -359,6 +359,25 @@ class _ConsentCheckbox extends StatelessWidget {
   }
 }
 
+/// The client-side new-password rules, shared by register, claim and reset so
+/// the same rule is worded identically on every screen.
+const int kMinPasswordLength = 8;
+const String kPasswordMinLengthMessage = 'Use at least 8 characters.';
+const String kPasswordMismatchMessage = 'Passwords do not match.';
+
+/// The min-length check for a chosen password, or null when it is long enough.
+String? passwordLengthError(String password) =>
+    password.length < kMinPasswordLength ? kPasswordMinLengthMessage : null;
+
+/// The confirmation check, or null when the two entries match.
+String? passwordConfirmationError(String password, String confirm) =>
+    password == confirm ? null : kPasswordMismatchMessage;
+
+/// The shared new-password validator: the length rule first, then the match
+/// rule, or null when both pass.
+String? validateNewPassword(String password, String confirm) =>
+    passwordLengthError(password) ?? passwordConfirmationError(password, confirm);
+
 /// A password input with an obscured default and a labelled visibility toggle.
 class AuthPasswordField extends StatefulWidget {
   const AuthPasswordField({
@@ -366,6 +385,7 @@ class AuthPasswordField extends StatefulWidget {
     required this.controller,
     this.label = 'Password',
     this.helperText,
+    this.errorText,
     this.textInputAction,
     this.autofillHints,
     this.focusNode,
@@ -377,6 +397,7 @@ class AuthPasswordField extends StatefulWidget {
   final TextEditingController controller;
   final String label;
   final String? helperText;
+  final String? errorText;
   final TextInputAction? textInputAction;
   final Iterable<String>? autofillHints;
   final FocusNode? focusNode;
@@ -398,6 +419,7 @@ class _AuthPasswordFieldState extends State<AuthPasswordField> {
       controller: widget.controller,
       label: widget.label,
       helperText: widget.helperText,
+      errorText: widget.errorText,
       obscureText: _obscure,
       keyboardType: TextInputType.visiblePassword,
       textInputAction: widget.textInputAction,

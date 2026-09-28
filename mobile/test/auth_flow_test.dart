@@ -6,25 +6,9 @@ import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_controller.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
+import 'support/auth_harness.dart';
 import 'support/fake_api_adapter.dart';
 import 'support/fake_mayos_api.dart';
-
-ProviderContainer _containerFor(FakeMayosApi fake, InMemoryTokenStore tokens) {
-  return ProviderContainer(
-    overrides: <Override>[
-      tokenStoreProvider.overrideWithValue(tokens),
-      apiClientProvider.overrideWith((ref) {
-        final ApiClient client = ApiClient(
-          tokens: ref.watch(tokenStoreProvider),
-          baseUrl: 'http://test.local',
-          adapter: fake.adapter,
-        );
-        client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
-        return client;
-      }),
-    ],
-  );
-}
 
 /// Seeds a persisted, onboarded player session with a recovery email.
 Future<void> _seedSignedIn(
@@ -42,7 +26,7 @@ void main() {
       () async {
     final FakeMayosApi fake = FakeMayosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
-    final ProviderContainer container = _containerFor(fake, tokens);
+    final ProviderContainer container = authContainerFor(fake, tokens);
     addTearDown(container.dispose);
 
     final AuthController auth = container.read(authControllerProvider.notifier);
@@ -131,7 +115,7 @@ void main() {
       () async {
     final FakeMayosApi fake = FakeMayosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
-    final ProviderContainer container = _containerFor(fake, tokens);
+    final ProviderContainer container = authContainerFor(fake, tokens);
     addTearDown(container.dispose);
 
     final AuthController auth = container.read(authControllerProvider.notifier);
@@ -158,7 +142,7 @@ void main() {
       () async {
     final FakeMayosApi fake = FakeMayosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
-    final ProviderContainer container = _containerFor(fake, tokens);
+    final ProviderContainer container = authContainerFor(fake, tokens);
     addTearDown(container.dispose);
     await _seedSignedIn(fake, tokens);
 
@@ -182,7 +166,7 @@ void main() {
   test('resume refresh keeps the session on a transient failure', () async {
     final FakeMayosApi fake = FakeMayosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
-    final ProviderContainer container = _containerFor(fake, tokens);
+    final ProviderContainer container = authContainerFor(fake, tokens);
     addTearDown(container.dispose);
     await _seedSignedIn(fake, tokens);
 
@@ -201,7 +185,7 @@ void main() {
       () async {
     final FakeMayosApi fake = FakeMayosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
-    final ProviderContainer container = _containerFor(fake, tokens);
+    final ProviderContainer container = authContainerFor(fake, tokens);
     addTearDown(container.dispose);
     await _seedSignedIn(fake, tokens);
 
@@ -219,7 +203,7 @@ void main() {
   test('restore clears a stale token and keeps a valid session', () async {
     final FakeMayosApi fake = FakeMayosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
-    final ProviderContainer container = _containerFor(fake, tokens);
+    final ProviderContainer container = authContainerFor(fake, tokens);
     addTearDown(container.dispose);
 
     await tokens.save('stale-token');

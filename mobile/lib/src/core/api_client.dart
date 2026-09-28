@@ -137,13 +137,18 @@ class ApiClient {
     if (data is Map) {
       final Map<String, dynamic> body = Map<String, dynamic>.from(data);
       if (body['detail'] is String) {
-        return ApiException(body['detail'] as String, statusCode: status);
+        return ApiException(
+          body['detail'] as String,
+          statusCode: status,
+          errorCode: _machineCode(body),
+        );
       }
       if (body['error'] is String) {
+        final String code = body['error'] as String;
         return ApiException(
-          _messageForError(body['error'] as String),
+          _messageForError(code),
           statusCode: status,
-          errorCode: body['error'] as String,
+          errorCode: code,
         );
       }
     }
@@ -156,6 +161,18 @@ class ApiClient {
           statusCode: status);
     }
     return ApiException('Request failed ($status).', statusCode: status);
+  }
+
+  /// The machine-readable code from a service error body, whether it arrives as
+  /// `error` (for example `account_deleted`) or alongside a `detail` as `code`
+  /// (for example the login 403 `claim_required`).
+  static String? _machineCode(Map<String, dynamic> body) {
+    final dynamic error = body['error'];
+    if (error is String) {
+      return error;
+    }
+    final dynamic code = body['code'];
+    return code is String ? code : null;
   }
 
   static String _messageForError(String code) => switch (code) {
@@ -193,6 +210,32 @@ class ApiClient {
         '/auth/login',
         data: {
           'trainee_id': traineeId,
+          'password': password,
+          'remember_me': rememberMe,
+        },
+        options: Options(extra: {_skipAuth: true}),
+      ),
+    );
+    return AuthTokens.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Redeems an owner-issued, single-use claim code to set a password on an
+  /// imported account and signs it in (`POST /auth/claim`, ADR 019).
+  ///
+  /// Every claim failure is a generic 401 whose message does not disclose
+  /// whether the account exists; a too-weak password is a plain 400.
+  Future<AuthTokens> claim({
+    required String traineeId,
+    required String claimCode,
+    required String password,
+    bool rememberMe = false,
+  }) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/auth/claim',
+        data: {
+          'trainee_id': traineeId,
+          'claim_code': claimCode,
           'password': password,
           'remember_me': rememberMe,
         },

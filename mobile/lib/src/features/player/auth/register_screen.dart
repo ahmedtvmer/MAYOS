@@ -35,8 +35,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   Future<void> _submit() async {
-    if (_password.text != _confirm.text) {
-      setState(() => _error = 'Passwords do not match.');
+    final String? passwordError =
+        validateNewPassword(_password.text, _confirm.text);
+    if (passwordError != null) {
+      setState(() => _error = passwordError);
       return;
     }
     setState(() {

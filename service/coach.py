@@ -12,11 +12,12 @@ Only SHA-256 hashes of invite tokens are stored (ADR-007 pattern); the raw code
 is returned once to the operator. The client body can never set ``is_coach``.
 """
 
-import hashlib
 import os
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
+
+from service._tokens import hash_token
 
 DEFAULT_CAPACITY = 10
 MIN_CAPACITY = 1
@@ -44,10 +45,6 @@ def coach_invite_ttl() -> timedelta:
     return timedelta(minutes=_bounded_ttl_minutes(minutes))
 
 
-def _hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-
 def issue_coach_invite(
     db: Any,
     username: str,
@@ -72,7 +69,7 @@ def issue_coach_invite(
         ttl = timedelta(minutes=_bounded_ttl_minutes(ttl_minutes))
     raw_token = token_factory() if token_factory else secrets.token_urlsafe(32)
     expires_at = (datetime.now(UTC) + ttl).isoformat()
-    db.create_coach_invite(_hash_token(raw_token), account["account_id"], expires_at)
+    db.create_coach_invite(hash_token(raw_token), account["account_id"], expires_at)
     return {
         "ok": True,
         "token": raw_token,
@@ -91,7 +88,7 @@ def redeem_coach_invite(db: Any, account_id: str, token: str) -> dict[str, Any]:
     if not isinstance(token, str) or not (10 <= len(token) <= 128):
         return {"ok": False, "error": GENERIC_INVITE_ERROR}
     now_iso = datetime.now(UTC).isoformat()
-    account = db.redeem_coach_invite(_hash_token(token), account_id, now_iso, DEFAULT_CAPACITY)
+    account = db.redeem_coach_invite(hash_token(token), account_id, now_iso, DEFAULT_CAPACITY)
     if account is None:
         return {"ok": False, "error": GENERIC_INVITE_ERROR}
     db.prune_coach_invites(now_iso)

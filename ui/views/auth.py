@@ -64,9 +64,11 @@ def _login(trainee_id: str, password: str, remember: bool = False) -> None:
     st.error(str(detail or "Login failed.")[:200])
 
 
-def _claim(trainee_id: str, password: str) -> None:
+def _claim(trainee_id: str, claim_code: str, password: str) -> None:
     status, body, detail = request_json(
-        "POST", "/auth/claim", json={"trainee_id": trainee_id, "password": password}
+        "POST",
+        "/auth/claim",
+        json={"trainee_id": trainee_id, "claim_code": claim_code, "password": password},
     )
     if status == 200 and body and "access_token" in body:
         session.establish_session(body)
@@ -137,12 +139,16 @@ def render_gatekeeper() -> None:
                 _login(trainee_id, password, remember=remember_me)
 
         if st.session_state.get("claim_user"):
-            st.info("This ledger predates passwords. Set one now to continue.")
+            st.info(
+                "This account has no password yet. Enter the single-use claim code you were given, "
+                "then choose a password to continue."
+            )
             with st.form("claim_form"):
+                claim_code = st.text_input("Claim code:", type="password")
                 new_password = st.text_input("Choose a password (8+ characters):", type="password")
                 submit_claim = st.form_submit_button("Set Password & Continue", use_container_width=True)
-                if submit_claim and new_password:
-                    _claim(st.session_state.claim_user, new_password)
+                if submit_claim and claim_code and new_password:
+                    _claim(st.session_state.claim_user, claim_code, new_password)
 
     with reg_tab:
         with st.form("register_form"):
