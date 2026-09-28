@@ -403,9 +403,21 @@ Two consent paths:
 - Keep failed workout entries in the open tab for explicit retry with an
   idempotent session key. A closed or reloaded tab does not retain web entries;
   tell players this before logging.
-- A disposable Flutter web JavaScript build passed on 2026-09-25, but the
-  frontend choice depends on iPhone Safari runtime checks for auth storage,
-  API CORS, route reload, responsive layouts, and online workout writes.
+- Flutter web feasibility, 2026-09-28 (#126, agent-verified; iPhone Safari
+  checks pending):
+  - Pass: the JavaScript build (release main.dart.js 1.0 MB gzip), a login
+    in desktop Firefox, a session that survives reload, logout, Remember me
+    (2h / 720h JWT), and CORS preflights and calls for all verbs from the
+    configured origin (POST /workouts/sessions was not run with an Origin
+    header).
+  - Fail as shipped: there are no clean path URLs, and the /splash startup
+    redirect drops cold deep links. The web logger is hidden, and a forced-on
+    failed commit writes a browser-storage draft instead of keeping the
+    entries on screen. `--wasm` fails on `flutter_secure_storage_web`. The
+    coach player page has no route.
+  - Desktop: no-go as shipped. It becomes a go once #127 adds the path URL
+    strategy, a deep-link fix through splash, and an online-only finish
+    path. None of these blockers is Flutter-specific.
   If Flutter-specific limitations block these flows, use another web
   frontend against the same API. Hold the trial if the browser cannot meet
   the required online behavior.
