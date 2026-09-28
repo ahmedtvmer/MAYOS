@@ -213,7 +213,7 @@ class LedgerWorkoutsMixin:
         set_index: int,
         weight_kg: float,
         reps: int,
-        rpe: float,
+        rpe: float | None,
         is_warmup: int = 0,
     ) -> None:
         cursor = self.conn.cursor()

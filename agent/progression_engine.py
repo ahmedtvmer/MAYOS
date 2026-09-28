@@ -35,7 +35,7 @@ def round_to_increment(val: float, increment: float) -> float:
 def project_next_load(
     last_weight: float,
     last_reps: int,
-    last_rpe: float,
+    last_rpe: float | None,
     target_reps_min: int | None = None,
     target_reps_max: int | None = None,
     target_reps: int | tuple[int, int] | str | None = None,
@@ -71,7 +71,26 @@ def project_next_load(
             increment = inc
             break
 
-    current_e1rm = calculate_e1rm(last_weight, last_reps, last_rpe)
+    current_e1rm = set_e1rm(last_weight, last_reps, last_rpe)
+
+    if last_rpe is None:
+        # No effort recorded (#111): never read a blank as 0 or as a default.
+        # Both effort-based rules (overshoot deload, ease-based upscale) need an
+        # effort reading, so only the objective rep bracket can move the load.
+        if last_reps >= target_reps_max:
+            target_load = last_weight + increment
+            return {
+                "projected_weight": target_load,
+                "delta_kg": increment,
+                "e1rm": round(current_e1rm, 2),
+                "status": "PROGRESSION_UP",
+            }
+        return {
+            "projected_weight": last_weight,
+            "delta_kg": 0.0,
+            "e1rm": round(current_e1rm, 2),
+            "status": "LOAD_MAINTAINED",
+        }
 
     if last_rpe >= 10.0 and target_rpe <= 8.5:
         target_load = max(last_weight - increment, increment)
@@ -210,19 +229,24 @@ def get_exercise_progression_history(db: DatabaseManager, exercise_id: str) -> l
                 "date": session_date,
                 "weight_kg": weight,
                 "reps": reps,
-                "rpe": rpe or 8.5,
-                "e1rm": round(calculate_e1rm(weight, reps, rpe or 8.5), 2),
+                "rpe": rpe,
+                "e1rm": round(set_e1rm(weight, reps, rpe), 2),
             }
     return list(history_by_date.values())
 
 
 def set_e1rm(weight_kg: float, reps: int, rpe: float | None) -> float:
-    """e1RM for one set by the current formula: RPE-aware, unrated sets assume RPE 8.5.
+    """e1RM for one set by the current formula: RPE-aware, unrated sets plain Epley (#111).
 
-    The single per-set definition the record aggregates and the ADR 009 history
-    rows share; #111 changes this one place when unrated sets score plain Epley.
+    The single per-set definition the record aggregates, the ADR 009 history
+    rows, the commit comparison and the session export share. A set with no
+    effort recorded is scored ``w * (1 + reps / 30)`` — exactly RPE 10 / RIR 0 —
+    so an unrated set never scores higher than an honest rating of RIR 0 and
+    never inherits a default effort.
     """
-    return calculate_e1rm(float(weight_kg), int(reps), 8.5 if rpe is None else float(rpe))
+    return calculate_e1rm(
+        float(weight_kg), int(reps), 10.0 if rpe is None else float(rpe)
+    )
 
 
 def _set_e1rm(set_data: dict[str, Any]) -> float:
@@ -521,15 +545,18 @@ def evaluate_systemic_fatigue(db_manager) -> dict[str, Any]:
 
     session_ids = [row[0] for row in recent_sessions[:3]]
     placeholders = ",".join("?" for _ in session_ids)
+    # Effort density is judged on rated sets only (#111): unrated sets are
+    # excluded from both the numerator and the denominator, so a blank never
+    # reads as 0 and never dilutes the ratio.
     cursor.execute(
         f"SELECT session_id, rpe FROM workout_sets WHERE session_id IN ({placeholders}) AND is_warmup = 0 AND rpe IS NOT NULL",
         session_ids,
     )
-    sets_data = cursor.fetchall()
+    rated_sets = cursor.fetchall()
 
-    high_rpe_count = sum(1 for s in sets_data if s[1] >= 9.5)
-    total_working_sets = len(sets_data)
-    overshoot_ratio = (high_rpe_count / total_working_sets) if total_working_sets > 0 else 0.0
+    high_rpe_count = sum(1 for s in rated_sets if s[1] >= 9.5)
+    total_rated_sets = len(rated_sets)
+    overshoot_ratio = (high_rpe_count / total_rated_sets) if total_rated_sets > 0 else 0.0
 
     if len(last_3_readiness) >= 3 and avg_readiness_3 <= 2.0:
         return {
@@ -551,11 +578,11 @@ def evaluate_systemic_fatigue(db_manager) -> dict[str, Any]:
             "recent_readiness_avg": round(avg_readiness_3, 2),
         }
 
-    if total_working_sets >= 6 and overshoot_ratio >= 0.50 and avg_readiness_3 <= 3.0:
+    if total_rated_sets >= 6 and overshoot_ratio >= 0.50 and avg_readiness_3 <= 3.0:
         return {
             "deload_recommended": True,
             "severity": "MODERATE",
-            "reason": f"High exertion density ({overshoot_ratio * 100:.0f}% of recent sets >= RPE 9.5) alongside declining readiness.",
+            "reason": f"High exertion density ({overshoot_ratio * 100:.0f}% of recent rated sets at RIR 0.5 or less) alongside declining readiness.",
             "volume_multiplier": 0.6,
             "intensity_cap_rpe": 8.0,
             "recent_readiness_avg": round(avg_readiness_3, 2),

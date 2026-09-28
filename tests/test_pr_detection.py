@@ -153,14 +153,14 @@ def test_best_e1rm_with_mixed_rated_and_unrated_sets(pr_db):
         "s2",
         [
             {"weight_kg": 90.0, "reps": 8, "rpe": 9.0},
-            {"weight_kg": 100.0, "reps": 6, "rpe": None},
+            {"weight_kg": 100.0, "reps": 10, "rpe": None},
         ],
     )
     e1rm_event = _event(events, "max_e1rm")
-    # The unrated set scores with the current formula's default effort (RPE 8.5).
-    assert e1rm_event["value"] == 125.0
+    # The unrated set scores plain Epley — the same as RIR 0 / RPE 10 (#111).
+    assert e1rm_event["value"] == round(calculate_e1rm(100.0, 10, 10.0), 2)
     assert e1rm_event["prev_value"] == round(calculate_e1rm(100.0, 5, 8.5), 2)
-    assert e1rm_event["reps"] == 6
+    assert e1rm_event["reps"] == 10
     # The heaviest weight ties at 100 kg, so only the e1RM record is announced.
     assert _event(events, "max_weight") is None
     assert len(events) == 1

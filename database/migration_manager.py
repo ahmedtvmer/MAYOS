@@ -74,8 +74,12 @@ def _migrate_v2_to_v3(conn: sqlite3.Connection) -> None:
 
 
 def _legacy_e1rm(weight_kg: float, reps: int, rpe: float | None) -> float:
-    """Mirrors ``agent.progression_engine.calculate_e1rm`` (importing it here would be circular)."""
-    effective_rpe = rpe if rpe is not None else 8.5
+    """Mirrors ``agent.progression_engine.set_e1rm`` (importing it here would be circular).
+
+    An unrated legacy row scores plain Epley — RPE 10 / RIR 0 — never a
+    default effort (#111).
+    """
+    effective_rpe = rpe if rpe is not None else 10.0
     effective_reps = reps + (10.0 - min(max(effective_rpe, 6.0), 10.0))
     return weight_kg * (1.0 + (effective_reps / 30.0))
 

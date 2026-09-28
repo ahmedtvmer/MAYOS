@@ -275,14 +275,16 @@ def render_program_markdown(program: GeneratedProgramSchema) -> str:
                 for w in day.warmup_exercises
             )
             lines.append(f"**WARM UPS:** {warmup_text}")
-        lines.append("| # | Exercise | Warm-up | Sets | Reps | RPE | Rest |")
+        lines.append("| # | Exercise | Warm-up | Sets | Reps | RIR | Rest |")
         lines.append("| :---: | :--- | :---: | :---: | :---: | :---: | :---: |")
         for idx, ex in enumerate(day.exercises, start=1):
             rest = format_rest(ex.rest_seconds)
             warmup = f"{ex.warmup_sets}" if ex.warmup_sets else "-"
+            # Display boundary (#111): the target is stored as RPE, spoken as RIR.
+            target_rir = "" if ex.target_rpe is None else f"{10.0 - float(ex.target_rpe):g}"
             lines.append(
                 f"| {idx} | **{ex.exercise_name}** | {warmup} | {ex.target_sets} | "
-                f"{ex.target_reps_min}~{ex.target_reps_max} | @{ex.target_rpe} | {rest} |"
+                f"{ex.target_reps_min}~{ex.target_reps_max} | @{target_rir} | {rest} |"
             )
         if day.cardio:
             lines.append(f"**{day.cardio}**")

@@ -227,7 +227,8 @@ def test_baselines_report_unrated_sets_as_null_rir(api):
     assert resp.status_code == 200
     bench = next(row for row in resp.json()["baselines"] if row["exercise_id"] == "bp")
     assert bench["last_session"]["sets"] == [{"weight_kg": 80.0, "reps": 5, "rir": None}]
-    assert bench["best_e1rm_kg"] == round(calculate_e1rm(80.0, 5, 8.5), 2)
+    # An unrated set scores plain Epley: the same as RIR 0 / RPE 10 (#111).
+    assert bench["best_e1rm_kg"] == round(calculate_e1rm(80.0, 5, 10.0), 2)
 
 
 def test_exercise_logged_only_with_zero_kg_sets_has_no_baseline(api):

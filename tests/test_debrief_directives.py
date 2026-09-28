@@ -26,13 +26,13 @@ def test_active_deload_renders_exact_volume_cut():
         }
     )
     assert "Cut sets by 50%" in text
-    assert "cap at RPE 7.0" in text
+    assert "cap at RIR 3.0" in text
 
 
 def test_active_deload_nonstandard_multiplier():
     text = _debrief({"deload_recommended": True, "volume_multiplier": 0.6, "intensity_cap_rpe": 8.0})
     assert "Cut sets by 40%" in text
-    assert "cap at RPE 8.0" in text
+    assert "cap at RIR 2.0" in text
 
 
 def test_active_deload_missing_or_invalid_multiplier_never_fabricates():
@@ -40,7 +40,7 @@ def test_active_deload_missing_or_invalid_multiplier_never_fabricates():
         text = _debrief({"deload_recommended": True, "intensity_cap_rpe": 7.0, **bad})
         assert "Cut sets by" not in text
         assert "Reduce sets" in text
-        assert "cap at RPE 7.0" in text
+        assert "cap at RIR 3.0" in text
 
 
 def test_inactive_deload_content_unaffected():
@@ -48,4 +48,11 @@ def test_inactive_deload_content_unaffected():
     assert "DELOAD" not in text
     assert "Cut sets by" not in text
     assert "RPE cap" not in text
+    assert "cap at RIR" not in text
     assert "Hold load" in text or "Advance load" in text
+
+
+def test_missing_intensity_cap_never_fabricates_a_number():
+    text = _debrief({"deload_recommended": True, "volume_multiplier": 0.5, "intensity_cap_rpe": None})
+    assert "Cut sets by 50%" in text
+    assert "cap at" not in text

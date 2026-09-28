@@ -71,8 +71,10 @@ def latest_record_caption(history: list[dict[str, Any]]) -> str | None:
     if not history:
         return None
     last = history[-1]
+    rpe = last.get("rpe")
+    effort = "unrated" if rpe is None else f"RIR {10.0 - float(rpe):g}"
     return (
-        f"Latest Recorded: **{last['weight_kg']} kg × {last['reps']} reps @ RPE {last['rpe']}** "
+        f"Latest Recorded: **{last['weight_kg']} kg × {last['reps']} reps @ {effort}** "
         f"(e1RM: {last['e1rm']} kg)"
     )
 

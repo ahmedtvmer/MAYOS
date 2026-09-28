@@ -42,7 +42,7 @@ class CoachingQAEvalJudgment(BaseModel):
 
 class DebriefEvalJudgment(BaseModel):
     deload_compliance: DimensionScore = Field(
-        description="5 if volume cut and RPE cap were enforced when active. 1 if omitted."
+        description="5 if volume cut and an RIR intensity cap were enforced when active. 1 if omitted."
     )
     metric_alignment: DimensionScore = Field(
         description="Fidelity to provided set logs, volume load, and e1RM deltas."

@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from agent.progression_engine import calculate_e1rm
+from agent.progression_engine import set_e1rm
 from service._base import ledger_scope
 from utils.exporter import export_sessions_to_csv, export_sessions_to_json
 
@@ -24,8 +24,7 @@ def export_session_log(
         session_index: dict[str, dict[str, Any]] = {}
 
         for row in rows:
-            rpe = float(row["rpe"]) if row["rpe"] is not None else 8.5
-            e1rm = round(calculate_e1rm(float(row["weight_kg"]), int(row["reps"]), rpe), 2)
+            e1rm = round(set_e1rm(float(row["weight_kg"]), int(row["reps"]), row["rpe"]), 2)
             volume = round(float(row["weight_kg"]) * int(row["reps"]), 2)
             csv_rows.append({**row, "e1rm_kg": e1rm, "volume_kg": volume})
 

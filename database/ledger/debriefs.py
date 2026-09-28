@@ -225,7 +225,11 @@ class LedgerDebriefsMixin:
                 (s_id,),
             )
             top_set = cursor.fetchone()
-            top_str = f" | Top: {top_set[0]} {top_set[1]}kg x {top_set[2]} @ RPE {top_set[3]}" if top_set else ""
+            if top_set:
+                top_effort = "unrated" if top_set[3] is None else f"{10.0 - float(top_set[3]):g}"
+                top_str = f" | Top: {top_set[0]} {top_set[1]}kg x {top_set[2]} @ RIR {top_effort}"
+            else:
+                top_str = ""
             last_str = f"{s_split} ({s_date}) | Readiness: {s_readiness}/5{top_str}"
         else:
             last_str = "No recorded sessions yet in ledger."
@@ -237,7 +241,9 @@ class LedgerDebriefsMixin:
 
         fatigue_state = evaluate_systemic_fatigue(self)
         if fatigue_state["deload_recommended"]:
-            fatigue_line = f"Systemic State: DELOAD RECOMMENDED ({fatigue_state['reason']} | Cap RPE at {fatigue_state['intensity_cap_rpe']})"
+            cap = fatigue_state["intensity_cap_rpe"]
+            cap_text = "" if cap is None else f" | Cap RIR at {10.0 - float(cap):g}"
+            fatigue_line = f"Systemic State: DELOAD RECOMMENDED ({fatigue_state['reason']}{cap_text})"
         else:
             fatigue_line = (
                 f"Systemic State: Recovered (Rolling Readiness: {fatigue_state['recent_readiness_avg'] or 'N/A'}/5)"

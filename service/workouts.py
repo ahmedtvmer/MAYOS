@@ -12,10 +12,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from agent.debrief import generate_session_debrief
 from agent.progression_engine import (
     WorkingSetAggregates,
-    calculate_e1rm,
     evaluate_session_prs,
     evaluate_systemic_fatigue,
     project_next_load,
+    set_e1rm,
 )
 from core.warmup import calculate_warmup_sets
 from service._base import ledger_scope
@@ -347,7 +347,7 @@ def _build_prescription(ledger: Any, day_plan: Any) -> dict[str, Any]:
             proj = project_next_load(
                 last_weight=top_prev["weight_kg"],
                 last_reps=top_prev["reps"],
-                last_rpe=top_prev.get("rpe", 8.5),
+                last_rpe=top_prev.get("rpe"),
                 target_reps_min=ex.target_reps_min,
                 target_reps_max=ex.target_reps_max,
                 target_rpe=target_rpe_cap,
@@ -506,7 +506,7 @@ def _persist_session(
                     "set_index": idx,
                     "weight_kg": float(s["weight_kg"]),
                     "reps": int(s["reps"]),
-                    "rpe": float(s["rpe"]),
+                    "rpe": None if s.get("rpe") is None else float(s["rpe"]),
                     "is_warmup": 1 if s.get("is_warmup") else 0,
                     "logged_at": now_iso,
                 }
@@ -515,12 +515,13 @@ def _persist_session(
         if not working_sets:
             continue
         top_set = max(working_sets, key=lambda x: x["weight_kg"])
-        curr_e1rm = round(calculate_e1rm(top_set["weight_kg"], top_set["reps"], top_set["rpe"]), 2)
+        top_rpe: float | None = top_set.get("rpe")
+        curr_e1rm = round(set_e1rm(top_set["weight_kg"], top_set["reps"], top_rpe), 2)
 
         next_proj = project_next_load(
             last_weight=top_set["weight_kg"],
             last_reps=top_set["reps"],
-            last_rpe=top_set["rpe"],
+            last_rpe=top_rpe,
             target_reps_min=ex_obj.target_reps_min,
             target_reps_max=ex_obj.target_reps_max,
             target_rpe=ex_obj.target_rpe or 8.5,
@@ -529,18 +530,25 @@ def _persist_session(
 
         if prev_perf:
             prev_top = max(prev_perf, key=lambda x: x["weight_kg"])
-            prev_e1rm = round(calculate_e1rm(prev_top["weight_kg"], prev_top["reps"], prev_top.get("rpe", 8.5)), 2)
+            prev_e1rm = round(
+                set_e1rm(prev_top["weight_kg"], prev_top["reps"], prev_top.get("rpe")), 2
+            )
             e1rm_delta: float | None = round(curr_e1rm - prev_e1rm, 2)
             load_delta: float | None = round(top_set["weight_kg"] - prev_top["weight_kg"], 2)
             reps_delta: int | None = top_set["reps"] - prev_top["reps"]
 
+            # Effort-dependent badges (#111) need a rating on both sides; an
+            # unrated top set never reads as 0 and never reads as a default, so
+            # it can only earn the load/rep badges, which ignore effort.
+            target_rpe: float | None = ex_obj.target_rpe
+            rated = top_rpe is not None and target_rpe is not None
             if top_set["weight_kg"] > prev_top["weight_kg"]:
                 status_badge, action = "LOAD INCREASE", "increase"
             elif top_set["reps"] > prev_top["reps"] and top_set["weight_kg"] >= prev_top["weight_kg"]:
                 status_badge, action = "REP OVERLOAD", "increase"
-            elif top_set["reps"] >= ex_obj.target_reps_max and top_set["rpe"] <= ex_obj.target_rpe:
+            elif rated and top_set["reps"] >= ex_obj.target_reps_max and top_rpe <= target_rpe:
                 status_badge, action = "GRADUATED", "increase"
-            elif top_set["rpe"] >= 10.0 and ex_obj.target_rpe <= 8.5:
+            elif rated and top_rpe >= 10.0 and target_rpe <= 8.5:
                 status_badge, action = "OVERSHOOT", "deload"
             else:
                 status_badge, action = "CONSOLIDATING", "hold"
@@ -555,7 +563,10 @@ def _persist_session(
         elif next_proj["status"] == "RPE_OVERSHOOT_DELOAD":
             target_text = f"Exertion threshold exceeded. Deload to {next_proj['projected_weight']} kg to re-establish reserve."
         elif prev_perf:
-            target_text = f"Consolidate at {top_set['weight_kg']} kg. Push for {min(top_set['reps'] + 1, ex_obj.target_reps_max)} reps @ RPE {ex_obj.target_rpe}."
+            target_text = (
+                f"Consolidate at {top_set['weight_kg']} kg. Push for "
+                f"{min(top_set['reps'] + 1, ex_obj.target_reps_max)} reps @ RIR {_to_rir(ex_obj.target_rpe)}."
+            )
         else:
             target_text = f"Baseline logged at {top_set['weight_kg']} kg. Target {ex_obj.target_reps_min}–{ex_obj.target_reps_max} reps next session."
 
@@ -565,7 +576,7 @@ def _persist_session(
                 "name": ex_obj.exercise_name,
                 "top_load": top_set["weight_kg"],
                 "top_reps": top_set["reps"],
-                "top_rpe": top_set["rpe"],
+                "top_rpe": top_rpe,
                 "sets_completed": len(working_sets),
                 "volume_load": ex_volume,
                 "current_e1rm": curr_e1rm,

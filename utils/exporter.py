@@ -30,7 +30,7 @@ PROGRAM_COLUMNS = [
     "Warm-up Sets",
     "Working Sets",
     "Reps",
-    "RPE",
+    "RIR",
     "Rest",
     "W1 Load (kg)",
     "W1 Reps",
@@ -61,7 +61,7 @@ def export_program_to_excel(program: GeneratedProgramSchema) -> bytes:
     """
     Exports a GeneratedProgramSchema into an in-memory Excel workbook (.xlsx)
     with one sheet per training day: a warm-up block, followed by the movement
-    table (warm-up sets, working sets, reps, RPE, rest) and 4-week load logging.
+    table (warm-up sets, working sets, reps, RIR, rest) and 4-week load logging.
     """
     output = io.BytesIO()
 
@@ -76,7 +76,7 @@ def export_program_to_excel(program: GeneratedProgramSchema) -> bytes:
                         "Warm-up Sets": "-",
                         "Working Sets": warmup.sets,
                         "Reps": warmup.reps,
-                        "RPE": "",
+                        "RIR": "",
                         "Rest": format_rest(warmup.rest_seconds),
                     }
                 )
@@ -88,7 +88,9 @@ def export_program_to_excel(program: GeneratedProgramSchema) -> bytes:
                         "Warm-up Sets": ex.warmup_sets if ex.warmup_sets else "-",
                         "Working Sets": ex.target_sets,
                         "Reps": f"{ex.target_reps_min}~{ex.target_reps_max}",
-                        "RPE": ex.target_rpe,
+                        # Display boundary (#111): the target is stored as RPE and
+                        # exported as its equivalent RIR (10 - RPE).
+                        "RIR": "" if ex.target_rpe is None else round(10.0 - float(ex.target_rpe), 2),
                         "Rest": format_rest(ex.rest_seconds),
                     }
                 )

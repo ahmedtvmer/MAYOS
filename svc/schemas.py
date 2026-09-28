@@ -498,7 +498,7 @@ class CoachExerciseHistoryPointOut(BaseModel):
     date: str
     weight_kg: float
     reps: int
-    rpe: float
+    rpe: float | None = None
     e1rm: float
 
 
@@ -714,7 +714,8 @@ class ProgramRequestDeclineIn(BaseModel):
 class WorkoutSetIn(BaseModel):
     weight_kg: float = Field(ge=0.0, le=500.0)
     reps: int = Field(ge=0, le=50)
-    rpe: float = Field(ge=6.0, le=10.0)
+    #: Optional effort (#111): absent means "not rated". RPE 5.0-10.0 is RIR 5-0.
+    rpe: float | None = Field(default=None, ge=5.0, le=10.0)
     is_warmup: bool = False
 
 

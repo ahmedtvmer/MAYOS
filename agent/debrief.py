@@ -6,8 +6,8 @@ Generate ONLY the '**Next Session Directives**' section for the debrief.
 
 CRITICAL RULES:
 1. DELOAD LOGIC:
-   - If [DELOAD STATUS] is ACTIVE: Command volume cut and RPE cap (e.g., "Cut sets by 50%, cap at RPE 7.0").
-   - If [DELOAD STATUS] is INACTIVE: Do NOT mention deloads, volume cuts, or RPE caps. Give progression or hold marching orders.
+   - If [DELOAD STATUS] is ACTIVE: Command volume cut and a reps-in-reserve cap (e.g., "Cut sets by 50%, cap at RIR 3.0").
+   - If [DELOAD STATUS] is INACTIVE: Do NOT mention deloads, volume cuts, or RIR caps. Give progression or hold marching orders.
 
 2. STRUCTURE:
    - Output MUST be strictly 2 to 4 concise bullet points under 50 words.
@@ -32,6 +32,21 @@ def _deload_volume_cut(fatigue_info: dict[str, Any]) -> str | None:
     if not 0.0 < multiplier < 1.0:
         return None
     return f"{(1.0 - multiplier) * 100.0:g}%"
+
+
+def _deload_rir_cap(fatigue_info: dict[str, Any]) -> str | None:
+    """The deload intensity cap rendered for the player as RIR (RIR = 10 - RPE).
+
+    Missing or invalid values return ``None`` so the directive never fabricates
+    a number (#111: players see effort as RIR, never as RPE).
+    """
+    try:
+        cap = float(fatigue_info.get("intensity_cap_rpe"))
+    except (TypeError, ValueError):
+        return None
+    if not 0.0 <= cap <= 10.0:
+        return None
+    return f"{10.0 - cap:.1f}"
 
 
 def format_fatigue_cns_check(readiness: int, total_tonnage: float, session_notes: str) -> str:
@@ -125,12 +140,13 @@ def generate_session_debrief(
     directives: list[str] = []
 
     if is_deload:
-        rpe_cap = fatigue_info.get("intensity_cap_rpe", 7.0)
+        rir_cap = _deload_rir_cap(fatigue_info)
+        cap_clause = f", cap at RIR {rir_cap}" if rir_cap is not None else ""
         volume_cut = _deload_volume_cut(fatigue_info)
         if volume_cut:
-            directives.append(f"- DELOAD: Cut sets by {volume_cut}, cap at RPE {rpe_cap:.1f}.")
+            directives.append(f"- DELOAD: Cut sets by {volume_cut}{cap_clause}.")
         else:
-            directives.append(f"- DELOAD: Reduce sets, cap at RPE {rpe_cap:.1f}.")
+            directives.append(f"- DELOAD: Reduce sets{cap_clause}.")
         directives.append("- Hold current progression and prepare for deload adjustments.")
         if fatigue_info.get("severity") == "HIGH" or "readiness" in fatigue_info.get("reason", "").lower():
             directives.append("- Monitor readiness closely and adjust volume cuts as necessary.")

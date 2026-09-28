@@ -155,8 +155,8 @@ def test_reported_two_turn_session_review(graph, comparison, mode):
     second = turn(state("what about leg curl", first["messages"]))
     assert second["intent"] == "exercise_history"
     assert "Lying Leg Curl [ex-1]" in second["response_content"]
-    assert "Set 1: 90 kg × 8 reps @ RPE 8" in second["response_content"]
-    assert "Set 2: 85 kg × 10 reps @ RPE 8" in second["response_content"]
+    assert "Set 1: 90 kg × 8 reps @ RIR 2" in second["response_content"]
+    assert "Set 2: 85 kg × 10 reps @ RIR 2" in second["response_content"]
     assert "Baseline: 2026-09-11" in second["response_content"]
     assert "Machine Leg Extension" not in second["response_content"]
     graph.db.get_last_performance.assert_not_called()
@@ -332,9 +332,9 @@ def test_comparison_all_exercises_deterministic(graph, comparison, query, mode):
         if exercise["previous"]:
             assert exercise["previous"]["session"]["session_date"] in display
     assert display.count("Set 2:") == 6
-    assert "100 kg × 8 reps @ RPE 8" in display
+    assert "100 kg × 8 reps @ RIR 2" in display
     assert "best load +5 kg" in display
-    assert "RPE missing" in display
+    assert "Effort not recorded" in display
     assert "Baseline: missing previous occurrence" in display
     assert "12 working sets" in display
     assert "Readiness: 4/5" in display
@@ -348,8 +348,8 @@ def test_exercise_latest_scope_uses_current_ids_first(graph, comparison, target)
     request = state(f"how did I do on {target} last session?")
     result = graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
     assert "Barbell Bench Press [ex-0]" in result
-    assert "Set 1: 100 kg × 8 reps @ RPE 8" in result
-    assert "Set 2: 95 kg × 10 reps @ RPE 8" in result
+    assert "Set 1: 100 kg × 8 reps @ RIR 2" in result
+    assert "Set 2: 95 kg × 10 reps @ RIR 2" in result
     assert "Baseline: 2026-09-10" in result
     assert "best load +5 kg" in result
     assert "Cable Row" not in result
@@ -391,7 +391,7 @@ def test_explicit_older_occurrence_is_labeled(graph, comparison):
     result = graph.exercise_history_node(state("last logged occurrence of squat"), {"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
     assert "Last logged occurrence for Squat" in result
     assert "may predate your latest session" in result
-    assert "RPE missing" in result
+    assert "RIR missing" in result
     assert "no progress assessment" in result
     graph.db.get_last_performance.assert_called_once_with("squat")
 
@@ -402,7 +402,7 @@ def test_comparison_hydration_followup_and_budget(graph, comparison):
     for exercise in comparison["exercises"]:
         assert exercise["name"] in request["telemetry_context"]
     assert "baseline=2026-09-10" in request["telemetry_context"]
-    assert "RPE missing" in request["telemetry_context"]
+    assert "RIR missing" in request["telemetry_context"]
     payload = graph.build_prompt_payload(request)
     assert graph.TAIL_WINDOW_SIZE == 6
     assert graph._prompt_token_count(payload) + graph.llm.max_tokens <= graph.llm.n_ctx
@@ -424,6 +424,6 @@ def test_comparison_missing_rpe_never_asserts_progress(graph, comparison, missin
     exercise = comparison["exercises"][0]
     exercise[missing_side]["sets"][0]["rpe"] = None
     result = graph.exercise_history_node(state("how did I do on bench press last session?"), {"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
-    assert "RPE missing" in result
+    assert "Effort not recorded" in result
     assert "status: insufficient_data" in result
     assert "Status: improvement" not in result

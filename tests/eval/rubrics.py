@@ -24,7 +24,7 @@ CRITICAL EFFICIENCY RULE:
 Every rationale field MUST be strictly 1 single sentence under 15 words citing exact substrings.
 
 [DIMENSIONS]
-1. Deload Compliance (1-5): 5 = mandates exact volume cut and RPE cap when deload is active (5 if deload inactive). 1 = repeats old high RPE targets (e.g., RPE 9+) during active deload or omits volume reduction.
+1. Deload Compliance (1-5): 5 = mandates exact volume cut and an intensity cap stated in RIR when deload is active (5 if deload inactive). 1 = repeats old high-effort targets (e.g., RPE 9+) during active deload or omits volume reduction.
 2. Metric Alignment (1-5): 5 = perfect fidelity to set logs, tonnage, and e1RM; distinguishes bar load from calculated e1RM. 1 = conflates bar weight with e1RM or contradicts telemetry numbers.
 3. Structural Completeness (1-5): 5 = includes exact sections: Overload Deltas, Fatigue & CNS Check, Next Session Directives under 150 words; 1 = missing sections or runaway length.
 4. Persona Adherence (1-5): 5 = technical, concise, pragmatic marching orders; 1 = motivational cheerleading or filler.
