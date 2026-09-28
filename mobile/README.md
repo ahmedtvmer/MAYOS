@@ -56,6 +56,11 @@ origin (for example, `http://localhost:7357`) so CORS permits it, then run
 Web requires a connection; offline workout drafts are Android-only. A release
 web build must point at an HTTPS API on a host that permits its origin.
 
+Google sign-in needs the web OAuth client ID as a second define, on Android
+and web: `--dart-define=GOOGLE_WEB_CLIENT_ID=<web client id>`. Without it the
+Google button is hidden. The Google Cloud side, including the Android SHA-1
+clients, is in `docs/GOOGLE_SIGN_IN_SETUP.md`.
+
 Onboarding, chat, and program generation need the model backend, so run the
 service normally to exercise the player journey. `SKIP_LLM_LOAD=true` starts
 without warmup and is suitable only for route-level tests; onboarding cannot
