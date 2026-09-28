@@ -407,6 +407,12 @@ def test_authenticated_route_roundtrip(api):
     assert client.get("/dashboard/exercises", headers=headers).status_code == 401
 
 
+def test_profile_update_rejects_unknown_rep_preference(api):
+    client, _, _ = api
+    headers = _authed(_register(client, "alice")["access_token"])
+    assert client.put("/profile", json={"rep_preference": "strength"}, headers=headers).status_code == 422
+
+
 def test_logout_without_credentials_is_idempotent(api):
     client, _, _ = api
     assert client.post("/auth/logout").status_code == 204

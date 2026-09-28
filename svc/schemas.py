@@ -561,7 +561,9 @@ class ResetPasswordIn(BaseModel):
 
 class ProfileUpdate(BaseModel):
     proportions: str | None = None
-    rep_preference: str | None = None
+    # The intake's allowed values (service/intake.py); anything else would be
+    # stored and then silently read as "balanced" by the program generator.
+    rep_preference: Literal["low", "balanced", "high"] | None = None
     current_goal: str | None = None
     weekly_frequency: int | None = Field(default=None, ge=1, le=5)
     equipment_access: str | None = None

@@ -108,6 +108,29 @@ void main() {
     expect(fake.programPublishedByCoachAccountId, 'account-alice');
   });
 
+  testWidgets('profile shows and saves the intake rep preference values',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake();
+    fake.repPreference = 'low';
+    await _pumpApp(tester, fake);
+
+    await _openSettings(tester);
+    await tester.tap(find.text('Profile'));
+    await _pumpUntilFound(tester, find.text('Rep preference'));
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Low'), findsOneWidget);
+
+    await tester.tap(find.text('Low'));
+    await _pumpUntilFound(tester, find.text('High'));
+    await tester.tap(find.text('High').last);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Save profile'));
+    await _pumpUntilFound(tester, find.text('High'));
+
+    expect(fake.repPreference, 'high');
+  });
+
   testWidgets('player program shows the version and coach provenance',
       (tester) async {
     final FakeMayosApi fake = _playerFake();

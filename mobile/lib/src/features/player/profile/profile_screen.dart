@@ -12,6 +12,7 @@ import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_section_header.dart';
 import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
+import '../onboarding/onboarding_widgets.dart' show optionLabel;
 
 /// Mirrors the server's `MAX_PAUSE_DAYS` in `service/schedule.py`; the client
 /// check is only a courtesy, the service stays authoritative.
@@ -32,10 +33,11 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  /// The intake's allowed `rep_preference` values (`service/intake.py`).
   static const List<String> _repPreferences = <String>[
+    'low',
     'balanced',
-    'strength',
-    'hypertrophy',
+    'high',
   ];
 
   int _weeklyFrequency = 4;
@@ -107,7 +109,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _weeklyFrequency = profile.weeklyFrequency;
-        _repPreference = profile.repPreference;
+        // A value this screen once offered by mistake (`strength`,
+        // `hypertrophy`) is shown as the generator reads it: balanced.
+        _repPreference = _repPreferences.contains(profile.repPreference)
+            ? profile.repPreference
+            : 'balanced';
         _schedule = schedule;
         _pauses = pauses;
         _weekdays
@@ -413,7 +419,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             for (final String preference in _repPreferences)
               DropdownMenuItem<String>(
                   value: preference,
-                  child: Text(preference, overflow: TextOverflow.ellipsis)),
+                  child: Text(optionLabel('rep_preference', preference),
+                      overflow: TextOverflow.ellipsis)),
           ],
           onChanged: _saving
               ? null
