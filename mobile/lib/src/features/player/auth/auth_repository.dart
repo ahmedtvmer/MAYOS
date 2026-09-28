@@ -45,23 +45,6 @@ class AuthRepository {
     );
   }
 
-  /// Redeems an owner-issued claim code to set the password on an imported
-  /// account and signs it in, using the same session path as login (ADR 019).
-  Future<AccountSession> claim({
-    required String username,
-    required String claimCode,
-    required String password,
-    bool rememberMe = false,
-  }) {
-    return _establishSession(
-      () => _api.claim(
-          traineeId: username,
-          claimCode: claimCode,
-          password: password,
-          rememberMe: rememberMe),
-    );
-  }
-
   /// Restores a persisted session, or returns null when there is no live one.
   ///
   /// A 401 clears the stale token; any other failure (for example, no network)

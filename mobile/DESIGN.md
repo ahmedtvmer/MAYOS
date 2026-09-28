@@ -66,10 +66,10 @@ small transparent pad, never edit pixels inside the mark or wordmark.
   horizontally and vertically on the screen (72–120dp). The tagline, *Progress,
   Engineered.*, is set on one line in the brand serif, and it and the progress
   indicator sit below the centre without moving the lockup off it.
-- **Auth hero.** The logged-out sign-in screens (log in, register, claim
-  imported account, forgot password, reset password) also share the wallpaper
-  and force the **white** lockup, centred horizontally on the screen. The
-  recovery-email gate stays on the plain canvas and keeps the theme-following
+- **Auth hero.** The logged-out sign-in screens (log in, register, forgot
+  password, reset password) also share the wallpaper and force the **white**
+  lockup, centred horizontally on the screen. The recovery-email gate stays on
+  the plain canvas and keeps the theme-following
   `auto` lockup.
 - **Header / small placements.** The vertical lockup's baked wordmark is
   illegible at ~24dp, so the header uses the documented **clean text
@@ -128,16 +128,16 @@ The authentication and recovery screens share one composition in
 lockup hero, editorial heading, short sans line, scrolling body, pinned action
 bar), `AuthHeading`, `AuthInlineNotice`, `AuthActionBar`, and
 `AuthPasswordField` (obscured by default with a labelled 48dp visibility
-toggle). Login, registration, claim imported account, the recovery-email gate,
-forgot-password and reset-password all use it and keep the onboarding look. The hero maps
+toggle). Login, registration, the recovery-email gate, forgot-password and
+reset-password all use it and keep the onboarding look. The hero maps
 dark→white lockup and light→black lockup automatically, and shrinks on small
 phones or when the keyboard reduces the viewport.
 
 ## Wallpaper (#110)
 
-The splash and the logged-out sign-in screens (log in, register, claim
-imported account, forgot password, reset password) sit on a dark gym photo. It
-is **not** used on the recovery-email gate or any signed-in surface.
+The splash and the logged-out sign-in screens (log in, register, forgot
+password, reset password) sit on a dark gym photo. It is **not** used on the
+recovery-email gate or any signed-in surface.
 
 - `core/ui/mayos_wallpaper.dart` — `MayosWallpaper`: a full-bleed `Stack` of a
   solid dark fallback (`darkCanvas`, shown while the photo decodes), the

@@ -359,7 +359,7 @@ class _ConsentCheckbox extends StatelessWidget {
   }
 }
 
-/// The client-side new-password rules, shared by register, claim and reset so
+/// The client-side new-password rules, shared by register and reset so
 /// the same rule is worded identically on every screen.
 const int kMinPasswordLength = 8;
 const String kPasswordMinLengthMessage = 'Use at least 8 characters.';

@@ -9,7 +9,6 @@ import 'features/coach/coach_invite_screen.dart';
 import 'features/coach/coach_shell.dart';
 import 'features/player/assignment/player_assignment_screen.dart';
 import 'features/player/auth/auth_controller.dart';
-import 'features/player/auth/claim_screen.dart';
 import 'features/player/auth/forgot_password_screen.dart';
 import 'features/player/auth/login_screen.dart';
 import 'features/player/auth/recovery_email_screen.dart';
@@ -30,7 +29,6 @@ import 'providers.dart';
 
 const String loginPath = '/login';
 const String registerPath = '/register';
-const String claimPath = '/claim';
 const String forgotPasswordPath = '/forgot-password';
 const String resetPasswordPath = '/reset-password';
 const String recoveryEmailPath = '/recovery-email';
@@ -66,7 +64,6 @@ String? redirectFor(AuthState auth, String location, AppModeState mode) {
     case AuthStatus.unauthenticated:
       final bool atAuthPage = location == loginPath ||
           location == registerPath ||
-          location == claimPath ||
           _isPasswordRecoveryPage(location);
       return atAuthPage ? null : loginPath;
     case AuthStatus.authenticated:
@@ -81,9 +78,7 @@ String? redirectFor(AuthState auth, String location, AppModeState mode) {
       // The capability caps the mode: a lost coach capability always resolves
       // to Player mode, whatever is stored.
       final bool coachMode = isCoach && mode.mode == AppMode.coach;
-      final bool atAuthPage = location == loginPath ||
-          location == registerPath ||
-          location == claimPath;
+      final bool atAuthPage = location == loginPath || location == registerPath;
 
       // ADR 007: a recovery email is mandatory before dashboard or onboarding.
       // It stays first, ahead of the mode and onboarding rules (#119).
@@ -189,12 +184,6 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: registerPath,
         builder: (BuildContext context, GoRouterState state) =>
             const RegisterScreen(),
-      ),
-      GoRoute(
-        path: claimPath,
-        builder: (BuildContext context, GoRouterState state) => ClaimScreen(
-          initialUsername: state.uri.queryParameters['username'],
-        ),
       ),
       GoRoute(
         path: forgotPasswordPath,

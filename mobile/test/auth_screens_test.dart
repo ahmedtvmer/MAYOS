@@ -100,6 +100,24 @@ void main() {
     expect(find.byKey(const Key('login_submit')), findsOneWidget);
   });
 
+  testWidgets('login offers no claim-account entry (#151)',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _loginFake();
+    await _pumpAuth(tester, fake);
+
+    // The claim surface is gone: no link mentions claiming an account.
+    expect(find.text('Claim imported account'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+          (Widget w) => w is AuthLink && w.label.toLowerCase().contains('claim')),
+      findsNothing,
+    );
+    // The remaining links still fill the action bar (no empty slot left).
+    expect(find.text('Create an account'), findsOneWidget);
+    expect(find.text('Forgot password?'), findsOneWidget);
+    expect(find.text('Privacy policy'), findsOneWidget);
+  });
+
   testWidgets('login shows a loading state while the request is in flight',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _loginFake();
