@@ -101,6 +101,16 @@ class FakeMayosApi {
   // (404); when set, the map is returned as the player's latest session.
   Map<String, dynamic>? latestSessionBody;
   bool latestSessionFails = false;
+
+  // Exercise baselines (`GET /workouts/baselines`, #122/#123): the rows the
+  // device freezes into its Active workout. `baselinesRequests` counts every
+  // authorized hit so prefetch vs start fetches are assertable; `baselinesFails`
+  // answers 500 and `baselinesMalformed` a wrong-shaped body.
+  List<Map<String, dynamic>> baselinesBody = <Map<String, dynamic>>[];
+  bool baselinesFails = false;
+  bool baselinesMalformed = false;
+  int baselinesRequests = 0;
+
   final List<Map<String, dynamic>> playerNotices = <Map<String, dynamic>>[];
 
   // Player program requests and coach resolution (#28).
@@ -234,6 +244,9 @@ class FakeMayosApi {
     }
     if (path == '/workouts/prescription') {
       return _prescription(request);
+    }
+    if (path == '/workouts/baselines') {
+      return _baselines(request);
     }
     if (path == '/workouts/exercises') {
       return _searchExercises(request);
@@ -2223,6 +2236,30 @@ class FakeMayosApi {
       return const FakeResponse(200);
     }
     return FakeResponse(200, _activeProgramBody());
+  }
+
+  /// `GET /workouts/baselines` (#122/#123): the player's per-exercise
+  /// baselines, with the fail modes the client's fallback must survive.
+  FakeResponse _baselines(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    baselinesRequests++;
+    if (baselinesFails) {
+      return const FakeResponse(
+          500, <String, dynamic>{'detail': 'The service is unavailable.'});
+    }
+    if (baselinesMalformed) {
+      return const FakeResponse(
+          200, <String, dynamic>{'baselines': 'not-a-list'});
+    }
+    return FakeResponse(200, <String, dynamic>{
+      'baselines': <Map<String, dynamic>>[
+        for (final Map<String, dynamic> row in baselinesBody)
+          Map<String, dynamic>.from(row),
+      ],
+    });
   }
 
   FakeResponse _prescription(FakeRequest request) {

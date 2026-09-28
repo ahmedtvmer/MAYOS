@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +13,8 @@ import '../../shared/mode_switch.dart';
 import '../dashboard/dashboard_tab.dart';
 import '../program/program_tab.dart';
 import '../progress/progress_tab.dart';
+import '../workout/active_workout_controller.dart';
+import '../workout/active_workout_prompt.dart';
 
 /// The player navigation shell.
 ///
@@ -46,8 +50,49 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
     ),
   ];
 
+  /// Set once this shell visit has offered Resume / Discard, so the prompt
+  /// appears at most once per opening of the app (#123).
+  bool _offeredResume = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // The stored Active workout may already have been restored before the
+    // shell mounted; check once off the first frame, then rely on the listener
+    // below for a restore that lands later.
+    Future<void>.microtask(() {
+      if (mounted) {
+        _offerResume(ref.read(activeWorkoutControllerProvider));
+      }
+    });
+  }
+
+  /// Offers Resume / Discard when this account restored an Active workout
+  /// from device storage; a workout the player just started never re-triggers
+  /// the offer. The offline-craft gate keeps the web client (ADR 022) out.
+  void _offerResume(ActiveWorkoutState active) {
+    if (_offeredResume ||
+        !active.ready ||
+        !active.restoredFromDevice ||
+        active.workout == null ||
+        !ref.read(offlineWorkoutDraftsEnabledProvider)) {
+      return;
+    }
+    _offeredResume = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      unawaited(offerActiveWorkoutOnOpen(context, ref));
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.listen<ActiveWorkoutState>(
+      activeWorkoutControllerProvider,
+      (_, ActiveWorkoutState next) => _offerResume(next),
+    );
     final int index = ref.watch(playerShellTabProvider);
     final bool isCoach =
         ref.watch(authControllerProvider).session?.account.isCoach ?? false;

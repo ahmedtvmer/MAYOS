@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
+import 'package:mayos_mobile/src/core/active_workout.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
+import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_models.dart';
@@ -123,6 +125,12 @@ ProviderContainer _container({
       draftStoreProvider.overrideWithValue(drafts),
       workoutCacheStoreProvider.overrideWithValue(cache),
       chatCacheStoreProvider.overrideWithValue(chat),
+      // The keystore-backed stores of #123 have no plugin on the test host;
+      // the in-memory fakes keep the account-deletion erase path real.
+      activeWorkoutStoreProvider
+          .overrideWithValue(InMemoryActiveWorkoutStore()),
+      baselineCacheStoreProvider
+          .overrideWithValue(InMemoryBaselineCacheStore()),
       apiClientProvider.overrideWith((ref) {
         final ApiClient client = _api(fake, ref.watch(tokenStoreProvider));
         client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
@@ -370,6 +378,10 @@ void main() {
             draftStoreProvider.overrideWithValue(drafts),
             workoutCacheStoreProvider.overrideWithValue(cache),
             chatCacheStoreProvider.overrideWithValue(chat),
+            activeWorkoutStoreProvider
+                .overrideWithValue(InMemoryActiveWorkoutStore()),
+            baselineCacheStoreProvider
+                .overrideWithValue(InMemoryBaselineCacheStore()),
             deviceTimezoneProvider
                 .overrideWithValue(Future<String>.value('America/New_York')),
             apiClientProvider.overrideWith((ref) {

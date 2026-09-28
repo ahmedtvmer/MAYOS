@@ -3,8 +3,11 @@ import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/account_data_eraser.dart';
+import 'core/active_workout.dart';
 import 'core/api_client.dart';
 import 'core/app_mode.dart';
+import 'core/baseline_service.dart';
+import 'core/baselines.dart';
 import 'core/chat_storage.dart';
 import 'core/config.dart';
 import 'core/models.dart';
@@ -15,6 +18,7 @@ import 'core/workout_storage.dart';
 import 'features/coach/coach_assistant_state.dart';
 import 'features/player/auth/auth_controller.dart';
 import 'features/player/auth/auth_repository.dart';
+import 'features/player/workout/active_workout_controller.dart';
 import 'features/player/workout/draft_sync_service.dart';
 
 final Provider<TokenStore> tokenStoreProvider = Provider<TokenStore>(
@@ -65,6 +69,8 @@ final Provider<AuthRepository> authRepositoryProvider =
       drafts: ref.watch(draftStoreProvider),
       workoutCache: ref.watch(workoutCacheStoreProvider),
       chatCache: ref.watch(chatCacheStoreProvider),
+      baselines: ref.watch(baselineCacheStoreProvider),
+      activeWorkout: ref.watch(activeWorkoutStoreProvider),
     ),
   ),
 );
@@ -256,4 +262,50 @@ final ChangeNotifierProvider<DraftSyncService> draftSyncServiceProvider =
     }
   }, fireImmediately: true);
   return service;
+});
+
+/// Protected, account-separated cache of the last successful
+/// `GET /workouts/baselines` fetch (#123). Same offline gate as the drafts:
+/// the web client never writes training data to browser storage (ADR 022).
+final Provider<BaselineCacheStore> baselineCacheStoreProvider =
+    Provider<BaselineCacheStore>((ref) =>
+        ref.watch(offlineWorkoutDraftsEnabledProvider)
+            ? SecureBaselineCacheStore()
+            : InMemoryBaselineCacheStore());
+
+/// Device storage for the single Active workout held per account (#123).
+final Provider<ActiveWorkoutStore> activeWorkoutStoreProvider =
+    Provider<ActiveWorkoutStore>((ref) =>
+        ref.watch(offlineWorkoutDraftsEnabledProvider)
+            ? SecureActiveWorkoutStore()
+            : InMemoryActiveWorkoutStore());
+
+/// The baselines reader: Home's fire-and-forget prefetch and the fresh →
+/// cache → empty resolution a workout start freezes (#123).
+final Provider<BaselinesService> baselinesServiceProvider =
+    Provider<BaselinesService>((ref) => BaselinesService(
+          api: ref.watch(apiClientProvider),
+          cache: ref.watch(baselineCacheStoreProvider),
+          drafts: ref.watch(draftStoreProvider),
+        ));
+
+/// The signed-in account's Active workout, restored from device storage when
+/// the session resolves and persisted after every change (#123).
+final StateNotifierProvider<ActiveWorkoutController, ActiveWorkoutState>
+    activeWorkoutControllerProvider =
+    StateNotifierProvider<ActiveWorkoutController, ActiveWorkoutState>((ref) {
+  final ActiveWorkoutController controller = ActiveWorkoutController(
+    store: ref.watch(activeWorkoutStoreProvider),
+    baselines: ref.watch(baselinesServiceProvider),
+  );
+  ref.listen<AuthState>(authControllerProvider,
+      (AuthState? previous, AuthState next) {
+    final String? accountId = next.session?.account.accountId;
+    if (next.isAuthenticated && accountId != null) {
+      controller.syncAccount(accountId);
+    } else {
+      controller.syncAccount(null);
+    }
+  }, fireImmediately: true);
+  return controller;
 });

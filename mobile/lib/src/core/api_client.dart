@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
+import 'baselines.dart';
 import 'chat_models.dart';
 import 'models.dart';
 import 'sse.dart';
@@ -82,6 +83,8 @@ class ApiClient {
   static const String _invalidSchedule =
       'The service returned invalid training schedule data.';
   static const String _invalidChat = 'The service returned invalid chat data.';
+  static const String _invalidBaselines =
+      'The service returned invalid baseline data.';
 
   final TokenStore _tokens;
   late final Dio _dio;
@@ -1006,6 +1009,28 @@ class ApiClient {
     );
     return _parseBody(response.data, Prescription.fromJson,
         'The service returned invalid prescription data.');
+  }
+
+  /// The player's exercise baselines for the frozen Active workout
+  /// (`GET /workouts/baselines`, #122/#123).
+  ///
+  /// [receiveTimeout] bounds a workout-start fetch so the start falls back to
+  /// the device cache instead of hanging. A malformed body is an
+  /// [ApiException], like every other call here.
+  Future<List<BaselineExercise>> baselines(
+      {Duration receiveTimeout = const Duration(seconds: 15)}) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/workouts/baselines',
+        options: Options(receiveTimeout: receiveTimeout),
+      ),
+    );
+    final dynamic data = response.data;
+    if (data is! Map<String, dynamic> || data['baselines'] is! List) {
+      throw const ApiException(_invalidBaselines);
+    }
+    return _parseBodyList(
+        data['baselines'], BaselineExercise.fromJson, _invalidBaselines);
   }
 
   /// Catalog exercises matching [query], for picking a real unplanned

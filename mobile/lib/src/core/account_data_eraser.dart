@@ -1,3 +1,5 @@
+import 'active_workout.dart';
+import 'baselines.dart';
 import 'chat_storage.dart';
 import 'workout_storage.dart';
 
@@ -12,18 +14,32 @@ class AccountDataEraser {
     required DraftStore drafts,
     required WorkoutCacheStore workoutCache,
     required ChatCacheStore chatCache,
+    BaselineCacheStore? baselines,
+    ActiveWorkoutStore? activeWorkout,
   })  : _drafts = drafts,
         _workoutCache = workoutCache,
-        _chatCache = chatCache;
+        _chatCache = chatCache,
+        _baselines = baselines,
+        _activeWorkout = activeWorkout;
 
   final DraftStore _drafts;
   final WorkoutCacheStore _workoutCache;
   final ChatCacheStore _chatCache;
+  final BaselineCacheStore? _baselines;
+  final ActiveWorkoutStore? _activeWorkout;
 
   Future<void> erase(String accountId) async {
     await _bestEffort(() => _drafts.deleteForAccount(accountId));
     await _bestEffort(() => _workoutCache.deleteForAccount(accountId));
     await _bestEffort(() => _chatCache.deleteAccount(accountId));
+    final BaselineCacheStore? baselines = _baselines;
+    if (baselines != null) {
+      await _bestEffort(() => baselines.deleteForAccount(accountId));
+    }
+    final ActiveWorkoutStore? activeWorkout = _activeWorkout;
+    if (activeWorkout != null) {
+      await _bestEffort(() => activeWorkout.deleteForAccount(accountId));
+    }
   }
 
   Future<void> _bestEffort(Future<void> Function() action) async {

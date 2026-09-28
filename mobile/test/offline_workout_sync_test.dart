@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
+import 'package:mayos_mobile/src/core/active_workout.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
+import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/performed_date_window.dart';
@@ -1070,6 +1072,11 @@ Future<void> _pumpApp(
         draftStoreProvider.overrideWithValue(draftStore),
         workoutCacheStoreProvider
             .overrideWithValue(cacheStore ?? InMemoryWorkoutCacheStore()),
+        // #123's keystore-backed stores have no plugin on the test host.
+        activeWorkoutStoreProvider
+            .overrideWithValue(InMemoryActiveWorkoutStore()),
+        baselineCacheStoreProvider
+            .overrideWithValue(InMemoryBaselineCacheStore()),
         apiClientProvider.overrideWith((ref) {
           final ApiClient client = ApiClient(
             tokens: ref.watch(tokenStoreProvider),

@@ -16,6 +16,7 @@ import '../../../core/ui/mayos_card.dart';
 import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
+import '../workout/active_workout_prompt.dart';
 
 class ProgramTab extends ConsumerStatefulWidget {
   const ProgramTab({super.key});
@@ -226,8 +227,16 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                       MayosButton(
                         label: 'Log workout',
                         icon: Icons.edit_note,
-                        onPressed: () =>
-                            context.go('$logWorkoutPath/${day.dayOrder}'),
+                        onPressed: () {
+                          // Runs the Resume/Discard guard and creates the
+                          // Active workout before routing to the logger (#123).
+                          startWorkoutFromDay(
+                            context,
+                            ref,
+                            day: day,
+                            programVersion: program.version,
+                          );
+                        },
                       ),
                       const SizedBox(height: MayosSpacing.md),
                     ],

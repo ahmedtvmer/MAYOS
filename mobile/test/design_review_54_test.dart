@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mayos_mobile/src/app.dart';
+import 'package:mayos_mobile/src/core/active_workout.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
+import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
@@ -72,6 +74,11 @@ List<Override> _appOverrides({
         .overrideWithValue(cacheStore ?? InMemoryWorkoutCacheStore()),
     chatCacheStoreProvider
         .overrideWithValue(chatCache ?? InMemoryChatCacheStore()),
+    // #123's keystore-backed stores have no plugin on the test host.
+    activeWorkoutStoreProvider
+        .overrideWithValue(InMemoryActiveWorkoutStore()),
+    baselineCacheStoreProvider
+        .overrideWithValue(InMemoryBaselineCacheStore()),
     deviceTimezoneProvider.overrideWithValue(Future<String>.value('UTC')),
     deviceTimezoneOrNullProvider
         .overrideWithValue(Future<String?>.value('UTC')),

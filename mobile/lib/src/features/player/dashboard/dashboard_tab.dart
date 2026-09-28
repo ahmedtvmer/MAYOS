@@ -15,6 +15,7 @@ import '../../../core/ui/mayos_card.dart';
 import '../../../core/ui/mayos_section_header.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
+import '../workout/active_workout_prompt.dart';
 import 'home_planning.dart';
 
 /// The player Home tab: current program, the next ordered session, real
@@ -71,6 +72,11 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     final String? accountId =
         ref.read(authControllerProvider).session?.account.accountId;
     final cache = ref.read(workoutCacheStoreProvider);
+    if (accountId != null && ref.read(offlineWorkoutDraftsEnabledProvider)) {
+      // Fire-and-forget baselines prefetch: cached on success, never awaited,
+      // so Home cannot be delayed or failed by it (#123).
+      unawaited(ref.read(baselinesServiceProvider).prefetch(accountId));
+    }
     // The active program is shared with the Program tab so an offline launch
     // falls back to the cached copy identically (#54). A missing program is an
     // honest empty state, not an error; a transport failure with no cache
@@ -137,6 +143,14 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
 
   void _openProgram() => ref.read(playerShellTabProvider.notifier).state = 1;
 
+  void _logWorkout(ProgramDay day, int? programVersion) {
+    // Runs the Resume/Discard guard and creates the Active workout before
+    // routing to the logger (#123). The returned future only matters to the
+    // guard itself; navigation happens inside it.
+    startWorkoutFromDay(
+        context, ref, day: day, programVersion: programVersion);
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<_DashboardData>(
@@ -161,6 +175,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
           onOpenExercise: _openExercise,
           onOpenDrafts: _openDrafts,
           onOpenProgram: _openProgram,
+          onLogWorkout: _logWorkout,
           draftsEnabled: ref.watch(offlineWorkoutDraftsEnabledProvider),
           trainedDays: <TrainedDay>[
             if (latest != null) TrainedDay.fromLatestSession(latest),
@@ -181,6 +196,7 @@ class _HomeBody extends StatelessWidget {
     required this.onOpenExercise,
     required this.onOpenDrafts,
     required this.onOpenProgram,
+    required this.onLogWorkout,
     required this.draftsEnabled,
     required this.trainedDays,
     required this.pendingDrafts,
@@ -191,6 +207,7 @@ class _HomeBody extends StatelessWidget {
   final void Function(ProgramExercise exercise, int dayOrder) onOpenExercise;
   final VoidCallback onOpenDrafts;
   final VoidCallback onOpenProgram;
+  final void Function(ProgramDay day, int? programVersion) onLogWorkout;
   final bool draftsEnabled;
   final List<TrainedDay> trainedDays;
   final int pendingDrafts;
@@ -238,6 +255,8 @@ class _HomeBody extends StatelessWidget {
               day: nextDay,
               label: nextSessionLabel(data.schedule, now),
               onOpenExercise: onOpenExercise,
+              onLogWorkout: () =>
+                  onLogWorkout(nextDay, data.program?.version),
               logEnabled: draftsEnabled,
             ),
           ],
@@ -308,12 +327,14 @@ class _NextSessionSection extends StatelessWidget {
     required this.day,
     required this.label,
     required this.onOpenExercise,
+    required this.onLogWorkout,
     required this.logEnabled,
   });
 
   final ProgramDay day;
   final String label;
   final void Function(ProgramExercise exercise, int dayOrder) onOpenExercise;
+  final VoidCallback onLogWorkout;
   final bool logEnabled;
 
   @override
@@ -368,8 +389,9 @@ class _NextSessionSection extends StatelessWidget {
             MayosButton(
               label: 'Log workout',
               icon: Icons.edit_note,
-              onPressed: () =>
-                  context.go('$logWorkoutPath/${current.dayOrder}'),
+              // Runs the Resume/Discard guard and creates the Active workout
+              // before routing to the logger (#123).
+              onPressed: onLogWorkout,
             ),
           ],
         ],
