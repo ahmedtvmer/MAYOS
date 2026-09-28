@@ -29,7 +29,12 @@ ProviderContainer authContainerFor(
 }
 
 /// The full app under test wired to [fake], for the widget auth tests.
-Widget authApp(FakeMayosApi fake, InMemoryTokenStore tokens) {
+///
+/// [extraOverrides] lets a test replace a provider the auth screens reach for
+/// (for example the privacy-policy browser hand-off) without forking the
+/// harness.
+Widget authApp(FakeMayosApi fake, InMemoryTokenStore tokens,
+    {List<Override> extraOverrides = const <Override>[]}) {
   return ProviderScope(
     overrides: <Override>[
       tokenStoreProvider.overrideWithValue(tokens),
@@ -43,6 +48,7 @@ Widget authApp(FakeMayosApi fake, InMemoryTokenStore tokens) {
         client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
         return client;
       }),
+      ...extraOverrides,
     ],
     child: const MayosApp(),
   );

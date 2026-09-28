@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/privacy_policy.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_text_field.dart';
@@ -108,6 +109,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         AuthLink(
           label: 'Claim imported account',
           onPressed: _busy ? null : _openClaim,
+        ),
+        AuthLink(
+          key: const Key('login_privacy_policy'),
+          label: 'Privacy policy',
+          onPressed: _busy ? null : () => openPrivacyPolicy(context, ref),
         ),
       ],
       children: <Widget>[

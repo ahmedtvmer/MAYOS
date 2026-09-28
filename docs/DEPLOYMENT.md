@@ -142,6 +142,7 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `MODEL_DAILY_TOKEN_LIMIT` | `200000` | Per-account input+output tokens/UTC day; `0` disables |
 | `MODEL_PRICING_JSON` | built-in defaults | `{model: {"input": usd, "output": usd}}` per 1M tokens; unknown model ⇒ cost 0 + warning |
 | `MODEL_SPEND_ALERT_USD` | `50` | Owner alert when projected month spend reaches this (evaluated on the hourly sweep) |
+| `PRIVACY_CONTACT_EMAIL` | unset (⇒ placeholder + warning) | Owner contact rendered on the public privacy policy at `GET /privacy`; unset still serves the page |
 | `OWNER_ALERT_EMAIL` | unset | Alert recipient (set via `fly secrets set` on Fly); unset logs the warning only and retries delivery each sweep |
 | `MODEL_PATH` / `JUDGE_MODEL_PATH` | registry defaults | Explicit GGUF paths (win over `MODEL_DIR` + registry filename) |
 | `MODEL_DIR` | `models/` | Download target directory |
@@ -153,6 +154,17 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `SKIP_LLM_LOAD` | unset | Skips **eager warmup only**; the real GGUF lazy-loads on first inference. **Not** a mock switch |
 | `TESTING` | unset | Substitutes the in-repo mock model (CI/tests only; never in production) |
 | `CI` | unset | Mock fallback only when the model file is absent |
+
+**Rate-limit keying on Fly.** Every route limit (`RATE_LIMIT_*`) is keyed by
+client address — plus a bearer-token suffix for authenticated calls — in
+`svc/rate_limit.py::_key`. Behind Fly's proxy the socket address is the proxy
+for *every* request, so when `FLY_APP_NAME` is set (Fly injects it into each
+Machine; no configuration needed) the key uses the proxy-set `Fly-Client-IP`
+header instead. Without it all callers would share one bucket, and a single
+visitor could spend the whole `PASSWORD_LIMIT` budget that protects sign-in,
+password change, and the public `GET|POST /account/delete-request` form.
+Outside Fly the socket address is used and that header — which any client could
+forge — is ignored.
 
 ---
 
@@ -858,3 +870,25 @@ Notes:
   half-imported live account and never deletes or modifies the source.
 - The audit row stores no training data and no contact details. Remove the copied
   snapshot from `/tmp` after the import.
+
+### 10.11 Android release for the Play closed trial (issue #43)
+
+The Android half of the closed trial ships from Play Console as a free,
+invite-only closed track. The owner checklist — upload keystore and
+`mobile/android/key.properties`, the signed `flutter build appbundle --release`,
+Play App Signing plus both certificate fingerprints in
+`ANDROID_APP_SHA256_CERT_FINGERPRINTS`, the privacy-policy and account-deletion
+URLs, the Data safety answers, content rating, and target audience — lives in
+**[docs/PLAY_RELEASE.md](PLAY_RELEASE.md)**; this runbook only owns the API side
+(`PRIVACY_CONTACT_EMAIL`, `GET /privacy`, `GET /account/delete-request`).
+
+Two URLs must be live before the listing can be completed:
+
+```bash
+curl -sI https://<api-host>/privacy                     # 200, cacheable
+curl -sI https://<api-host>/account/delete-request      # 200, no-store
+```
+
+The release build fails with a clear message (not a debug signature) when
+`mobile/android/key.properties` is missing; debug builds and `flutter test` are
+unaffected.

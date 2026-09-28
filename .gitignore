@@ -35,3 +35,10 @@ programs/
 .claude/worktrees/
 .claude/.cc-writes/
 .claude/skills/claude-delegate
+
+# Android release signing (issue #43). mobile/android/.gitignore already covers
+# these inside the Android project; the root entries catch a keystore or
+# key.properties dropped anywhere else in the repo.
+key.properties
+*.jks
+*.keystore

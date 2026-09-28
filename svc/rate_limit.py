@@ -7,8 +7,25 @@ from slowapi.util import get_remote_address
 from starlette.requests import Request
 
 
+def _client_ip(request: Request) -> str:
+    """The client address a limit is keyed on.
+
+    On Fly every request reaches the app from the proxy, so ``get_remote_address``
+    would collapse every caller into one bucket — a single visitor could spend
+    the whole password budget for everyone. When ``FLY_APP_NAME`` is set (Fly
+    injects it into every Machine), the proxy-set ``Fly-Client-IP`` header is the
+    real caller and is used instead; off Fly the socket address is used and that
+    header — which any client could forge — is ignored.
+    """
+    if os.getenv("FLY_APP_NAME"):
+        forwarded = request.headers.get("fly-client-ip", "")
+        if forwarded:
+            return forwarded.strip()
+    return get_remote_address(request)
+
+
 def _key(request: Request) -> str:
-    ip = get_remote_address(request)
+    ip = _client_ip(request)
     auth = request.headers.get("authorization", "")
     if auth.lower().startswith("bearer ") and len(auth) > 20:
         return f"{ip}:{auth[-12:]}"

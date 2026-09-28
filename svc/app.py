@@ -29,6 +29,7 @@ from svc.routers import (
     onboarding,
     profile,
     programs,
+    public_pages,
     recovery,
     workouts,
 )
@@ -255,6 +256,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(recovery.router)
+    app.include_router(public_pages.router)
     app.include_router(coach.router)
     app.include_router(assignments.coach_router)
     app.include_router(assignments.player_router)

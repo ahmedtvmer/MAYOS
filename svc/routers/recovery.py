@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from service.app_links import build_asset_links
 from service.password_reset import GENERIC_TOKEN_ERROR
+from svc.html import self_contained_html
 
 router = APIRouter(tags=["recovery"])
 
@@ -116,16 +117,12 @@ async def asset_links():
 async def reset_password_page():
     """Minimal hosted fallback page. The token is never reflected into the HTML."""
     nonce = secrets.token_urlsafe(16)
-    headers = {
-        "Cache-Control": "no-store",
-        "Referrer-Policy": "no-referrer",
-        "X-Content-Type-Options": "nosniff",
-        "Content-Security-Policy": (
-            "default-src 'none'; "
-            f"style-src 'nonce-{nonce}'; "
-            f"script-src 'nonce-{nonce}'; "
-            "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-        ),
-    }
     page = _RESET_PAGE.replace("__NONCE__", nonce).replace("__CONFIG__", _JS_CONFIG)
-    return HTMLResponse(content=page, headers=headers)
+    return self_contained_html(
+        page,
+        cache_control="no-store",
+        style_src=f"nonce-{nonce}",
+        script_src=f"nonce-{nonce}",
+        connect_src="self",
+        form_action="none",
+    )

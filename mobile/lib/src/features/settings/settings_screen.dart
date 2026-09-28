@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/models.dart';
+import '../../core/privacy_policy.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/ui/mayos_card.dart';
@@ -155,6 +156,18 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ],
               ],
+            ),
+          ),
+          const SizedBox(height: MayosSpacing.xl),
+          const MayosSectionHeader(title: 'About'),
+          MayosCard(
+            padding: const EdgeInsets.symmetric(
+                horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
+            child: MayosSettingsTile(
+              icon: Icons.privacy_tip_outlined,
+              title: 'Privacy policy',
+              subtitle: 'What MAYOS collects, who can see it, and deletion',
+              onTap: () => openPrivacyPolicy(context, ref),
             ),
           ),
           const SizedBox(height: MayosSpacing.xl),

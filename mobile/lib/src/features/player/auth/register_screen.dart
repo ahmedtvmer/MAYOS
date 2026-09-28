@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/privacy_policy.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_text_field.dart';
@@ -116,6 +117,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           value: _rememberMe,
           enabled: !_busy,
           onChanged: (bool value) => setState(() => _rememberMe = value),
+        ),
+        // The policy link sits with the consent control, not in the action bar,
+        // so the disclosure is read where the account is created (#43).
+        const SizedBox(height: MayosSpacing.xs),
+        AuthLink(
+          key: const Key('register_privacy_policy'),
+          label: 'Privacy policy',
+          onPressed: _busy ? null : () => openPrivacyPolicy(context, ref),
         ),
       ],
     );

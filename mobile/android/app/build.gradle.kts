@@ -1,7 +1,64 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+
+// Release signing (issue #43). `key.properties` lives in `mobile/android/` (the
+// rootProject for this build) and is gitignored together with `*.jks` /
+// `*.keystore`. `storeFile` is resolved relative to `mobile/android/`, so an
+// absolute path or `../upload-keystore.jks` both work.
+//
+// A release build WITHOUT this file must fail loudly rather than fall back to
+// the debug key, so the guard below runs only when a release task is actually
+// requested: debug builds, `flutter test`, and Gradle sync stay unaffected.
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+}
+
+val requiredKeystoreKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+val missingKeystoreKeys = requiredKeystoreKeys.filter { keystoreProperties.getProperty(it).isNullOrBlank() }
+val releaseSigningConfigured = keystorePropertiesFile.exists() && missingKeystoreKeys.isEmpty()
+val keystoreFilePath = keystoreProperties.getProperty("storeFile") ?: ""
+val keystoreFile = rootProject.file(keystoreFilePath)
+val releaseSigningUsable = releaseSigningConfigured && keystoreFilePath.isNotBlank() && keystoreFile.exists()
+
+// A release build must fail loudly when signing is unconfigured. "Release" is
+// not the only way to reach one: a bare `assemble`, `bundle`, or `build` builds
+// every variant, release included, so those count too. Variant-suffixed tasks
+// (`assembleDebug`) and Gradle sync do not, so debug builds and `flutter test`
+// stay unaffected.
+val releaseBuildRequested = gradle.startParameter.taskNames.any { name ->
+    val task = name.substringAfterLast(':')
+    task.contains("Release") || task == "assemble" || task == "bundle" || task == "build"
+}
+if (releaseBuildRequested) {
+    if (!keystorePropertiesFile.exists()) {
+        throw GradleException(
+            "Release signing is not configured: mobile/android/key.properties is missing. " +
+                "Create an upload keystore and key.properties (see docs/PLAY_RELEASE.md), " +
+                "or build debug with `flutter build apk --debug`."
+        )
+    }
+    if (missingKeystoreKeys.isNotEmpty()) {
+        throw GradleException(
+            "Release signing is not configured: mobile/android/key.properties is missing " +
+                "or blank entries for: ${missingKeystoreKeys.joinToString(", ")}. " +
+                "See docs/PLAY_RELEASE.md."
+        )
+    }
+    if (!keystoreFile.exists()) {
+        throw GradleException(
+            "Release signing is not configured: key.properties storeFile points at " +
+                "'$keystoreFilePath' (resolved to $keystoreFile), which does not exist. " +
+                "See docs/PLAY_RELEASE.md."
+        )
+    }
 }
 
 android {
@@ -15,16 +72,12 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.mayos.mayos_mobile"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
-        // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
-        // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
-        // flag during build.
+        // versionCode/versionName come from pubspec.yaml (`version: 0.1.0+1`).
+        // When using split APKs, 1000 * ABI_VERSION is added automatically by
+        // Flutter. (https://flutter.dev/to/review/gradle-config)
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
@@ -34,11 +87,23 @@ android {
             (project.findProperty("appLinkHost") as String?) ?: "mayos-api.fly.dev"
     }
 
+    signingConfigs {
+        create("release") {
+            if (releaseSigningUsable) {
+                storeFile = keystoreFile
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Never the debug key: with key.properties absent this config is
+            // empty, and the guard above fails any requested release build with
+            // a clear message instead of shipping a debug-signed artifact.
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
