@@ -96,7 +96,8 @@ All under `lib/src/core/theme/`.
   `pressedOverlay`, `shadows`.
 - `mayos_typography.dart` — named roles: display, page heading, section
   heading, exercise title, body, body secondary, label, numeric, numeric small,
-  caption; plus `textTheme()` mapping onto Material slots.
+  caption, avatar initials, mode badge; plus `textTheme()` mapping onto
+  Material slots.
 - `mayos_spacing.dart` — `MayosSpacing` (4…40), `MayosRadii` (8/12/16/24/pill),
   `MayosMotion` (150/220/320 ms with standard/emphasized curves),
   `kMayosMinTapTarget` (48).

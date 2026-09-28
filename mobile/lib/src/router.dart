@@ -51,11 +51,10 @@ const String splashPath = '/splash';
 
 /// Pure routing decision, kept separate so capability gating is unit-testable.
 ///
-/// [mode] is the effective Player/Coach mode already resolved from the stored
-/// choice and the account's capabilities (#119).
+/// [mode] is this account's resolved Player/Coach mode (#119).
 ///
 /// Returns the location to redirect to, or null to stay.
-String? redirectFor(AuthState auth, String location, AppMode mode) {
+String? redirectFor(AuthState auth, String location, AppModeState mode) {
   switch (auth.status) {
     case AuthStatus.loading:
       // A password-recovery deep link must survive the startup resolution, so
@@ -81,7 +80,7 @@ String? redirectFor(AuthState auth, String location, AppMode mode) {
       final bool isCoach = accountSession.account.isCoach;
       // The capability caps the mode: a lost coach capability always resolves
       // to Player mode, whatever is stored.
-      final bool coachMode = isCoach && mode == AppMode.coach;
+      final bool coachMode = isCoach && mode.mode == AppMode.coach;
       final bool atAuthPage = location == loginPath ||
           location == registerPath ||
           location == claimPath;
@@ -90,6 +89,14 @@ String? redirectFor(AuthState auth, String location, AppMode mode) {
       // It stays first, ahead of the mode and onboarding rules (#119).
       if (!accountSession.hasRecoveryEmail) {
         return location == recoveryEmailPath ? null : recoveryEmailPath;
+      }
+
+      // Hold on splash until this account's stored mode is known, so the app
+      // opens in the stored mode instead of flashing the capability default.
+      // The check is account-scoped, so it does not depend on whether the
+      // router's or the mode controller's listener runs first (#119).
+      if (!mode.isResolvedFor(accountSession.account.accountId)) {
+        return splashPath;
       }
 
       /// Where this account opens: Coach mode owns the coach shell; Player
@@ -152,8 +159,9 @@ bool _isPasswordRecoveryPage(String location) =>
 
 final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   final ValueNotifier<int> refresh = ValueNotifier<int>(0);
-  // The mode controller's own auth listener must run before this one, so the
-  // redirect after a session change already sees the new account's mode.
+  // Either dependency can change the destination. Which listener fires first
+  // does not matter: redirectFor holds on splash until the mode state belongs
+  // to the signed-in account (#119).
   ref.listen<AppModeState>(
       appModeControllerProvider, (_, __) => refresh.value++);
   ref.listen<AuthState>(authControllerProvider, (_, __) => refresh.value++);
@@ -164,7 +172,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: refresh,
     redirect: (BuildContext context, GoRouterState state) {
       return redirectFor(ref.read(authControllerProvider),
-          state.matchedLocation, ref.read(appModeControllerProvider).mode);
+          state.matchedLocation, ref.read(appModeControllerProvider));
     },
     routes: <RouteBase>[
       GoRoute(

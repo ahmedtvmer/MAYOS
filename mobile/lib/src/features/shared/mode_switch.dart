@@ -54,8 +54,8 @@ class ModeAvatarButton extends ConsumerWidget {
                   backgroundColor: c.accentSubtle,
                   child: Text(
                     initials,
-                    style: MayosTypography.label
-                        .copyWith(fontSize: 12, color: c.accent),
+                    style:
+                        MayosTypography.avatarInitials.copyWith(color: c.accent),
                   ),
                 ),
                 Positioned(
@@ -72,11 +72,8 @@ class ModeAvatarButton extends ConsumerWidget {
                     ),
                     child: Text(
                       coachMode ? 'C' : 'P',
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        color: coachMode ? c.onAccent : c.onSuccess,
-                      ),
+                      style: MayosTypography.modeBadge
+                          .copyWith(color: coachMode ? c.onAccent : c.onSuccess),
                     ),
                   ),
                 ),
@@ -87,6 +84,28 @@ class ModeAvatarButton extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Switches the signed-in account to [mode], persists that choice, and
+/// navigates to the mode's landing.
+///
+/// The one path for mode changes: the mode sheet and the player setup screen
+/// both go through it, so neither can drift on persistence or capability (#119).
+void switchToMode(BuildContext context, WidgetRef ref, AppMode mode) {
+  final AccountSession? session = ref.read(authControllerProvider).session;
+  if (session == null) {
+    return;
+  }
+  ref.read(appModeControllerProvider.notifier).setMode(
+        mode,
+        accountId: session.account.accountId,
+        isCoach: session.account.isCoach,
+      );
+  context.go(
+    mode == AppMode.coach
+        ? coachPath
+        : (session.onboarded ? homePath : playerSetupPath),
+  );
 }
 
 /// The account sheet: switch between Player mode and Coach mode, then
@@ -126,15 +145,7 @@ Future<void> showModeSheet(BuildContext context, WidgetRef ref) {
             if (selected) {
               return;
             }
-            ref.read(appModeControllerProvider.notifier).setMode(
-                  mode,
-                  accountId: session.account.accountId,
-                  isCoach: session.account.isCoach,
-                );
-            final String destination = mode == AppMode.coach
-                ? coachPath
-                : (onboarded ? homePath : playerSetupPath);
-            context.go(destination);
+            switchToMode(context, ref, mode);
           },
         );
       }

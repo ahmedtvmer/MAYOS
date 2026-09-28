@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mayos_mobile/src/app.dart';
+import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
@@ -63,6 +64,7 @@ List<Override> _authOverrides(FakeMayosApi fake, InMemoryTokenStore tokens,
     ThemeMode mode) {
   return <Override>[
     tokenStoreProvider.overrideWithValue(tokens),
+    appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
     chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
     themeModeStoreProvider.overrideWithValue(InMemoryThemeModeStore(mode)),
     apiClientProvider.overrideWith((ref) {

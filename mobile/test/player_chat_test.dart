@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
+import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/account_data_eraser.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_models.dart';
@@ -90,6 +91,7 @@ Future<void> _pumpHome(
       key: scopeKey,
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
+        appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
         _apiOverride(fake),
         chatCacheStoreProvider
             .overrideWithValue(chatCache ?? InMemoryChatCacheStore()),

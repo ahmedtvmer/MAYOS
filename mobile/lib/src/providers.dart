@@ -159,6 +159,23 @@ final Provider<ChatCacheStore> chatCacheStoreProvider =
             ? SecureChatCacheStore()
             : InMemoryChatCacheStore());
 
+/// Runs [reset] whenever the signed-in account changes or the session ends.
+///
+/// The listener sits on the auth state itself, so the reset lands with the
+/// same synchronous notification that changes the session and no rebuilt shell
+/// can read the previous account's value (#119).
+void _resetOnAccountChange(Ref ref, void Function() reset) {
+  String? account =
+      ref.read(authControllerProvider).session?.account.accountId;
+  ref.listen<AuthState>(authControllerProvider, (_, AuthState next) {
+    final String? nextAccount = next.session?.account.accountId;
+    if (nextAccount != account) {
+      account = nextAccount;
+      reset();
+    }
+  });
+}
+
 /// The selected bottom-navigation tab in the player shell (0 = Home,
 /// 1 = Program, 2 = Progress). Home's no-program state points at Program so the
 /// player can generate a program through the existing Program-tab flow.
@@ -166,14 +183,22 @@ final StateProvider<int> playerShellTabProvider =
     StateProvider<int>((ref) => 0);
 
 /// The selected bottom-navigation tab in the coach shell (0 = Roster,
-/// 1 = Alerts, 2 = Profile). The shell opens on Roster.
-final StateProvider<int> coachShellTabProvider = StateProvider<int>((ref) => 0);
+/// 1 = Alerts, 2 = Profile). The shell opens on Roster, and so does a newly
+/// signed-in account: the tab resets whenever the account changes (#119).
+final StateProvider<int> coachShellTabProvider = StateProvider<int>((ref) {
+  _resetOnAccountChange(ref, () => ref.controller.state = 0);
+  return 0;
+});
 
 /// The number of coach alerts still in the `new` state, published by the
 /// Alerts tab so the shell's badge tracks acknowledge/resolve without a second
-/// fetch (#119).
+/// fetch. It resets whenever the account changes, so one account's badge count
+/// is never shown for another (#119).
 final StateProvider<int> coachNewAlertsCountProvider =
-    StateProvider<int>((ref) => 0);
+    StateProvider<int>((ref) {
+  _resetOnAccountChange(ref, () => ref.controller.state = 0);
+  return 0;
+});
 
 /// Processes the logged-in account's drafts on login, after a save, on demand,
 /// and periodically while the app is in the foreground (ADR 020/033).

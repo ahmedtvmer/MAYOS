@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mayos_mobile/src/app.dart';
+import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
@@ -63,6 +64,7 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
     ProviderScope(
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
+        appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
         _apiOverride(fake),
         deviceTimezoneProvider
             .overrideWithValue(Future<String>.value('America/New_York')),
@@ -293,6 +295,7 @@ void main() {
       ProviderScope(
         overrides: <Override>[
           tokenStoreProvider.overrideWithValue(tokens),
+          appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
           _apiOverride(fake),
         ],
         child: MaterialApp.router(routerConfig: router),

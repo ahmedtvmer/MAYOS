@@ -80,65 +80,106 @@ class InMemoryAppModeStore implements AppModeStore {
   }
 }
 
-/// The current effective mode for the signed-in account.
+/// The effective mode for the signed-in account, plus how far resolution has
+/// got.
+///
+/// [ready] is false while the account's stored choice is still being read, and
+/// [accountId] is the account the state belongs to (null while signed out).
+/// Together they let the router hold on splash until this exact account's mode
+/// is known, without depending on which Riverpod listener fires first (#119).
 @immutable
 class AppModeState {
-  const AppModeState({required this.mode});
+  const AppModeState({
+    required this.mode,
+    required this.ready,
+    required this.accountId,
+  });
 
   final AppMode mode;
+
+  /// Whether the stored choice for [accountId] has been read.
+  final bool ready;
+
+  /// The account this state resolves; null while signed out.
+  final String? accountId;
+
+  /// True when [mode] is resolved and belongs to [accountId].
+  bool isResolvedFor(String? accountId) => ready && this.accountId == accountId;
+
+  @override
+  bool operator ==(Object other) =>
+      other is AppModeState &&
+      other.mode == mode &&
+      other.ready == ready &&
+      other.accountId == accountId;
+
+  @override
+  int get hashCode => Object.hash(mode, ready, accountId);
 }
 
 /// Owns the Player mode / Coach mode choice for the signed-in account.
 class AppModeController extends StateNotifier<AppModeState> {
   AppModeController(this._store)
-      : super(const AppModeState(mode: AppMode.player));
+      : super(const AppModeState(
+          mode: AppMode.player,
+          ready: true,
+          accountId: null,
+        ));
 
   final AppModeStore _store;
 
   String? _accountId;
   AppMode? _stored;
+  bool _isCoach = false;
+
+  /// True while the stored choice for [_accountId] is still being read.
+  bool _reading = false;
+
+  /// Invalidates an in-flight store read. Bumped when the account changes and
+  /// when [setMode] records a newer choice, so a late read never overwrites a
+  /// decision made after it started (#119).
+  int _epoch = 0;
 
   /// Re-resolves the mode whenever the session's account or capabilities change.
   ///
-  /// A new account lands on its capability default at once so the shell never
-  /// waits on the keystore; the stored choice corrects it as soon as the read
-  /// returns.
+  /// A new account starts with `ready == false` and only becomes routable once
+  /// its stored choice has been read, so the app opens in the stored mode
+  /// rather than flashing the capability default (#119).
   Future<void> syncAccount({
     required String? accountId,
     required bool isCoach,
   }) async {
+    _isCoach = isCoach;
     if (accountId == null) {
+      _epoch++;
       _accountId = null;
       _stored = null;
-      state = const AppModeState(mode: AppMode.player);
+      _reading = false;
+      _apply();
       return;
     }
     if (accountId != _accountId) {
       _accountId = accountId;
-      state =
-          AppModeState(mode: resolveAppMode(isCoach: isCoach, stored: null));
+      _stored = null;
+      _reading = true;
+      final int epoch = ++_epoch;
+      _apply();
       AppMode? stored;
       try {
         stored = await _store.read(accountId);
       } on Object {
         stored = null;
       }
-      if (!mounted || _accountId != accountId) {
+      if (!mounted || epoch != _epoch || _accountId != accountId) {
+        // Superseded by a newer sync or by setMode; drop this read.
         return;
       }
+      _reading = false;
       _stored = stored;
-      _apply(isCoach: isCoach);
+      _apply();
       return;
     }
-    _apply(isCoach: isCoach);
-  }
-
-  void _apply({required bool isCoach}) {
-    final AppMode resolved =
-        resolveAppMode(isCoach: isCoach, stored: _stored);
-    if (state.mode != resolved) {
-      state = AppModeState(mode: resolved);
-    }
+    _apply();
   }
 
   /// Applies [mode] immediately, then persists it for this account.
@@ -147,12 +188,28 @@ class AppModeController extends StateNotifier<AppModeState> {
     required String? accountId,
     required bool isCoach,
   }) async {
+    // A choice made now beats any store read still in flight (#119).
+    _epoch++;
+    _reading = false;
+    _isCoach = isCoach;
     _stored = mode;
-    state = AppModeState(
-      mode: resolveAppMode(isCoach: isCoach, stored: mode),
-    );
+    if (accountId != null) {
+      _accountId = accountId;
+    }
+    _apply();
     if (accountId != null) {
       await _store.write(accountId, mode);
+    }
+  }
+
+  void _apply() {
+    final AppModeState next = AppModeState(
+      mode: resolveAppMode(isCoach: _isCoach, stored: _stored),
+      ready: _accountId == null || !_reading,
+      accountId: _accountId,
+    );
+    if (next != state) {
+      state = next;
     }
   }
 }

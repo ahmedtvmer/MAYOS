@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
+import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_models.dart';
@@ -118,6 +119,7 @@ ProviderContainer _container({
   return ProviderContainer(
     overrides: <Override>[
       tokenStoreProvider.overrideWithValue(tokens),
+      appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
       draftStoreProvider.overrideWithValue(drafts),
       workoutCacheStoreProvider.overrideWithValue(cache),
       chatCacheStoreProvider.overrideWithValue(chat),
@@ -364,6 +366,7 @@ void main() {
         ProviderScope(
           overrides: <Override>[
             tokenStoreProvider.overrideWithValue(tokens),
+            appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
             draftStoreProvider.overrideWithValue(drafts),
             workoutCacheStoreProvider.overrideWithValue(cache),
             chatCacheStoreProvider.overrideWithValue(chat),

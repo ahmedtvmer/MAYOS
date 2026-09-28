@@ -128,6 +128,26 @@ abstract final class MayosTypography {
     fontFeatures: _tabular,
   );
 
+  /// Header-avatar initials, set on the accent-subtle disc.
+  static const TextStyle avatarInitials = TextStyle(
+    fontFamily: uiFamily,
+    fontSize: 12,
+    height: 1.1,
+    fontWeight: FontWeight.w600,
+    fontVariations: _semibold,
+    letterSpacing: 0.1,
+  );
+
+  /// The single-letter Player/Coach badge chip on the header avatar.
+  static const TextStyle modeBadge = TextStyle(
+    fontFamily: uiFamily,
+    fontSize: 9,
+    height: 1.1,
+    fontWeight: FontWeight.w700,
+    fontVariations: _bold,
+    letterSpacing: 0.1,
+  );
+
   /// Caption / metadata.
   static const TextStyle caption = TextStyle(
     fontFamily: uiFamily,

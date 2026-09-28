@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mayos_mobile/src/app.dart';
+import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
@@ -293,6 +294,7 @@ List<Override> _appOverrides({
 }) {
   return <Override>[
     tokenStoreProvider.overrideWithValue(tokens),
+    appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
     themeModeStoreProvider.overrideWithValue(InMemoryThemeModeStore(mode)),
     draftStoreProvider.overrideWithValue(draftStore ?? InMemoryDraftStore()),
     workoutCacheStoreProvider
@@ -560,6 +562,7 @@ Future<void> _pumpAuthSurface(
       child: ProviderScope(
         overrides: <Override>[
           tokenStoreProvider.overrideWithValue(tokens),
+          appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
           themeModeStoreProvider
               .overrideWithValue(InMemoryThemeModeStore(mode)),
           chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
@@ -692,6 +695,7 @@ Future<void> _pumpOnboardingSurface(
       child: ProviderScope(
         overrides: <Override>[
           tokenStoreProvider.overrideWithValue(tokens),
+          appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
           themeModeStoreProvider
               .overrideWithValue(InMemoryThemeModeStore(mode)),
           draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
@@ -764,6 +768,7 @@ Future<void> _pumpShell(
       child: ProviderScope(
         overrides: <Override>[
           tokenStoreProvider.overrideWithValue(tokens),
+          appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
           themeModeStoreProvider
               .overrideWithValue(InMemoryThemeModeStore(mode)),
           draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
@@ -819,6 +824,7 @@ Future<void> _pumpExerciseDetail(
       child: ProviderScope(
         overrides: <Override>[
           tokenStoreProvider.overrideWithValue(tokens),
+          appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
           themeModeStoreProvider
               .overrideWithValue(InMemoryThemeModeStore(mode)),
           draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
@@ -976,6 +982,7 @@ Future<void> _pumpProgressSurface(
       child: ProviderScope(
         overrides: <Override>[
           tokenStoreProvider.overrideWithValue(tokens),
+          appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
           themeModeStoreProvider
               .overrideWithValue(InMemoryThemeModeStore(mode)),
           draftStoreProvider.overrideWithValue(InMemoryDraftStore()),

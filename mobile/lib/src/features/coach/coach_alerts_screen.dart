@@ -187,7 +187,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
     final MayosThemeExtension c = MayosTheme.of(context);
     final List<CoachAlert> visible = _alerts
         .where((CoachAlert alert) =>
-            _showResolved || alert.state != 'resolved')
+            _showResolved || !alert.isResolved)
         .toList(growable: false);
     return ListView(
       padding: MayosSpacing.screen,

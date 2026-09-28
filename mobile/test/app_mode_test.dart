@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 
@@ -68,7 +70,7 @@ void main() {
     expect(controller.state.mode, AppMode.player);
   });
 
-  test('a new account lands on its default, then the stored choice corrects it',
+  test('a new account is not resolved until its stored choice is read',
       () async {
     final AppModeController controller = AppModeController(
       InMemoryAppModeStore(<String, AppMode>{
@@ -77,11 +79,94 @@ void main() {
     );
     final Future<void> pending =
         controller.syncAccount(accountId: 'account-a', isCoach: true);
-    // The coach default applies before the keystore read returns, so the
-    // shell never waits on it...
-    expect(controller.state.mode, AppMode.coach);
+    // The state is scoped to the account but not ready: the router holds on
+    // splash instead of flashing the coach default while the stored Player
+    // choice is still being read (#119).
+    expect(controller.state.accountId, 'account-a');
+    expect(controller.state.ready, isFalse);
+    expect(controller.state.isResolvedFor('account-a'), isFalse);
     await pending;
-    // ...and the stored Player choice then wins.
+    expect(controller.state.ready, isTrue);
     expect(controller.state.mode, AppMode.player);
+    expect(controller.state.isResolvedFor('account-a'), isTrue);
   });
+
+  test('a choice made while the store read is pending beats that read',
+      () async {
+    final _GatedStore store = _GatedStore();
+    final AppModeController controller = AppModeController(store);
+    final Future<void> syncing =
+        controller.syncAccount(accountId: 'account-a', isCoach: true);
+    expect(controller.state.ready, isFalse);
+
+    // The user picks Player mode before the slow read returns Coach mode.
+    await controller.setMode(
+      AppMode.player,
+      accountId: 'account-a',
+      isCoach: true,
+    );
+    expect(controller.state.mode, AppMode.player);
+    expect(controller.state.ready, isTrue);
+
+    // The stale read lands late and must not overwrite the newer choice.
+    store.completeRead(AppMode.coach);
+    await syncing;
+    expect(controller.state.mode, AppMode.player);
+    expect(controller.state.isResolvedFor('account-a'), isTrue);
+    expect(store.values, <String, AppMode>{'account-a': AppMode.player});
+  });
+
+  test('state equality covers mode, readiness, and account', () {
+    const AppModeState base = AppModeState(
+      mode: AppMode.coach,
+      ready: true,
+      accountId: 'account-a',
+    );
+    expect(base, const AppModeState(
+      mode: AppMode.coach,
+      ready: true,
+      accountId: 'account-a',
+    ));
+    expect(
+      base == const AppModeState(
+        mode: AppMode.player,
+        ready: true,
+        accountId: 'account-a',
+      ),
+      isFalse,
+    );
+    expect(
+      base == const AppModeState(
+        mode: AppMode.coach,
+        ready: false,
+        accountId: 'account-a',
+      ),
+      isFalse,
+    );
+    expect(
+      base == const AppModeState(
+        mode: AppMode.coach,
+        ready: true,
+        accountId: 'account-b',
+      ),
+      isFalse,
+    );
+  });
+}
+
+/// A store whose read never completes until the test says so, so a choice
+/// made mid-read can be raced against the read's own result (#119).
+class _GatedStore implements AppModeStore {
+  final Completer<AppMode?> readGate = Completer<AppMode?>();
+  final Map<String, AppMode> values = <String, AppMode>{};
+
+  void completeRead(AppMode? mode) => readGate.complete(mode);
+
+  @override
+  Future<AppMode?> read(String accountId) => readGate.future;
+
+  @override
+  Future<void> write(String accountId, AppMode mode) async {
+    values[accountId] = mode;
+  }
 }

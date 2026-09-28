@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
+import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
@@ -41,6 +42,7 @@ Future<void> _pumpHome(
     ProviderScope(
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
+        appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
         themeModeStoreProvider
             .overrideWithValue(themeStore ?? InMemoryThemeModeStore()),
         draftStoreProvider.overrideWithValue(InMemoryDraftStore()),

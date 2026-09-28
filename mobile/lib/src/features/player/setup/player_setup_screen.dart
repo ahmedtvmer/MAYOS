@@ -9,7 +9,6 @@ import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_app_header.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_scaffold.dart';
-import '../../../providers.dart';
 import '../../../router.dart';
 import '../../shared/mode_switch.dart';
 
@@ -58,16 +57,7 @@ class PlayerSetupScreen extends ConsumerWidget {
             MayosButton(
               label: 'Back to Coach mode',
               variant: MayosButtonVariant.tertiary,
-              onPressed: () {
-                final String? accountId =
-                    ref.read(authControllerProvider).session?.account.accountId;
-                ref.read(appModeControllerProvider.notifier).setMode(
-                      AppMode.coach,
-                      accountId: accountId,
-                      isCoach: true,
-                    );
-                context.go(coachPath);
-              },
+              onPressed: () => switchToMode(context, ref, AppMode.coach),
             ),
           ],
         ),

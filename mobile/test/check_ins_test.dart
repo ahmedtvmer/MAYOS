@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
+import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/models.dart';
@@ -35,6 +36,7 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
     ProviderScope(
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
+        appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
         apiClientProvider.overrideWith((ref) {
           final ApiClient client = ApiClient(
             tokens: ref.watch(tokenStoreProvider),

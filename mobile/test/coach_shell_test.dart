@@ -8,6 +8,7 @@ import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/providers.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 
+import 'support/auth_harness.dart';
 import 'support/fake_mayos_api.dart';
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
@@ -258,6 +259,42 @@ void main() {
     await _pumpUntilFound(tester, find.text('Set up your own training'));
     await tester.tap(find.text('Start intake'));
     await _pumpUntilFound(tester, find.text('Hosted AI processing'));
+  });
+
+  test('the coach shell tab and alerts badge reset when the account changes',
+      () async {
+    final FakeMayosApi fake = _coachFake();
+    fake.passwords['alice'] = 'pw-alice';
+    fake.passwords['bob'] = 'pw-bob';
+    final InMemoryTokenStore tokens = InMemoryTokenStore();
+    await tokens.save('token-alice');
+    final ProviderContainer container = authContainerFor(fake, tokens);
+    await container.read(authControllerProvider.notifier).initialize();
+    expect(container.read(authControllerProvider).session?.account.accountId,
+        'account-alice');
+
+    // This account sits on the Alerts tab with a non-zero badge.
+    container.read(coachShellTabProvider.notifier).state = 1;
+    container.read(coachNewAlertsCountProvider.notifier).state = 3;
+    expect(container.read(coachShellTabProvider), 1);
+    expect(container.read(coachNewAlertsCountProvider), 3);
+
+    // Signing out resets both for whoever signs in next.
+    await container.read(authControllerProvider.notifier).logout();
+    expect(container.read(coachShellTabProvider), 0);
+    expect(container.read(coachNewAlertsCountProvider), 0);
+
+    // And so does a straight account switch: the next account starts on
+    // Roster and never sees the previous account's badge count (#119).
+    container.read(coachShellTabProvider.notifier).state = 2;
+    container.read(coachNewAlertsCountProvider.notifier).state = 7;
+    await container
+        .read(authControllerProvider.notifier)
+        .login(username: 'bob', password: 'pw-bob');
+    expect(container.read(authControllerProvider).session?.account.accountId,
+        'account-bob');
+    expect(container.read(coachShellTabProvider), 0);
+    expect(container.read(coachNewAlertsCountProvider), 0);
   });
 
   testWidgets('a non-coach account sees no mode badge', (WidgetTester tester) async {
