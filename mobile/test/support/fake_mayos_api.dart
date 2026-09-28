@@ -83,6 +83,10 @@ class FakeMayosApi {
   bool coachControlsProgram = false;
   // When true `GET /programs/active` returns an empty body (no active program).
   bool noActiveProgram = false;
+  /// Per-exercise `target_rpe` overrides for `GET /workouts/prescription`, so a
+  /// test can pin a different target cap than the default program fixture and
+  /// assert its equivalent minimum RIR (#111).
+  final Map<String, double> prescriptionTargetRpe = <String, double>{};
   // When true the volume and personal-records endpoints return empty, so the
   // Home empty states can be captured and tested.
   bool volumeEmpty = false;
@@ -1194,7 +1198,7 @@ class FakeMayosApi {
               'e1rm': 120.0,
             },
           ],
-          'caption': 'Latest Recorded: **100.0 kg × 5 reps @ RPE 8.0**',
+          'caption': 'Latest Recorded: **100.0 kg × 5 reps @ RIR 2**',
           'records': <Map<String, dynamic>>[
             <String, dynamic>{
               'record_type': 'max_weight',
@@ -2292,7 +2296,9 @@ class FakeMayosApi {
                 .toLowerCase()
                 .contains('barbell'),
             'effective_sets': entry['target_sets'],
-            'target_rpe_cap': entry['target_rpe'],
+            'target_rpe_cap':
+                prescriptionTargetRpe[entry['exercise_id']] ??
+                (entry['target_rpe'] as num).toDouble(),
             'projected_weight': 60.0,
             'last_perf': <dynamic>[],
           },
@@ -2492,7 +2498,7 @@ class FakeMayosApi {
               'e1rm': 120.0,
             },
           ],
-          'caption': 'Latest Recorded: **100.0 kg × 5 reps @ RPE 8.0**',
+          'caption': 'Latest Recorded: **100.0 kg × 5 reps @ RIR 2**',
           'records': <Map<String, dynamic>>[
             <String, dynamic>{
               'record_type': 'max_weight',

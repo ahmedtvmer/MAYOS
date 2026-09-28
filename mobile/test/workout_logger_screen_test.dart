@@ -279,7 +279,7 @@ void main() {
       expect(find.text(label), findsWidgets);
     }
     // The prescription caption rides on the card, as the old logger showed it.
-    expect(find.text('3 × 5–8 @ RPE 8.5'), findsOneWidget);
+    expect(find.text('3 × 5–8 @ RIR 1.5'), findsOneWidget);
     // The Unplanned tag only where it applies: none of the planned cards.
     expect(find.text('Unplanned'), findsNothing);
   });
@@ -397,7 +397,7 @@ void main() {
   });
 
   testWidgets(
-      'the RIR keypad is one-tap chips 0–5 and Unrated, and a chip advances',
+      'the RIR keypad is one-tap chips 0–5+ and Unrated, and a chip advances',
       (WidgetTester tester) async {
     await _openLogger(tester);
 
@@ -430,6 +430,21 @@ void main() {
     expect(_textColor(tester, _cell(0, 0, 'rir')),
         MayosThemeExtension.light.textDisabled);
     expect(find.text('Bench Press · set 2 · Weight (kg)'), findsOneWidget);
+
+    // The top choice is 5+ — RIR 5, the service's RPE 5 floor — and effort is
+    // chips only: no free decimal field anywhere (#111).
+    await tester.tap(_cell(0, 0, 'rir'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('5+'), findsOneWidget);
+    expect(find.text('.'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey<String>('logger.rir.5')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      find.descendant(of: _cell(0, 0, 'rir'), matching: find.text('5')),
+      findsOneWidget,
+    );
+    expect(_textColor(tester, _cell(0, 0, 'rir')),
+        MayosThemeExtension.light.textPrimary);
   });
 
   testWidgets('tapping the SET number cycles N ↔ W and mutes the row',

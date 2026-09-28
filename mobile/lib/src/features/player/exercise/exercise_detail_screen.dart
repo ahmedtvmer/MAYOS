@@ -29,7 +29,7 @@ class ExerciseDetailScreen extends ConsumerStatefulWidget {
   final String exerciseId;
 
   /// The program day the exercise was opened from, so prescription context
-  /// (sets × reps, RPE, rest, notes) can be shown. Null when opened elsewhere.
+  /// (sets × reps, RIR, rest, notes) can be shown. Null when opened elsewhere.
   final int? dayOrder;
 
   /// Which tab to open on. Progress (#48) opens this screen on `history`.
@@ -361,7 +361,7 @@ class _PrescriptionTrio extends StatelessWidget {
         ),
         Expanded(
           child: _PrescriptionStat(
-            value: 'RPE ${exercise.targetRpe.toStringAsFixed(1)}',
+            value: 'RIR ${rirLabel(exercise.targetRpe)}',
             label: 'Intensity',
           ),
         ),
@@ -579,8 +579,8 @@ class _HistoryTab extends StatelessWidget {
                 ),
                 Expanded(
                   child: Text(
-                    '${_trim(point.weightKg)} kg × ${point.reps} @ RPE '
-                    '${_trim(point.rpe)}',
+                    '${_trim(point.weightKg)} kg × ${point.reps} @ RIR '
+                    '${rirLabel(point.rpe)}',
                     style: MayosTypography.body.copyWith(color: c.textPrimary),
                   ),
                 ),

@@ -447,8 +447,8 @@ class _PointCallout extends StatelessWidget {
           ),
           const SizedBox(height: MayosSpacing.xxs),
           Text(
-            '${_formatValue(point.weightKg)} kg × ${point.reps} reps @ RPE '
-            '${_formatValue(point.rpe)}',
+            '${_formatValue(point.weightKg)} kg × ${point.reps} reps @ RIR '
+            '${rirLabel(point.rpe)}',
             style: MayosTypography.numericSmall.copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: 2),
@@ -484,8 +484,8 @@ class _SessionRow extends StatelessWidget {
           ),
           Expanded(
             child: Text(
-              '${_formatValue(point.weightKg)} kg × ${point.reps} @ RPE '
-              '${_formatValue(point.rpe)}',
+              '${_formatValue(point.weightKg)} kg × ${point.reps} @ RIR '
+              '${rirLabel(point.rpe)}',
               style: MayosTypography.body.copyWith(color: c.textPrimary),
             ),
           ),

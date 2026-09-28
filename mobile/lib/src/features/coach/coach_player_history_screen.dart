@@ -634,7 +634,7 @@ class _CoachPlayerHistoryScreenState
         else
           for (final CoachExerciseHistoryPoint point in history.history)
             Text('${point.date}: ${point.weightKg} kg × ${point.reps}'
-                '${point.rpe == null ? '' : ' @ RPE ${point.rpe}'}'
+                ' @ RIR ${rirLabel(point.rpe)}'
                 ' (e1RM ${point.e1rm})'),
         if (history.records.isNotEmpty) ...<Widget>[
           const SizedBox(height: MayosSpacing.xs),

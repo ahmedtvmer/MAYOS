@@ -2,6 +2,18 @@
 /// `agent/ProgramState.py`.
 library;
 
+/// One effort figure at the display boundary: RIR = 10 − RPE (#111).
+///
+/// The wire keeps RPE; players and coaches only ever read this. An absent
+/// rating is `unrated`, never a number — a blank set means "not rated".
+String rirLabel(double? rpe) {
+  if (rpe == null) {
+    return 'unrated';
+  }
+  final double rir = 10.0 - rpe;
+  return rir == rir.roundToDouble() ? rir.round().toString() : '$rir';
+}
+
 class Capabilities {
   const Capabilities({required this.player, required this.coach});
 
@@ -1564,7 +1576,7 @@ class ProgramExercise {
   bool get hasWarmupSets => warmupSets > 0;
 
   String get prescription =>
-      '$targetSets × $targetRepsMin–$targetRepsMax @ RPE ${targetRpe.toStringAsFixed(1)}';
+      '$targetSets × $targetRepsMin–$targetRepsMax @ RIR ${rirLabel(targetRpe)}';
 
   String get restLabel => 'rest ${restSeconds}s';
 
@@ -1751,20 +1763,23 @@ class WorkoutSetLog {
   const WorkoutSetLog({
     required this.weightKg,
     required this.reps,
-    required this.rpe,
+    this.rpe,
     this.isWarmup = false,
   });
 
   factory WorkoutSetLog.fromJson(Map<String, dynamic> json) => WorkoutSetLog(
         weightKg: (json['weight_kg'] as num?)?.toDouble() ?? 0,
         reps: (json['reps'] as num?)?.toInt() ?? 0,
-        rpe: (json['rpe'] as num?)?.toDouble() ?? 8.5,
+        rpe: (json['rpe'] as num?)?.toDouble(),
         isWarmup: json['is_warmup'] as bool? ?? false,
       );
 
   final double weightKg;
   final int reps;
-  final double rpe;
+
+  /// The stored effort, kept as RPE on the wire; null when the set is unrated
+  /// (#111) — the service accepts an absent effort, so no default is filled in.
+  final double? rpe;
   final bool isWarmup;
 
   WorkoutSetLog copyWith({
@@ -1772,11 +1787,12 @@ class WorkoutSetLog {
     int? reps,
     double? rpe,
     bool? isWarmup,
+    bool clearRpe = false,
   }) =>
       WorkoutSetLog(
         weightKg: weightKg ?? this.weightKg,
         reps: reps ?? this.reps,
-        rpe: rpe ?? this.rpe,
+        rpe: clearRpe ? null : (rpe ?? this.rpe),
         isWarmup: isWarmup ?? this.isWarmup,
       );
 
@@ -2228,14 +2244,17 @@ class ExerciseHistoryPoint {
         date: json['date'] as String,
         weightKg: (json['weight_kg'] as num).toDouble(),
         reps: (json['reps'] as num).toInt(),
-        rpe: (json['rpe'] as num?)?.toDouble() ?? 8.5,
+        rpe: (json['rpe'] as num?)?.toDouble(),
         e1rm: (json['e1rm'] as num).toDouble(),
       );
 
   final String date;
   final double weightKg;
   final int reps;
-  final double rpe;
+
+  /// Stored RPE, null when the set was logged without effort (#111); shown to
+  /// the player as RIR through [rirLabel].
+  final double? rpe;
   final double e1rm;
 }
 

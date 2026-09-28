@@ -194,9 +194,9 @@ void main() {
     expect(find.textContaining('Bench Press · kg'), findsOneWidget);
     expect(find.byKey(const Key('progress.chart')), findsOneWidget);
     // Recent-session rows carry the real values and dates (not the reference's).
-    expect(find.textContaining('95 kg × 5 @ RPE 8'), findsOneWidget);
+    expect(find.textContaining('95 kg × 5 @ RIR 2'), findsOneWidget);
     expect(find.textContaining('Jun 3'), findsOneWidget);
-    expect(find.textContaining('105 kg × 3 @ RPE 9'), findsOneWidget);
+    expect(find.textContaining('105 kg × 3 @ RIR 1'), findsOneWidget);
     expect(find.textContaining('e1RM 110'), findsOneWidget);
   });
 
@@ -333,7 +333,7 @@ void main() {
     expect(find.byType(ExerciseDetailScreen), findsOneWidget);
     expect(find.text('History'), findsOneWidget);
     // The History tab is active and renders the same real ledger rows.
-    expect(find.textContaining('95 kg × 5 @ RPE 8'), findsWidgets);
+    expect(find.textContaining('95 kg × 5 @ RIR 2'), findsWidgets);
   });
 
   testWidgets('bottom navigation now exposes Home, Program, and Progress',

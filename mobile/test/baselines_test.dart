@@ -78,11 +78,19 @@ void main() {
       expect(setE1rm(weightKg: 100, reps: 5, rir: 1), closeTo(120.0, 1e-9));
     });
 
-    test('unrated set keeps the RPE 8.5 default', () {
-      // RPE 8.5 → effective reps 5 + 1.5 → 100 * (1 + 6.5/30).
+    test('unrated set scores plain Epley, exactly RPE 10 / RIR 0 (#111)', () {
+      // w * (1 + reps / 30) → 100 * (1 + 5/30); never a default effort.
       expect(
         round2(setE1rm(weightKg: 100, reps: 5, rir: null)),
-        121.67,
+        116.67,
+      );
+      expect(
+        setE1rm(weightKg: 100, reps: 5, rir: null),
+        closeTo(setE1rm(weightKg: 100, reps: 5, rir: 0), 1e-9),
+      );
+      expect(
+        setE1rm(weightKg: 100, reps: 5, rir: null),
+        isNot(closeTo(calculateE1rm(weightKg: 100, reps: 5, rpe: 8.5), 1e-9)),
       );
     });
 
@@ -107,10 +115,46 @@ void main() {
       expect(rirFromRpe(9.0), 1.0);
       expect(rirFromRpe(null), isNull);
       expect(rpeFromRir(1.0), 9.0);
-      expect(rpeFromRir(null), 8.5);
+      // Unrated sends null — the service's optional effort, never a default.
+      expect(rpeFromRir(null), isNull);
+      // RIR 5 is RPE 5 now that the service accepts 5–10 (#111).
+      expect(rpeFromRir(5.0), 5.0);
+      expect(rpeFromRir(0.0), 10.0);
       // Outside the service's accepted RPE band, clamp so a commit can land.
-      expect(rpeFromRir(5.0), 6.0);
       expect(rpeFromRir(-1.0), 10.0);
+      expect(rpeFromRir(6.0), 5.0);
+    });
+  });
+
+  group('effort at the display boundary (#111)', () {
+    test('rirLabel converts stored RPE to RIR and names a blank unrated', () {
+      expect(rirLabel(10.0), '0');
+      expect(rirLabel(9.5), '0.5');
+      expect(rirLabel(8.5), '1.5');
+      expect(rirLabel(8.0), '2');
+      expect(rirLabel(5.0), '5');
+      expect(rirLabel(null), 'unrated');
+    });
+
+    test('a program target is spoken as RIR, never RPE', () {
+      const ProgramExercise exercise = ProgramExercise(
+        exerciseId: 'bench_press',
+        exerciseName: 'Bench Press',
+        targetSets: 3,
+        targetRepsMin: 5,
+        targetRepsMax: 8,
+        targetRpe: 8.5,
+      );
+      expect(exercise.prescription, '3 × 5–8 @ RIR 1.5');
+    });
+
+    test('a set with no effort on the wire keeps none', () {
+      final WorkoutSetLog set = WorkoutSetLog.fromJson(
+          <String, dynamic>{'weight_kg': 100, 'reps': 5});
+      expect(set.rpe, isNull);
+      expect(set.toJson()['rpe'], isNull);
+      expect(rirFromRpe(set.rpe), isNull);
+      expect(rirLabel(set.rpe), 'unrated');
     });
   });
 

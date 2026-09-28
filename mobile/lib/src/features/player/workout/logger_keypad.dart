@@ -69,8 +69,8 @@ LoggerCellFocus? nextLoggerCellFocus(
 }
 
 /// The app's own keypad that slides up when a cell is tapped: no system
-/// keyboard, no steppers. RIR switches to one-tap chips 0–5 and Unrated
-/// (#107 resolution, #111).
+/// keyboard, no steppers. RIR switches to one-tap chips 0–5+ and Unrated
+/// (#107 resolution, #111) — whole numbers only, never a decimal field.
 class LoggerKeypad extends StatefulWidget {
   const LoggerKeypad({
     super.key,
@@ -198,7 +198,7 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
           Row(
             children: <Widget>[
               for (final int v in <int>[0, 1, 2, 3, 4, 5])
-                key('$v',
+                key(v == 5 ? '5+' : '$v',
                     key: ValueKey<String>('logger.rir.$v'),
                     onTap: () => widget.onRir?.call(v.toDouble()),
                     bg: selected == v.toDouble() ? c.accent : null,

@@ -122,13 +122,19 @@ bool isWorkingSet({
 }) =>
     !isWarmup && weightKg > 0 && reps > 0;
 
-/// The one effort clamp in the app: the service's accepted RPE band [6, 10]
-/// (#111), used by the e1RM port, the draft payload, and the prescription hint
-/// so none of them can disagree about an out-of-band effort.
-double clampRpe(double rpe) => rpe < 6.0 ? 6.0 : (rpe > 10.0 ? 10.0 : rpe);
+/// The service's accepted RPE band (#111): RPE 5–10 is RIR 5–0. Guards the
+/// `rpe` a draft serializes so a commit can never be refused for its effort
+/// value, and the target-to-RIR conversions at the display boundary.
+double clampRpe(double rpe) => rpe < 5.0 ? 5.0 : (rpe > 10.0 ? 10.0 : rpe);
+
+/// The e1RM formula's own effort clamp: `calculate_e1rm` in
+/// agent/progression_engine.py reads `min(max(rpe, 6.0), 10.0)`, so an effort
+/// below RPE 6 scores exactly like RPE 6 — this is the formula, not the
+/// accepted input band (#111).
+double _formulaRpe(double rpe) => rpe < 6.0 ? 6.0 : (rpe > 10.0 ? 10.0 : rpe);
 
 /// The server's `calculate_e1rm` (agent/progression_engine.py): Epley adjusted
-/// for effort, with the RPE clamped to [6, 10].
+/// for effort, with the formula's RPE term clamped to [6, 10].
 double calculateE1rm({
   required double weightKg,
   required int reps,
@@ -137,13 +143,14 @@ double calculateE1rm({
   if (reps <= 0 || weightKg <= 0) {
     return 0.0;
   }
-  final double clamped = clampRpe(rpe);
+  final double clamped = _formulaRpe(rpe);
   final double effectiveReps = reps + (10.0 - clamped);
   return weightKg * (1.0 + (effectiveReps / 30.0));
 }
 
 /// The server's `set_e1rm` in RIR terms: RIR = 10 - RPE at the boundary, and
-/// an unrated set keeps the server's RPE 8.5 default.
+/// an unrated set is plain Epley — `w * (1 + reps / 30)`, exactly RPE 10 /
+/// RIR 0 (#111), never a default effort.
 double setE1rm({
   required double weightKg,
   required int reps,
@@ -152,7 +159,7 @@ double setE1rm({
     calculateE1rm(
       weightKg: weightKg,
       reps: reps,
-      rpe: rir == null ? 8.5 : 10.0 - rir,
+      rpe: rir == null ? 10.0 : 10.0 - rir,
     );
 
 /// Two decimals, the precision the record aggregates and the API report use.
@@ -162,15 +169,13 @@ double round2(double value) => double.parse(value.toStringAsFixed(2));
 /// service/workouts.py): null only when the set carries no rating.
 double? rirFromRpe(double? rpe) => rpe == null ? null : round2(10.0 - rpe);
 
-/// The `rpe` a draft sends for an RIR-logged set: the inverse of [rirFromRpe],
-/// with the logger's unrated default of 8.5 and the service's accepted range
-/// [6, 10] enforced so a commit can never be refused for its effort value.
-double rpeFromRir(double? rir) {
-  if (rir == null) {
-    return 8.5;
-  }
-  return clampRpe(10.0 - rir);
-}
+/// The `rpe` a draft sends for an RIR-logged set: the inverse of [rirFromRpe].
+///
+/// Unrated sends null — the service's optional effort (#111) — and a rating
+/// sends `10 - rir` inside the accepted RPE 5–10 band, so RIR 5 lands as RPE 5
+/// rather than being clamped up to the old floor of 6.
+double? rpeFromRir(double? rir) =>
+    rir == null ? null : clampRpe(10.0 - rir);
 
 /// Whether a draft's working sets will reach the ledger exactly as they stand
 /// (#123 item 9).

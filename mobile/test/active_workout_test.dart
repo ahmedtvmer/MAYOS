@@ -299,6 +299,29 @@ void main() {
       expect(controller.workout!.id, isNot(firstId));
     });
 
+    test('a target RPE cap is shown as its equivalent minimum RIR (#111)',
+        () async {
+      final FakeMayosApi fake = _signedInFake();
+      fake.prescriptionTargetRpe['bench_press'] = 7.0;
+      final InMemoryTokenStore tokens = await _tokens();
+      final ProviderContainer container = _container(
+        fake: fake,
+        tokens: tokens,
+        store: InMemoryActiveWorkoutStore(),
+        cache: InMemoryBaselineCacheStore(),
+        drafts: InMemoryDraftStore(),
+        workoutCache: InMemoryWorkoutCacheStore(),
+      );
+      final ActiveWorkoutController controller =
+          container.read(activeWorkoutControllerProvider.notifier);
+      await controller.startFromDay(
+          accountId: _account, day: _day, programVersion: 3);
+
+      // A target RPE cap of 7.0 is a *maximum* effort, so the hint players read
+      // is the equivalent *minimum* RIR: 10 - 7 = 3.
+      expect(controller.workout!.exercises.single.prescriptionHint!.rir, 3.0);
+    });
+
     test('seeds planned rows like the logger and applies the set operations',
         () async {
       final FakeMayosApi fake = _signedInFake();
@@ -737,7 +760,7 @@ void main() {
       final ActiveWorkout workout = workoutWith(<ActiveWorkoutExercise>[
         ActiveWorkoutExercise(
           exercise: _plannedExerciseJson,
-          targetLabel: '2 × 5–8 @ RPE 8.5',
+          targetLabel: '2 × 5–8 @ RIR 1.5',
           sets: <ActiveWorkoutSet>[
             ActiveWorkoutSet(weightKg: 100, reps: 5, rir: 1, ticked: true),
             ActiveWorkoutSet(
@@ -839,6 +862,44 @@ void main() {
       final DraftExercise unplanned = built.exercises.last;
       expect(unplanned.sets, isEmpty);
       expect(unplanned.skipped, isTrue);
+    });
+
+    test('an unrated ticked set is committed as rpe null, never a default',
+        () {
+      final ActiveWorkout workout = workoutWith(<ActiveWorkoutExercise>[
+        ActiveWorkoutExercise(
+          exercise: _plannedExerciseJson,
+          sets: <ActiveWorkoutSet>[
+            ActiveWorkoutSet(weightKg: 90, reps: 5, ticked: true),
+            ActiveWorkoutSet(weightKg: 90, reps: 5, rir: 5, ticked: true),
+          ],
+        ),
+      ]);
+
+      final WorkoutDraft? built = workout.buildWorkoutDraft(
+        timezone: 'Europe/Berlin',
+        clientSessionId: 'fixed-session',
+        now: now,
+        performedDate: '2026-09-28',
+      );
+
+      expect(built, isNotNull);
+      final List<WorkoutSetLog> sets = built!.exercises.single.sets;
+      expect(sets, hasLength(2));
+      // Blank effort stays blank through the draft (#111).
+      expect(sets.first.rpe, isNull);
+      // RIR 5 is RPE 5 — the old [6, 10] clamp no longer lifts it to 6.
+      expect(sets.last.rpe, 5.0);
+
+      // The wire keeps the key and sends null, which the service's optional
+      // `WorkoutSetIn.rpe` accepts as "not rated".
+      final Map<String, dynamic> body = built.toCommitBody();
+      final Map<String, dynamic> exercise =
+          (body['sets'] as List<dynamic>).first as Map<String, dynamic>;
+      final List<dynamic> payload = exercise['sets'] as List<dynamic>;
+      expect((payload.first as Map<String, dynamic>).containsKey('rpe'), isTrue);
+      expect((payload.first as Map<String, dynamic>)['rpe'], isNull);
+      expect((payload.last as Map<String, dynamic>)['rpe'], 5.0);
     });
 
     test('defaults the performed date to the day the workout started', () {

@@ -126,12 +126,12 @@ void main() {
     await tester.tap(find.text('Program'));
     await _pumpUntilFound(tester, find.text('Day 1: Upper 1'));
     await tester.tap(find.text('Bench Press'));
-    await _pumpUntilFound(tester, find.text('RPE 8.5'));
+    await _pumpUntilFound(tester, find.text('RIR 1.5'));
 
     // Serif name, prescription trio, and muscle/equipment chips from the catalog.
     expect(find.text('Bench Press'), findsOneWidget);
     expect(find.text('3 × 5–8'), findsOneWidget);
-    expect(find.text('RPE 8.5'), findsOneWidget);
+    expect(find.text('RIR 1.5'), findsOneWidget);
     expect(find.text('180s'), findsOneWidget);
     // Title-cased catalog strings.
     expect(find.text('Chest'), findsWidgets);

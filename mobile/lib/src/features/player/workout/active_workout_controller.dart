@@ -470,8 +470,9 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
 
   /// The prescription target an empty cell shows as its faded hint when there
   /// is no previous set: the projected weight (when the prescription projects
-  /// one), the target rep floor, and the target RPE as RIR — the effort at the
-  /// display boundary, inside the service's accepted [6, 10] RPE band (#111).
+  /// one), the target rep floor, and the target RPE cap as its equivalent
+  /// minimum RIR — the effort at the display boundary, inside the service's
+  /// accepted RPE 5–10 band (#111).
   static PrescriptionHint? _prescriptionHint(
     Map<String, dynamic> exercise,
     PrescriptionTarget? target,

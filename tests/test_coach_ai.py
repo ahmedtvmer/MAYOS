@@ -307,7 +307,7 @@ def test_render_context_states_every_deterministic_figure():
         "pause: 2026-10-01..2026-10-07",
         "2026-09-17 phone",
         "pending 1 (exercise_substitution 1)",
-        "day 1 Upper A: Squat 3x5-8@RPE8.5",
+        "day 1 Upper A: Squat 3x5-8@RIR1.5",
         "divergences skipped Row",
     ):
         assert expected in rendered, expected
@@ -327,6 +327,41 @@ def test_render_context_states_missing_sections_as_insufficient_data():
         "program_requests: none pending",
     ):
         assert marker in rendered, marker
+
+
+def test_render_context_speaks_effort_as_rir_never_rpe():
+    """The coach-facing context shows effort as RIR; stored facts keep RPE (#111)."""
+    facts = _sample_facts()
+    facts["program"]["days"][0]["exercises"].append(
+        {"name": "Row", "sets": 3, "reps": "8-10", "rpe": None}
+    )
+    facts["alerts"].append(
+        {
+            "kind": "performance_regression",
+            "state": "open",
+            "exercise_name": "Squat",
+            "e1rm_delta": -6.0,
+            "top_rpe": 10.0,
+            "intensity_cap_rpe": 7.0,
+        }
+    )
+    rendered = coach_ai.render_context(facts)
+
+    assert "Squat 3x5-8@RIR1.5" in rendered
+    assert "Row 3x8-10@RIRunrated" in rendered
+    assert "top_rir 0" in rendered
+    assert "intensity_cap_rir 3" in rendered
+    assert "@RPE" not in rendered
+    assert "top_rpe" not in rendered
+    assert "intensity_cap_rpe" not in rendered
+
+
+def test_effort_to_rir_conversion():
+    assert coach_ai.effort_to_rir(10.0) == "0"
+    assert coach_ai.effort_to_rir(8.5) == "1.5"
+    assert coach_ai.effort_to_rir(5.0) == "5"
+    assert coach_ai.effort_to_rir(None) == "unrated"
+    assert coach_ai.effort_to_rir("bad") == "unrated"
 
 
 def test_system_prompt_forbids_computation_and_medical_advice():

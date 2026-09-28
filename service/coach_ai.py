@@ -379,6 +379,27 @@ def format_number(value: Any) -> str:
     return str(round(number, 2))
 
 
+#: Evidence keys carried as RPE on the alert row but spoken as RIR to the coach
+#: (#111: effort is shown as RIR everywhere a player or coach sees it).
+_RIR_EVIDENCE_KEYS: dict[str, str] = {
+    "top_rpe": "top_rir",
+    "intensity_cap_rpe": "intensity_cap_rir",
+}
+
+
+def effort_to_rir(rpe: Any) -> str:
+    """One effort figure at the display boundary: ``10 - RPE``, ``unrated`` when absent.
+
+    The stored facts keep RPE; only the coach-facing rendering converts (#111).
+    """
+    if rpe is None:
+        return "unrated"
+    try:
+        return format_number(round(10.0 - float(rpe), 2))
+    except (TypeError, ValueError):
+        return "unrated"
+
+
 def _session_facts(sessions: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Allowlisted session fields (never session ids, notes, or audit rows)."""
     kept = []
@@ -557,7 +578,7 @@ def _render_program(facts: dict[str, Any]) -> list[str]:
     for day in program.get("days", []):
         prescriptions = ", ".join(
             f"{exercise.get('name')} {format_number(exercise.get('sets'))}x{exercise.get('reps')}"
-            f"@RPE{format_number(exercise.get('rpe'))}"
+            f"@RIR{effort_to_rir(exercise.get('rpe'))}"
             for exercise in day.get("exercises", [])
         )
         lines.append(f"  day {format_number(day.get('order'))} {day.get('day')}: {prescriptions}")
@@ -654,12 +675,23 @@ def _render_alerts(facts: dict[str, Any]) -> list[str]:
         return ["alerts: none"]
     lines = ["alerts:"]
     for alert in alerts:
-        evidence = ", ".join(
-            f"{key} {format_number(alert[key]) if isinstance(alert[key], (int, float)) else alert[key]}"
-            for key in _ALERT_EVIDENCE_FIELDS
-            if key in alert and alert[key] is not None
+        evidence_parts = []
+        for key in _ALERT_EVIDENCE_FIELDS:
+            if key not in alert or alert[key] is None:
+                continue
+            raw = alert[key]
+            if key in _RIR_EVIDENCE_KEYS:
+                # Stored RPE, spoken as RIR at the display boundary (#111).
+                evidence_parts.append(
+                    f"{_RIR_EVIDENCE_KEYS[key]} {effort_to_rir(raw)}"
+                )
+            elif isinstance(raw, (int, float)):
+                evidence_parts.append(f"{key} {format_number(raw)}")
+            else:
+                evidence_parts.append(f"{key} {raw}")
+        lines.append(
+            f"  {alert.get('kind')} {alert.get('state')}: {', '.join(evidence_parts)}"
         )
-        lines.append(f"  {alert.get('kind')} {alert.get('state')}: {evidence}")
     return lines
 
 
@@ -805,6 +837,7 @@ __all__ = [
     "coach_ai_enabled",
     "coach_model_identity",
     "evaluate_gate",
+    "effort_to_rir",
     "extract_answer",
     "format_number",
     "gather_player_context",
