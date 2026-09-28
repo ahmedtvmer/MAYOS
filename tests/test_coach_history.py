@@ -243,6 +243,7 @@ def test_roster_listing_is_catalog_only_and_shape_unchanged(api, monkeypatch):
         "next_follow_up_on",
         "pending_requests",
         "last_workout_on",
+        "program_name",
     }
     assert rows[0]["assignment_id"] == assignment_id
     assert rows[0]["player_username"] == "p1"

@@ -637,7 +637,8 @@ class CheckIn {
     'other',
   ];
 
-  String get channelLabel => switch (channel) {
+  /// The display label for one wire channel value (#120).
+  static String labelFor(String channel) => switch (channel) {
         'in_app' => 'In app',
         'in_person' => 'In person',
         'phone' => 'Phone',
@@ -646,6 +647,8 @@ class CheckIn {
         'email' => 'Email',
         _ => 'Other',
       };
+
+  String get channelLabel => labelFor(channel);
 }
 
 /// The check-ins ordered newest `checked_in_on` first (ties keep input order).

@@ -244,6 +244,28 @@ class LedgerTrainingProgramMixin:
             logger.warning(f"Program '{prog_id}' is malformed or incomplete: {exc}")
             return None
 
+    def active_program_name(self) -> str | None:
+        """The active program's display name, or ``None`` while there is none.
+
+        A name-only read (#120): the roster's program cache never needs the
+        days and exercises ``get_active_program`` loads.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(training_programs)")
+        columns = {col[1] for col in cursor.fetchall()}
+        if "program_name" in columns:
+            name_expr = "COALESCE(program_name, name)" if "name" in columns else "program_name"
+        elif "name" in columns:
+            name_expr = "name"
+        else:
+            return None
+        cursor.execute(
+            f"SELECT {name_expr} FROM training_programs"
+            " WHERE is_active = 1 ORDER BY created_at DESC LIMIT 1"
+        )
+        row = cursor.fetchone()
+        return str(row[0]) if row and row[0] else None
+
     def get_active_program(self) -> GeneratedProgramSchema | None:
         return self._load_program("is_active = 1")
 

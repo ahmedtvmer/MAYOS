@@ -350,7 +350,7 @@ void main() {
     await _pumpUntilFound(tester, find.byKey(const Key('check_in_submit_button')));
     expect(find.text('Log check-in with bob'), findsOneWidget);
     expect(find.text('Dated today · ${_today()}'), findsOneWidget);
-    expect(find.text('Call'), findsOneWidget);
+    expect(find.text('Phone'), findsOneWidget);
     expect(find.text('Message'), findsOneWidget);
     expect(find.text('In person'), findsOneWidget);
     expect(find.text('Other'), findsOneWidget);
@@ -381,6 +381,65 @@ void main() {
     await _pumpUntilGone(tester, find.text('Follow-up overdue'));
     await _settle(tester);
     expect(find.text('Follow-up overdue'), findsNothing);
+  });
+
+  /// Saving a check-in refreshes everything the spec names (#120): the
+  /// player page's open alerts (the service resolves the satisfied
+  /// follow-up), the Alerts tab badge, and the roster row.
+  testWidgets('saving a check-in refreshes the page alerts and the badge',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.assignments.add(_assignment(
+      'assignment-1',
+      'bob',
+      nextFollowUpOn: _daysFromToday(-2),
+      lastWorkoutOn: '2026-09-20',
+    ));
+    fake.coachAlerts.add(_alert('alert-missed'));
+    fake.coachAlerts
+        .add(_alert('alert-follow', kind: 'follow_up_due', dueOn: _daysFromToday(-2)));
+    await _pumpApp(tester, fake, InMemoryAppModeStore());
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+
+    final Finder missed = find.byKey(const Key('player_alert_alert-missed'));
+    final Finder followUp = find.byKey(const Key('player_alert_alert-follow'));
+    expect(
+      find.descendant(of: find.byType(Badge), matching: find.text('2')),
+      findsOneWidget,
+    );
+    expect(find.text('2 alerts'), findsOneWidget);
+
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.text('Open alerts'));
+    expect(missed, findsOneWidget);
+    expect(followUp, findsOneWidget);
+
+    // Log a check-in from the header action.
+    await tester.tap(find.byKey(const Key('log_check_in_action')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('check_in_submit_button')));
+    await tester.tap(find.byKey(const Key('check_in_channel_phone')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('check_in_submit_button')));
+    await _pumpUntilFound(tester, find.text('Check-in recorded.'));
+
+    // The page refetched its alerts: the follow-up the check-in satisfied is
+    // gone, the unrelated missed-day alert stays.
+    await _pumpUntilGone(tester, followUp);
+    expect(followUp, findsNothing);
+    expect(missed, findsOneWidget);
+    expect(fake.checkIns, hasLength(1));
+
+    // Back on the roster: the badge and the row both follow without a restart.
+    await tester.tap(find.byType(BackButton));
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await _pumpUntilFound(tester, find.text('1 alert'));
+    expect(find.text('1 alert'), findsOneWidget);
+    expect(find.text('2 alerts'), findsNothing);
+    expect(
+      find.descendant(of: find.byType(Badge), matching: find.text('1')),
+      findsOneWidget,
+    );
   });
 
   /// History embeds the existing drill-down content and Check-ins lists the

@@ -9,6 +9,7 @@ import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
+import 'coach_shared.dart';
 
 /// Coach alert centre (#31): lists missed expected-day alerts with their new /
 /// acknowledged / resolved state and lets the coach acknowledge or resolve
@@ -35,6 +36,10 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
   bool _showResolved = false;
   List<CoachAlert> _alerts = <CoachAlert>[];
 
+  /// Bumped by every load so a slower, older response can never overwrite a
+  /// newer one when revision bumps start overlapping loads (#120).
+  int _loadSeq = 0;
+
   @override
   void initState() {
     super.initState();
@@ -49,6 +54,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
   }
 
   Future<void> _load({bool showLoader = true}) async {
+    final int seq = ++_loadSeq;
     if (showLoader) {
       setState(() {
         _loading = true;
@@ -58,14 +64,14 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
     try {
       final List<CoachAlert> alerts =
           await ref.read(apiClientProvider).coachAlerts(states: _states);
-      if (!mounted) return;
+      if (!mounted || seq != _loadSeq) return;
       setState(() {
         _alerts = alerts;
         _loading = false;
       });
       _publishNewCount();
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || seq != _loadSeq) return;
       setState(() {
         _loading = false;
         _error = error.message;
@@ -82,7 +88,11 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
       _error = null;
     });
     try {
-      final CoachAlert updated = await action();
+      final CoachAlert updated = await applyCoachAlertAction(
+        ref,
+        action,
+        wasNew: alert.isNew,
+      );
       if (!mounted) return;
       setState(() {
         _busyAlertId = null;
@@ -92,8 +102,6 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
             .toList(growable: false);
       });
       _publishNewCount();
-      // The roster row carries the same counts: tell it to refetch (#120).
-      ref.read(coachRosterRevisionProvider.notifier).state++;
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -113,21 +121,8 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
         () => ref.read(apiClientProvider).resolveCoachAlert(alert.alertId),
       );
 
-  Widget _stateChip(BuildContext context, CoachAlert alert) {
-    final MayosThemeExtension tokens = MayosTheme.of(context);
-    final Color color = switch (alert.state) {
-      'new' => tokens.danger,
-      'acknowledged' => tokens.warning,
-      _ => tokens.textMuted,
-    };
-    return Chip(
-      label: Text(alert.stateLabel),
-      labelStyle: MayosTypography.caption.copyWith(color: color),
-      visualDensity: VisualDensity.compact,
-      side: BorderSide(color: color),
-      backgroundColor: Colors.transparent,
-    );
-  }
+  Widget _stateChip(BuildContext context, CoachAlert alert) =>
+      coachAlertStateChip(context, alert);
 
   Widget _alertCard(BuildContext context, CoachAlert alert) {
     final MayosThemeExtension c = MayosTheme.of(context);

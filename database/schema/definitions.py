@@ -400,12 +400,16 @@ class SchemaMixin:
                 -- absence falls back to UTC (ADR 031). ``last_workout_on`` mirrors the
                 -- newest committed session date (NULL while the player has never trained)
                 -- so the roster urgency order can rank it catalog-side (ticket #118).
+                -- ``program_name`` mirrors the active program's display name (NULL while
+                -- the player has no program) so the roster row can label it without
+                -- mounting the ledger (ticket #120).
                 CREATE TABLE IF NOT EXISTS roster_attendance (
                     assignment_id TEXT PRIMARY KEY,
                     current_missed_streak INTEGER NOT NULL DEFAULT 0,
                     last_evaluated_at TEXT,
                     timezone TEXT,
-                    last_workout_on TEXT
+                    last_workout_on TEXT,
+                    program_name TEXT
                 );
 
                 -- Coach-recorded check-ins (ADR 031, ticket #32). Catalog-side immutable
@@ -523,6 +527,7 @@ class SchemaMixin:
             self._create_coach_alerts_schema()
             self._ensure_roster_attendance_timezone()
             self._ensure_roster_attendance_last_workout_on()
+            self._ensure_roster_attendance_program_name()
             self._ensure_model_spend_alert_columns()
             self._commit_catalog()
             self._account_schema_ready = True
@@ -664,6 +669,13 @@ class SchemaMixin:
         columns = self._table_columns(cursor, "roster_attendance")
         if columns and "last_workout_on" not in columns:
             cursor.execute("ALTER TABLE roster_attendance ADD COLUMN last_workout_on TEXT")
+
+    def _ensure_roster_attendance_program_name(self) -> None:
+        """Additive ``program_name`` column on an existing ``roster_attendance`` (#120)."""
+        cursor = self.catalog_conn.cursor()
+        columns = self._table_columns(cursor, "roster_attendance")
+        if columns and "program_name" not in columns:
+            cursor.execute("ALTER TABLE roster_attendance ADD COLUMN program_name TEXT")
 
     def _ensure_model_spend_alert_columns(self) -> None:
         """Additive ``fired_at``/``notified_at`` on an existing ``model_spend_alerts`` (ADR 038)."""

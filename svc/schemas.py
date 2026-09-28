@@ -282,6 +282,8 @@ class CoachRosterEntryOut(BaseModel):
 
     ``last_workout_on`` is a date only, never session detail, and every field is
     read from catalog tables so listing the roster mounts no player ledger.
+    ``program_name`` is the active program's display name, cached catalog-side
+    by the evaluation or the coach's publication (#120).
     """
 
     assignment_id: str
@@ -294,6 +296,7 @@ class CoachRosterEntryOut(BaseModel):
     next_follow_up_on: str | None = None
     pending_requests: int = 0
     last_workout_on: str | None = None
+    program_name: str | None = None
 
 
 class CoachAssignmentsOut(BaseModel):

@@ -255,6 +255,7 @@ def test_roster_read_with_new_fields_mounts_no_player_ledger(api, monkeypatch):
     coach_headers, _ = _make_coach(client, db, "coach", capacity=5)
     player = _assign(api, "p1", coach_headers)
     _seed_workout(db, player, "2026-09-20")
+    _publish_coach_program(api, coach_headers, player, monkeypatch)
 
     mounted: list[str] = []
     real_open_ledger = db.open_ledger
@@ -268,6 +269,8 @@ def test_roster_read_with_new_fields_mounts_no_player_ledger(api, monkeypatch):
     rows = _roster(client, coach_headers)
     assert rows[0]["last_workout_on"] == "2026-09-20"
     assert rows[0]["pending_requests"] == 0
+    # The program name comes from the catalog cache, not a fresh ledger read.
+    assert rows[0]["program_name"] == "Coach Plan"
     assert mounted == ["coach"]
 
 
@@ -284,7 +287,7 @@ def test_assignment_redemption_seeds_the_last_workout_date_immediately(api):
         "2026-09-15",
     )
     coach_account_id = db.get_active_account_by_username("coach")["account_id"]
-    assert db.list_roster_last_workout_dates(coach_account_id) == {}
+    assert db.list_roster_workout_basis(coach_account_id) == {}
 
     _assign(api, "p1", coach_headers, player_headers=_authed(registered["access_token"]))
     rows = _roster(client, coach_headers)
@@ -373,3 +376,54 @@ def test_last_workout_ranks_never_trained_first_then_oldest(api):
     assert rows[0]["last_workout_on"] is None
     assert rows[1]["last_workout_on"] == "2026-09-01"
     assert rows[2]["last_workout_on"] == "2026-09-20"
+
+
+# --------------------------------------------------------------------------
+# Roster entry basis: program_name (#120)
+# --------------------------------------------------------------------------
+
+
+def _publish_coach_program(api, coach_headers, player, monkeypatch) -> None:
+    client, db, _ = api
+    _coach_generation(db, monkeypatch)
+    published = client.post(
+        f"/coach/assignments/{player['assignment_id']}/program", headers=coach_headers, json={}
+    )
+    assert published.status_code == 200, published.text
+
+
+def test_roster_entry_reports_the_active_program_name(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, _ = _make_coach(client, db, "coach", capacity=5)
+    player = _assign(api, "p1", coach_headers)
+
+    # No program on the assignment: the row has nothing to label.
+    assert _roster(client, coach_headers)[0]["program_name"] is None
+
+    # A coach publication caches the name catalog-side for the next read.
+    _publish_coach_program(api, coach_headers, player, monkeypatch)
+    assert _roster(client, coach_headers)[0]["program_name"] == "Coach Plan"
+
+
+def test_attendance_evaluation_caches_the_active_program_name(api):
+    client, db, _ = api
+    coach_headers, _ = _make_coach(client, db, "coach", capacity=5)
+    player = _assign(api, "p1", coach_headers)
+
+    # The player's own program is read while the ledger is open during
+    # evaluation, then served from the catalog cache.
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        ledger.save_training_program(
+            GeneratedProgramSchema(
+                program_name="Player Plan",
+                split_type="Full Body",
+                weekly_frequency=1,
+                days=[_day_plan()],
+            ).model_dump()
+        )
+    assert _roster(client, coach_headers)[0]["program_name"] is None
+
+    _seed_workout(db, player, "2026-09-20")
+    rows = _roster(client, coach_headers)
+    assert rows[0]["program_name"] == "Player Plan"
+    assert rows[0]["last_workout_on"] == "2026-09-20"

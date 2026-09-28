@@ -931,6 +931,18 @@ class FakeMayosApi {
       'assignment_status': 'active',
     };
     checkIns.insert(0, row);
+    // The service resolves the open follow-up alert a new check-in satisfies
+    // (service.check_ins.evaluate_follow_up); mirror it so a client sees the
+    // same open alerts after saving (#120).
+    for (final Map<String, dynamic> alert in coachAlerts) {
+      if (alert['assignment_id'] == assignmentId &&
+          alert['kind'] == 'follow_up_due' &&
+          alert['state'] != 'resolved') {
+        alert['state'] = 'resolved';
+        alert['resolved_at'] = '2026-09-26T12:00:00Z';
+        alert['resolved_by'] = 'system';
+      }
+    }
     return FakeResponse(200, <String, dynamic>{
       'check_in': row,
       'next_follow_up_on': _addDays(checkedInOn, 7),

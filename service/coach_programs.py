@@ -58,4 +58,10 @@ def publish_program(
             f"Your coach published program version {published.version}.",
             datetime.now(UTC).isoformat(),
         )
+        # This path never runs the attendance evaluation, so refresh the roster
+        # row's cached program name here: the next roster read stays catalog-side
+        # (ADR 025/030, #120).
+        db.set_roster_program_name(
+            context["assignment"]["assignment_id"], published.program_name
+        )
         return published

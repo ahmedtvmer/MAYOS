@@ -10,6 +10,7 @@ import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
 import 'coach_player_history_screen.dart';
+import 'coach_shared.dart';
 
 /// Coach-side roster (#24): the assigned players in the order the service
 /// returns them, with their urgency chips, revocation, and coaching controls.
@@ -35,6 +36,10 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
   String? _error;
   String? _busyAssignmentId;
   List<CoachRosterEntry> _assignments = <CoachRosterEntry>[];
+
+  /// Bumped by every load so a slower, older response can never overwrite a
+  /// newer one when revision bumps start overlapping loads (#120).
+  int _loadSeq = 0;
 
   @override
   void initState() {
@@ -62,6 +67,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
   /// [showLoader] blanks the list while fetching; the background refreshes
   /// (app resume, drill-down return) keep the current rows until data lands.
   Future<void> _load({bool showLoader = true}) async {
+    final int seq = ++_loadSeq;
     if (showLoader) {
       setState(() {
         _loading = true;
@@ -71,7 +77,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     try {
       final List<CoachRosterEntry> assignments =
           await ref.read(apiClientProvider).coachAssignments();
-      if (!mounted) return;
+      if (!mounted || seq != _loadSeq) return;
       setState(() {
         _assignments = assignments;
         _loading = false;
@@ -85,7 +91,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
         for (final CoachRosterEntry row in assignments) row.assignmentId,
       ]);
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || seq != _loadSeq) return;
       setState(() {
         _loading = false;
         _error = error.message;
@@ -211,24 +217,6 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     );
   }
 
-  /// One urgency chip on a roster row (#120): a tinted pill in the theme's
-  /// semantic colour, set in the caption role.
-  Widget _chip(BuildContext context, String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: MayosSpacing.sm, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: MayosRadii.pillRadius,
-      ),
-      child: Text(
-        label,
-        style: MayosTypography.caption
-            .copyWith(color: color, fontWeight: FontWeight.w600),
-      ),
-    );
-  }
-
   /// The chips as they apply (#120): missed days, a follow-up due today or
   /// overdue, new alerts, and pending program requests. Nothing renders when
   /// the player needs no attention.
@@ -238,16 +226,17 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     final String? followUp = entry.followUpChipLabel(today);
     return <Widget>[
       if (entry.currentMissedStreak > 0)
-        _chip(context, 'Missed ${entry.currentMissedStreak}d', c.danger),
-      if (followUp != null) _chip(context, followUp, c.warning),
+        coachPillChip(
+            context, 'Missed ${entry.currentMissedStreak}d', c.danger),
+      if (followUp != null) coachPillChip(context, followUp, c.warning),
       if (entry.alertsNew > 0)
-        _chip(
+        coachPillChip(
           context,
           '${entry.alertsNew} alert${entry.alertsNew == 1 ? '' : 's'}',
           c.danger,
         ),
       if (entry.pendingRequests > 0)
-        _chip(
+        coachPillChip(
           context,
           '${entry.pendingRequests} request${entry.pendingRequests == 1 ? '' : 's'}',
           c.accent,

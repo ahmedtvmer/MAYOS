@@ -14,28 +14,57 @@ class RegistryCheckInsMixin:
         now_iso: str,
         timezone: str | None = None,
         last_workout_on: str | None = None,
+        program_name: str | None = None,
     ) -> None:
         """Records the latest catalog-side attendance summary for one assignment.
 
         ``timezone`` is the player's local timezone as of this evaluation; when
         omitted the previously cached value is preserved (absent means UTC).
         ``last_workout_on`` is the newest committed session date (``None`` while
-        the player has never trained); an omitted or ``None`` value likewise
-        preserves what an earlier evaluation recorded.
+        the player has never trained) and ``program_name`` the active program's
+        display name (``None`` while the player has no program); an omitted or
+        ``None`` value likewise preserves what an earlier evaluation recorded.
         """
         self.ensure_account_schema()
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
                 "INSERT INTO roster_attendance"
-                " (assignment_id, current_missed_streak, last_evaluated_at, timezone, last_workout_on)"
-                " VALUES (?, ?, ?, ?, ?)"
+                " (assignment_id, current_missed_streak, last_evaluated_at, timezone,"
+                " last_workout_on, program_name)"
+                " VALUES (?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT(assignment_id) DO UPDATE SET"
                 " current_missed_streak = excluded.current_missed_streak,"
                 " last_evaluated_at = excluded.last_evaluated_at,"
                 " timezone = COALESCE(excluded.timezone, roster_attendance.timezone),"
-                " last_workout_on = COALESCE(excluded.last_workout_on, roster_attendance.last_workout_on)",
-                (str(assignment_id), int(current_missed_streak), now_iso, timezone, last_workout_on),
+                " last_workout_on = COALESCE(excluded.last_workout_on, roster_attendance.last_workout_on),"
+                " program_name = COALESCE(excluded.program_name, roster_attendance.program_name)",
+                (
+                    str(assignment_id),
+                    int(current_missed_streak),
+                    now_iso,
+                    timezone,
+                    last_workout_on,
+                    program_name,
+                ),
+            )
+            self.catalog_conn.commit()
+
+    def set_roster_program_name(self, assignment_id: str, program_name: str | None) -> None:
+        """Caches the active program's display name for one roster row (#120).
+
+        Written by the evaluation and by a coach program publication, so the
+        roster read never opens the player's ledger (ADR 025/030).
+        """
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "INSERT INTO roster_attendance (assignment_id, current_missed_streak, program_name)"
+                " VALUES (?, 0, ?)"
+                " ON CONFLICT(assignment_id) DO UPDATE SET"
+                " program_name = excluded.program_name",
+                (str(assignment_id), program_name),
             )
             self.catalog_conn.commit()
 
@@ -219,22 +248,29 @@ class RegistryCheckInsMixin:
                 for row in cursor.fetchall()
             }
 
-    def list_roster_last_workout_dates(self, coach_account_id: str) -> dict[str, str | None]:
-        """Newest committed workout date per active assignment (catalog-only, #118).
+    def list_roster_workout_basis(self, coach_account_id: str) -> dict[str, dict[str, Any]]:
+        """Newest workout date and cached program name per active assignment (catalog-only).
 
-        Returns ``assignment_id -> last_workout_on``, the cached attendance
-        summary's date, so the roster urgency order ranks it without mounting a
-        player ledger. ``None`` covers both a player who has never trained and
-        one whose attendance has not been evaluated yet.
+        Returns ``assignment_id -> {last_workout_on, program_name}`` from the
+        attendance summary, so the roster row labels both without mounting a
+        player ledger (#118, #120). ``None`` covers both a player who has never
+        trained (or has no program) and one whose attendance has not been
+        evaluated yet.
         """
         self.ensure_account_schema()
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
-                "SELECT a.assignment_id, r.last_workout_on"
+                "SELECT a.assignment_id, r.last_workout_on, r.program_name"
                 " FROM assignments a"
                 " LEFT JOIN roster_attendance r ON r.assignment_id = a.assignment_id"
                 " WHERE a.coach_account_id = ? AND a.status = 'active'",
                 (str(coach_account_id),),
             )
-            return {str(row[0]): str(row[1]) if row[1] else None for row in cursor.fetchall()}
+            return {
+                str(row[0]): {
+                    "last_workout_on": str(row[1]) if row[1] else None,
+                    "program_name": str(row[2]) if row[2] else None,
+                }
+                for row in cursor.fetchall()
+            }

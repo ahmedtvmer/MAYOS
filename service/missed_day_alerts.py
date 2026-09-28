@@ -147,9 +147,18 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any], now: datetime | Non
     with db.open_ledger(ledger_id) as ledger:
         performed = ledger.list_performed_dates()
         evaluation = evaluate_ledger_attendance(ledger, assignment, ledger_id, now)
+        # Read while the ledger is open; the roster row then carries the name
+        # catalog-side so listing it never mounts the ledger again (#120).
+        program_name = ledger.active_program_name()
     last_workout_on = _last_workout_on(performed)
     if evaluation is None:
-        db.upsert_roster_attendance(assignment_id, 0, now_iso, last_workout_on=last_workout_on)
+        db.upsert_roster_attendance(
+            assignment_id,
+            0,
+            now_iso,
+            last_workout_on=last_workout_on,
+            program_name=program_name,
+        )
         return {"evaluated": True, "skipped": False, "alerts_created": 0, "alerts_resolved": 0, "streak": 0}
 
     streak = evaluation.trailing_streak_length
@@ -190,6 +199,7 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any], now: datetime | Non
         now_iso,
         timezone=evaluation.timezone,
         last_workout_on=last_workout_on,
+        program_name=program_name,
     )
     return {
         "evaluated": True,

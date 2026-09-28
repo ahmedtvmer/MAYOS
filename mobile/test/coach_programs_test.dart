@@ -108,6 +108,9 @@ void main() {
     await tester.tap(find.text('bob'));
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
 
+    // The player page keeps Publish program behind an overflow menu (#G).
+    await tester.tap(find.byKey(const Key('player_page_actions')));
+    await _pumpUntilFound(tester, find.text('Publish program'));
     await tester.tap(find.text('Publish program'));
     await _pumpUntilFound(tester, find.text('Rep preference'));
     await tester.tap(find.byKey(const Key('publish_confirm_button')));

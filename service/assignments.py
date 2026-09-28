@@ -296,21 +296,22 @@ def list_coach_assignments(db: Any, coach_account_id: str) -> list[dict[str, Any
     """Active assignments for a coach in roster urgency order (ticket #118).
 
     Each row carries the urgency inputs — alert badges, pending program request
-    count, missed streak, follow-up date, and the latest workout date — so the
-    client neither sorts nor fetches anything per player. Every input comes from
-    catalog tables only, so listing the roster never opens a player ledger
-    (ADR 025/030); ``service.roster_order`` is the single ordering definition
-    and today's date is its only clock input.
+    count, missed streak, follow-up date, the latest workout date, and the
+    cached program name — so the client neither sorts nor fetches anything per
+    player. Every input comes from catalog tables only, so listing the roster
+    never opens a player ledger (ADR 025/030); ``service.roster_order`` is the
+    single ordering definition and today's date is its only clock input.
     """
     badges = db.get_roster_alert_badges(coach_account_id)
     follow_ups = db.list_roster_follow_up_basis(coach_account_id)
     pending_requests = db.pending_program_request_counts(coach_account_id)
-    last_workouts = db.list_roster_last_workout_dates(coach_account_id)
+    workouts = db.list_roster_workout_basis(coach_account_id)
     today = datetime.now(UTC).date()
     rows = []
     for row in db.list_active_assignments_for_coach(coach_account_id):
         badge = badges.get(row["assignment_id"], {})
         basis = follow_ups.get(row["assignment_id"], {})
+        workout = workouts.get(row["assignment_id"], {})
         next_follow_up = next_follow_up_on(
             basis.get("started_at", row["started_at"]),
             basis.get("latest_check_in_on"),
@@ -327,7 +328,8 @@ def list_coach_assignments(db: Any, coach_account_id: str) -> list[dict[str, Any
                 "current_missed_streak": int(badge.get("current_missed_streak", 0)),
                 "next_follow_up_on": next_follow_up.isoformat() if next_follow_up else None,
                 "pending_requests": int(pending_requests.get(row["assignment_id"], 0)),
-                "last_workout_on": last_workouts.get(row["assignment_id"]),
+                "last_workout_on": workout.get("last_workout_on"),
+                "program_name": workout.get("program_name"),
             }
         )
     rows.sort(key=lambda entry: roster_urgency_key(entry, today))

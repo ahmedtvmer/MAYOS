@@ -9,15 +9,16 @@ import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_button.dart';
 import '../../providers.dart';
 
-/// The channels the log-check-in sheet offers, in display order: the four
-/// contact methods a coach actually uses (#120). `call` maps onto the wire's
-/// `phone`, the only value the service recognises for a call.
-const Map<String, String> kCheckInSheetChannels = <String, String>{
-  'phone': 'Call',
-  'message': 'Message',
-  'in_person': 'In person',
-  'other': 'Other',
-};
+/// The four channels the log-check-in sheet offers (#120): a call, a message,
+/// an in-person meeting, and other. Values come from [CheckIn.channels] — the
+/// service names a call `phone` — and their labels from [CheckIn.labelFor],
+/// so the sheet never restates the vocabulary.
+const List<String> kLogCheckInChannels = <String>[
+  'phone',
+  'message',
+  'in_person',
+  'other',
+];
 
 /// Opens the header's **Log check-in** sheet (#120): pick a channel, add an
 /// optional note, save. The check-in is dated today and goes through the
@@ -77,6 +78,8 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
       setState(() => _error = 'Pick a contact channel.');
       return;
     }
+    // The note is optional: a blank one is sent as null, not an empty string.
+    final String note = _note.text.trim();
     setState(() {
       _saving = true;
       _error = null;
@@ -87,7 +90,7 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
                 widget.assignmentId,
                 checkedInOn: isoDateOf(DateTime.now()),
                 channel: channel,
-                note: _note.text,
+                note: note.isEmpty ? null : note,
               );
       if (!mounted) return;
       widget.onSaved(created);
@@ -130,14 +133,13 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
             spacing: MayosSpacing.sm,
             runSpacing: MayosSpacing.xs,
             children: <Widget>[
-              for (final MapEntry<String, String> option
-                  in kCheckInSheetChannels.entries)
+              for (final String channel in kLogCheckInChannels)
                 ChoiceChip(
-                  key: Key('check_in_channel_${option.key}'),
-                  label: Text(option.value),
-                  selected: _channel == option.key,
+                  key: Key('check_in_channel_$channel'),
+                  label: Text(CheckIn.labelFor(channel)),
+                  selected: _channel == channel,
                   onSelected: (bool selected) => setState(() {
-                    _channel = selected ? option.key : null;
+                    _channel = selected ? channel : null;
                   }),
                 ),
             ],
