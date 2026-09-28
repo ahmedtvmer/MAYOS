@@ -624,7 +624,8 @@ class ApiClient {
   /// player's username beside the per-assignment fields, so the client resolves
   /// through [applyCoachProgramRequest] / [declineCoachProgramRequest].
   Future<List<ProgramRequest>> coachAllProgramRequests() async {
-    final response = await _send(() => _dio.get<dynamic>('/coach/program-requests'));
+    final response =
+        await _send(() => _dio.get<dynamic>('/coach/program-requests'));
     return _parseProgramRequestList(response.data);
   }
 

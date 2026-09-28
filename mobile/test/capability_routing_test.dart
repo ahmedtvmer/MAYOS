@@ -36,16 +36,21 @@ AppModeState _mode(
 
 void main() {
   test('loading holds on splash and unauthenticated users go to login', () {
-    expect(redirectFor(const AuthState.loading(), loginPath, _mode(AppMode.player)),
+    expect(
+        redirectFor(
+            const AuthState.loading(), loginPath, _mode(AppMode.player)),
         splashPath);
     expect(
-        redirectFor(const AuthState.loading(), splashPath, _mode(AppMode.player)),
+        redirectFor(
+            const AuthState.loading(), splashPath, _mode(AppMode.player)),
         isNull);
     expect(
-        redirectFor(const AuthState.unauthenticated(), homePath, _mode(AppMode.player)),
+        redirectFor(
+            const AuthState.unauthenticated(), homePath, _mode(AppMode.player)),
         loginPath);
     expect(
-        redirectFor(const AuthState.unauthenticated(), loginPath, _mode(AppMode.player)),
+        redirectFor(const AuthState.unauthenticated(), loginPath,
+            _mode(AppMode.player)),
         isNull);
     expect(
         redirectFor(const AuthState.unauthenticated(), registerPath,
@@ -56,11 +61,12 @@ void main() {
   test('password-recovery pages stay public through startup and login', () {
     // A deep link must survive the loading→unauthenticated startup resolution.
     expect(
-        redirectFor(const AuthState.loading(), resetPasswordPath, _mode(AppMode.player)),
+        redirectFor(const AuthState.loading(), resetPasswordPath,
+            _mode(AppMode.player)),
         isNull);
     expect(
-        redirectFor(
-            const AuthState.loading(), forgotPasswordPath, _mode(AppMode.player)),
+        redirectFor(const AuthState.loading(), forgotPasswordPath,
+            _mode(AppMode.player)),
         isNull);
     expect(
         redirectFor(const AuthState.unauthenticated(), resetPasswordPath,
@@ -80,7 +86,8 @@ void main() {
       redirectFor(
           _authenticated(
               coach: false, onboarded: false, hasRecoveryEmail: false),
-          forgotPasswordPath, _mode(AppMode.player)),
+          forgotPasswordPath,
+          _mode(AppMode.player)),
       isNull,
     );
   });
@@ -88,32 +95,39 @@ void main() {
   test('recovery email gates the authenticated area (ADR 007)', () {
     final AuthState gated =
         _authenticated(coach: false, onboarded: false, hasRecoveryEmail: false);
-    expect(redirectFor(gated, homePath, _mode(AppMode.player)), recoveryEmailPath);
+    expect(
+        redirectFor(gated, homePath, _mode(AppMode.player)), recoveryEmailPath);
     expect(redirectFor(gated, onboardingPath, _mode(AppMode.player)),
         recoveryEmailPath);
-    expect(redirectFor(gated, recoveryEmailPath, _mode(AppMode.player)), isNull);
+    expect(
+        redirectFor(gated, recoveryEmailPath, _mode(AppMode.player)), isNull);
 
     // Saving the email releases the gate to onboarding, then home.
     final AuthState set =
         _authenticated(coach: false, onboarded: false, hasRecoveryEmail: true);
-    expect(redirectFor(set, recoveryEmailPath, _mode(AppMode.player)), onboardingPath);
+    expect(redirectFor(set, recoveryEmailPath, _mode(AppMode.player)),
+        onboardingPath);
     final AuthState done =
         _authenticated(coach: false, onboarded: true, hasRecoveryEmail: true);
-    expect(redirectFor(done, recoveryEmailPath, _mode(AppMode.player)), homePath);
+    expect(
+        redirectFor(done, recoveryEmailPath, _mode(AppMode.player)), homePath);
   });
 
   test('recovery email stays ahead of the mode and deferred onboarding', () {
     // A coach in Coach mode without a recovery email still hits the ADR 007
     // gate first, even though Coach mode would otherwise ignore onboarding.
-    final AuthState gated = _authenticated(
-        coach: true, onboarded: false, hasRecoveryEmail: false);
-    expect(redirectFor(gated, coachPath, _mode(AppMode.coach)), recoveryEmailPath);
-    expect(redirectFor(gated, splashPath, _mode(AppMode.coach)), recoveryEmailPath);
+    final AuthState gated =
+        _authenticated(coach: true, onboarded: false, hasRecoveryEmail: false);
+    expect(
+        redirectFor(gated, coachPath, _mode(AppMode.coach)), recoveryEmailPath);
+    expect(redirectFor(gated, splashPath, _mode(AppMode.coach)),
+        recoveryEmailPath);
     expect(redirectFor(gated, recoveryEmailPath, _mode(AppMode.coach)), isNull);
     // Releasing the gate then lands the coach in Coach mode.
-    final AuthState released = _authenticated(
-        coach: true, onboarded: false, hasRecoveryEmail: true);
-    expect(redirectFor(released, recoveryEmailPath, _mode(AppMode.coach)), coachPath);
+    final AuthState released =
+        _authenticated(coach: true, onboarded: false, hasRecoveryEmail: true);
+    expect(redirectFor(released, recoveryEmailPath, _mode(AppMode.coach)),
+        coachPath);
     expect(redirectFor(released, splashPath, _mode(AppMode.coach)), coachPath);
   });
 
@@ -150,15 +164,19 @@ void main() {
 
   test('a coach in Player mode without onboarding gets the setup screen', () {
     final AuthState coach = _authenticated(coach: true, onboarded: false);
-    expect(redirectFor(coach, splashPath, _mode(AppMode.player)), playerSetupPath);
-    expect(redirectFor(coach, homePath, _mode(AppMode.player)), playerSetupPath);
+    expect(
+        redirectFor(coach, splashPath, _mode(AppMode.player)), playerSetupPath);
+    expect(
+        redirectFor(coach, homePath, _mode(AppMode.player)), playerSetupPath);
     expect(redirectFor(coach, recoveryEmailPath, _mode(AppMode.player)),
         playerSetupPath);
     // Once the intake completes, Player mode lands on the home shell.
     final AuthState onboarded = _authenticated(coach: true, onboarded: true);
     expect(redirectFor(onboarded, splashPath, _mode(AppMode.player)), homePath);
-    expect(redirectFor(onboarded, playerSetupPath, _mode(AppMode.player)), homePath);
-    expect(redirectFor(onboarded, onboardingPath, _mode(AppMode.player)), homePath);
+    expect(redirectFor(onboarded, playerSetupPath, _mode(AppMode.player)),
+        homePath);
+    expect(redirectFor(onboarded, onboardingPath, _mode(AppMode.player)),
+        homePath);
   });
 
   test('coach route requires the coach capability and Coach mode', () {
@@ -183,8 +201,8 @@ void main() {
   test('coach invite route is open to authenticated players', () {
     // Any onboarded account may redeem an owner invite, coach or not.
     expect(
-      redirectFor(_authenticated(coach: false, onboarded: true), coachInvitePath,
-          _mode(AppMode.player)),
+      redirectFor(_authenticated(coach: false, onboarded: true),
+          coachInvitePath, _mode(AppMode.player)),
       isNull,
     );
     expect(
@@ -194,8 +212,8 @@ void main() {
     );
     // Onboarding still gates it for a plain player, like every surface.
     expect(
-      redirectFor(_authenticated(coach: false, onboarded: false), coachInvitePath,
-          _mode(AppMode.player)),
+      redirectFor(_authenticated(coach: false, onboarded: false),
+          coachInvitePath, _mode(AppMode.player)),
       onboardingPath,
     );
   });
@@ -213,13 +231,14 @@ void main() {
     );
     // Onboarding still gates it, like every authenticated surface.
     expect(
-      redirectFor(_authenticated(coach: false, onboarded: false), assignmentPath,
-          _mode(AppMode.player)),
+      redirectFor(_authenticated(coach: false, onboarded: false),
+          assignmentPath, _mode(AppMode.player)),
       onboardingPath,
     );
   });
 
-  test('the app holds on splash until this account\u2019s mode is resolved', () {
+  test('the app holds on splash until this account\u2019s mode is resolved',
+      () {
     final AuthState coach = _authenticated(coach: true, onboarded: true);
     // The stored choice is still being read: no shell may mount yet, so a
     // coach whose stored mode is Player never flashes Coach mode (#119).
@@ -231,8 +250,8 @@ void main() {
     // equally unusable, which is what makes the decision independent of which
     // Riverpod listener runs first.
     expect(
-      redirectFor(coach, homePath,
-          _mode(AppMode.coach, accountId: 'account-other')),
+      redirectFor(
+          coach, homePath, _mode(AppMode.coach, accountId: 'account-other')),
       splashPath,
     );
     expect(

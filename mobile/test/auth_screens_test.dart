@@ -108,8 +108,8 @@ void main() {
     // The claim surface is gone: no link mentions claiming an account.
     expect(find.text('Claim imported account'), findsNothing);
     expect(
-      find.byWidgetPredicate(
-          (Widget w) => w is AuthLink && w.label.toLowerCase().contains('claim')),
+      find.byWidgetPredicate((Widget w) =>
+          w is AuthLink && w.label.toLowerCase().contains('claim')),
       findsNothing,
     );
     // The remaining links still fill the action bar (no empty slot left).
@@ -323,9 +323,8 @@ void main() {
       for (int i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
-      final double screenCentre = tester.view.physicalSize.width /
-          tester.view.devicePixelRatio /
-          2;
+      final double screenCentre =
+          tester.view.physicalSize.width / tester.view.devicePixelRatio / 2;
       final Finder hero = find.descendant(
         of: find.byType(AuthScaffold),
         matching: find.byType(MayosBrandLockup),

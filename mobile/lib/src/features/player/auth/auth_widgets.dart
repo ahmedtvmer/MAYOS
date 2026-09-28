@@ -376,7 +376,8 @@ String? passwordConfirmationError(String password, String confirm) =>
 /// The shared new-password validator: the length rule first, then the match
 /// rule, or null when both pass.
 String? validateNewPassword(String password, String confirm) =>
-    passwordLengthError(password) ?? passwordConfirmationError(password, confirm);
+    passwordLengthError(password) ??
+    passwordConfirmationError(password, confirm);
 
 /// A password input with an obscured default and a labelled visibility toggle.
 class AuthPasswordField extends StatefulWidget {

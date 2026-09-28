@@ -31,9 +31,11 @@ class FakeMayosApi {
   String? validResetToken;
   int forgotRequests = 0;
   String? lastForgotEmail;
-  // Imported accounts with no password (#42) are outside the app now; login
-  // answers a plain 401. `loginForbidden` forces a generic 403 instead.
-  bool loginForbidden = false;
+  // Imported accounts with no password (#42). The claim flow is out of the
+  // app, but the service still refuses their login with 403 `claim_required`
+  // (svc/routers/auth.py), so the fake mirrors that: usernames listed here and
+  // still without a password answer that 403, every other bad credential 401.
+  final Set<String> importedUsernames = <String>{};
   // Player profile fields written through `PUT /profile` (#27).
   String repPreference = 'balanced';
   int weeklyFrequency = 4;
@@ -75,6 +77,7 @@ class FakeMayosApi {
   bool coachControlsProgram = false;
   // When true `GET /programs/active` returns an empty body (no active program).
   bool noActiveProgram = false;
+
   /// Per-exercise `target_rpe` overrides for `GET /workouts/prescription`, so a
   /// test can pin a different target cap than the default program fixture and
   /// assert its equivalent minimum RIR (#111).
@@ -378,12 +381,18 @@ class FakeMayosApi {
   FakeResponse _login(FakeRequest request) {
     final String? username = request.body['trainee_id'] as String?;
     final String? password = request.body['password'] as String?;
-    if (loginForbidden) {
-      return const FakeResponse(403, <String, dynamic>{
-        'detail': 'Your account is suspended.',
-      });
-    }
     if (username == null || passwords[username] != password) {
+      // An imported account with no password cannot log in: the service
+      // refuses it with 403 `claim_required` before any 401 path
+      // (svc/routers/auth.py::login).
+      if (username != null &&
+          importedUsernames.contains(username) &&
+          !passwords.containsKey(username)) {
+        return const FakeResponse(403, <String, dynamic>{
+          'detail': 'This account must be claimed with its claim code.',
+          'code': 'claim_required',
+        });
+      }
       return const FakeResponse(
         401,
         <String, dynamic>{'detail': 'Invalid username or password.'},
@@ -605,8 +614,7 @@ class FakeMayosApi {
     if (row['pending_requests'] == null) {
       row['pending_requests'] = programRequests
           .where((Map<String, dynamic> request) =>
-              request['assignment_id'] == id &&
-              request['status'] == 'pending')
+              request['assignment_id'] == id && request['status'] == 'pending')
           .length;
     }
     if (row['alerts_new'] == null || row['alerts_acknowledged'] == null) {
@@ -626,8 +634,7 @@ class FakeMayosApi {
       row['alerts_acknowledged'] = alertsAcknowledged;
     }
     final List<Map<String, dynamic>> checkInsForAssignment = checkIns
-        .where((Map<String, dynamic> checkIn) =>
-            checkIn['assignment_id'] == id)
+        .where((Map<String, dynamic> checkIn) => checkIn['assignment_id'] == id)
         .toList(growable: false);
     if (checkInsForAssignment.isNotEmpty) {
       String newest = checkInsForAssignment.first['checked_in_on'] as String;
@@ -1502,12 +1509,11 @@ class FakeMayosApi {
         .where((Map<String, dynamic> row) => row['status'] == 'pending')
         .toList(growable: false)
       ..sort((Map<String, dynamic> a, Map<String, dynamic> b) {
-        final int byDate = (a['created_at'] as String)
-            .compareTo(b['created_at'] as String);
+        final int byDate =
+            (a['created_at'] as String).compareTo(b['created_at'] as String);
         return byDate != 0
             ? byDate
-            : (a['request_id'] as String)
-                .compareTo(b['request_id'] as String);
+            : (a['request_id'] as String).compareTo(b['request_id'] as String);
       });
     final List<Map<String, dynamic>> answered = rows
         .where((Map<String, dynamic> row) => row['status'] != 'pending')
@@ -1520,8 +1526,7 @@ class FakeMayosApi {
         final int byDate = resolvedB.compareTo(resolvedA);
         return byDate != 0
             ? byDate
-            : (a['request_id'] as String)
-                .compareTo(b['request_id'] as String);
+            : (a['request_id'] as String).compareTo(b['request_id'] as String);
       });
     if (malformedProgramRequests) {
       return FakeResponse(200, <String, dynamic>{'requests': 'not-a-list'});
@@ -2255,8 +2260,7 @@ class FakeMayosApi {
                 .toLowerCase()
                 .contains('barbell'),
             'effective_sets': entry['target_sets'],
-            'target_rpe_cap':
-                prescriptionTargetRpe[entry['exercise_id']] ??
+            'target_rpe_cap': prescriptionTargetRpe[entry['exercise_id']] ??
                 (entry['target_rpe'] as num).toDouble(),
             'projected_weight': 60.0,
             'last_perf': <dynamic>[],
