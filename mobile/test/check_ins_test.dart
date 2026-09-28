@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
+import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
@@ -47,7 +48,8 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Home'));
+  await _pumpUntilFound(
+      tester, find.text(fake.coach ? 'Roster' : 'Home'));
 }
 
 FakeMayosApi _signedInFake({required bool coach}) {
@@ -74,19 +76,16 @@ FakeMayosApi _coachFake() {
   return fake;
 }
 
+/// The coach shell opens on the Roster tab (#119).
 Future<void> _openDrillDown(WidgetTester tester) async {
-  await _openSettings(tester);
-  await tester.tap(find.byIcon(Icons.handshake_outlined));
   await _pumpUntilFound(tester, find.text('Active assignments'));
   await tester.tap(find.text('bob'));
 }
 
 Future<void> _openAlertCenter(WidgetTester tester) async {
-  await _openSettings(tester);
-  await tester.tap(find.byIcon(Icons.handshake_outlined));
   await _pumpUntilFound(tester, find.text('Active assignments'));
-  await tester.tap(find.text('Alert center'));
-  await _pumpUntilFound(tester, find.text('Acknowledge'));
+  await tester.tap(find.text('Alerts'));
+  await _pumpUntilFound(tester, find.text('Show resolved'));
 }
 
 Future<void> _openPlayerAssignment(WidgetTester tester) async {
@@ -103,8 +102,16 @@ CheckIn _checkIn(String id, String checkedInOn) => CheckIn(
       createdAt: '2026-09-26T12:00:00Z',
     );
 
+/// Player mode carries the header Settings icon; Coach mode reaches Settings
+/// from the mode sheet (#119).
 Future<void> _openSettings(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.settings_outlined));
+  if (find.byIcon(Icons.settings_outlined).evaluate().isNotEmpty) {
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+  } else {
+    await tester.tap(find.byType(ModeAvatarButton));
+    await _pumpUntilFound(tester, find.text('Settings'));
+    await tester.tap(find.text('Settings'));
+  }
   await _pumpUntilFound(tester, find.text('Appearance'));
 }
 

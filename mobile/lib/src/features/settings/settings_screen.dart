@@ -13,9 +13,7 @@ import '../../core/ui/mayos_segmented_control.dart';
 import '../../core/ui/mayos_settings_tile.dart';
 import '../../providers.dart';
 import '../../router.dart';
-import '../player/workout/draft_sync_service.dart';
-
-enum _LogoutChoice { keep, discard }
+import 'logout_confirmation.dart';
 
 /// Settings: appearance, account, coaching, and device entry points.
 ///
@@ -101,35 +99,15 @@ class SettingsScreen extends ConsumerWidget {
                   subtitle: 'Your coach and check-ins',
                   onTap: () => context.push(assignmentPath),
                 ),
-                Divider(height: 1, color: c.border),
-                if (isCoach) ...<Widget>[
-                  MayosSettingsTile(
-                    icon: Icons.groups_outlined,
-                    title: 'Coach profile',
-                    subtitle: 'How players see you',
-                    onTap: () => context.push(coachPath),
-                  ),
+                if (!isCoach) ...<Widget>[
                   Divider(height: 1, color: c.border),
-                  MayosSettingsTile(
-                    icon: Icons.handshake_outlined,
-                    title: 'Roster & invites',
-                    subtitle: 'Assignments and player invite codes',
-                    onTap: () => context.push(coachAssignmentsPath),
-                  ),
-                  Divider(height: 1, color: c.border),
-                  MayosSettingsTile(
-                    icon: Icons.notification_important_outlined,
-                    title: 'Alert center',
-                    subtitle: 'Players needing attention',
-                    onTap: () => context.push(coachAlertsPath),
-                  ),
-                ] else
                   MayosSettingsTile(
                     icon: Icons.workspace_premium_outlined,
                     title: 'Redeem coach invite',
                     subtitle: 'Connect to a coach',
                     onTap: () => context.push(coachInvitePath),
                   ),
+                ],
               ],
             ),
           ),
@@ -178,58 +156,12 @@ class SettingsScreen extends ConsumerWidget {
               icon: Icons.logout,
               title: 'Log out',
               destructive: true,
-              onTap: () => _confirmLogout(context, ref),
+              onTap: () => confirmLogout(context, ref),
             ),
           ),
           const SizedBox(height: MayosSpacing.xxl),
         ],
       ),
     );
-  }
-
-  /// Logout must never silently destroy unsynced drafts: warn, and let the
-  /// player explicitly keep or discard them (ADR 020/033).
-  Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
-    final String? accountId =
-        ref.read(authControllerProvider).session?.account.accountId;
-    final DraftSyncService sync = ref.read(draftSyncServiceProvider);
-    final int unsynced =
-        accountId == null ? 0 : await sync.unsyncedCountFor(accountId);
-    if (!context.mounted) return;
-
-    if (unsynced > 0) {
-      final _LogoutChoice? choice = await showDialog<_LogoutChoice>(
-        context: context,
-        builder: (BuildContext context) => AlertDialog(
-          title: const Text('Unsynced workouts'),
-          content: Text(
-            'You have $unsynced unsynced workout '
-            '${unsynced == 1 ? 'draft' : 'drafts'}. '
-            'They stay on this device until they sync; logging out will not delete them.',
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(_LogoutChoice.discard),
-              child: const Text('Discard drafts and log out'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(_LogoutChoice.keep),
-              child: const Text('Keep drafts and log out'),
-            ),
-          ],
-        ),
-      );
-      if (choice == null) {
-        return;
-      }
-      if (choice == _LogoutChoice.discard && accountId != null) {
-        await sync.discardAllForAccount(accountId);
-      }
-    }
-    await ref.read(authControllerProvider.notifier).logout();
   }
 }

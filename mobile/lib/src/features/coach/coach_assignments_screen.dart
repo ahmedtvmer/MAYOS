@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
 import '../../core/models.dart';
@@ -10,12 +9,14 @@ import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
-import '../../router.dart';
 import 'coach_player_history_screen.dart';
 
-/// Coach-side assignment console (#24): issue an invite, watch notices, revoke
-/// assignments, and disable coaching. Tapping a roster row opens the assigned
+/// Coach-side roster (#24): the assigned players with their alert badges,
+/// revocation, and coaching controls. Tapping a roster row opens the assigned
 /// player's history drill-down (#25).
+///
+/// It is the Roster tab of the Coach mode shell (#119); the player invite and
+/// notices live on the Profile tab.
 class CoachAssignmentsScreen extends ConsumerStatefulWidget {
   const CoachAssignmentsScreen({super.key});
 
@@ -27,13 +28,10 @@ class CoachAssignmentsScreen extends ConsumerStatefulWidget {
 class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     with WidgetsBindingObserver {
   bool _loading = true;
-  bool _issuing = false;
   bool _disabling = false;
   String? _error;
   String? _busyAssignmentId;
-  AssignmentInvite? _invite;
   List<CoachRosterEntry> _assignments = <CoachRosterEntry>[];
-  List<AssignmentNotice> _notices = <AssignmentNotice>[];
 
   @override
   void initState() {
@@ -70,12 +68,9 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     try {
       final List<CoachRosterEntry> assignments =
           await ref.read(apiClientProvider).coachAssignments();
-      final List<AssignmentNotice> notices =
-          await ref.read(apiClientProvider).coachNotices();
       if (!mounted) return;
       setState(() {
         _assignments = assignments;
-        _notices = notices;
         _loading = false;
       });
       // The refreshed roster is the authority on what is still assigned: an
@@ -90,28 +85,6 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = error.message;
-      });
-    }
-  }
-
-  Future<void> _issue() async {
-    setState(() {
-      _issuing = true;
-      _error = null;
-    });
-    try {
-      final AssignmentInvite invite =
-          await ref.read(apiClientProvider).issueAssignmentInvite();
-      if (!mounted) return;
-      setState(() {
-        _issuing = false;
-        _invite = invite;
-      });
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _issuing = false;
         _error = error.message;
       });
     }
@@ -169,17 +142,6 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
         _busyAssignmentId = null;
         _error = error.message;
       });
-    }
-  }
-
-  Future<void> _markRead() async {
-    try {
-      await ref.read(apiClientProvider).markCoachNoticesRead();
-      if (!mounted) return;
-      await _load();
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() => _error = error.message);
     }
   }
 
@@ -246,93 +208,6 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     );
   }
 
-  Widget _inviteCard(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    final AssignmentInvite? invite = _invite;
-    return MayosCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text('Player invite',
-              style: MayosTypography.sectionHeading
-                  .copyWith(color: c.textPrimary)),
-          const SizedBox(height: MayosSpacing.xs),
-          Text(
-            'Create a single-use code and give it to one player. It expires and can '
-            'only be redeemed while you have roster room; the exact expiry is shown '
-            'when the code is issued.',
-            style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
-          ),
-          const SizedBox(height: MayosSpacing.sm),
-          MayosButton(
-            label: 'Create invite code',
-            icon: Icons.add,
-            loading: _issuing,
-            onPressed: _issuing ? null : _issue,
-          ),
-          if (invite != null) ...<Widget>[
-            const SizedBox(height: MayosSpacing.md),
-            SelectableText(
-              invite.token,
-              style: MayosTypography.numeric.copyWith(color: c.textPrimary),
-            ),
-            const SizedBox(height: MayosSpacing.xxs),
-            Text('Expires ${invite.expiresAt}',
-                style: MayosTypography.caption.copyWith(color: c.textMuted)),
-            Text('${invite.remaining} of ${invite.capacity} roster slots free',
-                style: MayosTypography.caption.copyWith(color: c.textMuted)),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _noticesCard(BuildContext context) {
-    if (_notices.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    final MayosThemeExtension c = MayosTheme.of(context);
-    final int unread =
-        _notices.where((AssignmentNotice n) => n.isUnread).length;
-    return MayosCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: Text('Notices',
-                    style: MayosTypography.sectionHeading
-                        .copyWith(color: c.textPrimary)),
-              ),
-              if (unread > 0)
-                MayosButton(
-                  label: 'Mark all read',
-                  variant: MayosButtonVariant.tertiary,
-                  expand: false,
-                  onPressed: _markRead,
-                ),
-            ],
-          ),
-          for (final AssignmentNotice notice in _notices)
-            ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(
-                notice.isUnread
-                    ? Icons.notifications_active
-                    : Icons.notifications_none,
-                color: notice.isUnread ? c.accent : c.textMuted,
-              ),
-              title: Text(notice.message),
-              subtitle: Text(notice.createdAt),
-            ),
-        ],
-      ),
-    );
-  }
-
   Widget _badge(String label, Color color, Color foreground) {
     return Container(
       padding:
@@ -373,22 +248,9 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: Text('Active assignments',
-                    style: MayosTypography.sectionHeading
-                        .copyWith(color: c.textPrimary)),
-              ),
-              MayosButton(
-                label: 'Alert center',
-                icon: Icons.notifications_outlined,
-                variant: MayosButtonVariant.tertiary,
-                expand: false,
-                onPressed: () => context.push(coachAlertsPath),
-              ),
-            ],
-          ),
+          Text('Active assignments',
+              style:
+                  MayosTypography.sectionHeading.copyWith(color: c.textPrimary)),
           const SizedBox(height: MayosSpacing.xs),
           if (_assignments.isEmpty)
             Text('No assigned players yet.',
@@ -447,10 +309,6 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
       padding: MayosSpacing.screen,
       children: <Widget>[
         _errorBanner(context),
-        _inviteCard(context),
-        const SizedBox(height: MayosSpacing.sm),
-        _noticesCard(context),
-        const SizedBox(height: MayosSpacing.sm),
         _assignmentsCard(context),
         const SizedBox(height: MayosSpacing.xl),
         MayosButton(

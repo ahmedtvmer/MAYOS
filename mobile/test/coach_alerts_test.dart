@@ -46,7 +46,8 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Home'));
+  await _pumpUntilFound(
+      tester, find.text(fake.coach ? 'Roster' : 'Home'));
 }
 
 FakeMayosApi _coachFake() {
@@ -121,21 +122,15 @@ Map<String, dynamic> _regressionAlert({String state = 'new'}) =>
       'resolved_by': null,
     };
 
+/// The coach shell opens on the Roster tab (#119).
 Future<void> _openRoster(WidgetTester tester) async {
-  await _openSettings(tester);
-  await tester.tap(find.byIcon(Icons.handshake_outlined));
   await _pumpUntilFound(tester, find.text('Active assignments'));
 }
 
 Future<void> _openAlertCenter(WidgetTester tester) async {
   await _openRoster(tester);
-  await tester.tap(find.text('Alert center'));
-  await _pumpUntilFound(tester, find.text('Acknowledge'));
-}
-
-Future<void> _openSettings(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.settings_outlined));
-  await _pumpUntilFound(tester, find.text('Appearance'));
+  await tester.tap(find.text('Alerts'));
+  await _pumpUntilFound(tester, find.text('Show resolved'));
 }
 
 void main() {
@@ -167,7 +162,7 @@ void main() {
     await tester.tap(find.text('Resolve'));
     await _pumpUntilFound(tester, find.text('Resolved'));
     // The alert leaves the default open filter; switch to resolved to inspect it.
-    await tester.tap(find.text('Resolved'));
+    await tester.tap(find.text('Show resolved'));
     await _pumpUntilFound(tester, find.text('Resolved by coach'));
     expect(find.text('Resolved by coach'), findsOneWidget);
     expect(find.text('Resolve'), findsNothing);

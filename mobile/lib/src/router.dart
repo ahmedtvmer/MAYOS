@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/app_mode.dart';
 import 'core/models.dart';
 import 'core/ui/mayos_scaffold.dart';
-import 'features/coach/coach_alerts_screen.dart';
-import 'features/coach/coach_assignments_screen.dart';
 import 'features/coach/coach_invite_screen.dart';
-import 'features/coach/coach_profile_screen.dart';
+import 'features/coach/coach_shell.dart';
 import 'features/player/assignment/player_assignment_screen.dart';
 import 'features/player/auth/auth_controller.dart';
 import 'features/player/auth/claim_screen.dart';
@@ -21,6 +20,7 @@ import 'features/player/exercise/exercise_detail_screen.dart';
 import 'features/player/onboarding/onboarding_screen.dart';
 import 'features/player/plan/plan_screen.dart';
 import 'features/player/profile/profile_screen.dart';
+import 'features/player/setup/player_setup_screen.dart';
 import 'features/player/shell/player_shell.dart';
 import 'features/player/workout/workout_drafts_screen.dart';
 import 'features/player/workout/workout_logger_screen.dart';
@@ -41,8 +41,7 @@ const String planPath = '/plan';
 const String profilePath = '/profile';
 const String coachPath = '/coach';
 const String coachInvitePath = '/coach-invite';
-const String coachAssignmentsPath = '/coach/assignments';
-const String coachAlertsPath = '/coach/alerts';
+const String playerSetupPath = '/player-setup';
 const String assignmentPath = '/assignment';
 const String workoutsPath = '/workouts';
 const String logWorkoutPath = '/log-workout';
@@ -52,8 +51,11 @@ const String splashPath = '/splash';
 
 /// Pure routing decision, kept separate so capability gating is unit-testable.
 ///
+/// [mode] is the effective Player/Coach mode already resolved from the stored
+/// choice and the account's capabilities (#119).
+///
 /// Returns the location to redirect to, or null to stay.
-String? redirectFor(AuthState auth, String location) {
+String? redirectFor(AuthState auth, String location, AppMode mode) {
   switch (auth.status) {
     case AuthStatus.loading:
       // A password-recovery deep link must survive the startup resolution, so
@@ -76,32 +78,69 @@ String? redirectFor(AuthState auth, String location) {
       }
       final AccountSession accountSession = auth.session!;
       final bool onboarded = accountSession.onboarded;
+      final bool isCoach = accountSession.account.isCoach;
+      // The capability caps the mode: a lost coach capability always resolves
+      // to Player mode, whatever is stored.
+      final bool coachMode = isCoach && mode == AppMode.coach;
       final bool atAuthPage = location == loginPath ||
           location == registerPath ||
           location == claimPath;
 
       // ADR 007: a recovery email is mandatory before dashboard or onboarding.
+      // It stays first, ahead of the mode and onboarding rules (#119).
       if (!accountSession.hasRecoveryEmail) {
         return location == recoveryEmailPath ? null : recoveryEmailPath;
       }
-      if (location == recoveryEmailPath) {
-        return onboarded ? homePath : onboardingPath;
+
+      /// Where this account opens: Coach mode owns the coach shell; Player
+      /// mode lands on the home shell, or on the deferred player-onboarding
+      /// surfaces when the intake is still missing.
+      String landing() {
+        if (coachMode) {
+          return coachPath;
+        }
+        if (onboarded) {
+          return homePath;
+        }
+        return isCoach ? playerSetupPath : onboardingPath;
       }
-      if (location == splashPath || atAuthPage) {
-        return onboarded ? homePath : onboardingPath;
+
+      if (location == recoveryEmailPath ||
+          location == splashPath ||
+          atAuthPage) {
+        return landing();
       }
-      if (!onboarded && location != onboardingPath) {
-        return onboardingPath;
+      // Each mode owns its top-level shell: the coach routes need the coach
+      // capability *and* Coach mode, and Coach mode never sits on the player
+      // shell.
+      if (location == coachPath) {
+        return coachMode ? null : landing();
       }
-      if (onboarded && location == onboardingPath) {
-        return homePath;
+      if (location == homePath && coachMode) {
+        return coachPath;
       }
-      // Coach capability gates the coach surfaces (#23 hosts the module).
-      final bool atCoachSurface = location == coachPath ||
-          location == coachAssignmentsPath ||
-          location == coachAlertsPath;
-      if (atCoachSurface && !accountSession.account.isCoach) {
-        return homePath;
+      // The deferred-intake screen is only for a coach in Player mode who has
+      // not completed onboarding (#119).
+      if (location == playerSetupPath) {
+        if (isCoach && !onboarded && !coachMode) {
+          return null;
+        }
+        return landing();
+      }
+      if (location == onboardingPath) {
+        if (onboarded) {
+          return landing();
+        }
+        // The intake belongs to Player mode; Coach mode never waits for it.
+        return coachMode ? coachPath : null;
+      }
+      if (!onboarded) {
+        // Deferred player onboarding (#119): a coach reaches Coach mode
+        // without it; in Player mode they get the setup screen instead.
+        if (coachMode) {
+          return null;
+        }
+        return isCoach ? playerSetupPath : onboardingPath;
       }
       return null;
   }
@@ -113,6 +152,10 @@ bool _isPasswordRecoveryPage(String location) =>
 
 final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   final ValueNotifier<int> refresh = ValueNotifier<int>(0);
+  // The mode controller's own auth listener must run before this one, so the
+  // redirect after a session change already sees the new account's mode.
+  ref.listen<AppModeState>(
+      appModeControllerProvider, (_, __) => refresh.value++);
   ref.listen<AuthState>(authControllerProvider, (_, __) => refresh.value++);
   ref.onDispose(refresh.dispose);
 
@@ -120,8 +163,8 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
     initialLocation: splashPath,
     refreshListenable: refresh,
     redirect: (BuildContext context, GoRouterState state) {
-      return redirectFor(
-          ref.read(authControllerProvider), state.matchedLocation);
+      return redirectFor(ref.read(authControllerProvider),
+          state.matchedLocation, ref.read(appModeControllerProvider).mode);
     },
     routes: <RouteBase>[
       GoRoute(
@@ -208,29 +251,12 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: coachPath,
         builder: (BuildContext context, GoRouterState state) =>
-            const MayosScaffold(
-          title: 'Coach',
-          showBack: true,
-          body: CoachProfileScreen(),
-        ),
+            const CoachShell(),
       ),
       GoRoute(
-        path: coachAssignmentsPath,
+        path: playerSetupPath,
         builder: (BuildContext context, GoRouterState state) =>
-            const MayosScaffold(
-          title: 'Assignments',
-          showBack: true,
-          body: CoachAssignmentsScreen(),
-        ),
-      ),
-      GoRoute(
-        path: coachAlertsPath,
-        builder: (BuildContext context, GoRouterState state) =>
-            const MayosScaffold(
-          title: 'Alert center',
-          showBack: true,
-          body: CoachAlertsScreen(),
-        ),
+            const PlayerSetupScreen(),
       ),
       GoRoute(
         path: assignmentPath,

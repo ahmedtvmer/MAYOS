@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/account_data_eraser.dart';
 import 'core/api_client.dart';
+import 'core/app_mode.dart';
 import 'core/chat_storage.dart';
 import 'core/config.dart';
 import 'core/models.dart';
@@ -77,6 +78,30 @@ final StateNotifierProvider<AuthController, AuthState> authControllerProvider =
   );
 });
 
+/// Device-level persistence of the last Player mode / Coach mode per account
+/// (issue #119).
+final Provider<AppModeStore> appModeStoreProvider =
+    Provider<AppModeStore>((ref) => SecureAppModeStore());
+
+/// The effective mode for the signed-in account, resolved from the stored
+/// choice and the live coach capability. Not `ready` until the account's
+/// stored choice has been read, so the app never flashes the wrong shell.
+final StateNotifierProvider<AppModeController, AppModeState>
+    appModeControllerProvider =
+    StateNotifierProvider<AppModeController, AppModeState>((ref) {
+  final AppModeController controller =
+      AppModeController(ref.watch(appModeStoreProvider));
+  ref.listen<AuthState>(authControllerProvider,
+      (AuthState? previous, AuthState next) {
+    final Account? account = next.session?.account;
+    controller.syncAccount(
+      accountId: account?.accountId,
+      isCoach: account?.isCoach ?? false,
+    );
+  }, fireImmediately: true);
+  return controller;
+});
+
 /// The coach assistant's in-memory transcript for ONE selected player (#45).
 ///
 /// It is never written to secure storage, caches, shared preferences, or logs,
@@ -138,6 +163,16 @@ final Provider<ChatCacheStore> chatCacheStoreProvider =
 /// 1 = Program, 2 = Progress). Home's no-program state points at Program so the
 /// player can generate a program through the existing Program-tab flow.
 final StateProvider<int> playerShellTabProvider =
+    StateProvider<int>((ref) => 0);
+
+/// The selected bottom-navigation tab in the coach shell (0 = Roster,
+/// 1 = Alerts, 2 = Profile). The shell opens on Roster.
+final StateProvider<int> coachShellTabProvider = StateProvider<int>((ref) => 0);
+
+/// The number of coach alerts still in the `new` state, published by the
+/// Alerts tab so the shell's badge tracks acknowledge/resolve without a second
+/// fetch (#119).
+final StateProvider<int> coachNewAlertsCountProvider =
     StateProvider<int>((ref) => 0);
 
 /// Processes the logged-in account's drafts on login, after a save, on demand,

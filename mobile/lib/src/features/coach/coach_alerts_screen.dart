@@ -11,7 +11,10 @@ import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
 
 /// Coach alert centre (#31): lists missed expected-day alerts with their new /
-/// acknowledged / resolved state and lets the coach acknowledge or resolve them.
+/// acknowledged / resolved state and lets the coach acknowledge or resolve
+/// them. It is the Alerts tab of the Coach mode shell (#119); resolved alerts
+/// stay hidden behind the "Show resolved" filter, and the tab publishes the
+/// new-alert count for the shell's badge.
 class CoachAlertsScreen extends ConsumerStatefulWidget {
   const CoachAlertsScreen({super.key});
 
@@ -29,13 +32,20 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
   bool _loading = true;
   String? _error;
   String? _busyAlertId;
-  final Set<String> _visibleStates = <String>{'new', 'acknowledged'};
+  bool _showResolved = false;
   List<CoachAlert> _alerts = <CoachAlert>[];
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  /// Publishes the new-alert count so the shell's badge tracks every change
+  /// made here without a second fetch (#119).
+  void _publishNewCount() {
+    ref.read(coachNewAlertsCountProvider.notifier).state =
+        _alerts.where((CoachAlert alert) => alert.isNew).length;
   }
 
   Future<void> _load() async {
@@ -51,6 +61,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
         _alerts = alerts;
         _loading = false;
       });
+      _publishNewCount();
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -78,6 +89,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
                 row.alertId == updated.alertId ? updated : row)
             .toList(growable: false);
       });
+      _publishNewCount();
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -174,7 +186,8 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
     }
     final MayosThemeExtension c = MayosTheme.of(context);
     final List<CoachAlert> visible = _alerts
-        .where((CoachAlert alert) => _visibleStates.contains(alert.state))
+        .where((CoachAlert alert) =>
+            _showResolved || alert.state != 'resolved')
         .toList(growable: false);
     return ListView(
       padding: MayosSpacing.screen,
@@ -190,18 +203,12 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
         Wrap(
           spacing: MayosSpacing.xs,
           children: <Widget>[
-            for (final String state in _states)
-              FilterChip(
-                label: Text(state[0].toUpperCase() + state.substring(1)),
-                selected: _visibleStates.contains(state),
-                onSelected: (bool selected) => setState(() {
-                  if (selected) {
-                    _visibleStates.add(state);
-                  } else {
-                    _visibleStates.remove(state);
-                  }
-                }),
-              ),
+            FilterChip(
+              label: const Text('Show resolved'),
+              selected: _showResolved,
+              onSelected: (bool selected) =>
+                  setState(() => _showResolved = selected),
+            ),
           ],
         ),
         const SizedBox(height: MayosSpacing.sm),

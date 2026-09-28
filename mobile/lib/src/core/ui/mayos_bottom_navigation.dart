@@ -9,11 +9,16 @@ class MayosNavItem {
     required this.label,
     required this.icon,
     required this.selectedIcon,
+    this.badge = 0,
   });
 
   final String label;
   final IconData icon;
   final IconData selectedIcon;
+
+  /// A count badge shown on the icon (0 hides it), used by the coach shell's
+  /// new-alerts count (#119).
+  final int badge;
 }
 
 /// A deliberately restrained bottom bar: a thin top border over the surface,
@@ -93,13 +98,18 @@ class _Destination extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            AnimatedSwitcher(
-              duration: MayosMotion.fast,
-              child: Icon(
-                selected ? item.selectedIcon : item.icon,
-                key: ValueKey<bool>(selected),
-                size: 24,
-                color: color,
+            Badge(
+              isLabelVisible: item.badge > 0,
+              label: Text('${item.badge}'),
+              backgroundColor: c.danger,
+              child: AnimatedSwitcher(
+                duration: MayosMotion.fast,
+                child: Icon(
+                  selected ? item.selectedIcon : item.icon,
+                  key: ValueKey<bool>(selected),
+                  size: 24,
+                  color: color,
+                ),
               ),
             ),
             const SizedBox(height: 3),

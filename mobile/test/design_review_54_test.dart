@@ -12,6 +12,7 @@ import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/auth/login_screen.dart';
 import 'package:mayos_mobile/src/features/player/auth/recovery_email_screen.dart';
@@ -111,7 +112,8 @@ Future<void> _pumpApp(
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Home'));
+  await _pumpUntilFound(
+      tester, find.text(fake.coach ? 'Roster' : 'Home'));
 }
 
 /// Relayouts the current screen at 2.0x text and [size], asserting no
@@ -124,8 +126,16 @@ Future<void> _assertNoOverflowAt2x(WidgetTester tester, Size size) async {
   expect(tester.takeException(), isNull);
 }
 
+/// Player mode carries the header Settings icon; Coach mode reaches Settings
+/// from the mode sheet (#119).
 Future<void> _openSettings(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.settings_outlined));
+  if (find.byIcon(Icons.settings_outlined).evaluate().isNotEmpty) {
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+  } else {
+    await tester.tap(find.byType(ModeAvatarButton));
+    await _pumpUntilFound(tester, find.text('Settings'));
+    await tester.tap(find.text('Settings'));
+  }
   await _pumpUntilFound(tester, find.text('Appearance'));
 }
 
@@ -571,26 +581,22 @@ void main() {
 
     testWidgets('54 sweep coach profile $theme', (WidgetTester tester) async {
       await _pumpApp(tester, _fake(coach: true), mode: mode);
-      await _openSettings(tester);
-      await _tapSettingsTile(
-          tester, 'Coach profile', find.text('These details describe you'));
+      await tester.tap(find.text('Profile'));
+      await _pumpUntilFound(tester, find.text('These details describe you'));
       await _assertNoOverflowAt2x(tester, _small);
     });
 
     testWidgets('54 sweep coach alerts $theme', (WidgetTester tester) async {
       await _pumpApp(tester, _fake(coach: true), mode: mode);
-      await _openSettings(tester);
-      await _tapSettingsTile(
-          tester, 'Alert center', find.textContaining('No alerts'));
+      await tester.tap(find.text('Alerts'));
+      await _pumpUntilFound(tester, find.textContaining('No alerts'));
       await _assertNoOverflowAt2x(tester, _small);
     });
 
     testWidgets('54 sweep coach assignments $theme',
         (WidgetTester tester) async {
       await _pumpApp(tester, _fake(coach: true), mode: mode);
-      await _openSettings(tester);
-      await _tapSettingsTile(
-          tester, 'Roster & invites', find.text('Player invite'));
+      await _pumpUntilFound(tester, find.text('Active assignments'));
       await _assertNoOverflowAt2x(tester, _small);
     });
   }

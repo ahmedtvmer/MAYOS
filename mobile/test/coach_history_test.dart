@@ -48,7 +48,8 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Home'));
+  await _pumpUntilFound(
+      tester, find.text(fake.coach ? 'Roster' : 'Home'));
 }
 
 FakeMayosApi _coachFake() {
@@ -69,16 +70,10 @@ FakeMayosApi _coachFake() {
   return fake;
 }
 
+/// The coach shell opens on the Roster tab (#119).
 Future<void> _openRosterEntry(WidgetTester tester) async {
-  await _openSettings(tester);
-  await tester.tap(find.byIcon(Icons.handshake_outlined));
   await _pumpUntilFound(tester, find.text('Active assignments'));
   await tester.tap(find.text('bob'));
-}
-
-Future<void> _openSettings(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.settings_outlined));
-  await _pumpUntilFound(tester, find.text('Appearance'));
 }
 
 void main() {

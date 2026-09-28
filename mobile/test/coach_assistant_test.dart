@@ -10,6 +10,7 @@ import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/coach/coach_assistant_state.dart';
+import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/auth_harness.dart';
@@ -61,7 +62,8 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Home'));
+  await _pumpUntilFound(
+      tester, find.text(fake.coach ? 'Roster' : 'Home'));
 }
 
 FakeMayosApi _coachFake(
@@ -95,14 +97,8 @@ FakeMayosApi _coachFake(
 ProviderContainer _container(WidgetTester tester) =>
     ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
 
-Future<void> _openSettings(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.settings_outlined));
-  await _pumpUntilFound(tester, find.text('Appearance'));
-}
-
+/// The coach shell opens on the Roster tab (#119).
 Future<void> _openRoster(WidgetTester tester) async {
-  await _openSettings(tester);
-  await tester.tap(find.byIcon(Icons.handshake_outlined));
   await _pumpUntilFound(tester, find.text('Active assignments'));
 }
 
@@ -131,9 +127,6 @@ Future<void> _closeAssistant(WidgetTester tester) =>
 
 Future<void> _closeHistory(WidgetTester tester) =>
     _pop(tester, find.text('Publish program'));
-
-Future<void> _closeRoster(WidgetTester tester) =>
-    _pop(tester, find.text('Active assignments'));
 
 Future<void> _ask(WidgetTester tester, String question) async {
   await tester.enterText(
@@ -382,12 +375,10 @@ void main() {
         _container(tester).read(coachAssistantControllerProvider), isNotNull);
 
     await _closeAssistant(tester);
-    await _closeHistory(tester);
-    await _closeRoster(tester);
     // The player is revoked or ends coaching: the roster no longer lists them.
     fake.assignments.clear();
-
-    await tester.tap(find.byIcon(Icons.handshake_outlined));
+    // Closing the drill-down returns to the shell's Roster tab, which reloads.
+    await _closeHistory(tester);
     await _pumpUntilFound(tester, find.text('No assigned players yet.'));
 
     expect(_container(tester).read(coachAssistantControllerProvider), isNull);
@@ -584,7 +575,8 @@ void main() {
 
     await _closeAssistant(tester);
     await _closeHistory(tester);
-    await _closeRoster(tester);
+    await tester.tap(find.byType(ModeAvatarButton));
+    await _pumpUntilFound(tester, find.text('Log out'));
     await tester.tap(find.text('Log out'));
     await _pumpUntilFound(tester, find.text('Log in'));
 

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
@@ -51,7 +52,8 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Home'));
+  await _pumpUntilFound(
+      tester, find.text(fake.coach ? 'Roster' : 'Home'));
 }
 
 /// A signed-in, onboarded player with a recovery email, optionally already a coach.
@@ -70,8 +72,16 @@ FakeMayosApi _signedInFake({required bool coach}) {
   return fake;
 }
 
+/// Player mode carries the header Settings icon; Coach mode reaches Settings
+/// from the mode sheet (#119).
 Future<void> _openSettings(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.settings_outlined));
+  if (find.byIcon(Icons.settings_outlined).evaluate().isNotEmpty) {
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+  } else {
+    await tester.tap(find.byType(ModeAvatarButton));
+    await _pumpUntilFound(tester, find.text('Settings'));
+    await tester.tap(find.text('Settings'));
+  }
   await _pumpUntilFound(tester, find.text('Appearance'));
 }
 
@@ -80,9 +90,8 @@ void main() {
     final FakeMayosApi fake = _signedInFake(coach: true);
     await _pumpApp(tester, fake);
 
-    await _openSettings(tester);
-
-    await tester.tap(find.byIcon(Icons.groups_outlined));
+    // The coach shell hosts the profile editor as its Profile tab (#119).
+    await tester.tap(find.text('Profile'));
     await _pumpUntilFound(tester, find.text('Coach profile'));
     expect(find.text('Coach Alice'), findsOneWidget);
     expect(find.text('Powerlifting'), findsOneWidget);
@@ -122,9 +131,7 @@ void main() {
     fake.coachProfileLoadFails = true;
     await _pumpApp(tester, fake);
 
-    await _openSettings(tester);
-
-    await tester.tap(find.byIcon(Icons.groups_outlined));
+    await tester.tap(find.text('Profile'));
     await _pumpUntilFound(tester, find.text('The service is unavailable.'));
     expect(find.text('Retry'), findsOneWidget);
 
@@ -157,8 +164,11 @@ void main() {
     // The valid code grants the capability and routes to the profile editor.
     await tester.enterText(find.byType(TextField), 'coach-invite-token-123456');
     await tester.tap(find.text('Enable coaching'));
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('Profile'));
     await _pumpUntilFound(tester, find.text('Coach profile'));
     expect(fake.coach, isTrue);
+    expect(find.byType(ModeAvatarButton), findsOneWidget);
   });
 
   testWidgets(
@@ -182,6 +192,8 @@ void main() {
     await tester.tap(find.text('Enable coaching'));
 
     // The grant stands and the coach surface opens without a follow-up read.
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('Profile'));
     await _pumpUntilFound(tester, find.text('Coach profile'));
     expect(fake.coach, isTrue);
     expect(find.text('Invalid or expired invite code.'), findsNothing);
@@ -195,16 +207,26 @@ void main() {
     final FakeMayosApi fake = _signedInFake(coach: false);
     await _pumpApp(tester, fake);
     await _openSettings(tester);
-    expect(find.byIcon(Icons.groups_outlined), findsNothing);
-    expect(find.byIcon(Icons.workspace_premium_outlined), findsOneWidget);
+    // A player has no coach destinations and may still redeem an invite.
+    expect(find.text('Redeem coach invite'), findsOneWidget);
+    expect(find.byType(ModeAvatarButton), findsNothing);
 
-    // A grant happened elsewhere while the app was backgrounded.
+    // A grant happened elsewhere while the app was backgrounded: the settings
+    // entry flips to the coach state (#119 removed the coach-only tiles).
     fake.coach = true;
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     await tester.pump();
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await _pumpUntilFound(tester, find.byIcon(Icons.groups_outlined));
-    expect(find.byIcon(Icons.groups_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.workspace_premium_outlined), findsNothing);
+    // The rebuild drops the player-only invite entry once the capability lands.
+    for (int i = 0; i < 40 && find.text('Redeem coach invite').evaluate().isNotEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.text('Redeem coach invite'), findsNothing);
+
+    // Leaving Settings for Player mode now lands in Coach mode: the account
+    // gained the capability and has no stored mode, so it defaults to Coach.
+    await tester.tap(find.byTooltip('Back'));
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    expect(find.byType(ModeAvatarButton), findsOneWidget);
   });
 }

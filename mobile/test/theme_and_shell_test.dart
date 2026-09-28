@@ -8,6 +8,7 @@ import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
+import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
@@ -77,11 +78,20 @@ Future<void> _pumpApp(
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Home'));
+  await _pumpUntilFound(
+      tester, find.text(fake.coach ? 'Roster' : 'Home'));
 }
 
+/// Player mode carries the header Settings icon; Coach mode reaches Settings
+/// from the mode sheet (#119).
 Future<void> _openSettings(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.settings_outlined));
+  if (find.byIcon(Icons.settings_outlined).evaluate().isNotEmpty) {
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+  } else {
+    await tester.tap(find.byType(ModeAvatarButton));
+    await _pumpUntilFound(tester, find.text('Settings'));
+    await tester.tap(find.text('Settings'));
+  }
   await _pumpUntilFound(tester, find.text('Appearance'));
 }
 
@@ -201,19 +211,33 @@ void main() {
     final FakeMayosApi fake = _signedInFake(coach: true);
     await _pumpApp(tester, fake, store: InMemoryThemeModeStore());
 
-    await _openSettings(tester);
+    // Coach mode opens Settings from the mode sheet (#119) ...
+    await tester.tap(find.byType(ModeAvatarButton));
+    await _pumpUntilFound(tester, find.text('Settings'));
+    expect(find.text('Player mode'), findsOneWidget);
+    expect(find.text('Coach mode'), findsOneWidget);
+    expect(find.text('Log out'), findsOneWidget);
+    await tester.tap(find.text('Settings'));
+    await _pumpUntilFound(tester, find.text('Appearance'));
+
+    // ... and keeps the shared entry points reachable, while the coach-only
+    // destinations live in the shell tabs now (#119 removed the settings tiles).
     for (final String entry in <String>[
       'Profile',
       'Plan',
       'Coaching assignment',
       'Assistant',
-      'Coach profile',
-      'Roster & invites',
-      'Alert center',
       'Workout drafts',
       'Log out',
     ]) {
       expect(find.text(entry), findsOneWidget, reason: 'missing $entry');
+    }
+    for (final String gone in <String>[
+      'Coach profile',
+      'Roster & invites',
+      'Alert center',
+    ]) {
+      expect(find.text(gone), findsNothing, reason: 'stale $gone');
     }
   });
 
@@ -226,6 +250,7 @@ void main() {
     expect(find.text('Redeem coach invite'), findsOneWidget);
     expect(find.text('Coach profile'), findsNothing);
     expect(find.text('Alert center'), findsNothing);
+    expect(find.byType(ModeAvatarButton), findsNothing);
   });
 
   for (final Size size in const <Size>[

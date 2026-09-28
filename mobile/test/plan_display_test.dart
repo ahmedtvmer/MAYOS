@@ -5,6 +5,7 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
@@ -50,7 +51,8 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Home'));
+  await _pumpUntilFound(
+      tester, find.text(fake.coach ? 'Roster' : 'Home'));
 }
 
 /// A signed-in, onboarded player with a recovery email, optionally a coach.
@@ -71,8 +73,16 @@ Future<void> _openPlan(WidgetTester tester) async {
   await _pumpUntilFound(tester, find.text('Lifter Free'));
 }
 
+/// Player mode carries the header Settings icon; Coach mode reaches Settings
+/// from the mode sheet (#119).
 Future<void> _openSettings(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.settings_outlined));
+  if (find.byIcon(Icons.settings_outlined).evaluate().isNotEmpty) {
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+  } else {
+    await tester.tap(find.byType(ModeAvatarButton));
+    await _pumpUntilFound(tester, find.text('Settings'));
+    await tester.tap(find.text('Settings'));
+  }
   await _pumpUntilFound(tester, find.text('Appearance'));
 }
 

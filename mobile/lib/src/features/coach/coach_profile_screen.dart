@@ -7,12 +7,14 @@ import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_button.dart';
+import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
 
-/// Coach profile editor (#23): display name, bio, specialization, capacity.
+/// Coach profile tab of the Coach mode shell (#119): display name, bio,
+/// specialization, capacity, the player invite, assignment notices, and the
+/// resolved alerts.
 ///
-/// Only reachable when the account holds the coach capability; the roster and
-/// assignment surfaces arrive in later tickets (#24–#26) and are not stubbed here.
+/// Only reachable when the account holds the coach capability.
 class CoachProfileScreen extends ConsumerStatefulWidget {
   const CoachProfileScreen({super.key});
 
@@ -35,8 +37,12 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
 
   bool _loading = true;
   bool _saving = false;
+  bool _issuing = false;
   String? _loadError;
   String? _saveError;
+  AssignmentInvite? _invite;
+  List<AssignmentNotice> _notices = <AssignmentNotice>[];
+  List<CoachAlert> _resolvedAlerts = <CoachAlert>[];
 
   @override
   void initState() {
@@ -67,12 +73,72 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
       _specialization.text = profile.specialization;
       _capacity.text = profile.capacity.toString();
       setState(() => _loading = false);
+      await _loadExtras();
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
         _loading = false;
         _loadError = error.message;
       });
+    }
+  }
+
+  /// Invite, notices, and resolved alerts are secondary sections: a failure
+  /// here leaves the profile form usable.
+  Future<void> _loadExtras() async {
+    try {
+      final List<AssignmentNotice> notices =
+          await ref.read(apiClientProvider).coachNotices();
+      if (mounted) {
+        setState(() => _notices = notices);
+      }
+    } on ApiException {
+      // Non-fatal: the section simply stays empty.
+    }
+    try {
+      final List<CoachAlert> resolved = await ref
+          .read(apiClientProvider)
+          .coachAlerts(states: const <String>['resolved']);
+      if (mounted) {
+        setState(() => _resolvedAlerts = resolved);
+      }
+    } on ApiException {
+      // Non-fatal: the section simply stays empty.
+    }
+  }
+
+  Future<void> _issue() async {
+    setState(() {
+      _issuing = true;
+    });
+    try {
+      final AssignmentInvite invite =
+          await ref.read(apiClientProvider).issueAssignmentInvite();
+      if (!mounted) return;
+      setState(() {
+        _issuing = false;
+        _invite = invite;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _issuing = false;
+        _saveError = error.message;
+      });
+    }
+  }
+
+  Future<void> _markRead() async {
+    try {
+      await ref.read(apiClientProvider).markCoachNoticesRead();
+      if (!mounted) return;
+      final List<AssignmentNotice> notices =
+          await ref.read(apiClientProvider).coachNotices();
+      if (!mounted) return;
+      setState(() => _notices = notices);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _saveError = error.message);
     }
   }
 
@@ -220,6 +286,129 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
             loading: _saving,
             onPressed: _saving ? null : _save,
           ),
+          const SizedBox(height: MayosSpacing.xl),
+          _inviteCard(context),
+          const SizedBox(height: MayosSpacing.sm),
+          _noticesCard(context),
+          const SizedBox(height: MayosSpacing.sm),
+          _resolvedAlertsCard(context),
+          const SizedBox(height: MayosSpacing.xl),
+        ],
+      ),
+    );
+  }
+
+  Widget _inviteCard(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final AssignmentInvite? invite = _invite;
+    return MayosCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text('Invite a player',
+              style: MayosTypography.sectionHeading
+                  .copyWith(color: c.textPrimary)),
+          const SizedBox(height: MayosSpacing.xs),
+          Text(
+            'Create a single-use code and give it to one player. It expires and can '
+            'only be redeemed while you have roster room; the exact expiry is shown '
+            'when the code is issued.',
+            style:
+                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          ),
+          const SizedBox(height: MayosSpacing.sm),
+          MayosButton(
+            label: 'Create invite code',
+            icon: Icons.add,
+            loading: _issuing,
+            onPressed: _issuing ? null : _issue,
+          ),
+          if (invite != null) ...<Widget>[
+            const SizedBox(height: MayosSpacing.md),
+            SelectableText(
+              invite.token,
+              style: MayosTypography.numeric.copyWith(color: c.textPrimary),
+            ),
+            const SizedBox(height: MayosSpacing.xxs),
+            Text('Expires ${invite.expiresAt}',
+                style: MayosTypography.caption.copyWith(color: c.textMuted)),
+            Text('${invite.remaining} of ${invite.capacity} roster slots free',
+                style: MayosTypography.caption.copyWith(color: c.textMuted)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _noticesCard(BuildContext context) {
+    if (_notices.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final int unread =
+        _notices.where((AssignmentNotice n) => n.isUnread).length;
+    return MayosCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text('Notices',
+                    style: MayosTypography.sectionHeading
+                        .copyWith(color: c.textPrimary)),
+              ),
+              if (unread > 0)
+                MayosButton(
+                  label: 'Mark all read',
+                  variant: MayosButtonVariant.tertiary,
+                  expand: false,
+                  onPressed: _markRead,
+                ),
+            ],
+          ),
+          for (final AssignmentNotice notice in _notices)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                notice.isUnread
+                    ? Icons.notifications_active
+                    : Icons.notifications_none,
+                color: notice.isUnread ? c.accent : c.textMuted,
+              ),
+              title: Text(notice.message),
+              subtitle: Text(notice.createdAt),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _resolvedAlertsCard(BuildContext context) {
+    if (_resolvedAlerts.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return MayosCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text('Resolved alerts',
+              style: MayosTypography.sectionHeading
+                  .copyWith(color: c.textPrimary)),
+          for (final CoachAlert alert in _resolvedAlerts)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.check_circle_outline, color: c.success),
+              title: Text('${alert.playerUsername} · ${alert.description}'),
+              subtitle: alert.resolvedBy == null
+                  ? null
+                  : Text('Resolved by ${alert.resolvedBy}',
+                      style: MayosTypography.caption
+                          .copyWith(color: c.textMuted)),
+            ),
         ],
       ),
     );

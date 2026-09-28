@@ -7,6 +7,7 @@ import '../../../core/ui/mayos_bottom_navigation.dart';
 import '../../../core/ui/mayos_scaffold.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
+import '../../shared/mode_switch.dart';
 import '../dashboard/dashboard_tab.dart';
 import '../program/program_tab.dart';
 import '../progress/progress_tab.dart';
@@ -48,6 +49,8 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
   @override
   Widget build(BuildContext context) {
     final int index = ref.watch(playerShellTabProvider);
+    final bool isCoach =
+        ref.watch(authControllerProvider).session?.account.isCoach ?? false;
     return MayosScaffold(
       header: MayosAppHeader(
         actions: <Widget>[
@@ -61,6 +64,9 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
             onPressed: () => context.push(settingsPath),
             icon: const Icon(Icons.settings_outlined),
           ),
+          // A coach account carries the C/P mode badge in Player mode too
+          // (#119); non-coach accounts render nothing here.
+          if (isCoach) const ModeAvatarButton(),
         ],
       ),
       body: IndexedStack(

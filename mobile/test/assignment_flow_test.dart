@@ -48,7 +48,8 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Home'));
+  await _pumpUntilFound(
+      tester, find.text(fake.coach ? 'Roster' : 'Home'));
 }
 
 FakeMayosApi _signedInFake({required bool coach}) {
@@ -203,11 +204,13 @@ void main() {
     });
     await _pumpApp(tester, fake);
 
-    await _openSettings(tester);
-
-    await tester.tap(find.byIcon(Icons.handshake_outlined));
+    // The coach shell opens on the Roster tab (#119); the invite and the
+    // notices live on the Profile tab.
     await _pumpUntilFound(tester, find.text('Active assignments'));
     expect(find.text('bob'), findsOneWidget);
+
+    await tester.tap(find.text('Profile'));
+    await _pumpUntilFound(tester, find.text('Invite a player'));
     expect(
         find.text(
             'bob accepted your coaching invite and is now assigned to you.'),
@@ -217,6 +220,9 @@ void main() {
     await tester.tap(find.text('Create invite code'));
     await _pumpUntilFound(tester, find.text('assignment-invite-token-123456'));
     expect(fake.issuedAssignmentToken, 'assignment-invite-token-123456');
+
+    await tester.tap(find.text('Roster'));
+    await _pumpUntilFound(tester, find.text('Active assignments'));
 
     // Revoke removes the assignment from the console.
     await tester.tap(find.text('Revoke'));
@@ -234,6 +240,8 @@ void main() {
     await _pumpUntilFound(
         tester, find.text('Coaching disabled. 0 assignment(s) ended.'));
     expect(fake.coach, isFalse);
-    expect(find.byIcon(Icons.handshake_outlined), findsNothing);
+    // Without the capability the account falls back to Player mode (#119).
+    await _pumpUntilFound(tester, find.text('Home'));
+    expect(find.text('Roster'), findsNothing);
   });
 }
