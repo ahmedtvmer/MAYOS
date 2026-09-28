@@ -14,6 +14,7 @@ from agent.progression_engine import (
     calculate_e1rm,
     evaluate_session_prs,
     evaluate_systemic_fatigue,
+    exercise_working_set_aggregates,
     project_next_load,
 )
 from core.warmup import calculate_warmup_sets
@@ -364,6 +365,91 @@ def _build_prescription(ledger: Any, day_plan: Any) -> dict[str, Any]:
             entry["warmups"] = calculate_warmup_sets(entry["projected_weight"])
         targets.append(entry)
     return {"fatigue_info": fatigue_info, "targets": targets}
+
+
+def _baseline_rows(ledger: Any) -> list[dict[str, Any]]:
+    """One baseline row per exercise with at least one committed working set (#122)."""
+    cursor = ledger.conn.cursor()
+    cursor.execute(
+        """
+        SELECT DISTINCT ws.exercise_id
+        FROM workout_sets ws
+        JOIN workout_sessions s ON ws.session_id = s.id
+        WHERE ws.is_warmup = 0
+        ORDER BY ws.exercise_id ASC
+        """
+    )
+    rows: list[dict[str, Any]] = []
+    for exercise_id, in cursor.fetchall():
+        aggregates = exercise_working_set_aggregates(ledger, exercise_id)
+        cursor.execute(
+            """
+            SELECT COUNT(DISTINCT ws.session_id)
+            FROM workout_sets ws
+            JOIN workout_sessions s ON ws.session_id = s.id
+            WHERE ws.exercise_id = ? AND ws.is_warmup = 0
+            """,
+            (exercise_id,),
+        )
+        sessions_logged = int(cursor.fetchone()[0])
+        cursor.execute(
+            """
+            SELECT s.id, s.session_date
+            FROM workout_sessions s
+            JOIN workout_sets ws ON ws.session_id = s.id
+            WHERE ws.exercise_id = ? AND ws.is_warmup = 0
+            ORDER BY s.session_date DESC, s.started_at DESC, s.rowid DESC
+            LIMIT 1
+            """,
+            (exercise_id,),
+        )
+        last_session_id, performed_date = cursor.fetchone()
+        cursor.execute(
+            """
+            SELECT weight_kg, reps, rpe
+            FROM workout_sets
+            WHERE session_id = ? AND exercise_id = ? AND is_warmup = 0
+            ORDER BY set_index ASC, rowid ASC
+            """,
+            (last_session_id, exercise_id),
+        )
+        sets = [
+            {
+                "weight_kg": float(weight_kg),
+                "reps": int(reps),
+                "rir": None if rpe is None else round(10.0 - float(rpe), 2),
+            }
+            for weight_kg, reps, rpe in cursor.fetchall()
+        ]
+        rows.append(
+            {
+                "exercise_id": str(exercise_id),
+                "sessions_logged": sessions_logged,
+                "max_weight_kg": (
+                    None if aggregates["max_weight_kg"] is None else round(aggregates["max_weight_kg"], 2)
+                ),
+                "best_e1rm_kg": (
+                    None if aggregates["best_e1rm_kg"] is None else round(aggregates["best_e1rm_kg"], 2)
+                ),
+                "last_session": {"performed_date": str(performed_date), "sets": sets},
+            }
+        )
+    return rows
+
+
+def baselines(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, Any]:
+    """The player's exercise baselines for the device's frozen Active workout (#122).
+
+    One row per exercise with at least one committed working set. ``max_weight_kg``
+    and ``best_e1rm_kg`` come from ``exercise_working_set_aggregates`` — the same
+    code the commit comparison uses — so the device and the server agree by
+    construction (ADR 042). ``last_session`` carries the working sets of the most
+    recent committed session in logged order, with effort exposed as RIR
+    (``10 − RPE``, ``null`` when the set is unrated) at the display boundary.
+    Reads only the caller's own ledger.
+    """
+    with ledger_scope(db, ledger, ledger_id) as open_ledger:
+        return {"baselines": _baseline_rows(open_ledger)}
 
 
 def _persist_session(

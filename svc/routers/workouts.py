@@ -87,6 +87,22 @@ async def read_prescription(
     return await asyncio.to_thread(_run)
 
 
+@router.get("/baselines")
+async def read_baselines(
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Exercise baselines for the device's live personal-record checks (#122, ADR 042).
+
+    One row per exercise the player has committed a working set for, carrying
+    the exercise-wide aggregates the commit comparison uses plus the working
+    sets of the most recent committed session (``last_session``, effort as
+    RIR or null). Scoped to the caller's own ledger.
+    """
+    return await asyncio.to_thread(workouts_service.baselines, db, str(player), ledger=ledger)
+
+
 @router.post("/sessions", status_code=status.HTTP_201_CREATED)
 async def commit_session(
     body: SessionCommitIn,

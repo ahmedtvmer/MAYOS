@@ -75,6 +75,7 @@ CONN_ALLOWLIST = frozenset({
     "agent/program_rules.py",
     "agent/progression_engine.py",
     "service/dashboard.py",
+    "service/workouts.py",
     "scripts/intialize_db.py",
 })
 

@@ -218,6 +218,11 @@ def test_plan_change_preserves_account_program_history_and_assignment(api):
     db.ledger.save_training_program(_saved_split_payload())
     commit = client.post("/workouts/sessions", headers=alice_headers, json=_session_payload())
     assert commit.status_code == 201, commit.text
+    # The first session is the exercise's baseline, so a heavier second session
+    # is what puts a personal record on the shelf (ADR 042).
+    heavier = _session_payload()
+    heavier["sets"][0]["sets"] = [{"weight_kg": 102.5, "reps": 5, "rpe": 8.0}]
+    assert client.post("/workouts/sessions", headers=alice_headers, json=heavier).status_code == 201
 
     # Alice coaches Bob through an active, consented assignment.
     invite = client.post("/coach/assignments/invites", headers=alice_headers).json()

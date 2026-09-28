@@ -296,21 +296,25 @@ def test_workout_commit_detects_prs_and_dashboard_serves_them(tmp_path, monkeypa
             db.ledger.upsert_player_profile({"current_goal": "Strength"})
             db.ledger.save_training_program(_saved_split_payload())
 
-            commit = api.post(
-                "/workouts/sessions",
-                headers=headers,
-                json={
-                    "day_order": 1,
-                    "readiness": 4,
-                    "session_notes": "",
-                    "sets": [
-                        {
-                            "exercise": _exercise_payload("sq", "Squat"),
-                            "sets": [{"weight_kg": 100.0, "reps": 5, "rpe": 8.0}],
-                        }
-                    ],
-                },
-            )
+            payload = {
+                "day_order": 1,
+                "readiness": 4,
+                "session_notes": "",
+                "sets": [
+                    {
+                        "exercise": _exercise_payload("sq", "Squat"),
+                        "sets": [{"weight_kg": 100.0, "reps": 5, "rpe": 8.0}],
+                    }
+                ],
+            }
+            baseline = api.post("/workouts/sessions", headers=headers, json=payload)
+            assert baseline.status_code == 201
+            # The first session of an exercise is its baseline, not a record (ADR 042).
+            assert baseline.json()["new_prs"] == []
+            assert "🏆" not in baseline.json()["debrief"]
+
+            payload["sets"][0]["sets"] = [{"weight_kg": 102.5, "reps": 5, "rpe": 8.0}]
+            commit = api.post("/workouts/sessions", headers=headers, json=payload)
             assert commit.status_code == 201
             body = commit.json()
             assert {event["record_type"] for event in body["new_prs"]} == {"max_weight", "max_e1rm"}

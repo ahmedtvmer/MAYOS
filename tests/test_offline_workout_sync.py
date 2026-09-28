@@ -262,7 +262,8 @@ def test_identical_retry_returns_200_same_body_and_one_session(api):
     assert db.conn.execute("SELECT COUNT(*) FROM workout_sessions").fetchone()[0] == 1
     assert db.conn.execute("SELECT COUNT(*) FROM workout_sets").fetchone()[0] == 3
     assert db.conn.execute("SELECT COUNT(*) FROM session_commits").fetchone()[0] == 1
-    assert db.conn.execute("SELECT COUNT(*) FROM personal_records").fetchone()[0] == 6
+    # The first session of an exercise is its baseline: no personal_records row (ADR 042).
+    assert db.conn.execute("SELECT COUNT(*) FROM personal_records").fetchone()[0] == 0
 
 
 def test_committed_client_id_replays_after_catalog_exercise_disappears(api):
@@ -466,6 +467,20 @@ def test_revoked_coach_cannot_read_a_workout_synced_after_revocation(api):
     assignment_a = _assign(client, coach_a, headers)
     revoked = client.post(f"/coach/assignments/{assignment_a}/revoke", headers=coach_a)
     assert revoked.status_code == 200, revoked.text
+
+    # A first sync establishes each exercise's baseline (ADR 042 stores no record
+    # row for it), so the sync below is the one whose rows the coach reads.
+    baseline = client.post(
+        "/workouts/sessions",
+        headers=headers,
+        json=_sync_body(
+            version=captured_version,
+            client_session_id="22222222-2222-4222-8222-222222222222",
+            performed_date="2026-09-25",
+            captured_at="2026-09-25T11:00:00+00:00",
+        ),
+    )
+    assert baseline.status_code == 201, baseline.text
 
     # A newer program is published after the coach is revoked but before the
     # captured draft syncs; the sync still commits as history.
@@ -691,21 +706,41 @@ def test_warmup_flag_is_honored_in_ledger_and_excluded_from_prs(api):
     client, db = api
     headers, version = _prepare_player(client, db)
     body = _sync_body(version=version)
+    # The warm-up is heavier than every working set, so any leak would be visible
+    # as a 150 kg record row or event.
     body["sets"][0]["sets"] = [
-        {"weight_kg": 40.0, "reps": 5, "rpe": 6.0, "is_warmup": True},
+        {"weight_kg": 150.0, "reps": 5, "rpe": 6.0, "is_warmup": True},
         {"weight_kg": 100.0, "reps": 5, "rpe": 8.0, "is_warmup": False},
     ]
 
-    resp = client.post("/workouts/sessions", headers=headers, json=body)
-    assert resp.status_code == 201, resp.text
-    session_id = resp.json()["session_id"]
+    first = client.post("/workouts/sessions", headers=headers, json=body)
+    assert first.status_code == 201, first.text
+
+    db.switch_user("p1")
+    # The first session is the exercise's baseline: it stores no record row (ADR 042).
+    assert (
+        db.conn.execute("SELECT COUNT(*) FROM personal_records WHERE exercise_id = 'sq'").fetchone()[0] == 0
+    )
+
+    second_body = _sync_body(
+        version=version,
+        client_session_id="22222222-2222-4222-8222-222222222222",
+        performed_date="2026-09-25",
+        captured_at="2026-09-25T11:00:00+00:00",
+    )
+    second_body["sets"] = body["sets"]
+    second = client.post("/workouts/sessions", headers=headers, json=second_body)
+    assert second.status_code == 201, second.text
+    # The warm-up is excluded, so the second session only ties the baseline: a tie is not a record.
+    assert second.json()["new_prs"] == []
+    session_id = second.json()["session_id"]
 
     db.switch_user("p1")
     rows = db.conn.execute(
         "SELECT weight_kg, is_warmup FROM workout_sets WHERE session_id = ? AND exercise_id = 'sq' ORDER BY set_index",
         (session_id,),
     ).fetchall()
-    assert [(row["weight_kg"], row["is_warmup"]) for row in rows] == [(40.0, 1), (100.0, 0)]
+    assert [(row["weight_kg"], row["is_warmup"]) for row in rows] == [(150.0, 1), (100.0, 0)]
     # The warm-up set is excluded from PR detection: only the 100kg working set can PR.
     prs = db.conn.execute(
         "SELECT value FROM personal_records WHERE exercise_id = 'sq' AND record_type = 'max_weight'"

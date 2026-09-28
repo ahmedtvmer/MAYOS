@@ -67,7 +67,12 @@ def _format_prev_value(prev_value: Any) -> str:
 
 
 def format_pr_events(pr_events: List[Dict[str, Any]]) -> str:
-    """Deterministic 🏆 lines for records beaten this session, grouped per movement."""
+    """Deterministic 🏆 lines for exercise-wide records beaten this session (ADR 042).
+
+    Grouped per movement: one heaviest-weight line (any rep count, never phrased
+    as a per-rep-count "× reps" record — the reps are mentioned as the reps the
+    weight was lifted for) and one best-e1RM line.
+    """
     if not pr_events:
         return ""
 
@@ -83,7 +88,7 @@ def format_pr_events(pr_events: List[Dict[str, Any]]) -> str:
         for event in events:
             prev = _format_prev_value(event.get("prev_value"))
             if event.get("record_type") == "max_weight":
-                parts.append(f"{float(event['value']):g} kg × {int(event['reps'])} ({prev})")
+                parts.append(f"heaviest {float(event['value']):g} kg for {int(event['reps'])} reps ({prev})")
             elif event.get("record_type") == "max_e1rm":
                 parts.append(f"e1RM {float(event['value']):.1f} kg ({prev})")
         if parts:
