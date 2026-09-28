@@ -4,6 +4,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from core.effort import min_rir_from_rpe
 from agent.program_blueprints import (
     FAT_LOSS_CARDIO_NOTE,
     MAX_RECOVERY_CUTS_PER_DAY,
@@ -275,16 +276,17 @@ def render_program_markdown(program: GeneratedProgramSchema) -> str:
                 for w in day.warmup_exercises
             )
             lines.append(f"**WARM UPS:** {warmup_text}")
-        lines.append("| # | Exercise | Warm-up | Sets | Reps | RIR | Rest |")
+        lines.append("| # | Exercise | Warm-up | Sets | Reps | Min RIR | Rest |")
         lines.append("| :---: | :--- | :---: | :---: | :---: | :---: | :---: |")
         for idx, ex in enumerate(day.exercises, start=1):
             rest = format_rest(ex.rest_seconds)
             warmup = f"{ex.warmup_sets}" if ex.warmup_sets else "-"
-            # Display boundary (#111): the target is stored as RPE, spoken as RIR.
-            target_rir = "" if ex.target_rpe is None else f"{10.0 - float(ex.target_rpe):g}"
+            # Display boundary (#111): the target is stored as RPE and read as
+            # its equivalent *minimum* RIR, a whole number rounded up.
+            minimum = min_rir_from_rpe(ex.target_rpe)
             lines.append(
                 f"| {idx} | **{ex.exercise_name}** | {warmup} | {ex.target_sets} | "
-                f"{ex.target_reps_min}~{ex.target_reps_max} | @{target_rir} | {rest} |"
+                f"{ex.target_reps_min}~{ex.target_reps_max} | {minimum if minimum is not None else ''} | {rest} |"
             )
         if day.cardio:
             lines.append(f"**{day.cardio}**")

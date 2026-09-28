@@ -15,6 +15,13 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from agent.progression_engine import calculate_e1rm, evaluate_systemic_fatigue, project_next_load, set_e1rm
+from core.effort import (
+    UNRATED,
+    min_rir_from_rpe,
+    min_rir_label,
+    rir_from_rpe,
+    rir_label,
+)
 from database.database_manager import DatabaseManager
 from service import progression_alerts as progression
 from service import workouts as workouts_service
@@ -67,6 +74,30 @@ def test_workout_set_in_rejects_rpe_above_ten(rpe):
 )
 def test_to_rir_conversion(rpe, rir):
     assert _to_rir(rpe) == rir
+    # _to_rir is the service's delegate to the one shared conversion (#111).
+    assert rir_from_rpe(rpe) == rir
+
+
+def test_recorded_effort_label_is_clean_and_says_not_rated():
+    """One formatter, no float noise, RIR 5 reads 5+, one unrated wording."""
+    assert rir_label(8.0) == "2"
+    assert rir_label(8.5) == "1.5"
+    # 10 - 8.3 is 1.6999999999999993 raw; the label is at most one decimal.
+    assert rir_label(8.3) == "1.7"
+    assert rir_label(10.0) == "0"
+    assert rir_label(5.0) == "5+"
+    assert rir_label(None) == UNRATED == "not rated"
+
+
+@pytest.mark.parametrize(
+    ("target_rpe", "minimum"),
+    [(8.5, "≥ 2"), (7.0, "≥ 3"), (9.0, "≥ 1"), (10.0, "≥ 0"), (5.0, "≥ 5"), (None, "not rated")],
+)
+def test_target_and_cap_read_as_the_equivalent_minimum_rir(target_rpe, minimum):
+    assert min_rir_label(target_rpe) == minimum
+    if target_rpe is not None:
+        # A cap is never understated: whole number, rounded up.
+        assert min_rir_from_rpe(target_rpe) >= 10.0 - target_rpe
 
 
 def test_unrated_set_scores_plain_epley_like_rir_zero():
@@ -395,7 +426,7 @@ def test_commit_accepts_and_persists_a_mix_of_rated_and_unrated_sets(api):
     assert summary["action"] == "increase"
     assert summary["status_badge"] == "LOAD INCREASE"
     # The follow-up target is spoken in RIR, converted from the stored RPE target.
-    assert summary["target_text"].endswith("@ RIR 1.5.")
+    assert summary["target_text"].endswith("@ RIR ≥ 2.")
 
     # The same commit output feeds the progression alerts: no effort reading, no
     # effort-based regression signal.

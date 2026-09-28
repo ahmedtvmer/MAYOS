@@ -2,17 +2,7 @@
 /// `agent/ProgramState.py`.
 library;
 
-/// One effort figure at the display boundary: RIR = 10 − RPE (#111).
-///
-/// The wire keeps RPE; players and coaches only ever read this. An absent
-/// rating is `unrated`, never a number — a blank set means "not rated".
-String rirLabel(double? rpe) {
-  if (rpe == null) {
-    return 'unrated';
-  }
-  final double rir = 10.0 - rpe;
-  return rir == rir.roundToDouble() ? rir.round().toString() : '$rir';
-}
+import 'effort.dart';
 
 class Capabilities {
   const Capabilities({required this.player, required this.coach});
@@ -1576,7 +1566,7 @@ class ProgramExercise {
   bool get hasWarmupSets => warmupSets > 0;
 
   String get prescription =>
-      '$targetSets × $targetRepsMin–$targetRepsMax @ RIR ${rirLabel(targetRpe)}';
+      '$targetSets × $targetRepsMin–$targetRepsMax @ RIR ${minRirLabel(targetRpe)}';
 
   String get restLabel => 'rest ${restSeconds}s';
 
@@ -2253,7 +2243,7 @@ class ExerciseHistoryPoint {
   final int reps;
 
   /// Stored RPE, null when the set was logged without effort (#111); shown to
-  /// the player as RIR through [rirLabel].
+  /// the player as RIR through [rirLabel] (core/effort.dart).
   final double? rpe;
   final double e1rm;
 }

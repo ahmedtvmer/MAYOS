@@ -3,6 +3,8 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+
+from agent.progression_engine import set_e1rm
 from database.database_manager import DatabaseManager
 from database.migration_manager import (
     CURRENT_LEDGER_SCHEMA_VERSION,
@@ -438,14 +440,16 @@ def test_session_comparison_same_day_rowid_ties(temp_db_env):
         ((100, 8, 8), (100, 8, 7), "improvement"),
         ((100, 8, 8), (100, 8, 9), "decline"),
         ((100, 8, 6), (100, 9, 10), "mixed"),
-        ((100, 8, None), (110, 9, 8), "insufficient_data"),
-        ((100, 8, 8), (110, 9, None), "insufficient_data"),
-        ((100, 8, None), (110, 9, None), "insufficient_data"),
+        # An unrated best set is scored with set_e1rm (plain Epley), so the
+        # comparison reports its real status instead of refusing (#111).
+        ((100, 8, None), (110, 9, 8), "improvement"),
+        ((100, 8, 8), (110, 9, None), "improvement"),
+        ((100, 8, None), (110, 9, None), "improvement"),
         ((0, 8, 8), (0, 9, 8), "improvement"),
-        ((0, 8, None), (0, 9, None), "insufficient_data"),
+        ((0, 8, None), (0, 9, None), "improvement"),
     ],
 )
-def test_session_comparison_strength_requires_best_set_rpe(temp_db_env, previous, current, status):
+def test_session_comparison_strength_scores_unrated_best_sets_too(temp_db_env, previous, current, status):
     db, _, _ = temp_db_env
     for session_id, date, values in [("previous", "2026-09-15", previous), ("current", "2026-09-16", current)]:
         db.ledger.log_workout_session(session_id, date, "Upper", date + "T10:00:00", None)
@@ -457,8 +461,15 @@ def test_session_comparison_strength_requires_best_set_rpe(temp_db_env, previous
     assert exercise["deltas"]["reps"] == current[1] - previous[1]
     assert exercise["deltas"]["volume_kg"] == current[0] * current[1] - previous[0] * previous[1]
     for key, values in [("previous", previous), ("current", current)]:
-        if values[2] is None or values[0] <= 0:
+        if values[0] <= 0:
+            # No load, no e1RM.
             assert exercise[key]["e1rm"] is None
+        else:
+            # Rated or not, a set with a load is scored through set_e1rm; an
+            # unrated one is plain Epley (#111).
+            assert exercise[key]["e1rm"] == pytest.approx(
+                set_e1rm(values[0], values[1], values[2]), abs=0.01
+            )
     if exercise["previous"]["e1rm"] is None or exercise["current"]["e1rm"] is None:
         assert exercise["deltas"]["e1rm"] is None
 

@@ -760,7 +760,7 @@ void main() {
       final ActiveWorkout workout = workoutWith(<ActiveWorkoutExercise>[
         ActiveWorkoutExercise(
           exercise: _plannedExerciseJson,
-          targetLabel: '2 × 5–8 @ RIR 1.5',
+          targetLabel: '2 × 5–8 @ RIR ≥ 2',
           sets: <ActiveWorkoutSet>[
             ActiveWorkoutSet(weightKg: 100, reps: 5, rir: 1, ticked: true),
             ActiveWorkoutSet(

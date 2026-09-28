@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../core/active_workout.dart';
+import '../../../core/effort.dart';
 import '../../../core/api_client.dart';
 import '../../../core/baselines.dart';
 import '../../../core/device_timezone.dart';
@@ -65,17 +66,13 @@ String previousLabel(BaselineSet? set) {
   if (set == null) {
     return '—';
   }
-  final String effort = set.rir == null ? '' : ' @${formatCellRir(set.rir!)}';
+  final String effort = set.rir == null ? '' : ' @${formatRir(set.rir!)}';
   return '${formatCellWeight(set.weightKg)} × ${set.reps}$effort';
 }
 
 /// `100`, `92.5`, `33.33` — the cell/previous weight format.
 String formatCellWeight(double weight) =>
     weight == weight.roundToDouble() ? weight.round().toString() : '$weight';
-
-/// `1`, `1.5` — RIR at the display boundary.
-String formatCellRir(double rir) =>
-    rir == rir.roundToDouble() ? rir.round().toString() : '$rir';
 
 /// The one mapping from a field to what its cell shows (#123 item 12): the
 /// typed [value] when there is one, else the faded [hint].
@@ -114,12 +111,14 @@ String formatCellRir(double rir) =>
         hint: fromPrevious ?? fromPrescription,
       );
     case LoggerField.rir:
+      // A recorded RIR reads as itself (5 → 5+); the prescription fallback is
+      // a *target*, so it reads as the equivalent minimum RIR (≥ n) (#111).
       final double? previousRir = previous?.rir;
-      fromPrevious = previousRir == null ? null : formatCellRir(previousRir);
+      fromPrevious = previousRir == null ? null : formatRir(previousRir);
       final double? targetRir = prescriptionHint?.rir;
-      fromPrescription = targetRir == null ? null : formatCellRir(targetRir);
+      fromPrescription = targetRir == null ? null : formatMinRir(targetRir);
       return (
-        value: set.rir == null ? null : formatCellRir(set.rir!),
+        value: set.rir == null ? null : formatRir(set.rir!),
         hint: fromPrevious ?? fromPrescription,
       );
   }

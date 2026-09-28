@@ -17,6 +17,7 @@ from agent.progression_engine import (
     project_next_load,
     set_e1rm,
 )
+from core.effort import min_rir_label, rir_from_rpe
 from core.warmup import calculate_warmup_sets
 from service._base import ledger_scope
 from service.schedule import latest_schedule_timezone, local_date_in, local_today, parse_iso_date
@@ -368,8 +369,8 @@ def _build_prescription(ledger: Any, day_plan: Any) -> dict[str, Any]:
 
 
 def _to_rir(rpe: Any) -> float | None:
-    """Effort at the display boundary: RIR = 10 - RPE, null when unrated (#111)."""
-    return None if rpe is None else round(10.0 - float(rpe), 2)
+    """The one RIR conversion for this service, delegated to core.effort (#111)."""
+    return rir_from_rpe(rpe)
 
 
 def _baseline_rows(ledger: Any) -> list[dict[str, Any]]:
@@ -537,18 +538,19 @@ def _persist_session(
             load_delta: float | None = round(top_set["weight_kg"] - prev_top["weight_kg"], 2)
             reps_delta: int | None = top_set["reps"] - prev_top["reps"]
 
-            # Effort-dependent badges (#111) need a rating on both sides; an
+            # Effort-dependent badges (#111) need a rating on the set; an
             # unrated top set never reads as 0 and never reads as a default, so
             # it can only earn the load/rep badges, which ignore effort.
-            target_rpe: float | None = ex_obj.target_rpe
-            rated = top_rpe is not None and target_rpe is not None
+            # `ex_obj.target_rpe` is a required ProgramExerciseSchema field, so
+            # the set's own rating is the only thing that can be missing.
+            rated = top_rpe is not None
             if top_set["weight_kg"] > prev_top["weight_kg"]:
                 status_badge, action = "LOAD INCREASE", "increase"
             elif top_set["reps"] > prev_top["reps"] and top_set["weight_kg"] >= prev_top["weight_kg"]:
                 status_badge, action = "REP OVERLOAD", "increase"
-            elif rated and top_set["reps"] >= ex_obj.target_reps_max and top_rpe <= target_rpe:
+            elif rated and top_set["reps"] >= ex_obj.target_reps_max and top_rpe <= ex_obj.target_rpe:
                 status_badge, action = "GRADUATED", "increase"
-            elif rated and top_rpe >= 10.0 and target_rpe <= 8.5:
+            elif rated and top_rpe >= 10.0 and ex_obj.target_rpe <= 8.5:
                 status_badge, action = "OVERSHOOT", "deload"
             else:
                 status_badge, action = "CONSOLIDATING", "hold"
@@ -565,7 +567,7 @@ def _persist_session(
         elif prev_perf:
             target_text = (
                 f"Consolidate at {top_set['weight_kg']} kg. Push for "
-                f"{min(top_set['reps'] + 1, ex_obj.target_reps_max)} reps @ RIR {_to_rir(ex_obj.target_rpe)}."
+                f"{min(top_set['reps'] + 1, ex_obj.target_reps_max)} reps @ RIR {min_rir_label(ex_obj.target_rpe)}."
             )
         else:
             target_text = f"Baseline logged at {top_set['weight_kg']} kg. Target {ex_obj.target_reps_min}–{ex_obj.target_reps_max} reps next session."

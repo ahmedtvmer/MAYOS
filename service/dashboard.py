@@ -4,6 +4,7 @@ from datetime import UTC, datetime, date, timedelta
 from typing import Any
 
 from agent.progression_engine import get_exercise_progression_history, get_weekly_muscle_volume
+from core.effort import rir_label
 from service._base import ledger_scope
 
 
@@ -71,11 +72,9 @@ def latest_record_caption(history: list[dict[str, Any]]) -> str | None:
     if not history:
         return None
     last = history[-1]
-    rpe = last.get("rpe")
-    effort = "unrated" if rpe is None else f"RIR {10.0 - float(rpe):g}"
     return (
-        f"Latest Recorded: **{last['weight_kg']} kg × {last['reps']} reps @ {effort}** "
-        f"(e1RM: {last['e1rm']} kg)"
+        f"Latest Recorded: **{last['weight_kg']} kg × {last['reps']} reps"
+        f" @ RIR {rir_label(last.get('rpe'))}** (e1RM: {last['e1rm']} kg)"
     )
 
 

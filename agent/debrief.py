@@ -1,12 +1,14 @@
 # agent/debrief.py
 from typing import Any, Dict, List
 
+from core.effort import min_rir_label
+
 DEBRIEF_SYSTEM_PROMPT = """You are an elite hypertrophic analytics engine.
 Generate ONLY the '**Next Session Directives**' section for the debrief.
 
 CRITICAL RULES:
 1. DELOAD LOGIC:
-   - If [DELOAD STATUS] is ACTIVE: Command volume cut and a reps-in-reserve cap (e.g., "Cut sets by 50%, cap at RIR 3.0").
+   - If [DELOAD STATUS] is ACTIVE: Command volume cut and a reps-in-reserve cap (e.g., "Cut sets by 50%, cap at RIR ≥ 3").
    - If [DELOAD STATUS] is INACTIVE: Do NOT mention deloads, volume cuts, or RIR caps. Give progression or hold marching orders.
 
 2. STRUCTURE:
@@ -35,10 +37,12 @@ def _deload_volume_cut(fatigue_info: dict[str, Any]) -> str | None:
 
 
 def _deload_rir_cap(fatigue_info: dict[str, Any]) -> str | None:
-    """The deload intensity cap rendered for the player as RIR (RIR = 10 - RPE).
+    """The deload intensity cap as the equivalent *minimum* RIR (#111).
 
+    A cap is the most effort allowed, so it reads as the least RIR the next
+    session may leave (RPE 7.0 -> ``≥ 3``), through the shared formatter.
     Missing or invalid values return ``None`` so the directive never fabricates
-    a number (#111: players see effort as RIR, never as RPE).
+    a number.
     """
     try:
         cap = float(fatigue_info.get("intensity_cap_rpe"))
@@ -46,7 +50,7 @@ def _deload_rir_cap(fatigue_info: dict[str, Any]) -> str | None:
         return None
     if not 0.0 <= cap <= 10.0:
         return None
-    return f"{10.0 - cap:.1f}"
+    return min_rir_label(cap)
 
 
 def format_fatigue_cns_check(readiness: int, total_tonnage: float, session_notes: str) -> str:

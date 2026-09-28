@@ -315,7 +315,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
 
   /// Edits one cell: whichever of [weightKg] / [reps] / [rir] is non-null is
   /// applied (weight 0 and reps 0 are how a cell is cleared), and [unrated]
-  /// clears the effort back to "unrated" (#111).
+  /// clears the effort back to "not rated" (#111).
   Future<void> updateCell(
     int exerciseIndex,
     int setIndex, {
@@ -471,8 +471,9 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   /// The prescription target an empty cell shows as its faded hint when there
   /// is no previous set: the projected weight (when the prescription projects
   /// one), the target rep floor, and the target RPE cap as its equivalent
-  /// minimum RIR — the effort at the display boundary, inside the service's
-  /// accepted RPE 5–10 band (#111).
+  /// minimum RIR (the *least* RIR the set may leave, read as `≥ n` by the cell)
+  /// — the effort at the display boundary, inside the service's accepted RPE
+  /// 5–10 band (#111).
   static PrescriptionHint? _prescriptionHint(
     Map<String, dynamic> exercise,
     PrescriptionTarget? target,
@@ -485,7 +486,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     return PrescriptionHint(
       weightKg: projected > 0 ? projected : null,
       reps: reps > 0 ? reps : null,
-      rir: 10.0 - clampRpe(rpe),
+      rir: rirFromRpe(clampRpe(rpe)),
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/effort.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
@@ -633,8 +634,10 @@ class _CoachPlayerHistoryScreenState
           const Text('No recorded sets for this exercise.')
         else
           for (final CoachExerciseHistoryPoint point in history.history)
+            // Effort is hidden when nobody rated the set, as this line always
+            // was; a rated one reads as RIR (#111).
             Text('${point.date}: ${point.weightKg} kg × ${point.reps}'
-                ' @ RIR ${rirLabel(point.rpe)}'
+                '${point.rpe == null ? '' : ' @ RIR ${rirLabel(point.rpe)}'}'
                 ' (e1RM ${point.e1rm})'),
         if (history.records.isNotEmpty) ...<Widget>[
           const SizedBox(height: MayosSpacing.xs),

@@ -302,8 +302,9 @@ def test_excel_export_uses_english_sheet_layout():
     assert workbook.sheetnames[0].startswith("Day 1")
     day_sheet = workbook[workbook.sheetnames[0]]
     headers = [cell.value for cell in day_sheet[1]]
-    assert headers[:7] == ["Day", "Exercise", "Warm-up Sets", "Working Sets", "Reps", "RIR", "Rest"]
-    # The effort column carries RIR (10 - target RPE), never the stored RPE (#111).
+    assert headers[:7] == ["Day", "Exercise", "Warm-up Sets", "Working Sets", "Reps", "Min RIR", "Rest"]
+    # The effort column is the target's equivalent *minimum* RIR — a whole
+    # number rounded up — never the stored RPE (#111).
     effort_values = [
         row[5]
         for row in day_sheet.iter_rows(min_row=2, values_only=True)

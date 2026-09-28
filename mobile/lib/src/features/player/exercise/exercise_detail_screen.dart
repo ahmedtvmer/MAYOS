@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/effort.dart';
 import '../../../core/config.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
@@ -361,7 +362,7 @@ class _PrescriptionTrio extends StatelessWidget {
         ),
         Expanded(
           child: _PrescriptionStat(
-            value: 'RIR ${rirLabel(exercise.targetRpe)}',
+            value: 'RIR ${minRirLabel(exercise.targetRpe)}',
             label: 'Intensity',
           ),
         ),

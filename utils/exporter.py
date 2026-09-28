@@ -6,6 +6,7 @@ from typing import Any
 import pandas as pd
 
 from agent.ProgramState import GeneratedProgramSchema
+from core.effort import min_rir_from_rpe
 
 SESSION_CSV_COLUMNS = [
     "session_date",
@@ -30,7 +31,7 @@ PROGRAM_COLUMNS = [
     "Warm-up Sets",
     "Working Sets",
     "Reps",
-    "RIR",
+    "Min RIR",
     "Rest",
     "W1 Load (kg)",
     "W1 Reps",
@@ -61,7 +62,7 @@ def export_program_to_excel(program: GeneratedProgramSchema) -> bytes:
     """
     Exports a GeneratedProgramSchema into an in-memory Excel workbook (.xlsx)
     with one sheet per training day: a warm-up block, followed by the movement
-    table (warm-up sets, working sets, reps, RIR, rest) and 4-week load logging.
+    table (warm-up sets, working sets, reps, min RIR, rest) and 4-week load logging.
     """
     output = io.BytesIO()
 
@@ -76,7 +77,7 @@ def export_program_to_excel(program: GeneratedProgramSchema) -> bytes:
                         "Warm-up Sets": "-",
                         "Working Sets": warmup.sets,
                         "Reps": warmup.reps,
-                        "RIR": "",
+                        "Min RIR": "",
                         "Rest": format_rest(warmup.rest_seconds),
                     }
                 )
@@ -89,8 +90,9 @@ def export_program_to_excel(program: GeneratedProgramSchema) -> bytes:
                         "Working Sets": ex.target_sets,
                         "Reps": f"{ex.target_reps_min}~{ex.target_reps_max}",
                         # Display boundary (#111): the target is stored as RPE and
-                        # exported as its equivalent RIR (10 - RPE).
-                        "RIR": "" if ex.target_rpe is None else round(10.0 - float(ex.target_rpe), 2),
+                        # exported as its equivalent *minimum* RIR — a whole
+                        # number rounded up, so a cap is never understated.
+                        "Min RIR": min_rir_from_rpe(ex.target_rpe) if ex.target_rpe is not None else "",
                         "Rest": format_rest(ex.rest_seconds),
                     }
                 )

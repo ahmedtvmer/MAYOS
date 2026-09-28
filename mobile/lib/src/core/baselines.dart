@@ -1,7 +1,10 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'effort.dart';
 import 'models.dart';
 import 'secure_store.dart';
+
+export 'effort.dart' show rirFromRpe, round2;
 
 /// Exercise baselines for the device's frozen Active workout (#122/#123):
 /// `GET /workouts/baselines`, one row per exercise with a committed working set.
@@ -122,16 +125,20 @@ bool isWorkingSet({
 }) =>
     !isWarmup && weightKg > 0 && reps > 0;
 
+/// One clamp, two bands: [low]..[high].
+double _clamp(double value, double low, double high) =>
+    value < low ? low : (value > high ? high : value);
+
 /// The service's accepted RPE band (#111): RPE 5–10 is RIR 5–0. Guards the
 /// `rpe` a draft serializes so a commit can never be refused for its effort
 /// value, and the target-to-RIR conversions at the display boundary.
-double clampRpe(double rpe) => rpe < 5.0 ? 5.0 : (rpe > 10.0 ? 10.0 : rpe);
+double clampRpe(double rpe) => _clamp(rpe, 5.0, 10.0);
 
 /// The e1RM formula's own effort clamp: `calculate_e1rm` in
 /// agent/progression_engine.py reads `min(max(rpe, 6.0), 10.0)`, so an effort
 /// below RPE 6 scores exactly like RPE 6 — this is the formula, not the
-/// accepted input band (#111).
-double _formulaRpe(double rpe) => rpe < 6.0 ? 6.0 : (rpe > 10.0 ? 10.0 : rpe);
+/// accepted input band (#111). Shares [_clamp] with [clampRpe].
+double _formulaRpe(double rpe) => _clamp(rpe, 6.0, 10.0);
 
 /// The server's `calculate_e1rm` (agent/progression_engine.py): Epley adjusted
 /// for effort, with the formula's RPE term clamped to [6, 10].
@@ -151,6 +158,10 @@ double calculateE1rm({
 /// The server's `set_e1rm` in RIR terms: RIR = 10 - RPE at the boundary, and
 /// an unrated set is plain Epley — `w * (1 + reps / 30)`, exactly RPE 10 /
 /// RIR 0 (#111), never a default effort.
+///
+/// Note that [calculateE1rm] clamps its effort term at RPE 6, so a set logged
+/// RIR 5 (or anything above RIR 4) scores exactly like RIR 4. That is the
+/// formula, not this helper's business: it is left unchanged here.
 double setE1rm({
   required double weightKg,
   required int reps,
@@ -159,15 +170,11 @@ double setE1rm({
     calculateE1rm(
       weightKg: weightKg,
       reps: reps,
-      rpe: rir == null ? 10.0 : 10.0 - rir,
+      // The one RIR→RPE inverse, shared with the draft payload; unrated is
+      // RPE 10 (plain Epley). Out-of-band RIRs clamp identically once
+      // calculateE1rm applies its own [6, 10] formula band.
+      rpe: rpeFromRir(rir) ?? 10.0,
     );
-
-/// Two decimals, the precision the record aggregates and the API report use.
-double round2(double value) => double.parse(value.toStringAsFixed(2));
-
-/// Effort at the display boundary for a committed `rpe` (`_to_rir` in
-/// service/workouts.py): null only when the set carries no rating.
-double? rirFromRpe(double? rpe) => rpe == null ? null : round2(10.0 - rpe);
 
 /// The `rpe` a draft sends for an RIR-logged set: the inverse of [rirFromRpe].
 ///

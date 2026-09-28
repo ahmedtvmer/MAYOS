@@ -279,7 +279,7 @@ void main() {
       expect(find.text(label), findsWidgets);
     }
     // The prescription caption rides on the card, as the old logger showed it.
-    expect(find.text('3 × 5–8 @ RIR 1.5'), findsOneWidget);
+    expect(find.text('3 × 5–8 @ RIR ≥ 2'), findsOneWidget);
     // The Unplanned tag only where it applies: none of the planned cards.
     expect(find.text('Unplanned'), findsNothing);
   });
@@ -439,8 +439,9 @@ void main() {
     expect(find.text('.'), findsNothing);
     await tester.tap(find.byKey(const ValueKey<String>('logger.rir.5')));
     await tester.pump(const Duration(milliseconds: 100));
+    // RIR 5 reads 5+ in the cell too (#111).
     expect(
-      find.descendant(of: _cell(0, 0, 'rir'), matching: find.text('5')),
+      find.descendant(of: _cell(0, 0, 'rir'), matching: find.text('5+')),
       findsOneWidget,
     );
     expect(_textColor(tester, _cell(0, 0, 'rir')),

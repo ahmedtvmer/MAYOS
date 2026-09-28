@@ -27,11 +27,13 @@ import json
 import logging
 import os
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from core.effort import min_rir_label, rir_label
 from service import coach_history as coach_history_service
 from service import dashboard as dashboard_service
 from service import check_ins as check_ins_service
@@ -380,24 +382,13 @@ def format_number(value: Any) -> str:
 
 
 #: Evidence keys carried as RPE on the alert row but spoken as RIR to the coach
-#: (#111: effort is shown as RIR everywhere a player or coach sees it).
-_RIR_EVIDENCE_KEYS: dict[str, str] = {
-    "top_rpe": "top_rir",
-    "intensity_cap_rpe": "intensity_cap_rir",
+#: (#111: effort is shown as RIR everywhere a player or coach sees it), with the
+#: shared formatter each one needs: a top set is a *recorded* effort, an
+#: intensity cap is a *target* so it reads as the equivalent minimum RIR.
+_RIR_EVIDENCE_KEYS: dict[str, tuple[str, Callable[[Any], str]]] = {
+    "top_rpe": ("top_rir", rir_label),
+    "intensity_cap_rpe": ("intensity_cap_rir", min_rir_label),
 }
-
-
-def effort_to_rir(rpe: Any) -> str:
-    """One effort figure at the display boundary: ``10 - RPE``, ``unrated`` when absent.
-
-    The stored facts keep RPE; only the coach-facing rendering converts (#111).
-    """
-    if rpe is None:
-        return "unrated"
-    try:
-        return format_number(round(10.0 - float(rpe), 2))
-    except (TypeError, ValueError):
-        return "unrated"
 
 
 def _session_facts(sessions: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -578,7 +569,7 @@ def _render_program(facts: dict[str, Any]) -> list[str]:
     for day in program.get("days", []):
         prescriptions = ", ".join(
             f"{exercise.get('name')} {format_number(exercise.get('sets'))}x{exercise.get('reps')}"
-            f"@RIR{effort_to_rir(exercise.get('rpe'))}"
+            f" @RIR {min_rir_label(exercise.get('rpe'))}"
             for exercise in day.get("exercises", [])
         )
         lines.append(f"  day {format_number(day.get('order'))} {day.get('day')}: {prescriptions}")
@@ -682,9 +673,8 @@ def _render_alerts(facts: dict[str, Any]) -> list[str]:
             raw = alert[key]
             if key in _RIR_EVIDENCE_KEYS:
                 # Stored RPE, spoken as RIR at the display boundary (#111).
-                evidence_parts.append(
-                    f"{_RIR_EVIDENCE_KEYS[key]} {effort_to_rir(raw)}"
-                )
+                label, formatter = _RIR_EVIDENCE_KEYS[key]
+                evidence_parts.append(f"{label} {formatter(raw)}")
             elif isinstance(raw, (int, float)):
                 evidence_parts.append(f"{key} {format_number(raw)}")
             else:
@@ -837,7 +827,6 @@ __all__ = [
     "coach_ai_enabled",
     "coach_model_identity",
     "evaluate_gate",
-    "effort_to_rir",
     "extract_answer",
     "format_number",
     "gather_player_context",

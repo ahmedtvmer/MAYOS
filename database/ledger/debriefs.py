@@ -6,6 +6,8 @@ Extracted from DatabaseManager; behaviour is unchanged.
 import sqlite3
 from typing import Any
 
+from core.effort import min_rir_label, rir_label
+
 
 class LedgerDebriefsMixin:
     BEST_SET_CONVENTION = "heaviest weight, then most reps, then earliest set_index"
@@ -36,10 +38,12 @@ class LedgerDebriefsMixin:
             }
         best = max(sets, key=lambda s: (s["weight_kg"], s["reps"], -s["set_index"]))
         e1rm = None
-        if best["rpe"] is not None and best["weight_kg"] > 0:
-            from agent.progression_engine import calculate_e1rm
+        if best["weight_kg"] > 0:
+            # An unrated best set is scored with set_e1rm (#111): plain Epley,
+            # exactly RPE 10 / RIR 0 — never refused as missing data.
+            from agent.progression_engine import set_e1rm
 
-            e1rm = calculate_e1rm(best["weight_kg"], best["reps"], best["rpe"])
+            e1rm = set_e1rm(best["weight_kg"], best["reps"], best["rpe"])
         return {
             "sets": [
                 {"set_index": s["set_index"], "weight_kg": s["weight_kg"], "reps": s["reps"], "rpe": s["rpe"]}
@@ -69,8 +73,8 @@ class LedgerDebriefsMixin:
 
     @staticmethod
     def _status(current: dict[str, Any], previous: dict[str, Any]) -> str:
-        if current["best_set"]["rpe"] is None or previous["best_set"]["rpe"] is None:
-            return "insufficient_data"
+        # Missing effort never decides this: both e1RMs are scored through
+        # set_e1rm (#111), so only the observed load/reps/e1RM signs count.
         deltas = DatabaseManager._deltas(current, previous)
         signs = {
             (delta > 0) - (delta < 0)
@@ -226,8 +230,10 @@ class LedgerDebriefsMixin:
             )
             top_set = cursor.fetchone()
             if top_set:
-                top_effort = "unrated" if top_set[3] is None else f"{10.0 - float(top_set[3]):g}"
-                top_str = f" | Top: {top_set[0]} {top_set[1]}kg x {top_set[2]} @ RIR {top_effort}"
+                top_str = (
+                    f" | Top: {top_set[0]} {top_set[1]}kg x {top_set[2]}"
+                    f" @ RIR {rir_label(top_set[3])}"
+                )
             else:
                 top_str = ""
             last_str = f"{s_split} ({s_date}) | Readiness: {s_readiness}/5{top_str}"
@@ -242,7 +248,7 @@ class LedgerDebriefsMixin:
         fatigue_state = evaluate_systemic_fatigue(self)
         if fatigue_state["deload_recommended"]:
             cap = fatigue_state["intensity_cap_rpe"]
-            cap_text = "" if cap is None else f" | Cap RIR at {10.0 - float(cap):g}"
+            cap_text = "" if cap is None else f" | Cap RIR {min_rir_label(cap)}"
             fatigue_line = f"Systemic State: DELOAD RECOMMENDED ({fatigue_state['reason']}{cap_text})"
         else:
             fatigue_line = (

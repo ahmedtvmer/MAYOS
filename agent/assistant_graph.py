@@ -21,6 +21,7 @@ sys.path.append(str(BASE_DIR))
 
 # Re-exported interfaces for pipeline and test compatibility
 from agent.chat_markers import is_session_pointer_text
+from core.effort import rir_label
 from agent.clinical_guard import (
     EMBED_MODEL,
     evaluate_clinical_semantic_guard,
@@ -583,9 +584,10 @@ def _metric(value: Any, signed: bool = False) -> str:
 
 def _set_text(value: dict[str, Any] | None) -> str:
     value = value or {}
-    rpe = value.get("rpe")
-    rir = None if rpe is None else 10.0 - float(rpe)
-    return f"{_metric(value.get('weight_kg'))} kg × {_metric(value.get('reps'))} reps @ RIR {_metric(rir)}"
+    return (
+        f"{_metric(value.get('weight_kg'))} kg × {_metric(value.get('reps'))} reps"
+        f" @ RIR {rir_label(value.get('rpe'))}"
+    )
 
 
 def _exercise_comparison_text(exercise: dict[str, Any], compact: bool = False) -> str:
@@ -595,8 +597,7 @@ def _exercise_comparison_text(exercise: dict[str, Any], compact: bool = False) -
     if compact:
         deltas = exercise.get("deltas") or {}
         baseline = (previous.get("session") or {}).get("session_date", "missing") if previous else "missing"
-        missing_rpe = any(s.get("rpe") is None for aggregate in (current, previous or {}) for s in aggregate.get("sets", []))
-        status = "insufficient_data (effort not recorded)" if missing_rpe else exercise.get("status", "insufficient_data")
+        status = exercise.get("status", "insufficient_data")
         return (
             f"{exercise['name']} [{exercise['exercise_id']}]: best {_set_text(best)}; "
             f"sets={_metric(current.get('sets_count'))}, volume={_metric(current.get('volume_kg'))}kg; "
@@ -621,11 +622,9 @@ def _exercise_comparison_text(exercise: dict[str, Any], compact: bool = False) -
         f"{label} {_metric(deltas.get(key), signed=True)}{unit}"
         for key, label, unit in (("load_kg", "best load", " kg"), ("reps", "best reps", ""), ("sets", "sets", ""), ("volume_kg", "volume", " kg"), ("e1rm", "e1RM", " kg"))
     ) + "."
-    missing_rpe = any(s.get("rpe") is None for aggregate in (current, previous) for s in aggregate.get("sets", []))
-    if missing_rpe or best.get("rpe") is None or (previous.get("best_set") or {}).get("rpe") is None:
-        content += " Effort not recorded; status: insufficient_data. Observed changes alone do not establish progress."
-    else:
-        content += f" Status: {exercise.get('status', 'insufficient_data')} (observed, not a long-term trend)."
+    # An unrated best set is scored with set_e1rm (#111), so the exercise's
+    # real status stands: no effort reading downgrades it to insufficient_data.
+    content += f" Status: {exercise.get('status', 'insufficient_data')} (observed, not a long-term trend)."
     return content
 
 

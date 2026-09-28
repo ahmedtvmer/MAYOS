@@ -243,6 +243,10 @@ def set_e1rm(weight_kg: float, reps: int, rpe: float | None) -> float:
     effort recorded is scored ``w * (1 + reps / 30)`` — exactly RPE 10 / RIR 0 —
     so an unrated set never scores higher than an honest rating of RIR 0 and
     never inherits a default effort.
+
+    Note that :func:`calculate_e1rm` clamps its effort term at RPE 6, so a set
+    logged RIR 5 (or anything above RIR 4) scores exactly like RIR 4. That is
+    the formula, not this helper's business: it is left unchanged here.
     """
     return calculate_e1rm(
         float(weight_kg), int(reps), 10.0 if rpe is None else float(rpe)

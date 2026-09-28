@@ -307,7 +307,7 @@ def test_render_context_states_every_deterministic_figure():
         "pause: 2026-10-01..2026-10-07",
         "2026-09-17 phone",
         "pending 1 (exercise_substitution 1)",
-        "day 1 Upper A: Squat 3x5-8@RIR1.5",
+        "day 1 Upper A: Squat 3x5-8 @RIR ≥ 2",
         "divergences skipped Row",
     ):
         assert expected in rendered, expected
@@ -347,21 +347,16 @@ def test_render_context_speaks_effort_as_rir_never_rpe():
     )
     rendered = coach_ai.render_context(facts)
 
-    assert "Squat 3x5-8@RIR1.5" in rendered
-    assert "Row 3x8-10@RIRunrated" in rendered
+    # A target is the equivalent *minimum* RIR (rounded up); a recorded
+    # top set is the effort itself; an unrated one reads "not rated".
+    assert "Squat 3x5-8 @RIR ≥ 2" in rendered
+    assert "Row 3x8-10 @RIR not rated" in rendered
     assert "top_rir 0" in rendered
-    assert "intensity_cap_rir 3" in rendered
+    assert "intensity_cap_rir ≥ 3" in rendered
     assert "@RPE" not in rendered
     assert "top_rpe" not in rendered
     assert "intensity_cap_rpe" not in rendered
 
-
-def test_effort_to_rir_conversion():
-    assert coach_ai.effort_to_rir(10.0) == "0"
-    assert coach_ai.effort_to_rir(8.5) == "1.5"
-    assert coach_ai.effort_to_rir(5.0) == "5"
-    assert coach_ai.effort_to_rir(None) == "unrated"
-    assert coach_ai.effort_to_rir("bad") == "unrated"
 
 
 def test_system_prompt_forbids_computation_and_medical_advice():

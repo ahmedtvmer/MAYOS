@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/baselines.dart';
+import 'package:mayos_mobile/src/core/effort.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 
 BaselineExercise _serverBaseline({
@@ -127,13 +128,27 @@ void main() {
   });
 
   group('effort at the display boundary (#111)', () {
-    test('rirLabel converts stored RPE to RIR and names a blank unrated', () {
+    test('rirLabel converts stored RPE to RIR, cleanly and with one wording', () {
       expect(rirLabel(10.0), '0');
       expect(rirLabel(9.5), '0.5');
       expect(rirLabel(8.5), '1.5');
+      // Legacy decimal RPEs must not leak float noise: 10 - 8.3 raw is
+      // 1.6999999999999993.
+      expect(rirLabel(8.3), '1.7');
       expect(rirLabel(8.0), '2');
-      expect(rirLabel(5.0), '5');
-      expect(rirLabel(null), 'unrated');
+      // RIR 5 reads 5+ on every surface, not only on the keypad chip.
+      expect(rirLabel(5.0), '5+');
+      expect(rirLabel(null), 'not rated');
+    });
+
+    test('a target or cap reads as the equivalent minimum RIR', () {
+      expect(minRirLabel(8.5), '≥ 2');
+      expect(minRirLabel(7.0), '≥ 3');
+      expect(minRirLabel(10.0), '≥ 0');
+      expect(minRirLabel(null), 'not rated');
+      expect(formatMinRir(1.5), '≥ 2');
+      expect(formatRir(5.0), '5+');
+      expect(formatRir(1.0), '1');
     });
 
     test('a program target is spoken as RIR, never RPE', () {
@@ -145,7 +160,7 @@ void main() {
         targetRepsMax: 8,
         targetRpe: 8.5,
       );
-      expect(exercise.prescription, '3 × 5–8 @ RIR 1.5');
+      expect(exercise.prescription, '3 × 5–8 @ RIR ≥ 2');
     });
 
     test('a set with no effort on the wire keeps none', () {
@@ -154,7 +169,7 @@ void main() {
       expect(set.rpe, isNull);
       expect(set.toJson()['rpe'], isNull);
       expect(rirFromRpe(set.rpe), isNull);
-      expect(rirLabel(set.rpe), 'unrated');
+      expect(rirLabel(set.rpe), 'not rated');
     });
   });
 
