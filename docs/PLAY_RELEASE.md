@@ -118,6 +118,32 @@ flutter build appbundle --release \
       (`version: 0.1.0+1` → `versionCode 1`, `versionName 0.1.0`); bump it for
       every upload.
 
+### Launcher icon (regenerate whenever the logo changes)
+
+The Android launcher icon comes from `assets/mayos-android-logo.png`, copied
+into `mobile/assets/` (the root original is never modified) and rendered by
+the `flutter_launcher_icons` dev dependency configured in `mobile/pubspec.yaml`:
+
+```bash
+cd mobile
+flutter pub get
+dart run flutter_launcher_icons
+```
+
+- [ ] Commit the regenerated `mobile/android/app/src/main/res/` files together
+      with the logo change: every-density `mipmap-*/ic_launcher.png`, the
+      Android 8+ adaptive icon (`mipmap-anydpi-v26/ic_launcher.xml`,
+      `drawable-*/ic_launcher_foreground.png`, `values/colors.xml`).
+- [ ] `ic_launcher_background` (`#01183D`) is sampled from the logo's navy
+      tile; update it in `mobile/pubspec.yaml` if the logo's navy changes.
+- [ ] The foreground PNG (`mobile/assets/mayos-android-logo-foreground.png`)
+      is the M mark alone on transparent, scaled so every glyph pixel sits in
+      the 66dp safe zone of the 108dp canvas — hence
+      `adaptive_icon_foreground_inset: 0`. It is a committed input; re-derive
+      it from the logo if the mark changes.
+- [ ] Android only: `ios: false`, no `web:` block — iOS/web icons and splash
+      screens are out of scope for this pipeline.
+
 ## 7. Play Console listing
 
 - [ ] **Create the app** (free, app type: app; not a game).

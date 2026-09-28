@@ -25,8 +25,8 @@ val requiredKeystoreKeys = listOf("storeFile", "storePassword", "keyAlias", "key
 val missingKeystoreKeys = requiredKeystoreKeys.filter { keystoreProperties.getProperty(it).isNullOrBlank() }
 val releaseSigningConfigured = keystorePropertiesFile.exists() && missingKeystoreKeys.isEmpty()
 val keystoreFilePath = keystoreProperties.getProperty("storeFile") ?: ""
-val keystoreFile = rootProject.file(keystoreFilePath)
-val releaseSigningUsable = releaseSigningConfigured && keystoreFilePath.isNotBlank() && keystoreFile.exists()
+val keystoreFile = if (keystoreFilePath.isBlank()) null else rootProject.file(keystoreFilePath)
+val releaseSigningUsable = releaseSigningConfigured && keystoreFile?.exists() == true
 
 // A release build must fail loudly when signing is unconfigured. "Release" is
 // not the only way to reach one: a bare `assemble`, `bundle`, or `build` builds
@@ -52,10 +52,10 @@ if (releaseBuildRequested) {
                 "See docs/PLAY_RELEASE.md."
         )
     }
-    if (!keystoreFile.exists()) {
+    if (keystoreFile?.exists() != true) {
         throw GradleException(
             "Release signing is not configured: key.properties storeFile points at " +
-                "'$keystoreFilePath' (resolved to $keystoreFile), which does not exist. " +
+                "'$keystoreFilePath' (resolved to ${keystoreFile ?: "<blank>"}), which does not exist. " +
                 "See docs/PLAY_RELEASE.md."
         )
     }
@@ -90,7 +90,9 @@ android {
     signingConfigs {
         create("release") {
             if (releaseSigningUsable) {
-                storeFile = keystoreFile
+                storeFile = checkNotNull(keystoreFile) {
+                    "Release signing is marked usable without a keystore file."
+                }
                 storePassword = keystoreProperties.getProperty("storePassword")
                 keyAlias = keystoreProperties.getProperty("keyAlias")
                 keyPassword = keystoreProperties.getProperty("keyPassword")

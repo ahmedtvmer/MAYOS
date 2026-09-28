@@ -25,6 +25,24 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  # Launcher icon generation (#150). Re-run after changing the logo:
+  #   dart run flutter_launcher_icons
+  flutter_launcher_icons: ^0.14.4
+
+# Launcher icon generation (#150). Source art lives in the repo root under
+# assets/; the copies below are the ones this tool reads (paths must stay
+# inside the Flutter project). iOS/web/splash are intentionally not configured.
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/mayos-android-logo.png"
+  # Sampled from the tile in the source PNG (median of the opaque pixels in
+  # its bottom third): the navy the adaptive layer sits on.
+  adaptive_icon_background: "#01183D"
+  # Safe-zone padding (66dp of the 108dp canvas) is baked into the foreground
+  # PNG, so the XML layer must not be inset on top of it.
+  adaptive_icon_foreground: "assets/mayos-android-logo-foreground.png"
+  adaptive_icon_foreground_inset: 0
 
 flutter:
   uses-material-design: true
