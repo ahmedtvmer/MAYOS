@@ -1,8 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../../core/active_workout.dart';
 import '../../../core/api_client.dart';
+import '../../../core/baselines.dart';
 import '../../../core/device_timezone.dart';
 import '../../../core/models.dart';
 import '../../../core/performed_date_window.dart';
@@ -17,16 +23,56 @@ import '../../../core/ui/mayos_text_field.dart';
 import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
+import 'active_workout_controller.dart';
 import 'draft_sync_service.dart';
+import 'logger_keypad.dart';
 
-/// The offline-capable workout logger (ADR 020/033).
-///
-/// The prescribed day is loaded from the per-account cache and refreshed online
-/// when possible, so the player can record sets without connectivity. "Finish"
-/// always writes a protected draft first, then attempts a sync.
+/// The frozen previous working set matched set by set: set N of the table is
+/// the Nth working set of the baseline's `last_session` (#107/#123), for
+/// planned and unplanned exercises alike. Null when there is no previous set.
+BaselineSet? previousSetFor(
+  ActiveWorkoutExercise exercise,
+  int setIndex,
+  Map<String, BaselineExercise> baselines,
+) {
+  final List<BaselineSet> last =
+      baselines[exercise.exerciseId]?.lastSession.sets ?? const <BaselineSet>[];
+  if (setIndex < 0 || setIndex >= last.length) {
+    return null;
+  }
+  return last[setIndex];
+}
+
+/// `100 × 5 @1`, or `—` when there is no previous set. An unrated previous
+/// set drops the `@` part (`100 × 5`).
+String previousLabel(BaselineSet? set) {
+  if (set == null) {
+    return '—';
+  }
+  final String effort =
+      set.rir == null ? '' : ' @${formatCellRir(set.rir!)}';
+  return '${formatCellWeight(set.weightKg)} × ${set.reps}$effort';
+}
+
+/// `100`, `92.5`, `33.33` — the cell/previous weight format.
+String formatCellWeight(double weight) =>
+    weight == weight.roundToDouble()
+        ? weight.round().toString()
+        : '$weight';
+
+/// `1`, `1.5` — RIR at the display boundary.
+String formatCellRir(double rir) =>
+    rir == rir.roundToDouble() ? rir.round().toString() : '$rir';
+
+/// The Hevy-style table logger (#107 Variant A), backed entirely by the
+/// Active workout: one scrolling list of exercise cards with a
+/// SET · PREVIOUS · KG · REPS · RIR · ✓ table, the app's own keypad, and the
+/// Finish → save flow that writes a Workout draft exactly as before (#123).
 class WorkoutLoggerScreen extends ConsumerStatefulWidget {
   const WorkoutLoggerScreen({super.key, required this.dayOrder});
 
+  /// The day this route was opened for; only used when no Active workout
+  /// exists yet and one has to be started from the cached program.
   final int dayOrder;
 
   @override
@@ -39,54 +85,49 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
 
   bool _loading = true;
   String? _loadError;
-  String? _saveError;
-  bool _saving = false;
+  String? _error;
   bool _fromCache = false;
 
-  String? _accountId;
-  int? _programVersion;
-  ProgramDay? _day;
-
   /// Null only when it could not be determined at all (never guessed as
-  /// `'UTC'`) — Finish is blocked until it is known (ADR 020/033).
+  /// `'UTC'`) — Finish stays blocked until it is known (ADR 020/033).
   String? _timezone;
   DateTime _performedDate = DateTime.now();
   int _readiness = 4;
-  List<_LogExercise> _exercises = <_LogExercise>[];
-
-  /// Why Finish is disabled beyond "no working sets logged", or null when
-  /// nothing else blocks it.
-  String? get _blockReason {
-    if (_timezone == null) {
-      return 'Your device timezone could not be determined, so the workout '
-          'date cannot be recorded truthfully. Check your device time-zone '
-          'settings and try again.';
-    }
-    if (_programVersion == null) {
-      return 'No cached program version is available offline. Connect once '
-          'to refresh your program before logging this workout.';
-    }
-    return null;
-  }
+  bool _saveStep = false;
+  bool _saving = false;
+  LoggerCellFocus? _focus;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    unawaited(_keepAwake(true));
+    Future<void>.microtask(_load);
   }
 
   @override
   void dispose() {
+    unawaited(_keepAwake(false));
     _notes.dispose();
-    for (final _LogExercise exercise in _exercises) {
-      exercise.dispose();
-    }
     super.dispose();
+  }
+
+  /// The screen stays awake while the logger is open (#107). Kept best-effort
+  /// so an unsupported platform (or a test host) never breaks the screen.
+  Future<void> _keepAwake(bool on) async {
+    try {
+      if (on) {
+        await WakelockPlus.enable();
+      } else {
+        await WakelockPlus.disable();
+      }
+    } on Object {
+      // No-op where wakelock is unavailable.
+    }
   }
 
   Future<void> _load() async {
     if (!ref.read(offlineWorkoutDraftsEnabledProvider)) {
-      // The web client is online-only and never captures offline drafts (ADR 022).
+      // The web client is online-only and never captures drafts (ADR 022).
       setState(() => _loading = false);
       return;
     }
@@ -99,82 +140,282 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       });
       return;
     }
-    _accountId = accountId;
-    final WorkoutCacheStore cache = ref.read(workoutCacheStoreProvider);
-    TrainingProgram? program = await cache.readProgram(accountId);
-    Prescription? prescription =
-        await cache.readPrescription(accountId, widget.dayOrder);
-    // The banner is shown only when the online fetch failed and the cached
-    // program is what the player is actually logging against.
+    _timezone = await ref.read(deviceTimezoneOrNullProvider);
+    // The offline banner tracks what this screen could fetch, exactly as the
+    // logger did when it loaded the program itself.
     bool fromCache = false;
-
     try {
-      final TrainingProgram? online =
-          await ref.read(apiClientProvider).activeProgram();
-      program = online;
-      if (online != null) {
-        await cache.writeProgram(accountId, online);
-      }
+      await ref.read(apiClientProvider).activeProgram();
     } on ApiException {
-      // Offline: fall back to whatever was cached.
-      fromCache = program != null;
-    }
-    try {
-      final Prescription fetched =
-          await ref.read(apiClientProvider).prescription(widget.dayOrder);
-      prescription = fetched;
-      await cache.writePrescription(accountId, widget.dayOrder, fetched);
-    } on ApiException {
-      // Offline: use whatever was cached.
+      fromCache = true;
     }
 
-    ProgramDay? day;
-    for (final ProgramDay candidate in program?.days ?? const <ProgramDay>[]) {
-      if (candidate.dayOrder == widget.dayOrder) {
-        day = candidate;
+    final ActiveWorkoutController controller =
+        ref.read(activeWorkoutControllerProvider.notifier);
+    // Waits for the device restore for this account, so a workout that is
+    // still loading is never mistaken for a missing one.
+    await controller.syncAccount(accountId);
+    if (controller.workout == null) {
+      // Reached without an Active workout (deep link): start one from the
+      // cached program day, the way Home/Program do.
+      final WorkoutCacheStore cache = ref.read(workoutCacheStoreProvider);
+      final TrainingProgram? program = await cache.readProgram(accountId);
+      ProgramDay? day;
+      for (final ProgramDay candidate in program?.days ?? const <ProgramDay>[]) {
+        if (candidate.dayOrder == widget.dayOrder) {
+          day = candidate;
+        }
       }
+      if (day == null) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _loadError = 'This training day is not available offline.';
+          _fromCache = fromCache;
+        });
+        return;
+      }
+      final Prescription? prescription =
+          await cache.readPrescription(accountId, widget.dayOrder);
+      await controller.startFromDay(
+        accountId: accountId,
+        day: day,
+        programVersion: program?.version,
+        prescription: prescription,
+      );
     }
-    final String? timezone = await _resolveTimezone();
-
-    if (day == null) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _loadError = 'This training day is not available offline.';
-      });
-      return;
-    }
-
+    final ActiveWorkout? workout = controller.workout;
     if (!mounted) return;
     setState(() {
-      _programVersion = program?.version;
-      _day = day;
-      _timezone = timezone;
-      _exercises = <_LogExercise>[
-        for (final ProgramExercise exercise in day!.exercises)
-          _LogExercise.fromPrescription(
-              exercise, prescription?.forExercise(exercise.exerciseId)),
-      ];
       _fromCache = fromCache;
       _loading = false;
+      if (workout != null) {
+        // The save step defaults to the day the workout started (#123).
+        _performedDate = DateTime.tryParse(workout.startedDate) ??
+            DateTime.now();
+      }
     });
   }
 
-  /// The device's IANA timezone, or null when it could not be determined.
-  ///
-  /// The performed date is derived from the device wall clock, so it must be
-  /// recorded against the device timezone. Falling back to the training
-  /// schedule's timezone while still using the device date would misrecord a
-  /// near-midnight workout, so Finish is blocked instead of guessing (ADR
-  /// 020/029/033).
-  Future<String?> _resolveTimezone() async =>
-      ref.read(deviceTimezoneOrNullProvider);
+  ActiveWorkout? get _workout =>
+      ref.read(activeWorkoutControllerProvider).workout;
+
+  ActiveWorkoutController get _controller =>
+      ref.read(activeWorkoutControllerProvider.notifier);
+
+  /// Why Finish is blocked beyond "no sets ticked", or null.
+  String? get _blockReason {
+    if (_timezone == null) {
+      return 'Your device timezone could not be determined, so the workout '
+          'date cannot be recorded truthfully. Check your device time-zone '
+          'settings and try again.';
+    }
+    if (_workout?.programVersion == null && _workout != null) {
+      return 'No cached program version is available offline. Connect once '
+          'to refresh your program before logging this workout.';
+    }
+    return null;
+  }
+
+  // ---- table interactions -------------------------------------------------
+
+  String _initialText(ActiveWorkout workout, LoggerCellFocus focus) {
+    final ActiveWorkoutSet set =
+        workout.exercises[focus.exerciseIndex].sets[focus.setIndex];
+    switch (focus.field) {
+      case LoggerField.kg:
+        return set.weightKg > 0 ? formatCellWeight(set.weightKg) : '';
+      case LoggerField.reps:
+        return set.reps > 0 ? '${set.reps}' : '';
+      case LoggerField.rir:
+        return set.rir == null ? '' : formatCellRir(set.rir!);
+    }
+  }
+
+  void _onKeypadText(String text) {
+    final LoggerCellFocus? focus = _focus;
+    if (focus == null) {
+      return;
+    }
+    switch (focus.field) {
+      case LoggerField.kg:
+        _controller.updateCell(focus.exerciseIndex, focus.setIndex,
+            weightKg: double.tryParse(text) ?? 0);
+      case LoggerField.reps:
+        _controller.updateCell(focus.exerciseIndex, focus.setIndex,
+            reps: int.tryParse(text) ?? 0);
+      case LoggerField.rir:
+        break; // RIR is one-tap chips only.
+    }
+  }
+
+  void _onKeypadRir(double? rir) {
+    final LoggerCellFocus? focus = _focus;
+    if (focus == null) {
+      return;
+    }
+    if (rir == null) {
+      _controller.updateCell(focus.exerciseIndex, focus.setIndex,
+          unrated: true);
+    } else {
+      _controller.updateCell(focus.exerciseIndex, focus.setIndex, rir: rir);
+    }
+  }
+
+  void _onKeypadNext() {
+    final ActiveWorkout? workout = _workout;
+    final LoggerCellFocus? focus = _focus;
+    if (workout == null || focus == null) {
+      return;
+    }
+    setState(() => _focus = nextLoggerCellFocus(workout, focus));
+  }
+
+  void _onKeypadHide() {
+    setState(() => _focus = null);
+  }
+
+  /// Ticking: empty cells take the previous value first; when a required cell
+  /// (kg or reps) still has nothing, the tick opens the keypad there instead.
+  Future<void> _toggleTick(int exerciseIndex, int setIndex) async {
+    final ActiveWorkout? workout = _workout;
+    if (workout == null) {
+      return;
+    }
+    final ActiveWorkoutExercise exercise =
+        workout.exercises[exerciseIndex];
+    final ActiveWorkoutSet set = exercise.sets[setIndex];
+    if (set.ticked) {
+      await _controller.setTicked(exerciseIndex, setIndex, false);
+      return;
+    }
+    final BaselineSet? prev =
+        previousSetFor(exercise, setIndex, workout.baselines);
+    double weight = set.weightKg;
+    int reps = set.reps;
+    double? rir = set.rir;
+    bool changed = false;
+    if (weight <= 0 && prev != null) {
+      weight = prev.weightKg;
+      changed = true;
+    }
+    if (reps <= 0 && prev != null) {
+      reps = prev.reps;
+      changed = true;
+    }
+    if (rir == null && prev != null && prev.rir != null) {
+      rir = prev.rir;
+      changed = true;
+    }
+    if (weight <= 0 || reps <= 0) {
+      // Nothing to log yet: open the keypad at the first required cell.
+      setState(() {
+        _focus = LoggerCellFocus(exerciseIndex, setIndex,
+            weight <= 0 ? LoggerField.kg : LoggerField.reps);
+      });
+      return;
+    }
+    if (changed) {
+      await _controller.updateCell(exerciseIndex, setIndex,
+          weightKg: set.weightKg <= 0 ? weight : null,
+          reps: set.reps <= 0 ? reps : null,
+          rir: set.rir == null && rir != null ? rir : null);
+    }
+    await _controller.setTicked(exerciseIndex, setIndex, true);
+    unawaited(HapticFeedback.selectionClick());
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      if (_focus != null &&
+          _focus!.exerciseIndex == exerciseIndex &&
+          _focus!.setIndex == setIndex) {
+        _focus = null;
+      }
+    });
+  }
+
+  Future<void> _removeSet(int exerciseIndex, int setIndex) async {
+    setState(() => _focus = null);
+    await _controller.removeSet(exerciseIndex, setIndex);
+  }
+
+  // ---- finish / save ------------------------------------------------------
+
+  int _untickedCount(ActiveWorkout workout) => workout.exercises.fold<int>(
+      0,
+      (int total, ActiveWorkoutExercise exercise) =>
+          total + exercise.sets.where((ActiveWorkoutSet s) => !s.ticked).length);
+
+  Future<void> _finish() async {
+    final ActiveWorkout? workout = _workout;
+    if (workout == null || _blockReason != null) {
+      return;
+    }
+    final bool anyWorking = workout.exercises.any(
+        (ActiveWorkoutExercise exercise) =>
+            exercise.sets.any((ActiveWorkoutSet s) =>
+                s.ticked && s.countsAsWorkingSet));
+    if (!anyWorking) {
+      setState(() => _error = 'Log at least one set');
+      return;
+    }
+    final int unticked = _untickedCount(workout);
+    if (unticked > 0) {
+      final bool proceed = await _confirmUnticked(unticked);
+      if (!proceed || !mounted) {
+        return;
+      }
+    }
+    setState(() {
+      _saveStep = true;
+      _error = null;
+      _focus = null;
+    });
+  }
+
+  /// "N sets aren't ticked · Discard unticked sets and finish / Keep logging"
+  /// (#108 resolution). Only ticked sets are ever logged.
+  Future<bool> _confirmUnticked(int unticked) async {
+    final bool? choice = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (BuildContext context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(MayosSpacing.md),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Text(
+                unticked == 1
+                    ? "1 set isn't ticked"
+                    : "$unticked sets aren't ticked",
+                style: MayosTypography.sectionHeading,
+              ),
+              const SizedBox(height: MayosSpacing.xs),
+              const Text('Only ticked sets are saved to the workout.'),
+              const SizedBox(height: MayosSpacing.md),
+              MayosButton(
+                label: 'Discard unticked sets and finish',
+                onPressed: () => Navigator.of(context).pop(true),
+              ),
+              const SizedBox(height: MayosSpacing.sm),
+              MayosButton(
+                label: 'Keep logging',
+                variant: MayosButtonVariant.secondary,
+                onPressed: () => Navigator.of(context).pop(false),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return choice == true;
+  }
 
   Future<void> _pickDate() async {
     // The device has no IANA timezone database, so "today" is computed from
-    // the device's own wall clock; this is the same clock [_timezone] names
-    // (the device zone, or the cached schedule zone only when the device
-    // zone truly could not be read), so the two stay consistent.
+    // the device's own wall clock — the same clock [_timezone] names.
     final PerformedDateWindow window = performedDateWindow();
     final DateTime initial = window.clamp(_performedDate);
     final DateTime? picked = await showDatePicker(
@@ -183,9 +424,49 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       firstDate: window.first,
       lastDate: window.last,
     );
-    if (picked != null) {
+    if (picked != null && mounted) {
       setState(() => _performedDate = picked);
     }
+  }
+
+  Future<void> _save() async {
+    final ActiveWorkout? workout = _workout;
+    final String? timezone = _timezone;
+    if (workout == null || timezone == null || _blockReason != null) {
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final DraftSyncService sync = ref.read(draftSyncServiceProvider);
+    final WorkoutDraft? draft = workout.buildWorkoutDraft(
+      timezone: timezone,
+      clientSessionId: sync.newClientSessionId(),
+      now: DateTime.now(),
+      performedDate: formatPerformedDate(_performedDate),
+      readiness: _readiness,
+      notes: _notes.text.trim(),
+    );
+    if (draft == null) {
+      setState(() {
+        _saving = false;
+        _error = 'No cached program version is available offline. Connect '
+            'once to refresh your program before logging this workout.';
+      });
+      return;
+    }
+    await sync.saveDraft(draft);
+    // Saving ends the Active workout (CONTEXT.md): the draft now owns it.
+    await _controller.discard();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _saving = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Workout saved to your drafts.')),
+    );
+    context.go(workoutsPath);
   }
 
   Future<void> _addUnplanned() async {
@@ -196,74 +477,20 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     if (entry == null) {
       return;
     }
+    await _controller.addUnplannedExercise(
+      exerciseId: entry.id,
+      exerciseName: entry.name,
+    );
+  }
+
+  void _backFromSave() {
     setState(() {
-      _exercises = <_LogExercise>[
-        ..._exercises,
-        _LogExercise.unplanned(entry),
-      ];
+      _saveStep = false;
+      _error = null;
     });
   }
 
-  Future<void> _finish() async {
-    final String? accountId = _accountId;
-    final ProgramDay? day = _day;
-    final int? version = _programVersion;
-    final String? timezone = _timezone;
-    if (accountId == null || day == null) {
-      return;
-    }
-    final String? blockReason = _blockReason;
-    if (blockReason != null) {
-      setState(() => _saveError = blockReason);
-      return;
-    }
-    if (_exercises.every((_LogExercise exercise) => !exercise.hasWorkingSets)) {
-      setState(() {
-        _saveError = 'Log at least one working set before finishing.';
-      });
-      return;
-    }
-    setState(() {
-      _saving = true;
-      _saveError = null;
-    });
-
-    final DateTime now = DateTime.now();
-    final String performedDate = formatPerformedDate(_performedDate);
-    final DraftSyncService sync = ref.read(draftSyncServiceProvider);
-    final WorkoutDraft draft = WorkoutDraft(
-      clientSessionId: sync.newClientSessionId(),
-      accountId: accountId,
-      performedDate: performedDate,
-      performedTimezone: timezone!,
-      programVersion: version!,
-      dayOrder: day.dayOrder,
-      dayName: day.dayName,
-      capturedAt: now.toUtc().toIso8601String(),
-      exercises: <DraftExercise>[
-        for (final _LogExercise exercise in _exercises)
-          DraftExercise(
-            exercise: exercise.exercise,
-            sets: exercise.sets
-                .map((_EditableSet set) => set.toLog())
-                .toList(growable: false),
-            skipped: exercise.skipped,
-          ),
-      ],
-      readiness: _readiness,
-      notes: _notes.text.trim(),
-      status: DraftStatus.pending,
-      updatedAt: now.toUtc().toIso8601String(),
-    );
-
-    await sync.saveDraft(draft);
-    if (!mounted) return;
-    setState(() => _saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Workout saved to your drafts.')),
-    );
-    context.go(workoutsPath);
-  }
+  // ---- build --------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -278,7 +505,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
         ),
       );
     }
-    if (_loading) {
+    final ActiveWorkoutState active = ref.watch(activeWorkoutControllerProvider);
+    if (_loading || !active.ready) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_loadError != null) {
@@ -289,20 +517,383 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
         ),
       );
     }
-    final ProgramDay day = _day!;
+    final ActiveWorkout? workout = active.workout;
+    if (workout == null) {
+      // The workout was just cleared by Save; the route moves away next frame.
+      return const Center(child: CircularProgressIndicator());
+    }
+    return PopScope(
+      canPop: !_saveStep,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (!didPop && _saveStep && mounted) {
+          _backFromSave();
+        }
+      },
+      child: Column(
+        children: <Widget>[
+          Expanded(
+            child: _saveStep ? _buildSaveStep(workout) : _buildActive(workout),
+          ),
+          if (_validFocus(workout) && _focus != null)
+            _buildKeypad(workout, _focus!),
+        ],
+      ),
+    );
+  }
+
+  bool _validFocus(ActiveWorkout workout) {
+    final LoggerCellFocus? focus = _focus;
+    if (focus == null) {
+      return false;
+    }
+    return focus.exerciseIndex >= 0 &&
+        focus.exerciseIndex < workout.exercises.length &&
+        focus.setIndex >= 0 &&
+        focus.setIndex < workout.exercises[focus.exerciseIndex].sets.length;
+  }
+
+  Widget _buildKeypad(ActiveWorkout workout, LoggerCellFocus focus) {
+    final ActiveWorkoutSet set =
+        workout.exercises[focus.exerciseIndex].sets[focus.setIndex];
+    return LoggerKeypad(
+      exerciseName: workout.exercises[focus.exerciseIndex].exerciseName,
+      setNumber: focus.setIndex + 1,
+      field: focus.field,
+      initialText: _initialText(workout, focus),
+      selectedRir: set.rir,
+      onText: _onKeypadText,
+      onRir: _onKeypadRir,
+      onNext: _onKeypadNext,
+      onHide: _onKeypadHide,
+    );
+  }
+
+  Widget _buildActive(ActiveWorkout workout) {
     final MayosThemeExtension c = MayosTheme.of(context);
     return SingleChildScrollView(
       padding: MayosSpacing.screen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          if (_fromCache) ...<Widget>[
-            const _OfflineLoggerNotice(),
-            const SizedBox(height: MayosSpacing.sm),
-          ],
           Text(
-            day.dayName,
+            workout.dayName,
             style: MayosTypography.pageHeading.copyWith(color: c.textPrimary),
+          ),
+          if (_fromCache) ...<Widget>[
+            const SizedBox(height: MayosSpacing.sm),
+            const _OfflineLoggerNotice(),
+          ],
+          const SizedBox(height: MayosSpacing.md),
+          for (int i = 0; i < workout.exercises.length; i++)
+            _buildExerciseCard(workout, i),
+          MayosButton(
+            key: const ValueKey<String>('logger.addExercise'),
+            label: 'Add exercise',
+            icon: Icons.add,
+            variant: MayosButtonVariant.secondary,
+            onPressed: _addUnplanned,
+          ),
+          const SizedBox(height: MayosSpacing.sm),
+          MayosButton(
+            key: const ValueKey<String>('logger.finish'),
+            label: 'Finish workout',
+            icon: Icons.check,
+            onPressed: _blockReason != null ? null : _finish,
+          ),
+          if (_blockReason != null) ...<Widget>[
+            const SizedBox(height: MayosSpacing.sm),
+            Text(
+              _blockReason!,
+              style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+            ),
+          ],
+          if (_error != null) ...<Widget>[
+            const SizedBox(height: MayosSpacing.sm),
+            Text(
+              _error!,
+              style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExerciseCard(ActiveWorkout workout, int exerciseIndex) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final ActiveWorkoutExercise exercise = workout.exercises[exerciseIndex];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: MayosSpacing.md),
+      child: MayosCard(
+        padding: const EdgeInsets.fromLTRB(
+            MayosSpacing.md, MayosSpacing.sm, MayosSpacing.md, MayosSpacing.xxs),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    exercise.exerciseName,
+                    style: MayosTypography.exerciseTitle
+                        .copyWith(color: c.accent),
+                  ),
+                ),
+                if (exercise.unplanned) _unplannedTag(c),
+              ],
+            ),
+            _tableHeader(c),
+            for (int setIndex = 0; setIndex < exercise.sets.length; setIndex++)
+              _buildSetRow(workout, exerciseIndex, setIndex),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: MayosButton(
+                key: ValueKey<String>('logger.addSet.$exerciseIndex'),
+                label: 'Add set',
+                icon: Icons.add,
+                variant: MayosButtonVariant.tertiary,
+                expand: false,
+                onPressed: () => _controller.addSet(exerciseIndex),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _unplannedTag(MayosThemeExtension c) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: c.secondarySurface,
+          borderRadius: MayosRadii.pillRadius,
+        ),
+        child: Text('Unplanned', style: MayosTypography.caption),
+      );
+
+  static const List<int> _flex = <int>[2, 5, 3, 3, 2, 2];
+
+  Widget _tableHeader(MayosThemeExtension c) {
+    final TextStyle st = MayosTypography.caption
+        .copyWith(color: c.textMuted, fontWeight: FontWeight.w700);
+    const List<String> labels = <String>['SET', 'PREVIOUS', 'KG', 'REPS', 'RIR', '✓'];
+    return Padding(
+      padding: const EdgeInsets.only(top: MayosSpacing.xs),
+      child: Row(
+        children: <Widget>[
+          for (int i = 0; i < labels.length; i++)
+            Expanded(
+              flex: _flex[i],
+              child: Text(labels[i],
+                  textAlign: TextAlign.center, style: st),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSetRow(ActiveWorkout workout, int exerciseIndex, int setIndex) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final ActiveWorkoutExercise exercise = workout.exercises[exerciseIndex];
+    final ActiveWorkoutSet set = exercise.sets[setIndex];
+    final BaselineSet? prev =
+        previousSetFor(exercise, setIndex, workout.baselines);
+    final bool muted = set.isWarmup;
+
+    Widget row = Container(
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      decoration: BoxDecoration(
+        color: set.ticked ? c.success.withValues(alpha: 0.16) : null,
+        borderRadius: MayosRadii.smallRadius,
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            flex: _flex[0],
+            child: InkWell(
+              key: ValueKey<String>('logger.setlabel.$exerciseIndex.$setIndex'),
+              borderRadius: MayosRadii.smallRadius,
+              onTap: () => _controller.toggleWarmup(exerciseIndex, setIndex),
+              child: SizedBox(
+                height: 44,
+                child: Center(
+                  child: Text(
+                    set.isWarmup ? 'W' : '${setIndex + 1}',
+                    style: MayosTypography.numeric.copyWith(
+                      fontSize: 17,
+                      color: muted ? c.textMuted : c.textPrimary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            flex: _flex[1],
+            child: Text(
+              previousLabel(prev),
+              textAlign: TextAlign.center,
+              style: MayosTypography.caption.copyWith(color: c.textMuted),
+            ),
+          ),
+          _buildCell(
+            exerciseIndex,
+            setIndex,
+            LoggerField.kg,
+            text: set.weightKg > 0
+                ? formatCellWeight(set.weightKg)
+                : (prev == null ? null : formatCellWeight(prev.weightKg)),
+            isHint: set.weightKg <= 0 && prev != null,
+            muted: muted,
+            ticked: set.ticked,
+          ),
+          _buildCell(
+            exerciseIndex,
+            setIndex,
+            LoggerField.reps,
+            text: set.reps > 0
+                ? '${set.reps}'
+                : (prev == null ? null : '${prev.reps}'),
+            isHint: set.reps <= 0 && prev != null,
+            muted: muted,
+            ticked: set.ticked,
+          ),
+          _buildCell(
+            exerciseIndex,
+            setIndex,
+            LoggerField.rir,
+            text: set.rir != null
+                ? formatCellRir(set.rir!)
+                : (prev?.rir == null ? null : formatCellRir(prev!.rir!)),
+            isHint: set.rir == null && prev?.rir != null,
+            muted: muted,
+            ticked: set.ticked,
+          ),
+          Expanded(
+            flex: _flex[5],
+            child: SizedBox(
+              height: kMayosMinTapTarget,
+              width: kMayosMinTapTarget,
+              child: Center(
+                child: InkWell(
+                  key: ValueKey<String>('logger.tick.$exerciseIndex.$setIndex'),
+                  borderRadius: MayosRadii.smallRadius,
+                  onTap: () => _toggleTick(exerciseIndex, setIndex),
+                  child: SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: set.ticked ? c.success : c.surfaceSunken,
+                        borderRadius: MayosRadii.smallRadius,
+                      ),
+                      child: Icon(
+                        Icons.check,
+                        size: 20,
+                        color: set.ticked ? c.onSuccess : c.textMuted,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (exercise.sets.length > 1) {
+      row = Dismissible(
+        key: ValueKey<String>('logger.row.$exerciseIndex.$setIndex'),
+        direction: DismissDirection.endToStart,
+        onDismissed: (_) => _removeSet(exerciseIndex, setIndex),
+        background: Container(
+          color: c.danger,
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: MayosSpacing.md),
+          child: Icon(Icons.delete, color: c.onDanger),
+        ),
+        child: row,
+      );
+    }
+    return row;
+  }
+
+  Widget _buildCell(
+    int exerciseIndex,
+    int setIndex,
+    LoggerField field, {
+    required String? text,
+    required bool isHint,
+    required bool muted,
+    required bool ticked,
+  }) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final bool focused =
+        _focus == LoggerCellFocus(exerciseIndex, setIndex, field);
+    final Color color = text == null
+        ? c.textDisabled
+        : (isHint || muted ? c.textDisabled : c.textPrimary);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: Material(
+        color: focused
+            ? c.selectedSurface
+            : ticked
+                ? Colors.transparent
+                : c.surfaceSunken,
+        shape: RoundedRectangleBorder(
+          borderRadius: MayosRadii.smallRadius,
+          side: BorderSide(
+              color: focused ? c.selectedBorder : Colors.transparent),
+        ),
+        child: InkWell(
+          key: ValueKey<String>(
+              'logger.cell.$exerciseIndex.$setIndex.${field.name}'),
+          borderRadius: MayosRadii.smallRadius,
+          onTap: () => setState(
+              () => _focus = LoggerCellFocus(exerciseIndex, setIndex, field)),
+          child: SizedBox(
+            height: 44,
+            child: Center(
+              child: Text(
+                text ?? '–',
+                style: MayosTypography.numeric.copyWith(
+                  fontSize: 17,
+                  color: color,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSaveStep(ActiveWorkout workout) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final String date =
+        '${_performedDate.year}-${_performedDate.month.toString().padLeft(2, '0')}-'
+        '${_performedDate.day.toString().padLeft(2, '0')}';
+    return SingleChildScrollView(
+      padding: MayosSpacing.screen,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              IconButton(
+                key: const ValueKey<String>('logger.save.back'),
+                tooltip: 'Back to workout',
+                onPressed: _backFromSave,
+                icon: const Icon(Icons.arrow_back),
+              ),
+              Text(
+                'Save workout',
+                style: MayosTypography.sectionHeading
+                    .copyWith(color: c.textPrimary),
+              ),
+            ],
           ),
           const SizedBox(height: MayosSpacing.sm),
           MayosCard(
@@ -310,9 +901,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
             child: MayosSettingsTile(
               icon: Icons.event_outlined,
               title: 'Performed date',
-              subtitle:
-                  '${_performedDate.year}-${_performedDate.month.toString().padLeft(2, '0')}-'
-                  '${_performedDate.day.toString().padLeft(2, '0')}',
+              subtitle: date,
               trailing: Icon(Icons.edit_outlined, size: 20, color: c.textMuted),
               onTap: _pickDate,
             ),
@@ -329,18 +918,6 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
                 setState(() => _readiness = value.round()),
           ),
           const SizedBox(height: MayosSpacing.sm),
-          ..._exercises.map(_buildExerciseCard),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: MayosButton(
-              label: 'Add unplanned exercise',
-              icon: Icons.add,
-              variant: MayosButtonVariant.secondary,
-              expand: false,
-              onPressed: _addUnplanned,
-            ),
-          ),
-          const SizedBox(height: MayosSpacing.lg),
           MayosTextField(
             controller: _notes,
             maxLines: 3,
@@ -353,132 +930,20 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
               style: MayosTypography.bodySecondary.copyWith(color: c.danger),
             ),
           ],
-          if (_saveError != null) ...<Widget>[
+          if (_error != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
             Text(
-              _saveError!,
+              _error!,
               style: MayosTypography.bodySecondary.copyWith(color: c.danger),
             ),
           ],
           const SizedBox(height: MayosSpacing.lg),
           MayosButton(
-            label: 'Finish and save draft',
+            key: const ValueKey<String>('logger.save'),
+            label: 'Save workout',
             icon: Icons.check,
             loading: _saving,
-            onPressed: _saving || _blockReason != null ? null : _finish,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildExerciseCard(_LogExercise exercise) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.md),
-      child: MayosCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    exercise.exerciseName,
-                    style: MayosTypography.exerciseTitle
-                        .copyWith(color: c.textPrimary),
-                  ),
-                ),
-                if (exercise.unplanned)
-                  const Padding(
-                    padding: EdgeInsets.only(right: MayosSpacing.xxs),
-                    child: Chip(label: Text('Unplanned')),
-                  ),
-                Checkbox(
-                  value: exercise.skipped,
-                  onChanged: (bool? value) =>
-                      setState(() => exercise.skipped = value ?? false),
-                ),
-                const Text('Skip'),
-              ],
-            ),
-            if (exercise.targetLabel != null)
-              Text(
-                exercise.targetLabel!,
-                style: MayosTypography.caption.copyWith(color: c.textMuted),
-              ),
-            if (!exercise.skipped) ...<Widget>[
-              const SizedBox(height: MayosSpacing.sm),
-              ...exercise.sets.asMap().entries.map(
-                    (MapEntry<int, _EditableSet> entry) =>
-                        _buildSetRow(exercise, entry.key, entry.value),
-                  ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: MayosButton(
-                  label: 'Add set',
-                  icon: Icons.add,
-                  variant: MayosButtonVariant.tertiary,
-                  expand: false,
-                  onPressed: () => setState(exercise.addSet),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSetRow(_LogExercise exercise, int index, _EditableSet set) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: MayosSpacing.xxs),
-      child: Row(
-        children: <Widget>[
-          SizedBox(width: 24, child: Text('${index + 1}')),
-          Expanded(
-            child: MayosTextField(
-              controller: set.weight,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              label: 'kg',
-              dense: true,
-            ),
-          ),
-          const SizedBox(width: MayosSpacing.xs),
-          Expanded(
-            child: MayosTextField(
-              controller: set.reps,
-              keyboardType: TextInputType.number,
-              label: 'reps',
-              dense: true,
-            ),
-          ),
-          const SizedBox(width: MayosSpacing.xs),
-          Expanded(
-            child: MayosTextField(
-              controller: set.rpe,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              label: 'RPE',
-              dense: true,
-            ),
-          ),
-          IconButton(
-            tooltip: set.isWarmup ? 'Warm-up set' : 'Working set',
-            onPressed: () => setState(() => set.isWarmup = !set.isWarmup),
-            icon: Icon(
-              set.isWarmup ? Icons.local_fire_department : Icons.fitness_center,
-              color: set.isWarmup ? c.accent : null,
-            ),
-          ),
-          IconButton(
-            tooltip: 'Remove set',
-            onPressed: exercise.sets.length <= 1
-                ? null
-                : () => setState(() => exercise.removeSet(index)),
-            icon: const Icon(Icons.close),
+            onPressed: _saving || _blockReason != null ? null : _save,
           ),
         ],
       ),
@@ -518,118 +983,9 @@ class _OfflineLoggerNotice extends StatelessWidget {
   }
 }
 
-class _EditableSet {
-  _EditableSet({
-    required double weight,
-    required int reps,
-    required double rpe,
-  })  : weight = TextEditingController(text: _format(weight)),
-        reps = TextEditingController(text: '$reps'),
-        rpe = TextEditingController(text: _format(rpe));
-
-  final TextEditingController weight;
-  final TextEditingController reps;
-  final TextEditingController rpe;
-  bool isWarmup = false;
-
-  static String _format(double value) => value == value.roundToDouble()
-      ? value.round().toString()
-      : value.toStringAsFixed(1);
-
-  WorkoutSetLog toLog() => WorkoutSetLog(
-        weightKg: double.tryParse(weight.text) ?? 0,
-        reps: int.tryParse(reps.text) ?? 0,
-        rpe: double.tryParse(rpe.text) ?? 8.5,
-        isWarmup: isWarmup,
-      );
-
-  void dispose() {
-    weight.dispose();
-    reps.dispose();
-    rpe.dispose();
-  }
-}
-
-class _LogExercise {
-  _LogExercise({
-    required this.exercise,
-    required this.sets,
-    this.unplanned = false,
-    this.targetLabel,
-  });
-
-  factory _LogExercise.fromPrescription(
-      ProgramExercise exercise, PrescriptionTarget? target) {
-    final double weight = target?.projectedWeight ?? 0;
-    final double rpe = target?.targetRpeCap ?? exercise.targetRpe;
-    final int setCount = target?.effectiveSets ?? exercise.targetSets;
-    return _LogExercise(
-      exercise: exercise.toJson(),
-      sets: <_EditableSet>[
-        for (int i = 0; i < setCount; i++)
-          _EditableSet(weight: weight, reps: exercise.targetRepsMin, rpe: rpe),
-      ],
-      targetLabel: exercise.prescription,
-    );
-  }
-
-  factory _LogExercise.unplanned(ExerciseCatalogEntry entry) {
-    return _LogExercise(
-      exercise: <String, dynamic>{
-        'exercise_id': entry.id,
-        'exercise_name': entry.name,
-        'target_sets': 3,
-        'target_reps_min': 8,
-        'target_reps_max': 12,
-        'target_rpe': 8.0,
-        'rest_seconds': 120,
-        'notes': null,
-      },
-      sets: <_EditableSet>[
-        _EditableSet(weight: 0, reps: 8, rpe: 8.0),
-        _EditableSet(weight: 0, reps: 8, rpe: 8.0),
-        _EditableSet(weight: 0, reps: 8, rpe: 8.0),
-      ],
-      unplanned: true,
-    );
-  }
-
-  final Map<String, dynamic> exercise;
-  final bool unplanned;
-  final String? targetLabel;
-  List<_EditableSet> sets;
-  bool skipped = false;
-
-  String get exerciseId => exercise['exercise_id'] as String;
-  String get exerciseName => exercise['exercise_name'] as String;
-
-  bool get hasWorkingSets =>
-      !skipped && sets.any((_EditableSet set) => !set.isWarmup);
-
-  void addSet() {
-    final _EditableSet last = sets.isEmpty
-        ? _EditableSet(weight: 0, reps: 8, rpe: 8)
-        : _EditableSet(
-            weight: double.tryParse(sets.last.weight.text) ?? 0,
-            reps: int.tryParse(sets.last.reps.text) ?? 8,
-            rpe: double.tryParse(sets.last.rpe.text) ?? 8,
-          );
-    sets = <_EditableSet>[...sets, last];
-  }
-
-  void removeSet(int index) {
-    final _EditableSet removed = sets[index];
-    sets = <_EditableSet>[...sets]..removeAt(index);
-    removed.dispose();
-  }
-
-  void dispose() {
-    for (final _EditableSet set in sets) {
-      set.dispose();
-    }
-  }
-}
-
+/// Searches the real catalog so an unplanned exercise carries an id the
+/// service can validate, rather than an invented one that would be refused on
+/// sync (ADR 020/033).
 class _UnplannedExerciseDialog extends ConsumerStatefulWidget {
   const _UnplannedExerciseDialog();
 
@@ -652,9 +1008,6 @@ class _UnplannedExerciseDialogState
     super.dispose();
   }
 
-  /// Searches the real catalog so an unplanned exercise carries an id the
-  /// service can validate, rather than an invented one that would be refused
-  /// on sync (ADR 020/033).
   Future<void> _search() async {
     final String query = _query.text.trim();
     if (query.isEmpty) {

@@ -18,6 +18,8 @@ dependencies:
   # app opens it in the system browser rather than embedding a WebView or
   # rendering its own copy of the text.
   url_launcher: ^6.3.0
+  # The workout logger keeps the screen awake while it is open (#123/#107).
+  wakelock_plus: ^1.2.8
 
 dev_dependencies:
   flutter_test:

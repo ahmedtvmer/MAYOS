@@ -116,6 +116,23 @@ Future<void> _openSettings(WidgetTester tester) async {
   await _pumpUntilFound(tester, find.text('Appearance'));
 }
 
+/// A frozen baseline for bench press so the table logger's tick can fill its
+/// empty cells from the previous session (#123).
+Map<String, dynamic> _benchBaseline() => <String, dynamic>{
+      'exercise_id': 'bench_press',
+      'sessions_logged': 3,
+      'max_weight_kg': 100.0,
+      'best_e1rm_kg': 121.67,
+      'last_session': <String, dynamic>{
+        'performed_date': '2026-09-26',
+        'sets': <Map<String, dynamic>>[
+          <String, dynamic>{'weight_kg': 100.0, 'reps': 5, 'rir': 1.0},
+          <String, dynamic>{'weight_kg': 95.0, 'reps': 6, 'rir': 2.0},
+          <String, dynamic>{'weight_kg': 92.5, 'reps': 6, 'rir': 2.0},
+        ],
+      },
+    };
+
 void main() {
   group('draft storage', () {
     test('persists across a simulated restart (new service, same storage)',
@@ -649,7 +666,7 @@ void main() {
       await _pumpUntilFound(tester, find.text('Bench Press'));
 
       final Finder finish =
-          find.widgetWithText(FilledButton, 'Finish and save draft');
+          find.widgetWithText(FilledButton, 'Finish workout');
       expect(finish, findsOneWidget);
       expect(tester.widget<FilledButton>(finish).onPressed, isNull);
       expect(
@@ -736,6 +753,7 @@ void main() {
   testWidgets('logging a workout saves a draft and shows the workouts screen',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+    fake.baselinesBody = <Map<String, dynamic>>[_benchBaseline()];
     final InMemoryDraftStore store = InMemoryDraftStore();
     await _pumpApp(tester, fake, draftStore: store);
 
@@ -744,10 +762,26 @@ void main() {
     await tester.tap(find.text('Log workout'));
     await _pumpUntilFound(tester, find.text('Bench Press'));
 
-    final Finder finish = find.text('Finish and save draft');
+    // The tick fills the empty cells from the frozen baseline's previous set.
+    final Finder firstTick = find.byKey(const ValueKey<String>('logger.tick.0.0'));
+    await tester.ensureVisible(firstTick);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(firstTick);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('100'), findsOneWidget);
+
+    final Finder finish = find.widgetWithText(FilledButton, 'Finish workout');
     await tester.ensureVisible(finish);
     await tester.pump(const Duration(milliseconds: 100));
     await tester.tap(finish);
+    await _pumpUntilFound(tester, find.text("2 sets aren't ticked"));
+    await tester.tap(find.text('Discard unticked sets and finish'));
+    await _pumpUntilFound(tester, find.text('Performed date'));
+
+    final Finder save = find.widgetWithText(FilledButton, 'Save workout');
+    await tester.ensureVisible(save);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(save);
     await _pumpUntilFound(tester, find.text('Workouts'));
 
     final List<WorkoutDraft> drafts = await store.read(_accountA);
@@ -759,15 +793,17 @@ void main() {
   testWidgets('an unplanned exercise is picked from the catalog with a real id',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+    fake.baselinesBody = <Map<String, dynamic>>[_benchBaseline()];
     final InMemoryDraftStore store = InMemoryDraftStore();
     await _pumpApp(tester, fake, draftStore: store);
 
     await tester.tap(find.text('Program'));
     await _pumpUntilFound(tester, find.text('Log workout'));
     await tester.tap(find.text('Log workout'));
-    await _pumpUntilFound(tester, find.text('Performed date'));
+    await _pumpUntilFound(tester, find.text('Bench Press'));
 
-    final Finder addUnplanned = find.text('Add unplanned exercise');
+    final Finder addUnplanned =
+        find.widgetWithText(OutlinedButton, 'Add exercise');
     await tester.ensureVisible(addUnplanned);
     await tester.pump(const Duration(milliseconds: 100));
     await tester.tap(addUnplanned);
@@ -779,10 +815,25 @@ void main() {
     await tester.tap(find.text('Bicep Curl'));
     await _pumpUntilFound(tester, find.text('Unplanned'));
 
-    final Finder finish = find.text('Finish and save draft');
+    // One ticked working set is enough to finish; the unplanned exercise is
+    // kept as a skipped exercise because nothing of it was ticked.
+    final Finder firstTick = find.byKey(const ValueKey<String>('logger.tick.0.0'));
+    await tester.ensureVisible(firstTick);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(firstTick);
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final Finder finish = find.widgetWithText(FilledButton, 'Finish workout');
     await tester.ensureVisible(finish);
     await tester.pump(const Duration(milliseconds: 100));
     await tester.tap(finish);
+    await _pumpUntilFound(tester, find.text("2 sets aren't ticked"));
+    await tester.tap(find.text('Discard unticked sets and finish'));
+    await _pumpUntilFound(tester, find.text('Performed date'));
+    final Finder save = find.widgetWithText(FilledButton, 'Save workout');
+    await tester.ensureVisible(save);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(save);
     await _pumpUntilFound(tester, find.text('Workouts'));
 
     final List<WorkoutDraft> drafts = await store.read(_accountA);
@@ -790,6 +841,12 @@ void main() {
     expect(
       drafts.single.exercises.map((DraftExercise e) => e.exerciseId),
       contains('bicep_curl'),
+    );
+    expect(
+      drafts.single.exercises
+          .firstWhere((DraftExercise e) => e.exerciseId == 'bicep_curl')
+          .skipped,
+      isTrue,
     );
   });
 

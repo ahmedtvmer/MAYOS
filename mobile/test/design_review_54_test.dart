@@ -520,7 +520,7 @@ void main() {
       await tester.tap(find.text('Program'));
       await _pumpUntilFound(tester, find.text('Log workout'));
       await tester.tap(find.text('Log workout'));
-      await _pumpUntilFound(tester, find.text('Performed date'));
+      await _pumpUntilFound(tester, find.text('Finish workout'));
       await _assertNoOverflowAt2x(tester, _small);
     });
 
