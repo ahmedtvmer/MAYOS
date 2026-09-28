@@ -5,13 +5,16 @@
 # release_command: the release Machine cannot mount the volume, so catalog
 # initialization and vector seeding run once inside the API Machine (see
 # docs/DEPLOYMENT.md). Daily backups (#41) run inside this same always-on
-# Machine, never on a detached Machine that cannot mount /data. The missed-day
-# alert sweep (#31) runs in-process in this Machine once at startup and hourly
-# (MAYOS_ALERT_SWEEP_INTERVAL_SECONDS, default 3600; 0 disables); use
-# scripts/run_alert_sweep.py to force an immediate pass. The model spend alert
-# (#39, ADR 038) rides that same sweep and is deduped once per UTC month; the
-# owner address comes from the OWNER_ALERT_EMAIL secret and usage is reviewed
-# with scripts/model_usage_report.py.
+# Machine, never on a detached Machine that cannot mount /data
+# (MAYOS_DAILY_BACKUP_INTERVAL_SECONDS, default 3600; 0 disables; at most one
+# snapshot per UTC day); use scripts/backup_now.py to force one and
+# scripts/restore_backup.py --on-next-boot to restore.
+# The missed-day alert sweep (#31) runs in-process in this Machine once at
+# startup and hourly (MAYOS_ALERT_SWEEP_INTERVAL_SECONDS, default 3600; 0
+# disables); use scripts/run_alert_sweep.py to force an immediate pass. The
+# model spend alert (#39, ADR 038) rides that same sweep and is deduped once per
+# UTC month; the owner address comes from the OWNER_ALERT_EMAIL secret and usage
+# is reviewed with scripts/model_usage_report.py.
 
 app = "mayos-api"
 primary_region = "fra"

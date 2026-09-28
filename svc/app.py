@@ -84,34 +84,46 @@ def _register_model_metering() -> None:
     model_metering.set_recorder(record_model_usage)
 
 DEFAULT_ALERT_SWEEP_INTERVAL_SECONDS = 3600.0
+DEFAULT_DAILY_BACKUP_INTERVAL_SECONDS = 3600.0
 
 
-def _alert_sweep_interval_seconds() -> float:
-    """The in-process sweep cadence; ``MAYOS_ALERT_SWEEP_INTERVAL_SECONDS=0`` disables it."""
-    raw = os.getenv("MAYOS_ALERT_SWEEP_INTERVAL_SECONDS", str(DEFAULT_ALERT_SWEEP_INTERVAL_SECONDS))
+def _env_interval_seconds(name: str, default: float) -> float:
+    """Reads a non-negative interval in seconds; malformed values use ``default``."""
+    raw = os.getenv(name, str(default))
     try:
         return float(raw)
     except ValueError:
-        logger.warning("Invalid MAYOS_ALERT_SWEEP_INTERVAL_SECONDS=%r; using the default.", raw)
-        return DEFAULT_ALERT_SWEEP_INTERVAL_SECONDS
+        logger.warning("Invalid %s=%r; using the default.", name, raw)
+        return default
 
 
-async def _alert_sweep_loop(db: object, interval_seconds: float) -> None:
-    """Runs the alert sweep once at startup, then every interval, until cancelled.
+async def _periodic_loop(db: object, interval_seconds: float, step: object, label: str) -> None:
+    """Runs ``step(db)`` once at startup, then every interval, until cancelled.
 
-    Evaluations are idempotent and due-ness is computed per player-local day, so
-    an hourly cadence is sufficient (ADR 030/031).
+    One generic loop backs both the alert sweep and the daily backup. Either job
+    is idempotent on its own schedule, so a restart-biased cadence only repeats a
+    step that is already a no-op. A failure is logged and never stops the loop.
     """
-    from service.alert_sweep import run_sweep
-
     while True:
         try:
-            await asyncio.to_thread(run_sweep, db)
+            await asyncio.to_thread(step, db)
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("Alert sweep iteration failed; the loop continues")
+            logger.exception("%s iteration failed; the loop continues", label)
         await asyncio.sleep(interval_seconds)
+
+
+async def _cancel_loop(task: asyncio.Task[None] | None, label: str) -> None:
+    """Cancels a periodic loop and waits for it to exit before shutdown."""
+    if task is None:
+        return
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    logger.info("%s loop stopped.", label)
 
 
 @asynccontextmanager
@@ -122,6 +134,7 @@ async def lifespan(app: FastAPI):
 
     _ready.update(model=False, catalog=False, storage=False, draining=False)
     sweep_task: asyncio.Task[None] | None = None
+    backup_task: asyncio.Task[None] | None = None
     unit_test_mode = os.getenv("SKIP_LLM_LOAD") == "true"
     if unit_test_mode:
         logger.info("SKIP_LLM_LOAD set; skipping catalog init and LLM warmup (unit-test mode).")
@@ -137,6 +150,18 @@ async def lifespan(app: FastAPI):
             # Complete any deletion whose catalog transaction did not finish, so
             # a crash cannot leave a half-deleted account (ADR 015/039).
             await asyncio.to_thread(db.replay_deletions)
+            # A restore is a boot-time step: the only volume-owning writer cannot
+            # be scaled to zero for an offline restore, and restoring while it
+            # serves is unsafe. Apply the scheduled snapshot in place (restoring
+            # into this live connection) and reapply the current deletions record
+            # BEFORE readiness goes green or any loop starts. On failure the
+            # marker stays and we fail closed instead of serving a half-restored
+            # catalog (#41, ADR 044).
+            from database.backup import apply_pending_restore
+
+            applied_restore = await asyncio.to_thread(apply_pending_restore, db)
+            if applied_restore is not None:
+                logger.warning("Boot-time restore applied: %s", applied_restore)
             _ready["catalog"] = True
         except StorageNotReady:
             logger.exception(
@@ -150,10 +175,30 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.exception("LLM warmup failed during lifespan startup")
 
-    interval_seconds = _alert_sweep_interval_seconds()
-    if _ready["catalog"] and _ready["storage"] and not unit_test_mode and interval_seconds > 0:
-        sweep_task = asyncio.create_task(_alert_sweep_loop(app.state.db, interval_seconds))
-        logger.info("Alert sweep loop started (every %ss).", interval_seconds)
+    loops_enabled = _ready["catalog"] and _ready["storage"] and not unit_test_mode
+    # The alert sweep runs in-process; its evaluations are idempotent and due-ness
+    # is per player-local day, so an hourly cadence is sufficient (ADR 030/031).
+    sweep_interval = _env_interval_seconds("MAYOS_ALERT_SWEEP_INTERVAL_SECONDS", DEFAULT_ALERT_SWEEP_INTERVAL_SECONDS)
+    if loops_enabled and sweep_interval > 0:
+        from service.alert_sweep import run_sweep
+
+        sweep_task = asyncio.create_task(_periodic_loop(app.state.db, sweep_interval, run_sweep, "Alert sweep"))
+        logger.info("Alert sweep loop started (every %ss).", sweep_interval)
+
+    # Daily online backups run in this same always-on API Machine, because a
+    # detached Machine cannot mount /data (#41). The job creates at most one
+    # snapshot per UTC day, so the default hourly cadence just retries a failed
+    # day sooner. 0 disables the loop.
+    backup_interval = _env_interval_seconds(
+        "MAYOS_DAILY_BACKUP_INTERVAL_SECONDS", DEFAULT_DAILY_BACKUP_INTERVAL_SECONDS
+    )
+    if loops_enabled and backup_interval > 0:
+        from database.backup import create_daily_backup
+
+        backup_task = asyncio.create_task(
+            _periodic_loop(app.state.db, backup_interval, create_daily_backup, "Daily backup")
+        )
+        logger.info("Daily backup loop started (every %ss).", backup_interval)
 
     logger.info(
         "Lifespan startup complete (model=%s catalog=%s storage=%s).",
@@ -163,13 +208,8 @@ async def lifespan(app: FastAPI):
     )
     yield
     _ready["draining"] = True
-    if sweep_task is not None:
-        sweep_task.cancel()
-        try:
-            await sweep_task
-        except asyncio.CancelledError:
-            pass
-        logger.info("Alert sweep loop stopped.")
+    await _cancel_loop(sweep_task, "Alert sweep")
+    await _cancel_loop(backup_task, "Daily backup")
     from svc.llm import unload_all
 
     await asyncio.to_thread(unload_all)

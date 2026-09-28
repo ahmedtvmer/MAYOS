@@ -6,6 +6,7 @@ and login touch only SQLite, so no LLM or external service is involved.
 """
 
 import os
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -101,6 +102,16 @@ def test_readyz_flips_when_data_root_becomes_unwritable(clean_db, monkeypatch, t
 def _require_persistent_env(monkeypatch, data_dir: Path):
     monkeypatch.setenv("MAYOS_DATA_DIR", str(data_dir))
     monkeypatch.setenv("MAYOS_REQUIRE_PERSISTENT_DATA", "true")
+
+
+def test_volume_snapshots_disabled_on_every_mount():
+    """ADR 015/044: Fly scheduled snapshots stay off; backups are owned by #41."""
+    fly_toml = Path(__file__).resolve().parent.parent / "fly.toml"
+    config = tomllib.loads(fly_toml.read_text())
+    mounts = config.get("mounts", [])
+    assert mounts, "fly.toml declares no [[mounts]]"
+    for mount in mounts:
+        assert mount.get("scheduled_snapshots") is False, f"mount {mount.get('source')} has snapshots enabled"
 
 
 def test_required_persistent_root_accepts_real_mount(monkeypatch, tmp_path):

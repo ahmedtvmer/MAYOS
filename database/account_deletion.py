@@ -10,6 +10,7 @@ import threading
 from datetime import UTC, datetime
 from typing import Any
 
+from database.backup import remove_ledger_from_daily_backups
 from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
@@ -307,6 +308,13 @@ class AccountDeletionMixin:
                 shutil.rmtree(ledger_backup_dir)
             except OSError as exc:
                 logger.warning(f"Failed to remove ledger backups {ledger_backup_dir}: {exc}")
+        # A daily snapshot's user-specific ledger copy is removed with the
+        # account too (ADR 015/039). The catalog rows inside whole-catalog
+        # snapshots remain the documented restricted recovery exception (#41).
+        try:
+            remove_ledger_from_daily_backups(self, sanitized)
+        except OSError as exc:
+            logger.warning(f"Failed to remove daily-backup copies of ledger {sanitized}: {exc}")
 
     def replay_deletions(self, *, full: bool = False) -> int:
         """Replays durable deletion records; returns how many were processed.

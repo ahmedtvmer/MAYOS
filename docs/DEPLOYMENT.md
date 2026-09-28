@@ -348,69 +348,121 @@ Reset emails are sent via SMTP when configured; with `SMTP_HOST` unset, links ar
 
 ## 9. Backup, Disaster Recovery & WAL Checkpointing
 
-User accounts are isolated SQLite files (`db/users/<trainee_id>.db`) in WAL mode; the shared catalog (`db/catalog.db`) additionally holds account-recovery identity. Backups require consistent point-in-time snapshots:
+User accounts are isolated SQLite files (`db/users/<trainee_id>.db`) in WAL mode; the shared catalog (`db/catalog.db`) additionally holds account-recovery identity. Backups require consistent point-in-time snapshots, so the daily job snapshots every database with the SQLite backup API (`sqlite3.Connection.backup()`) rather than copying files: a file copy of a WAL database can capture a torn state or miss committed pages still in the `-wal` file.
 
-### 1. Manual WAL Checkpoint Flush
+### 1. Daily online backups (issue #41)
 
-```bash
-docker compose exec myos-api sqlite3 /app/db/catalog.db "PRAGMA wal_checkpoint(TRUNCATE);"
-for db_file in ./db/users/*.db; do
-  sqlite3 "$db_file" "PRAGMA wal_checkpoint(TRUNCATE);"
-done
+One job backs up the catalog and **every ledger of a live account** into a per-day directory:
+
+```
+db/backups/daily/<YYYYMMDD>/catalog.db        # whole catalog + account/recovery identity
+db/backups/daily/<YYYYMMDD>/ledgers/<id>.db   # one consistent copy per live-account ledger
 ```
 
-### 2. Automated Backup Archive
+Ledger copies live under the snapshot's `ledgers/` subdirectory so a ledger id
+of `catalog` can never collide with the catalog copy, and a restore never writes
+a ledger over the live catalog.
 
-Back up the catalog and ledgers, but **never** roll `deletions.db` back with them:
+* **Online and consistent.** Each file is written with `Connection.backup()` while the service keeps serving; no checkpoint-and-copy step is needed.
+* **Runs in the API Machine.** The job is scheduled in-process in the always-on FastAPI writer, once at startup and every `MAYOS_DAILY_BACKUP_INTERVAL_SECONDS` (default `3600`; `0` disables). It never runs on a detached scheduled Machine, which cannot mount `/data` (see [§10](#10-flyio-closed-trial-api-deployment-fastapi-only)). Force a pass with `scripts/backup_now.py`.
+* **Retriable and idempotent.** A run stages into a hidden temp directory and atomically renames it into place; a failure publishes nothing, and the same day can be retried. A valid snapshot for the current UTC day is left alone, so the hourly default just retries a failed day sooner rather than making extra copies. A deletion landing mid-run is detected under the catalog lock before the rename, so its staged ledger copy is dropped rather than republished.
+* **Bounded retention.** Snapshots older than `MAYOS_BACKUP_RETENTION_DAYS` (default `30`, clamped to `1..30`) are pruned. The 30-day ceiling exists because ADR 015 discloses that a **restricted whole-catalog recovery backup may retain deleted rows for up to 30 days** — a longer window would exceed what users were told.
+* **`deletions.db` is never inside a snapshot.** It is the durable record (ADR 015/039) that keeps a restored catalog from resurrecting a deleted account. The daily job deliberately does not copy it; keep it backed up append-only and separately (below).
+
+> **Disclosure text (ADR 015).** Restricted whole-catalog recovery backups may
+> retain deleted rows (for example, an account's former catalog row) for up to
+> **30 days** after deletion, as disclosed to users. User-specific copies are
+> removed with the account: the live ledger, its `db/backups/<ledger>/`
+> migration snapshots, **and its copy inside every daily snapshot** are deleted.
+> The catalog rows inside whole-catalog snapshots are the documented exception.
+
+### 2. Durable deletion record (outside every snapshot)
+
+Back the deletion record up on its own, append-only; never roll it back:
 
 ```bash
-# Catalog + ledgers (restorable as a point-in-time snapshot).
-tar -czvf "myos_backup_$(date +%Y%m%d_%H%M%S).tar.gz" \
-  ./db/catalog.db ./db/users/*.db
-
-# The deletion record is append-only and kept OUTSIDE that snapshot. Copy it to
-# a separate, append-only location (e.g. object storage with versioning); do not
-# restore an older copy over a newer one.
+# Append-only copy, kept apart from the catalog archive.
 cp ./db/deletions.db "/backups/deletions/deletions_$(date +%Y%m%d_%H%M%S).db"
 ```
 
 > **Why `deletions.db` must outlive the catalog snapshot (ADR 015/039).** The
 > durable deletion record is what stops a restored catalog from resurrecting an
 > account its owner deleted. It deliberately lives beside the catalog but outside
-> every catalog snapshot. Restoring it alongside the catalog (or restoring an
-> older copy over the live one) can undo deletions. The restore procedure below
-> therefore keeps the **current** `deletions.db` and replays it.
+> every snapshot. Restoring it alongside the catalog (or restoring an older copy
+> over the live one) can undo deletions. The restore procedure below therefore
+> keeps the **current** `deletions.db` and replays it.
 
 ### 3. Migration Snapshots (ADR 005)
 
-Lazy schema migrations already produce **atomic online snapshots** via `sqlite3.Connection.backup()` into `db/backups/<user>/`, with a 3+1 retention policy (three rolling session snapshots + one immutable pre-migration snapshot). Include `./db/backups/` in archives for belt-and-braces recovery.
+Lazy schema migrations already produce **atomic online snapshots** via `sqlite3.Connection.backup()` into `db/backups/<user>/`, with a 3+1 retention policy (three rolling session snapshots + one immutable pre-migration snapshot). These are per-ledger and are removed with the account.
 
-### 4. Restoring a Ledger
+### 4. Restoring from a daily snapshot
 
-1. Stop the stack: `docker compose down`
-2. Extract the catalog and ledgers (e.g. `./db/catalog.db` and `./db/users/<ledger_id>.db`).
-3. **Keep the current `db/deletions.db`** — do not overwrite it with a backup copy.
-4. Remove dangling WAL/SHM files:
-   ```bash
-   rm -f ./db/users/<ledger_id>.db-wal ./db/users/<ledger_id>.db-shm
-   ```
-5. Run the full deletion replay, then start the stack:
-   ```bash
-   python scripts/reapply_deletions.py \
-     --catalog db/catalog.db --users-dir db/users --backups-dir db/backups
-   docker compose up -d
-   ```
-   A ledger newer than the engine's target schema is refused with a clear upgrade
-   message; an older one migrates automatically with a snapshot taken first.
-6. **The replay force-deletes every recorded account.** If the restored catalog
-   reintroduced a deleted account, its row is forced back to `status='deleted'`
-   (epoch bumped, relationships ended/cleared) and its ledger and
-   `db/backups/<ledger_id>/` are removed again. This is automatic at service
-   startup too (an incremental replay), but the explicit full replay after a
-   restore is the guaranteed path because a restored catalog may postdate the
-   records' `applied_at` markers. If a deleted username now points at a new
-   account, the replay keys on the immutable `account_id`, so the new account is
-   untouched. See ADR 039.
+**Immediate (local/offline) restore.** When the API is stopped and holds no
+catalog, restore the snapshot directly; `restore_daily_backup` already reapplies
+the current deletion record:
+
+```bash
+docker compose down
+
+# Restore the chosen snapshot into the live data dir and replay deletions.
+python scripts/restore_backup.py --latest \
+  --catalog db/catalog.db --users-dir db/users --backups-dir db/backups
+
+docker compose up -d
+```
+
+An explicit `python scripts/reapply_deletions.py --catalog db/catalog.db
+--users-dir db/users --backups-dir db/backups` pass afterwards is optional — it
+is a belt-and-braces confirmation only, because `restore_backup.py` already ran
+the full replay.
+
+**Boot-time (Fly) restore.** On Fly the single API Machine is the only writer
+that can mount `/data` and cannot be scaled to zero for an offline restore, and
+restoring while it serves is unsafe. Schedule the restore instead; the Machine
+applies it at the next boot, before it serves (see
+[§10.7](#107-daily-backups-and-restore-issue-41)):
+
+```bash
+python scripts/restore_backup.py --latest --on-next-boot
+# then restart the API Machine (Fly) — see §10.7.
+```
+
+`scripts/restore_backup.py` restores `catalog.db` in place and writes the
+snapshot's ledgers into `db/users/`, then calls the full deletion replay
+(`reapply_deletions()`). A ledger newer than the engine's target schema is
+refused with a clear upgrade message; an older one migrates automatically with a
+snapshot taken first.
+
+**Orphaned ledgers.** An account created *after* the snapshot has no row in the
+restored catalog, so its `db/users/<id>.db` would strand its username (registration
+refuses a username whose ledger exists, and there is no account to log in to or
+delete). After the replay, the restore moves every live ledger file (and its
+`-wal`/`-shm`) not owned by a live account in the restored catalog into
+`db/backups/restore-orphans/<timestamp>/` — **moved, not deleted**, so the owner
+can recover it, and pruned by the same bounded retention as daily snapshots. The
+moved ids are reported in the restore summary, and the username can then be
+registered again.
+
+**The replay force-deletes every recorded account.** If the restored catalog
+reintroduced a deleted account, its row is forced back to `status='deleted'`
+(epoch bumped, relationships ended/cleared) and its ledger and
+`db/backups/<ledger_id>/` are removed again. This is automatic at service
+startup too (an incremental replay), but the explicit full replay after a
+restore is the guaranteed path because a restored catalog may postdate the
+records' `applied_at` markers. If a deleted username now points at a new
+account, the replay keys on the immutable `account_id`, so the new account is
+untouched. See ADR 039.
+
+### 5. Dry-checking a snapshot
+
+`db/backups/daily/<date>/` is an ordinary SQLite tree; inspect it without
+touching the live data:
+
+```bash
+sqlite3 db/backups/daily/20260928/catalog.db "SELECT COUNT(*) FROM exercises;"
+sqlite3 db/backups/daily/20260928/ledgers/<ledger_id>.db "PRAGMA user_version;"
+```
 
 ---
 
@@ -451,6 +503,8 @@ and normal requests all use the volume:
 /data/deletions.db    # durable account-deletion records (outside catalog snapshots)
 /data/users/<id>.db   # per-account ledgers (WAL)
 /data/backups/<id>/   # migration/rolling snapshots
+/data/backups/daily/<YYYYMMDD>/  # daily catalog + live-account ledger snapshots (#41)
+/data/backups/restore-orphans/<ts>/  # ledgers stranded by an older-snapshot restore (#41)
 ```
 
 The deletion-record path is overridable with `MAYOS_DELETIONS_DB` (or the
@@ -581,16 +635,61 @@ fly ssh console -C "python scripts/reset_password.py <trainee_id>"
 The CLI inherits `MAYOS_DATA_DIR` from the Machine and writes to `/data`, so the
 reset lands on the same catalog/ledger the API uses.
 
-### 10.7 Deferred to later tickets
+### 10.7 Daily backups and restore (issue #41)
 
-- **Daily backups/restore (#41) and spend/alert jobs (#39):** not part of this
-  baseline. When they land they must run inside this always-on API Machine,
-  because a detached scheduled Machine cannot mount `/data`.
+The daily backup job runs **in-process in this API Machine** (once at startup,
+then every `MAYOS_DAILY_BACKUP_INTERVAL_SECONDS`, default `3600`; `0` disables),
+writing consistent SQLite snapshots to `/data/backups/daily/<YYYYMMDD>/`. It must
+not move to a detached scheduled Machine, which cannot mount `/data`. It creates
+at most one snapshot per UTC day, so the hourly default only retries a failed day
+sooner. Retention is `MAYOS_BACKUP_RETENTION_DAYS` (default `30`, clamped to
+`1..30`); the 30-day ceiling matches ADR 015's disclosed restricted whole-catalog
+recovery window. `/data/deletions.db` is never copied into a snapshot.
+
+```bash
+# Force one now (safe if today's snapshot already exists).
+fly ssh console -C "python scripts/backup_now.py"
+fly ssh console -C "ls -la /data/backups/daily"
+
+# Schedule a restore of the newest snapshot; it applies on the next boot.
+fly ssh console -C "python scripts/restore_backup.py --latest --on-next-boot"
+fly machine restart <machine-id>        # or: fly apps restart mayos-api
+```
+
+`--on-next-boot` only validates the snapshot and atomically writes
+`/data/backups/restore-pending.json`. The Machine's next boot applies it
+**before it serves** (before readiness goes green): it restores `catalog.db` and
+the snapshot's ledgers in place, runs the full deletion replay against the
+current `/data/deletions.db`, quarantines any ledger stranded by the older
+snapshot, then removes the marker. If the restore fails, the Machine **stays
+not-ready with the marker still in place** and the failure logged loudly, so a
+half-restored catalog is never served. The operator fixes the cause and restarts
+the Machine; the boot retries and clears the marker on success. Verify after the
+restart:
+
+```bash
+fly status
+fly checks list                          # /healthz and /readyz must pass
+fly ssh console -C "ls /data/backups/restore-pending.json"   # must be absent
+```
+
+Why not scale to zero and restore offline? The single API Machine is the only
+writer that can mount `/data`; with zero Machines there is nothing to `ssh` into
+and no volume to restore onto. The boot-time marker is the executable equivalent:
+restore happens on the Machine that owns the volume, while nothing is serving.
+
+`scripts/restore_backup.py` (without `--on-next-boot`) still restores
+immediately for local/offline use, keeping the current `/data/deletions.db`. See
+[§9](#9-backup-disaster-recovery--wal-checkpointing) for the full procedure and
+the deletion-replay guarantees.
+
+### 10.8 Deferred to later tickets
+
 - **Exercise demo media:** `data/images` and `data/videos` are large, gitignored
   local artifacts and are excluded from the build context, so `/media/*` does
   not serve them in this deployment yet.
 
-### 10.8 Password reset: App Link and hosted fallback (issue #38, ADR 037)
+### 10.9 Password reset: App Link and hosted fallback (issue #38, ADR 037)
 
 The reset email links to `<RESET_LINK_BASE_URL>/reset-password?token=…`. When the
 app is installed, Android opens that https URL as an **App Link** directly in the
