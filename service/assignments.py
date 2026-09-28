@@ -20,6 +20,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
+from service import missed_day_alerts
 from service._tokens import hash_token
 from service.check_ins import next_follow_up_on
 from service.email_sender import send_assignment_redemption_email
@@ -218,8 +219,6 @@ def redeem_assignment_invite(db: Any, token: Any, player_account_id: str, consen
         # Seed the catalog-side roster summary (streak, timezone, latest workout
         # date) right after consent so the first roster read is already accurate
         # instead of waiting for the hourly sweep (ticket #118).
-        from service import missed_day_alerts
-
         missed_day_alerts.evaluate_for_ledger(db, player_account_id)
     except Exception:
         logger.exception("Post-commit attendance evaluation raised unexpectedly")

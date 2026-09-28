@@ -165,7 +165,7 @@ class RegistryProgramRequestsMixin:
             rows = []
             for row in cursor.fetchall():
                 item = self._program_request_from_row(row)
-                item["player_username"] = str(row[17]) if row[17] is not None else "former player"
+                item["player_username"] = str(row[-1]) if row[-1] is not None else "former player"
                 rows.append(item)
             return rows
 
