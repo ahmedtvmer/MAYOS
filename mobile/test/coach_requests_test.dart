@@ -7,6 +7,7 @@ import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
 import 'package:mayos_mobile/src/features/coach/coach_shell.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
@@ -127,6 +128,9 @@ Map<String, dynamic> _request({
       'resolved_at': status == 'pending' ? null : '2026-09-25T13:00:00Z',
       'resolved_by': status == 'pending' ? null : 'account-alice',
     };
+
+MayosButton _declineButton(WidgetTester tester) => tester
+    .widget<MayosButton>(find.byKey(const Key('request_decline_button')));
 
 /// Everything inside the open resolve sheet, so sheet text is never confused
 /// with the same text on the cards behind it.
@@ -349,8 +353,18 @@ void main() {
     expect(_sheet(find.text('“Shoulder discomfort.”')), findsOneWidget);
     expect(_sheet(find.text('Apply swap')), findsOneWidget);
     expect(_sheet(find.text('Decline')), findsOneWidget);
+    // The reason belongs to Decline alone and says so (#121).
+    expect(
+      _sheet(find.text('Reason for declining (shown to the player)')),
+      findsOneWidget,
+    );
+    expect(
+      _sheet(find.text('Sent only with Decline · up to 500 characters.')),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('request_reply_field')), findsOneWidget);
-    // The reply is capped at 500 characters and counts them down.
+    // Capped at 500 characters with a live counter, and Decline stays
+    // disabled until the reason is non-empty.
     expect(
       tester
           .widget<TextField>(find.byKey(const Key('request_reply_field')))
@@ -358,11 +372,15 @@ void main() {
       500,
     );
     expect(find.text('0/500'), findsOneWidget);
+    expect(_declineButton(tester).onPressed, isNull);
 
     await tester.enterText(
         find.byKey(const Key('request_reply_field')), 'Try incline press.');
     await tester.pump();
     expect(find.text('18/500'), findsOneWidget);
+    expect(_declineButton(tester).onPressed, isNotNull);
+
+    // Apply never sends the typed reason: it is answered by the swap alone.
     await tester.tap(find.byKey(const Key('request_apply_button')));
     await _pumpUntilGone(
         tester, find.byKey(const Key('request_apply_button')));
@@ -373,6 +391,12 @@ void main() {
           .firstWhere((Map<String, dynamic> r) =>
               r['request_id'] == 'req-1')['status'],
       'applied',
+    );
+    expect(
+      fake.programRequests
+          .firstWhere((Map<String, dynamic> r) =>
+              r['request_id'] == 'req-1')['response'],
+      isNull,
     );
 
     // The badge and the roster row's chip both follow without a restart.
@@ -447,9 +471,12 @@ void main() {
     await _pumpUntilFound(
         tester, find.byKey(const Key('request_decline_button')));
 
+    // Decline is disabled while the player-visible reason is blank (#121).
+    expect(_declineButton(tester).onPressed, isNull);
     await tester.enterText(
         find.byKey(const Key('request_reply_field')), 'Rest first.');
     await tester.pump();
+    expect(_declineButton(tester).onPressed, isNotNull);
     await tester.tap(find.byKey(const Key('request_decline_button')));
     await _pumpUntilGone(
         tester, find.byKey(const Key('request_decline_button')));
@@ -525,14 +552,56 @@ void main() {
         tester, find.byKey(const Key('request_apply_button')));
     await _settle(tester);
 
-    // The page follows: the row is answered in place.
+    // The page follows: the row is answered in place and the segment label
+    // drops to no count once nothing is pending (#121).
     expect(find.text('Applied'), findsOneWidget);
-    expect(find.text('Requests (1)'), findsOneWidget);
+    expect(find.text('Requests'), findsOneWidget);
+    expect(find.text('Requests (1)'), findsNothing);
 
     // Back on the shell: badge and roster chip both cleared without restart.
     await tester.tap(find.byType(BackButton));
     await _pumpUntilGone(tester, find.text('1 request'));
     expect(find.text('1 request'), findsNothing);
+    expect(_requestsBadge(tester), 0);
+  });
+
+  testWidgets(
+      'a refusal on the player page refreshes the Requests badge and the '
+      'roster chip', (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.programRequests.add(_request(id: 'req-1', status: 'pending'));
+    await _pumpApp(tester, fake, InMemoryAppModeStore());
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    expect(_requestsBadge(tester), 1);
+
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.text('Requests (1)'));
+    await tester.tap(find.text('Requests (1)'));
+    await _pumpUntilFound(tester, find.text('Program requests'));
+    await tester.tap(find.byKey(const Key('request_card_req-1')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('request_apply_button')));
+
+    // Answered elsewhere while the sheet was open: the apply is refused.
+    fake.programRequests.single['status'] = 'declined';
+    fake.programRequests.single['response'] = 'Not now.';
+    fake.programRequests.single['resolved_at'] = '2026-09-26T12:30:00Z';
+    await tester.tap(find.byKey(const Key('request_apply_button')));
+    await _pumpUntilGone(
+        tester, find.byKey(const Key('request_apply_button')));
+    await _pumpUntilFound(tester, find.textContaining('no longer pending'));
+
+    // The segment refreshed to the request's true state and is read-only.
+    expect(find.text('Declined'), findsOneWidget);
+    expect(find.text('You: Not now.'), findsOneWidget);
+    expect(find.byKey(const Key('request_reply_field')), findsNothing);
+    // Nothing is pending any more, so the label loses its count.
+    expect(find.text('Requests'), findsOneWidget);
+
+    // Back on the shell, the badge and the roster chip followed the refusal
+    // without a restart (#121).
+    await tester.tap(find.byType(BackButton));
+    await _pumpUntilGone(tester, find.text('1 request'));
     expect(_requestsBadge(tester), 0);
   });
 }

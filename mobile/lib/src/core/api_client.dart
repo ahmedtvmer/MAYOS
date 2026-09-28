@@ -664,18 +664,18 @@ class ApiClient {
         response.data, ProgramRequest.fromJson, _invalidProgramRequests);
   }
 
-  /// Declines a pending request with a short player-visible reply.
-  ///
-  /// [reply] is the coach's note to the player, capped at 500 characters by
-  /// the service (#121); it may be left empty, and an empty reply is sent as
-  /// an empty string the service can refuse with a readable error.
+  /// Declines a pending request with the player-visible reason (ADR 027: the
+  /// decline claims pending→declined and carries a short response, so [reply]
+  /// is required and the service caps it at 500 characters, #121).
   Future<ProgramRequest> declineCoachProgramRequest(
-      String assignmentId, String requestId,
-      {String? reply}) async {
+    String assignmentId,
+    String requestId, {
+    required String reply,
+  }) async {
     final httpResponse = await _send(
       () => _dio.post<dynamic>(
         '/coach/assignments/$assignmentId/program-requests/$requestId/decline',
-        data: <String, dynamic>{'response': reply ?? ''},
+        data: <String, dynamic>{'response': reply},
       ),
     );
     return _parseBody(

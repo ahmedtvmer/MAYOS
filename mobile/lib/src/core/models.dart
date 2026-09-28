@@ -343,6 +343,10 @@ class ProgramRequest {
 
   bool get isPending => status == 'pending';
 
+  /// Once applied the request is answered: the program carries a new version
+  /// and no further coaching action is possible (#121).
+  bool get isApplied => status == 'applied';
+
   bool get isExerciseSubstitution => kind == 'exercise_substitution';
 
   bool get hasResponse => response != null && response!.isNotEmpty;

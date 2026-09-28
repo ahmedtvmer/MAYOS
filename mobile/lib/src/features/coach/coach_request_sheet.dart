@@ -7,34 +7,35 @@ import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_button.dart';
+import '../../core/ui/mayos_text_field.dart';
 import '../../providers.dart';
 import 'coach_shared.dart';
 
-/// The outcome of [showCoachRequestResolveSheet]: the resolved request, or the
-/// readable service refusal the caller surfaces before refreshing its list
-/// (#121).
+/// What [showCoachRequestResolveSheet] reports back: the updated request when
+/// the coaching action landed, the readable service refusal otherwise, or
+/// nothing when the coach closed the sheet without acting (#121).
 class CoachRequestResolution {
-  const CoachRequestResolution.applied(this.request)
-      : message = null,
-        resolved = true;
-  const CoachRequestResolution.declined(this.request)
-      : message = null,
-        resolved = true;
-  const CoachRequestResolution.failed(this.message)
-      : request = null,
-        resolved = false;
+  const CoachRequestResolution.resolved(this.request) : message = null;
+  const CoachRequestResolution.failed(this.message) : request = null;
   const CoachRequestResolution.dismissed()
       : request = null,
-        message = null,
-        resolved = false;
+        message = null;
 
+  /// The request as the service returned it, after apply or decline.
   final ProgramRequest? request;
+
+  /// The service's readable refusal (the request may have been answered
+  /// elsewhere); null when nothing failed.
   final String? message;
-  final bool resolved;
+
+  /// True when the request was applied or declined.
+  bool get resolved => request != null;
 }
 
 /// The swap as the coach reads it: **old → new exercise**, or the new split
-/// for a split-change request (#121).
+/// for a split-change request (#121). Exercise IDs are shown as-is: the
+/// catalogue is API-only (`GET /workouts/exercises...`), so no client-side
+/// id→name map exists without a new call per request.
 String coachRequestTitle(ProgramRequest request) {
   if (request.isExerciseSubstitution) {
     return '${request.exerciseId} → ${request.replacementExerciseId}';
@@ -54,20 +55,21 @@ Widget coachRequestStatusChip(BuildContext context, ProgramRequest request) {
   return coachPillChip(
     context,
     request.statusLabel,
-    switch (request.status) {
-      'pending' => c.accent,
-      'applied' => c.success,
-      _ => c.textMuted,
-    },
+    request.isPending
+        ? c.accent
+        : request.isApplied
+            ? c.success
+            : c.textMuted,
   );
 }
 
 /// The resolve sheet (#121): the player, the swap or the new split, the
-/// player's reason, an optional reply capped at 500 characters with a counter,
-/// and the two coaching actions — **Apply swap** (or **Apply (rebuilds
-/// program)** for a split change) and **Decline**. The sheet runs the call and
-/// reports back through [CoachRequestResolution], so the caller owns the list
-/// refresh and the revision bumps.
+/// player's reason, and the two coaching actions — **Apply swap** (or **Apply
+/// (rebuilds program)** for a split change), which never sends a reply, and
+/// **Decline**, which requires the player-visible reason below it (ADR 027,
+/// min 1 and at most 500 characters). The sheet runs the call and reports
+/// back through [CoachRequestResolution], so the caller owns the list refresh
+/// and the revision bumps.
 Future<CoachRequestResolution> showCoachRequestResolveSheet(
   BuildContext context, {
   required ProgramRequest request,
@@ -100,25 +102,23 @@ class _ResolveRequestSheet extends ConsumerStatefulWidget {
 }
 
 class _ResolveRequestSheetState extends ConsumerState<_ResolveRequestSheet> {
-  final TextEditingController _reply = TextEditingController();
+  final TextEditingController _declineReason = TextEditingController();
   bool _busy = false;
 
   @override
   void dispose() {
-    _reply.dispose();
+    _declineReason.dispose();
     super.dispose();
   }
 
-  Future<void> _run(
-    Future<ProgramRequest> Function(ApiClient api) action,
-    CoachRequestResolution Function(ProgramRequest) done,
-  ) async {
+  Future<void> _run(Future<ProgramRequest> Function(ApiClient api) action) async {
     setState(() => _busy = true);
     try {
       final ProgramRequest updated =
           await action(ref.read(apiClientProvider));
       if (!mounted) return;
-      Navigator.of(context).pop(done(updated));
+      Navigator.of(context)
+          .pop(CoachRequestResolution.resolved(updated));
     } on ApiException catch (error) {
       if (!mounted) return;
       Navigator.of(context).pop(CoachRequestResolution.failed(error.message));
@@ -129,6 +129,7 @@ class _ResolveRequestSheetState extends ConsumerState<_ResolveRequestSheet> {
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final ProgramRequest request = widget.request;
+    final String declineReason = _declineReason.text.trim();
     return Padding(
       key: const Key('resolve_request_sheet'),
       padding: EdgeInsets.fromLTRB(
@@ -163,19 +164,6 @@ class _ResolveRequestSheetState extends ConsumerState<_ResolveRequestSheet> {
                 MayosTypography.bodySecondary.copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: MayosSpacing.md),
-          TextField(
-            key: const Key('request_reply_field'),
-            controller: _reply,
-            maxLength: 500,
-            maxLines: 3,
-            minLines: 1,
-            decoration: const InputDecoration(
-              labelText: 'Reply to the player (optional)',
-              helperText: 'Up to 500 characters.',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: MayosSpacing.sm),
           MayosButton(
             key: const Key('request_apply_button'),
             label: request.isExerciseSubstitution
@@ -189,8 +177,21 @@ class _ResolveRequestSheetState extends ConsumerState<_ResolveRequestSheet> {
                         request.assignmentId,
                         request.requestId,
                       ),
-                      CoachRequestResolution.applied,
                     ),
+          ),
+          const SizedBox(height: MayosSpacing.md),
+          // The reason travels with Decline only: applying never sends it, so
+          // it sits between the two actions and says so (#121).
+          MayosTextField(
+            fieldKey: const Key('request_reply_field'),
+            controller: _declineReason,
+            label: 'Reason for declining (shown to the player)',
+            helperText: 'Sent only with Decline · up to 500 characters.',
+            minLines: 1,
+            maxLines: 3,
+            maxLength: 500,
+            enabled: !_busy,
+            onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: MayosSpacing.sm),
           MayosButton(
@@ -198,19 +199,15 @@ class _ResolveRequestSheetState extends ConsumerState<_ResolveRequestSheet> {
             label: 'Decline',
             variant: MayosButtonVariant.secondary,
             loading: _busy,
-            onPressed: _busy
+            onPressed: _busy || declineReason.isEmpty
                 ? null
-                : () {
-                    final String reply = _reply.text.trim();
-                    _run(
+                : () => _run(
                       (ApiClient api) => api.declineCoachProgramRequest(
                         request.assignmentId,
                         request.requestId,
-                        reply: reply.isEmpty ? null : reply,
+                        reply: declineReason,
                       ),
-                      CoachRequestResolution.declined,
-                    );
-                  },
+                    ),
           ),
         ],
       ),
