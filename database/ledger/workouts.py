@@ -10,6 +10,21 @@ from typing import Any
 from database.migration_manager import create_atomic_backup
 from database.migration_manager import prune_ledger_backups
 
+#: The one committed-working-set definition for records (#122, ADR 042): not a
+#: warm-up, with a load and a rep count that can carry a record. The record
+#: aggregates, the first-session rule, the ADR 009 history rows, and
+#: ``GET /workouts/baselines`` all filter through it, so a device reading a
+#: baseline and the server's first-session rule cannot disagree.
+#: ``get_last_performance`` deliberately keeps plain ``is_warmup = 0``: a 0 kg
+#: bodyweight set is still previous performance and must reach progression.
+WORKING_SET_PREDICATE = "ws.is_warmup = 0 AND ws.weight_kg > 0 AND ws.reps > 0"
+
+#: How the "last" session of an exercise is chosen: commit start time, then
+#: rowid as a stable tie. Performed-date corrections (ADR 035) rewrite
+#: ``session_date`` only, so they can never move this ordering; sharing it
+#: keeps ``get_last_performance`` and the baseline ``last_session`` agreeing.
+LAST_SESSION_ORDER = "s.started_at DESC, s.rowid DESC"
+
 
 class LedgerWorkoutsMixin:
     def backup_ledger(self) -> Path:
@@ -423,15 +438,87 @@ class LedgerWorkoutsMixin:
             )
         return grouped
 
-    def get_last_performance(self, exercise_id: str) -> list[dict[str, Any]]:
+    def working_set_rows(
+        self,
+        exercise_id: str | None = None,
+        *,
+        exclude_session_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Every committed working set, optionally scoped to one exercise (#122).
+
+        The single query behind the record aggregates (ADR 042): callers group
+        or aggregate these rows, so the working-set definition cannot drift
+        between the commit comparison, the ADR 009 history rows, and
+        ``GET /workouts/baselines``.
+        """
+        sql = (
+            "SELECT ws.exercise_id, ws.session_id, ws.weight_kg, ws.reps, ws.rpe"
+            " FROM workout_sets ws"
+            " JOIN workout_sessions s ON ws.session_id = s.id"
+            f" WHERE {WORKING_SET_PREDICATE}"
+        )
+        params: list[Any] = []
+        if exercise_id is not None:
+            sql += " AND ws.exercise_id = ?"
+            params.append(exercise_id)
+        if exclude_session_id is not None:
+            sql += " AND ws.session_id <> ?"
+            params.append(exclude_session_id)
+        sql += " ORDER BY ws.exercise_id ASC, ws.rowid ASC"
+        cursor = self.conn.cursor()
+        cursor.execute(sql, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def baseline_last_sessions(self) -> list[dict[str, Any]]:
+        """Each exercise's latest committed session and that session's working sets.
+
+        One window-function query for the whole ledger (#122), so ``GET
+        /workouts/baselines`` stays bounded in queries rather than one per
+        exercise. The latest session is chosen by :data:`LAST_SESSION_ORDER` —
+        the same order ``get_last_performance`` uses — so an ADR 035
+        performed-date correction cannot make the two disagree. Rows arrive
+        grouped by exercise, in logged order (``set_index``, then rowid).
+        """
         cursor = self.conn.cursor()
         cursor.execute(
-            """
+            f"""
+            WITH ranked AS (
+                SELECT ws.exercise_id, ws.session_id, s.session_date,
+                       ws.set_index, ws.rowid AS set_rowid,
+                       ws.weight_kg, ws.reps, ws.rpe,
+                       DENSE_RANK() OVER (
+                           PARTITION BY ws.exercise_id ORDER BY {LAST_SESSION_ORDER}
+                       ) AS session_rank
+                FROM workout_sets ws
+                JOIN workout_sessions s ON ws.session_id = s.id
+                WHERE {WORKING_SET_PREDICATE}
+            )
+            SELECT exercise_id, session_id, session_date, set_index, weight_kg, reps, rpe
+            FROM ranked
+            WHERE session_rank = 1
+            ORDER BY exercise_id ASC, set_index ASC, set_rowid ASC
+        """
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_last_performance(self, exercise_id: str) -> list[dict[str, Any]]:
+        """The exercise's most recent non-warm-up sets, for previous performance.
+
+        Deliberately not :data:`WORKING_SET_PREDICATE`: bodyweight exercises log
+        0 kg working sets, and previous performance / progression must keep
+        seeing them. Records and ``GET /workouts/baselines`` use the stricter
+        definition. The session is chosen with the shared
+        :data:`LAST_SESSION_ORDER`, so it cannot disagree with the baseline
+        ``last_session`` after an ADR 035 performed-date correction.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            f"""
             SELECT s.id
             FROM workout_sessions s
             JOIN workout_sets ws ON ws.session_id = s.id
             WHERE ws.exercise_id = ? AND ws.is_warmup = 0
-            ORDER BY s.started_at DESC, s.ROWID DESC
+            ORDER BY {LAST_SESSION_ORDER}
             LIMIT 1
         """,
             (exercise_id,),

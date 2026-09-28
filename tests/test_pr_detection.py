@@ -1,16 +1,16 @@
 """Deterministic personal records: exercise-wide aggregates, baselines, history rows, debrief lines."""
 
 import sqlite3
-from types import SimpleNamespace
 
 import pytest
 
 from agent.debrief import generate_session_debrief
 from agent.progression_engine import calculate_e1rm, evaluate_session_prs
+from database.ledger.handle import TrainingLedger
 
 
 @pytest.fixture
-def pr_db():
+def pr_db(tmp_path):
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     conn.executescript("""
@@ -51,7 +51,7 @@ def pr_db():
             FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE
         );
     """)
-    database = SimpleNamespace(conn=conn, ledger_conn=conn, commit_ledger=conn.commit)
+    database = TrainingLedger(conn=conn, ledger_id="pr-test", backups_dir=tmp_path)
     try:
         yield database, conn
     finally:
@@ -188,9 +188,70 @@ def test_warmup_sets_are_ignored(pr_db):
             {"weight_kg": 100.0, "reps": 5, "rpe": 8.5},
         ],
     )
+    # The working sets only tie the baseline: no event, and a tie stores no
+    # history row either (rows are compared against the same aggregate).
     assert events == []
+    assert conn.execute("SELECT COUNT(*) FROM personal_records").fetchone()[0] == 0
+
+    # A later working set beats the baseline; the warm-up never can.
+    beaten = _evaluate(
+        db,
+        "s3",
+        [
+            {"weight_kg": 150.0, "reps": 5, "rpe": 7.0, "is_warmup": True},
+            {"weight_kg": 105.0, "reps": 5, "rpe": 8.5},
+        ],
+    )
+    assert _event(beaten, "max_weight")["value"] == 105.0
+    assert _event(beaten, "max_weight")["prev_value"] == 100.0
     assert _counts(conn) == {"max_weight:5": 1, "max_e1rm:5": 1}
-    assert conn.execute("SELECT value FROM personal_records WHERE record_type = 'max_weight'").fetchone()[0] == 100.0
+    stored = conn.execute(
+        "SELECT value FROM personal_records WHERE record_type = 'max_weight'"
+    ).fetchall()
+    assert [row["value"] for row in stored] == [105.0]
+
+
+def test_lighter_second_session_adds_no_history_row(pr_db):
+    """A later, lighter session must never store a lower "best" (#122 review).
+
+    The first session stores no row, so a history row compared against the
+    empty ``personal_records`` table would record the lighter value with a
+    NULL ``prev_value`` and read as a best in the history views.
+    """
+    db, conn = pr_db
+    _evaluate(db, "s1", [{"weight_kg": 100.0, "reps": 5, "rpe": 8.5}])
+    lighter = _evaluate(db, "s2", [{"weight_kg": 90.0, "reps": 5, "rpe": 8.5}])
+    assert lighter == []
+    assert conn.execute("SELECT COUNT(*) FROM personal_records").fetchone()[0] == 0
+
+    # The session that does beat the baseline compares against the aggregate:
+    # ``prev_value`` is the first session's best, not the empty table.
+    beat = _evaluate(db, "s3", [{"weight_kg": 105.0, "reps": 5, "rpe": 8.5}])
+    weight_row = conn.execute(
+        "SELECT value, prev_value FROM personal_records WHERE record_type = 'max_weight'"
+    ).fetchone()
+    assert (weight_row["value"], weight_row["prev_value"]) == (105.0, 100.0)
+    e1rm_row = conn.execute(
+        "SELECT value, prev_value FROM personal_records WHERE record_type = 'max_e1rm'"
+    ).fetchone()
+    assert e1rm_row["value"] == round(calculate_e1rm(105.0, 5, 8.5), 2)
+    assert e1rm_row["prev_value"] == round(calculate_e1rm(100.0, 5, 8.5), 2)
+    assert _event(beat, "max_weight")["prev_value"] == 100.0
+
+
+def test_exercise_logged_only_with_zero_load_sets_is_still_a_baseline(pr_db):
+    """A 0 kg set is not a working set under the one shared definition (#122)."""
+    db, conn = pr_db
+    assert _evaluate(db, "s1", [{"weight_kg": 0.0, "reps": 8, "rpe": 8.0}]) == []
+
+    # The first session with a real load is still the exercise's baseline.
+    second = _evaluate(db, "s2", [{"weight_kg": 60.0, "reps": 8, "rpe": 8.0}])
+    assert second == []
+    assert conn.execute("SELECT COUNT(*) FROM personal_records").fetchone()[0] == 0
+
+    third = _evaluate(db, "s3", [{"weight_kg": 65.0, "reps": 8, "rpe": 8.0}])
+    weight_event = _event(third, "max_weight")
+    assert (weight_event["value"], weight_event["prev_value"]) == (65.0, 60.0)
 
 
 def test_one_event_per_exercise_per_record_type(pr_db):

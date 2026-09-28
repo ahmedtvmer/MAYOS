@@ -12,7 +12,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from service import sessions as sessions_service
 from service import workouts as workouts_service
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
-from svc.schemas import SessionCommitIn, SessionPerformedDateCorrectIn, SessionPerformedDateCorrectOut
+from svc.schemas import (
+    BaselinesOut,
+    SessionCommitIn,
+    SessionPerformedDateCorrectIn,
+    SessionPerformedDateCorrectOut,
+)
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
 
@@ -87,7 +92,7 @@ async def read_prescription(
     return await asyncio.to_thread(_run)
 
 
-@router.get("/baselines")
+@router.get("/baselines", response_model=BaselinesOut)
 async def read_baselines(
     player: Annotated[Any, Depends(get_verified_player)],
     ledger: Annotated[Any, Depends(get_ledger)],

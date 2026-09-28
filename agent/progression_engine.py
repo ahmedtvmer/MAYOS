@@ -1,6 +1,7 @@
 import uuid
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Iterable
 
 from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
@@ -215,7 +216,7 @@ def get_exercise_progression_history(db: DatabaseManager, exercise_id: str) -> l
     return list(history_by_date.values())
 
 
-def set_e1rm(weight_kg: Any, reps: Any, rpe: Any) -> float:
+def set_e1rm(weight_kg: float, reps: int, rpe: float | None) -> float:
     """e1RM for one set by the current formula: RPE-aware, unrated sets assume RPE 8.5.
 
     The single per-set definition the record aggregates and the ADR 009 history
@@ -225,7 +226,44 @@ def set_e1rm(weight_kg: Any, reps: Any, rpe: Any) -> float:
 
 
 def _set_e1rm(set_data: dict[str, Any]) -> float:
-    return set_e1rm(set_data["weight_kg"], set_data["reps"], set_data.get("rpe"))
+    return set_e1rm(float(set_data["weight_kg"]), int(set_data["reps"]), set_data.get("rpe"))
+
+
+@dataclass(frozen=True)
+class WorkingSetAggregates:
+    """Exercise-wide previous bests derived from committed working sets (ADR 042).
+
+    Built only from working-set rows — never from ``personal_records`` — by
+    :meth:`from_sets`, so the commit comparison, the ADR 009 history rows, and
+    ``GET /workouts/baselines`` all read the same numbers. Empty aggregates
+    (both maxima ``None``) mean the exercise has no earlier working set: its
+    first session is a baseline. Values are rounded to 2 decimals, the precision
+    events and the API report, so equal reported values are always ties.
+    """
+
+    best_weight_by_reps: dict[int, float] = field(default_factory=dict)
+    max_weight_kg: float | None = None
+    best_e1rm_kg: float | None = None
+
+    @classmethod
+    def from_sets(cls, rows: Iterable[dict[str, Any]]) -> "WorkingSetAggregates":
+        """Aggregates over working-set rows: heaviest weight per rep count, best e1RM."""
+        best_by_reps: dict[int, float] = {}
+        best_e1rm = 0.0
+        counted = False
+        for row in rows:
+            counted = True
+            reps = int(row["reps"])
+            weight = round(float(row["weight_kg"]), 2)
+            best_by_reps[reps] = max(best_by_reps.get(reps, weight), weight)
+            best_e1rm = max(best_e1rm, set_e1rm(float(row["weight_kg"]), reps, row.get("rpe")))
+        if not counted:
+            return cls()
+        return cls(
+            best_weight_by_reps=best_by_reps,
+            max_weight_kg=max(best_by_reps.values()),
+            best_e1rm_kg=round(best_e1rm, 2),
+        )
 
 
 def exercise_working_set_aggregates(
@@ -233,116 +271,63 @@ def exercise_working_set_aggregates(
     exercise_id: str,
     *,
     exclude_session_id: str | None = None,
-) -> dict[str, float | None]:
-    """The exercise-wide record aggregates over the player's committed working sets (ADR 042).
+) -> WorkingSetAggregates:
+    """The record aggregates over the player's committed working sets for one exercise (ADR 042).
 
-    Warm-ups, zero-load sets, and zero-rep sets are excluded, and
-    ``exclude_session_id`` drops the session being committed, so a commit
-    compares against the player's *earlier* working sets only. This is never
-    ``MAX`` over ``personal_records``. ``GET /workouts/baselines`` calls this
-    same function without an exclusion, so the device and the server agree by
-    construction. A record type with no qualifying set returns ``None`` — an
-    exercise's first session has no previous best.
+    The rows come from the ledger mixin's ``working_set_rows`` — the single
+    working-set definition — and ``exclude_session_id`` drops the session being
+    committed, so a commit compares against the player's *earlier* working sets
+    only. This is never ``MAX`` over ``personal_records``. ``GET
+    /workouts/baselines`` builds its aggregates from the same rows through
+    :meth:`WorkingSetAggregates.from_sets`, so the device and the server agree
+    by construction. Empty aggregates mean the exercise's first session has no
+    previous best.
     """
-    sql = (
-        "SELECT ws.weight_kg, ws.reps, ws.rpe"
-        " FROM workout_sets ws"
-        " JOIN workout_sessions s ON ws.session_id = s.id"
-        " WHERE ws.exercise_id = ?"
-        " AND ws.is_warmup = 0 AND ws.weight_kg > 0 AND ws.reps > 0"
+    return WorkingSetAggregates.from_sets(
+        db.working_set_rows(exercise_id, exclude_session_id=exclude_session_id)
     )
-    params: list[Any] = [exercise_id]
-    if exclude_session_id is not None:
-        sql += " AND ws.session_id <> ?"
-        params.append(exclude_session_id)
-    cursor = db.conn.cursor()
-    cursor.execute(sql, params)
-    rows = cursor.fetchall()
-    if not rows:
-        return {"max_weight_kg": None, "best_e1rm_kg": None}
-    return {
-        "max_weight_kg": max(float(row[0]) for row in rows),
-        "best_e1rm_kg": max(set_e1rm(row[0], row[1], row[2]) for row in rows),
-    }
 
 
-def _store_record_rows(
+def _insert_record_row(
     db: DatabaseManager,
     exercise_id: str,
-    weight_kg: float,
+    record_type: str,
     reps: int,
-    e1rm: float,
-    record_types: set[str],
-    session_id: str | None = None,
-    achieved_at: str | None = None,
+    value: float,
+    prev_value: float | None,
+    session_id: str,
+    achieved_at: str,
 ) -> None:
-    """Stores ADR 009 history rows: strictly-greater only (ties write nothing)."""
-    checks: list[tuple[str, float]] = []
-    if "max_weight" in record_types:
-        checks.append(("max_weight", round(float(weight_kg), 2)))
-    if "max_e1rm" in record_types:
-        checks.append(("max_e1rm", round(float(e1rm), 2)))
-
-    cursor = db.conn.cursor()
-    stamp = achieved_at or datetime.now(UTC).isoformat()
-
-    for record_type, value in checks:
-        if value <= 0:
-            continue
-        if record_type == "max_weight":
-            cursor.execute(
-                """
-                SELECT MAX(value) FROM personal_records
-                WHERE exercise_id = ? AND record_type = 'max_weight' AND reps = ?
-            """,
-                (exercise_id, reps),
-            )
-        else:
-            cursor.execute(
-                """
-                SELECT MAX(value) FROM personal_records
-                WHERE exercise_id = ? AND record_type = 'max_e1rm'
-            """,
-                (exercise_id,),
-            )
-        row = cursor.fetchone()
-        current = float(row[0]) if row and row[0] is not None else 0.0
-        if value <= current:
-            continue
-
-        cursor.execute(
-            """
+    """Appends one ADR 009 history row: history views only, never an event."""
+    db.conn.execute(
+        """
             INSERT INTO personal_records (
                 id, exercise_id, record_type, reps, value, prev_value, achieved_at, session_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-            (
-                str(uuid.uuid4()),
-                exercise_id,
-                record_type,
-                reps,
-                value,
-                current if current > 0 else None,
-                stamp,
-                session_id,
-            ),
-        )
-        # ``commit_ledger`` defers to an enclosing ledger transaction.
-        db.commit_ledger()
+        (str(uuid.uuid4()), exercise_id, record_type, reps, value, prev_value, achieved_at, session_id),
+    )
+    # ``commit_ledger`` defers to an enclosing ledger transaction.
+    db.commit_ledger()
 
 
 def _store_history_rows(
     db: DatabaseManager,
     exercise_id: str,
     working: list[dict[str, Any]],
+    previous: WorkingSetAggregates,
     *,
     session_id: str,
     achieved_at: str,
 ) -> None:
     """ADR 009 rows for history views: heaviest set per rep count plus the best-e1RM set.
 
-    Stored on every session except the exercise's first (ADR 042), never
-    returned as events.
+    Stored on every session except the exercise's first (ADR 042) and only when
+    the value strictly beats ``previous`` — the aggregate over the player's
+    earlier committed working sets, per rep count for ``max_weight`` and
+    exercise-wide for ``max_e1rm`` — never ``MAX`` over ``personal_records``, so
+    a lighter later session cannot write a lower "best". Rows are history only:
+    they are never returned as events.
     """
     best_e1rm_set = max(working, key=_set_e1rm)
 
@@ -361,16 +346,21 @@ def _store_history_rows(
         candidates.append((best_e1rm_set, {"max_e1rm"}))
 
     for candidate, record_types in candidates:
-        _store_record_rows(
-            db,
-            exercise_id,
-            candidate["weight_kg"],
-            int(candidate["reps"]),
-            _set_e1rm(candidate),
-            record_types,
-            session_id=session_id,
-            achieved_at=achieved_at,
-        )
+        reps = int(candidate["reps"])
+        if "max_weight" in record_types:
+            value = round(float(candidate["weight_kg"]), 2)
+            previous_weight = previous.best_weight_by_reps.get(reps)
+            if value > 0 and (previous_weight is None or value > previous_weight):
+                _insert_record_row(
+                    db, exercise_id, "max_weight", reps, value, previous_weight, session_id, achieved_at
+                )
+        if "max_e1rm" in record_types:
+            value = round(_set_e1rm(candidate), 2)
+            previous_e1rm = previous.best_e1rm_kg
+            if value > 0 and (previous_e1rm is None or value > previous_e1rm):
+                _insert_record_row(
+                    db, exercise_id, "max_e1rm", reps, value, previous_e1rm, session_id, achieved_at
+                )
 
 
 def _record_event(
@@ -409,8 +399,9 @@ def evaluate_session_prs(
     over the player's earlier committed working sets (this session excluded),
     and ties are not records. The exercise's first session is its baseline: no
     event is returned and no ``personal_records`` row is stored. Warm-ups are
-    ignored. The ADR 009 per-rep-count rows are still stored for history views
-    but never appear in the returned events.
+    ignored. The ADR 009 per-rep-count rows are still stored for history views,
+    compared against the same aggregates, but never appear in the returned
+    events.
     """
     working = [
         s
@@ -422,7 +413,9 @@ def evaluate_session_prs(
 
     stamp = achieved_at or datetime.now(UTC).isoformat()
     previous = exercise_working_set_aggregates(db, exercise_id, exclude_session_id=session_id)
-    if previous["max_weight_kg"] is None:
+    previous_weight = previous.max_weight_kg
+    previous_e1rm = previous.best_e1rm_kg
+    if previous_weight is None or previous_e1rm is None:
         # The exercise's first committed session is its baseline, not a record.
         return []
 
@@ -431,20 +424,18 @@ def evaluate_session_prs(
 
     events: list[dict[str, Any]] = []
     heaviest = round(float(heaviest_set["weight_kg"]), 2)
-    previous_weight = round(previous["max_weight_kg"], 2)
     if heaviest > previous_weight:
         events.append(
             _record_event(exercise_id, "max_weight", heaviest_set, heaviest, previous_weight, stamp, session_id)
         )
 
     best_e1rm = round(_set_e1rm(best_e1rm_set), 2)
-    previous_e1rm = round(previous["best_e1rm_kg"], 2)
     if best_e1rm > previous_e1rm:
         events.append(
             _record_event(exercise_id, "max_e1rm", best_e1rm_set, best_e1rm, previous_e1rm, stamp, session_id)
         )
 
-    _store_history_rows(db, exercise_id, working, session_id=session_id, achieved_at=stamp)
+    _store_history_rows(db, exercise_id, working, previous, session_id=session_id, achieved_at=stamp)
 
     for event in events:
         event["name"] = exercise_name or exercise_id

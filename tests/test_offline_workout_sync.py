@@ -483,10 +483,13 @@ def test_revoked_coach_cannot_read_a_workout_synced_after_revocation(api):
     assert baseline.status_code == 201, baseline.text
 
     # A newer program is published after the coach is revoked but before the
-    # captured draft syncs; the sync still commits as history.
+    # captured draft syncs; the sync still commits as history. Its squat beat
+    # the baseline sync's, so the coach's personal-records read has a row (#122).
     db.switch_user("p1")
     db.ledger.save_training_program(_program_payload())
-    synced = client.post("/workouts/sessions", headers=headers, json=_sync_body(version=captured_version))
+    history_body = _sync_body(version=captured_version)
+    history_body["sets"][0]["sets"] = [{"weight_kg": 105.0, "reps": 5, "rpe": 8.0}]
+    synced = client.post("/workouts/sessions", headers=headers, json=history_body)
     assert synced.status_code == 201, synced.text
 
     # The revoked coach is denied on every session-exposing coach read.
@@ -731,7 +734,8 @@ def test_warmup_flag_is_honored_in_ledger_and_excluded_from_prs(api):
     second_body["sets"] = body["sets"]
     second = client.post("/workouts/sessions", headers=headers, json=second_body)
     assert second.status_code == 201, second.text
-    # The warm-up is excluded, so the second session only ties the baseline: a tie is not a record.
+    # The warm-up is excluded, so the second session only ties the baseline: a tie
+    # is not a record, and a tie stores no history row either.
     assert second.json()["new_prs"] == []
     session_id = second.json()["session_id"]
 
@@ -741,11 +745,34 @@ def test_warmup_flag_is_honored_in_ledger_and_excluded_from_prs(api):
         (session_id,),
     ).fetchall()
     assert [(row["weight_kg"], row["is_warmup"]) for row in rows] == [(150.0, 1), (100.0, 0)]
-    # The warm-up set is excluded from PR detection: only the 100kg working set can PR.
+    assert (
+        db.conn.execute("SELECT COUNT(*) FROM personal_records WHERE exercise_id = 'sq'").fetchone()[0] == 0
+    )
+
+    # A later working set beats the baseline; the 150 kg warm-up never can.
+    third_body = _sync_body(
+        version=version,
+        client_session_id="33333333-3333-4333-8333-333333333333",
+        performed_date="2026-09-24",
+        captured_at="2026-09-24T11:00:00+00:00",
+    )
+    third_body["sets"][0]["sets"] = [
+        {"weight_kg": 150.0, "reps": 5, "rpe": 6.0, "is_warmup": True},
+        {"weight_kg": 105.0, "reps": 5, "rpe": 8.0, "is_warmup": False},
+    ]
+    third = client.post("/workouts/sessions", headers=headers, json=third_body)
+    assert third.status_code == 201, third.text
+    weight_event = next(
+        event for event in third.json()["new_prs"] if event["record_type"] == "max_weight"
+    )
+    assert (weight_event["value"], weight_event["prev_value"]) == (105.0, 100.0)
+
+    db.switch_user("p1")
+    # The warm-up set is excluded from PR rows: only the working set is stored.
     prs = db.conn.execute(
         "SELECT value FROM personal_records WHERE exercise_id = 'sq' AND record_type = 'max_weight'"
     ).fetchall()
-    assert [row["value"] for row in prs] == [100.0]
+    assert [row["value"] for row in prs] == [105.0]
 
 
 def test_unknown_exercise_id_is_400(api):

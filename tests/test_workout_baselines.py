@@ -230,6 +230,64 @@ def test_baselines_report_unrated_sets_as_null_rir(api):
     assert bench["best_e1rm_kg"] == round(calculate_e1rm(80.0, 5, 8.5), 2)
 
 
+def test_exercise_logged_only_with_zero_kg_sets_has_no_baseline(api):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    zero_kg = [
+        {"exercise": _exercise_payload("row", "Row"), "sets": [{"weight_kg": 0.0, "reps": 8, "rpe": 8.0}]}
+    ]
+    _commit(
+        client, headers, version, zero_kg,
+        client_session_id=CLIENT_A, performed_date="2026-09-25", captured_at="2026-09-25T11:00:00+00:00",
+    )
+
+    # One shared working-set definition: a 0 kg set is not a working set, so
+    # the exercise has no baseline row at all.
+    rows = client.get("/workouts/baselines", headers=headers).json()["baselines"]
+    assert rows == []
+
+    # The first session with a real load is still the exercise's baseline.
+    loaded = [
+        {"exercise": _exercise_payload("row", "Row"), "sets": [{"weight_kg": 60.0, "reps": 8, "rpe": 8.0}]}
+    ]
+    second = _commit(
+        client, headers, version, loaded,
+        client_session_id=CLIENT_B, performed_date="2026-09-26", captured_at="2026-09-26T11:00:00+00:00",
+    )
+    assert second["new_prs"] == []
+
+    rows = client.get("/workouts/baselines", headers=headers).json()["baselines"]
+    assert [row["exercise_id"] for row in rows] == ["row"]
+    assert rows[0]["sessions_logged"] == 1
+    assert rows[0]["max_weight_kg"] == 60.0
+    assert rows[0]["last_session"]["performed_date"] == "2026-09-26"
+
+
+def test_zero_kg_bodyweight_session_is_still_previous_performance(api):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    loaded = [{"exercise": _exercise_payload("row", "Row"), "sets": [{"weight_kg": 60.0, "reps": 8, "rpe": 8.0}]}]
+    _commit(
+        client, headers, version, loaded,
+        client_session_id=CLIENT_A, performed_date="2026-09-25", captured_at="2026-09-25T11:00:00+00:00",
+    )
+    zero_kg = [{"exercise": _exercise_payload("row", "Row"), "sets": [{"weight_kg": 0.0, "reps": 8, "rpe": 8.0}]}]
+    _commit(
+        client, headers, version, zero_kg,
+        client_session_id=CLIENT_B, performed_date="2026-09-26", captured_at="2026-09-26T11:00:00+00:00",
+    )
+
+    # Previous performance (and therefore progression) keeps plain ``is_warmup``
+    # semantics: the 0 kg bodyweight session is the latest and is reported,
+    # even though the records/baselines predicate would exclude it.
+    prescription = client.get("/workouts/prescription", params={"day_order": 1}, headers=headers)
+    assert prescription.status_code == 200, prescription.text
+    targets = {target["exercise_id"]: target for target in prescription.json()["targets"]}
+    assert targets["row"]["last_perf"] == [{"set_index": 1, "weight_kg": 0.0, "reps": 8, "rpe": 8.0}]
+    # An exercise with no committed session still has no previous performance.
+    assert targets["sq"]["last_perf"] == []
+
+
 def test_baselines_never_leak_another_players_data(api):
     client, db = api
     headers, version = _prepare_player(client, db, username="alice")

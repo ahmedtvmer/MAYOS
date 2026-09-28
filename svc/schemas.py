@@ -768,6 +768,41 @@ class SessionPerformedDateCorrectOut(BaseModel):
     corrections: list[PerformedDateCorrectionOut] = []
 
 
+class BaselineSetOut(BaseModel):
+    """One working set of a baseline's last committed session, in logged order (#122).
+
+    Effort is RIR at the display boundary (``10 - RPE``); null when the set is
+    unrated (#111).
+    """
+
+    weight_kg: float
+    reps: int
+    rir: float | None = None
+
+
+class BaselineLastSessionOut(BaseModel):
+    """The most recent committed session for one exercise (#122)."""
+
+    performed_date: str
+    sets: list[BaselineSetOut]
+
+
+class BaselineOut(BaseModel):
+    """One exercise's baseline: the aggregates a device freezes for live record checks (ADR 042)."""
+
+    exercise_id: str
+    sessions_logged: int = Field(ge=0)
+    max_weight_kg: float | None = None
+    best_e1rm_kg: float | None = None
+    last_session: BaselineLastSessionOut
+
+
+class BaselinesOut(BaseModel):
+    """``GET /workouts/baselines``: one row per exercise with a committed working set."""
+
+    baselines: list[BaselineOut]
+
+
 class ChatMessageIn(BaseModel):
     content: str = Field(min_length=1, max_length=5000)
 
