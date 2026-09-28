@@ -1,0 +1,26 @@
+{
+  "check_148": {
+    "by_model": {
+      "Qwen/Qwen3.5-27B": {
+        "calls": 1,
+        "prompt_tokens": 716,
+        "completion_tokens": 63,
+        "usd": 0.00034996
+      },
+      "Qwen/Qwen3-235B-A22B-Instruct-2507": {
+        "calls": 1,
+        "prompt_tokens": 700,
+        "completion_tokens": 51,
+        "usd": 9.105e-05
+      },
+      "Qwen/Qwen3.5-9B": {
+        "calls": 1,
+        "prompt_tokens": 716,
+        "completion_tokens": 110,
+        "usd": 8.81e-05
+      }
+    },
+    "total_usd": 0.00053
+  },
+  "grand_total_usd": 0.00053
+}

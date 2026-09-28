@@ -1,0 +1,104 @@
+[
+  {
+    "model": "Qwen/Qwen3.5-27B",
+    "production_shape": [
+      "system",
+      "system",
+      "user",
+      "assistant",
+      "user"
+    ],
+    "raw_two_system": {
+      "ok": false,
+      "status": 400,
+      "error": "Error code: 400 - {'error': {'message': 'System message must be at the beginning.', 'type': 'invalid_request_error', 'param': None, 'code': None}}",
+      "finish_reason": null,
+      "usage": null
+    },
+    "raw_two_system_answer": "",
+    "langchain_production_path": {
+      "status": "APIError",
+      "error": "System message must be at the beginning.",
+      "answer": ""
+    },
+    "raw_merged_one_system": {
+      "ok": true,
+      "status": 200,
+      "error": null,
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 716,
+        "completion_tokens": 63
+      }
+    },
+    "raw_merged_answer": "The player completed one session on 2026-09-26 (Upper A) with 18 sets and 12,400 kg volume. Readiness was reported as 4. The Row exercise was skipped. No other sessions are recorded for the last seven days."
+  },
+  {
+    "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "production_shape": [
+      "system",
+      "system",
+      "user",
+      "assistant",
+      "user"
+    ],
+    "raw_two_system": {
+      "ok": false,
+      "status": null,
+      "error": "APITimeoutError: Request timed out.",
+      "finish_reason": null,
+      "usage": null
+    },
+    "raw_two_system_answer": "",
+    "langchain_production_path": {
+      "status": "ok",
+      "error": null,
+      "answer": "The player completed one session this week, achieving 18 sets and 12,400 kg of volume. Readiness was rated 4. One session was missed, contributing to a current missed streak of 2 days. A pending exercise substitution request remains unresolved. The player adhered to 83.3% of the planned schedule over the past four weeks."
+    },
+    "raw_merged_one_system": {
+      "ok": true,
+      "status": 200,
+      "error": null,
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 700,
+        "completion_tokens": 51
+      }
+    },
+    "raw_merged_answer": "The player completed one session this week, achieving 12,400 kg of training volume. Readiness was rated 4. One row exercise was skipped. The session followed the current program version. No other sessions were recorded this week."
+  },
+  {
+    "model": "Qwen/Qwen3.5-9B",
+    "production_shape": [
+      "system",
+      "system",
+      "user",
+      "assistant",
+      "user"
+    ],
+    "raw_two_system": {
+      "ok": false,
+      "status": 400,
+      "error": "Error code: 400 - {'error': {'message': 'System message must be at the beginning.', 'type': 'invalid_request_error', 'param': None, 'code': None}}",
+      "finish_reason": null,
+      "usage": null
+    },
+    "raw_two_system_answer": "",
+    "langchain_production_path": {
+      "status": "APIError",
+      "error": "System message must be at the beginning.",
+      "answer": ""
+    },
+    "raw_merged_one_system": {
+      "ok": true,
+      "status": 200,
+      "error": null,
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 716,
+        "completion_tokens": 110
+      }
+    },
+    "raw_merged_answer": "Training volume for the last seven days was 12,400 kg. The most recent session on 2026-09-26 included 18 sets with a readiness score of 4. One exercise substitution was skipped (Row). A personal record was set on 2026-09-23 for the Squat e1rm (5 reps) at 142.5 kg. Two expected days were missed, resulting in an 83.3% adherence rate."
+  }
+]

@@ -1,0 +1,20 @@
+{
+  "gate_std_Qwen3.5-9B": {
+    "by_model": {
+      "Qwen/Qwen3.5-9B": {
+        "calls": 28,
+        "prompt_tokens": 11641,
+        "completion_tokens": 2711,
+        "usd": 0.0015707499999999994
+      },
+      "Qwen/Qwen3.5-27B": {
+        "calls": 65,
+        "prompt_tokens": 81451,
+        "completion_tokens": 10621,
+        "usd": 0.048791860000000006
+      }
+    },
+    "total_usd": 0.05036
+  },
+  "grand_total_usd": 0.05036
+}
