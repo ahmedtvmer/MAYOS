@@ -56,8 +56,14 @@ and a sign-in from a build signed by a key without a client fails with
 | Play App Signing key | builds installed from Play | Play Console, Setup, App integrity, App signing key certificate, SHA-1 |
 
 Each machine you build debug builds on has its own debug keystore, so add one
-debug client per machine. From `mobile/android`, `./gradlew signingReport`
-prints the SHA-1 of every configured key at once.
+debug client per machine. The debug keystore is created by the first Android
+debug build (`flutter run` or `flutter build apk --debug`); on Windows it is
+`%USERPROFILE%\.android\debug.keystore`. `keytool` ships with a JDK, including
+Android Studio's bundled one (`<Android Studio>/jbr/bin/keytool`).
+
+`./gradlew signingReport` (from `mobile/android`) also prints every key's SHA-1,
+but `gradlew` is gitignored (`mobile/android/.gitignore`) and only exists after
+Flutter has run an Android build on that machine once.
 
 The same keys' **SHA-256** fingerprints go in
 `ANDROID_APP_SHA256_CERT_FINGERPRINTS` for App Links. That is a separate
