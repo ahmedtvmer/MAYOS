@@ -275,6 +275,7 @@ def test_coach_surfaces_never_expose_player_chat(api):
         ("GET", f"{base}/player/exercises/sq/history"),
         ("GET", f"{base}/check-ins"),
         ("GET", f"{base}/program-requests"),
+        ("GET", "/coach/program-requests"),
     ]
 
     for method, path in exercised:

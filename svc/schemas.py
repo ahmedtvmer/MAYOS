@@ -33,6 +33,8 @@ __all__ = [
     "CoachCapabilityDisableOut",
     "CoachCheckInCreateOut",
     "CoachCheckInListOut",
+    "CoachCrossRosterProgramRequestListOut",
+    "CoachCrossRosterProgramRequestOut",
     "CoachExerciseHistoryOut",
     "CoachExerciseHistoryPointOut",
     "CoachExerciseRecordOut",
@@ -276,7 +278,11 @@ class AssignmentEndOut(BaseModel):
 
 
 class CoachRosterEntryOut(BaseModel):
-    """Active assignment identity for the coach console; contains no training history."""
+    """One roster row: assignment identity plus the catalog-side urgency basis (ticket #118).
+
+    ``last_workout_on`` is a date only, never session detail, and every field is
+    read from catalog tables so listing the roster mounts no player ledger.
+    """
 
     assignment_id: str
     player_username: str
@@ -286,6 +292,8 @@ class CoachRosterEntryOut(BaseModel):
     alerts_acknowledged: int = 0
     current_missed_streak: int = 0
     next_follow_up_on: str | None = None
+    pending_requests: int = 0
+    last_workout_on: str | None = None
 
 
 class CoachAssignmentsOut(BaseModel):
@@ -680,6 +688,20 @@ class PlayerProgramRequestListOut(BaseModel):
 
 class CoachProgramRequestListOut(BaseModel):
     requests: list[ProgramRequestOut]
+
+
+class CoachCrossRosterProgramRequestOut(ProgramRequestOut):
+    """One request across the coach's roster: the per-assignment fields plus the player.
+
+    ``assignment_id`` is already part of ``ProgramRequestOut``, so the client can
+    apply or decline through the existing per-assignment endpoints directly.
+    """
+
+    player_username: str
+
+
+class CoachCrossRosterProgramRequestListOut(BaseModel):
+    requests: list[CoachCrossRosterProgramRequestOut]
 
 
 class ProgramRequestDeclineIn(BaseModel):

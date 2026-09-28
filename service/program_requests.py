@@ -364,3 +364,15 @@ def list_assignment_requests(
     if db.get_active_assignment_for_coach(coach_account_id, assignment_id) is None:
         return None
     return db.list_program_requests_for_assignment(assignment_id)
+
+
+def list_coach_program_requests(db: Any, coach_account_id: str) -> list[dict[str, Any]]:
+    """The coach's requests across every active assignment, pending first (#118).
+
+    Pending rows come first, oldest first, then answered rows, most recently
+    resolved first. Requests on ended assignments and from other coaches are
+    excluded, and each row carries ``assignment_id`` and the player's username
+    beside the per-assignment fields, so the client resolves through the existing
+    per-assignment endpoints. Catalog-only; no ledger mount.
+    """
+    return db.list_program_requests_for_coach(coach_account_id)

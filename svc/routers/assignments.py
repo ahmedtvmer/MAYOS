@@ -1,10 +1,12 @@
 """Assignment invite and lifecycle routes (ticket #24).
 
-Two route groups share this module:
+Three route groups share this module:
 
 * ``/coach/assignments`` — coach issue, notices, roster identity, and revoke. Every
   route requires the live coach capability, which is checked from the durable
   registry before any ledger is mounted.
+* ``/coach/program-requests`` — the cross-roster request queue (ticket #118),
+  catalog-only like the per-assignment queue below.
 * ``/assignments`` — player preview, explicit consent, current assignment, and end.
 
 The player and coach identities always come from the verified JWT. No request body
@@ -45,6 +47,8 @@ from svc.schemas import (
     CoachAssignmentsOut,
     CoachCheckInCreateOut,
     CoachCheckInListOut,
+    CoachCrossRosterProgramRequestListOut,
+    CoachCrossRosterProgramRequestOut,
     CoachExerciseHistoryOut,
     CoachIdentityOut,
     CoachNoticeListOut,
@@ -64,6 +68,7 @@ from svc.schemas import (
 )
 
 coach_router = APIRouter(prefix="/coach/assignments", tags=["coach"])
+coach_roster_router = APIRouter(prefix="/coach", tags=["coach"])
 player_router = APIRouter(prefix="/assignments", tags=["assignments"])
 
 
@@ -114,7 +119,11 @@ async def list_coach_assignments(
     coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
 ):
-    """Lists the coach's active assignments (identity only; no training history)."""
+    """Lists the coach's active assignments in roster urgency order (ticket #118).
+
+    Each row carries its urgency inputs (badges, pending requests, last workout),
+    so the client neither sorts nor fetches anything per player.
+    """
 
     rows = await asyncio.to_thread(assignment_service.list_coach_assignments, db, coach.account_id)
     return CoachAssignmentsOut(assignments=[CoachRosterEntryOut(**row) for row in rows])
@@ -315,6 +324,27 @@ async def publish_assigned_player_program(
         return published
 
     return await asyncio.to_thread(_run)
+
+
+@coach_roster_router.get("/program-requests", response_model=CoachCrossRosterProgramRequestListOut)
+async def list_coach_program_requests(
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Lists the coach's program requests across every active assignment (ticket #118).
+
+    Pending requests come first (oldest first), then answered ones (most recent
+    first); requests from ended assignments are not listed. Each row carries the
+    per-assignment fields plus ``assignment_id`` and the player's username, so the
+    client can apply or decline through the existing per-assignment endpoints.
+    """
+
+    rows = await asyncio.to_thread(
+        program_requests_service.list_coach_program_requests, db, coach.account_id
+    )
+    return CoachCrossRosterProgramRequestListOut(
+        requests=[CoachCrossRosterProgramRequestOut(**row) for row in rows]
+    )
 
 
 @coach_router.get("/{assignment_id}/program-requests", response_model=CoachProgramRequestListOut)

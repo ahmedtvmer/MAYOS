@@ -241,9 +241,12 @@ def test_roster_listing_is_catalog_only_and_shape_unchanged(api, monkeypatch):
         "alerts_acknowledged",
         "current_missed_streak",
         "next_follow_up_on",
+        "pending_requests",
+        "last_workout_on",
     }
     assert rows[0]["assignment_id"] == assignment_id
     assert rows[0]["player_username"] == "p1"
+    assert rows[0]["pending_requests"] == 0
     # Only the coach's own ledger mounted; the player ledger was never opened.
     assert "p1" not in mounted
     assert mounted == ["coach"]

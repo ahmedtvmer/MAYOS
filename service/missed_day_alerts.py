@@ -10,7 +10,8 @@ pure attendance evaluation (``service.attendance``), and then:
 * extends the same alert's ``details`` (``last_missed_date``/``missed_count``)
   while the streak continues;
 * auto-resolves any open alert whose streak is no longer the current one; and
-* updates the catalog-side roster summary so roster reads never open a ledger.
+* updates the catalog-side roster summary (streak, timezone, and the latest
+  workout date) so roster reads never open a ledger.
 
 The catalog alert is keyed by ``(assignment, kind, dedupe_key)`` where the
 missed-day dedupe key is the streak's start date, so a retry or a concurrent
@@ -76,6 +77,11 @@ def window_start_for_assignment(started_at: Any, versions: list[dict[str, Any]],
     return max(local_date_in(started, timezone), first_effective)
 
 
+def _last_workout_on(performed: list[str]) -> str | None:
+    """The newest performed date, or ``None`` while the player has never trained."""
+    return max(performed) if performed else None
+
+
 def _notify_coach(db: Any, assignment: dict[str, Any], evaluation: AttendanceEvaluation, now_iso: str) -> bool:
     """Best-effort coach in-app notice; carries the missed date range, no training detail."""
     return notify_coach(
@@ -139,9 +145,11 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any], now: datetime | Non
         return {"evaluated": False, "skipped": True, "alerts_created": 0, "alerts_resolved": 0, "streak": 0}
 
     with db.open_ledger(ledger_id) as ledger:
+        performed = ledger.list_performed_dates()
         evaluation = evaluate_ledger_attendance(ledger, assignment, ledger_id, now)
+    last_workout_on = _last_workout_on(performed)
     if evaluation is None:
-        db.upsert_roster_attendance(assignment_id, 0, now_iso)
+        db.upsert_roster_attendance(assignment_id, 0, now_iso, last_workout_on=last_workout_on)
         return {"evaluated": True, "skipped": False, "alerts_created": 0, "alerts_resolved": 0, "streak": 0}
 
     streak = evaluation.trailing_streak_length
@@ -176,7 +184,13 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any], now: datetime | Non
             assignment_id, now_iso, MISSED_DAY_KIND
         )
 
-    db.upsert_roster_attendance(assignment_id, streak, now_iso, timezone=evaluation.timezone)
+    db.upsert_roster_attendance(
+        assignment_id,
+        streak,
+        now_iso,
+        timezone=evaluation.timezone,
+        last_workout_on=last_workout_on,
+    )
     return {
         "evaluated": True,
         "skipped": False,

@@ -640,3 +640,176 @@ def test_program_request_routes_require_authentication(api):
     assert client.get("/assignments/me/program-requests").status_code == 401
     assert client.post("/assignments/me/program-requests", json=_substitution()).status_code == 401
     assert client.get("/coach/assignments/x/program-requests").status_code == 401
+    assert client.get("/coach/program-requests").status_code == 401
+
+
+# --------------------------------------------------------------------------
+# Cross-roster listing (ticket #118)
+# --------------------------------------------------------------------------
+
+
+def _assign_player_to(client, coach_headers, player_name):
+    """Assigns another player to an already-created coach; returns headers and assignment id."""
+    token = client.post("/coach/assignments/invites", headers=coach_headers).json()["token"]
+    player = _register(client, player_name)
+    player_headers = _authed(player["access_token"])
+    redeemed = client.post(
+        "/assignments/invites/redeem", headers=player_headers, json={"token": token, "consent": True}
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    return player_headers, redeemed.json()["assignment"]["assignment_id"]
+
+
+def _pin_request_times(db, request_id, created_at, resolved_at=None):
+    db.catalog_conn.execute(
+        "UPDATE program_requests SET created_at = ?, resolved_at = COALESCE(?, resolved_at)"
+        " WHERE request_id = ?",
+        (created_at, resolved_at, request_id),
+    )
+    db.catalog_conn.commit()
+
+
+def _cross_roster(client, coach_headers):
+    response = client.get("/coach/program-requests", headers=coach_headers)
+    assert response.status_code == 200, response.text
+    return response.json()["requests"]
+
+
+def test_cross_roster_listing_orders_pending_then_answered(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api, "p1")
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+    second_headers, second_assignment_id = _assign_player_to(client, coach_headers, "p2")
+    assert _publish(client, coach_headers, second_assignment_id).status_code == 200
+
+    first = _create(client, player_headers, **_substitution()).json()
+    other = _create(client, second_headers, **_substitution()).json()
+    third = _create(client, player_headers, **_substitution()).json()
+    _pin_request_times(db, first["request_id"], "2026-09-01T10:00:00+00:00")
+    _pin_request_times(db, other["request_id"], "2026-09-02T10:00:00+00:00")
+    _pin_request_times(db, third["request_id"], "2026-09-03T10:00:00+00:00")
+
+    rows = _cross_roster(client, coach_headers)
+    assert [row["request_id"] for row in rows] == [
+        first["request_id"],
+        other["request_id"],
+        third["request_id"],
+    ]
+    # Each row carries the per-assignment fields plus assignment and player.
+    expected = (
+        (assignment_id, "p1"),
+        (second_assignment_id, "p2"),
+        (assignment_id, "p1"),
+    )
+    for row, (row_assignment, username) in zip(rows, expected):
+        assert row["assignment_id"] == row_assignment
+        assert row["player_username"] == username
+        assert row["status"] == "pending"
+        assert row["kind"] == "exercise_substitution"
+        assert row["reason"] == "prefer a variation"
+        assert row["program_version"] == 1
+        assert row["created_at"]
+
+    # The row's own ids drive resolution through the per-assignment endpoints.
+    declined = client.post(
+        f"/coach/assignments/{other['assignment_id']}/program-requests"
+        f"/{other['request_id']}/decline",
+        headers=coach_headers,
+        json={"response": "Not now."},
+    )
+    assert declined.status_code == 200, declined.text
+    _pin_request_times(db, other["request_id"], "2026-09-02T10:00:00+00:00", "2026-09-10T10:00:00+00:00")
+
+    declined = client.post(
+        f"/coach/assignments/{first['assignment_id']}/program-requests"
+        f"/{first['request_id']}/decline",
+        headers=coach_headers,
+        json={"response": "Keep it."},
+    )
+    assert declined.status_code == 200, declined.text
+    _pin_request_times(db, first["request_id"], "2026-09-01T10:00:00+00:00", "2026-09-05T10:00:00+00:00")
+
+    rows = _cross_roster(client, coach_headers)
+    # Pending oldest-first, then answered most-recently-first.
+    assert [row["request_id"] for row in rows] == [
+        third["request_id"],
+        other["request_id"],
+        first["request_id"],
+    ]
+    assert [row["status"] for row in rows] == ["pending", "declined", "declined"]
+
+
+def test_cross_roster_listing_keeps_player_cancelled_requests_visible(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api, "p1")
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+
+    pending = _create(client, player_headers, **_substitution()).json()
+    cancelled = _create(client, player_headers, **_substitution()).json()
+    assert client.post(
+        f"/assignments/me/program-requests/{cancelled['request_id']}/cancel",
+        headers=player_headers,
+    ).status_code == 200
+
+    rows = _cross_roster(client, coach_headers)
+    assert [row["request_id"] for row in rows] == [pending["request_id"], cancelled["request_id"]]
+    assert [row["status"] for row in rows] == ["pending", "cancelled"]
+
+
+def test_cross_roster_listing_hides_other_coaches_and_ended_assignments(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api, "p1")
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+    mine = _create(client, player_headers, **_substitution()).json()
+
+    intruder_headers = _make_coach(client, db, "intruder", capacity=5)
+    intruder_player, intruder_assignment_id = _assign_player_to(client, intruder_headers, "p2")
+    assert _publish(client, intruder_headers, intruder_assignment_id).status_code == 200
+    theirs = _create(client, intruder_player, **_substitution()).json()
+
+    rows = _cross_roster(client, coach_headers)
+    assert [row["request_id"] for row in rows] == [mine["request_id"]]
+    assert rows[0]["player_username"] == "p1"
+    assert [row["request_id"] for row in _cross_roster(client, intruder_headers)] == [
+        theirs["request_id"]
+    ]
+
+    # Ending the assignment removes its requests from the listing entirely.
+    assert client.post(f"/coach/assignments/{assignment_id}/revoke", headers=coach_headers).status_code == 200
+    assert _cross_roster(client, coach_headers) == []
+    assert [row["request_id"] for row in _cross_roster(client, intruder_headers)] == [
+        theirs["request_id"]
+    ]
+
+
+def test_cross_roster_listing_requires_the_coach_capability(api):
+    client, _, _ = api
+    player = _register(client, "p1")
+    response = client.get("/coach/program-requests", headers=_authed(player["access_token"]))
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Coach capability required."
+
+
+def test_cross_roster_listing_mounts_no_player_ledger(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api, "p1")
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+    created = _create(client, player_headers, **_substitution())
+    assert created.status_code == 200, created.text
+
+    opened: list[str] = []
+    real_open_ledger = db.open_ledger
+
+    def spy(ledger_id):
+        opened.append(str(ledger_id))
+        return real_open_ledger(ledger_id)
+
+    monkeypatch.setattr(db, "open_ledger", spy)
+
+    rows = _cross_roster(client, coach_headers)
+    assert [row["request_id"] for row in rows] == [created.json()["request_id"]]
+    assert "p1" not in opened

@@ -12,6 +12,10 @@ class RegistryProgramRequestsMixin:
         " day_name, exercise_id, replacement_exercise_id, desired_weekly_frequency,"
         " desired_split_preference, reason, status, response, created_at, resolved_at, resolved_by"
     )
+    #: The same columns qualified for the joined cross-roster listing (#118).
+    _PROGRAM_REQUEST_COLUMNS_JOINED = ", ".join(
+        f"pr.{column.strip()}" for column in _PROGRAM_REQUEST_COLUMNS.split(",")
+    )
 
     @staticmethod
     def _program_request_from_row(row: Any) -> dict[str, Any] | None:
@@ -114,6 +118,56 @@ class RegistryProgramRequestsMixin:
                 (str(player_account_id),),
             )
             return [self._program_request_from_row(row) for row in cursor.fetchall()]
+
+    def pending_program_request_counts(self, coach_account_id: str) -> dict[str, int]:
+        """Pending request counts per active assignment for one coach (catalog-only, #118).
+
+        Requests on ended assignments are excluded with the assignment itself.
+        """
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "SELECT pr.assignment_id, COUNT(*)"
+                " FROM program_requests pr"
+                " JOIN assignments a ON a.assignment_id = pr.assignment_id"
+                " WHERE a.coach_account_id = ? AND a.status = 'active' AND pr.status = 'pending'"
+                " GROUP BY pr.assignment_id",
+                (str(coach_account_id),),
+            )
+            return {str(row[0]): int(row[1]) for row in cursor.fetchall()}
+
+    def list_program_requests_for_coach(self, coach_account_id: str) -> list[dict[str, Any]]:
+        """The coach's requests across active assignments, pending first (#118).
+
+        Pending rows come first, oldest created first; answered rows follow,
+        most recently resolved first. Ended assignments and other coaches'
+        requests are excluded by the assignment join, and each row carries the
+        requesting player's username beside the per-assignment fields.
+        Catalog-only; no ledger mount.
+        """
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                f"SELECT {self._PROGRAM_REQUEST_COLUMNS_JOINED}, acc.username"
+                " FROM program_requests pr"
+                " JOIN assignments a ON a.assignment_id = pr.assignment_id"
+                " LEFT JOIN accounts acc ON acc.account_id = pr.player_account_id"
+                " WHERE a.coach_account_id = ? AND a.status = 'active'"
+                " ORDER BY CASE WHEN pr.status = 'pending' THEN 0 ELSE 1 END,"
+                " CASE WHEN pr.status = 'pending' THEN pr.created_at ELSE '' END ASC,"
+                " CASE WHEN pr.status = 'pending' THEN ''"
+                " ELSE COALESCE(pr.resolved_at, pr.created_at) END DESC,"
+                " pr.request_id ASC",
+                (str(coach_account_id),),
+            )
+            rows = []
+            for row in cursor.fetchall():
+                item = self._program_request_from_row(row)
+                item["player_username"] = str(row[17]) if row[17] is not None else "former player"
+                rows.append(item)
+            return rows
 
     def resolve_program_request(
         self, request_id: str, status: str, response: str | None, resolved_by: str, now_iso: str

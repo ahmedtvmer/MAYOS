@@ -343,7 +343,7 @@
     },
     "upsert_roster_attendance": {
       "kind": "method",
-      "signature": "(self, assignment_id: str, current_missed_streak: int, now_iso: str, timezone: str | None = None) -> None"
+      "signature": "(self, assignment_id: str, current_missed_streak: int, now_iso: str, timezone: str | None = None, last_workout_on: str | None = None) -> None"
     },
     "ledger_exists": {
       "kind": "method",
@@ -368,6 +368,18 @@
     "record_account_import": {
       "kind": "method",
       "signature": "(self, *, import_id: str, account_id: str, source_fingerprint: str, source_name: str, counts_json: str, opt_in_reference: str, imported_at: str, claim_token_hash: str, claim_expires_at: str) -> None"
+    },
+    "list_program_requests_for_coach": {
+      "kind": "method",
+      "signature": "(self, coach_account_id: str) -> list[dict[str, typing.Any]]"
+    },
+    "list_roster_last_workout_dates": {
+      "kind": "method",
+      "signature": "(self, coach_account_id: str) -> dict[str, str | None]"
+    },
+    "pending_program_request_counts": {
+      "kind": "method",
+      "signature": "(self, coach_account_id: str) -> dict[str, int]"
     }
   },
   "module_names": [

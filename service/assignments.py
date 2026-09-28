@@ -7,8 +7,8 @@ player. The player previews the coach's current identity and the exact access th
 assignment grants before explicitly consenting. Redemption is one catalog
 transaction that claims the code, checks the player's existing assignment and the
 coach's current capacity, creates the assignment, and writes the coach's in-app
-notice. The generic email notice is sent after that commit, so a transport failure
-never rolls back a consented assignment.
+notice. The generic email notice and the catalog-side attendance seed run after
+that commit, so a transport failure never rolls back a consented assignment.
 
 Account ids always come from the verified JWT; request bodies never select them.
 Only SHA-256 hashes of codes are stored and neither codes nor notices are logged.
@@ -23,6 +23,7 @@ from typing import Any, Callable
 from service._tokens import hash_token
 from service.check_ins import next_follow_up_on
 from service.email_sender import send_assignment_redemption_email
+from service.roster_order import roster_urgency_key
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +215,15 @@ def redeem_assignment_invite(db: Any, token: Any, player_account_id: str, consen
     except Exception:
         logger.exception("Post-commit assignment side effects raised unexpectedly")
     try:
+        # Seed the catalog-side roster summary (streak, timezone, latest workout
+        # date) right after consent so the first roster read is already accurate
+        # instead of waiting for the hourly sweep (ticket #118).
+        from service import missed_day_alerts
+
+        missed_day_alerts.evaluate_for_ledger(db, player_account_id)
+    except Exception:
+        logger.exception("Post-commit attendance evaluation raised unexpectedly")
+    try:
         email_sent = _send_redemption_email(
             db, coach_account, identity["display_name"], result["player_username"]
         )
@@ -284,13 +294,20 @@ def end_assignment(db: Any, account_id: str, assignment_id: Any, ended_by: str) 
 
 
 def list_coach_assignments(db: Any, coach_account_id: str) -> list[dict[str, Any]]:
-    """Active assignments for a coach: identity, timing, and catalog-side alert badges.
+    """Active assignments for a coach in roster urgency order (ticket #118).
 
-    The badge counts and current streak come from catalog tables only, so listing
-    the roster never opens a player ledger (ADR 025/030).
+    Each row carries the urgency inputs — alert badges, pending program request
+    count, missed streak, follow-up date, and the latest workout date — so the
+    client neither sorts nor fetches anything per player. Every input comes from
+    catalog tables only, so listing the roster never opens a player ledger
+    (ADR 025/030); ``service.roster_order`` is the single ordering definition
+    and today's date is its only clock input.
     """
     badges = db.get_roster_alert_badges(coach_account_id)
     follow_ups = db.list_roster_follow_up_basis(coach_account_id)
+    pending_requests = db.pending_program_request_counts(coach_account_id)
+    last_workouts = db.list_roster_last_workout_dates(coach_account_id)
+    today = datetime.now(UTC).date()
     rows = []
     for row in db.list_active_assignments_for_coach(coach_account_id):
         badge = badges.get(row["assignment_id"], {})
@@ -310,8 +327,11 @@ def list_coach_assignments(db: Any, coach_account_id: str) -> list[dict[str, Any
                 "alerts_acknowledged": int(badge.get("alerts_acknowledged", 0)),
                 "current_missed_streak": int(badge.get("current_missed_streak", 0)),
                 "next_follow_up_on": next_follow_up.isoformat() if next_follow_up else None,
+                "pending_requests": int(pending_requests.get(row["assignment_id"], 0)),
+                "last_workout_on": last_workouts.get(row["assignment_id"]),
             }
         )
+    rows.sort(key=lambda entry: roster_urgency_key(entry, today))
     return rows
 
 
