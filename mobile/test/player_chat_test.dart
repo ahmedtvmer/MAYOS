@@ -8,7 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/account_data_eraser.dart';
+import 'package:mayos_mobile/src/core/active_workout.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
+import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/chat_models.dart';
 import 'package:mayos_mobile/src/core/connectivity_message.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
@@ -371,6 +373,8 @@ void main() {
         drafts: InMemoryDraftStore(),
         workoutCache: InMemoryWorkoutCacheStore(),
         chatCache: store,
+        baselines: InMemoryBaselineCacheStore(),
+        activeWorkout: InMemoryActiveWorkoutStore(),
       ),
     );
 

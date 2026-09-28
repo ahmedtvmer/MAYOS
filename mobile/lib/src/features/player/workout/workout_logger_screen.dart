@@ -29,18 +29,34 @@ import 'logger_keypad.dart';
 
 /// The frozen previous working set matched set by set: set N of the table is
 /// the Nth working set of the baseline's `last_session` (#107/#123), for
-/// planned and unplanned exercises alike. Null when there is no previous set.
+/// planned and unplanned exercises alike.
+///
+/// N counts only non-warm-up rows, because `last_session` carries working sets
+/// only — so a warm-up row has no previous set, shows `—`, and is never
+/// auto-filled from one (#123 item 1). Null when there is no previous set.
 BaselineSet? previousSetFor(
   ActiveWorkoutExercise exercise,
   int setIndex,
   Map<String, BaselineExercise> baselines,
 ) {
-  final List<BaselineSet> last =
-      baselines[exercise.exerciseId]?.lastSession.sets ?? const <BaselineSet>[];
-  if (setIndex < 0 || setIndex >= last.length) {
+  if (setIndex < 0 || setIndex >= exercise.sets.length) {
     return null;
   }
-  return last[setIndex];
+  if (exercise.sets[setIndex].isWarmup) {
+    return null;
+  }
+  int workingNumber = 0;
+  for (int i = 0; i <= setIndex; i++) {
+    if (!exercise.sets[i].isWarmup) {
+      workingNumber += 1;
+    }
+  }
+  final List<BaselineSet> last =
+      baselines[exercise.exerciseId]?.lastSession.sets ?? const <BaselineSet>[];
+  if (workingNumber - 1 >= last.length) {
+    return null;
+  }
+  return last[workingNumber - 1];
 }
 
 /// `100 × 5 @1`, or `—` when there is no previous set. An unrated previous
@@ -49,20 +65,74 @@ String previousLabel(BaselineSet? set) {
   if (set == null) {
     return '—';
   }
-  final String effort =
-      set.rir == null ? '' : ' @${formatCellRir(set.rir!)}';
+  final String effort = set.rir == null ? '' : ' @${formatCellRir(set.rir!)}';
   return '${formatCellWeight(set.weightKg)} × ${set.reps}$effort';
 }
 
 /// `100`, `92.5`, `33.33` — the cell/previous weight format.
 String formatCellWeight(double weight) =>
-    weight == weight.roundToDouble()
-        ? weight.round().toString()
-        : '$weight';
+    weight == weight.roundToDouble() ? weight.round().toString() : '$weight';
 
 /// `1`, `1.5` — RIR at the display boundary.
 String formatCellRir(double rir) =>
     rir == rir.roundToDouble() ? rir.round().toString() : '$rir';
+
+/// The one mapping from a field to what its cell shows (#123 item 12): the
+/// typed [value] when there is one, else the faded [hint].
+///
+/// The hint is the previous set first (#107/#123 item 1), falling back to the
+/// prescription target — projected weight, target reps, target RIR — when
+/// there is no previous value to take (#108: prescription `last_perf` stays
+/// for the progression projection alone, so it never appears here).
+({String? value, String? hint}) cellTexts({
+  required ActiveWorkoutSet set,
+  required BaselineSet? previous,
+  required PrescriptionHint? prescriptionHint,
+  required LoggerField field,
+}) {
+  String? fromPrevious;
+  String? fromPrescription;
+  switch (field) {
+    case LoggerField.kg:
+      fromPrevious =
+          previous == null ? null : formatCellWeight(previous.weightKg);
+      final double? projected = prescriptionHint?.weightKg;
+      fromPrescription = projected == null || projected <= 0
+          ? null
+          : formatCellWeight(projected);
+      return (
+        value: set.weightKg > 0 ? formatCellWeight(set.weightKg) : null,
+        hint: fromPrevious ?? fromPrescription,
+      );
+    case LoggerField.reps:
+      fromPrevious = previous == null ? null : '${previous.reps}';
+      final int? targetReps = prescriptionHint?.reps;
+      fromPrescription =
+          targetReps == null || targetReps <= 0 ? null : '$targetReps';
+      return (
+        value: set.reps > 0 ? '${set.reps}' : null,
+        hint: fromPrevious ?? fromPrescription,
+      );
+    case LoggerField.rir:
+      final double? previousRir = previous?.rir;
+      fromPrevious = previousRir == null ? null : formatCellRir(previousRir);
+      final double? targetRir = prescriptionHint?.rir;
+      fromPrescription = targetRir == null ? null : formatCellRir(targetRir);
+      return (
+        value: set.rir == null ? null : formatCellRir(set.rir!),
+        hint: fromPrevious ?? fromPrescription,
+      );
+  }
+}
+
+/// The spec's tick: a 40dp square inside the row's 48dp tap area (#107).
+const double kLoggerTickSize = 40;
+
+/// The catalog dialog's content width. It is the app's narrow-phone content
+/// width, kept as one named constant because the dialog measures its content
+/// intrinsically and a shrink-wrapped results viewport cannot answer that
+/// without a bounded width (#123 item 11).
+const double kLoggerDialogWidth = 360;
 
 /// The Hevy-style table logger (#107 Variant A), backed entirely by the
 /// Active workout: one scrolling list of exercise cards with a
@@ -86,6 +156,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   bool _loading = true;
   String? _loadError;
   String? _error;
+
+  /// A non-blocking note to the player (e.g. a clamped performed date).
+  String? _notice;
   bool _fromCache = false;
 
   /// Null only when it could not be determined at all (never guessed as
@@ -161,7 +234,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       final WorkoutCacheStore cache = ref.read(workoutCacheStoreProvider);
       final TrainingProgram? program = await cache.readProgram(accountId);
       ProgramDay? day;
-      for (final ProgramDay candidate in program?.days ?? const <ProgramDay>[]) {
+      for (final ProgramDay candidate
+          in program?.days ?? const <ProgramDay>[]) {
         if (candidate.dayOrder == widget.dayOrder) {
           day = candidate;
         }
@@ -175,13 +249,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
         });
         return;
       }
-      final Prescription? prescription =
-          await cache.readPrescription(accountId, widget.dayOrder);
       await controller.startFromDay(
         accountId: accountId,
         day: day,
         programVersion: program?.version,
-        prescription: prescription,
       );
     }
     final ActiveWorkout? workout = controller.workout;
@@ -190,11 +261,26 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       _fromCache = fromCache;
       _loading = false;
       if (workout != null) {
-        // The save step defaults to the day the workout started (#123).
-        _performedDate = DateTime.tryParse(workout.startedDate) ??
-            DateTime.now();
+        _applyDefaultPerformedDate(workout);
       }
     });
+  }
+
+  /// The save step defaults to the day the Active workout started (#123), and
+  /// that day is held to the same allowed window the date picker enforces
+  /// (ADR 020/035): a start day outside it is clamped exactly like the old
+  /// logger's picker clamps an out-of-range date, and the player is told
+  /// (#123 item 7).
+  void _applyDefaultPerformedDate(ActiveWorkout workout) {
+    final DateTime started =
+        DateTime.tryParse(workout.startedDate) ?? DateTime.now();
+    final DateTime clamped = performedDateWindow().clamp(started);
+    _performedDate = clamped;
+    if (formatPerformedDate(clamped) != formatPerformedDate(started)) {
+      _notice = 'This workout started on ${formatPerformedDate(started)}, '
+          'outside the allowed entry window, so its performed date was set '
+          'to ${formatPerformedDate(clamped)}.';
+    }
   }
 
   ActiveWorkout? get _workout =>
@@ -220,16 +306,16 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   // ---- table interactions -------------------------------------------------
 
   String _initialText(ActiveWorkout workout, LoggerCellFocus focus) {
-    final ActiveWorkoutSet set =
-        workout.exercises[focus.exerciseIndex].sets[focus.setIndex];
-    switch (focus.field) {
-      case LoggerField.kg:
-        return set.weightKg > 0 ? formatCellWeight(set.weightKg) : '';
-      case LoggerField.reps:
-        return set.reps > 0 ? '${set.reps}' : '';
-      case LoggerField.rir:
-        return set.rir == null ? '' : formatCellRir(set.rir!);
-    }
+    final ActiveWorkoutExercise exercise =
+        workout.exercises[focus.exerciseIndex];
+    final ActiveWorkoutSet set = exercise.sets[focus.setIndex];
+    return cellTexts(
+          set: set,
+          previous: previousSetFor(exercise, focus.setIndex, workout.baselines),
+          prescriptionHint: exercise.prescriptionHint,
+          field: focus.field,
+        ).value ??
+        '';
   }
 
   void _onKeypadText(String text) {
@@ -249,6 +335,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     }
   }
 
+  /// One-tap RIR chips: set the value, then advance to the next set's kg the
+  /// way the #107 prototype does, so a run of sets can be rated without
+  /// hunting for the next cell (#123 item 10).
   void _onKeypadRir(double? rir) {
     final LoggerCellFocus? focus = _focus;
     if (focus == null) {
@@ -260,6 +349,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     } else {
       _controller.updateCell(focus.exerciseIndex, focus.setIndex, rir: rir);
     }
+    final ActiveWorkout? workout = _workout;
+    if (workout == null) {
+      return;
+    }
+    setState(() => _focus = nextLoggerCellFocus(workout, focus));
   }
 
   void _onKeypadNext() {
@@ -282,8 +376,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     if (workout == null) {
       return;
     }
-    final ActiveWorkoutExercise exercise =
-        workout.exercises[exerciseIndex];
+    final ActiveWorkoutExercise exercise = workout.exercises[exerciseIndex];
     final ActiveWorkoutSet set = exercise.sets[setIndex];
     if (set.ticked) {
       await _controller.setTicked(exerciseIndex, setIndex, false);
@@ -345,7 +438,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   int _untickedCount(ActiveWorkout workout) => workout.exercises.fold<int>(
       0,
       (int total, ActiveWorkoutExercise exercise) =>
-          total + exercise.sets.where((ActiveWorkoutSet s) => !s.ticked).length);
+          total +
+          exercise.sets.where((ActiveWorkoutSet s) => !s.ticked).length);
 
   Future<void> _finish() async {
     final ActiveWorkout? workout = _workout;
@@ -353,9 +447,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       return;
     }
     final bool anyWorking = workout.exercises.any(
-        (ActiveWorkoutExercise exercise) =>
-            exercise.sets.any((ActiveWorkoutSet s) =>
-                s.ticked && s.countsAsWorkingSet));
+        (ActiveWorkoutExercise exercise) => exercise.sets
+            .any((ActiveWorkoutSet s) => s.ticked && s.countsAsWorkingSet));
     if (!anyWorking) {
       setState(() => _error = 'Log at least one set');
       return;
@@ -439,35 +532,54 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       _saving = true;
       _error = null;
     });
-    final DraftSyncService sync = ref.read(draftSyncServiceProvider);
-    final WorkoutDraft? draft = workout.buildWorkoutDraft(
-      timezone: timezone,
-      clientSessionId: sync.newClientSessionId(),
-      now: DateTime.now(),
-      performedDate: formatPerformedDate(_performedDate),
-      readiness: _readiness,
-      notes: _notes.text.trim(),
-    );
-    if (draft == null) {
-      setState(() {
-        _saving = false;
-        _error = 'No cached program version is available offline. Connect '
-            'once to refresh your program before logging this workout.';
-      });
-      return;
+    try {
+      final DraftSyncService sync = ref.read(draftSyncServiceProvider);
+      final WorkoutDraft? draft = workout.buildWorkoutDraft(
+        timezone: timezone,
+        clientSessionId: sync.newClientSessionId(),
+        now: DateTime.now(),
+        performedDate: formatPerformedDate(_performedDate),
+        readiness: _readiness,
+        notes: _notes.text.trim(),
+      );
+      if (draft == null) {
+        setState(() {
+          _error = 'No cached program version is available offline. Connect '
+              'once to refresh your program before logging this workout.';
+        });
+        return;
+      }
+      await sync.saveDraft(draft);
+      // Saving ends the Active workout (CONTEXT.md): the draft now owns it.
+      // The controller waits for every pending store write before deleting, so
+      // a late write can never resurrect it (#123 item 5).
+      await _controller.discard(
+          accountId: workout.accountId, workoutId: workout.id);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Workout saved to your drafts.')),
+      );
+      context.go(workoutsPath);
+    } on Object catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _error = _saveFailureMessage(error));
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
     }
-    await sync.saveDraft(draft);
-    // Saving ends the Active workout (CONTEXT.md): the draft now owns it.
-    await _controller.discard();
-    if (!mounted) {
-      return;
-    }
-    setState(() => _saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Workout saved to your drafts.')),
-    );
-    context.go(workoutsPath);
   }
+
+  /// How a failed save is reported: the service's own message when it has one,
+  /// otherwise a line that promises the workout is still on screen (#123
+  /// item 6).
+  static String _saveFailureMessage(Object error) => error is ApiException
+      ? error.message
+      : 'The workout could not be saved. Nothing was lost — try again.';
 
   Future<void> _addUnplanned() async {
     final ExerciseCatalogEntry? entry = await showDialog<ExerciseCatalogEntry>(
@@ -505,7 +617,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
         ),
       );
     }
-    final ActiveWorkoutState active = ref.watch(activeWorkoutControllerProvider);
+    final ActiveWorkoutState active =
+        ref.watch(activeWorkoutControllerProvider);
     if (_loading || !active.ready) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -600,20 +713,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
             icon: Icons.check,
             onPressed: _blockReason != null ? null : _finish,
           ),
-          if (_blockReason != null) ...<Widget>[
-            const SizedBox(height: MayosSpacing.sm),
-            Text(
-              _blockReason!,
-              style: MayosTypography.bodySecondary.copyWith(color: c.danger),
-            ),
-          ],
-          if (_error != null) ...<Widget>[
-            const SizedBox(height: MayosSpacing.sm),
-            Text(
-              _error!,
-              style: MayosTypography.bodySecondary.copyWith(color: c.danger),
-            ),
-          ],
+          if (_blockReason != null) _MessageLine(_blockReason!),
+          if (_error != null) _MessageLine(_error!),
+          if (_notice != null) _MessageLine(_notice!, danger: false),
         ],
       ),
     );
@@ -625,8 +727,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: MayosSpacing.md),
       child: MayosCard(
-        padding: const EdgeInsets.fromLTRB(
-            MayosSpacing.md, MayosSpacing.sm, MayosSpacing.md, MayosSpacing.xxs),
+        padding: const EdgeInsets.fromLTRB(MayosSpacing.md, MayosSpacing.sm,
+            MayosSpacing.md, MayosSpacing.xxs),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
@@ -635,13 +737,20 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
                 Expanded(
                   child: Text(
                     exercise.exerciseName,
-                    style: MayosTypography.exerciseTitle
-                        .copyWith(color: c.accent),
+                    style:
+                        MayosTypography.exerciseTitle.copyWith(color: c.accent),
                   ),
                 ),
                 if (exercise.unplanned) _unplannedTag(c),
               ],
             ),
+            // The prescription caption, shown the way the old logger showed
+            // it (#123 item 4).
+            if (exercise.targetLabel != null)
+              Text(
+                exercise.targetLabel!,
+                style: MayosTypography.caption.copyWith(color: c.textMuted),
+              ),
             _tableHeader(c),
             for (int setIndex = 0; setIndex < exercise.sets.length; setIndex++)
               _buildSetRow(workout, exerciseIndex, setIndex),
@@ -663,7 +772,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   }
 
   Widget _unplannedTag(MayosThemeExtension c) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        padding: const EdgeInsets.symmetric(
+            horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
         decoration: BoxDecoration(
           color: c.secondarySurface,
           borderRadius: MayosRadii.pillRadius,
@@ -674,9 +784,14 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   static const List<int> _flex = <int>[2, 5, 3, 3, 2, 2];
 
   Widget _tableHeader(MayosThemeExtension c) {
-    final TextStyle st = MayosTypography.caption
-        .copyWith(color: c.textMuted, fontWeight: FontWeight.w700);
-    const List<String> labels = <String>['SET', 'PREVIOUS', 'KG', 'REPS', 'RIR', '✓'];
+    const List<String> labels = <String>[
+      'SET',
+      'PREVIOUS',
+      'KG',
+      'REPS',
+      'RIR',
+      '✓'
+    ];
     return Padding(
       padding: const EdgeInsets.only(top: MayosSpacing.xs),
       child: Row(
@@ -685,7 +800,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
             Expanded(
               flex: _flex[i],
               child: Text(labels[i],
-                  textAlign: TextAlign.center, style: st),
+                  textAlign: TextAlign.center,
+                  style: MayosTypography.captionStrong
+                      .copyWith(color: c.textMuted)),
             ),
         ],
       ),
@@ -700,10 +817,17 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
         previousSetFor(exercise, setIndex, workout.baselines);
     final bool muted = set.isWarmup;
 
+    ({String? value, String? hint}) texts(LoggerField field) => cellTexts(
+          set: set,
+          previous: prev,
+          prescriptionHint: exercise.prescriptionHint,
+          field: field,
+        );
+
     Widget row = Container(
-      margin: const EdgeInsets.symmetric(vertical: 2),
+      margin: const EdgeInsets.symmetric(vertical: MayosSpacing.xxs),
       decoration: BoxDecoration(
-        color: set.ticked ? c.success.withValues(alpha: 0.16) : null,
+        color: set.ticked ? c.successTint : null,
         borderRadius: MayosRadii.smallRadius,
       ),
       child: Row(
@@ -715,12 +839,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
               borderRadius: MayosRadii.smallRadius,
               onTap: () => _controller.toggleWarmup(exerciseIndex, setIndex),
               child: SizedBox(
-                height: 44,
+                height: kMayosMinTapTarget,
                 child: Center(
                   child: Text(
                     set.isWarmup ? 'W' : '${setIndex + 1}',
-                    style: MayosTypography.numeric.copyWith(
-                      fontSize: 17,
+                    style: MayosTypography.numericSmall.copyWith(
                       color: muted ? c.textMuted : c.textPrimary,
                     ),
                   ),
@@ -736,39 +859,20 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
               style: MayosTypography.caption.copyWith(color: c.textMuted),
             ),
           ),
-          _buildCell(
-            exerciseIndex,
-            setIndex,
+          for (final LoggerField field in <LoggerField>[
             LoggerField.kg,
-            text: set.weightKg > 0
-                ? formatCellWeight(set.weightKg)
-                : (prev == null ? null : formatCellWeight(prev.weightKg)),
-            isHint: set.weightKg <= 0 && prev != null,
-            muted: muted,
-            ticked: set.ticked,
-          ),
-          _buildCell(
-            exerciseIndex,
-            setIndex,
             LoggerField.reps,
-            text: set.reps > 0
-                ? '${set.reps}'
-                : (prev == null ? null : '${prev.reps}'),
-            isHint: set.reps <= 0 && prev != null,
-            muted: muted,
-            ticked: set.ticked,
-          ),
-          _buildCell(
-            exerciseIndex,
-            setIndex,
             LoggerField.rir,
-            text: set.rir != null
-                ? formatCellRir(set.rir!)
-                : (prev?.rir == null ? null : formatCellRir(prev!.rir!)),
-            isHint: set.rir == null && prev?.rir != null,
-            muted: muted,
-            ticked: set.ticked,
-          ),
+          ])
+            _buildCell(
+              exerciseIndex,
+              setIndex,
+              field,
+              value: texts(field).value,
+              hint: texts(field).hint,
+              muted: muted,
+              ticked: set.ticked,
+            ),
           Expanded(
             flex: _flex[5],
             child: SizedBox(
@@ -780,8 +884,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
                   borderRadius: MayosRadii.smallRadius,
                   onTap: () => _toggleTick(exerciseIndex, setIndex),
                   child: SizedBox(
-                    width: 40,
-                    height: 40,
+                    width: kLoggerTickSize,
+                    height: kLoggerTickSize,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
                         color: set.ticked ? c.success : c.surfaceSunken,
@@ -803,8 +907,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     );
 
     if (exercise.sets.length > 1) {
+      // Keyed by the row's own stable id, so removing an earlier row never
+      // re-identifies the one being swiped (#123 item 3).
       row = Dismissible(
-        key: ValueKey<String>('logger.row.$exerciseIndex.$setIndex'),
+        key: ValueKey<String>(set.id),
         direction: DismissDirection.endToStart,
         onDismissed: (_) => _removeSet(exerciseIndex, setIndex),
         background: Container(
@@ -823,19 +929,18 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     int exerciseIndex,
     int setIndex,
     LoggerField field, {
-    required String? text,
-    required bool isHint,
+    required String? value,
+    required String? hint,
     required bool muted,
     required bool ticked,
   }) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final bool focused =
         _focus == LoggerCellFocus(exerciseIndex, setIndex, field);
-    final Color color = text == null
-        ? c.textDisabled
-        : (isHint || muted ? c.textDisabled : c.textPrimary);
+    // A hint (or a warm-up row) reads as disabled ink; a typed value is solid.
+    final Color color = value == null || muted ? c.textDisabled : c.textPrimary;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 3),
+      padding: const EdgeInsets.symmetric(horizontal: MayosSpacing.xxs),
       child: Material(
         color: focused
             ? c.selectedSurface
@@ -854,14 +959,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
           onTap: () => setState(
               () => _focus = LoggerCellFocus(exerciseIndex, setIndex, field)),
           child: SizedBox(
-            height: 44,
+            height: kMayosMinTapTarget,
             child: Center(
               child: Text(
-                text ?? '–',
-                style: MayosTypography.numeric.copyWith(
-                  fontSize: 17,
-                  color: color,
-                ),
+                value ?? hint ?? '–',
+                style: MayosTypography.numericSmall.copyWith(color: color),
               ),
             ),
           ),
@@ -872,9 +974,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
 
   Widget _buildSaveStep(ActiveWorkout workout) {
     final MayosThemeExtension c = MayosTheme.of(context);
-    final String date =
-        '${_performedDate.year}-${_performedDate.month.toString().padLeft(2, '0')}-'
-        '${_performedDate.day.toString().padLeft(2, '0')}';
+    final String date = formatPerformedDate(_performedDate);
     return SingleChildScrollView(
       padding: MayosSpacing.screen,
       child: Column(
@@ -923,20 +1023,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
             maxLines: 3,
             label: 'Notes (pumps, joint aches, fatigue)',
           ),
-          if (_blockReason != null) ...<Widget>[
-            const SizedBox(height: MayosSpacing.sm),
-            Text(
-              _blockReason!,
-              style: MayosTypography.bodySecondary.copyWith(color: c.danger),
-            ),
-          ],
-          if (_error != null) ...<Widget>[
-            const SizedBox(height: MayosSpacing.sm),
-            Text(
-              _error!,
-              style: MayosTypography.bodySecondary.copyWith(color: c.danger),
-            ),
-          ],
+          if (_blockReason != null) _MessageLine(_blockReason!),
+          if (_error != null) _MessageLine(_error!),
+          if (_notice != null) _MessageLine(_notice!, danger: false),
           const SizedBox(height: MayosSpacing.lg),
           MayosButton(
             key: const ValueKey<String>('logger.save'),
@@ -946,6 +1035,29 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
             onPressed: _saving || _blockReason != null ? null : _save,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The one message line the logger shows under the list or the save step:
+/// blocking reasons and errors in the danger colour, notes neutral (#123 item
+/// 12).
+class _MessageLine extends StatelessWidget {
+  const _MessageLine(this.text, {this.danger = true});
+
+  final String text;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: MayosSpacing.sm),
+      child: Text(
+        text,
+        style: MayosTypography.bodySecondary
+            .copyWith(color: danger ? c.danger : c.textSecondary),
       ),
     );
   }
@@ -1043,7 +1155,7 @@ class _UnplannedExerciseDialogState
     return AlertDialog(
       title: const Text('Add unplanned exercise'),
       content: SizedBox(
-        width: 360,
+        width: kLoggerDialogWidth,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1075,9 +1187,9 @@ class _UnplannedExerciseDialogState
                   shrinkWrap: true,
                   children: <Widget>[
                     for (final ExerciseCatalogEntry entry in _results)
-                      ListTile(
-                        dense: true,
-                        title: Text(entry.name),
+                      MayosSettingsTile(
+                        icon: Icons.fitness_center,
+                        title: entry.name,
                         onTap: () => Navigator.of(context).pop(entry),
                       ),
                   ],

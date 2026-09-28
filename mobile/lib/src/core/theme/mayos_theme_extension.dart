@@ -28,6 +28,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
     required this.selectedBorder,
     required this.focusRing,
     required this.success,
+    required this.successTint,
     required this.warning,
     required this.danger,
     required this.onSuccess,
@@ -69,6 +70,10 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
   final Color focusRing;
 
   final Color success;
+
+  /// The success colour as a faint row wash (a ticked logger row).
+  final Color successTint;
+
   final Color warning;
   final Color danger;
   final Color onSuccess;
@@ -105,6 +110,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
     selectedBorder: MayosPalette.blue,
     focusRing: Color(0xFF6EA0FF),
     success: MayosPalette.successDark,
+    successTint: Color(0x2934D399),
     warning: MayosPalette.warningDark,
     danger: MayosPalette.dangerDark,
     onSuccess: Color(0xFF04160E),
@@ -139,6 +145,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
     selectedBorder: MayosPalette.blueDeep,
     focusRing: MayosPalette.blueDeep,
     success: MayosPalette.successLight,
+    successTint: Color(0x2916A34A),
     warning: MayosPalette.warningLight,
     danger: MayosPalette.dangerLight,
     onSuccess: MayosPalette.white,
@@ -194,6 +201,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
     Color? selectedBorder,
     Color? focusRing,
     Color? success,
+    Color? successTint,
     Color? warning,
     Color? danger,
     Color? onSuccess,
@@ -226,6 +234,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
       selectedBorder: selectedBorder ?? this.selectedBorder,
       focusRing: focusRing ?? this.focusRing,
       success: success ?? this.success,
+      successTint: successTint ?? this.successTint,
       warning: warning ?? this.warning,
       danger: danger ?? this.danger,
       onSuccess: onSuccess ?? this.onSuccess,
@@ -267,6 +276,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
       selectedBorder: Color.lerp(selectedBorder, other.selectedBorder, t)!,
       focusRing: Color.lerp(focusRing, other.focusRing, t)!,
       success: Color.lerp(success, other.success, t)!,
+      successTint: Color.lerp(successTint, other.successTint, t)!,
       warning: Color.lerp(warning, other.warning, t)!,
       danger: Color.lerp(danger, other.danger, t)!,
       onSuccess: Color.lerp(onSuccess, other.onSuccess, t)!,

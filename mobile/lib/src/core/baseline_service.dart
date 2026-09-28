@@ -60,11 +60,15 @@ class BaselinesService {
 
   /// Resolves the baseline to freeze at workout start: a fresh fetch inside
   /// [freshTimeout], otherwise the cache, otherwise empty — always with the
-  /// account's unsynced drafts folded in.
+  /// account's unsynced, still-committing drafts folded in.
   Future<BaselineResolution> resolveForStart(String accountId) async {
     List<BaselineExercise>? fresh;
     try {
-      fresh = await _api.baselines(receiveTimeout: freshTimeout);
+      // One overall deadline for the whole request (connect *and* receive),
+      // so a stuck handshake falls back to the cache too (#123 item 8).
+      fresh = await _api
+          .baselines(receiveTimeout: freshTimeout)
+          .timeout(freshTimeout);
       try {
         await _cache.write(accountId, fresh);
       } on Object {
@@ -93,10 +97,11 @@ class BaselinesService {
     } on Object {
       drafts = const <WorkoutDraft>[];
     }
-    final List<BaselineExercise> folded = foldDraftsIntoBaselines(
-      baselines: base,
-      drafts: drafts.where((WorkoutDraft draft) => draft.isUnsynced),
-    );
+    // `foldDraftsIntoBaselines` keeps only the drafts that will commit
+    // (#123 item 9), so a refused `needs_reconciliation` draft never shows a
+    // previous set history will not contain.
+    final List<BaselineExercise> folded =
+        foldDraftsIntoBaselines(baselines: base, drafts: drafts);
     return BaselineResolution(folded, source);
   }
 }

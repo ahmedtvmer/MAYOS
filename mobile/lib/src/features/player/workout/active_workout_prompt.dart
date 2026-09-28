@@ -19,8 +19,10 @@ enum ActiveWorkoutPromptChoice { resume, discard, cancel }
 ///
 /// [forNewStart] switches the wording to the second-workout guard ("finish or
 /// discard the current one first"); without it this is the offer shown when
-/// the app opens. Dismissing the dialog counts as [ActiveWorkoutPromptChoice
-/// .cancel], so nothing is ever discarded by accident.
+/// the app opens. There is no third button: tapping outside the dialog (or the
+/// system back gesture) dismisses it, `showDialog` resolves null, and both
+/// call sites treat null as [ActiveWorkoutPromptChoice.cancel], so nothing is
+/// ever discarded or started by accident (#123 item 13).
 Future<ActiveWorkoutPromptChoice?> showActiveWorkoutPrompt(
   BuildContext context, {
   required ActiveWorkout activeWorkout,
@@ -58,13 +60,6 @@ Future<ActiveWorkoutPromptChoice?> showActiveWorkoutPrompt(
           expand: false,
           onPressed: () =>
               Navigator.of(context).pop(ActiveWorkoutPromptChoice.discard),
-        ),
-        MayosButton(
-          label: forNewStart ? 'Cancel' : 'Not now',
-          variant: MayosButtonVariant.secondary,
-          expand: false,
-          onPressed: () =>
-              Navigator.of(context).pop(ActiveWorkoutPromptChoice.cancel),
         ),
         MayosButton(
           label: 'Resume',
@@ -106,7 +101,7 @@ Future<void> offerActiveWorkoutOnOpen(
     return;
   }
   if (choice == ActiveWorkoutPromptChoice.discard) {
-    await controller.discard();
+    await controller.discard(accountId: active.accountId, workoutId: active.id);
   } else if (choice == ActiveWorkoutPromptChoice.resume) {
     context.go('$logWorkoutPath/${active.dayOrder}');
   }
@@ -146,32 +141,16 @@ Future<bool> startWorkoutFromDay(
     if (choice != ActiveWorkoutPromptChoice.discard) {
       return false;
     }
-    await controller.discard();
+    await controller.discard(accountId: active.accountId, workoutId: active.id);
     if (!context.mounted) {
       return false;
     }
-  }
-
-  // Seed the rows from the cached prescription when one is there, the same
-  // targets the logger itself pre-fills from; a cache miss just means the
-  // day's own targets are used.
-  Prescription? prescription;
-  try {
-    prescription = await ref
-        .read(workoutCacheStoreProvider)
-        .readPrescription(accountId, day.dayOrder);
-  } on Object {
-    prescription = null;
-  }
-  if (!context.mounted) {
-    return false;
   }
 
   final StartWorkoutOutcome outcome = await controller.startFromDay(
     accountId: accountId,
     day: day,
     programVersion: programVersion,
-    prescription: prescription,
   );
   if (!context.mounted || outcome != StartWorkoutOutcome.started) {
     return false;

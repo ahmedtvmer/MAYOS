@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show immutable;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'baselines.dart';
@@ -5,29 +6,50 @@ import 'models.dart';
 import 'performed_date_window.dart';
 import 'secure_store.dart';
 
+int _setSequence = 0;
+
+/// A fresh identity for one set row (#123 item 3).
+///
+/// Rows keep their id for the life of the workout — across edits, restores,
+/// and re-serialization — so the table's swipe-to-delete `Dismissible` is
+/// keyed by the row itself rather than by its position, which shifts whenever
+/// an earlier row is removed.
+String newActiveWorkoutSetId() {
+  _setSequence += 1;
+  return 'set-${DateTime.now().microsecondsSinceEpoch}-$_setSequence';
+}
+
 /// One set row of the Active workout (CONTEXT.md): weight, reps, effort as
 /// RIR (null = unrated), the warm-up flag, and whether the player ticked it.
 ///
+/// Rows start **empty** (0 kg, 0 reps, no RIR), exactly like the #107
+/// prototype: the table shows the previous set as a faded hint and fills the
+/// cells on tick, so nothing is pre-entered for the player to correct.
 /// An empty cell is 0 for weight/reps and null for RIR, so "no value yet" is
 /// distinguishable from a typed zero weight only by intent — the working-set
 /// rules treat both as not logged, matching the server predicate.
 class ActiveWorkoutSet {
-  const ActiveWorkoutSet({
+  ActiveWorkoutSet({
+    String? id,
     this.weightKg = 0,
     this.reps = 0,
     this.rir,
     this.isWarmup = false,
     this.ticked = false,
-  });
+  }) : id = id ?? newActiveWorkoutSetId();
 
   factory ActiveWorkoutSet.fromJson(Map<String, dynamic> json) =>
       ActiveWorkoutSet(
+        id: json['id'] as String? ?? newActiveWorkoutSetId(),
         weightKg: (json['weight_kg'] as num?)?.toDouble() ?? 0,
         reps: (json['reps'] as num?)?.toInt() ?? 0,
         rir: (json['rir'] as num?)?.toDouble(),
         isWarmup: json['is_warmup'] as bool? ?? false,
         ticked: json['ticked'] as bool? ?? false,
       );
+
+  /// Stable identity of this row, persisted with the Active workout.
+  final String id;
 
   final double weightKg;
   final int reps;
@@ -53,6 +75,7 @@ class ActiveWorkoutSet {
     bool clearRir = false,
   }) =>
       ActiveWorkoutSet(
+        id: id,
         weightKg: weightKg ?? this.weightKg,
         reps: reps ?? this.reps,
         rir: clearRir ? null : (rir ?? this.rir),
@@ -61,11 +84,41 @@ class ActiveWorkoutSet {
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
         'weight_kg': weightKg,
         'reps': reps,
         'rir': rir,
         'is_warmup': isWarmup,
         'ticked': ticked,
+      };
+}
+
+/// The prescription target an empty cell falls back to as its faded hint when
+/// there is no previous set to hint from (#107/#108): the projected weight,
+/// the target rep floor, and the target RPE expressed as RIR.
+///
+/// It is a display hint only — the cells stay empty until the player types or
+/// ticks them, and the prescription `last_perf` never reaches this column
+/// (#108: it stays for the progression projection alone).
+@immutable
+class PrescriptionHint {
+  const PrescriptionHint({this.weightKg, this.reps, this.rir});
+
+  factory PrescriptionHint.fromJson(Map<String, dynamic> json) =>
+      PrescriptionHint(
+        weightKg: (json['weight_kg'] as num?)?.toDouble(),
+        reps: (json['reps'] as num?)?.toInt(),
+        rir: (json['rir'] as num?)?.toDouble(),
+      );
+
+  final double? weightKg;
+  final int? reps;
+  final double? rir;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'weight_kg': weightKg,
+        'reps': reps,
+        'rir': rir,
       };
 }
 
@@ -77,18 +130,23 @@ class ActiveWorkoutExercise {
     required this.sets,
     this.unplanned = false,
     this.targetLabel,
+    this.prescriptionHint,
   });
 
   factory ActiveWorkoutExercise.fromJson(Map<String, dynamic> json) =>
       ActiveWorkoutExercise(
-        exercise: Map<String, dynamic>.from(
-            json['exercise'] as Map<String, dynamic>),
+        exercise:
+            Map<String, dynamic>.from(json['exercise'] as Map<String, dynamic>),
         sets: (json['sets'] as List<dynamic>? ?? const <dynamic>[])
             .map((dynamic s) =>
                 ActiveWorkoutSet.fromJson(s as Map<String, dynamic>))
             .toList(growable: false),
         unplanned: json['unplanned'] as bool? ?? false,
         targetLabel: json['target_label'] as String?,
+        prescriptionHint: json['prescription_hint'] is Map<String, dynamic>
+            ? PrescriptionHint.fromJson(
+                json['prescription_hint'] as Map<String, dynamic>)
+            : null,
       );
 
   /// The exact `ProgramExerciseSchema` payload the Workout draft expects.
@@ -99,6 +157,10 @@ class ActiveWorkoutExercise {
   /// The prescription caption shown on the card, when planned.
   final String? targetLabel;
 
+  /// The prescription target shown as the faded hint on cells that have no
+  /// previous set to hint from (#107/#108).
+  final PrescriptionHint? prescriptionHint;
+
   String get exerciseId => exercise['exercise_id'] as String;
   String get exerciseName => exercise['exercise_name'] as String;
 
@@ -108,6 +170,7 @@ class ActiveWorkoutExercise {
         sets: sets ?? this.sets,
         unplanned: unplanned,
         targetLabel: targetLabel,
+        prescriptionHint: prescriptionHint,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -117,6 +180,7 @@ class ActiveWorkoutExercise {
         ],
         'unplanned': unplanned,
         'target_label': targetLabel,
+        'prescription_hint': prescriptionHint?.toJson(),
       };
 }
 
@@ -157,8 +221,8 @@ class ActiveWorkout {
     }
     return <String, BaselineExercise>{
       for (final MapEntry<String, dynamic> entry in raw.entries)
-        entry.key: BaselineExercise.fromJson(
-            entry.value as Map<String, dynamic>),
+        entry.key:
+            BaselineExercise.fromJson(entry.value as Map<String, dynamic>),
     };
   }
 

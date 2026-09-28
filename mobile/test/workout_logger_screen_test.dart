@@ -15,7 +15,9 @@ import 'package:mayos_mobile/src/core/performed_date_window.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_settings_tile.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
+import 'package:mayos_mobile/src/features/player/workout/active_workout_controller.dart';
 import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
@@ -23,6 +25,36 @@ import 'support/fake_mayos_api.dart';
 
 const String _account = 'account-alice';
 
+/// The day the tests start from, built for the real controller to seed — the
+/// same `ProgramDay` the Program tab hands [ActiveWorkoutController
+/// .startFromDay] (#123 item 2).
+const ProgramDay _day = ProgramDay(
+  dayName: 'Upper A',
+  dayOrder: 2,
+  exercises: <ProgramExercise>[
+    ProgramExercise(
+      exerciseId: 'bench_press',
+      exerciseName: 'Bench Press',
+      targetSets: 3,
+      targetRepsMin: 5,
+      targetRepsMax: 8,
+      targetRpe: 8.5,
+      restSeconds: 180,
+    ),
+    ProgramExercise(
+      exerciseId: 'incline_press',
+      exerciseName: 'Incline Press',
+      targetSets: 1,
+      targetRepsMin: 8,
+      targetRepsMax: 12,
+      targetRpe: 8.0,
+      restSeconds: 120,
+    ),
+  ],
+);
+
+/// Exactly what `ProgramExercise.toJson` writes, which is what the Workout
+/// draft carries (#123 item 2: the payload shape is today's).
 const Map<String, dynamic> _benchJson = <String, dynamic>{
   'exercise_id': 'bench_press',
   'exercise_name': 'Bench Press',
@@ -30,6 +62,7 @@ const Map<String, dynamic> _benchJson = <String, dynamic>{
   'target_reps_min': 5,
   'target_reps_max': 8,
   'target_rpe': 8.5,
+  'warmup_sets': 0,
   'rest_seconds': 180,
   'notes': null,
 };
@@ -41,66 +74,41 @@ const Map<String, dynamic> _inclineJson = <String, dynamic>{
   'target_reps_min': 8,
   'target_reps_max': 12,
   'target_rpe': 8.0,
+  'warmup_sets': 0,
   'rest_seconds': 120,
   'notes': null,
 };
 
-ActiveWorkout _seedWorkout({
-  List<ActiveWorkoutExercise>? exercises,
-  Map<String, BaselineExercise>? baselines,
-}) =>
-    ActiveWorkout(
-      id: 'aw-seed',
-      accountId: _account,
-      startedAt: '2026-09-28T08:00:00.000Z',
-      dayOrder: 2,
-      dayName: 'Upper A',
-      programVersion: 3,
-      exercises: exercises ??
-          const <ActiveWorkoutExercise>[
-            ActiveWorkoutExercise(
-              exercise: _benchJson,
-              sets: <ActiveWorkoutSet>[
-                ActiveWorkoutSet(),
-                ActiveWorkoutSet(),
-                ActiveWorkoutSet(),
-              ],
-            ),
-            ActiveWorkoutExercise(
-              exercise: _inclineJson,
-              sets: <ActiveWorkoutSet>[ActiveWorkoutSet()],
-            ),
+/// The frozen baseline the fake serves, as wire JSON: two working sets for
+/// bench, one unrated set for incline.
+List<Map<String, dynamic>> _baselinesBody() => <Map<String, dynamic>>[
+      <String, dynamic>{
+        'exercise_id': 'bench_press',
+        'sessions_logged': 3,
+        'max_weight_kg': 100.0,
+        'best_e1rm_kg': 121.67,
+        'last_session': <String, dynamic>{
+          'performed_date': '2026-09-26',
+          'sets': <Map<String, dynamic>>[
+            <String, dynamic>{'weight_kg': 100.0, 'reps': 5, 'rir': 1.0},
+            <String, dynamic>{'weight_kg': 95.0, 'reps': 6, 'rir': 2.0},
           ],
-      baselines: baselines ?? _defaultBaselines(),
-    );
-
-Map<String, BaselineExercise> _defaultBaselines() =>
-    <String, BaselineExercise>{
-      'bench_press': const BaselineExercise(
-        exerciseId: 'bench_press',
-        sessionsLogged: 3,
-        maxWeightKg: 100,
-        bestE1rmKg: 121.67,
-        lastSession: BaselineLastSession(
-          performedDate: '2026-09-26',
-          sets: <BaselineSet>[
-            BaselineSet(weightKg: 100, reps: 5, rir: 1),
-            BaselineSet(weightKg: 95, reps: 6, rir: 2),
-          ],
-        ),
-      ),
-      'incline_press': const BaselineExercise(
-        exerciseId: 'incline_press',
-        sessionsLogged: 1,
-        maxWeightKg: 40,
-        bestE1rmKg: 53.33,
-        lastSession: BaselineLastSession(
-          performedDate: '2026-09-26',
+        },
+      },
+      <String, dynamic>{
+        'exercise_id': 'incline_press',
+        'sessions_logged': 1,
+        'max_weight_kg': 40.0,
+        'best_e1rm_kg': 53.33,
+        'last_session': <String, dynamic>{
+          'performed_date': '2026-09-26',
           // An unrated previous set: the label drops the `@` part.
-          sets: <BaselineSet>[BaselineSet(weightKg: 40, reps: 10, rir: null)],
-        ),
-      ),
-    };
+          'sets': <Map<String, dynamic>>[
+            <String, dynamic>{'weight_kg': 40.0, 'reps': 10, 'rir': null},
+          ],
+        },
+      },
+    ];
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     {int attempts = 40}) async {
@@ -122,14 +130,68 @@ FakeMayosApi _signedInFake() {
   fake.tokenValid = true;
   fake.profileExists = true;
   fake.recoveryEmail = 'alice@example.com';
+  fake.baselinesBody = _baselinesBody();
   return fake;
 }
+
+/// Builds the stored Active workout through the real controller — the seeding,
+/// the baseline freeze, and the persistence are the app's own, so the rows the
+/// table renders are the rows a player would start with (#123 item 2).
+Future<InMemoryActiveWorkoutStore> _seedThroughController({
+  required FakeMayosApi fake,
+  required String startedAt,
+}) async {
+  final InMemoryTokenStore tokens = InMemoryTokenStore();
+  await tokens.save('token-alice');
+  final InMemoryActiveWorkoutStore store = InMemoryActiveWorkoutStore();
+  final ProviderContainer container = ProviderContainer(
+    overrides: <Override>[
+      tokenStoreProvider.overrideWithValue(tokens),
+      draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
+      workoutCacheStoreProvider.overrideWithValue(InMemoryWorkoutCacheStore()),
+      baselineCacheStoreProvider
+          .overrideWithValue(InMemoryBaselineCacheStore()),
+      activeWorkoutStoreProvider.overrideWithValue(store),
+      apiClientProvider.overrideWith((Ref ref) => _api(fake, tokens)),
+    ],
+  );
+  addTearDown(container.dispose);
+  final ActiveWorkoutController controller =
+      container.read(activeWorkoutControllerProvider.notifier);
+  final StartWorkoutOutcome outcome = await controller.startFromDay(
+    accountId: _account,
+    day: _day,
+    programVersion: 3,
+  );
+  expect(outcome, StartWorkoutOutcome.started);
+  final ActiveWorkout? seeded = controller.workout;
+  expect(seeded, isNotNull);
+  // Restamping the start keeps the test's own clock out of the assertions.
+  final ActiveWorkout restamped = ActiveWorkout(
+    id: seeded!.id,
+    accountId: seeded.accountId,
+    startedAt: startedAt,
+    dayOrder: seeded.dayOrder,
+    dayName: seeded.dayName,
+    programVersion: seeded.programVersion,
+    exercises: seeded.exercises,
+    baselines: seeded.baselines,
+  );
+  await store.write(_account, restamped);
+  return store;
+}
+
+ApiClient _api(FakeMayosApi fake, TokenStore tokens) => ApiClient(
+      tokens: tokens,
+      baseUrl: 'http://test.local',
+      adapter: fake.adapter,
+    );
 
 /// The signed-in app with a stored Active workout, opened through the
 /// app-open Resume prompt — the real entry into the table logger (#123).
 Future<void> _openLogger(
   WidgetTester tester, {
-  required ActiveWorkout seed,
+  String startedAt = '2026-09-28T08:00:00.000Z',
   InMemoryDraftStore? drafts,
 }) async {
   tester.view.physicalSize = const Size(1080, 2400);
@@ -140,8 +202,11 @@ Future<void> _openLogger(
   final FakeMayosApi fake = _signedInFake();
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
-  final InMemoryActiveWorkoutStore store = InMemoryActiveWorkoutStore();
-  await store.write(_account, seed);
+  // Seeding talks to the (fake) API on real timers, so it runs outside the
+  // test's fake-async zone.
+  final InMemoryActiveWorkoutStore store = (await tester.runAsync(
+    () => _seedThroughController(fake: fake, startedAt: startedAt),
+  ))!;
 
   await tester.pumpWidget(
     ProviderScope(
@@ -180,8 +245,8 @@ Future<void> _openLogger(
   await tester.pumpAndSettle();
 }
 
-Finder _cell(int exercise, int set, String field) => find.byKey(
-    ValueKey<String>('logger.cell.$exercise.$set.$field'));
+Finder _cell(int exercise, int set, String field) =>
+    find.byKey(ValueKey<String>('logger.cell.$exercise.$set.$field'));
 
 Finder _tick(int exercise, int set) =>
     find.byKey(ValueKey<String>('logger.tick.$exercise.$set'));
@@ -194,7 +259,7 @@ Color _textColor(WidgetTester tester, Finder finder) => tester
 void main() {
   testWidgets('PREVIOUS is matched set by set and shows — with none',
       (WidgetTester tester) async {
-    await _openLogger(tester, seed: _seedWorkout());
+    await _openLogger(tester);
 
     expect(find.byType(WorkoutLoggerScreen), findsOneWidget);
     expect(find.text('100 × 5 @1'), findsOneWidget);
@@ -204,20 +269,64 @@ void main() {
     // …and an unrated previous set drops the `@` part (planned alike).
     expect(find.text('40 × 10'), findsOneWidget);
     // Header columns from the #107 resolution.
-    for (final String label in <String>['SET', 'PREVIOUS', 'KG', 'REPS', 'RIR']) {
+    for (final String label in <String>[
+      'SET',
+      'PREVIOUS',
+      'KG',
+      'REPS',
+      'RIR'
+    ]) {
       expect(find.text(label), findsWidgets);
     }
+    // The prescription caption rides on the card, as the old logger showed it.
+    expect(find.text('3 × 5–8 @ RPE 8.5'), findsOneWidget);
     // The Unplanned tag only where it applies: none of the planned cards.
     expect(find.text('Unplanned'), findsNothing);
   });
 
+  testWidgets('a warm-up row shows — and is never filled from a previous set',
+      (WidgetTester tester) async {
+    await _openLogger(tester);
+    final MayosThemeExtension c = MayosThemeExtension.light;
+
+    // Set 2 becomes a warm-up: the baseline's second working set is no longer
+    // its "previous" — warm-ups count for nothing in the match (#123 item 1).
+    await tester.tap(find.byKey(const ValueKey<String>('logger.setlabel.0.1')));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('W'), findsOneWidget);
+    // The warm-up row has no previous working set of its own…
+    expect(find.text('—'), findsOneWidget);
+    // …and the rows below it renumber: working row 2 is now the *second*
+    // working set, so it takes the baseline's second previous working set.
+    expect(find.text('100 × 5 @1'), findsOneWidget);
+    expect(find.text('95 × 6 @2'), findsOneWidget);
+
+    // With no previous to borrow, the tick cannot fill the row: it opens the
+    // keypad instead, and the prescription target is the faded hint.
+    expect(
+      find.descendant(of: _cell(0, 1, 'kg'), matching: find.text('60')),
+      findsOneWidget,
+    );
+    expect(_textColor(tester, _cell(0, 1, 'kg')), c.textDisabled);
+    await tester.tap(_tick(0, 1));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Bench Press · set 2 · Weight (kg)'), findsOneWidget);
+    expect(_textColor(tester, _cell(0, 1, 'kg')), c.textDisabled);
+  });
+
   testWidgets('ticking an empty row fills it from the previous values',
       (WidgetTester tester) async {
-    await _openLogger(tester, seed: _seedWorkout());
+    await _openLogger(tester);
 
     final MayosThemeExtension c = MayosThemeExtension.light;
-    // Before the tick the cells are empty hints (muted).
+    // Before the tick the cells are empty hints (muted): the previous value
+    // where there is one…
     expect(_textColor(tester, _cell(0, 0, 'kg')), c.textDisabled);
+    expect(
+      find.descendant(of: _cell(0, 0, 'kg'), matching: find.text('100')),
+      findsOneWidget,
+    );
 
     await tester.tap(_tick(0, 0));
     await tester.pump(const Duration(milliseconds: 100));
@@ -236,7 +345,7 @@ void main() {
 
   testWidgets('ticking with no value and no previous opens the keypad there',
       (WidgetTester tester) async {
-    await _openLogger(tester, seed: _seedWorkout());
+    await _openLogger(tester);
 
     // Bench set 3 has no previous working set, so the tick cannot fill it.
     await tester.tap(_tick(0, 2));
@@ -247,7 +356,8 @@ void main() {
       findsOneWidget,
     );
     // The row was not ticked.
-    expect(_textColor(tester, _cell(0, 2, 'kg')), MayosThemeExtension.light.textDisabled);
+    expect(_textColor(tester, _cell(0, 2, 'kg')),
+        MayosThemeExtension.light.textDisabled);
 
     await tester.tap(find.byKey(const ValueKey<String>('logger.key.hide')));
     await tester.pump(const Duration(milliseconds: 100));
@@ -256,7 +366,7 @@ void main() {
 
   testWidgets('the keypad Next order is kg → reps → RIR → the next set',
       (WidgetTester tester) async {
-    await _openLogger(tester, seed: _seedWorkout());
+    await _openLogger(tester);
 
     await tester.tap(_cell(0, 0, 'kg'));
     await tester.pump(const Duration(milliseconds: 100));
@@ -286,9 +396,10 @@ void main() {
     expect(find.text('Hide'), findsNothing);
   });
 
-  testWidgets('the RIR keypad is one-tap chips 0–5 and Unrated',
+  testWidgets(
+      'the RIR keypad is one-tap chips 0–5 and Unrated, and a chip advances',
       (WidgetTester tester) async {
-    await _openLogger(tester, seed: _seedWorkout());
+    await _openLogger(tester);
 
     await tester.tap(_cell(0, 0, 'rir'));
     await tester.pump(const Duration(milliseconds: 100));
@@ -303,10 +414,13 @@ void main() {
     );
     expect(_textColor(tester, _cell(0, 0, 'rir')),
         MayosThemeExtension.light.textPrimary);
-    // The chip does not move on its own; Next walks to the next set's kg.
-    expect(find.text('Bench Press · set 1 · Reps in reserve'), findsOneWidget);
+    // The chip sets the value AND walks on to the next set's kg (#123 item 10).
+    expect(find.text('Bench Press · set 2 · Weight (kg)'), findsOneWidget);
 
-    // Unrated clears the effort back to the previous-value hint.
+    // Unrated clears the effort back to the previous-value hint, and also
+    // advances.
+    await tester.tap(_cell(0, 0, 'rir'));
+    await tester.pump(const Duration(milliseconds: 100));
     await tester.tap(find.byKey(const ValueKey<String>('logger.rir.unrated')));
     await tester.pump(const Duration(milliseconds: 100));
     expect(
@@ -315,13 +429,15 @@ void main() {
     );
     expect(_textColor(tester, _cell(0, 0, 'rir')),
         MayosThemeExtension.light.textDisabled);
+    expect(find.text('Bench Press · set 2 · Weight (kg)'), findsOneWidget);
   });
 
   testWidgets('tapping the SET number cycles N ↔ W and mutes the row',
       (WidgetTester tester) async {
-    await _openLogger(tester, seed: _seedWorkout());
+    await _openLogger(tester);
 
-    final Finder label = find.byKey(const ValueKey<String>('logger.setlabel.0.0'));
+    final Finder label =
+        find.byKey(const ValueKey<String>('logger.setlabel.0.0'));
     expect(_textColor(tester, label), MayosThemeExtension.light.textPrimary);
 
     await tester.tap(label);
@@ -335,9 +451,34 @@ void main() {
     expect(_textColor(tester, label), MayosThemeExtension.light.textPrimary);
   });
 
+  testWidgets('swiping a middle set row deletes that row only',
+      (WidgetTester tester) async {
+    await _openLogger(tester);
+
+    final Finder rows = find.byType(Dismissible);
+    expect(rows, findsNWidgets(3)); // three bench rows; incline has one
+    final List<String> keysBefore = rows
+        .evaluate()
+        .map(
+            (Element element) => (element.widget as Dismissible).key.toString())
+        .toList();
+
+    await tester.drag(rows.at(1), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+
+    final List<Element> remaining = rows.evaluate().toList();
+    expect(remaining, hasLength(2));
+    // The survivors keep their own identities: the first and the last row.
+    final List<String> keysAfter = remaining
+        .map(
+            (Element element) => (element.widget as Dismissible).key.toString())
+        .toList();
+    expect(keysAfter, <String>[keysBefore.first, keysBefore.last]);
+  });
+
   testWidgets('Finish with nothing ticked is blocked by Log at least one set',
       (WidgetTester tester) async {
-    await _openLogger(tester, seed: _seedWorkout());
+    await _openLogger(tester);
 
     final Finder finish = find.widgetWithText(FilledButton, 'Finish workout');
     await tester.tap(finish);
@@ -349,7 +490,7 @@ void main() {
 
   testWidgets('the unticked-sets sheet offers Keep logging and Discard',
       (WidgetTester tester) async {
-    await _openLogger(tester, seed: _seedWorkout());
+    await _openLogger(tester);
 
     await tester.tap(_tick(0, 0));
     await tester.pump(const Duration(milliseconds: 100));
@@ -382,16 +523,39 @@ void main() {
       'the saved draft matches today\'s shape: ticked sets, warm-up flag, skipped exercise',
       (WidgetTester tester) async {
     final InMemoryDraftStore drafts = InMemoryDraftStore();
-    await _openLogger(tester, seed: _seedWorkout(), drafts: drafts);
+    await _openLogger(tester, drafts: drafts);
 
-    // Bench set 1 ticked, bench set 2 ticked as a warm-up; the rest unticked.
+    // Bench set 1 ticked from the previous values; bench set 2 turned into a
+    // warm-up, which has no previous to borrow, so its numbers come from the
+    // keypad before it is ticked.
     await tester.tap(_tick(0, 0));
     await tester.pump(const Duration(milliseconds: 100));
-    await tester
-        .tap(find.byKey(const ValueKey<String>('logger.setlabel.0.1')));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.setlabel.0.1')));
     await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.tap(_cell(0, 1, 'kg'));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.4')));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.0')));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.next')));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.1')));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.0')));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.next')));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.rir.2')));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.hide')));
+    await tester.pump(const Duration(milliseconds: 100));
+
     await tester.tap(_tick(0, 1));
     await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      find.descendant(of: _cell(0, 1, 'kg'), matching: find.text('40')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.widgetWithText(FilledButton, 'Finish workout'));
     await tester.pumpAndSettle();
@@ -413,9 +577,11 @@ void main() {
     expect(draft.dayName, 'Upper A');
     expect(draft.programVersion, 3);
     expect(draft.performedTimezone, 'UTC');
+    // The default is the day the workout started, held to the allowed window.
     expect(
       draft.performedDate,
-      formatPerformedDate(DateTime.parse('2026-09-28T08:00:00.000Z').toLocal()),
+      formatPerformedDate(performedDateWindow()
+          .clamp(DateTime.parse('2026-09-28T08:00:00.000Z').toLocal())),
     );
     expect(draft.readiness, 4);
     expect(draft.notes, 'felt strong');
@@ -427,10 +593,12 @@ void main() {
         exercise: _benchJson,
         sets: const <WorkoutSetLog>[
           WorkoutSetLog(weightKg: 100, reps: 5, rpe: 9.0),
-          WorkoutSetLog(weightKg: 95, reps: 6, rpe: 8.0, isWarmup: true),
+          WorkoutSetLog(weightKg: 40, reps: 10, rpe: 8.0, isWarmup: true),
         ],
       ).toJson(),
-      DraftExercise(exercise: _inclineJson, sets: const <WorkoutSetLog>[],
+      DraftExercise(
+              exercise: _inclineJson,
+              sets: const <WorkoutSetLog>[],
               skipped: true)
           .toJson(),
     ];
@@ -439,6 +607,35 @@ void main() {
           .map((DraftExercise exercise) => exercise.toJson())
           .toList()),
       jsonEncode(expected),
+    );
+  });
+
+  testWidgets('an out-of-window start day is clamped and the player is told',
+      (WidgetTester tester) async {
+    final DateTime tenDaysAgo =
+        DateTime.now().subtract(const Duration(days: 10));
+    await _openLogger(tester, startedAt: tenDaysAgo.toUtc().toIso8601String());
+
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.widgetWithText(FilledButton, 'Finish workout'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discard unticked sets and finish'));
+    await tester.pumpAndSettle();
+
+    // The default lands on the first day the window allows, not the start day.
+    final PerformedDateWindow window = performedDateWindow();
+    expect(
+      find.descendant(
+        of: find.widgetWithText(MayosSettingsTile, 'Performed date'),
+        matching: find.text(formatPerformedDate(window.first)),
+      ),
+      findsOneWidget,
+    );
+    // …and the player is told why.
+    expect(
+      find.textContaining('outside the allowed entry window'),
+      findsWidgets,
     );
   });
 }

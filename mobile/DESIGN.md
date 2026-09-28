@@ -92,12 +92,12 @@ All under `lib/src/core/theme/`.
   `secondarySurface`, `border`, `borderStrong`, `textPrimary`, `textSecondary`,
   `textMuted`, `textDisabled`, `accent`, `accentPressed`, `onAccent`,
   `accentSubtle`, `selectedSurface`, `selectedBorder`, `focusRing`, `success`,
-  `warning`, `danger` (+ `on*`), `chartPrimary/Secondary/Tertiary`,
-  `pressedOverlay`, `shadows`.
+  `successTint` (success as a faint row wash), `warning`, `danger` (+ `on*`),
+  `chartPrimary/Secondary/Tertiary`, `pressedOverlay`, `shadows`.
 - `mayos_typography.dart` — named roles: display, page heading, section
   heading, exercise title, body, body secondary, label, numeric, numeric small,
-  caption, avatar initials, mode badge; plus `textTheme()` mapping onto
-  Material slots.
+  numeric medium, caption, caption strong, avatar initials, mode badge; plus
+  `textTheme()` mapping onto Material slots.
 - `mayos_spacing.dart` — `MayosSpacing` (4…40), `MayosRadii` (8/12/16/24/pill),
   `MayosMotion` (150/220/320 ms with standard/emphasized curves),
   `kMayosMinTapTarget` (48).

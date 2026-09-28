@@ -74,8 +74,7 @@ class BaselineLastSession {
       BaselineLastSession(
         performedDate: json['performed_date'] as String? ?? '',
         sets: (json['sets'] as List<dynamic>? ?? const <dynamic>[])
-            .map((dynamic s) =>
-                BaselineSet.fromJson(s as Map<String, dynamic>))
+            .map((dynamic s) => BaselineSet.fromJson(s as Map<String, dynamic>))
             .toList(growable: false),
       );
 
@@ -123,6 +122,11 @@ bool isWorkingSet({
 }) =>
     !isWarmup && weightKg > 0 && reps > 0;
 
+/// The one effort clamp in the app: the service's accepted RPE band [6, 10]
+/// (#111), used by the e1RM port, the draft payload, and the prescription hint
+/// so none of them can disagree about an out-of-band effort.
+double clampRpe(double rpe) => rpe < 6.0 ? 6.0 : (rpe > 10.0 ? 10.0 : rpe);
+
 /// The server's `calculate_e1rm` (agent/progression_engine.py): Epley adjusted
 /// for effort, with the RPE clamped to [6, 10].
 double calculateE1rm({
@@ -133,7 +137,7 @@ double calculateE1rm({
   if (reps <= 0 || weightKg <= 0) {
     return 0.0;
   }
-  final double clamped = rpe < 6.0 ? 6.0 : (rpe > 10.0 ? 10.0 : rpe);
+  final double clamped = clampRpe(rpe);
   final double effectiveReps = reps + (10.0 - clamped);
   return weightKg * (1.0 + (effectiveReps / 30.0));
 }
@@ -156,8 +160,7 @@ double round2(double value) => double.parse(value.toStringAsFixed(2));
 
 /// Effort at the display boundary for a committed `rpe` (`_to_rir` in
 /// service/workouts.py): null only when the set carries no rating.
-double? rirFromRpe(double? rpe) =>
-    rpe == null ? null : round2(10.0 - rpe);
+double? rirFromRpe(double? rpe) => rpe == null ? null : round2(10.0 - rpe);
 
 /// The `rpe` a draft sends for an RIR-logged set: the inverse of [rirFromRpe],
 /// with the logger's unrated default of 8.5 and the service's accepted range
@@ -166,28 +169,50 @@ double rpeFromRir(double? rir) {
   if (rir == null) {
     return 8.5;
   }
-  final double rpe = 10.0 - rir;
-  return rpe < 6.0 ? 6.0 : (rpe > 10.0 ? 10.0 : rpe);
+  return clampRpe(10.0 - rir);
 }
+
+/// Whether a draft's working sets will reach the ledger exactly as they stand
+/// (#123 item 9).
+///
+/// - `pending` / `syncing` are on their way to a commit (or mid-commit), so
+///   folding them counts this device's uncommitted work that is about to land.
+/// - `synced` is already in the server rows the fold starts from, so folding
+///   it again would double-count it.
+/// - `needs_reconciliation` was refused with a 4xx and is *not* retried
+///   automatically: the player must retry or discard it (ADR 033). As-is it
+///   will not commit, so folding it would show a PREVIOUS set (and a session
+///   count) that history will never contain. The Drafts screen keeps offering
+///   it; once it is edited or re-driven it becomes `pending` and folds then.
+bool draftWillCommit(WorkoutDraft draft) =>
+    draft.status == DraftStatus.pending || draft.status == DraftStatus.syncing;
 
 /// Folds the player's unsynced Workout drafts into the server baselines using
 /// the server's aggregate rules, so the frozen Active-workout baseline counts
 /// what this device has already logged but not yet committed (#123).
 ///
-/// For every unsynced, non-skipped draft exercise with at least one working
+/// Only [draftWillCommit] drafts are folded.
+///
+/// For every folded, non-skipped draft exercise with at least one working
 /// set ([isWorkingSet]): `sessions_logged` gains one session, the maxima take
 /// the draft's heavier weight and better e1RM (rounded to 2 dp), and
 /// `last_session` becomes the draft's working sets when that session is the
-/// latest — newest by started time, dates compared first, with a not-yet-
-/// committed draft winning a same-day tie against a committed session (its
-/// `captured_at` is a real timestamp inside that day, while the committed
-/// session only carries a date).
+/// latest.
+///
+/// "Latest" mirrors the server's `LAST_SESSION_ORDER`
+/// (`database/ledger/workouts.py`: `started_at DESC, rowid DESC`), **not** the
+/// performed date: a session is ordered by its start instant, so an ADR 035
+/// performed-date correction can never reorder it differently here than on the
+/// server. A draft carries a real capture instant; a committed baseline row
+/// carries only its performed date, which stands in for its start instant as
+/// that date's midnight. When both sides land on the same instant the
+/// incumbent wins, so a not-yet-committed draft beats a committed session only
+/// when it really started later, and the fold stays order-independent.
 List<BaselineExercise> foldDraftsIntoBaselines({
   required List<BaselineExercise> baselines,
   required Iterable<WorkoutDraft> drafts,
 }) {
-  final Map<String, BaselineExercise> byExercise =
-      <String, BaselineExercise>{
+  final Map<String, BaselineExercise> byExercise = <String, BaselineExercise>{
     for (final BaselineExercise baseline in baselines)
       baseline.exerciseId: baseline,
   };
@@ -196,11 +221,11 @@ List<BaselineExercise> foldDraftsIntoBaselines({
   final Map<String, DateTime?> latestStartedAt = <String, DateTime?>{};
 
   for (final WorkoutDraft draft in drafts) {
-    if (draft.isSynced) {
+    if (!draftWillCommit(draft)) {
       continue;
     }
-    final DateTime? startedAt = _parseTime(draft.capturedAt) ??
-        _parseTime(draft.updatedAt);
+    final DateTime? startedAt =
+        _parseTime(draft.capturedAt) ?? _parseTime(draft.updatedAt);
     for (final DraftExercise exercise in draft.exercises) {
       if (exercise.skipped) {
         continue;
@@ -282,26 +307,36 @@ double? _maxOrNull(double? current, double candidate) =>
     current == null ? candidate : (candidate > current ? candidate : current);
 
 /// True when the session at [date]/[startedAt] comes after
-/// [thanDate]/[thanStartedAt].
+/// [thanDate]/[thanStartedAt], ordered by start instant the way the server's
+/// `LAST_SESSION_ORDER` orders sessions (`started_at DESC`).
 ///
-/// ISO dates compare correctly as strings. A session that carries a started
-/// time wins a same-day tie against one that only carries a date (a committed
-/// baseline row never has a time), and equal dates with no times keep the
-/// incumbent so the fold is order-independent.
+/// A session that carries a start instant is compared on it; one that carries
+/// only a date (a committed baseline row exposes just its performed date) is
+/// compared on that date at midnight. Equal instants keep the incumbent so the
+/// fold is order-independent, except that a real instant beats a bare date at
+/// the same moment — the not-yet-committed draft that started inside a
+/// committed session's day.
 bool _isLaterSession({
   required String date,
   required DateTime? startedAt,
   required String thanDate,
   required DateTime? thanStartedAt,
 }) {
-  if (date != thanDate) {
-    return date.compareTo(thanDate) > 0;
+  final DateTime start = startedAt ?? _startOfDay(date);
+  final DateTime than = thanStartedAt ?? _startOfDay(thanDate);
+  if (start.isAfter(than)) {
+    return true;
   }
-  if (startedAt == null || thanStartedAt == null) {
-    return startedAt != null && thanStartedAt == null;
+  if (than.isAfter(start)) {
+    return false;
   }
-  return startedAt.isAfter(thanStartedAt);
+  return startedAt != null && thanStartedAt == null;
 }
+
+/// A date string (`YYYY-MM-DD`) as that day's local midnight, the stand-in
+/// start instant of a committed session that exposes no `started_at`.
+DateTime _startOfDay(String date) =>
+    DateTime.tryParse(date) ?? DateTime.fromMillisecondsSinceEpoch(0);
 
 DateTime? _parseTime(String? iso) =>
     iso == null || iso.isEmpty ? null : DateTime.tryParse(iso);

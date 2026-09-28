@@ -171,8 +171,7 @@ final Provider<ChatCacheStore> chatCacheStoreProvider =
 /// same synchronous notification that changes the session and no rebuilt shell
 /// can read the previous account's value (#119).
 void _resetOnAccountChange(Ref ref, void Function() reset) {
-  String? account =
-      ref.read(authControllerProvider).session?.account.accountId;
+  String? account = ref.read(authControllerProvider).session?.account.accountId;
   ref.listen<AuthState>(authControllerProvider, (_, AuthState next) {
     final String? nextAccount = next.session?.account.accountId;
     if (nextAccount != account) {
@@ -294,9 +293,19 @@ final Provider<BaselinesService> baselinesServiceProvider =
 final StateNotifierProvider<ActiveWorkoutController, ActiveWorkoutState>
     activeWorkoutControllerProvider =
     StateNotifierProvider<ActiveWorkoutController, ActiveWorkoutState>((ref) {
+  final ApiClient api = ref.watch(apiClientProvider);
+  final WorkoutCacheStore cache = ref.watch(workoutCacheStoreProvider);
   final ActiveWorkoutController controller = ActiveWorkoutController(
     store: ref.watch(activeWorkoutStoreProvider),
     baselines: ref.watch(baselinesServiceProvider),
+    // The prescription a start seeds and hints from: fresh with a short
+    // timeout, else the cache, as the old logger resolved it (#123).
+    loadPrescription: (String accountId, int dayOrder) => prescriptionAtStart(
+      api: api,
+      cache: cache,
+      accountId: accountId,
+      dayOrder: dayOrder,
+    ),
   );
   ref.listen<AuthState>(authControllerProvider,
       (AuthState? previous, AuthState next) {

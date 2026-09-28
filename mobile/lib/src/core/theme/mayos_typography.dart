@@ -128,6 +128,16 @@ abstract final class MayosTypography {
     fontFeatures: _tabular,
   );
 
+  /// Numeric for the in-app keypad keys: between [numericSmall] and [numeric].
+  static const TextStyle numericMedium = TextStyle(
+    fontFamily: uiFamily,
+    fontSize: 22,
+    height: 1.1,
+    fontWeight: FontWeight.w700,
+    fontVariations: _bold,
+    fontFeatures: _tabular,
+  );
+
   /// Header-avatar initials, set on the accent-subtle disc.
   static const TextStyle avatarInitials = TextStyle(
     fontFamily: uiFamily,
@@ -155,6 +165,17 @@ abstract final class MayosTypography {
     height: 1.35,
     fontWeight: FontWeight.w500,
     fontVariations: _medium,
+    letterSpacing: 0.2,
+  );
+
+  /// Caption weight for dense labels that must hold their own in a row of
+  /// neighbours (table headers).
+  static const TextStyle captionStrong = TextStyle(
+    fontFamily: uiFamily,
+    fontSize: 12,
+    height: 1.35,
+    fontWeight: FontWeight.w700,
+    fontVariations: _bold,
     letterSpacing: 0.2,
   );
 

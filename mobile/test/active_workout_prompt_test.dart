@@ -48,7 +48,7 @@ ActiveWorkout _storedWorkout() => ActiveWorkout(
       dayOrder: 2,
       dayName: 'Upper A',
       programVersion: 3,
-      exercises: const <ActiveWorkoutExercise>[
+      exercises: <ActiveWorkoutExercise>[
         ActiveWorkoutExercise(
           exercise: <String, dynamic>{
             'exercise_id': 'bench_press',
@@ -87,8 +87,7 @@ Future<ProviderContainer> _pumpApp(
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
-        themeModeStoreProvider
-            .overrideWithValue(InMemoryThemeModeStore()),
+        themeModeStoreProvider.overrideWithValue(InMemoryThemeModeStore()),
         draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
         workoutCacheStoreProvider
             .overrideWithValue(InMemoryWorkoutCacheStore()),
@@ -98,8 +97,7 @@ Future<ProviderContainer> _pumpApp(
         activeWorkoutStoreProvider.overrideWithValue(store),
         // The logger resolves the device timezone through a platform channel
         // no test host implements; inject a value like the logger's own tests.
-        deviceTimezoneProvider
-            .overrideWithValue(Future<String>.value('UTC')),
+        deviceTimezoneProvider.overrideWithValue(Future<String>.value('UTC')),
         deviceTimezoneOrNullProvider
             .overrideWithValue(Future<String?>.value('UTC')),
         apiClientProvider.overrideWith((ref) {
@@ -158,16 +156,20 @@ void main() {
     expect(await store.read(_account), isNotNull);
   });
 
-  testWidgets('starting a workout while one exists asks to finish or discard it first',
+  testWidgets(
+      'starting a workout while one exists asks to finish or discard it first',
       (WidgetTester tester) async {
     final InMemoryActiveWorkoutStore store = InMemoryActiveWorkoutStore();
     await store.write(_account, _storedWorkout());
     await _pumpApp(tester, _signedInFake(), store);
 
-    // Defer the app-open offer.
+    // Defer the app-open offer: tapping outside dismisses it, and a
+    // dismissed prompt is a cancel — nothing is discarded or started (#123
+    // item 13).
     await tester.pumpAndSettle();
     expect(find.text('Unfinished workout'), findsOneWidget);
-    await tester.tap(find.text('Not now'));
+    expect(find.text('Not now'), findsNothing);
+    await tester.tapAt(const Offset(20, 20));
     await tester.pumpAndSettle();
 
     // Starting another workout hits the guard instead of silently replacing.

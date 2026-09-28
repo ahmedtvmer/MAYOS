@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +13,7 @@ import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/workout/active_workout_controller.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
+import 'support/fake_api_adapter.dart';
 import 'support/fake_mayos_api.dart';
 
 const String _account = 'account-alice';
@@ -149,6 +151,43 @@ const Map<String, dynamic> _unplannedExerciseJson = <String, dynamic>{
   'notes': null,
 };
 
+/// A store whose writes finish in the order they arrive *and* at their own
+/// pace: latency is chosen per write index, so an unserialized queue would let
+/// a later, faster write land before an earlier one (#123 item 5).
+class _LatencyStore implements ActiveWorkoutStore {
+  _LatencyStore(this.latencies);
+
+  final List<Duration> latencies;
+  final List<int> landed = <int>[];
+  int _arrived = 0;
+  bool deleted = false;
+  bool wroteAfterDelete = false;
+  ActiveWorkout? latest;
+
+  @override
+  Future<ActiveWorkout?> read(String accountId) async => latest;
+
+  @override
+  Future<void> write(String accountId, ActiveWorkout workout) async {
+    final int index = _arrived++;
+    if (deleted) {
+      wroteAfterDelete = true;
+    }
+    await Future<void>.delayed(latencies[index % latencies.length]);
+    if (deleted) {
+      wroteAfterDelete = true;
+    }
+    landed.add(workout.exercises.single.sets.first.reps);
+    latest = workout;
+  }
+
+  @override
+  Future<void> deleteForAccount(String accountId) async {
+    deleted = true;
+    latest = null;
+  }
+}
+
 void main() {
   group('Active workout lifecycle', () {
     test('is created, persisted after changes, and restored on restart',
@@ -185,10 +224,12 @@ void main() {
       await controller.addSet(0);
       await controller.toggleWarmup(0, 1);
 
-      // The stored copy is what a fresh process would read.
+      // The stored copy is what a fresh process would read. The fresh
+      // prescription supplies the row count, exactly as the old logger did
+      // (#123 item 4): three rows for bench, plus the one "+ Add set".
       final ActiveWorkout? stored = await store.read(_account);
       expect(stored, isNotNull);
-      expect(stored!.exercises.single.sets, hasLength(3));
+      expect(stored!.exercises.single.sets, hasLength(4));
       expect(stored.exercises.single.sets.first.ticked, isTrue);
       expect(stored.exercises.single.sets.first.weightKg, 100);
       expect(stored.exercises.single.sets[1].isWarmup, isTrue);
@@ -246,7 +287,7 @@ void main() {
       );
       expect(controller.workout!.id, firstId);
 
-      await controller.discard();
+      await controller.discard(accountId: _account);
       expect(controller.hasActive, isFalse);
       expect(await store.read(_account), isNull);
 
@@ -277,17 +318,43 @@ void main() {
 
       final ActiveWorkoutExercise planned =
           controller.workout!.exercises.single;
-      expect(planned.sets, hasLength(2));
+      // Rows start empty, exactly like the #107 prototype: nothing is
+      // pre-entered for the player to correct (#123 item 2), while the fresh
+      // prescription decides how many there are and what the empty cells hint
+      // (#123 item 4).
+      expect(
+          planned.sets, hasLength(3)); // effective_sets from the prescription
       expect(planned.sets.first.weightKg, 0);
-      expect(planned.sets.first.reps, 5);
-      expect(planned.sets.first.rir, 1.5); // 10 - 8.5
+      expect(planned.sets.first.reps, 0);
+      expect(planned.sets.first.rir, isNull);
       expect(planned.sets.first.ticked, isFalse);
       expect(planned.targetLabel, isNotNull);
+      expect(planned.prescriptionHint, isNotNull);
+      expect(planned.prescriptionHint!.reps, 5); // target_reps_min
+      expect(planned.prescriptionHint!.rir, 1.5); // 10 - 8.5
+      expect(planned.prescriptionHint!.weightKg, 60.0); // projected
 
+      // Row identities are stable across edits, so the swipe-to-delete key is
+      // stable too (#123 item 3).
+      List<String> idsOf() => controller.workout!.exercises.single.sets
+          .map((ActiveWorkoutSet set) => set.id)
+          .toList();
+      final List<String> seededIds = idsOf();
+      expect(seededIds.toSet(), hasLength(3));
+
+      // "+ Add set" adds another empty row with an identity of its own.
       await controller.addSet(0);
-      expect(controller.workout!.exercises.single.sets, hasLength(3));
-      await controller.removeSet(0, 2);
-      expect(controller.workout!.exercises.single.sets, hasLength(2));
+      expect(controller.workout!.exercises.single.sets, hasLength(4));
+      final List<String> afterAdd = idsOf();
+      expect(afterAdd, <String>[...seededIds, afterAdd.last]);
+      expect(seededIds.contains(afterAdd.last), isFalse);
+      expect(controller.workout!.exercises.single.sets.last.weightKg, 0);
+      expect(controller.workout!.exercises.single.sets.last.reps, 0);
+      expect(controller.workout!.exercises.single.sets.last.rir, isNull);
+
+      // Removing it leaves the original rows, identities untouched.
+      await controller.removeSet(0, 3);
+      expect(idsOf(), seededIds);
       // The last remaining row can never be removed.
       await controller.removeSet(0, 1);
       await controller.removeSet(0, 0);
@@ -306,9 +373,167 @@ void main() {
           controller.workout!.exercises.last;
       expect(unplanned.unplanned, isTrue);
       expect(unplanned.exercise, _unplannedExerciseJson);
+      // Three empty rows, with the unplanned default targets as the hint.
       expect(unplanned.sets, hasLength(3));
-      expect(unplanned.sets.first.reps, 8);
-      expect(unplanned.sets.first.rir, 2.0);
+      expect(unplanned.sets.first.weightKg, 0);
+      expect(unplanned.sets.first.reps, 0);
+      expect(unplanned.sets.first.rir, isNull);
+      expect(unplanned.prescriptionHint!.reps, 8);
+      expect(unplanned.prescriptionHint!.rir, 2.0);
+      expect(unplanned.prescriptionHint!.weightKg, isNull);
+    });
+  });
+
+  group('store writes are serialized (#123 item 5)', () {
+    test('writes land in state order and the latest state wins', () async {
+      final FakeMayosApi fake = _signedInFake();
+      fake.baselinesBody = <Map<String, dynamic>>[_baselineRow()];
+      final _LatencyStore store = _LatencyStore(<Duration>[
+        const Duration(milliseconds: 40),
+        const Duration(milliseconds: 5),
+        const Duration(milliseconds: 0),
+      ]);
+      final ProviderContainer container = ProviderContainer(
+        overrides: <Override>[
+          tokenStoreProvider.overrideWithValue(await _tokens()),
+          draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
+          workoutCacheStoreProvider
+              .overrideWithValue(InMemoryWorkoutCacheStore()),
+          baselineCacheStoreProvider
+              .overrideWithValue(InMemoryBaselineCacheStore()),
+          activeWorkoutStoreProvider.overrideWithValue(store),
+          apiClientProvider.overrideWith(
+              (Ref ref) => _api(fake, ref.watch(tokenStoreProvider))),
+        ],
+      );
+      addTearDown(container.dispose);
+      final ActiveWorkoutController controller =
+          container.read(activeWorkoutControllerProvider.notifier);
+      await controller.startFromDay(
+          accountId: _account, day: _day, programVersion: 3);
+
+      // Three changes in a row: the first write is the slowest, so an
+      // unserialized queue would leave the stored copy at reps 0 or 1.
+      await Future.wait(<Future<void>>[
+        controller.updateCell(0, 0, reps: 1),
+        controller.updateCell(0, 0, reps: 2),
+        controller.updateCell(0, 0, reps: 3),
+      ]);
+
+      expect(store.landed, <int>[0, 1, 2, 3]);
+      expect(store.latest, isNotNull);
+      expect(store.latest!.exercises.single.sets.first.reps, 3);
+      expect(controller.workout!.exercises.single.sets.first.reps, 3);
+    });
+
+    test('discard waits for the pending write and then deletes', () async {
+      final FakeMayosApi fake = _signedInFake();
+      fake.baselinesBody = <Map<String, dynamic>>[_baselineRow()];
+      final _LatencyStore store =
+          _LatencyStore(<Duration>[const Duration(milliseconds: 60)]);
+      final ProviderContainer container = ProviderContainer(
+        overrides: <Override>[
+          tokenStoreProvider.overrideWithValue(await _tokens()),
+          draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
+          workoutCacheStoreProvider
+              .overrideWithValue(InMemoryWorkoutCacheStore()),
+          baselineCacheStoreProvider
+              .overrideWithValue(InMemoryBaselineCacheStore()),
+          activeWorkoutStoreProvider.overrideWithValue(store),
+          apiClientProvider.overrideWith(
+              (Ref ref) => _api(fake, ref.watch(tokenStoreProvider))),
+        ],
+      );
+      addTearDown(container.dispose);
+      final ActiveWorkoutController controller =
+          container.read(activeWorkoutControllerProvider.notifier);
+      await controller.startFromDay(
+          accountId: _account, day: _day, programVersion: 3);
+
+      // A write is in flight when the player discards: the delete must land
+      // after it, never before it.
+      final Future<void> inFlight = controller.updateCell(0, 0, reps: 7);
+      await controller.discard(accountId: _account);
+      await inFlight;
+
+      expect(store.deleted, isTrue);
+      expect(store.wroteAfterDelete, isFalse);
+      expect(store.latest, isNull);
+      expect(controller.hasActive, isFalse);
+      expect(await store.read(_account), isNull);
+    });
+
+    test('discard only clears the workout it belongs to', () async {
+      final FakeMayosApi fake = _signedInFake();
+      fake.baselinesBody = <Map<String, dynamic>>[_baselineRow()];
+      final InMemoryActiveWorkoutStore store = InMemoryActiveWorkoutStore();
+      final ProviderContainer container = _container(
+        fake: fake,
+        tokens: await _tokens(),
+        store: store,
+        cache: InMemoryBaselineCacheStore(),
+        drafts: InMemoryDraftStore(),
+        workoutCache: InMemoryWorkoutCacheStore(),
+      );
+      final ActiveWorkoutController controller =
+          container.read(activeWorkoutControllerProvider.notifier);
+      await controller.startFromDay(
+          accountId: _account, day: _day, programVersion: 3);
+      final String id = controller.workout!.id;
+
+      // Wrong account: no-op.
+      await controller.discard(accountId: 'account-bob');
+      expect(controller.hasActive, isTrue);
+      // Wrong workout id: no-op.
+      await controller.discard(accountId: _account, workoutId: 'aw-other');
+      expect(controller.hasActive, isTrue);
+      expect(await store.read(_account), isNotNull);
+
+      // The right account and workout: cleared.
+      await controller.discard(accountId: _account, workoutId: id);
+      expect(controller.hasActive, isFalse);
+      expect(await store.read(_account), isNull);
+    });
+
+    test('a start that spans a sign-out aborts and persists nothing', () async {
+      final FakeMayosApi fake = _signedInFake();
+      fake.baselinesBody = <Map<String, dynamic>>[_baselineRow()];
+      final InMemoryActiveWorkoutStore store = InMemoryActiveWorkoutStore();
+      final ProviderContainer container = _container(
+        fake: fake,
+        tokens: await _tokens(),
+        store: store,
+        cache: InMemoryBaselineCacheStore(),
+        drafts: InMemoryDraftStore(),
+        workoutCache: InMemoryWorkoutCacheStore(),
+      );
+      final ActiveWorkoutController controller =
+          container.read(activeWorkoutControllerProvider.notifier);
+      await controller.syncAccount(_account);
+
+      // Pause the baseline fetch the start is waiting on…
+      final Completer<void> gate = Completer<void>();
+      fake.adapter.beforeRespond = (FakeRequest request) =>
+          request.path == '/workouts/baselines'
+              ? gate.future
+              : Future<void>.value();
+
+      final Future<StartWorkoutOutcome> pending = controller.startFromDay(
+          accountId: _account, day: _day, programVersion: 3);
+      for (int i = 0; i < 5; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      // …and the account signs out while it is paused.
+      await controller.syncAccount(null);
+      gate.complete();
+      final StartWorkoutOutcome outcome = await pending;
+
+      expect(outcome, StartWorkoutOutcome.aborted);
+      expect(controller.hasActive, isFalse);
+      expect(controller.workout, isNull);
+      expect(controller.state.accountId, isNull);
+      expect(await store.read(_account), isNull);
     });
   });
 
@@ -356,8 +581,7 @@ void main() {
       expect(afterMalformed.baselines, hasLength(1));
     });
 
-    test('falls back to empty when there is neither fetch nor cache',
-        () async {
+    test('falls back to empty when there is neither fetch nor cache', () async {
       final FakeMayosApi fake = _signedInFake();
       fake.failOffline('GET', '/workouts/baselines');
       final BaselinesService service = BaselinesService(
@@ -371,16 +595,52 @@ void main() {
       expect(empty.baselines, isEmpty);
     });
 
-    test('folds the player unsynced drafts into the frozen baseline',
+    test('a fresh fetch that never answers falls back within the timeout',
         () async {
+      final FakeMayosApi fake = _signedInFake();
+      fake.baselinesBody = <Map<String, dynamic>>[_baselineRow()];
+      final InMemoryBaselineCacheStore cache = InMemoryBaselineCacheStore();
+      await cache.write(
+        _account,
+        <BaselineExercise>[BaselineExercise.fromJson(_baselineRow())],
+      );
+      final BaselinesService service = BaselinesService(
+        api: _api(fake, await _tokens()),
+        cache: cache,
+        drafts: InMemoryDraftStore(),
+        freshTimeout: const Duration(milliseconds: 50),
+      );
+      // The adapter never answers this request: only an overall deadline
+      // (connect *and* receive) can end it (#123 item 8).
+      fake.adapter.beforeRespond = (FakeRequest request) =>
+          request.path == '/workouts/baselines'
+              ? Completer<void>().future
+              : Future<void>.value();
+
+      final BaselineResolution resolved =
+          await service.resolveForStart(_account);
+
+      expect(resolved.source, BaselineSource.cache);
+      expect(resolved.baselines.single.exerciseId, 'bench_press');
+      // The request was issued (and recorded) but never answered, so only an
+      // overall deadline could have ended it.
+      expect(
+        fake.adapter.requests
+            .where(
+                (FakeRequest request) => request.path == '/workouts/baselines')
+            .length,
+        1,
+      );
+    });
+
+    test('folds the player unsynced drafts into the frozen baseline', () async {
       final FakeMayosApi fake = _signedInFake();
       fake.baselinesBody = <Map<String, dynamic>>[_baselineRow()];
       final InMemoryDraftStore drafts = InMemoryDraftStore();
       await drafts.write(_account, <WorkoutDraft>[
         _unsyncedDraft(sets: const <WorkoutSetLog>[
           WorkoutSetLog(weightKg: 120, reps: 3, rpe: 9.0),
-          WorkoutSetLog(
-              weightKg: 40, reps: 10, rpe: 8.0, isWarmup: true),
+          WorkoutSetLog(weightKg: 40, reps: 10, rpe: 8.0, isWarmup: true),
           WorkoutSetLog(weightKg: 0, reps: 8, rpe: 8.0),
         ]),
         _unsyncedDraft(
@@ -405,9 +665,8 @@ void main() {
           await service.resolveForStart(_account);
       expect(resolved.source, BaselineSource.fresh);
 
-      final BaselineExercise bench =
-          resolved.baselines.firstWhere((BaselineExercise b) =>
-              b.exerciseId == 'bench_press');
+      final BaselineExercise bench = resolved.baselines
+          .firstWhere((BaselineExercise b) => b.exerciseId == 'bench_press');
       // Two committed sessions plus this one unsynced draft (the synced draft
       // is already in the server rows and never counted twice).
       expect(bench.sessionsLogged, 3);
@@ -479,7 +738,7 @@ void main() {
         ActiveWorkoutExercise(
           exercise: _plannedExerciseJson,
           targetLabel: '2 × 5–8 @ RPE 8.5',
-          sets: const <ActiveWorkoutSet>[
+          sets: <ActiveWorkoutSet>[
             ActiveWorkoutSet(weightKg: 100, reps: 5, rir: 1, ticked: true),
             ActiveWorkoutSet(
                 weightKg: 40, reps: 10, rir: 2, isWarmup: true, ticked: true),
@@ -489,7 +748,7 @@ void main() {
         ActiveWorkoutExercise(
           exercise: _unplannedExerciseJson,
           unplanned: true,
-          sets: const <ActiveWorkoutSet>[
+          sets: <ActiveWorkoutSet>[
             ActiveWorkoutSet(weightKg: 60, reps: 8, rir: 1, ticked: true),
           ],
         ),
@@ -510,8 +769,7 @@ void main() {
             exercise: _plannedExerciseJson,
             sets: const <WorkoutSetLog>[
               WorkoutSetLog(weightKg: 100, reps: 5, rpe: 9.0),
-              WorkoutSetLog(
-                  weightKg: 40, reps: 10, rpe: 8.0, isWarmup: true),
+              WorkoutSetLog(weightKg: 40, reps: 10, rpe: 8.0, isWarmup: true),
               WorkoutSetLog(weightKg: 100, reps: 5, rpe: 9.0),
             ],
             skipped: false,
@@ -548,7 +806,7 @@ void main() {
       final ActiveWorkout workout = workoutWith(<ActiveWorkoutExercise>[
         ActiveWorkoutExercise(
           exercise: _plannedExerciseJson,
-          sets: const <ActiveWorkoutSet>[
+          sets: <ActiveWorkoutSet>[
             // Unticked with values: never logged.
             ActiveWorkoutSet(weightKg: 100, reps: 5, rir: 1),
             ActiveWorkoutSet(weightKg: 90, reps: 5, rir: 2, ticked: true),
@@ -557,7 +815,7 @@ void main() {
         ActiveWorkoutExercise(
           exercise: _unplannedExerciseJson,
           unplanned: true,
-          sets: const <ActiveWorkoutSet>[
+          sets: <ActiveWorkoutSet>[
             ActiveWorkoutSet(weightKg: 0, reps: 0),
           ],
         ),

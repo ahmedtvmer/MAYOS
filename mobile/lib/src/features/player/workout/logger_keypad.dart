@@ -35,7 +35,8 @@ class LoggerCellFocus {
   int get hashCode => Object.hash(exerciseIndex, setIndex, field);
 
   @override
-  String toString() => 'LoggerCellFocus($exerciseIndex.$setIndex.${field.name})';
+  String toString() =>
+      'LoggerCellFocus($exerciseIndex.$setIndex.${field.name})';
 }
 
 /// The keypad's Next order: kg → reps → RIR → the next set's kg, then null so
@@ -53,8 +54,8 @@ LoggerCellFocus? nextLoggerCellFocus(
   }
   switch (focus.field) {
     case LoggerField.kg:
-      return LoggerCellFocus(focus.exerciseIndex, focus.setIndex,
-          LoggerField.reps);
+      return LoggerCellFocus(
+          focus.exerciseIndex, focus.setIndex, LoggerField.reps);
     case LoggerField.reps:
       return LoggerCellFocus(
           focus.exerciseIndex, focus.setIndex, LoggerField.rir);
@@ -112,6 +113,12 @@ class LoggerKeypad extends StatefulWidget {
 }
 
 class _LoggerKeypadState extends State<LoggerKeypad> {
+  /// Key geometry in spacing tokens: a 4-based gap around a 56dp key
+  /// (`xxl + xl`), so the keypad has no literal sizes of its own (#123 item
+  /// 11).
+  static const double _keyPadding = MayosSpacing.xxs;
+  static const double _keyHeight = MayosSpacing.xxl + MayosSpacing.xl;
+
   late String _text = widget.initialText;
   late String _loadedFor = _focusKeyOf(widget);
 
@@ -151,14 +158,14 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
-    final double keyH = 56;
+    final double rowHeight = _keyHeight + 2 * _keyPadding;
 
     Widget key(String label,
         {VoidCallback? onTap, Color? bg, Color? fg, Key? key}) {
       final bool enabled = onTap != null;
       return Expanded(
         child: Padding(
-          padding: const EdgeInsets.all(3),
+          padding: const EdgeInsets.all(_keyPadding),
           child: Material(
             color: bg ?? c.surfaceElevated,
             borderRadius: MayosRadii.mediumRadius,
@@ -169,11 +176,11 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
               child: Opacity(
                 opacity: enabled ? 1 : 0.35,
                 child: SizedBox(
-                  height: keyH,
+                  height: _keyHeight,
                   child: Center(
                     child: Text(label,
-                        style: MayosTypography.numeric.copyWith(
-                            color: fg ?? c.textPrimary, fontSize: 22)),
+                        style: MayosTypography.numericMedium
+                            .copyWith(color: fg ?? c.textPrimary)),
                   ),
                 ),
               ),
@@ -205,10 +212,13 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
                   onTap: () => widget.onRir?.call(null)),
               key('Hide',
                   key: const ValueKey<String>('logger.key.hide'),
-                  onTap: widget.onHide, bg: c.secondarySurface),
+                  onTap: widget.onHide,
+                  bg: c.secondarySurface),
               key('Next',
                   key: const ValueKey<String>('logger.key.next'),
-                  onTap: widget.onNext, bg: c.accent, fg: c.onAccent),
+                  onTap: widget.onNext,
+                  bg: c.accent,
+                  fg: c.onAccent),
             ],
           ),
         ],
@@ -263,15 +273,16 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
                 Row(children: <Widget>[
                   key('Hide',
                       key: const ValueKey<String>('logger.key.hide'),
-                      onTap: widget.onHide, bg: c.secondarySurface),
+                      onTap: widget.onHide,
+                      bg: c.secondarySurface),
                 ]),
                 SizedBox(
-                  height: (keyH + 6) * 3,
+                  height: rowHeight * 3,
                   child: Row(
                     children: <Widget>[
                       Expanded(
                         child: Padding(
-                          padding: const EdgeInsets.all(3),
+                          padding: const EdgeInsets.all(_keyPadding),
                           child: Material(
                             color: c.accent,
                             borderRadius: MayosRadii.mediumRadius,
@@ -310,7 +321,8 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           Padding(
-            padding: const EdgeInsets.fromLTRB(6, 0, 6, 6),
+            padding: const EdgeInsets.fromLTRB(
+                MayosSpacing.xs, 0, MayosSpacing.xs, MayosSpacing.xs),
             child: Text(
               '${widget.exerciseName} · set ${widget.setNumber} · '
               '${loggerFieldLabel(widget.field)}',

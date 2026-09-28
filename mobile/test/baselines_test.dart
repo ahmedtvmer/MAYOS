@@ -17,8 +17,8 @@ BaselineExercise _serverBaseline({
       sessionsLogged: sessionsLogged,
       maxWeightKg: maxWeightKg,
       bestE1rmKg: bestE1rmKg,
-      lastSession: BaselineLastSession(
-          performedDate: performedDate, sets: sets),
+      lastSession:
+          BaselineLastSession(performedDate: performedDate, sets: sets),
     );
 
 WorkoutDraft _draft({
@@ -253,6 +253,84 @@ void main() {
       expect(bench.maxWeightKg, 100.0);
       expect(bench.bestE1rmKg, 120.0);
       expect(bench.lastSession.performedDate, '2026-09-20');
+    });
+
+    test('folds a syncing draft but never one needing reconciliation', () {
+      // A draft mid-commit will land, so its working sets count now.
+      final List<BaselineExercise> syncing = foldDraftsIntoBaselines(
+        baselines: <BaselineExercise>[_serverBaseline()],
+        drafts: <WorkoutDraft>[
+          _draft(
+            performedDate: '2026-09-26',
+            capturedAt: '2026-09-26T10:00:00.000Z',
+            status: DraftStatus.syncing,
+            exercises: <DraftExercise>[
+              DraftExercise(
+                exercise: _exerciseJson('bench_press'),
+                sets: const <WorkoutSetLog>[
+                  WorkoutSetLog(weightKg: 110, reps: 5, rpe: 9.0),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
+      expect(syncing.single.sessionsLogged, 3);
+      expect(syncing.single.lastSession.performedDate, '2026-09-26');
+
+      // A refused draft is not retried as-is (ADR 033), so folding it would
+      // show a previous set history will never contain (#123 item 9).
+      final List<BaselineExercise> refused = foldDraftsIntoBaselines(
+        baselines: <BaselineExercise>[_serverBaseline()],
+        drafts: <WorkoutDraft>[
+          _draft(
+            performedDate: '2026-09-26',
+            capturedAt: '2026-09-26T10:00:00.000Z',
+            status: DraftStatus.needsReconciliation,
+            exercises: <DraftExercise>[
+              DraftExercise(
+                exercise: _exerciseJson('bench_press'),
+                sets: const <WorkoutSetLog>[
+                  WorkoutSetLog(weightKg: 300, reps: 5, rpe: 9.0),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
+      expect(refused.single.sessionsLogged, 2);
+      expect(refused.single.maxWeightKg, 100.0);
+      expect(refused.single.lastSession.performedDate, '2026-09-20');
+    });
+
+    test('orders last_session by start instant, not the performed date', () {
+      // LAST_SESSION_ORDER is `started_at DESC` (database/ledger/workouts.py),
+      // so a draft captured after a committed session's day wins the last
+      // session even though its own performed date is older — a performed-date
+      // comparison would have kept the server row (#123 item 9, ADR 035).
+      final List<BaselineExercise> folded = foldDraftsIntoBaselines(
+        baselines: <BaselineExercise>[_serverBaseline()],
+        drafts: <WorkoutDraft>[
+          _draft(
+            performedDate: '2026-09-18',
+            capturedAt: '2026-09-22T10:00:00.000Z',
+            exercises: <DraftExercise>[
+              DraftExercise(
+                exercise: _exerciseJson('bench_press'),
+                sets: const <WorkoutSetLog>[
+                  WorkoutSetLog(weightKg: 110, reps: 5, rpe: 9.0),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final BaselineExercise bench = folded.single;
+      expect(bench.sessionsLogged, 3);
+      expect(bench.maxWeightKg, 110.0);
+      expect(bench.lastSession.performedDate, '2026-09-18');
+      expect(bench.lastSession.sets.single.weightKg, 110.0);
     });
 
     test('orders two same-day drafts by their captured start time', () {
