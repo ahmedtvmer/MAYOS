@@ -200,6 +200,24 @@ final StateProvider<int> coachNewAlertsCountProvider =
   return 0;
 });
 
+/// Bumped whenever a coaching action changes what a roster row shows
+/// (acknowledge/resolve on either the player page or the Alerts tab, and a
+/// saved check-in). The Roster tab listens and reloads in the background, so
+/// the row's chips track the action without a restart (#120).
+///
+/// Only producers bump it; the Roster tab never does, so a bump cannot loop.
+final StateProvider<int> coachRosterRevisionProvider =
+    StateProvider<int>((ref) => 0);
+
+/// Bumped whenever a coach alert is acknowledged or resolved outside the
+/// Alerts tab (the player page). The Alerts tab listens and refetches, which
+/// also republishes [coachNewAlertsCountProvider] (#120).
+///
+/// Only the player page bumps it; the Alerts tab never does, so a bump cannot
+/// loop.
+final StateProvider<int> coachAlertsRevisionProvider =
+    StateProvider<int>((ref) => 0);
+
 /// Processes the logged-in account's drafts on login, after a save, on demand,
 /// and periodically while the app is in the foreground (ADR 020/033).
 final ChangeNotifierProvider<DraftSyncService> draftSyncServiceProvider =

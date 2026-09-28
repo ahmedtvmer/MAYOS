@@ -11,12 +11,15 @@ import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
 import 'coach_player_history_screen.dart';
 
-/// Coach-side roster (#24): the assigned players with their alert badges,
-/// revocation, and coaching controls. Tapping a roster row opens the assigned
-/// player's history drill-down (#25).
+/// Coach-side roster (#24): the assigned players in the order the service
+/// returns them, with their urgency chips, revocation, and coaching controls.
+/// Tapping a roster row pushes the player page (#120).
 ///
 /// It is the Roster tab of the Coach mode shell (#119); the player invite and
-/// notices live on the Profile tab.
+/// notices live on the Profile tab. The client never re-sorts: the server
+/// computes the roster urgency order (#118), and the tab only reloads when
+/// data changes (foreground return, drill-down return, or a coaching action
+/// reported through [coachRosterRevisionProvider]).
 class CoachAssignmentsScreen extends ConsumerStatefulWidget {
   const CoachAssignmentsScreen({super.key});
 
@@ -208,37 +211,129 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     );
   }
 
-  Widget _badge(String label, Color color, Color foreground) {
+  /// One urgency chip on a roster row (#120): a tinted pill in the theme's
+  /// semantic colour, set in the caption role.
+  Widget _chip(BuildContext context, String label, Color color) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: MayosSpacing.xs, vertical: 2),
+      padding: const EdgeInsets.symmetric(
+          horizontal: MayosSpacing.sm, vertical: 2),
       decoration: BoxDecoration(
-        color: color,
+        color: color.withValues(alpha: 0.12),
         borderRadius: MayosRadii.pillRadius,
       ),
       child: Text(
         label,
-        style: MayosTypography.caption.copyWith(color: foreground),
+        style: MayosTypography.caption
+            .copyWith(color: color, fontWeight: FontWeight.w600),
       ),
     );
   }
 
-  Widget _rosterBadges(BuildContext context, CoachRosterEntry entry) {
-    if (entry.alertsOpen == 0) {
-      return const SizedBox.shrink();
-    }
-    final MayosThemeExtension tokens = MayosTheme.of(context);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        if (entry.alertsNew > 0)
-          _badge('${entry.alertsNew}', tokens.danger, tokens.onDanger),
-        if (entry.alertsNew > 0 && entry.alertsAcknowledged > 0)
-          const SizedBox(width: 4),
-        if (entry.alertsAcknowledged > 0)
-          _badge(
-              '${entry.alertsAcknowledged}', tokens.warning, tokens.onWarning),
-      ],
+  /// The chips as they apply (#120): missed days, a follow-up due today or
+  /// overdue, new alerts, and pending program requests. Nothing renders when
+  /// the player needs no attention.
+  List<Widget> _rosterChips(BuildContext context, CoachRosterEntry entry) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final String today = isoDateOf(DateTime.now());
+    final String? followUp = entry.followUpChipLabel(today);
+    return <Widget>[
+      if (entry.currentMissedStreak > 0)
+        _chip(context, 'Missed ${entry.currentMissedStreak}d', c.danger),
+      if (followUp != null) _chip(context, followUp, c.warning),
+      if (entry.alertsNew > 0)
+        _chip(
+          context,
+          '${entry.alertsNew} alert${entry.alertsNew == 1 ? '' : 's'}',
+          c.danger,
+        ),
+      if (entry.pendingRequests > 0)
+        _chip(
+          context,
+          '${entry.pendingRequests} request${entry.pendingRequests == 1 ? '' : 's'}',
+          c.accent,
+        ),
+    ];
+  }
+
+  /// One roster row: avatar, username, "Last workout · program", the urgency
+  /// chips, and the revoke action. The whole row opens the player page.
+  Widget _rosterRow(BuildContext context, CoachRosterEntry entry) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final List<Widget> chips = _rosterChips(context, entry);
+    return InkWell(
+      key: Key('roster_row_${entry.assignmentId}'),
+      onTap: () async {
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (BuildContext context) =>
+                CoachPlayerHistoryScreen(entry: entry),
+          ),
+        );
+        // The player page (and the assistant under it) is closed: reload the
+        // roster, since a revocation or a coaching action may have landed
+        // while it was open (issue #45, #120).
+        if (mounted) {
+          await _load(showLoader: false);
+        }
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: MayosSpacing.sm),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: c.secondarySurface,
+              child: Text(
+                entry.playerUsername.isEmpty
+                    ? '?'
+                    : entry.playerUsername.substring(0, 1).toUpperCase(),
+                style:
+                    MayosTypography.label.copyWith(color: c.textPrimary),
+              ),
+            ),
+            const SizedBox(width: MayosSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    entry.playerUsername,
+                    style:
+                        MayosTypography.exerciseTitle.copyWith(color: c.textPrimary),
+                  ),
+                  const SizedBox(height: MayosSpacing.xxs),
+                  Text(
+                    entry.rosterSubtitle,
+                    style: MayosTypography.caption
+                        .copyWith(color: c.textSecondary),
+                  ),
+                  if (chips.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: MayosSpacing.xs),
+                    Wrap(
+                      spacing: MayosSpacing.xs,
+                      runSpacing: MayosSpacing.xs,
+                      children: chips,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: MayosSpacing.xs),
+            MayosButton(
+              label: _busyAssignmentId == entry.assignmentId
+                  ? 'Revoking…'
+                  : 'Revoke',
+              variant: MayosButtonVariant.tertiary,
+              expand: false,
+              onPressed: _busyAssignmentId == entry.assignmentId
+                  ? null
+                  : () => _revoke(entry),
+            ),
+            Icon(Icons.chevron_right, color: c.textMuted),
+          ],
+        ),
+      ),
     );
   }
 
@@ -257,44 +352,11 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                 style: MayosTypography.bodySecondary
                     .copyWith(color: c.textSecondary))
           else
-            for (final CoachRosterEntry entry in _assignments)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.person_outline, color: c.textSecondary),
-                title: Text(entry.playerUsername),
-                subtitle: Text('Since ${entry.startedAt}'),
-                onTap: () async {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (BuildContext context) =>
-                          CoachPlayerHistoryScreen(entry: entry),
-                    ),
-                  );
-                  // The drill-down (and the assistant under it) is closed:
-                  // reload the roster, since a revocation may have landed
-                  // while it was open (issue #45).
-                  if (mounted) {
-                    await _load(showLoader: false);
-                  }
-                },
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    _rosterBadges(context, entry),
-                    const SizedBox(width: MayosSpacing.xs),
-                    MayosButton(
-                      label: _busyAssignmentId == entry.assignmentId
-                          ? 'Revoking…'
-                          : 'Revoke',
-                      variant: MayosButtonVariant.tertiary,
-                      expand: false,
-                      onPressed: _busyAssignmentId == entry.assignmentId
-                          ? null
-                          : () => _revoke(entry),
-                    ),
-                  ],
-                ),
-              ),
+            for (int i = 0; i < _assignments.length; i++) ...<Widget>[
+              if (i > 0)
+                Divider(height: 1, indent: 52, color: c.border),
+              _rosterRow(context, _assignments[i]),
+            ],
         ],
       ),
     );
@@ -302,6 +364,15 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
 
   @override
   Widget build(BuildContext context) {
+    // A coaching action landed elsewhere (the player page's alert buttons or
+    // check-in sheet, the Alerts tab): refetch quietly so this row's chips
+    // track it without a restart (#120). Producers bump the revision; this
+    // tab never does, so the listener cannot loop.
+    ref.listen<int>(coachRosterRevisionProvider, (int? previous, int next) {
+      if (previous != next) {
+        _load(showLoader: false);
+      }
+    });
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }

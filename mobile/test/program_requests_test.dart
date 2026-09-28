@@ -205,7 +205,12 @@ void main() {
     await _pumpUntilFound(tester, find.text('Program requests'));
     expect(find.text('Apply'), findsNWidgets(2));
 
-    await tester.tap(find.text('Apply').first);
+    // The player page's header and segments sit above the drill-down content
+    // (#120), so the request actions are brought into view before tapping.
+    final Finder apply = find.text('Apply').first;
+    await tester.ensureVisible(apply);
+    await tester.pump();
+    await tester.tap(apply);
     await _pumpUntilFound(tester, find.text('Applied'));
     expect(
       fake.programRequests
@@ -219,7 +224,10 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
 
     fake.staleProgramRequest = true;
-    await tester.tap(find.text('Apply'));
+    final Finder remainingApply = find.text('Apply');
+    await tester.ensureVisible(remainingApply);
+    await tester.pump();
+    await tester.tap(remainingApply);
     await _pumpUntilFound(
         tester,
         find.textContaining(

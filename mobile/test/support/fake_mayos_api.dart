@@ -608,9 +608,57 @@ class FakeMayosApi {
       return const FakeResponse(
           403, <String, dynamic>{'detail': 'Coach capability required.'});
     }
+    // The service derives the urgency basis on every fetch (#118/#120): alert
+    // badges from the alerts table unless a test states them explicitly, and
+    // the follow-up date a weekly cadence past the newest check-in.
     return FakeResponse(200, <String, dynamic>{
-      'assignments': List<Map<String, dynamic>>.from(assignments)
+      'assignments': <Map<String, dynamic>>[
+        for (final Map<String, dynamic> row in assignments)
+          _rosterBasis(Map<String, dynamic>.of(row)),
+      ],
     });
+  }
+
+  Map<String, dynamic> _rosterBasis(Map<String, dynamic> row) {
+    final String id = row['assignment_id'] as String;
+    if (row['pending_requests'] == null) {
+      row['pending_requests'] = programRequests
+          .where((Map<String, dynamic> request) =>
+              request['assignment_id'] == id &&
+              request['status'] == 'pending')
+          .length;
+    }
+    if (row['alerts_new'] == null || row['alerts_acknowledged'] == null) {
+      int alertsNew = 0;
+      int alertsAcknowledged = 0;
+      for (final Map<String, dynamic> alert in coachAlerts) {
+        if (alert['assignment_id'] != id) {
+          continue;
+        }
+        if (alert['state'] == 'new') {
+          alertsNew++;
+        } else if (alert['state'] == 'acknowledged') {
+          alertsAcknowledged++;
+        }
+      }
+      row['alerts_new'] = alertsNew;
+      row['alerts_acknowledged'] = alertsAcknowledged;
+    }
+    final List<Map<String, dynamic>> checkInsForAssignment = checkIns
+        .where((Map<String, dynamic> checkIn) =>
+            checkIn['assignment_id'] == id)
+        .toList(growable: false);
+    if (checkInsForAssignment.isNotEmpty) {
+      String newest = checkInsForAssignment.first['checked_in_on'] as String;
+      for (final Map<String, dynamic> checkIn in checkInsForAssignment) {
+        final String on = checkIn['checked_in_on'] as String;
+        if (on.compareTo(newest) > 0) {
+          newest = on;
+        }
+      }
+      row['next_follow_up_on'] = _addDays(newest, 7);
+    }
+    return row;
   }
 
   FakeResponse _coachNotices(FakeRequest request) {

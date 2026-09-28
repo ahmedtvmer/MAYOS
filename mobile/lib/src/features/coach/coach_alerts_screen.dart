@@ -48,11 +48,13 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
         _alerts.where((CoachAlert alert) => alert.isNew).length;
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({bool showLoader = true}) async {
+    if (showLoader) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final List<CoachAlert> alerts =
           await ref.read(apiClientProvider).coachAlerts(states: _states);
@@ -90,6 +92,8 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
             .toList(growable: false);
       });
       _publishNewCount();
+      // The roster row carries the same counts: tell it to refetch (#120).
+      ref.read(coachRosterRevisionProvider.notifier).state++;
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -181,6 +185,14 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // The player page acknowledged or resolved one of these alerts: refetch
+    // so this list and the tab badge track it (#120). The player page bumps
+    // the revision and this tab never does, so the listener cannot loop.
+    ref.listen<int>(coachAlertsRevisionProvider, (int? previous, int next) {
+      if (previous != next) {
+        _load(showLoader: false);
+      }
+    });
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }

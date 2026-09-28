@@ -371,6 +371,9 @@ class CoachRosterEntry {
     this.alertsAcknowledged = 0,
     this.currentMissedStreak = 0,
     this.nextFollowUpOn,
+    this.pendingRequests = 0,
+    this.lastWorkoutOn,
+    this.programName,
   });
 
   factory CoachRosterEntry.fromJson(Map<String, dynamic> json) =>
@@ -384,6 +387,9 @@ class CoachRosterEntry {
         currentMissedStreak:
             (json['current_missed_streak'] as num?)?.toInt() ?? 0,
         nextFollowUpOn: json['next_follow_up_on'] as String?,
+        pendingRequests: (json['pending_requests'] as num?)?.toInt() ?? 0,
+        lastWorkoutOn: json['last_workout_on'] as String?,
+        programName: json['program_name'] as String?,
       );
 
   final String assignmentId;
@@ -397,7 +403,48 @@ class CoachRosterEntry {
   /// The next weekly follow-up due date (`YYYY-MM-DD`), computed catalog-side.
   final String? nextFollowUpOn;
 
+  /// The player's pending program requests on this assignment (#118).
+  final int pendingRequests;
+
+  /// The date of the player's latest committed workout (`YYYY-MM-DD`), or
+  /// `null` while the player has never trained (#118).
+  final String? lastWorkoutOn;
+
+  /// The player's current program name, when the roster payload carries it.
+  final String? programName;
+
   int get alertsOpen => alertsNew + alertsAcknowledged;
+
+  /// The roster row's second line: the last workout with the program, or the
+  /// never-trained wording when `lastWorkoutOn` is null (#120).
+  String get rosterSubtitle {
+    final String? lastWorkoutOn = this.lastWorkoutOn;
+    if (lastWorkoutOn == null) {
+      return 'No workouts yet';
+    }
+    final String? programName = this.programName;
+    return programName == null || programName.isEmpty
+        ? 'Last workout $lastWorkoutOn'
+        : 'Last workout $lastWorkoutOn · $programName';
+  }
+
+  /// Whether the follow-up chip is due on [today] (`YYYY-MM-DD`): overdue
+  /// before it, today on it, and no chip once the date is in the future.
+  ///
+  /// Returns `null` when no follow-up is scheduled.
+  String? followUpChipLabel(String today) {
+    final String? nextFollowUpOn = this.nextFollowUpOn;
+    if (nextFollowUpOn == null) {
+      return null;
+    }
+    if (nextFollowUpOn == today) {
+      return 'Follow-up today';
+    }
+    if (nextFollowUpOn.compareTo(today) < 0) {
+      return 'Follow-up overdue';
+    }
+    return null;
+  }
 }
 
 /// One turn of the coach-assistant transcript sent with
@@ -610,6 +657,12 @@ List<CheckIn> sortCheckInsNewestFirst(Iterable<CheckIn> checkIns) {
   sorted.sort((CheckIn a, CheckIn b) => b.checkedInOn.compareTo(a.checkedInOn));
   return sorted;
 }
+
+/// `YYYY-MM-DD` for [date]: the wire date format check-ins send and the
+/// format `YYYY-MM-DD` roster fields are compared against (#120).
+String isoDateOf(DateTime date) => '${date.year.toString().padLeft(4, '0')}-'
+    '${date.month.toString().padLeft(2, '0')}-'
+    '${date.day.toString().padLeft(2, '0')}';
 
 /// `POST /coach/assignments/{id}/check-ins`: the recorded check-in and the
 /// next follow-up date a full weekly cadence past it.

@@ -135,15 +135,19 @@ void main() {
     await _openDrillDown(tester);
     await _pumpUntilFound(tester, find.text('Check-ins'));
 
+    // Check-ins live in their own segment of the player page (#120), and the
+    // record button opens the log-check-in sheet.
+    await tester.tap(find.text('Check-ins'));
     final Finder recordButton = find.byKey(const Key('record_check_in_button'));
-    await tester.scrollUntilVisible(recordButton, 300,
-        scrollable: find.byType(Scrollable).first);
+    await _pumpUntilFound(tester, recordButton);
     await tester.ensureVisible(recordButton);
     await tester.pump();
     await tester.tap(recordButton);
     await _pumpUntilFound(
         tester, find.byKey(const Key('check_in_submit_button')));
 
+    // A channel is required; the note stays optional (#120).
+    await tester.tap(find.byKey(const Key('check_in_channel_phone')));
     await tester.enterText(
         find.byKey(const Key('check_in_note_field')), 'Talked about sleep');
     await tester.tap(find.byKey(const Key('check_in_submit_button')));

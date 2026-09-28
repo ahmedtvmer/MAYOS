@@ -5,15 +5,23 @@ import '../../core/api_client.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
+import '../../core/theme/mayos_typography.dart';
+import '../../core/ui/mayos_button.dart';
+import '../../core/ui/mayos_card.dart';
+import '../../core/ui/mayos_segmented_control.dart';
 import '../../providers.dart';
 import 'coach_assistant_screen.dart';
+import 'coach_check_in_sheet.dart';
 
-/// Coach drill-down (#25): one actively assigned player's sessions, volume,
-/// personal records, and per-exercise history.
+/// The player page (#120): one assigned player's open coach alerts on top,
+/// then the **History · Check-ins** segments.
 ///
-/// Every read is gated by the active assignment server-side, so a revoked or
-/// foreign assignment yields a denial and no training data. Player-assistant
-/// chats never appear here.
+/// History carries this drill-down's original content — sessions, volume,
+/// personal records, program requests, and per-exercise history — embedded
+/// here rather than duplicated, so the roster row opens one page instead of a
+/// second screen. Every read is gated by the active assignment server-side, so
+/// a revoked or foreign assignment yields a denial and no training data.
+/// Player-assistant chats never appear here.
 class CoachPlayerHistoryScreen extends ConsumerStatefulWidget {
   const CoachPlayerHistoryScreen({super.key, required this.entry});
 
@@ -54,8 +62,9 @@ class _CoachPlayerHistoryScreenState
   String? _requestError;
   List<CheckIn> _checkIns = const <CheckIn>[];
   String? _nextFollowUpOn;
-  bool _recordingCheckIn = false;
-  String? _checkInError;
+  List<CoachAlert> _alerts = const <CoachAlert>[];
+  String? _busyAlertId;
+  int _segment = 0;
 
   @override
   void initState() {
@@ -72,6 +81,7 @@ class _CoachPlayerHistoryScreenState
     try {
       final ApiClient api = ref.read(apiClientProvider);
       final List<Object> results = await Future.wait<Object>(<Future<Object>>[
+        api.coachAlerts(states: <String>['new', 'acknowledged']),
         api.coachPlayerSummary(widget.entry.assignmentId),
         api.coachPlayerPersonalRecords(widget.entry.assignmentId),
         api.coachPlayerExercises(widget.entry.assignmentId),
@@ -79,12 +89,21 @@ class _CoachPlayerHistoryScreenState
         api.coachCheckIns(widget.entry.assignmentId),
       ]);
       if (!mounted) return;
+      final List<CoachAlert> allAlerts =
+          results[0] as List<CoachAlert>;
       setState(() {
-        _summary = results[0] as CoachPlayerSummary;
-        _records = results[1] as List<PersonalRecord>;
-        _exercises = results[2] as List<CoachPlayerExercise>;
-        _programRequests = results[3] as List<ProgramRequest>;
-        _checkIns = results[4] as List<CheckIn>;
+        // The player page shows this assignment's open alerts only (#120).
+        _alerts = allAlerts
+            .where((CoachAlert alert) =>
+                alert.assignmentId == widget.entry.assignmentId)
+            .toList(growable: false);
+        _summary = results[1] as CoachPlayerSummary;
+        _records = results[2] as List<PersonalRecord>;
+        _exercises = results[3] as List<CoachPlayerExercise>;
+        _programRequests = results[4] as List<ProgramRequest>;
+        // Newest first whatever order the list endpoint returned (#120).
+        _checkIns =
+            sortCheckInsNewestFirst(results[5] as List<CheckIn>);
         _loading = false;
       });
     } on ApiException catch (error) {
@@ -282,85 +301,113 @@ class _CoachPlayerHistoryScreenState
     }
   }
 
-  Future<void> _recordCheckIn() async {
-    final _CheckInDraft? draft = await showDialog<_CheckInDraft>(
-      context: context,
-      builder: (BuildContext context) => const _RecordCheckInDialog(),
+  /// The header **Log check-in** action and the Check-ins segment's button
+  /// open the same sheet (#120): channel, optional note, dated today.
+  Future<void> _openCheckInSheet() async {
+    await showLogCheckInSheet(
+      context,
+      assignmentId: widget.entry.assignmentId,
+      playerUsername: widget.entry.playerUsername,
+      onSaved: _onCheckInSaved,
     );
-    if (draft == null || !mounted) return;
+  }
+
+  /// Saves land here: the page's check-in list and next follow-up update
+  /// immediately, and the roster row is told to reload so its follow-up chip
+  /// tracks the new cadence (#120).
+  void _onCheckInSaved(CheckInCreation created) {
+    if (!mounted) return;
     setState(() {
-      _recordingCheckIn = true;
-      _checkInError = null;
+      _checkIns = sortCheckInsNewestFirst(<CheckIn>[created.checkIn, ..._checkIns]);
+      if (created.nextFollowUpOn != null) {
+        _nextFollowUpOn = created.nextFollowUpOn;
+      }
     });
+    ref.read(coachRosterRevisionProvider.notifier).state++;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Check-in recorded.')),
+    );
+  }
+
+  /// Acknowledge / resolve through the existing alert client calls. Both the
+  /// Alerts tab badge and the roster row follow the change without a restart
+  /// (#120): the badge loses a `new` alert it just lost, and both tabs are
+  /// told to refetch.
+  Future<void> _applyAlert(
+    CoachAlert alert,
+    Future<CoachAlert> Function() action,
+  ) async {
+    setState(() => _busyAlertId = alert.alertId);
     try {
-      final CheckInCreation created =
-          await ref.read(apiClientProvider).createCoachCheckIn(
-                widget.entry.assignmentId,
-                checkedInOn: draft.checkedInOn,
-                channel: draft.channel,
-                note: draft.note,
-              );
+      final CoachAlert updated = await action();
       if (!mounted) return;
-      final List<CheckIn> updated =
-          sortCheckInsNewestFirst(<CheckIn>[created.checkIn, ..._checkIns]);
+      final bool wasNew = alert.isNew;
       setState(() {
-        _recordingCheckIn = false;
-        _checkIns = updated;
-        if (created.nextFollowUpOn != null) {
-          _nextFollowUpOn = created.nextFollowUpOn;
-        }
+        _busyAlertId = null;
+        _alerts = updated.isResolved
+            ? _alerts
+                .where((CoachAlert row) => row.alertId != updated.alertId)
+                .toList(growable: false)
+            : _alerts
+                .map((CoachAlert row) =>
+                    row.alertId == updated.alertId ? updated : row)
+                .toList(growable: false);
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Check-in recorded.')),
-      );
+      if (wasNew) {
+        final int count = ref.read(coachNewAlertsCountProvider);
+        ref.read(coachNewAlertsCountProvider.notifier).state =
+            count > 0 ? count - 1 : 0;
+      }
+      ref.read(coachAlertsRevisionProvider.notifier).state++;
+      ref.read(coachRosterRevisionProvider.notifier).state++;
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() {
-        _recordingCheckIn = false;
-        _checkInError = error.message;
-      });
+      setState(() => _busyAlertId = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
     }
   }
 
-  Widget _checkInsCard(BuildContext context) {
-    return _section(context, 'Check-ins', <Widget>[
-      Text('Next follow-up: ${_nextFollowUpOn ?? 'not scheduled'}'),
-      const SizedBox(height: 8),
-      if (_checkInError != null) ...<Widget>[
+  Widget _checkInsSegment(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
         Text(
-          _checkInError!,
-          style: TextStyle(color: MayosTheme.of(context).danger),
+          'Next follow-up: ${_nextFollowUpOn ?? 'not scheduled'}',
+          style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
         ),
-        const SizedBox(height: 12),
-      ],
-      if (_checkIns.isEmpty)
-        const Text('No check-ins recorded yet.')
-      else
-        for (final CheckIn checkIn in _checkIns)
-          ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            title: Text('${checkIn.checkedInOn} · ${checkIn.channelLabel}'),
-            subtitle: checkIn.note == null || checkIn.note!.isEmpty
-                ? null
-                : Text(checkIn.note!),
+        const SizedBox(height: MayosSpacing.sm),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.icon(
+            key: const Key('record_check_in_button'),
+            onPressed: _openCheckInSheet,
+            icon: const Icon(Icons.note_add_outlined),
+            label: const Text('Log check-in'),
           ),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: FilledButton.icon(
-          key: const Key('record_check_in_button'),
-          onPressed: _recordingCheckIn ? null : _recordCheckIn,
-          icon: _recordingCheckIn
-              ? const SizedBox(
-                  height: 18,
-                  width: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.note_add_outlined),
-          label: const Text('Record check-in'),
         ),
-      ),
-    ]);
+        const SizedBox(height: MayosSpacing.sm),
+        if (_checkIns.isEmpty)
+          Text(
+            'No check-ins recorded yet.',
+            style:
+                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          )
+        else
+          for (final CheckIn checkIn in _checkIns)
+            ListTile(
+              key: Key('check_in_${checkIn.checkInId}'),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text('${checkIn.checkedInOn} · ${checkIn.channelLabel}'),
+              subtitle: checkIn.note == null || checkIn.note!.isEmpty
+                  ? null
+                  : Text(checkIn.note!),
+            ),
+      ],
+    );
   }
 
   Widget _programRequestsCard(BuildContext context) {
@@ -614,25 +661,16 @@ class _CoachPlayerHistoryScreenState
       appBar: AppBar(
         title: Text(entry.playerUsername),
         actions: <Widget>[
-          if (assistantEnabled)
-            TextButton(
-              key: const Key('coach_assistant_entry'),
-              onPressed: _openAssistant,
-              child: const Text('Ask assistant'),
-            ),
+          // The header action of the player page (#120): it opens the
+          // channel + note sheet dated today.
           TextButton(
-            onPressed: _publishing ? null : _openPublishDialog,
-            child: _publishing
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Publish program'),
+            key: const Key('log_check_in_action'),
+            onPressed: _loading ? null : _openCheckInSheet,
+            child: const Text('Log check-in'),
           ),
         ],
       ),
-      body: _buildBody(context),
+      body: _buildBody(context, assistantEnabled),
     );
   }
 
@@ -647,7 +685,100 @@ class _CoachPlayerHistoryScreenState
     );
   }
 
-  Widget _buildBody(BuildContext context) {
+  /// One open coach alert with its actions (#120): acknowledge and resolve
+  /// through the existing alert client calls, plus **Log check-in** while a
+  /// follow-up is due.
+  Widget _alertCard(BuildContext context, CoachAlert alert) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final bool busy = _busyAlertId == alert.alertId;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+      child: MayosCard(
+        key: Key('player_alert_${alert.alertId}'),
+        borderColor: alert.isNew ? c.danger : c.border,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    alert.description,
+                    style:
+                        MayosTypography.body.copyWith(color: c.textPrimary),
+                  ),
+                ),
+                Chip(
+                  label: Text(alert.stateLabel),
+                  labelStyle: MayosTypography.caption.copyWith(
+                    color: switch (alert.state) {
+                      'new' => c.danger,
+                      'acknowledged' => c.warning,
+                      _ => c.textMuted,
+                    },
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  side: BorderSide(
+                    color: switch (alert.state) {
+                      'new' => c.danger,
+                      'acknowledged' => c.warning,
+                      _ => c.textMuted,
+                    },
+                  ),
+                  backgroundColor: Colors.transparent,
+                ),
+              ],
+            ),
+            const SizedBox(height: MayosSpacing.xs),
+            Wrap(
+              spacing: MayosSpacing.xs,
+              runSpacing: MayosSpacing.xs,
+              children: <Widget>[
+                if (alert.isFollowUpDue)
+                  MayosButton(
+                    label: 'Log check-in',
+                    variant: MayosButtonVariant.tertiary,
+                    expand: false,
+                    onPressed: busy ? null : _openCheckInSheet,
+                  ),
+                if (alert.isNew)
+                  MayosButton(
+                    label: 'Acknowledge',
+                    variant: MayosButtonVariant.tertiary,
+                    expand: false,
+                    onPressed: busy
+                        ? null
+                        : () => _applyAlert(
+                              alert,
+                              () => ref
+                                  .read(apiClientProvider)
+                                  .acknowledgeCoachAlert(alert.alertId),
+                            ),
+                  ),
+                if (!alert.isResolved)
+                  MayosButton(
+                    label: 'Resolve',
+                    variant: MayosButtonVariant.tertiary,
+                    expand: false,
+                    loading: busy,
+                    onPressed: busy
+                        ? null
+                        : () => _applyAlert(
+                              alert,
+                              () => ref
+                                  .read(apiClientProvider)
+                                  .resolveCoachAlert(alert.alertId),
+                            ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, bool assistantEnabled) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -666,6 +797,7 @@ class _CoachPlayerHistoryScreenState
         ),
       );
     }
+    final MayosThemeExtension c = MayosTheme.of(context);
     final CoachPlayerSummary summary = _summary!;
     return ListView(
       padding: const EdgeInsets.all(MayosSpacing.md),
@@ -673,32 +805,86 @@ class _CoachPlayerHistoryScreenState
         if (_publishError != null) ...<Widget>[
           Text(
             _publishError!,
-            style: TextStyle(color: MayosTheme.of(context).danger),
+            style: TextStyle(color: c.danger),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: MayosSpacing.sm),
         ],
-        Text('Since ${summary.startedAt}',
-            style: Theme.of(context).textTheme.bodySmall),
-        const SizedBox(height: 12),
-        _volumeCard(context),
-        const SizedBox(height: 12),
-        if (summary.schedule != null || summary.pauses.isNotEmpty) ...<Widget>[
-          _scheduleCard(context),
-          const SizedBox(height: 12),
+        Text(
+          'Coached since ${summary.startedAt} · '
+          'Next follow-up ${_nextFollowUpOn ?? 'not scheduled'}',
+          style: MayosTypography.caption.copyWith(color: c.textSecondary),
+        ),
+        const SizedBox(height: MayosSpacing.sm),
+        Wrap(
+          spacing: MayosSpacing.sm,
+          runSpacing: MayosSpacing.xs,
+          children: <Widget>[
+            MayosButton(
+              label: 'Publish program',
+              variant: MayosButtonVariant.secondary,
+              expand: false,
+              loading: _publishing,
+              onPressed: _publishing ? null : _openPublishDialog,
+            ),
+            if (assistantEnabled)
+              MayosButton(
+                key: const Key('coach_assistant_entry'),
+                label: 'Ask assistant',
+                variant: MayosButtonVariant.tertiary,
+                expand: false,
+                onPressed: _openAssistant,
+              ),
+          ],
+        ),
+        if (_alerts.isNotEmpty) ...<Widget>[
+          const SizedBox(height: MayosSpacing.md),
+          Text('Open alerts',
+              style: MayosTypography.sectionHeading
+                  .copyWith(color: c.textPrimary)),
+          const SizedBox(height: MayosSpacing.xs),
+          for (final CoachAlert alert in _alerts)
+            _alertCard(context, alert),
         ],
-        _latestSessionCard(context),
-        const SizedBox(height: 12),
-        _recentSessionsCard(context),
-        const SizedBox(height: 12),
-        _recordsCard(context),
-        const SizedBox(height: 12),
-        _programRequestsCard(context),
-        const SizedBox(height: 12),
-        _exercisesCard(context),
-        const SizedBox(height: 12),
-        _checkInsCard(context),
+        const SizedBox(height: MayosSpacing.md),
+        MayosSegmentedControl<String>(
+          segments: const <MayosSegment<String>>[
+            MayosSegment<String>(value: 'history', label: 'History'),
+            MayosSegment<String>(value: 'checkins', label: 'Check-ins'),
+          ],
+          selected: _segment == 0 ? 'history' : 'checkins',
+          onChanged: (String value) =>
+              setState(() => _segment = value == 'history' ? 0 : 1),
+        ),
+        const SizedBox(height: MayosSpacing.md),
+        if (_segment == 0) ..._historyChildren(context) else _checkInsSegment(context),
       ],
     );
+  }
+
+  /// The original drill-down content (#25), embedded as the History segment
+  /// of the player page (#120) instead of being duplicated here.
+  List<Widget> _historyChildren(BuildContext context) {
+    final CoachPlayerSummary summary = _summary!;
+    return <Widget>[
+      Text('Since ${summary.startedAt}',
+          style: Theme.of(context).textTheme.bodySmall),
+      const SizedBox(height: 12),
+      _volumeCard(context),
+      const SizedBox(height: 12),
+      if (summary.schedule != null || summary.pauses.isNotEmpty) ...<Widget>[
+        _scheduleCard(context),
+        const SizedBox(height: 12),
+      ],
+      _latestSessionCard(context),
+      const SizedBox(height: 12),
+      _recentSessionsCard(context),
+      const SizedBox(height: 12),
+      _recordsCard(context),
+      const SizedBox(height: 12),
+      _programRequestsCard(context),
+      const SizedBox(height: 12),
+      _exercisesCard(context),
+    ];
   }
 }
 
@@ -746,135 +932,3 @@ class _DeclineRequestDialogState extends State<_DeclineRequestDialog> {
   }
 }
 
-/// A locally assembled check-in awaiting submission.
-class _CheckInDraft {
-  const _CheckInDraft({
-    required this.checkedInOn,
-    required this.channel,
-    this.note,
-  });
-
-  final String checkedInOn;
-  final String channel;
-  final String? note;
-}
-
-String _isoDate(DateTime date) => '${date.year.toString().padLeft(4, '0')}-'
-    '${date.month.toString().padLeft(2, '0')}-'
-    '${date.day.toString().padLeft(2, '0')}';
-
-/// The record-check-in dialog: date (default today), channel, optional note.
-class _RecordCheckInDialog extends StatefulWidget {
-  const _RecordCheckInDialog();
-
-  @override
-  State<_RecordCheckInDialog> createState() => _RecordCheckInDialogState();
-}
-
-class _RecordCheckInDialogState extends State<_RecordCheckInDialog> {
-  final TextEditingController _note = TextEditingController();
-  late DateTime _date;
-  String _channel = 'phone';
-
-  @override
-  void initState() {
-    super.initState();
-    final DateTime now = DateTime.now();
-    _date = DateTime(now.year, now.month, now.day);
-  }
-
-  @override
-  void dispose() {
-    _note.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickDate() async {
-    final DateTime now = DateTime.now();
-    // The coach's device date + 1 day is the upper bound; the service remains the
-    // authority on what counts as the player's future.
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _date,
-      firstDate: DateTime(now.year - 2),
-      lastDate:
-          DateTime(now.year, now.month, now.day).add(const Duration(days: 1)),
-    );
-    if (picked != null && mounted) {
-      setState(() => _date = picked);
-    }
-  }
-
-  void _submit() {
-    final String note = _note.text.trim();
-    Navigator.of(context).pop(
-      _CheckInDraft(
-        checkedInOn: _isoDate(_date),
-        channel: _channel,
-        note: note.isEmpty ? null : note,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Record check-in'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            InkWell(
-              key: const Key('check_in_date_field'),
-              onTap: _pickDate,
-              child: InputDecorator(
-                decoration: const InputDecoration(
-                    labelText: 'Date', border: OutlineInputBorder()),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: <Widget>[
-                    Text(_isoDate(_date)),
-                    const Icon(Icons.calendar_today, size: 18),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              key: const Key('check_in_channel_field'),
-              initialValue: _channel,
-              decoration: const InputDecoration(
-                  labelText: 'Channel', border: OutlineInputBorder()),
-              items: <DropdownMenuItem<String>>[
-                for (final String channel in CheckIn.channels)
-                  DropdownMenuItem<String>(
-                      value: channel, child: Text(channel)),
-              ],
-              onChanged: (String? value) =>
-                  setState(() => _channel = value ?? _channel),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              key: const Key('check_in_note_field'),
-              controller: _note,
-              maxLines: 2,
-              decoration: const InputDecoration(
-                  labelText: 'Note (optional)', border: OutlineInputBorder()),
-            ),
-          ],
-        ),
-      ),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const Key('check_in_submit_button'),
-          onPressed: _submit,
-          child: const Text('Record'),
-        ),
-      ],
-    );
-  }
-}

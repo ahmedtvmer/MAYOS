@@ -96,8 +96,15 @@ void main() {
     expect(find.text('Bench Press'), findsWidgets);
     expect(find.textContaining('ASSISTANT-CHAT-SECRET'), findsNothing);
 
-    // Drilling into an exercise loads its history inline.
-    await tester.tap(find.widgetWithText(ExpansionTile, 'Bench Press'));
+    // Drilling into an exercise loads its history inline. The player page's
+    // header, actions, and segments sit above the drill-down content (#120),
+    // so the Exercises card is scrolled into view first.
+    final Finder benchTile = find.widgetWithText(ExpansionTile, 'Bench Press');
+    await tester.scrollUntilVisible(benchTile, 300,
+        scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(benchTile);
+    await tester.pump();
+    await tester.tap(benchTile);
     await _pumpUntilFound(tester, find.textContaining('e1RM 120.0'));
     expect(find.textContaining('e1RM 120.0'), findsOneWidget);
   });

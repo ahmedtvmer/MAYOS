@@ -136,13 +136,19 @@ Future<void> _openAlertCenter(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('roster shows new and acknowledged alert badges', (tester) async {
+  testWidgets('roster row carries the new-alert chip and no acknowledged '
+      'chip', (tester) async {
     final FakeMayosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _openRoster(tester);
 
-    expect(find.text('2'), findsOneWidget);
-    expect(find.text('1'), findsOneWidget);
+    // Two new alerts and one acknowledged: a roster row counts new alerts
+    // only, as the "N alerts" chip (#120).
+    expect(find.text('2 alerts'), findsOneWidget);
+    expect(find.text('1'), findsNothing);
+    expect(find.text('1 alert'), findsNothing);
+    // The missed-day chip for the same row comes from the streak.
+    expect(find.text('Missed 3d'), findsOneWidget);
   });
 
   testWidgets('coach acknowledges then resolves an alert', (tester) async {
