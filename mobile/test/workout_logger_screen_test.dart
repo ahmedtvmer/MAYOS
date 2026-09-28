@@ -12,12 +12,15 @@ import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/performed_date_window.dart';
+import 'package:mayos_mobile/src/core/personal_records.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_settings_tile.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_stat.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/workout/active_workout_controller.dart';
+import 'package:mayos_mobile/src/features/player/workout/personal_record_badge.dart';
 import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
@@ -255,6 +258,34 @@ Color _textColor(WidgetTester tester, Finder finder) => tester
     .widget<Text>(find.descendant(of: finder, matching: find.byType(Text)))
     .style!
     .color!;
+
+Finder _badge(int exercise, int set, PrRecordKind kind) =>
+    find.byKey(ValueKey<String>('logger.pr.$exercise.$set.${kind.name}'));
+
+/// Whether the badge under a row is struck through (beaten by a later set).
+TextDecoration? _badgeDecoration(WidgetTester tester, Finder badge) => tester
+    .widget<Text>(find.descendant(of: badge, matching: find.byType(Text)))
+    .style!
+    .decoration;
+
+/// Types [digits] into one cell through the app's own keypad, then hides it,
+/// leaving the row ready to tick.
+Future<void> _typeCell(
+  WidgetTester tester,
+  int exercise,
+  int set,
+  String field,
+  String digits,
+) async {
+  await tester.tap(_cell(exercise, set, field));
+  await tester.pump(const Duration(milliseconds: 100));
+  for (final String digit in digits.split('')) {
+    await tester.tap(find.byKey(ValueKey<String>('logger.key.$digit')));
+  }
+  await tester.pump(const Duration(milliseconds: 100));
+  await tester.tap(find.byKey(const ValueKey<String>('logger.key.hide')));
+  await tester.pump(const Duration(milliseconds: 100));
+}
 
 void main() {
   testWidgets('PREVIOUS is matched set by set and shows — with none',
@@ -528,7 +559,7 @@ void main() {
     expect(find.text('Performed date'), findsOneWidget);
     expect(find.text('Save workout'), findsWidgets);
 
-    // Back from the save step returns to the Active workout.
+    // Back from the summary returns to the Active workout.
     await tester.tap(find.byKey(const ValueKey<String>('logger.save.back')));
     await tester.pumpAndSettle();
     expect(find.text('Performed date'), findsNothing);
@@ -653,5 +684,136 @@ void main() {
       find.textContaining('outside the allowed entry window'),
       findsWidgets,
     );
+  });
+
+  testWidgets(
+      'a record badge is solid on the current best, then struck through '
+      'when a later set beats it', (WidgetTester tester) async {
+    await _openLogger(tester);
+
+    // 105 kg × 5 @RIR 1 beats both of bench's frozen aggregates
+    // (100 kg, 121.67 e1RM), so the ticked row earns both badges solid.
+    await _typeCell(tester, 0, 0, 'kg', '105');
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final Finder weight = _badge(0, 0, PrRecordKind.weight);
+    final Finder e1rm = _badge(0, 0, PrRecordKind.e1rm);
+    expect(weight, findsOneWidget);
+    expect(e1rm, findsOneWidget);
+    expect(tester.widget<PersonalRecordBadge>(weight).beaten, isFalse);
+    expect(tester.widget<PersonalRecordBadge>(e1rm).beaten, isFalse);
+    expect(_badgeDecoration(tester, weight), isNull);
+    expect(_textColor(tester, weight), MayosThemeExtension.light.onWarning);
+    expect(find.text('PR kg'), findsOneWidget);
+    expect(find.text('PR e1RM'), findsOneWidget);
+
+    // 110 kg × 6 @RIR 2 takes both records over: the earlier badges stay on
+    // their row, struck through and muted, while the new best is solid.
+    await _typeCell(tester, 0, 1, 'kg', '110');
+    await tester.tap(_tick(0, 1));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(
+      tester
+          .widget<PersonalRecordBadge>(_badge(0, 1, PrRecordKind.weight))
+          .beaten,
+      isFalse,
+    );
+    expect(tester.widget<PersonalRecordBadge>(weight).beaten, isTrue);
+    expect(_badgeDecoration(tester, weight), TextDecoration.lineThrough);
+    expect(_textColor(tester, weight), MayosThemeExtension.light.textMuted);
+    expect(_badgeDecoration(tester, e1rm), TextDecoration.lineThrough);
+    // One solid and one struck badge of each kind are on screen.
+    expect(find.text('PR kg'), findsNWidgets(2));
+    expect(find.text('PR e1RM'), findsNWidgets(2));
+  });
+
+  testWidgets('unticking a record-earning set clears its badges (#124)',
+      (WidgetTester tester) async {
+    await _openLogger(tester);
+
+    await _typeCell(tester, 0, 0, 'kg', '105');
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_badge(0, 0, PrRecordKind.weight), findsOneWidget);
+    expect(_badge(0, 0, PrRecordKind.e1rm), findsOneWidget);
+
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_badge(0, 0, PrRecordKind.weight), findsNothing);
+    expect(_badge(0, 0, PrRecordKind.e1rm), findsNothing);
+
+    // Ticking again earns them back: the badges are recomputed from the rows.
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_badge(0, 0, PrRecordKind.weight), findsOneWidget);
+    expect(_badge(0, 0, PrRecordKind.e1rm), findsOneWidget);
+  });
+
+  testWidgets('the summary lists the current records and the stats (#124)',
+      (WidgetTester tester) async {
+    await _openLogger(tester);
+
+    await _typeCell(tester, 0, 0, 'kg', '105');
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    await _typeCell(tester, 0, 1, 'kg', '110');
+    await tester.tap(_tick(0, 1));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Finish workout'));
+    await tester.pumpAndSettle();
+    // bench set 3 and the incline exercise are unticked.
+    expect(find.text("2 sets aren't ticked"), findsOneWidget);
+    await tester.tap(find.text('Discard unticked sets and finish'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Workout summary'), findsOneWidget);
+    expect(find.text('Personal records'), findsOneWidget);
+    // Only the current bests celebrate: 105's badges were taken over by 110.
+    expect(find.text('Bench Press · PR 110 kg'), findsOneWidget);
+    expect(find.text('Bench Press · PR e1RM 139.33 kg'), findsOneWidget);
+    expect(find.textContaining('PR 105 kg'), findsNothing);
+
+    // Exercises done, ticked working sets, total volume (105×5 + 110×6).
+    expect(find.widgetWithText(MayosStat, '1'), findsOneWidget);
+    expect(find.widgetWithText(MayosStat, '2'), findsOneWidget);
+    expect(find.widgetWithText(MayosStat, '1185'), findsOneWidget);
+    expect(find.text('Exercises done'), findsOneWidget);
+    expect(find.text('Ticked working sets'), findsOneWidget);
+    expect(find.text('Total volume'), findsOneWidget);
+
+    // Back returns to the Active workout with its badges still there.
+    await tester.tap(find.byKey(const ValueKey<String>('logger.save.back')));
+    await tester.pumpAndSettle();
+    expect(find.text('Workout summary'), findsNothing);
+    expect(_badge(0, 0, PrRecordKind.weight), findsOneWidget);
+  });
+
+  testWidgets('the summary omits the celebration when nothing earned a record',
+      (WidgetTester tester) async {
+    await _openLogger(tester);
+
+    // A plain tick from the previous values is exactly bench's baseline
+    // (100 kg × 5 @RIR 1): a tie is not a record, so no badge ever shows.
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_badge(0, 0, PrRecordKind.weight), findsNothing);
+    expect(_badge(0, 0, PrRecordKind.e1rm), findsNothing);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Finish workout'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discard unticked sets and finish'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Workout summary'), findsOneWidget);
+    expect(find.text('Personal records'), findsNothing);
+    expect(find.textContaining('· PR '), findsNothing);
+    // The stats are still there: one exercise done, one working set, 500 kg.
+    expect(find.byType(MayosStat), findsNWidgets(3));
+    expect(find.text('Exercises done'), findsOneWidget);
+    expect(find.text('Ticked working sets'), findsOneWidget);
+    expect(find.widgetWithText(MayosStat, '500'), findsOneWidget);
   });
 }
