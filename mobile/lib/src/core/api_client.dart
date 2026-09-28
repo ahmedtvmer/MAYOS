@@ -642,6 +642,16 @@ class ApiClient {
     return _parseProgramRequestList(response.data);
   }
 
+  /// Lists the coach's program requests across every active assignment
+  /// (`GET /coach/program-requests`, #118/#121): pending oldest first, then
+  /// answered most recently resolved first. Each row carries the requesting
+  /// player's username beside the per-assignment fields, so the client resolves
+  /// through [applyCoachProgramRequest] / [declineCoachProgramRequest].
+  Future<List<ProgramRequest>> coachAllProgramRequests() async {
+    final response = await _send(() => _dio.get<dynamic>('/coach/program-requests'));
+    return _parseProgramRequestList(response.data);
+  }
+
   /// Revalidates and applies a pending request, publishing a new program version.
   Future<ProgramRequest> applyCoachProgramRequest(
       String assignmentId, String requestId) async {
@@ -654,13 +664,18 @@ class ApiClient {
         response.data, ProgramRequest.fromJson, _invalidProgramRequests);
   }
 
-  /// Declines a pending request with a short player-visible response.
+  /// Declines a pending request with a short player-visible reply.
+  ///
+  /// [reply] is the coach's note to the player, capped at 500 characters by
+  /// the service (#121); it may be left empty, and an empty reply is sent as
+  /// an empty string the service can refuse with a readable error.
   Future<ProgramRequest> declineCoachProgramRequest(
-      String assignmentId, String requestId, String response) async {
+      String assignmentId, String requestId,
+      {String? reply}) async {
     final httpResponse = await _send(
       () => _dio.post<dynamic>(
         '/coach/assignments/$assignmentId/program-requests/$requestId/decline',
-        data: <String, dynamic>{'response': response},
+        data: <String, dynamic>{'response': reply ?? ''},
       ),
     );
     return _parseBody(

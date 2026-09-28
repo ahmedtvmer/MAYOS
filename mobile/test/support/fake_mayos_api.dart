@@ -106,6 +106,9 @@ class FakeMayosApi {
   // Player program requests and coach resolution (#28).
   final List<Map<String, dynamic>> programRequests = <Map<String, dynamic>>[];
   bool staleProgramRequest = false;
+  // When true the coach program-request responses carry a wrong-shaped body,
+  // so the client's fail-closed parsing is assertable (#121).
+  bool malformedProgramRequests = false;
   int _programRequestSeq = 0;
 
   // Offline workout sync (#34). ``sessionCommits`` is the idempotency record;
@@ -301,6 +304,8 @@ class FakeMayosApi {
         return _redeemCoachInvite(request);
       case '/coach/profile':
         return _coachProfile(request);
+      case '/coach/program-requests':
+        return _coachCrossRosterProgramRequests(request);
       case '/coach/assignments':
         return _coachAssignments(request);
       case '/coach/assignments/invites':
@@ -1436,12 +1441,19 @@ class FakeMayosApi {
           403, <String, dynamic>{'detail': 'No active assignment.'});
     }
     if (request.path.endsWith('/apply') || request.path.endsWith('/decline')) {
+      if (malformedProgramRequests) {
+        return FakeResponse(200, <String, dynamic>{'status': 'applied'});
+      }
       final String id = parts.length > 2 ? parts[2] : '';
       final int index = programRequests
           .indexWhere((Map<String, dynamic> r) => r['request_id'] == id);
       if (index < 0) {
         return const FakeResponse(
             404, <String, dynamic>{'detail': 'Request not found.'});
+      }
+      if (programRequests[index]['assignment_id'] != assignmentId) {
+        return const FakeResponse(
+            403, <String, dynamic>{'detail': 'No active assignment.'});
       }
       if (programRequests[index]['status'] != 'pending') {
         return const FakeResponse(400,
@@ -1475,8 +1487,71 @@ class FakeMayosApi {
       programRequests[index]['resolved_by'] = 'account-$currentUsername';
       return FakeResponse(200, programRequests[index]);
     }
+    if (malformedProgramRequests) {
+      return FakeResponse(200, <String, dynamic>{'requests': 'not-a-list'});
+    }
     return FakeResponse(200, <String, dynamic>{
-      'requests': List<Map<String, dynamic>>.from(programRequests),
+      'requests': <Map<String, dynamic>>[
+        for (final Map<String, dynamic> row in programRequests)
+          if (row['assignment_id'] == assignmentId) row,
+      ],
+    });
+  }
+
+  /// `GET /coach/program-requests` (#118): every request across the coach's
+  /// active assignments, pending oldest first, then answered most recently
+  /// resolved first, each row carrying the requesting player's username.
+  FakeResponse _coachCrossRosterProgramRequests(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    final Map<String, String> usernameByAssignment = <String, String>{
+      for (final Map<String, dynamic> entry in assignments)
+        entry['assignment_id'] as String: entry['player_username'] as String,
+    };
+    final List<Map<String, dynamic>> rows = <Map<String, dynamic>>[
+      for (final Map<String, dynamic> row in programRequests)
+        if (usernameByAssignment.containsKey(row['assignment_id']))
+          <String, dynamic>{
+            ...row,
+            'player_username': usernameByAssignment[row['assignment_id']],
+          },
+    ];
+    final List<Map<String, dynamic>> pending = rows
+        .where((Map<String, dynamic> row) => row['status'] == 'pending')
+        .toList(growable: false)
+      ..sort((Map<String, dynamic> a, Map<String, dynamic> b) {
+        final int byDate = (a['created_at'] as String)
+            .compareTo(b['created_at'] as String);
+        return byDate != 0
+            ? byDate
+            : (a['request_id'] as String)
+                .compareTo(b['request_id'] as String);
+      });
+    final List<Map<String, dynamic>> answered = rows
+        .where((Map<String, dynamic> row) => row['status'] != 'pending')
+        .toList(growable: false)
+      ..sort((Map<String, dynamic> a, Map<String, dynamic> b) {
+        final String resolvedA =
+            (a['resolved_at'] ?? a['created_at']) as String;
+        final String resolvedB =
+            (b['resolved_at'] ?? b['created_at']) as String;
+        final int byDate = resolvedB.compareTo(resolvedA);
+        return byDate != 0
+            ? byDate
+            : (a['request_id'] as String)
+                .compareTo(b['request_id'] as String);
+      });
+    if (malformedProgramRequests) {
+      return FakeResponse(200, <String, dynamic>{'requests': 'not-a-list'});
+    }
+    return FakeResponse(200, <String, dynamic>{
+      'requests': <Map<String, dynamic>>[...pending, ...answered],
     });
   }
 

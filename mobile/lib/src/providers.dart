@@ -183,7 +183,8 @@ final StateProvider<int> playerShellTabProvider =
     StateProvider<int>((ref) => 0);
 
 /// The selected bottom-navigation tab in the coach shell (0 = Roster,
-/// 1 = Alerts, 2 = Profile). The shell opens on Roster, and so does a newly
+/// 1 = Alerts, 2 = Requests, 3 = Profile; the named constants live in
+/// `coach_shell.dart`). The shell opens on Roster, and so does a newly
 /// signed-in account: the tab resets whenever the account changes (#119).
 final StateProvider<int> coachShellTabProvider = StateProvider<int>((ref) {
   _resetOnAccountChange(ref, () => ref.controller.state = 0);
@@ -216,6 +217,25 @@ final StateProvider<int> coachRosterRevisionProvider =
 /// Only the player page bumps it; the Alerts tab never does, so a bump cannot
 /// loop.
 final StateProvider<int> coachAlertsRevisionProvider =
+    StateProvider<int>((ref) => 0);
+
+/// The number of the coach's pending program requests, published by the
+/// Requests tab so the shell's badge tracks apply/decline without a second
+/// fetch. It resets whenever the account changes, so one account's badge count
+/// is never shown for another (#119/#121).
+final StateProvider<int> coachPendingRequestsCountProvider =
+    StateProvider<int>((ref) {
+  _resetOnAccountChange(ref, () => ref.controller.state = 0);
+  return 0;
+});
+
+/// Bumped whenever a program request is applied or declined outside the
+/// Requests tab (the player page). The Requests tab listens and refetches,
+/// which also republishes [coachPendingRequestsCountProvider] (#121).
+///
+/// Only the player page bumps it; the Requests tab never does, so a bump
+/// cannot loop.
+final StateProvider<int> coachRequestsRevisionProvider =
     StateProvider<int>((ref) => 0);
 
 /// Processes the logged-in account's drafts on login, after a save, on demand,

@@ -25,6 +25,20 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
+/// Pumps until [finder] stops matching (a sheet or dialog leaving the tree).
+Future<void> _pumpUntilGone(WidgetTester tester, Finder finder,
+    {int attempts = 40}) async {
+  for (int i = 0; i < attempts; i++) {
+    if (finder.evaluate().isEmpty) {
+      for (int j = 0; j < 4; j++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      return;
+    }
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
 Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 2.0;
@@ -202,15 +216,24 @@ void main() {
     // The coach shell opens on the Roster tab (#119).
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.text('History'));
+    // Requests live in their own player-page segment (#121).
+    await _pumpUntilFound(tester, find.text('Requests (2)'));
+    await tester.tap(find.text('Requests (2)'));
     await _pumpUntilFound(tester, find.text('Program requests'));
-    expect(find.text('Apply'), findsNWidgets(2));
+    expect(find.text('bench_press → incline_press'), findsNWidgets(2));
 
-    // The player page's header and segments sit above the drill-down content
-    // (#120), so the request actions are brought into view before tapping.
-    final Finder apply = find.text('Apply').first;
-    await tester.ensureVisible(apply);
+    // Tapping a pending row opens the shared resolve sheet (#121).
+    final Finder firstCard = find.byKey(const Key('request_card_req-1'));
+    await tester.ensureVisible(firstCard);
     await tester.pump();
-    await tester.tap(apply);
+    await tester.tap(firstCard);
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('request_apply_button')));
+    expect(find.text('Apply swap'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('request_apply_button')));
+    await _pumpUntilGone(
+        tester, find.byKey(const Key('request_apply_button')));
     await _pumpUntilFound(tester, find.text('Applied'));
     expect(
       fake.programRequests
@@ -224,10 +247,13 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
 
     fake.staleProgramRequest = true;
-    final Finder remainingApply = find.text('Apply');
-    await tester.ensureVisible(remainingApply);
+    final Finder remainingCard = find.byKey(const Key('request_card_req-2'));
+    await tester.ensureVisible(remainingCard);
     await tester.pump();
-    await tester.tap(remainingApply);
+    await tester.tap(remainingCard);
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('request_apply_button')));
+    await tester.tap(find.byKey(const Key('request_apply_button')));
     await _pumpUntilFound(
         tester,
         find.textContaining(
@@ -238,6 +264,8 @@ void main() {
           .length,
       1,
     );
+    // The list refreshed and the refused request is still pending.
+    expect(find.text('Pending'), findsOneWidget);
   });
 
   testWidgets('player screen renders status chips for all four states',

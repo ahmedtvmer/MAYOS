@@ -297,11 +297,13 @@ class ProgramRequest {
     this.response,
     this.resolvedAt,
     this.resolvedBy,
+    this.playerUsername,
   });
 
   factory ProgramRequest.fromJson(Map<String, dynamic> json) => ProgramRequest(
         requestId: json['request_id'] as String,
         assignmentId: json['assignment_id'] as String,
+        playerUsername: json['player_username'] as String?,
         kind: json['kind'] as String,
         programVersion: (json['program_version'] as num).toInt(),
         dayName: json['day_name'] as String?,
@@ -333,6 +335,11 @@ class ProgramRequest {
   final String createdAt;
   final String? resolvedAt;
   final String? resolvedBy;
+
+  /// The requesting player, carried only by the cross-roster list
+  /// (`GET /coach/program-requests`, #118); the per-assignment payloads omit
+  /// it, so callers that know the player pass it beside the request instead.
+  final String? playerUsername;
 
   bool get isPending => status == 'pending';
 

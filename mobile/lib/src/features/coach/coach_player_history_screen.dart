@@ -13,6 +13,7 @@ import '../../core/ui/mayos_settings_tile.dart';
 import '../../providers.dart';
 import 'coach_assistant_screen.dart';
 import 'coach_check_in_sheet.dart';
+import 'coach_request_sheet.dart';
 import 'coach_shared.dart';
 
 /// The player page (#120): one assigned player's open coach alerts on top,
@@ -60,7 +61,6 @@ class _CoachPlayerHistoryScreenState
   bool _publishing = false;
   String? _publishError;
   List<ProgramRequest> _programRequests = const <ProgramRequest>[];
-  bool _resolvingRequest = false;
   String? _requestError;
   List<CheckIn> _checkIns = const <CheckIn>[];
   String? _nextFollowUpOn;
@@ -72,6 +72,7 @@ class _CoachPlayerHistoryScreenState
   /// result of a newer one when revision bumps start overlapping loads (#120).
   int _loadSeq = 0;
   int _alertsSeq = 0;
+  int _requestsSeq = 0;
 
   @override
   void initState() {
@@ -145,6 +146,23 @@ class _CoachPlayerHistoryScreenState
     } on ApiException {
       // Keep the alerts already on screen; the Alerts tab refetches its own
       // copy from the revision bump this save published.
+    }
+  }
+
+  /// Refetches only this assignment's program requests: a refused resolve
+  /// must refresh the list so a request answered elsewhere shows its true
+  /// state (#121), without blanking the whole page.
+  Future<void> _loadRequests() async {
+    final int seq = ++_requestsSeq;
+    try {
+      final List<ProgramRequest> requests = await ref
+          .read(apiClientProvider)
+          .coachProgramRequests(widget.entry.assignmentId);
+      if (!mounted || seq != _requestsSeq) return;
+      setState(() => _programRequests = requests);
+    } on ApiException {
+      // Keep the requests already on screen; the error message this refresh
+      // came with is already shown.
     }
   }
 
@@ -280,50 +298,32 @@ class _CoachPlayerHistoryScreenState
   }
 
   Future<void> _applyRequest(ProgramRequest request) async {
-    setState(() {
-      _resolvingRequest = true;
-      _requestError = null;
-    });
-    try {
-      await ref.read(apiClientProvider).applyCoachProgramRequest(
-          widget.entry.assignmentId, request.requestId);
-      if (!mounted) return;
-      setState(() => _resolvingRequest = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Program request applied.')),
-      );
-      await _load();
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _resolvingRequest = false;
-        _requestError = error.message;
-      });
-    }
-  }
-
-  Future<void> _declineRequest(ProgramRequest request) async {
-    final String? text = await showDialog<String>(
-      context: context,
-      builder: (BuildContext context) => const _DeclineRequestDialog(),
+    final CoachRequestResolution result = await showCoachRequestResolveSheet(
+      context,
+      request: request,
+      playerUsername: widget.entry.playerUsername,
     );
-    if (text == null || !mounted) return;
-    setState(() {
-      _resolvingRequest = true;
-      _requestError = null;
-    });
-    try {
-      await ref.read(apiClientProvider).declineCoachProgramRequest(
-          widget.entry.assignmentId, request.requestId, text);
-      if (!mounted) return;
-      setState(() => _resolvingRequest = false);
+    if (!mounted) return;
+    if (result.resolved) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.request!.status == 'applied'
+              ? 'Program request applied.'
+              : 'Program request declined.'),
+        ),
+      );
+      // A coaching action landed: the Requests tab badge, the roster row's
+      // chip, and this page all follow without a restart (#121).
+      ref.read(coachRequestsRevisionProvider.notifier).state++;
+      ref.read(coachRosterRevisionProvider.notifier).state++;
       await _load();
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _resolvingRequest = false;
-        _requestError = error.message;
-      });
+      return;
+    }
+    if (result.message != null) {
+      // A refusal (an already-answered request, a stale target) is shown
+      // readably and the list refreshed so the row shows its true state.
+      setState(() => _requestError = result.message);
+      await _loadRequests();
     }
   }
 
@@ -436,63 +436,58 @@ class _CoachPlayerHistoryScreenState
     );
   }
 
-  Widget _programRequestsCard(BuildContext context) {
+  /// The **Requests (count)** segment (#121): this assignment's program
+  /// requests with the shared resolve sheet. A pending row opens the sheet;
+  /// answered rows are read-only.
+  Widget _requestsSegment(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
-    return _section(context, 'Program requests', <Widget>[
-      if (_requestError != null) ...<Widget>[
-        Text(
-          _requestError!,
-          style: MayosTypography.bodySecondary.copyWith(color: c.danger),
-        ),
-        const SizedBox(height: MayosSpacing.sm),
-      ],
-      if (_programRequests.isEmpty)
-        const Text('No program requests yet.')
-      else
-        for (final ProgramRequest request in _programRequests)
-          Padding(
-            padding: const EdgeInsets.only(bottom: MayosSpacing.xs),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text('Program requests',
+            style:
+                MayosTypography.sectionHeading.copyWith(color: c.textPrimary)),
+        const SizedBox(height: MayosSpacing.xs),
+        if (_requestError != null) ...<Widget>[
+          Text(
+            _requestError!,
+            style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+          ),
+          const SizedBox(height: MayosSpacing.sm),
+        ],
+        if (_programRequests.isEmpty)
+          const Text('No program requests yet.')
+        else
+          for (final ProgramRequest request in _programRequests)
+            Padding(
+              padding: const EdgeInsets.only(bottom: MayosSpacing.xs),
+              child: MayosCard(
+                key: Key('request_card_${request.requestId}'),
+                onTap: request.isPending
+                    ? () => _applyRequest(request)
+                    : null,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    coachPillChip(
-                      context,
-                      request.statusLabel,
-                      switch (request.status) {
-                        'pending' => c.accent,
-                        'applied' => c.success,
-                        _ => c.textMuted,
-                      },
+                    Row(
+                      children: <Widget>[
+                        coachRequestStatusChip(context, request),
+                        const SizedBox(width: MayosSpacing.xs),
+                        Expanded(
+                          child: Text(coachRequestTitle(request)),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: MayosSpacing.xs),
-                    Expanded(child: Text(request.description)),
+                    const SizedBox(height: MayosSpacing.xxs),
+                    Text('Reason: ${request.reason}'),
+                    if (request.hasResponse)
+                      Text('Response: ${request.response}'),
                   ],
                 ),
-                Text('Reason: ${request.reason}'),
-                if (request.hasResponse) Text('Response: ${request.response}'),
-                if (request.isPending)
-                  Row(
-                    children: <Widget>[
-                      TextButton(
-                        onPressed: _resolvingRequest
-                            ? null
-                            : () => _applyRequest(request),
-                        child: const Text('Apply'),
-                      ),
-                      TextButton(
-                        onPressed: _resolvingRequest
-                            ? null
-                            : () => _declineRequest(request),
-                        child: const Text('Decline'),
-                      ),
-                    ],
-                  ),
-              ],
+              ),
             ),
-          ),
-    ]);
+      ],
+    );
   }
 
   Widget _section(BuildContext context, String title, List<Widget> children) {
@@ -874,11 +869,15 @@ class _CoachPlayerHistoryScreenState
         ],
         const SizedBox(height: MayosSpacing.md),
         MayosSegmentedControl<_PlayerSegment>(
-          segments: const <MayosSegment<_PlayerSegment>>[
-            MayosSegment<_PlayerSegment>(
+          segments: <MayosSegment<_PlayerSegment>>[
+            const MayosSegment<_PlayerSegment>(
                 value: _PlayerSegment.history, label: 'History'),
-            MayosSegment<_PlayerSegment>(
+            const MayosSegment<_PlayerSegment>(
                 value: _PlayerSegment.checkIns, label: 'Check-ins'),
+            MayosSegment<_PlayerSegment>(
+              value: _PlayerSegment.requests,
+              label: 'Requests (${_programRequests.length})',
+            ),
           ],
           selected: _segment,
           onChanged: (_PlayerSegment value) =>
@@ -887,8 +886,10 @@ class _CoachPlayerHistoryScreenState
         const SizedBox(height: MayosSpacing.md),
         if (_segment == _PlayerSegment.history)
           ..._historyChildren(context)
+        else if (_segment == _PlayerSegment.checkIns)
+          _checkInsSegment(context)
         else
-          _checkInsSegment(context),
+          _requestsSegment(context),
       ],
     );
   }
@@ -913,17 +914,16 @@ class _CoachPlayerHistoryScreenState
       const SizedBox(height: MayosSpacing.sm),
       _recordsCard(context),
       const SizedBox(height: MayosSpacing.sm),
-      _programRequestsCard(context),
-      const SizedBox(height: MayosSpacing.sm),
       _exercisesCard(context),
     ];
   }
 }
 
-/// The player page's segments (#120).
+/// The player page's segments (#120/#121).
 enum _PlayerSegment {
   history,
   checkIns,
+  requests,
 }
 
 /// The player page's overflow actions (#G).
@@ -931,49 +931,3 @@ enum _PlayerAction {
   publishProgram,
   askAssistant,
 }
-
-/// The decline dialog. It owns its controller so it is disposed only after the
-/// route fully leaves the tree.
-class _DeclineRequestDialog extends StatefulWidget {
-  const _DeclineRequestDialog();
-
-  @override
-  State<_DeclineRequestDialog> createState() => _DeclineRequestDialogState();
-}
-
-class _DeclineRequestDialogState extends State<_DeclineRequestDialog> {
-  final TextEditingController _response = TextEditingController();
-
-  @override
-  void dispose() {
-    _response.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Decline request'),
-      content: TextField(
-        key: const Key('decline_response_field'),
-        controller: _response,
-        maxLines: 2,
-        decoration: const InputDecoration(
-            labelText: 'Response to the player', border: OutlineInputBorder()),
-      ),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        MayosButton(
-          key: const Key('decline_submit_button'),
-          label: 'Decline',
-          expand: false,
-          onPressed: () => Navigator.of(context).pop(_response.text.trim()),
-        ),
-      ],
-    );
-  }
-}
-
