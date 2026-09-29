@@ -85,17 +85,25 @@ class AuthScaffold extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          if (showHero) ...<Widget>[
-                            Center(
-                              child: MayosBrandLockup(
-                                height: logoHeight,
-                                variant: wallpaper
-                                    ? MayosBrandVariant.white
-                                    : MayosBrandVariant.auto,
+                          // One fixed slot, never a conditional spread: shifting
+                          // the fields' positions rebuilds them, dropping focus
+                          // and closing the keyboard (an open/close loop on
+                          // mobile Safari).
+                          Visibility(
+                            visible: showHero,
+                            child: Padding(
+                              padding: const EdgeInsets.only(
+                                  bottom: MayosSpacing.xl),
+                              child: Center(
+                                child: MayosBrandLockup(
+                                  height: logoHeight,
+                                  variant: wallpaper
+                                      ? MayosBrandVariant.white
+                                      : MayosBrandVariant.auto,
+                                ),
                               ),
                             ),
-                            const SizedBox(height: MayosSpacing.xl),
-                          ],
+                          ),
                           AuthHeading(title: title, lead: lead),
                           const SizedBox(height: MayosSpacing.xl),
                           ...children,

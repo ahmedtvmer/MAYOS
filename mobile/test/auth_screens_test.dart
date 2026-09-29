@@ -355,6 +355,29 @@ void main() {
     expect(find.text('Create an account'), findsOneWidget);
   });
 
+  testWidgets(
+      'opening the keyboard keeps the focused field alive (Safari flicker)',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _loginFake();
+    await _pumpAuth(tester, fake, size: const Size(360, 640));
+    final Finder editable = find.descendant(
+        of: find.byKey(const Key('login_username')),
+        matching: find.byType(EditableText));
+
+    await tester.tap(find.byKey(const Key('login_username')));
+    await tester.pump();
+    final State<EditableText> before = tester.state(editable);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pump(const Duration(milliseconds: 200));
+
+    // The hero dropping out on short screens must not rebuild the fields: a
+    // recreated field loses focus, which closes the keyboard, which brings the
+    // hero back — an open/close loop on mobile Safari.
+    expect(tester.state<State<EditableText>>(editable), same(before));
+    expect(tester.widget<EditableText>(editable).focusNode.hasFocus, isTrue);
+  });
+
   testWidgets('remember-me consent is a tappable 48dp row with state',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _loginFake();
