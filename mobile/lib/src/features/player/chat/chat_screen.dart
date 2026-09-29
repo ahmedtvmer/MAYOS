@@ -44,6 +44,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   List<ChatMessage> _messages = <ChatMessage>[];
   bool _sending = false;
   String? _streamingText;
+  String? _streamingMessageId;
   String? _sendError;
   String? _failedContent;
   bool _retryAddsBubble = true;
@@ -170,12 +171,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<void> _sendContent(String content) async {
     final String? accountId = _accountId;
     if (accountId == null) return;
+    final String assistantMessageId =
+        'local-assistant-${DateTime.now().microsecondsSinceEpoch}';
     final bool addUserBubble = _retryAddsBubble;
     _setStateIfMounted(() {
       _sending = true;
       _sendError = null;
       _failedContent = null;
       _streamingText = '';
+      _streamingMessageId = assistantMessageId;
       if (addUserBubble) {
         _messages = <ChatMessage>[
           ..._messages,
@@ -209,12 +213,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               _messages = <ChatMessage>[
                 ..._messages,
                 ChatMessage(
-                  id: 'local-assistant-${DateTime.now().microsecondsSinceEpoch}',
+                  id: assistantMessageId,
                   role: 'assistant',
                   content: reply,
                 ),
               ];
               _streamingText = null;
+              _streamingMessageId = null;
               _sending = false;
               _offline = false;
               _historyError = null;
@@ -255,6 +260,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       {bool offline = false}) async {
     _setStateIfMounted(() {
       _streamingText = null;
+      _streamingMessageId = null;
       _sending = false;
       _offline = _offline || offline;
       _sendError = message;
@@ -453,7 +459,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         child: text.isEmpty
             ? const _TypingIndicator()
             : MayosMarkdown(
-                key: const Key('chat_streaming_markdown'),
+                key: ValueKey<String>(_streamingMessageId!),
                 source: text,
               ),
       );
@@ -466,7 +472,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       context,
       role: message.role,
       child: message.role == 'assistant'
-          ? MayosMarkdown(source: message.content)
+          ? MayosMarkdown(
+              key: ValueKey<String>(message.id),
+              source: message.content,
+            )
           : Text(message.content),
     );
   }

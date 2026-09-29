@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
@@ -133,6 +134,9 @@ Finder _chatMarkdown(String source) => find.byWidgetPredicate(
       (Widget widget) => widget is MayosMarkdown && widget.source == source,
     );
 
+Finder _renderedMarkdownText(String text) =>
+    find.textContaining(text, findRichText: true);
+
 Future<void> _openSettings(WidgetTester tester) async {
   await tester.tap(find.byIcon(Icons.settings_outlined));
   await _pumpUntilFound(tester, find.text('Appearance'));
@@ -246,9 +250,11 @@ void main() {
 
     await tester.pump(const Duration(milliseconds: 120));
     expect(_chatMarkdown('Keep your '), findsOneWidget);
+    expect(_renderedMarkdownText('Keep your'), findsOneWidget);
 
     await tester.pump(const Duration(milliseconds: 120));
     expect(_chatMarkdown('Keep your elbows tucked.'), findsOneWidget);
+    expect(_renderedMarkdownText('Keep your elbows tucked.'), findsOneWidget);
 
     await tester.pump(const Duration(milliseconds: 120));
     expect(find.text('Assistant is replying…'), findsNothing);
@@ -283,19 +289,29 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
       await tester.pump(const Duration(milliseconds: 120));
 
-      final MayosMarkdown partial = tester
-          .widgetList<MayosMarkdown>(
-            find.byKey(const Key('chat_streaming_markdown')),
-          )
-          .first;
+      final MayosMarkdown partial = tester.widgetList<MayosMarkdown>(
+        _chatMarkdown('**Strong'),
+      ).first;
+      final Key identityKey = partial.key!;
       expect(partial.source, '**Strong');
+      expect(_renderedMarkdownText('Strong'), findsOneWidget);
       expect(find.text('**How?**'), findsOneWidget);
+      expect(
+        tester.widget<MarkdownBody>(
+          find.descendant(
+            of: find.byKey(identityKey),
+            matching: find.byType(MarkdownBody),
+          ),
+        ).key,
+        isNull,
+      );
 
       await tester.pump(const Duration(milliseconds: 120));
       await tester.pump(const Duration(milliseconds: 120));
       const String reply = '**Strong** and *steady*.';
-      expect(_chatMarkdown(reply), findsOneWidget);
-      expect(find.byKey(const Key('chat_streaming_markdown')), findsNothing);
+      expect(find.byKey(identityKey), findsOneWidget);
+      expect(tester.widget<MayosMarkdown>(find.byKey(identityKey)).source, reply);
+      expect(_renderedMarkdownText('Strong and steady.'), findsOneWidget);
       expect(tester.takeException(), isNull);
 
       // History reuses the same renderer after a stream finishes.
@@ -310,6 +326,7 @@ void main() {
         size: const Size(360, 640),
       );
       expect(_chatMarkdown(reply), findsOneWidget);
+      expect(_renderedMarkdownText('Strong and steady.'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     }
@@ -374,7 +391,7 @@ void main() {
 
     expect(find.byKey(const Key('chat_offline_banner')), findsOneWidget);
     expect(find.text('How was my squat?'), findsOneWidget);
-    expect(find.text('Solid top set.'), findsOneWidget);
+    expect(_renderedMarkdownText('Solid top set.'), findsOneWidget);
     // The commit pointer renders as a distinct debrief card, not a bubble.
     expect(find.byKey(const Key('chat_debrief')), findsOneWidget);
     expect(find.text('Session debrief'), findsOneWidget);

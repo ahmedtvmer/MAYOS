@@ -97,6 +97,15 @@ abstract final class MayosTypography {
     fontVariations: _regular,
   );
 
+  /// Selectable code; generic monospace resolves to Android/iOS system fonts.
+  static const TextStyle code = TextStyle(
+    fontFamily: 'monospace',
+    fontFamilyFallback: <String>['Roboto Mono', 'Menlo', 'Courier New'],
+    fontSize: 14,
+    height: 1.4,
+    fontWeight: FontWeight.w400,
+  );
+
   /// UI label / button text.
   static const TextStyle label = TextStyle(
     fontFamily: uiFamily,

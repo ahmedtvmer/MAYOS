@@ -227,6 +227,10 @@ void main() {
 
     expect(find.text('How is the bench progressing?'), findsOneWidget);
     expect(_assistantMarkdown(fake.coachAssistantAnswer), findsOneWidget);
+    expect(
+      find.textContaining('Volume is steady and the records', findRichText: true),
+      findsOneWidget,
+    );
     expect(fake.coachAssistantRequests, hasLength(1));
     expect(fake.coachAssistantRequests.single['question'],
         'How is the bench progressing?');
@@ -259,6 +263,8 @@ void main() {
 
       expect(find.text('**Keep** this question plain.'), findsOneWidget);
       expect(_assistantMarkdown(fake.coachAssistantAnswer), findsOneWidget);
+      expect(find.text('Coaching notes', findRichText: true), findsOneWidget);
+      expect(find.text('Stay patient', findRichText: true), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     }

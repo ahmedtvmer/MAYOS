@@ -53,6 +53,11 @@ abstract final class MayosRadii {
       BorderRadius.all(Radius.circular(pill));
 }
 
+/// Stroke widths for rules and separators that need more emphasis.
+abstract final class MayosBorderWidths {
+  static const double emphasis = 3;
+}
+
 /// Shared interaction motion. Subtle and quick; no cinematic delays.
 abstract final class MayosMotion {
   static const Duration fast = Duration(milliseconds: 150);

@@ -1,19 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'config.dart';
+import 'external_url_launcher.dart';
+
+export 'external_url_launcher.dart' show ExternalUrlLauncher;
 
 /// Hands a URL to the system browser. Tests override
 /// [privacyUrlLauncherProvider], so widget tests never reach a platform channel.
-typedef UrlLauncherFn = Future<bool> Function(String url);
+typedef UrlLauncherFn = ExternalUrlLauncher;
 
-Future<bool> _openInSystemBrowser(String url) =>
-    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-
-/// The browser hand-off for the privacy policy (ADR 046).
-final Provider<UrlLauncherFn> privacyUrlLauncherProvider =
-    Provider<UrlLauncherFn>((ref) => _openInSystemBrowser);
+/// Backwards-compatible name for tests and the privacy-policy caller.
+final privacyUrlLauncherProvider = externalUrlLauncherProvider;
 
 /// The privacy-policy URL: the API serves the single source of truth at
 /// `/privacy`, so the app never renders its own copy of the text.

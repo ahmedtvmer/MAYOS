@@ -15,6 +15,7 @@ the official Google Fonts OFL sources:
 | --- | --- | --- | --- |
 | Display / editorial headings | **Playfair Display** | `assets/fonts/PlayfairDisplay-Variable.ttf` | `wght` 400–900 |
 | Interface / body / numeric | **Inter** | `assets/fonts/Inter-Variable.ttf` | `wght` 100–900, `opsz` 14–32 |
+| Code | System monospace (`Roboto Mono` / `Menlo` fallbacks) | platform font | regular, line height 1.4 |
 
 Licenses: `assets/fonts/OFL-PlayfairDisplay.txt`, `assets/fonts/OFL-Inter.txt`
 (SIL Open Font License 1.1).
@@ -105,10 +106,10 @@ All under `lib/src/core/theme/`.
   `chartPrimary/Secondary/Tertiary`, `pressedOverlay`, `shadows`.
 - `mayos_typography.dart` — named roles: display, page heading, section
   heading, exercise title, body, body secondary, label, numeric, numeric small,
-  numeric medium, caption, caption strong, avatar initials, mode badge; plus
+  numeric medium, code, caption, caption strong, avatar initials, mode badge; plus
   `textTheme()` mapping onto Material slots.
 - `mayos_spacing.dart` — `MayosSpacing` (4…40), `MayosRadii` (8/12/16/24/pill),
-  `MayosMotion` (150/220/320 ms with standard/emphasized curves),
+  `MayosBorderWidths`, `MayosMotion` (150/220/320 ms with standard/emphasized curves),
   `MayosIconSizes` (small 14 / medium 20 — named icon sizes, never raw pixel
   literals; navigation 24 for shell tabs and the rail), `kMayosMinTapTarget`
   (48), and `MayosLayout` (#133: `desktopNavigationBreakpoint` 1024,

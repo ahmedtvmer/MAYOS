@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mayos_mobile/src/core/external_url_launcher.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
+import 'package:mayos_mobile/src/core/theme/mayos_typography.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_markdown.dart';
 
 String _visibleText(WidgetTester tester) {
@@ -34,24 +37,69 @@ List<TextSpan> _spans(InlineSpan span) {
   ];
 }
 
+List<TextSpan> _visibleSpans(WidgetTester tester) => <TextSpan>[
+      for (final SelectableText selectableText
+          in tester.widgetList<SelectableText>(find.byType(SelectableText)))
+        if (selectableText.textSpan != null)
+          ..._spans(selectableText.textSpan!),
+      for (final RichText richText
+          in tester.widgetList<RichText>(find.byType(RichText)))
+        ..._spans(richText.text),
+    ];
+
 Future<void> _pump(
   WidgetTester tester,
   String markdown, {
   ThemeData? theme,
+  Size? size,
+  _RecordingLauncher? launcher,
 }) async {
+  if (size != null) {
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+  }
   await tester.pumpWidget(
-    MaterialApp(
-      theme: theme ?? MayosTheme.light,
-      home: Scaffold(
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: MayosMarkdown(source: markdown),
+    ProviderScope(
+      overrides: <Override>[
+        if (launcher != null)
+          externalUrlLauncherProvider.overrideWithValue(launcher.open),
+      ],
+      child: MaterialApp(
+        theme: theme ?? MayosTheme.light,
+        home: Scaffold(
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: MayosMarkdown(source: markdown),
+          ),
         ),
       ),
     ),
   );
   await tester.pump();
 }
+
+class _RecordingLauncher {
+  final List<String> urls = <String>[];
+
+  Future<bool> open(String url) async {
+    urls.add(url);
+    return true;
+  }
+}
+
+Finder _selectableContaining(String text) => find.byWidgetPredicate(
+      (Widget widget) =>
+          widget is SelectableText &&
+          (widget.textSpan?.toPlainText().contains(text) ?? false),
+    );
+
+Finder _horizontalScrollers() => find.byWidgetPredicate(
+      (Widget widget) =>
+          widget is SingleChildScrollView &&
+          widget.scrollDirection == Axis.horizontal,
+    );
 
 void main() {
   testWidgets('renders bold, italic and MAYOS-sized headings', (
@@ -63,15 +111,7 @@ void main() {
     );
 
     final String text = _visibleText(tester);
-    final List<TextSpan> spans = <TextSpan>[
-      for (final SelectableText selectableText in
-          tester.widgetList<SelectableText>(find.byType(SelectableText)))
-        if (selectableText.textSpan != null)
-          ..._spans(selectableText.textSpan!),
-      for (final RichText richText in
-          tester.widgetList<RichText>(find.byType(RichText)))
-        ..._spans(richText.text),
-    ];
+    final List<TextSpan> spans = _visibleSpans(tester);
     expect(text, contains('Training plan'));
     expect(text, contains('Main lift'));
     expect(text, contains('control'));
@@ -91,6 +131,25 @@ void main() {
       ),
       isTrue,
     );
+    expect(
+      spans.any(
+        (TextSpan span) =>
+            span.text == 'Training plan' &&
+            span.style?.fontFamily == MayosTypography.pageHeading.fontFamily &&
+            span.style?.fontSize == MayosTypography.pageHeading.fontSize,
+      ),
+      isTrue,
+    );
+    expect(
+      spans.any(
+        (TextSpan span) =>
+            span.text == 'Main lift' &&
+            span.style?.fontFamily ==
+                MayosTypography.sectionHeading.fontFamily &&
+            span.style?.fontSize == MayosTypography.sectionHeading.fontSize,
+      ),
+      isTrue,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -107,6 +166,10 @@ void main() {
     expect(text, contains('Nested cue'));
     expect(text, contains('First step'));
     expect(text, contains('Second step'));
+    expect(
+      tester.getTopLeft(_selectableContaining('Nested cue')).dx,
+      greaterThan(tester.getTopLeft(_selectableContaining('First cue')).dx),
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -121,20 +184,38 @@ void main() {
     );
 
     final String text = _visibleText(tester);
+    final List<TextSpan> spans = _visibleSpans(tester);
     expect(text, contains('3 reps'));
     expect(text, contains('Keep the same setup.'));
     expect(text, contains('Stay patient.'));
     expect(text, contains('First paragraph.'));
     expect(text, contains('Second paragraph.'));
     expect(text, contains('Line two.'));
+    expect(
+      spans.any(
+        (TextSpan span) =>
+            span.text == '3 reps' &&
+            span.style?.fontFamily == MayosTypography.code.fontFamily &&
+            span.style?.height == 1.4,
+      ),
+      isTrue,
+    );
+    expect(
+      spans.any(
+        (TextSpan span) =>
+            span.text == 'Keep the same setup.' &&
+            span.style?.fontFamily == MayosTypography.code.fontFamily &&
+            span.style?.height == 1.4,
+      ),
+      isTrue,
+    );
     expect(tester.takeException(), isNull);
   });
 
   testWidgets(
-    'refuses HTML and remote images, leaves links plain and keeps malformed text',
+    'shows HTML as text, omits remote images, and keeps malformed text',
     (WidgetTester tester) async {
-      const String source =
-          'Raw <script>alert(1)</script>\n\n'
+      const String source = 'Raw <script>alert(1)</script>\n\n'
           '![plan image](https://example.com/plan.png)\n\n'
           '[training notes](https://example.com/notes)\n\n'
           '**unfinished marker';
@@ -153,10 +234,100 @@ void main() {
         find.byType(MarkdownBody),
       );
       expect(body.selectable, isTrue);
-      expect(body.onTapLink, isNull);
+      expect(body.onTapLink, isNotNull);
       expect(body.imageBuilder, isNotNull);
     },
   );
+
+  testWidgets('web links launch externally while other schemes stay inert', (
+    WidgetTester tester,
+  ) async {
+    final _RecordingLauncher launcher = _RecordingLauncher();
+    await _pump(
+      tester,
+      '[training notes](https://example.com/notes)\n\n'
+      '[script payload](javascript:alert(1))\n\n'
+      '[local file](file:///tmp/notes.txt)',
+      launcher: launcher,
+    );
+
+    final MayosThemeExtension colors = MayosTheme.of(
+      tester.element(find.byType(MayosMarkdown)),
+    );
+    final List<TextSpan> spans = _visibleSpans(tester);
+    expect(
+      spans.any(
+        (TextSpan span) =>
+            span.text == 'training notes' &&
+            span.style?.color == colors.accent &&
+            span.style?.decoration == TextDecoration.underline,
+      ),
+      isTrue,
+    );
+
+    await tester.tap(find.text('training notes', findRichText: true));
+    await tester.pump();
+    expect(launcher.urls, <String>['https://example.com/notes']);
+
+    await tester.tap(find.text('script payload', findRichText: true));
+    await tester.pump();
+    await tester.tap(find.text('local file', findRichText: true));
+    await tester.pump();
+    expect(launcher.urls, <String>['https://example.com/notes']);
+  });
+
+  testWidgets('wide GFM tables scroll horizontally at 360 dp', (
+    WidgetTester tester,
+  ) async {
+    await _pump(
+      tester,
+      '| Set | Notes |\n| --- | --- |\n'
+      '| 1 | A deliberately wide coaching note that exceeds the chat width. |',
+      size: const Size(360, 640),
+    );
+
+    expect(_visibleText(tester), contains('deliberately wide coaching note'));
+    expect(_horizontalScrollers(), findsOneWidget);
+    expect(
+        tester.getSize(_horizontalScrollers()).width, lessThanOrEqualTo(360));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('long code lines scroll horizontally at 360 dp', (
+    WidgetTester tester,
+  ) async {
+    const String longCodeLine =
+        '0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz'
+        '0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz';
+    await _pump(
+      tester,
+      '```text\n$longCodeLine\n```',
+      size: const Size(360, 640),
+    );
+
+    expect(_visibleText(tester), contains(longCodeLine));
+    expect(_horizontalScrollers(), findsOneWidget);
+    expect(
+        tester.getSize(_horizontalScrollers()).width, lessThanOrEqualTo(360));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('block HTML is rendered only as inert text', (
+    WidgetTester tester,
+  ) async {
+    const String source = '<div>Keep this literal text</div>\n\n'
+        '```html\n<div>Keep fenced HTML literal</div>\n```';
+    await _pump(tester, source);
+
+    expect(
+      _visibleText(tester),
+      contains('<div>Keep this literal text</div>'),
+    );
+    expect(
+        _visibleText(tester), contains('<div>Keep fenced HTML literal</div>'));
+    expect(find.byType(HtmlElementView), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('long mixed Markdown has no overflow at 360 dp in both themes', (
     WidgetTester tester,
@@ -166,8 +337,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    const String source =
-        '# Training notes\n\n'
+    const String source = '# Training notes\n\n'
         'A paragraph that wraps cleanly across a narrow phone width.\n'
         'A deliberate line break remains readable.\n\n'
         '- A first item with **emphasis**\n'
