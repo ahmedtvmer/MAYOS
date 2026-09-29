@@ -21,8 +21,9 @@ image is shown in production.
 
 The catalog database schema (`exercises.image_path`, `exercises.gif_path`) and
 the new `GET /workouts/exercises/{id}` endpoint expose these paths as real
-data, but they are relative filesystem paths — **not** URLs the mobile app can
-load. The app does not bundle any of these files.
+data, but they are relative paths, not full URLs. The mobile app resolves them
+against its configured API base with `mediaUrlFor` as
+`<API_BASE_URL>/media/<path>`; the app does not bundle the image or GIF files.
 
 ## What is known / unknown about the licensing
 
@@ -41,29 +42,32 @@ production, and must not claim a licence it does not hold.
 ## Risks
 
 - Displaying the media without a verified licence risks copyright infringement.
-- Bundling or proxying the files would embed unverified third-party media in the
-  product and make takedown/replacement costly.
-- The `image_path`/`gif_path` values are relative and point at files the mobile
-  app cannot fetch; turning them into absolute URLs would be inventing a media
-  host.
+- Serving the files through the API exposes unverified third-party media in the
+  product and can make takedown/replacement costly.
+- The catalog paths depend on the API's `/media` route and configured API host;
+  moving the storage backend must preserve that route or the mobile URL contract.
 
-## What is needed to enable images in production
+## Original pre-display checklist
+
+Before the owner decision below, the checklist to enable display was:
 
 1. Confirm the ExerciseDB licence (and any attribution requirements) for the
-   exact media set shipped, and record it in this document.
-2. Serve the rights-cleared media from an approved host (or bundle only the
-   subset we are licensed to redistribute) and expose **absolute URLs** through
-   the exercise-detail endpoint.
-3. Set the build-time flag `--dart-define=MAYOS_EXERCISE_MEDIA=true`.
+   exact media set shipped, and record it in this document. This remains
+   pending for MAYOS.
+2. Serve the media through an approved host while preserving the catalog's
+   relative `image_path`/`gif_path` values. Issue #165 implements that storage
+   location with private R2 objects streamed by the API.
+3. Enable the media flag. It is ON by default; passing
+   `--dart-define=MAYOS_EXERCISE_MEDIA=false` disables it.
 
 ## Gate
 
 The mobile app reads the flag in `mobile/lib/src/core/config.dart`
-(`mayosExerciseMediaEnabled`), defaulting to OFF. The exercise-detail hero
-builds an `Image` only when the flag is ON **and** the catalog detail carries a
-loadable `http(s)` media URL (`ExerciseCatalogDetail.hasLoadableMedia`). Today
-neither condition holds, so the hero is always the typographic/muscle-group
-header and no `Image` widget is ever built on the exercise-detail screen.
+(`mayosExerciseMediaEnabled`), which is ON by default. The exercise-detail hero
+builds an `Image` when the catalog detail has a loadable media URL
+(`ExerciseCatalogDetail.hasLoadableMedia`) and the flag is ON. The logger
+thumbnail uses the catalog picture under the same flag. Passing
+`--dart-define=MAYOS_EXERCISE_MEDIA=false` disables both surfaces.
 
 ## 2026-09-29 — Owner decision: display the media, pending MAYOS's licence
 
@@ -98,8 +102,13 @@ visual**, with Gym visual's terms honoured as above.
 
 What that means in the build:
 
-- The media is served by the API's public `GET /media` route and ships in the
-  Fly image (`data/images`, `data/videos`; `docs/DEPLOYMENT.md` §10.8).
+- The media is served by the API's public `GET /media` route from a private
+  Cloudflare R2 bucket under `media/images/` and `media/videos/`. The bucket
+  remains private; the API streams only the approved image/GIF paths and keeps
+  the mobile app's existing URL contract. See `docs/DEPLOYMENT.md` §10.8.
+- The media files are uploaded from `data/images/` and `data/videos/` using
+  `scripts/upload_media_to_r2.py`. They are excluded from Fly's build context
+  and no longer ship in the image.
 - The exercise-detail hero shows the GIF first, falls back to the still image,
   caps its box at **180 × 180 logical pixels** (`contain`, so nothing is
   stretched), and carries the credit caption underneath; Settings → About →

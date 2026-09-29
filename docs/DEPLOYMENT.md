@@ -754,12 +754,13 @@ catalog before giving the Fly hostname to trial users.
    `curl -fsS "https://${APP}.fly.dev/readyz"` return 200; `/readyz` details
    report `storage: true`. (`APP` is set in §10.3.)
 4. **Catalog seeded:** `fly ssh console -C "sqlite3 /data/catalog.db 'SELECT COUNT(*) FROM exercises;'"` is non-zero.
-5. **Catalog media:** `curl -fsSI "https://${APP}.fly.dev/media/images/<image_path>"`
-   and `curl -fsSI "https://${APP}.fly.dev/media/videos/<gif_path>"` return 200
-   (take the paths from
+5. **Catalog media:** `curl` requests to
+   `https://${APP}.fly.dev/media/images/<image_path>` and
+   `https://${APP}.fly.dev/media/videos/<gif_path>` return 200 with
+   `image/jpeg` and `image/gif` content types (take the paths from
    `sqlite3 /data/catalog.db "SELECT image_path, gif_path FROM exercises LIMIT 1;"`);
-   an image built before issues #161/#53 answers 404 and needs the redeploy in
-   §10.8. The route is public: no `Authorization` header.
+   the route is public and streams the object from the private R2 bucket: no
+   `Authorization` header is needed.
 6. **App round-trip over HTTPS:** register → login → chat SSE against the Fly
    hostname from the Android client.
 7. **Restart persistence:** record the counts below, restart the app, and
@@ -838,21 +839,59 @@ immediately for local/offline use, keeping the current `/data/deletions.db`. See
 [§9](#9-backup-disaster-recovery--wal-checkpointing) for the full procedure and
 the deletion-replay guarantees.
 
-### 10.8 Exercise catalog pictures and GIFs served by `/media` (issues #161, #53)
+### 10.8 Exercise catalog pictures and GIFs served by `/media` (issues #161, #53, #165)
 
-The app's exercise cards show the catalog picture and the exercise-detail
-screen shows the catalog GIF through the API's public
-`GET /media/<image_path>` route (`svc/routers/media.py`), which resolves the
-relative ExerciseDB paths (`images/0001-2gPfomN.jpg`, `videos/0001-2gPfomN.gif`)
-under `BASE_DIR/data` — `/app/data/images/…` and `/app/data/videos/…` inside
-the container. The route needs no auth and sends no per-player data.
+The app's exercise cards and exercise-detail screen continue to use the same
+public `GET /media/<image_path>` route (`svc/routers/media.py`). The route
+streams the object from the private R2 bucket configured for off-site backups,
+under a separate `media/` prefix. A catalog path such as
+`images/0001-2gPfomN.jpg` maps to the R2 object
+`media/images/0001-2gPfomN.jpg`; `videos/0001-2gPfomN.gif` maps to
+`media/videos/0001-2gPfomN.gif`. The API streams the bytes and applies a
+one-year cache header. The bucket remains private with public access disabled;
+the API's public `/media` route exposes only approved image/GIF paths, and
+backup objects remain under `daily/`.
 
-- **The media ships in the image.** `.dockerignore` re-includes `data/images/`
-  (~12 MB, 1,324 JPEGs) and `data/videos/` (~126 MB, 1,324 GIFs) — both
-  gitignored like the CSV, so both must exist in the tree you deploy from —
-  and `Dockerfile.fly` copies them to `/app/data/images` and `/app/data/videos`
-  alongside the seed CSV. No volume is involved: the media are read-only build
-  inputs, the volume stays the mutable data root.
+The route needs no auth and sends no per-player data. It only serves `.jpg` or
+`.jpeg` paths under `images/` and `.gif` paths under `videos/` from R2. In local
+development and tests, when R2 is not configured, it falls back to the existing
+local `data/` and `dataset/` files. When R2 is configured, a missing object
+returns 404 instead of silently falling back to a local copy.
+
+- **The media is uploaded separately.** `.dockerignore` excludes
+  `data/images/` (~12 MB, 1,324 JPEGs) and `data/videos/` (~126 MB, 1,324 GIFs)
+  from Fly build context. `Dockerfile.fly` has no media `COPY` lines, returning
+  the build context to about 12 MB. The files remain local operator inputs and
+  must be present for upload, but no longer travel with each deploy.
+- **R2 configuration and privacy.** Media uses the same named R2 settings and
+  private bucket as #164: `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, and
+  `R2_SECRET_ACCESS_KEY`. The uploader and API reuse the shared R2 client
+  construction. Keep the bucket's public access disabled; do not put media in
+  the `daily/` backup namespace.
+- **Upload once and whenever media changes.** Give the local shell the same
+  four settings (for example from an untracked `.env` file), then run a dry run
+  followed by the upload:
+
+  ```bash
+  set -a
+  . ./.env
+  set +a
+  .venv/bin/python scripts/upload_media_to_r2.py --dry-run
+  .venv/bin/python scripts/upload_media_to_r2.py
+  ```
+
+  The script uploads `data/images/` and `data/videos/` to `media/images/` and
+  `media/videos/` with `image/jpeg` / `image/gif` content types and a one-year
+  cache header. It records each object's SHA-256 in metadata and skips it on a
+  rerun when both that digest and object size match. The local `.env` must not
+  be committed. The API Machine must already have the four secrets from §1a.
+- **Deploy after the upload.** Upload before the first deployment of this
+  version, and repeat the upload before deploying any changed media files:
+
+  ```bash
+  fly deploy --ha=false
+  ```
+
 - **Credit is required.** Gym visual's terms apply to this media: every use
   carries "© Gym visual — https://gymvisual.com/" and the media is never shown
   larger than its native 180×180 (the exercise-detail hero caps its box at
@@ -860,18 +899,32 @@ the container. The route needs no auth and sends no per-player data.
   record and the 2026-09-29 decision to display it pending MAYOS's own licence
   are in `docs/design-review/53/MEDIA-PROVENANCE.md`. The app's kill switch is
   `--dart-define=MAYOS_EXERCISE_MEDIA=false`.
-- **Everything else under `data/` stays out of the build context**, including
-  `data/exercises.json`, `data/exercises.csv` and the databases.
-- **Redeploy required.** A Machine running an image built before this change
-  has no media: `/media/images/…` and `/media/videos/…` answer 404. From the
-  repository root (with `data/images/` and `data/videos/` present), run:
+- **Only `data/processed_exercises.csv` remains in the build context.** The
+  other files under `data/` stay excluded, including `data/exercises.json`,
+  `data/exercises.csv`, the databases, and the media.
+- **Verify the deployed media.** Take a real `image_path` and `gif_path` from
+  the catalog (for example with the SQL query in §10.5) and request each URL:
 
   ```bash
-  fly deploy --ha=false
+  curl -fsS -o /dev/null -w '%{http_code} %{content_type}\n' \
+    "https://${APP}.fly.dev/media/images/<image_path>"
+  curl -fsS -o /dev/null -w '%{http_code} %{content_type}\n' \
+    "https://${APP}.fly.dev/media/videos/<gif_path>"
   ```
 
-  The build fails fast if either directory is missing, the same way it already
-  fails without `data/processed_exercises.csv`.
+  Expect `200 image/jpeg` and `200 image/gif`. An absent R2 object returns 404;
+  an R2/provider error returns 503. There is no bearer token requirement.
+- **Rollback.** If the new release cannot serve the media, get the known-good
+  image reference from the last release built after #161 and before #165 using
+  `fly releases --image -a "$APP"`. That image contains the media files and
+  its old route serves them locally:
+
+  ```bash
+  fly releases --image -a "$APP"
+  fly deploy --app "$APP" --image "<previous-image-reference>" --ha=false
+  ```
+
+  Keep the R2 objects in place during rollback; the old image ignores them.
 
 ### 10.9 Password reset: App Link and hosted fallback (issue #38, ADR 037)
 

@@ -4,9 +4,9 @@ Behavioral FastAPI tests at the agreed seam: a temporary directory stands in for
 the mounted volume and a real SQLite catalog/ledger is created on it. Register
 and login touch only SQLite, so no LLM or external service is involved.
 
-Also pins the build context of the Fly image (issue #161): the catalog
-pictures that ``GET /media`` serves ship with it, and nothing else under
-``data/`` does.
+Also pins the build context of the Fly image (issue #165): catalog pictures
+and GIFs are served from R2, and nothing under ``data/`` ships except the seed
+CSV required to initialize the catalog.
 """
 
 import os
@@ -143,8 +143,7 @@ def test_required_persistent_root_fails_closed_without_mount(monkeypatch, tmp_pa
 
 
 # --------------------------------------------------------------------------
-# Build context: the catalog pictures and GIFs ship, the rest of data/ stays
-# out (#161, #53)
+# Build context: media, database state, and raw data stay out (#165)
 # --------------------------------------------------------------------------
 
 
@@ -214,20 +213,13 @@ def _in_build_context(path: str, rules: list[tuple[bool, re.Pattern]]) -> bool:
     return not excluded
 
 
-def test_build_context_ships_catalog_media_and_nothing_else_from_data():
-    """`data/images` and `data/videos` are in the Fly build context; the rest
-    of `data/` is not.
-
-    The app loads `GET /media/<image_path>` and `GET /media/<gif_path>` (#161,
-    #53), and the route resolves those paths under `/app/data`, so the cards'
-    pictures and the exercise-detail GIFs have to be in the image while the
-    databases and the raw dump stay out.
-    """
+def test_build_context_excludes_catalog_media_and_only_ships_seed_csv():
+    """R2 serves media, so only the catalog seed CSV remains under data/."""
     rules = _dockerignore_rules()
 
-    assert _in_build_context("data/images/0001-2gPfomN.jpg", rules)
-    assert _in_build_context("data/images/nested/one.jpg", rules)
-    assert _in_build_context("data/videos/0001-2gPfomN.gif", rules)
+    assert not _in_build_context("data/images/0001-2gPfomN.jpg", rules)
+    assert not _in_build_context("data/images/nested/one.jpg", rules)
+    assert not _in_build_context("data/videos/0001-2gPfomN.gif", rules)
     assert _in_build_context("data/processed_exercises.csv", rules)
 
     assert not _in_build_context("data/catalog.db", rules)
@@ -249,24 +241,18 @@ def test_build_context_keeps_the_owner_exclusions():
     assert not _in_build_context(".venv/lib/python3.12/site-packages/x.py", rules)
 
 
-def test_dockerfile_fly_copies_catalog_media_where_media_looks():
-    """`Dockerfile.fly` puts the media at `/app/data/{images,videos}`, the
-    directories `svc/routers/media.py` resolves `image_path`/`gif_path`
-    against (BASE_DIR/data)."""
+def test_dockerfile_fly_does_not_copy_catalog_media():
+    """Fly's image receives media from R2, not from explicit COPY steps."""
     dockerfile = (REPO_ROOT / "Dockerfile.fly").read_text(encoding="utf-8")
 
-    assert re.search(r"^COPY data/images /app/data/images$", dockerfile, re.M)
-    assert re.search(r"^COPY data/videos /app/data/videos$", dockerfile, re.M)
-    # `COPY . .` is filtered by .dockerignore, so the re-included pictures
-    # reach the same directory from the context as well.
+    assert not re.search(r"^COPY data/images(?:\s|$)", dockerfile, re.M)
+    assert not re.search(r"^COPY data/videos(?:\s|$)", dockerfile, re.M)
     assert re.search(r"^COPY \. \.$", dockerfile, re.M)
     assert re.search(r"^COPY data/processed_exercises\.csv ", dockerfile, re.M)
 
 
-def test_real_checkout_catalog_media_are_in_the_context():
-    """In a checkout that has the (gitignored) media, every one of the
-    pictures and GIFs reaches the build context — the case the owner actually
-    deploys from."""
+def test_real_checkout_catalog_media_are_excluded_from_the_context():
+    """Gitignored media stays excluded when present in an operator checkout."""
     rules = _dockerignore_rules()
     media = [
         entry
@@ -282,4 +268,4 @@ def test_real_checkout_catalog_media_are_in_the_context():
     assert files
     for file in files:
         relative = file.relative_to(REPO_ROOT).as_posix()
-        assert _in_build_context(relative, rules), relative
+        assert not _in_build_context(relative, rules), relative
