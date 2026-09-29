@@ -306,12 +306,15 @@ void main() {
         );
 
     test('lists each current record as "Exercise · PR … kg"', () {
-      final WorkoutSummary summary = WorkoutSummary.of(summaryWorkout(
-        benchSets: <ActiveWorkoutSet>[
-          _set(id: 's1', weightKg: 105, reps: 5, rir: 1),
-          _set(id: 's2', weightKg: 110, reps: 5, rir: 1),
-        ],
-      ));
+      final WorkoutSummary summary = WorkoutSummary.of(
+        summaryWorkout(
+          benchSets: <ActiveWorkoutSet>[
+            _set(id: 's1', weightKg: 105, reps: 5, rir: 1),
+            _set(id: 's2', weightKg: 110, reps: 5, rir: 1),
+          ],
+        ),
+        now: DateTime.parse('2026-09-28T09:00:00.000Z'),
+      );
 
       expect(
         summary.records.map((WorkoutRecord r) => r.line).toList(),
@@ -323,11 +326,14 @@ void main() {
     });
 
     test('a workout with no records has no celebration', () {
-      final WorkoutSummary summary = WorkoutSummary.of(summaryWorkout(
-        benchSets: <ActiveWorkoutSet>[
-          _set(id: 's1', weightKg: 100, reps: 5, rir: 1),
-        ],
-      ));
+      final WorkoutSummary summary = WorkoutSummary.of(
+        summaryWorkout(
+          benchSets: <ActiveWorkoutSet>[
+            _set(id: 's1', weightKg: 100, reps: 5, rir: 1),
+          ],
+        ),
+        now: DateTime.parse('2026-09-28T09:00:00.000Z'),
+      );
       expect(summary.records, isEmpty);
     });
 

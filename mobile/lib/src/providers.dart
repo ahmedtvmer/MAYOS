@@ -12,6 +12,7 @@ import 'core/baselines.dart';
 import 'core/chat_storage.dart';
 import 'core/config.dart';
 import 'core/models.dart';
+import 'core/personal_records.dart';
 import 'core/rest_alerts.dart';
 import 'core/rest_length.dart';
 import 'core/theme/theme_mode_controller.dart';
@@ -152,6 +153,13 @@ final Provider<bool> offlineWorkoutDraftsEnabledProvider =
 /// it and pin the snapshot without waiting on the real clock.
 final Provider<DateTime Function()> clockProvider =
     Provider<DateTime Function()>((ref) => DateTime.now);
+
+/// The workout summary the logger is showing (#159): Finish takes the
+/// snapshot, Back drops it. While it is set the top bar freezes Workout time
+/// at the snapshot's duration, so no live clock ticks next to the summary's
+/// frozen "Duration"; dropping it resumes the live tick.
+final StateProvider<WorkoutSummary?> loggerSummaryProvider =
+    StateProvider<WorkoutSummary?>((ref) => null);
 
 /// Protected, account-separated storage for offline workout drafts.
 final Provider<DraftStore> draftStoreProvider = Provider<DraftStore>((ref) =>

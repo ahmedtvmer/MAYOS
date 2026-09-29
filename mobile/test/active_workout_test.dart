@@ -712,10 +712,10 @@ void main() {
       expect(workoutProgressOf(done).setsTicked, 4);
     });
 
-    test('an exercise with no working rows stays in the total and is never '
-        'completed', () {
+    test('an exercise with no working rows is excluded from the counts', () {
       final ActiveWorkout workout = workoutOf(<List<ActiveWorkoutSet>>[
-        // Every row warm-up: nothing to complete until a row works again.
+        // Every row warm-up: not a to-do, so it is out of the denominator
+        // entirely — progress can still reach its N/N (#159).
         <ActiveWorkoutSet>[
           ActiveWorkoutSet(isWarmup: true, ticked: true),
           ActiveWorkoutSet(isWarmup: true, ticked: true),
@@ -726,7 +726,7 @@ void main() {
         workoutProgressOf(workout),
         (
           exercisesCompleted: 1,
-          exercisesTotal: 2,
+          exercisesTotal: 1,
           setsTicked: 1,
           setsTotal: 1,
         ),

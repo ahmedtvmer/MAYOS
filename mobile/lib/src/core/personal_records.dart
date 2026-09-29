@@ -262,7 +262,9 @@ class WorkoutSummary {
     required this.duration,
   });
 
-  factory WorkoutSummary.of(ActiveWorkout workout, {DateTime? now}) =>
+  /// [now] is the caller's clock, read where Finish runs: the duration is a
+  /// snapshot of one instant, never a hidden `DateTime.now()` of its own.
+  factory WorkoutSummary.of(ActiveWorkout workout, {required DateTime now}) =>
       WorkoutSummary(
         records: workoutRecords(workout),
         stats: workoutSummaryStats(workout),

@@ -68,6 +68,13 @@ class ActiveWorkoutSet {
         reps: reps,
       );
 
+  /// Whether this row is a working row for the **Current set** and the
+  /// progress line (#158/#159): the row's *role* — not a warm-up — rather
+  /// than the server's value predicate [countsAsWorkingSet]. The next set to
+  /// do is normally still empty, and a progress total counts the rows the
+  /// player still has to tick, so neither may look at the values.
+  bool get isWorkingRow => !isWarmup;
+
   ActiveWorkoutSet copyWith({
     double? weightKg,
     int? reps,
@@ -213,8 +220,9 @@ String exercisePrescriptionLine(
 /// every working set is ticked.
 ///
 /// "Working" is the row's *role* (not a warm-up), not the server's value
-/// predicate [isWorkingSet]: the next set to do is normally still empty, and
-/// an empty pending row is exactly the set the player logs next.
+/// predicate [isWorkingSet] — [ActiveWorkoutSet.isWorkingRow], shared with
+/// [workoutProgressOf]: the next set to do is normally still empty, and an
+/// empty pending row is exactly the set the player logs next.
 ({int exerciseIndex, int setIndex})? currentSetOf(ActiveWorkout workout) {
   for (int exerciseIndex = 0;
       exerciseIndex < workout.exercises.length;
@@ -223,7 +231,7 @@ String exercisePrescriptionLine(
         workout.exercises[exerciseIndex].sets;
     for (int setIndex = 0; setIndex < sets.length; setIndex++) {
       final ActiveWorkoutSet set = sets[setIndex];
-      if (!set.isWarmup && !set.ticked) {
+      if (set.isWorkingRow && !set.ticked) {
         return (exerciseIndex: exerciseIndex, setIndex: setIndex);
       }
     }
@@ -233,24 +241,26 @@ String exercisePrescriptionLine(
 
 /// The progress line's four counts (#159, reused by the bottom bar in #160).
 ///
-/// "Working" is the **Current set's** rule — the row's role, not a warm-up —
-/// so warm-ups are excluded from both set counts, exactly like the highlight
-/// that points past them. An exercise is **completed** only when it has at
-/// least one working set and every one of them is ticked: an exercise whose
-/// rows are all warm-ups has nothing to complete, so it stays in the total
-/// and is never counted as done (turning a row back into a working set puts
-/// it back in play). The workout summary's own "exercises done" keeps its
-/// looser meaning — at least one ticked working set (#124).
+/// "Working" is the **Current set's** rule —
+/// [ActiveWorkoutSet.isWorkingRow], the row's role, not a warm-up — so
+/// warm-ups are excluded from both set counts, exactly like the highlight
+/// that points past them. An exercise is **completed** only when all of its
+/// working rows are ticked, and an exercise with no working rows (every row
+/// is a warm-up) is excluded from the exercise counts entirely: it is not a
+/// to-do, so it neither blocks nor pads progress — the line can reach N/N.
+/// The workout summary's own "exercises done" keeps its looser meaning — at
+/// least one ticked working set (#124).
 ({int exercisesCompleted, int exercisesTotal, int setsTicked, int setsTotal})
     workoutProgressOf(ActiveWorkout workout) {
   int exercisesCompleted = 0;
+  int exercisesTotal = 0;
   int setsTicked = 0;
   int setsTotal = 0;
   for (final ActiveWorkoutExercise exercise in workout.exercises) {
     int working = 0;
     int ticked = 0;
     for (final ActiveWorkoutSet set in exercise.sets) {
-      if (set.isWarmup) {
+      if (!set.isWorkingRow) {
         continue;
       }
       working += 1;
@@ -258,27 +268,33 @@ String exercisePrescriptionLine(
         ticked += 1;
       }
     }
+    if (working == 0) {
+      // Nothing to do here: no working rows means no to-do (#159).
+      continue;
+    }
+    exercisesTotal += 1;
     setsTotal += working;
     setsTicked += ticked;
-    if (working > 0 && ticked == working) {
+    if (ticked == working) {
       exercisesCompleted += 1;
     }
   }
   return (
     exercisesCompleted: exercisesCompleted,
-    exercisesTotal: workout.exercises.length,
+    exercisesTotal: exercisesTotal,
     setsTicked: setsTicked,
     setsTotal: setsTotal,
   );
 }
 
 /// **Workout time** (CONTEXT.md, #159): the wall-clock time since the
-/// workout started, clamped at zero. It is derived from the stored start
-/// time, so it has no pause, holds no state of its own, and stays correct
-/// after an app restart.
-Duration workoutElapsed(ActiveWorkout workout, {DateTime? now}) {
-  final Duration elapsed =
-      (now ?? DateTime.now()).difference(workout.startedAtClock);
+/// workout started, clamped at zero at [now]. It is derived from the stored
+/// start time, so it has no pause, holds no state of its own, and stays
+/// correct after an app restart. The caller supplies the clock — both call
+/// sites read the app's clock provider — so nothing here reads time behind
+/// the caller's back.
+Duration workoutElapsed(ActiveWorkout workout, {required DateTime now}) {
+  final Duration elapsed = now.difference(workout.startedAtClock);
   return elapsed.isNegative ? Duration.zero : elapsed;
 }
 

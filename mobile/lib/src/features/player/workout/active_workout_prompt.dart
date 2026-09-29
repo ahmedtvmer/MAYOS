@@ -80,21 +80,39 @@ String _startedLabel(ActiveWorkout activeWorkout) {
   return '${activeWorkout.startedDate} $hh:$mm';
 }
 
-/// The confirmation the logger's top-bar menu raises before it discards the
-/// workout (#159): the Resume prompt's own dialog, so the wording and the
-/// Discard effect are one thing rather than two. Resolves true only for
-/// Discard — the Resume button and any dismissal keep the workout, exactly
-/// as the prompt does (#123 item 13).
-Future<bool> confirmDiscardWorkout(
-  BuildContext context, {
-  required ActiveWorkout activeWorkout,
-}) async {
-  final ActiveWorkoutPromptChoice? choice = await showActiveWorkoutPrompt(
-    context,
-    activeWorkout: activeWorkout,
-    forNewStart: false,
+/// The confirmation the logger's ⋮ menu raises before it discards the
+/// workout (#159). It is its own dialog — a player mid-workout is not being
+/// offered a Resume — but the Discard action has exactly the effect Discard
+/// has in the Resume prompt: the Active workout is cleared and every set
+/// logged in it is lost (#123). Resolves true only for Discard; "Keep
+/// logging" and any dismissal keep the workout.
+Future<bool> confirmDiscardWorkout(BuildContext context) async {
+  final MayosThemeExtension c = MayosTheme.of(context);
+  final bool? discard = await showDialog<bool>(
+    context: context,
+    builder: (BuildContext context) => AlertDialog(
+      title: const Text('Discard this workout?'),
+      content: Text(
+        "The sets you've logged in this workout will be lost.",
+        style: MayosTypography.bodySecondary.copyWith(color: c.textPrimary),
+      ),
+      actions: <Widget>[
+        MayosButton(
+          label: 'Keep logging',
+          variant: MayosButtonVariant.secondary,
+          expand: false,
+          onPressed: () => Navigator.of(context).pop(false),
+        ),
+        MayosButton(
+          label: 'Discard',
+          destructive: true,
+          expand: false,
+          onPressed: () => Navigator.of(context).pop(true),
+        ),
+      ],
+    ),
   );
-  return choice == ActiveWorkoutPromptChoice.discard;
+  return discard ?? false;
 }
 
 /// The offer shown when the app opens with an Active workout: Resume routes to

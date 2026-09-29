@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/active_workout.dart';
+import '../../../core/personal_records.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_app_header.dart';
@@ -20,7 +21,9 @@ import 'active_workout_prompt.dart';
 /// Presentation only: the time is derived from the Active workout's stored
 /// start through the injected clock ([clockProvider]) and re-rendered by a
 /// ticker once a second while the bar is on screen, so it has no pause, no
-/// state of its own, and stays correct after a restart (#159).
+/// state of its own, and stays correct after a restart (#159). While the
+/// workout summary is open the bar freezes at that snapshot's duration
+/// ([loggerSummaryProvider]) instead of ticking beside it.
 class LoggerTopBar extends ConsumerStatefulWidget {
   const LoggerTopBar({super.key});
 
@@ -55,10 +58,7 @@ class _LoggerTopBarState extends ConsumerState<LoggerTopBar> {
   }
 
   Future<void> _discard(ActiveWorkout workout) async {
-    final bool confirmed = await confirmDiscardWorkout(
-      context,
-      activeWorkout: workout,
-    );
+    final bool confirmed = await confirmDiscardWorkout(context);
     if (!confirmed || !mounted) {
       return;
     }
@@ -85,10 +85,14 @@ class _LoggerTopBarState extends ConsumerState<LoggerTopBar> {
     final ActiveWorkout? workout =
         ref.watch(activeWorkoutControllerProvider).workout;
     final DateTime now = ref.watch(clockProvider)();
+    // While the summary step is open the bar holds the snapshot's duration
+    // instead of the clock (#159): no live tick beside the frozen "Duration"
+    // stat. Dropping the snapshot — Back to the logger — resumes the tick.
+    final WorkoutSummary? summary = ref.watch(loggerSummaryProvider);
     final String label = workout == null
         ? 'Log workout'
         : 'Log workout · '
-            '${formatWorkoutTime(workoutElapsed(workout, now: now))}';
+            '${formatWorkoutTime(summary?.duration ?? workoutElapsed(workout, now: now))}';
     return MayosAppHeader(
       showBack: true,
       // Sans, one line: the serif display role belongs to the day heading
@@ -112,7 +116,10 @@ class _LoggerTopBarState extends ConsumerState<LoggerTopBar> {
               PopupMenuItem<String>(
                 key: LoggerTopBar.discardKey,
                 value: 'discard',
-                child: Text('Discard workout'),
+                child: Text(
+                  'Discard workout',
+                  style: MayosTypography.body,
+                ),
               ),
             ],
           ),

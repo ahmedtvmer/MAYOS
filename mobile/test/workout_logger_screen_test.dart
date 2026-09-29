@@ -1339,8 +1339,8 @@ void main() {
     expect(find.text('Log workout · 1:00:00'), findsOneWidget);
   });
 
-  testWidgets('the ⋮ menu discards the workout behind the Resume prompt\'s '
-      'confirmation (#159)', (WidgetTester tester) async {
+  testWidgets('the ⋮ menu discards the workout behind its own confirmation '
+      '(#159)', (WidgetTester tester) async {
     final InMemoryActiveWorkoutStore store = await _openLogger(tester);
 
     await tester.tap(find.byKey(LoggerTopBar.menuKey));
@@ -1348,27 +1348,34 @@ void main() {
     await tester.tap(find.byKey(LoggerTopBar.discardKey));
     await tester.pumpAndSettle();
 
-    // The confirmation is the Resume prompt itself, wording and all (#159):
-    // dismissing it keeps the workout, exactly as the prompt's cancel does.
-    expect(find.text('Unfinished workout'), findsOneWidget);
-    await tester.tapAt(const Offset(20, 20));
+    // Its own dialog, not the Resume prompt's: the player is told what will
+    // be lost before anything is thrown away (#159).
+    expect(find.text('Discard this workout?'), findsOneWidget);
+    expect(
+      find.text("The sets you've logged in this workout will be lost."),
+      findsOneWidget,
+    );
+    expect(find.text('Unfinished workout'), findsNothing);
+
+    // Keep logging dismisses it: the workout is untouched.
+    await tester.tap(find.text('Keep logging'));
     await tester.pumpAndSettle();
+    expect(find.text('Discard this workout?'), findsNothing);
     expect(find.byType(WorkoutLoggerScreen), findsOneWidget);
     expect(await store.read(_account), isNotNull);
 
-    // This time the Discard button: same effect as Discard in the prompt —
+    // This time Discard: the same effect Discard has in the Resume prompt —
     // the Active workout is gone and the player leaves the logger.
     await tester.tap(find.byKey(LoggerTopBar.menuKey));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(LoggerTopBar.discardKey));
     await tester.pumpAndSettle();
-    expect(find.text('Unfinished workout'), findsOneWidget);
     await tester.tap(find.text('Discard'));
     await tester.pumpAndSettle();
 
     expect(find.byType(WorkoutLoggerScreen), findsNothing);
     expect(await store.read(_account), isNull);
-    expect(find.text('Unfinished workout'), findsNothing);
+    expect(find.text('Discard this workout?'), findsNothing);
   });
 
   testWidgets('the day heading is the one serif line and the progress line '
@@ -1445,15 +1452,29 @@ void main() {
     expect(find.widgetWithText(MayosStat, 'Duration'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    // The snapshot never changes: the clock running on moves the top bar's
-    // Workout time, never the duration Finish already captured (#124/#159).
+    // The top bar freezes on the snapshot while the summary is open: the
+    // clock running on must not tick beside the frozen "Duration" stat
+    // (#124/#159).
     now = DateTime.parse('2026-09-28T09:00:00.000Z');
     await tester.pump(const Duration(seconds: 1));
-    expect(find.text('Log workout · 1:00:00'), findsOneWidget);
+    expect(find.text('Log workout · 32:10'), findsOneWidget);
+    expect(find.text('Log workout · 1:00:00'), findsNothing);
     expect(find.descendant(of: duration, matching: find.text('32:10')),
         findsOneWidget);
     expect(find.descendant(of: duration, matching: find.text('1:27:50')),
         findsNothing);
+    expect(tester.takeException(), isNull);
+
+    // Back to the logger: the live tick resumes from the same clock.
+    final Finder back =
+        find.byKey(const ValueKey<String>('logger.save.back'));
+    await tester.ensureVisible(back);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(back);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Workout summary'), findsNothing);
+    expect(find.text('Log workout · 1:00:00'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

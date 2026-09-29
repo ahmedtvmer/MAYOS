@@ -179,6 +179,14 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   }
 
   Future<void> _load() async {
+    // Opening the logger starts a fresh session: any summary snapshot a
+    // previous one left behind is dropped, so the top bar's Workout time is
+    // live again rather than frozen on a workout that was already saved or
+    // discarded (#159). The snapshot is cleared on Back too, which is the
+    // only exit that keeps this screen mounted.
+    if (mounted) {
+      ref.read(loggerSummaryProvider.notifier).state = null;
+    }
     if (!ref.read(offlineWorkoutDraftsEnabledProvider)) {
       // The web client is online-only and never captures drafts (ADR 022).
       setState(() => _loading = false);
@@ -622,6 +630,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       _recordFocus = null;
       _focus = null;
     });
+    // Published for the top bar: Workout time holds this snapshot's duration
+    // while the summary is open, so it never ticks beside the frozen stat
+    // (#159).
+    ref.read(loggerSummaryProvider.notifier).state = _summary;
     // The summary replaces the workout: the lock-screen notification and the
     // end alarm come off until Back returns to a still-running rest (#125).
     unawaited(_controller.suspendRestAlerts());
@@ -764,6 +776,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       _summary = null;
       _error = null;
     });
+    // Back to the logger: the top bar's Workout time runs live again (#159).
+    ref.read(loggerSummaryProvider.notifier).state = null;
     unawaited(_controller.restoreRestAlerts());
   }
 
