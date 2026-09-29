@@ -77,20 +77,19 @@ def test_resolve_unknown_abbreviation_with_llm_mock():
         assert res_error is None
 
 
-@pytest.fixture(scope="module")
-def _good_morning_db(tmp_path_factory):
-    """Builds one store for the module; swaps persist across the ordered tests."""
+@pytest.fixture
+def _good_morning_db(tmp_path):
+    """Builds an isolated store with a good morning in the first program slot."""
     import shutil
 
     from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
 
-    base = tmp_path_factory.mktemp("good_morning")
-    catalog_path = base / "catalog.db"
+    catalog_path = tmp_path / "catalog.db"
     shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
     db = DatabaseManager(
         catalog_path=catalog_path,
-        ledgers_dir=base / "users",
-        backups_dir=base / "backups",
+        ledgers_dir=tmp_path / "users",
+        backups_dir=tmp_path / "backups",
     )
     ledger = db.open_ledger("default")
     db.ledger = ledger
@@ -135,7 +134,7 @@ def _good_morning_db(tmp_path_factory):
 
 @pytest.fixture
 def db_with_good_morning(_good_morning_db):
-    """The module store with its live default ledger handle."""
+    """The isolated store with its live default ledger handle."""
     return _good_morning_db
 
 
@@ -173,6 +172,23 @@ def test_substitution_rdls_confident_install(db_with_good_morning):
 
 def test_substitution_db_rdl_explicit_variant(db_with_good_morning):
     """Verifies that 'swap barbell romanian deadlift for dumbbell RDL' installs Dumbbell Romanian Deadlift."""
+    # This case replaces an RDL on Lower 2 while keeping the first-day RDL
+    # asserted below, without depending on another test to install either one.
+    active = db_with_good_morning.ledger.get_active_program()
+    program_data = active.model_dump()
+    program_data.pop("created_at", None)
+    barbell_rdl = db_with_good_morning.get_exercise_library_entry("85")
+    for day_name, exercise_index in ((active.days[0].day_name, 0), ("Lower 2", 0)):
+        day_data = next(day for day in program_data["days"] if day["day_name"] == day_name)
+        day_data["exercises"][exercise_index].update(
+            exercise_id="85",
+            exercise_name=barbell_rdl["name"],
+            notes=barbell_rdl.get("instructions") or "",
+            image_path=barbell_rdl.get("image_path"),
+            gif_path=barbell_rdl.get("gif_path"),
+        )
+    db_with_good_morning.ledger.save_training_program(program_data)
+
     state: AssistantState = {
         "messages": [HumanMessage(content="swap barbell romanian deadlift on Lower 2 for dumbbell RDL")],
         "trainee_id": "default",
@@ -243,7 +259,7 @@ def test_substitution_unknown_abbreviation_asks_illustration(db_with_good_mornin
     ] == before_ids
 
 
-def test_end_to_end_router_with_abbreviation(db_with_good_morning):
+def test_end_to_end_router_with_abbreviation():
     """Verifies that the router parses abbreviation query and routes to substitution correctly."""
     query = "swap dumbbell romanian deadlift for OHP"
     state: AssistantState = {
