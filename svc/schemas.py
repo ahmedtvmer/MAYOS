@@ -59,6 +59,9 @@ __all__ = [
     "ExerciseSetsIn",
     "ForgotPasswordIn",
     "GeneratedProgramSchema",
+    "GoogleCompleteIn",
+    "GoogleSignInIn",
+    "GoogleSignUpOut",
     "IntakeAnswerIn",
     "IntakeConfirmOut",
     "IntakeFieldOut",
@@ -94,6 +97,7 @@ __all__ = [
     "TrainingScheduleUpdateIn",
     "TrainingScheduleVersionOut",
     "TokenOut",
+    "UsernameAvailableOut",
     "WorkoutSetIn",
 ]
 
@@ -117,6 +121,38 @@ class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     trainee_id: str
+
+
+class GoogleSignInIn(BaseModel):
+    """Google ID token from the client. Verified server-side; never trusted as-is."""
+
+    id_token: str
+
+
+class GoogleSignUpOut(BaseModel):
+    """First Google sign-in: no account exists yet, so only a ticket and a guess.
+
+    The ticket is the 15-minute proof that this ``sub`` was just verified; the
+    suggestion is derived from the token's given name, checked for
+    availability, and stored only if the person keeps it.
+    """
+
+    signup_ticket: str
+    suggested_username: str
+
+
+class GoogleCompleteIn(BaseModel):
+    """Completes a first Google sign-in: the verified subject plus the picked name."""
+
+    signup_ticket: str
+    username: str
+
+
+class UsernameAvailableOut(BaseModel):
+    """Picker answer: ``reason`` is present only when the username is taken."""
+
+    available: bool
+    reason: str | None = None
 
 
 class MessageOut(BaseModel):

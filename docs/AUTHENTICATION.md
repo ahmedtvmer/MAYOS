@@ -8,7 +8,7 @@ This document specifies the Myos identity layer: credential storage, JWT session
 
 Myos is a **local-first, single-replica** engine. The identity layer is designed around three realities:
 
-* **No cloud identity provider.** Account identity is an immutable id in the shared catalog registry (`accounts`); each account maps to a per-user SQLite ledger (`db/users/<ledger_id>.db`). There is no external identity provider or directory; email delivery is an optional, self-hosted SMTP backend (Section 9).
+* **No cloud identity provider for account identity.** Account identity is an immutable id in the shared catalog registry (`accounts`); each account maps to a per-user SQLite ledger (`db/users/<ledger_id>.db`). Google is an optional **Linked sign-in** (Section 13): it proves an external subject, it never becomes the account identity and is never matched by email. Email delivery is an optional, self-hosted SMTP backend (Section 9).
 * **No account enumeration.** Unknown users and wrong passwords are indistinguishable, and password-recovery requests answer identically whether or not an email is linked.
 * **Authentication is separate from inference.** Password hashing and JWT verification do not require a model to be loaded.
 
@@ -67,7 +67,7 @@ sequenceDiagram
     end
 ```
 
-Claim is **single-use and account-bound**: redeeming the code marks it used, and once a hash exists further `/auth/claim` calls return `401 Invalid or expired claim code.` Unknown account, wrong/expired/reused code, and an already-claimed ledger all return that same generic 401, so `/auth/claim` itself does not distinguish them. Note that `/auth/login` still returns `403 claim_required` for a password-less ledger by design, so the fact that an account is waiting to be claimed is observable to a caller who already knows its username. A too-weak password is a plain `400`.
+Claim is **single-use and account-bound**: redeeming the code marks it used, and once a hash exists further `/auth/claim` calls return `401 Invalid or expired claim code.` Unknown account, wrong/expired/reused code, and an already-claimed ledger all return that same generic 401, so `/auth/claim` itself does not distinguish them. An account with a Linked sign-in (Section 13) is refused with the generic invalid-credentials error even when a valid code is presented — such an account has no password to claim. Note that `/auth/login` still returns `403 claim_required` for a password-less ledger by design, so the fact that an account is waiting to be claimed is observable to a caller who already knows its username — except for a Google-only account, which always answers the plain generic `401 Invalid credentials.` (Section 13). A too-weak password is a plain `400`.
 
 ---
 
@@ -235,6 +235,9 @@ Delivery failures are logged and swallowed; the client response stays generic. T
 | :--- | :--- | :--- | :--- |
 | `POST /auth/register` | — | 5/min | 409 if ID taken; 201 + JWT |
 | `POST /auth/login` | — | 5/min | 401 generic; 403 claim required |
+| `POST /auth/google` | — | 5/min | Verifies a Google ID token: linked subject ⇒ `TokenOut` (remember-me lifetime), otherwise `{signup_ticket, suggested_username}`; 503 when `GOOGLE_WEB_CLIENT_ID` is unset |
+| `GET /auth/username-available` | signup ticket (Bearer) | 5/min | `{available, reason?}`; clear 400 for a username that breaks the rule; 401 for a missing/expired ticket |
+| `POST /auth/google/complete` | — | 5/min | One catalog transaction: account + link; 400 invalid username, 409 taken or already linked |
 | `POST /auth/claim` | — | 5/min | Requires owner-issued single-use claim code; 401 generic |
 | `POST /auth/logout` | Bearer | — | Revokes presenting `jti`; 204 |
 | `POST /auth/change-password` | Bearer | 10/min | Revokes **all** sessions; 400 on failure |
@@ -254,6 +257,7 @@ Rate-limit keys combine the client IP with a bearer-token suffix when present, s
 | :--- | :--- | :--- |
 | `JWT_SECRET` | **required** | HS256 signing/verification key; service refuses to start signing without it |
 | `JWT_EXPIRY_HOURS` | `2` | Access-token lifetime |
+| `GOOGLE_WEB_CLIENT_ID` | unset (⇒ `/auth/google*` returns 503) | The **only** audience Google ID tokens are verified against (Section 13); the same value the Android client passes as `serverClientId` |
 | `UI_BASE_URL` | `http://localhost:8501` | CORS origin(s), comma-separated (not used for reset links) |
 | `RESET_LINK_BASE_URL` | `http://localhost:8000` | Reset-link / App Link base (`<base>/reset-password?token=…`) |
 | `ANDROID_APP_PACKAGE` | `com.mayos.mayos_mobile` | Package name in `assetlinks.json` |
@@ -307,6 +311,48 @@ Key properties:
 ### Information disclosure
 
 `account_deleted` is disclosed only to a caller holding a **validly signed token** for that account: the JWT signature and required claims are verified before the registry records are consulted, so an attacker who has not obtained the token learns nothing, and an unknown account still returns the generic `401 Invalid or expired token.`
+
+---
+
+## 13. Google Linked Sign-in (issue #113)
+
+A **Linked sign-in** ([`CONTEXT.md`](../CONTEXT.md)) attaches an external identity to exactly one account. The link is keyed on `(provider, subject)` — `('google', <Google sub>)` — and stored in the shared catalog table `linked_sign_ins (provider, subject, account_id, linked_at)` with `UNIQUE(provider, subject)` and an index on `account_id`. It lives in the catalog, never in a player's ledger, because the flow runs logged out. It is **never matched by email**; no email, name, or picture from Google is stored anywhere, and `provider` is data, so another provider needs no schema change.
+
+**Configuration.** `GOOGLE_WEB_CLIENT_ID` is read **by name only** — never hard-coded, never logged — and is the single audience for verification. Android obtains its ID token for the web client ID passed as `serverClientId`, and the web client uses the same ID, so one web client ID covers both clients and no Android-specific audience is needed. While the variable is unset, all three `/auth/google*` endpoints answer `503` and nothing else in the service changes.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant App as Flutter app
+    participant API as FastAPI /auth/google*
+    participant G as Google ID-token verifier
+    participant DB as Catalog (accounts, linked_sign_ins)
+
+    App->>API: POST /auth/google {id_token}
+    API->>G: verify_oauth2_token(token, requests.Request(), audience=GOOGLE_WEB_CLIENT_ID)
+    alt (google, sub) linked to a live account
+        API-->>App: TokenOut (always the remember-me lifetime)
+    else new subject
+        API-->>App: {signup_ticket (15 min), suggested_username}
+        Note over App: Nothing is written; abandoning here leaves nothing behind.
+        App->>API: GET /auth/username-available?username=… (Bearer: signup ticket)
+        API-->>App: {available, reason?}
+        App->>API: POST /auth/google/complete {signup_ticket, username}
+        API->>DB: ONE transaction: accounts row + linked_sign_ins row
+        API-->>App: TokenOut
+    end
+```
+
+**Verifier seam.** Production verification is `google.oauth2.id_token.verify_oauth2_token(token, requests.Request(), audience=GOOGLE_WEB_CLIENT_ID)` (`google-auth`), which checks the signature, the audience, `exp`/`iat`, and the issuer; our own issuer/`sub` checks repeat those contracts explicitly. Every rejection — wrong audience or issuer included — collapses into one generic `401 Invalid Google credentials.` The seam (`svc/dependencies.py::get_google_verifier`) returns only `sub` and `iat`, plus `given_name` read once to seed the username *suggestion*, and is injected like the other app-owned dependencies, so tests substitute a fake and never reach the network.
+
+**First sign-in.** An unknown subject gets `{signup_ticket, suggested_username}`; no account, link, or profile row exists yet, so abandoning the flow leaves nothing behind.
+
+* The **signup ticket** is a 15-minute HS256 JWT signed with `JWT_SECRET` but carrying `type=google_signup` and `aud=mayos:google-signup`, with **`sub` only** — never an email or name. It is refused as a session token in both directions: `token_claims` rejects any token carrying `type`/`aud` (and PyJWT rejects an `aud` claim when no audience is expected) and a session token fails the ticket's audience/`type` check, so a ticket can never be replayed as a bearer token. For `GET /auth/username-available` the ticket travels in the `Authorization: Bearer` header — never in the query string — so it cannot land in access logs.
+* `suggested_username` comes from the token's given name: lowercased, characters outside `a–z 0–9 _ -` dropped, 3–30 characters, a numeric suffix when the base is taken (a missing or unusable given name falls back to `player`). It is checked for availability and **never stored** — only the username the person keeps becomes the account's.
+* `GET /auth/username-available?username=…` answers `{available, reason?}` (`reason` is `"taken"`). The same rule the completion enforces applies here: a username outside `3–30 × a–z 0–9 _ -` after lowercasing is a clear `400`, never a silent rewrite.
+* `POST /auth/google/complete {signup_ticket, username}` validates the picked username and then, **in one catalog transaction**, creates the account exactly as `register_player` does (player capability, its own ledger, no password hash) and inserts the link. A taken username returns `409`; if the same subject is linked concurrently, the `UNIQUE(provider, subject)` constraint aborts the transaction so the losing request creates no second account. Success returns `TokenOut`, again with the remember-me lifetime, and materialises the ledger before the token is handed out so the session passes the normal registry gate.
+
+**Google-only accounts.** A Google account has no password and must never be claimable: `/auth/claim` refuses it with the generic invalid-credentials error even when a valid claim code is presented, and `/auth/login` returns the plain generic `401 Invalid credentials.` — never `403 claim_required` (Section 3). Connect/disconnect, setting a password, and deletion are out of scope here (issue 3 in the set).
 
 ---
 

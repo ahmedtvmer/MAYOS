@@ -108,9 +108,12 @@ class RegistryAccountsMixin:
                     " VALUES (?, ?, ?, 'active', 1, 0, 1, ?, NULL)",
                     (account_id, clean_id, ledger_id, now),
                 )
-                self.catalog_conn.commit()
+                # Joins an open catalog transaction when there is one (issue
+                # #113 signs an account and its link up atomically); standalone
+                # calls commit exactly as before.
+                self._commit_catalog()
             except sqlite3.IntegrityError:
-                self.catalog_conn.rollback()
+                self._rollback_catalog()
                 return None
         return account_id
 

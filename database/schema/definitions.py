@@ -523,6 +523,22 @@ class SchemaMixin:
                 );
                 CREATE INDEX IF NOT EXISTS idx_account_claim_codes_account
                     ON account_claim_codes(account_id);
+
+                -- Linked sign-in (CONTEXT.md): an external identity attached to
+                -- exactly one account, keyed on (provider, subject) where the
+                -- subject is the provider's immutable subject (Google's ``sub``).
+                -- Never matched by email; no email, name or picture from the
+                -- provider is stored. ``provider`` is data, so another provider
+                -- needs no schema change (issue #113).
+                CREATE TABLE IF NOT EXISTS linked_sign_ins (
+                    provider TEXT NOT NULL,
+                    subject TEXT NOT NULL,
+                    account_id TEXT NOT NULL,
+                    linked_at TEXT NOT NULL,
+                    UNIQUE(provider, subject)
+                );
+                CREATE INDEX IF NOT EXISTS idx_linked_sign_ins_account
+                    ON linked_sign_ins(account_id);
             """)
             self._create_coach_alerts_schema()
             self._ensure_roster_attendance_timezone()

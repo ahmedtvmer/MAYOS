@@ -16,6 +16,7 @@ fastapi>=0.115.0
 python-multipart>=0.0.18
 uvicorn[standard]>=0.32.0
 PyJWT>=2.10.0
+google-auth[requests]>=2.35.0
 httpx>=0.28.0
 slowapi>=0.1.9
 llama-cpp-python>=0.3.35

@@ -9,6 +9,13 @@ import jwt
 
 ALGORITHM = "HS256"
 
+#: Purpose markers for the Google signup ticket (issue #113). The ticket shares
+#: ``JWT_SECRET`` with session tokens but can never pass as one: session tokens
+#: carry neither ``type`` nor ``aud``, and ``token_claims`` refuses both.
+SIGNUP_TICKET_TYPE = "google_signup"
+SIGNUP_TICKET_AUDIENCE = "mayos:google-signup"
+SIGNUP_TICKET_MINUTES = 15
+
 
 def expiry_hours() -> int:
     try:
@@ -48,6 +55,11 @@ def create_access_token(subject: str, expires_hours: int | None = None, token_ve
 def token_claims(token: str) -> dict[str, Any]:
     """Returns the verified payload or raises :class:`jwt.PyJWTError`."""
     payload = jwt.decode(token, _secret(), algorithms=[ALGORITHM])
+    # Purpose-scoped tokens (the Google signup ticket) share the signing secret
+    # but are never session tokens: they carry a ``type``/``aud`` marker and no
+    # ``jti``, so a ticket presented as a bearer token dies here (#113).
+    if payload.get("type") is not None or payload.get("aud") is not None:
+        raise jwt.InvalidTokenError("Token is not a session token.")
     if not payload.get("sub") or not payload.get("jti"):
         raise jwt.InvalidTokenError("Token is missing subject or id.")
     if "tv" in payload:
@@ -70,6 +82,45 @@ def token_version_of(claims: dict[str, Any]) -> int:
 def decode_access_token(token: str) -> str:
     """Returns the player ``sub`` or raises :class:`jwt.PyJWTError`."""
     return str(token_claims(token)["sub"])
+
+
+def create_signup_ticket(subject: str) -> str:
+    """Signs a 15-minute Google signup ticket carrying **only** the Google subject.
+
+    Same secret as the session tokens, different purpose: ``type``/``aud`` mark
+    it, and there is deliberately no ``jti`` or ``tv``, so it can never satisfy
+    :func:`token_claims`. No email or name from Google ever enters a token.
+    """
+    if not isinstance(subject, str) or not subject:
+        raise ValueError("A signup ticket needs the Google subject.")
+    now = datetime.now(UTC)
+    payload = {
+        "sub": subject,
+        "type": SIGNUP_TICKET_TYPE,
+        "aud": SIGNUP_TICKET_AUDIENCE,
+        "iat": now,
+        "nbf": now,
+        "exp": now + timedelta(minutes=SIGNUP_TICKET_MINUTES),
+    }
+    return jwt.encode(payload, _secret(), algorithm=ALGORITHM)
+
+
+def signup_ticket_subject(token: str) -> str:
+    """The Google subject on a valid signup ticket, else raises :class:`jwt.PyJWTError`.
+
+    ``audience=`` refuses a session token (or any other JWT) here, and the
+    ``type`` marker refuses everything that is not a signup ticket; expiry and
+    tampering are refused by the signature check.
+    """
+    if not isinstance(token, str) or not token:
+        raise jwt.InvalidTokenError("Signup ticket is missing.")
+    payload = jwt.decode(token, _secret(), algorithms=[ALGORITHM], audience=SIGNUP_TICKET_AUDIENCE)
+    if payload.get("type") != SIGNUP_TICKET_TYPE:
+        raise jwt.InvalidTokenError("Token is not a signup ticket.")
+    subject = payload.get("sub")
+    if not isinstance(subject, str) or not subject:
+        raise jwt.InvalidTokenError("Signup ticket is missing subject.")
+    return subject
 
 
 def revoke_token(db: Any, token: str) -> None:

@@ -80,6 +80,10 @@ def login_player(db: Any, username: str, password: str) -> dict[str, Any]:
     with db.open_ledger(account["ledger_id"]) as ledger:
         stored = ledger.get_password_hash()
         if stored is None:
+            # A Linked sign-in account has no password to set or claim (#113):
+            # it answers exactly like a wrong password, never claim_required.
+            if db.account_has_linked_sign_in(account["account_id"]):
+                return {"ok": False, "error": INVALID_CREDENTIALS}
             return {"ok": False, "error": INVALID_CREDENTIALS, "code": "claim_required"}
         if not isinstance(password, str) or not verify_password(password, stored):
             return {"ok": False, "error": INVALID_CREDENTIALS}
@@ -116,6 +120,10 @@ def claim_player(db: Any, username: str, claim_code: str, password: str) -> dict
     account = db.get_active_account_by_username(clean_id)
     if account is None or not account["is_player"] or not db.ledger_exists(account["ledger_id"]):
         return generic
+    if db.account_has_linked_sign_in(account["account_id"]):
+        # An account that signs in with a Linked sign-in never takes a password
+        # this way (issue #113); the refusal is generic, like every other one.
+        return {"ok": False, "error": INVALID_CREDENTIALS}
     now_iso = datetime.now(UTC).isoformat()
     with db.open_ledger(account["ledger_id"]) as ledger:
         if ledger.get_password_hash() is not None:

@@ -384,6 +384,22 @@
     "set_roster_program_name": {
       "kind": "method",
       "signature": "(self, assignment_id: str, program_name: str | None) -> None"
+    },
+    "account_has_linked_sign_in": {
+      "kind": "method",
+      "signature": "(self, account_id: str) -> bool"
+    },
+    "get_linked_sign_in_account_id": {
+      "kind": "method",
+      "signature": "(self, provider: str, subject: str) -> str | None"
+    },
+    "link_sign_in": {
+      "kind": "method",
+      "signature": "(self, provider: str, subject: str, account_id: str, linked_at: str | None = None) -> None"
+    },
+    "remove_linked_sign_in": {
+      "kind": "method",
+      "signature": "(self, provider: str, subject: str) -> None"
     }
   },
   "module_names": [

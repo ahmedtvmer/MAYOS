@@ -26,6 +26,7 @@ from utils.logger import MyosLogger
 from database.schema.definitions import SchemaMixin
 from database.account_deletion import AccountDeletionMixin
 from database.registry.accounts import RegistryAccountsMixin
+from database.registry.linked_sign_ins import RegistryLinkedSignInsMixin
 from database.registry.plans import RegistryPlansMixin
 from database.registry.recovery import RegistryRecoveryMixin
 from database.registry.coach_invites import RegistryCoachInvitesMixin
@@ -52,6 +53,7 @@ class DatabaseManager(
     SchemaMixin,
     AccountDeletionMixin,
     RegistryAccountsMixin,
+    RegistryLinkedSignInsMixin,
     RegistryPlansMixin,
     RegistryRecoveryMixin,
     RegistryCoachInvitesMixin,
@@ -208,3 +210,13 @@ class DatabaseManager(
         """Commits a standalone catalog write, or defers to the active transaction."""
         if getattr(self._local, "catalog_tx_depth", 0) == 0:
             self.catalog_conn.commit()
+
+    def _rollback_catalog(self) -> None:
+        """Rolls back a standalone catalog write, or defers to the active transaction.
+
+        Inside a ``catalog_transaction`` the outermost context manager owns the
+        rollback, so a write helper that loses its own race must leave the
+        transaction open for its caller to unwind.
+        """
+        if getattr(self._local, "catalog_tx_depth", 0) == 0:
+            self.catalog_conn.rollback()

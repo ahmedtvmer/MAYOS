@@ -129,6 +129,7 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | :--- | :--- | :--- |
 | `JWT_SECRET` | **required** | HS256 token signing/verification; the service refuses to operate without it |
 | `JWT_EXPIRY_HOURS` | `2` | Access-token lifetime |
+| `GOOGLE_WEB_CLIENT_ID` | unset (⇒ `/auth/google*` returns 503) | **Secret-ish config**: the OAuth web client ID Google ID tokens are verified against (issue #113). Use the *Web* client ID from the Google Cloud console; Android requests its ID token with this value as `serverClientId`, so it is the only audience the API needs. Unset disables Google sign-in only — password auth is unaffected |
 | `UI_BASE_URL` | `http://localhost:8501` | CORS origins: one, or several comma-separated (web app host + local dev). Not used for reset links |
 | `RESET_LINK_BASE_URL` | `http://localhost:8000` | Reset-link / App Link base; must match the App Link host |
 | `ANDROID_APP_PACKAGE` | `com.mayos.mayos_mobile` | App Link `assetlinks.json` package |
@@ -633,6 +634,10 @@ unset JWT_SECRET
 fly secrets set LLM_API_KEY="<hosted-provider-key>"
 fly secrets set SMTP_HOST="<smtp-host>" SMTP_USER="<smtp-user>" \
   SMTP_PASSWORD="<smtp-password>" SMTP_FROM="<from-address>"
+
+# Google sign-in audience (issue #113). Unset leaves Google sign-in off (the
+# /auth/google* endpoints answer 503) while password auth keeps working.
+fly secrets set GOOGLE_WEB_CLIENT_ID="<web-client-id>.apps.googleusercontent.com"
 
 # Deploy a single Machine (no HA pair) so only one writer mounts the volume.
 fly deploy --ha=false

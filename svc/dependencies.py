@@ -1,14 +1,20 @@
-"""FastAPI dependencies: database handle and verified player identity."""
+"""FastAPI dependencies: database handle, verified player identity, Google ID-token seam."""
 
+import os
+from collections.abc import Callable
 from typing import Annotated, Any, NamedTuple
 
 import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from svc.auth import token_claims, token_version_of
+from svc.auth import signup_ticket_subject, token_claims, token_version_of
 
 _bearer = HTTPBearer(auto_error=False)
+
+#: Config read **by name only** — never hard-coded, never logged (#113).
+GOOGLE_WEB_CLIENT_ID_ENV = "GOOGLE_WEB_CLIENT_ID"
+_GOOGLE_ISSUERS = ("https://accounts.google.com", "accounts.google.com")
 
 
 class AccountDeletedError(HTTPException):
@@ -182,3 +188,103 @@ async def get_current_coach(
 def account_id_of(player: Any) -> str | None:
     """Returns the verified account id carried by the player, or None for a bare ledger id."""
     return player.account_id if isinstance(player, VerifiedPlayer) else None
+
+
+class GoogleIdentityError(Exception):
+    """A Google ID token failed verification: signature, audience, issuer, or expiry."""
+
+
+class GoogleIdentity(NamedTuple):
+    """What the verifier seam hands back: Google's subject, nothing identifying.
+
+    ``iat`` is the token's issue time. ``given_name`` is only a seed for the
+    username picker's *suggestion*: it is read once, never stored, and never
+    written to the catalog or to any token (issue #113).
+    """
+
+    sub: str
+    iat: int | None = None
+    given_name: str | None = None
+
+
+#: The seam's shape: a raw ID token in, the verified identity out.
+GoogleVerifier = Callable[[str], GoogleIdentity]
+
+
+def google_web_client_id() -> str:
+    """The one audience Google ID tokens are verified against; empty when unset."""
+    return os.getenv(GOOGLE_WEB_CLIENT_ID_ENV, "").strip()
+
+
+def google_sign_in_enabled() -> None:
+    """Gate for every Google endpoint: 503 while ``GOOGLE_WEB_CLIENT_ID`` is unset.
+
+    Nothing else changes when the variable is absent — password registration,
+    login, claim and the rest of the service behave exactly as before (#113).
+    """
+    if not google_web_client_id():
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google sign-in is not configured.")
+
+
+def get_google_verifier() -> GoogleVerifier:
+    """The production ID-token seam, injected like the other app-owned dependencies.
+
+    Tests replace this dependency with a fake, so no test reaches Google's
+    network; production replaces nothing and never sees a fake.
+    """
+    if not google_web_client_id():
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google sign-in is not configured.")
+    return _verify_google_id_token
+
+
+def get_signup_subject(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> str:
+    """The Google subject a signup ticket was minted for.
+
+    The ticket rides in the ``Authorization: Bearer`` header — never the query
+    string — so it cannot land in access logs. A missing, expired, tampered,
+    or non-ticket token all share one 401.
+    """
+    if credentials is None or credentials.scheme.lower() != "bearer" or not credentials.credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing signup ticket.")
+    try:
+        return signup_ticket_subject(credentials.credentials)
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired signup ticket.") from None
+
+
+def _verify_google_id_token(raw_id_token: str) -> GoogleIdentity:
+    """``verify_oauth2_token`` against ``GOOGLE_WEB_CLIENT_ID``, narrowed to sub/iat.
+
+    google-auth checks the signature, the audience, ``exp``/``iat``, and the
+    issuer; every rejection — wrong audience or issuer included — collapses
+    into :class:`GoogleIdentityError`, so callers see one generic failure.
+    Imports are lazy so a missing optional transport can only ever affect
+    these endpoints, never the rest of the service.
+    """
+    audience = google_web_client_id()
+    if not audience:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google sign-in is not configured.")
+    import requests
+    from google.auth import exceptions as google_auth_exceptions
+    from google.oauth2 import id_token as google_id_token
+
+    try:
+        info = google_id_token.verify_oauth2_token(raw_id_token, requests.Request(), audience=audience)
+    except (ValueError, KeyError, google_auth_exceptions.GoogleAuthError):
+        raise GoogleIdentityError("Google rejected the ID token.") from None
+    # google-auth enforces this too; keeping our own check states the contract
+    # independently of the library's internals.
+    if not isinstance(info, dict) or info.get("iss") not in _GOOGLE_ISSUERS:
+        raise GoogleIdentityError("Google ID token has an untrusted issuer.")
+    sub = info.get("sub")
+    if not isinstance(sub, str) or not sub:
+        raise GoogleIdentityError("Google ID token has no subject.")
+    iat = info.get("iat")
+    given_name = info.get("given_name")
+    return GoogleIdentity(
+        sub=sub,
+        iat=iat if isinstance(iat, int) else None,
+        given_name=given_name if isinstance(given_name, str) else None,
+    )

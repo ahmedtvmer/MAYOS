@@ -1,8 +1,9 @@
-"""Registration, login, legacy claim, password change/recovery, and logout."""
+"""Registration, login, Google linked sign-in, legacy claim, password change/recovery, and logout."""
 
 import asyncio
 from typing import Annotated, Any
 
+import jwt
 from fastapi.responses import JSONResponse
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -10,10 +11,21 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from service import account_deletion as deletion_service
 from service import auth as auth_service
 from service import coach_ai as coach_ai_service
+from service import google_sign_in as google_service
 from service import password_reset as reset_service
 from service import plans as plans_service
-from svc.auth import create_access_token, remember_me_hours, revoke_token
-from svc.dependencies import VerifiedPlayer, get_current_player, get_db, get_ledger, get_verified_player
+from svc.auth import create_access_token, create_signup_ticket, remember_me_hours, revoke_token, signup_ticket_subject
+from svc.dependencies import (
+    VerifiedPlayer,
+    GoogleIdentityError,
+    get_current_player,
+    get_db,
+    get_google_verifier,
+    get_ledger,
+    get_signup_subject,
+    get_verified_player,
+    google_sign_in_enabled,
+)
 from svc.rate_limit import PASSWORD_LIMIT, REGISTER_LIMIT, LOGIN_LIMIT, RESET_LIMIT, limiter
 from svc.schemas import (
     AccountCapabilitiesOut,
@@ -23,12 +35,16 @@ from svc.schemas import (
     ClaimIn,
     EmailUpdateIn,
     ForgotPasswordIn,
+    GoogleCompleteIn,
+    GoogleSignInIn,
+    GoogleSignUpOut,
     MessageOut,
     PasswordChangeIn,
     RecoveryEmailOut,
     ResetPasswordIn,
     TokenOut,
     TraineeIn,
+    UsernameAvailableOut,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -76,6 +92,112 @@ async def login(request: Request, body: TraineeIn, db: Annotated[Any, Depends(ge
         access_token=create_access_token(
             result["account_id"],
             expires_hours=remember_me_hours() if body.remember_me else None,
+            token_version=result["session_epoch"],
+        ),
+        trainee_id=result["trainee_id"],
+    )
+
+
+@router.post("/google")
+@limiter.limit(LOGIN_LIMIT)
+async def google_sign_in(
+    request: Request,
+    body: GoogleSignInIn,
+    db: Annotated[Any, Depends(get_db)],
+    google_enabled: Annotated[Any, Depends(google_sign_in_enabled)],
+    verifier: Annotated[Any, Depends(get_google_verifier)],
+):
+    """Signs in with a Google ID token: straight in when linked, ticket otherwise.
+
+    The token is verified against ``GOOGLE_WEB_CLIENT_ID`` (503 while that is
+    unset). A subject already linked to a live account gets a session with the
+    remember-me lifetime; any other subject gets a 15-minute signup ticket plus
+    a username suggestion. No account, link, or profile data is written here,
+    so abandoning the flow leaves nothing behind (#113).
+    """
+    try:
+        identity = await asyncio.to_thread(verifier, body.id_token)
+    except GoogleIdentityError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google credentials.") from None
+
+    def _run():
+        return google_service.sign_in(db, identity.sub, identity.given_name)
+
+    result = await asyncio.to_thread(_run)
+    if result["kind"] == "session":
+        return TokenOut(
+            access_token=create_access_token(
+                result["account_id"],
+                expires_hours=remember_me_hours(),
+                token_version=result["session_epoch"],
+            ),
+            trainee_id=result["trainee_id"],
+        )
+    return GoogleSignUpOut(
+        signup_ticket=create_signup_ticket(identity.sub),
+        suggested_username=result["suggested_username"],
+    )
+
+
+@router.get("/username-available", response_model=UsernameAvailableOut, response_model_exclude_none=True)
+@limiter.limit(LOGIN_LIMIT)
+async def username_available(
+    request: Request,
+    db: Annotated[Any, Depends(get_db)],
+    google_enabled: Annotated[Any, Depends(google_sign_in_enabled)],
+    subject: Annotated[str, Depends(get_signup_subject)],
+    username: str,
+):
+    """Answers the picker: is this username free? Requires a signup ticket.
+
+    The ticket travels in the ``Authorization: Bearer`` header (never in the
+    query string) so it cannot land in access logs. A username that breaks the
+    picker's rule is refused with a clear 400, never silently rewritten.
+    """
+
+    def _run():
+        try:
+            return google_service.username_available(db, username)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+
+    return await asyncio.to_thread(_run)
+
+
+@router.post("/google/complete", response_model=TokenOut)
+@limiter.limit(REGISTER_LIMIT)
+async def google_complete(
+    request: Request,
+    body: GoogleCompleteIn,
+    db: Annotated[Any, Depends(get_db)],
+    google_enabled: Annotated[Any, Depends(google_sign_in_enabled)],
+):
+    """Creates the account and its link in one catalog transaction (#113).
+
+    Mirrors registration: player capability, its own ledger, no password hash.
+    An invalid username is a 400; a taken username or a subject linked
+    concurrently is a 409, and the losing request creates no account.
+    """
+    try:
+        subject = signup_ticket_subject(body.signup_ticket)
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired signup ticket."
+        ) from None
+
+    def _run():
+        try:
+            return google_service.complete_signup(db, subject, body.username)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+        except google_service.SignUpConflictError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from None
+
+    result = await asyncio.to_thread(_run)
+    return TokenOut(
+        access_token=create_access_token(
+            result["account_id"],
+            expires_hours=remember_me_hours(),
             token_version=result["session_epoch"],
         ),
         trainee_id=result["trainee_id"],
