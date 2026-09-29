@@ -21,6 +21,7 @@ import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_settings_tile.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_stat.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_progress.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/workout/active_workout_controller.dart';
 import 'package:mayos_mobile/src/features/player/workout/logger_top_bar.dart';
@@ -1475,6 +1476,119 @@ void main() {
 
     expect(find.text('Workout summary'), findsNothing);
     expect(find.text('Log workout · 1:00:00'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the bottom bar keeps sets progress and Finish in reach while '
+      'the list scrolls (#160)', (WidgetTester tester) async {
+    await _openLogger(tester);
+    // The narrow phone, where the list really does scroll (#160).
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+
+    final Finder bar = find.byKey(const ValueKey<String>('logger.bottomBar'));
+    final Finder finish = find.widgetWithText(FilledButton, 'Finish workout');
+    final Finder list = find.byKey(const ValueKey<String>('logger.list'));
+
+    // Progress and Finish are there from the first frame, with the same
+    // counts the header's line shows (#159/#160)…
+    expect(bar, findsOneWidget);
+    expect(find.text('0/4 sets'), findsOneWidget);
+    expect(finish, findsOneWidget);
+    expect(
+      tester
+          .widget<MayosProgressIndicator>(
+            find.descendant(
+                of: bar, matching: find.byType(MayosProgressIndicator)),
+          )
+          .value,
+      moreOrLessEquals(0),
+    );
+    // …and the bar is fixed at the bottom of the screen, above the system
+    // navigation (the frame's SafeArea).
+    expect(
+      tester.getBottomRight(bar).dy,
+      moreOrLessEquals(
+          tester.view.physicalSize.height / tester.view.devicePixelRatio,
+          epsilon: 0.5),
+    );
+
+    // A tick moves the counts and the progress bar, wherever the list is.
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('1/4 sets'), findsOneWidget);
+    expect(
+      tester
+          .widget<MayosProgressIndicator>(
+            find.descendant(
+                of: bar, matching: find.byType(MayosProgressIndicator)),
+          )
+          .value,
+      moreOrLessEquals(0.25),
+    );
+
+    // Scroll the list to its end: the bar does not move, hide or shrink.
+    final Offset barTop = tester.getTopLeft(bar);
+    for (int i = 0; i < 4; i++) {
+      await tester.drag(list, const Offset(0, -400));
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(tester.getTopLeft(bar), barTop);
+    expect(find.text('1/4 sets'), findsOneWidget);
+    expect(finish, findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // Finish runs its usual flow straight from the bar — no scrolling first:
+    // the unticked-sets sheet, then back from Keep logging.
+    await tester.tap(finish);
+    await tester.pumpAndSettle();
+    expect(find.text("3 sets aren't ticked"), findsOneWidget);
+    await tester.tap(find.text('Keep logging'));
+    await tester.pumpAndSettle();
+    expect(finish, findsOneWidget);
+    expect(bar, findsOneWidget);
+  });
+
+  testWidgets('the bottom bar steps aside for the keypad and the last card '
+      'scrolls clear of it (#160)', (WidgetTester tester) async {
+    await _openLogger(tester);
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+
+    final Finder bar = find.byKey(const ValueKey<String>('logger.bottomBar'));
+    expect(bar, findsOneWidget);
+
+    // The keypad takes the bottom bar's place while a cell is edited, so the
+    // keypad never covers it (#160)…
+    await tester.tap(_cell(0, 0, 'kg'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(bar, findsNothing);
+    expect(
+        find.byKey(const ValueKey<String>('logger.key.hide')), findsOneWidget);
+    // …and hiding it brings the bar straight back.
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.hide')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(bar, findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // To the end of the list: the last card and Add exercise both land above
+    // the bar, with the list's own bottom padding under them (#160).
+    final Finder list = find.byKey(const ValueKey<String>('logger.list'));
+    for (int i = 0; i < 4; i++) {
+      await tester.drag(list, const Offset(0, -400));
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    final Finder add = find.byKey(const ValueKey<String>('logger.addExercise'));
+    expect(add, findsOneWidget);
+    // Finish was the list's last action; Add exercise now ends it (#160).
+    expect(find.widgetWithText(FilledButton, 'Finish workout'), findsOneWidget);
+    final double barTop = tester.getTopLeft(bar).dy;
+    expect(tester.getBottomRight(_row(1, 0)).dy, lessThanOrEqualTo(barTop));
+    expect(tester.getBottomRight(add).dy, lessThanOrEqualTo(barTop));
     expect(tester.takeException(), isNull);
   });
 }

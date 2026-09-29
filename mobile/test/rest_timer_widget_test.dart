@@ -9,6 +9,7 @@ import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/rest_length.dart';
+import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
@@ -184,6 +185,11 @@ Finder _cell(int exercise, int set, String field) =>
 Finder _tick(int exercise, int set) =>
     find.byKey(ValueKey<String>('logger.tick.$exercise.$set'));
 
+/// The persistent bottom bar (#160) and #125's rest controls inside it.
+Finder _bar() => find.byKey(const ValueKey<String>('logger.bottomBar'));
+
+Finder _restControls() => find.byKey(const ValueKey<String>('rest.controls'));
+
 /// Types [digits] into one cell through the app's own keypad, then hides it.
 Future<void> _typeCell(
   WidgetTester tester,
@@ -290,23 +296,41 @@ void main() {
   });
 
   testWidgets(
-      'the rest bar shows on a working tick, only while the keypad is '
-      'hidden, and −15/+15/Skip drive the seam', (WidgetTester tester) async {
+      'the bottom bar shows #125\'s rest controls on a working tick, only '
+      'while the keypad is hidden, and −15/+15/Skip drive the seam',
+      (WidgetTester tester) async {
     final ({
       FakeRestAlerts alerts,
       InMemoryRestLengthStore restLengths,
       InMemoryActiveWorkoutStore store
     }) harness = await _openLogger(tester);
 
-    // No timer, no bar…
-    expect(find.byKey(const ValueKey<String>('rest.bar')), findsNothing);
+    // No timer, no rest controls — but the bar itself, with progress and
+    // Finish, is there from the first frame (#160).
+    expect(_restControls(), findsNothing);
+    expect(_bar(), findsOneWidget);
+    expect(find.text('0/4 sets'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Finish workout'), findsOneWidget);
 
     // A working tick fills from the previous values and starts the rest.
     await tester.tap(_tick(0, 0));
     await tester.pump(const Duration(milliseconds: 100));
-    expect(find.byKey(const ValueKey<String>('rest.bar')), findsOneWidget);
+    expect(_bar(), findsOneWidget);
+    expect(_restControls(), findsOneWidget);
     expect(find.text('Rest · Bench Press'), findsOneWidget);
     expect(find.text('3:00'), findsOneWidget);
+    // Resting adds controls to the bar; it never takes Finish away (#160).
+    expect(find.widgetWithText(FilledButton, 'Finish workout'), findsOneWidget);
+    expect(find.text('1/4 sets'), findsOneWidget);
+    // Every rest action keeps a full 48dp target (#45).
+    for (final Finder action in <Finder>[
+      find.byKey(const ValueKey<String>('rest.minus')),
+      find.byKey(const ValueKey<String>('rest.plus')),
+      find.byKey(const ValueKey<String>('rest.skip')),
+    ]) {
+      expect(tester.getSize(action).height, kMayosMinTapTarget);
+      expect(tester.getSize(action).width, greaterThanOrEqualTo(48));
+    }
     expect(harness.alerts.ensureReadyCalls, greaterThanOrEqualTo(1));
     expect(harness.alerts.shown, hasLength(1));
     // The line describes the NEXT set to do — Bench's second row, with the
@@ -316,15 +340,17 @@ void main() {
     expect(harness.alerts.scheduled, hasLength(1));
     expect(harness.alerts.shown.single.totalSeconds, 180);
 
-    // The keypad replaces the bar while it is open…
+    // The keypad replaces the whole bar while it is open…
     await tester.tap(_cell(0, 1, 'kg'));
     await tester.pump(const Duration(milliseconds: 100));
-    expect(find.byKey(const ValueKey<String>('rest.bar')), findsNothing);
+    expect(_bar(), findsNothing);
+    expect(_restControls(), findsNothing);
     expect(find.text('Hide'), findsOneWidget);
-    // …and hiding it brings the running bar back.
+    // …and hiding it brings the running controls back.
     await tester.tap(find.byKey(const ValueKey<String>('logger.key.hide')));
     await tester.pump(const Duration(milliseconds: 100));
-    expect(find.byKey(const ValueKey<String>('rest.bar')), findsOneWidget);
+    expect(_bar(), findsOneWidget);
+    expect(_restControls(), findsOneWidget);
 
     // +15 and −15 move the end time and re-post notification + alarm.
     await tester.tap(find.byKey(const ValueKey<String>('rest.plus')));
@@ -339,11 +365,13 @@ void main() {
     expect(harness.alerts.shown, hasLength(3));
     expect(harness.alerts.scheduled, hasLength(3));
 
-    // Skip clears the timer, takes the bar away, and cancels both platform
-    // requests.
+    // Skip clears the timer and takes the rest controls away — the bottom
+    // bar itself stays put with its progress and Finish — and cancels both
+    // platform requests.
     await tester.tap(find.byKey(const ValueKey<String>('rest.skip')));
     await tester.pump(const Duration(milliseconds: 100));
-    expect(find.byKey(const ValueKey<String>('rest.bar')), findsNothing);
+    expect(_restControls(), findsNothing);
+    expect(_bar(), findsOneWidget);
     expect(harness.alerts.removeCalls, 1);
     expect(harness.alerts.cancelEndCalls, 1);
 
@@ -374,7 +402,8 @@ void main() {
 
     await tester.tap(_tick(0, 1));
     await tester.pump(const Duration(milliseconds: 100));
-    expect(find.byKey(const ValueKey<String>('rest.bar')), findsNothing);
+    expect(_restControls(), findsNothing);
+    expect(_bar(), findsOneWidget);
     expect(harness.alerts.shown, isEmpty);
     expect(harness.alerts.ensureReadyCalls, 0);
   });
@@ -392,7 +421,8 @@ void main() {
 
     await tester.tap(_tick(0, 0));
     await tester.pump(const Duration(milliseconds: 100));
-    expect(find.byKey(const ValueKey<String>('rest.bar')), findsNothing);
+    expect(_restControls(), findsNothing);
+    expect(_bar(), findsOneWidget);
     expect(harness.alerts.shown, isEmpty);
     expect(harness.alerts.ensureReadyCalls, 0);
   });

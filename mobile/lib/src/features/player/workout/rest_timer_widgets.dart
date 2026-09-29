@@ -108,15 +108,20 @@ Future<int?> showRestLengthPicker(
       ),
     );
 
-/// The slim rest bar pinned to the bottom of the logger, shown only while the
-/// keypad is hidden (#125): **−15 · m:ss + "Rest · <exercise>" · +15 · Skip**,
-/// with a draining fill behind it.
+/// #125's rest controls — **−15 · m:ss + "Rest · <exercise>" · +15 ·
+/// Skip** — with a draining fill behind them, as the logger's persistent
+/// bottom bar shows them while a rest runs (#160).
 ///
-/// [remaining] is recomputed from the wall clock on every rebuild by the
-/// logger's ticker, so the countdown is exact in the foreground rather than
-/// drifting with timer ticks.
-class RestTimerBar extends StatelessWidget {
-  const RestTimerBar({
+/// This is the whole of the old slim rest bar, minus its own frame: the
+/// bottom bar wraps it so there is exactly one bottom bar on screen, and it
+/// disappears with that bar while the keypad is open. Every action keeps a
+/// full 48dp target (#45).
+///
+/// [remainingSeconds] is recomputed from the wall clock on every rebuild by
+/// the logger's ticker, so the countdown is exact in the foreground rather
+/// than drifting with timer ticks.
+class RestTimerControls extends StatelessWidget {
+  const RestTimerControls({
     super.key,
     required this.remainingSeconds,
     required this.totalSeconds,
@@ -148,24 +153,30 @@ class RestTimerBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    // A full 48dp target for every action (#45): the label sits centred in
+    // the minimum target rather than sizing the target from the text.
     Widget action(String label, VoidCallback onTap, {Key? key}) => InkWell(
           key: key,
           onTap: onTap,
           borderRadius: MayosRadii.smallRadius,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: MayosSpacing.sm, vertical: MayosSpacing.sm),
-            child: Text(
-              label,
-              style: MayosTypography.label.copyWith(color: c.accent),
+          child: SizedBox(
+            height: kMayosMinTapTarget,
+            child: Center(
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: MayosSpacing.sm),
+                child: Text(
+                  label,
+                  style: MayosTypography.label.copyWith(color: c.accent),
+                ),
+              ),
             ),
           ),
         );
 
     return Container(
-      key: const ValueKey<String>('rest.bar'),
+      key: const ValueKey<String>('rest.controls'),
       decoration: BoxDecoration(
-        color: c.surface,
         border: Border(top: BorderSide(color: c.border)),
       ),
       child: Stack(
@@ -198,6 +209,8 @@ class RestTimerBar extends StatelessWidget {
                       ),
                       Text(
                         'Rest · $exerciseName',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: MayosTypography.caption
                             .copyWith(color: c.textMuted),
                       ),

@@ -27,15 +27,17 @@ import '../../../providers.dart';
 import '../../../router.dart';
 import 'active_workout_controller.dart';
 import 'draft_sync_service.dart';
+import 'logger_bottom_bar.dart';
 import 'logger_card_widgets.dart';
 import 'logger_keypad.dart';
 import 'rest_timer_widgets.dart';
 
 // The frozen previous working set and the cell weight format live beside the
 // Active workout (`core/active_workout.dart`); the cell/hint mapping, the
-// card and the rows live in `logger_card_widgets.dart` (#158) — this screen
-// owns only the decisions: focus, ticks, records, the Current set and
-// persistence (#123/#124/#125).
+// card and the rows live in `logger_card_widgets.dart` (#158), the fixed
+// bottom bar in `logger_bottom_bar.dart` (#160) — this screen owns only the
+// decisions: focus, ticks, records, the Current set and persistence
+// (#123/#124/#125).
 
 /// The catalog dialog's content width. It is the app's narrow-phone content
 /// width, kept as one named constant because the dialog measures its content
@@ -46,10 +48,12 @@ const double kLoggerDialogWidth = 360;
 /// The Hevy-style table logger (#107 Variant A), backed entirely by the
 /// Active workout: one scrolling list of compact exercise cards with a
 /// SET · KG · REPS · RIR · ✓ table, the app's own keypad, live
-/// Personal-record badges under the rows (#124), and a Finish that opens the
-/// workout summary and writes a Workout draft exactly as before (#123). The
-/// redesign (#158) drops the PREVIOUS column for the card's "Last:" line and
-/// highlights the Current set; everything below the pixels is unchanged.
+/// Personal-record badges under the rows (#124), and a persistent bottom bar
+/// carrying sets progress and a Finish that opens the workout summary and
+/// writes a Workout draft exactly as before (#123/#160). The redesign
+/// (#158/#159/#160) drops the PREVIOUS column for the card's "Last:" line,
+/// highlights the Current set and pins Finish above the system navigation;
+/// everything below the pixels is unchanged.
 class WorkoutLoggerScreen extends ConsumerStatefulWidget {
   const WorkoutLoggerScreen({super.key, required this.dayOrder});
 
@@ -504,6 +508,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     if (workout == null) {
       return;
     }
+    if (_error != null) {
+      // "Log at least one set" was the Finish bar's nudge; it now sits right
+      // above that bar, so it goes the moment a set is ticked (#160).
+      setState(() => _error = null);
+    }
     final ActiveWorkoutExercise exercise = workout.exercises[exerciseIndex];
     final ActiveWorkoutSet set = exercise.sets[setIndex];
     if (set.ticked) {
@@ -828,19 +837,92 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
           Expanded(
             child: _summaryStep ? _buildSummary() : _buildActive(workout),
           ),
-          // The slim rest bar is pinned to the bottom and shown only while
-          // the keypad is hidden (#125).
-          if (!_summaryStep && !keypadVisible && workout.rest != null)
-            _buildRestBar(workout.rest!),
-          if (keypadVisible) _buildKeypad(workout, _focus!),
+          if (!_summaryStep) ...<Widget>[
+            // Messages sit above the bottom bar, never scrolled away at the
+            // end of the list: that is where the player acts on them (#160).
+            ..._activeMessages(),
+            // The keypad replaces the bottom bar outright while an edit is
+            // open, so the screen has exactly one bottom bar at a time and
+            // the keypad never covers it (#160).
+            if (keypadVisible)
+              _buildKeypad(workout, _focus!)
+            else
+              _buildBottomBar(workout),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildRestBar(ActiveRestTimer rest) {
+  /// The active workout's message lines — a blocking reason, an error, or a
+  /// note — as the slot between the list and the bottom bar renders them.
+  ///
+  /// The slot is capped at a third of the screen and scrolls inside that cap,
+  /// so a long line at a large text scale can never push the bar (or the
+  /// keypad) off the bottom of the screen (#160/#45).
+  List<Widget> _activeMessages() {
+    final List<Widget> lines = <Widget>[];
+    if (_blockReason != null) {
+      lines.add(_MessageLine(_blockReason!));
+    }
+    if (_error != null) {
+      lines.add(_MessageLine(_error!));
+    }
+    if (_notice != null) {
+      lines.add(_MessageLine(_notice!, danger: false));
+    }
+    if (lines.isEmpty) {
+      return const <Widget>[];
+    }
+    return <Widget>[
+      ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height / 3,
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.only(
+            left: MayosSpacing.lg,
+            right: MayosSpacing.lg,
+            top: MayosSpacing.xs,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: lines,
+          ),
+        ),
+      ),
+    ];
+  }
+
+  /// The persistent bottom workout bar (#160): `{ticked}/{total} sets`, a
+  /// progress bar and Finish — all from the same pure counts as the header's
+  /// progress line — plus #125's rest controls while a rest runs. It lives in
+  /// the column below the list, so the list is sized to the space it leaves
+  /// and the last card scrolls clear; the keypad takes its place instead
+  /// while a cell is being edited.
+  Widget _buildBottomBar(ActiveWorkout workout) {
+    final ({
+      int exercisesCompleted,
+      int exercisesTotal,
+      int setsTicked,
+      int setsTotal
+    }) progress = workoutProgressOf(workout);
+    final ActiveRestTimer? rest = workout.rest;
+    return LoggerBottomBar(
+      key: const ValueKey<String>('logger.bottomBar'),
+      setsTicked: progress.setsTicked,
+      setsTotal: progress.setsTotal,
+      onFinish: _blockReason != null ? null : _finish,
+      restControls: rest == null ? null : _buildRestControls(rest),
+    );
+  }
+
+  /// #125's rest controls for the bar: −15 / m:ss / +15 / Skip, recomputed
+  /// from the wall clock by the ticker. No new timer state and no "+30s"
+  /// (#125 unchanged, absorbed by the bottom bar in #160).
+  Widget _buildRestControls(ActiveRestTimer rest) {
     final DateTime now = DateTime.now();
-    return RestTimerBar(
+    return RestTimerControls(
       remainingSeconds: rest.remainingSeconds(now),
       totalSeconds: rest.totalSeconds,
       exerciseName: rest.exerciseName,
@@ -884,7 +966,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     // Derived, never stored: the first unticked working set in workout
     // order, warm-ups skipped, moving across exercises (#158).
     final ({int exerciseIndex, int setIndex})? current = currentSetOf(workout);
+    // The bar below is a sibling of this list rather than an overlay, and
+    // the page padding keeps 32dp under the last card — so the end of the
+    // workout scrolls fully clear of the bar (#160).
     return SingleChildScrollView(
+      key: const ValueKey<String>('logger.list'),
       padding: MayosSpacing.screen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -909,6 +995,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
           const SizedBox(height: MayosSpacing.md),
           for (int i = 0; i < workout.exercises.length; i++)
             _buildExerciseCard(workout, i, current),
+          // Add exercise stays the list's last action; Finish lives in the
+          // fixed bottom bar (#160), so it never needs scrolling to.
           MayosButton(
             key: const ValueKey<String>('logger.addExercise'),
             label: 'Add exercise',
@@ -917,15 +1005,6 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
             onPressed: _addUnplanned,
           ),
           const SizedBox(height: MayosSpacing.sm),
-          MayosButton(
-            key: const ValueKey<String>('logger.finish'),
-            label: 'Finish workout',
-            icon: Icons.check,
-            onPressed: _blockReason != null ? null : _finish,
-          ),
-          if (_blockReason != null) _MessageLine(_blockReason!),
-          if (_error != null) _MessageLine(_error!),
-          if (_notice != null) _MessageLine(_notice!, danger: false),
         ],
       ),
     );
