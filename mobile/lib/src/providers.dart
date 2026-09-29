@@ -251,15 +251,6 @@ final StateProvider<int> playerShellTabProvider = StateProvider<int>(
   (ref) => 0,
 );
 
-/// The selected bottom-navigation tab in the coach shell (0 = Roster,
-/// 1 = Alerts, 2 = Requests, 3 = Profile; the named constants live in
-/// `coach_shell.dart`). The shell opens on Roster, and so does a newly
-/// signed-in account: the tab resets whenever the account changes (#119).
-final StateProvider<int> coachShellTabProvider = StateProvider<int>((ref) {
-  _resetOnAccountChange(ref, () => ref.controller.state = 0);
-  return 0;
-});
-
 /// The number of coach alerts still in the `new` state, published by the
 /// Alerts tab so the shell's badge tracks acknowledge/resolve without a second
 /// fetch. It resets whenever the account changes, so one account's badge count

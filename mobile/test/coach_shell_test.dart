@@ -261,7 +261,7 @@ void main() {
     await _pumpUntilFound(tester, find.text('Hosted AI processing'));
   });
 
-  test('the coach shell tab and alerts badge reset when the account changes',
+  test('the coach alerts badge resets when the account changes',
       () async {
     final FakeMayosApi fake = _coachFake();
     fake.passwords['alice'] = 'pw-alice';
@@ -273,27 +273,21 @@ void main() {
     expect(container.read(authControllerProvider).session?.account.accountId,
         'account-alice');
 
-    // This account sits on the Alerts tab with a non-zero badge.
-    container.read(coachShellTabProvider.notifier).state = 1;
+    // This account has a non-zero alerts badge.
     container.read(coachNewAlertsCountProvider.notifier).state = 3;
-    expect(container.read(coachShellTabProvider), 1);
     expect(container.read(coachNewAlertsCountProvider), 3);
 
-    // Signing out resets both for whoever signs in next.
+    // Signing out resets the badge for whoever signs in next.
     await container.read(authControllerProvider.notifier).logout();
-    expect(container.read(coachShellTabProvider), 0);
     expect(container.read(coachNewAlertsCountProvider), 0);
 
-    // And so does a straight account switch: the next account starts on
-    // Roster and never sees the previous account's badge count (#119).
-    container.read(coachShellTabProvider.notifier).state = 2;
+    // A direct account switch never shows the previous account's badge.
     container.read(coachNewAlertsCountProvider.notifier).state = 7;
     await container
         .read(authControllerProvider.notifier)
         .login(username: 'bob', password: 'pw-bob');
     expect(container.read(authControllerProvider).session?.account.accountId,
         'account-bob');
-    expect(container.read(coachShellTabProvider), 0);
     expect(container.read(coachNewAlertsCountProvider), 0);
   });
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
 import '../../core/models.dart';
@@ -9,7 +10,7 @@ import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
-import 'coach_player_history_screen.dart';
+import '../../router.dart';
 import 'coach_shared.dart';
 
 /// Coach-side roster (#24): the assigned players in the order the service
@@ -22,7 +23,9 @@ import 'coach_shared.dart';
 /// data changes (foreground return, drill-down return, or a coaching action
 /// reported through [coachRosterRevisionProvider]).
 class CoachAssignmentsScreen extends ConsumerStatefulWidget {
-  const CoachAssignmentsScreen({super.key});
+  const CoachAssignmentsScreen({super.key, this.selectedAssignmentId});
+
+  final String? selectedAssignmentId;
 
   @override
   ConsumerState<CoachAssignmentsScreen> createState() =>
@@ -249,78 +252,74 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
   Widget _rosterRow(BuildContext context, CoachRosterEntry entry) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final List<Widget> chips = _rosterChips(context, entry);
-    return InkWell(
-      key: Key('roster_row_${entry.assignmentId}'),
-      onTap: () async {
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (BuildContext context) =>
-                CoachPlayerHistoryScreen(entry: entry),
-          ),
-        );
-        // The player page (and the assistant under it) is closed: reload the
-        // roster, since a revocation or a coaching action may have landed
-        // while it was open (issue #45, #120).
-        if (mounted) {
-          await _load(showLoader: false);
-        }
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: MayosSpacing.sm),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            CircleAvatar(
-              radius: 20,
-              backgroundColor: c.secondarySurface,
-              child: Text(
-                entry.playerUsername.isEmpty
-                    ? '?'
-                    : entry.playerUsername.substring(0, 1).toUpperCase(),
-                style:
-                    MayosTypography.label.copyWith(color: c.textPrimary),
+    final bool selected = widget.selectedAssignmentId == entry.assignmentId;
+    return Material(
+      color: selected ? c.selectedSurface : Colors.transparent,
+      child: InkWell(
+        key: Key('roster_row_${entry.assignmentId}'),
+        onTap: selected
+            ? null
+            : () {
+                final String location =
+                    '$coachRosterPath/${Uri.encodeComponent(entry.assignmentId)}';
+                context.go(location);
+              },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: MayosSpacing.sm),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: c.secondarySurface,
+                child: Text(
+                  entry.playerUsername.isEmpty
+                      ? '?'
+                      : entry.playerUsername.substring(0, 1).toUpperCase(),
+                  style: MayosTypography.label.copyWith(color: c.textPrimary),
+                ),
               ),
-            ),
-            const SizedBox(width: MayosSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    entry.playerUsername,
-                    style:
-                        MayosTypography.exerciseTitle.copyWith(color: c.textPrimary),
-                  ),
-                  const SizedBox(height: MayosSpacing.xxs),
-                  Text(
-                    entry.rosterSubtitle,
-                    style: MayosTypography.caption
-                        .copyWith(color: c.textSecondary),
-                  ),
-                  if (chips.isNotEmpty) ...<Widget>[
-                    const SizedBox(height: MayosSpacing.xs),
-                    Wrap(
-                      spacing: MayosSpacing.xs,
-                      runSpacing: MayosSpacing.xs,
-                      children: chips,
+              const SizedBox(width: MayosSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      entry.playerUsername,
+                      style: MayosTypography.exerciseTitle
+                          .copyWith(color: c.textPrimary),
                     ),
+                    const SizedBox(height: MayosSpacing.xxs),
+                    Text(
+                      entry.rosterSubtitle,
+                      style: MayosTypography.caption
+                          .copyWith(color: c.textSecondary),
+                    ),
+                    if (chips.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: MayosSpacing.xs),
+                      Wrap(
+                        spacing: MayosSpacing.xs,
+                        runSpacing: MayosSpacing.xs,
+                        children: chips,
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            const SizedBox(width: MayosSpacing.xs),
-            MayosButton(
-              label: _busyAssignmentId == entry.assignmentId
-                  ? 'Revoking…'
-                  : 'Revoke',
-              variant: MayosButtonVariant.tertiary,
-              expand: false,
-              onPressed: _busyAssignmentId == entry.assignmentId
-                  ? null
-                  : () => _revoke(entry),
-            ),
-            Icon(Icons.chevron_right, color: c.textMuted),
-          ],
+              const SizedBox(width: MayosSpacing.xs),
+              MayosButton(
+                label: _busyAssignmentId == entry.assignmentId
+                    ? 'Revoking…'
+                    : 'Revoke',
+                variant: MayosButtonVariant.tertiary,
+                expand: false,
+                onPressed: _busyAssignmentId == entry.assignmentId
+                    ? null
+                    : () => _revoke(entry),
+              ),
+              Icon(Icons.chevron_right, color: c.textMuted),
+            ],
+          ),
         ),
       ),
     );

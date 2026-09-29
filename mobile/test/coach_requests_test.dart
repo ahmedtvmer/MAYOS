@@ -8,6 +8,7 @@ import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
+import 'package:mayos_mobile/src/features/coach/coach_player_history_screen.dart';
 import 'package:mayos_mobile/src/features/coach/coach_shell.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
@@ -139,6 +140,11 @@ Finder _sheet(Finder finder) => find.descendant(
       matching: finder,
     );
 
+Finder _playerPageText(String label) => find.descendant(
+      of: find.byType(CoachPlayerHistoryScreen),
+      matching: find.text(label),
+    );
+
 int _requestsBadge(WidgetTester tester) => tester
     .widget<MayosBottomNavigation>(find.byType(MayosBottomNavigation))
     .items[CoachShellTab.requests].badge;
@@ -236,7 +242,7 @@ void main() {
     });
   });
 
-  test('the pending-requests badge and the shell tab reset per account',
+  test('the pending-requests badge resets per account',
       () async {
     final FakeMayosApi fake = _coachFake();
     fake.passwords['alice'] = 'pw-alice';
@@ -248,14 +254,10 @@ void main() {
     expect(container.read(authControllerProvider).session?.account.accountId,
         'account-alice');
 
-    container.read(coachShellTabProvider.notifier).state =
-        CoachShellTab.requests;
     container.read(coachPendingRequestsCountProvider.notifier).state = 4;
-    expect(container.read(coachShellTabProvider), CoachShellTab.requests);
     expect(container.read(coachPendingRequestsCountProvider), 4);
 
     await container.read(authControllerProvider.notifier).logout();
-    expect(container.read(coachShellTabProvider), 0);
     expect(container.read(coachPendingRequestsCountProvider), 0);
   });
 
@@ -555,7 +557,7 @@ void main() {
     // The page follows: the row is answered in place and the segment label
     // drops to no count once nothing is pending (#121).
     expect(find.text('Applied'), findsOneWidget);
-    expect(find.text('Requests'), findsOneWidget);
+    expect(_playerPageText('Requests'), findsOneWidget);
     expect(find.text('Requests (1)'), findsNothing);
 
     // Back on the shell: badge and roster chip both cleared without restart.
@@ -596,7 +598,7 @@ void main() {
     expect(find.text('You: Not now.'), findsOneWidget);
     expect(find.byKey(const Key('request_reply_field')), findsNothing);
     // Nothing is pending any more, so the label loses its count.
-    expect(find.text('Requests'), findsOneWidget);
+    expect(_playerPageText('Requests'), findsOneWidget);
 
     // Back on the shell, the badge and the roster chip followed the refusal
     // without a restart (#121).

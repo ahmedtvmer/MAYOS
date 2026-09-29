@@ -5,7 +5,12 @@ import 'package:go_router/go_router.dart';
 import 'core/app_mode.dart';
 import 'core/models.dart';
 import 'core/ui/mayos_scaffold.dart';
+import 'features/coach/coach_alerts_screen.dart';
+import 'features/coach/coach_assignments_screen.dart';
 import 'features/coach/coach_invite_screen.dart';
+import 'features/coach/coach_player_history_screen.dart';
+import 'features/coach/coach_profile_screen.dart';
+import 'features/coach/coach_requests_screen.dart';
 import 'features/coach/coach_shell.dart';
 import 'features/player/assignment/player_assignment_screen.dart';
 import 'features/player/auth/auth_controller.dart';
@@ -42,6 +47,10 @@ const String settingsPath = '/settings';
 const String planPath = '/plan';
 const String profilePath = '/profile';
 const String coachPath = '/coach';
+const String coachRosterPath = '/coach/roster';
+const String coachAlertsPath = '/coach/alerts';
+const String coachRequestsPath = '/coach/requests';
+const String coachProfilePath = '/coach/profile';
 const String coachInvitePath = '/coach-invite';
 const String playerSetupPath = '/player-setup';
 const String assignmentPath = '/assignment';
@@ -150,7 +159,7 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
       /// surfaces when the intake is still missing.
       String landing() {
         if (coachMode) {
-          return coachPath;
+          return coachRosterPath;
         }
         if (onboarded) {
           return homePath;
@@ -169,11 +178,11 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
       // Each mode owns its top-level shell: the coach routes need the coach
       // capability *and* Coach mode, and Coach mode never sits on the player
       // shell.
-      if (path == coachPath) {
+      if (_isCoachPath(path)) {
         return coachMode ? null : landing();
       }
       if (path == homePath && coachMode) {
-        return coachPath;
+        return coachRosterPath;
       }
       // The deferred-intake screen is only for a coach in Player mode who has
       // not completed onboarding (#119).
@@ -188,7 +197,7 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
           return landing();
         }
         // The intake belongs to Player mode; Coach mode never waits for it.
-        return coachMode ? coachPath : null;
+        return coachMode ? coachRosterPath : null;
       }
       if (!onboarded) {
         // Deferred player onboarding (#119): a coach reaches Coach mode
@@ -205,6 +214,9 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
 /// The logged-out password-recovery surfaces reachable without a session.
 bool _isPasswordRecoveryPage(String location) =>
     location == forgotPasswordPath || location == resetPasswordPath;
+
+bool _isCoachPath(String path) =>
+    path == coachPath || path.startsWith('$coachPath/');
 
 /// The route path without its query or fragment.
 String _pathOf(String location) {
@@ -366,10 +378,59 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         builder: (BuildContext context, GoRouterState state) =>
             const CoachInviteScreen(),
       ),
-      GoRoute(
-        path: coachPath,
-        builder: (BuildContext context, GoRouterState state) =>
-            const CoachShell(),
+      ShellRoute(
+        builder: (BuildContext context, GoRouterState state, Widget child) =>
+            CoachShell(child: child),
+        routes: <RouteBase>[
+          GoRoute(
+            path: coachPath,
+            redirect: (BuildContext context, GoRouterState state) =>
+                state.uri.path == coachPath ? coachRosterPath : null,
+            routes: <RouteBase>[
+              GoRoute(
+                path: 'roster',
+                builder: (BuildContext context, GoRouterState state) =>
+                    const KeyedSubtree(
+                  key: Key('coach_roster_list_screen'),
+                  child: CoachAssignmentsScreen(),
+                ),
+                routes: <RouteBase>[
+                  GoRoute(
+                    path: ':assignmentId',
+                    builder: (BuildContext context, GoRouterState state) =>
+                        CoachPlayerHistoryScreen.fromAssignmentId(
+                      assignmentId:
+                          state.pathParameters['assignmentId'] ?? '',
+                    ),
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: 'alerts',
+                builder: (BuildContext context, GoRouterState state) =>
+                    const CoachAlertsScreen(),
+              ),
+              GoRoute(
+                path: 'requests',
+                builder: (BuildContext context, GoRouterState state) =>
+                    const CoachRequestsScreen(),
+              ),
+              GoRoute(
+                path: 'requests/:requestId',
+                builder: (BuildContext context, GoRouterState state) =>
+                    CoachRequestsScreen(
+                  selectedRequestId:
+                      state.pathParameters['requestId'] ?? '',
+                ),
+              ),
+              GoRoute(
+                path: 'profile',
+                builder: (BuildContext context, GoRouterState state) =>
+                    const CoachProfileScreen(),
+              ),
+            ],
+          ),
+        ],
       ),
       GoRoute(
         path: playerSetupPath,

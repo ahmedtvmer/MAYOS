@@ -32,6 +32,91 @@ class CoachRequestResolution {
   bool get resolved => request != null;
 }
 
+enum CoachRequestDecision { apply, decline }
+
+Future<CoachRequestResolution> resolveCoachProgramRequest({
+  required ApiClient api,
+  required ProgramRequest request,
+  required CoachRequestDecision decision,
+  String reply = '',
+}) async {
+  try {
+    final ProgramRequest updated = switch (decision) {
+      CoachRequestDecision.apply => await api.applyCoachProgramRequest(
+          request.assignmentId, request.requestId),
+      CoachRequestDecision.decline => await api.declineCoachProgramRequest(
+          request.assignmentId, request.requestId, reply: reply),
+    };
+    return CoachRequestResolution.resolved(updated);
+  } on ApiException catch (error) {
+    return CoachRequestResolution.failed(error.message);
+  }
+}
+
+class CoachRequestDecisionControls extends StatefulWidget {
+  const CoachRequestDecisionControls({
+    super.key,
+    required this.request,
+    required this.replyController,
+    required this.busy,
+    required this.onDecision,
+  });
+
+  final ProgramRequest request;
+  final TextEditingController replyController;
+  final bool busy;
+  final ValueChanged<CoachRequestDecision> onDecision;
+
+  @override
+  State<CoachRequestDecisionControls> createState() =>
+      _CoachRequestDecisionControlsState();
+}
+
+class _CoachRequestDecisionControlsState
+    extends State<CoachRequestDecisionControls> {
+  @override
+  Widget build(BuildContext context) {
+    final bool canDecline = widget.replyController.text.trim().isNotEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        MayosButton(
+          key: const Key('request_apply_button'),
+          label: widget.request.isExerciseSubstitution
+              ? 'Apply swap'
+              : 'Apply (rebuilds program)',
+          loading: widget.busy,
+          onPressed: widget.busy
+              ? null
+              : () => widget.onDecision(CoachRequestDecision.apply),
+        ),
+        const SizedBox(height: MayosSpacing.md),
+        MayosTextField(
+          fieldKey: const Key('request_reply_field'),
+          controller: widget.replyController,
+          label: 'Reason for declining (shown to the player)',
+          helperText: 'Sent only with Decline · up to 500 characters.',
+          minLines: 1,
+          maxLines: 3,
+          maxLength: 500,
+          enabled: !widget.busy,
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: MayosSpacing.sm),
+        MayosButton(
+          key: const Key('request_decline_button'),
+          label: 'Decline',
+          variant: MayosButtonVariant.secondary,
+          loading: widget.busy,
+          onPressed: widget.busy || !canDecline
+              ? null
+              : () => widget.onDecision(CoachRequestDecision.decline),
+        ),
+      ],
+    );
+  }
+}
+
 /// The swap as the coach reads it: **old → new exercise**, or the new split
 /// for a split-change request (#121). Exercise IDs are shown as-is: the
 /// catalogue is API-only (`GET /workouts/exercises...`), so no client-side
@@ -111,25 +196,22 @@ class _ResolveRequestSheetState extends ConsumerState<_ResolveRequestSheet> {
     super.dispose();
   }
 
-  Future<void> _run(Future<ProgramRequest> Function(ApiClient api) action) async {
+  Future<void> _run(CoachRequestDecision decision) async {
     setState(() => _busy = true);
-    try {
-      final ProgramRequest updated =
-          await action(ref.read(apiClientProvider));
-      if (!mounted) return;
-      Navigator.of(context)
-          .pop(CoachRequestResolution.resolved(updated));
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      Navigator.of(context).pop(CoachRequestResolution.failed(error.message));
-    }
+    final CoachRequestResolution result = await resolveCoachProgramRequest(
+      api: ref.read(apiClientProvider),
+      request: widget.request,
+      decision: decision,
+      reply: _declineReason.text.trim(),
+    );
+    if (!mounted) return;
+    Navigator.of(context).pop(result);
   }
 
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final ProgramRequest request = widget.request;
-    final String declineReason = _declineReason.text.trim();
     return Padding(
       key: const Key('resolve_request_sheet'),
       padding: EdgeInsets.fromLTRB(
@@ -164,50 +246,11 @@ class _ResolveRequestSheetState extends ConsumerState<_ResolveRequestSheet> {
                 MayosTypography.bodySecondary.copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: MayosSpacing.md),
-          MayosButton(
-            key: const Key('request_apply_button'),
-            label: request.isExerciseSubstitution
-                ? 'Apply swap'
-                : 'Apply (rebuilds program)',
-            loading: _busy,
-            onPressed: _busy
-                ? null
-                : () => _run(
-                      (ApiClient api) => api.applyCoachProgramRequest(
-                        request.assignmentId,
-                        request.requestId,
-                      ),
-                    ),
-          ),
-          const SizedBox(height: MayosSpacing.md),
-          // The reason travels with Decline only: applying never sends it, so
-          // it sits between the two actions and says so (#121).
-          MayosTextField(
-            fieldKey: const Key('request_reply_field'),
-            controller: _declineReason,
-            label: 'Reason for declining (shown to the player)',
-            helperText: 'Sent only with Decline · up to 500 characters.',
-            minLines: 1,
-            maxLines: 3,
-            maxLength: 500,
-            enabled: !_busy,
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: MayosSpacing.sm),
-          MayosButton(
-            key: const Key('request_decline_button'),
-            label: 'Decline',
-            variant: MayosButtonVariant.secondary,
-            loading: _busy,
-            onPressed: _busy || declineReason.isEmpty
-                ? null
-                : () => _run(
-                      (ApiClient api) => api.declineCoachProgramRequest(
-                        request.assignmentId,
-                        request.requestId,
-                        reply: declineReason,
-                      ),
-                    ),
+          CoachRequestDecisionControls(
+            request: request,
+            replyController: _declineReason,
+            busy: _busy,
+            onDecision: _run,
           ),
         ],
       ),

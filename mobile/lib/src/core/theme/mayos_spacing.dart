@@ -33,6 +33,9 @@ abstract final class MayosLayout {
 
   /// Width reserved for the desktop side navigation rail.
   static const double navigationRailWidth = 88;
+
+  /// Width for the list pane in desktop coach master/detail layouts.
+  static const double coachMasterPaneWidth = 360;
 }
 
 /// A deliberately small radius set. Screens pick one of these rather than

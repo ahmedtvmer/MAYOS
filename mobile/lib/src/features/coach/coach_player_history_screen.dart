@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
 import '../../core/connectivity.dart';
@@ -14,6 +15,7 @@ import '../../core/ui/mayos_section_header.dart';
 import '../../core/ui/mayos_segmented_control.dart';
 import '../../core/ui/mayos_settings_tile.dart';
 import '../../providers.dart';
+import '../../router.dart';
 import 'coach_assistant_screen.dart';
 import 'coach_check_in_sheet.dart';
 import 'coach_request_sheet.dart';
@@ -29,9 +31,16 @@ import 'coach_shared.dart';
 /// a revoked or foreign assignment yields a denial and no training data.
 /// Player-assistant chats never appear here.
 class CoachPlayerHistoryScreen extends ConsumerStatefulWidget {
-  const CoachPlayerHistoryScreen({super.key, required this.entry});
+  const CoachPlayerHistoryScreen({super.key, required this.entry})
+      : assignmentId = null;
 
-  final CoachRosterEntry entry;
+  const CoachPlayerHistoryScreen.fromAssignmentId({
+    super.key,
+    required this.assignmentId,
+  }) : entry = null;
+
+  final CoachRosterEntry? entry;
+  final String? assignmentId;
 
   @override
   ConsumerState<CoachPlayerHistoryScreen> createState() =>
@@ -52,6 +61,7 @@ class _PublishRequest {
 
 class _CoachPlayerHistoryScreenState
     extends ConsumerState<CoachPlayerHistoryScreen> {
+  late CoachRosterEntry _entry;
   bool _loading = true;
   String? _error;
   CoachPlayerSummary? _summary;
@@ -80,15 +90,51 @@ class _CoachPlayerHistoryScreenState
   @override
   void initState() {
     super.initState();
-    _nextFollowUpOn = widget.entry.nextFollowUpOn;
+    _entry = _routeEntry();
+    _nextFollowUpOn = _entry.nextFollowUpOn;
     _load();
   }
+
+  @override
+  void didUpdateWidget(covariant CoachPlayerHistoryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final String? oldId = oldWidget.entry?.assignmentId ?? oldWidget.assignmentId;
+    final String? nextId = widget.entry?.assignmentId ?? widget.assignmentId;
+    if (oldId == nextId) return;
+    _entry = _routeEntry();
+    _nextFollowUpOn = _entry.nextFollowUpOn;
+    _alertsSeq++;
+    _requestsSeq++;
+    _summary = null;
+    _records = const <PersonalRecord>[];
+    _exercises = const <CoachPlayerExercise>[];
+    _histories.clear();
+    _openExerciseId = null;
+    _loadingHistory = false;
+    _programRequests = const <ProgramRequest>[];
+    _requestError = null;
+    _checkIns = const <CheckIn>[];
+    _alerts = const <CoachAlert>[];
+    _busyAlertId = null;
+    _publishError = null;
+    _publishing = false;
+    _segment = _PlayerSegment.history;
+    _load();
+  }
+
+  CoachRosterEntry _routeEntry() => widget.entry ??
+      CoachRosterEntry(
+        assignmentId: widget.assignmentId!,
+        playerUsername: '',
+        startedAt: '',
+        status: 'active',
+      );
 
   /// This assignment's open (new or acknowledged) alerts, as the player page
   /// shows them (#120).
   List<CoachAlert> _openAlerts(Iterable<CoachAlert> alerts) => alerts
       .where(
-          (CoachAlert alert) => alert.assignmentId == widget.entry.assignmentId)
+          (CoachAlert alert) => alert.assignmentId == _entry.assignmentId)
       .toList(growable: false);
 
   Future<void> _load() async {
@@ -99,44 +145,68 @@ class _CoachPlayerHistoryScreenState
     });
     try {
       final ApiClient api = ref.read(apiClientProvider);
-      final List<Object> results = await Future.wait<Object>(<Future<Object>>[
-        api.coachAlerts(states: <String>['new', 'acknowledged']),
-        api.coachPlayerSummary(widget.entry.assignmentId),
-        api.coachPlayerPersonalRecords(widget.entry.assignmentId),
-        api.coachPlayerExercises(widget.entry.assignmentId),
-        api.coachProgramRequests(widget.entry.assignmentId),
-        api.coachCheckIns(widget.entry.assignmentId),
-      ]);
+      await _loadRouteEntry(api, seq);
       if (!mounted || seq != _loadSeq) return;
-      setState(() {
-        _alerts = _openAlerts(results[0] as List<CoachAlert>);
-        _summary = results[1] as CoachPlayerSummary;
-        _records = results[2] as List<PersonalRecord>;
-        _exercises = results[3] as List<CoachPlayerExercise>;
-        // Pending first, then answered, matching the Requests tab (#121).
-        _programRequests =
-            sortCoachRequests(results[4] as List<ProgramRequest>);
-        // Newest first whatever order the list endpoint returned (#120).
-        _checkIns = sortCheckInsNewestFirst(results[5] as List<CheckIn>);
-        _loading = false;
-        _requestError = null;
-      });
+      final List<Object> playerData = await _loadPlayerData(api);
+      if (!mounted || seq != _loadSeq) return;
+      _applyPlayerData(playerData);
     } on ApiException catch (error) {
-      if (!mounted) return;
-      if (error.statusCode == 403) {
-        // The assignment ended or was revoked while this screen was open: the
-        // drill-down is refused, so the assistant's in-memory context for this
-        // player goes with it (issue #45).
-        ref
-            .read(coachAssistantControllerProvider.notifier)
-            .clearFor(widget.entry.assignmentId);
-      }
-      if (seq != _loadSeq) return;
-      setState(() {
-        _loading = false;
-        _error = error.message;
-      });
+      _showLoadError(error, seq);
     }
+  }
+
+  Future<void> _loadRouteEntry(ApiClient api, int seq) async {
+    if (widget.entry != null) return;
+    final List<CoachRosterEntry> roster = await api.coachAssignments();
+    if (!mounted || seq != _loadSeq) return;
+    for (final CoachRosterEntry row in roster) {
+      if (row.assignmentId == widget.assignmentId) {
+        _entry = row;
+        break;
+      }
+    }
+    if (mounted && seq == _loadSeq) {
+      setState(() => _nextFollowUpOn = _entry.nextFollowUpOn);
+    }
+  }
+
+  Future<List<Object>> _loadPlayerData(ApiClient api) =>
+      Future.wait<Object>(<Future<Object>>[
+        api.coachAlerts(states: <String>['new', 'acknowledged']),
+        api.coachPlayerSummary(_entry.assignmentId),
+        api.coachPlayerPersonalRecords(_entry.assignmentId),
+        api.coachPlayerExercises(_entry.assignmentId),
+        api.coachProgramRequests(_entry.assignmentId),
+        api.coachCheckIns(_entry.assignmentId),
+      ]);
+
+  void _applyPlayerData(List<Object> playerData) {
+    setState(() {
+      _alerts = _openAlerts(playerData[0] as List<CoachAlert>);
+      _summary = playerData[1] as CoachPlayerSummary;
+      _records = playerData[2] as List<PersonalRecord>;
+      _exercises = playerData[3] as List<CoachPlayerExercise>;
+      _programRequests =
+          sortCoachRequests(playerData[4] as List<ProgramRequest>);
+      _checkIns = sortCheckInsNewestFirst(playerData[5] as List<CheckIn>);
+      _loading = false;
+      _requestError = null;
+    });
+  }
+
+  void _showLoadError(ApiException error, int seq) {
+    if (!mounted || seq != _loadSeq) return;
+    if (error.statusCode == 403) {
+      ref
+          .read(coachAssistantControllerProvider.notifier)
+          .clearFor(_entry.assignmentId);
+    }
+    setState(() {
+      _loading = false;
+      _error = error.statusCode == 403
+          ? 'No active assignment.'
+          : error.message;
+    });
   }
 
   /// Refetches only the open alerts: saving a check-in can resolve a
@@ -163,7 +233,7 @@ class _CoachPlayerHistoryScreenState
     try {
       final List<ProgramRequest> requests = sortCoachRequests(await ref
           .read(apiClientProvider)
-          .coachProgramRequests(widget.entry.assignmentId));
+          .coachProgramRequests(_entry.assignmentId));
       if (!mounted || seq != _requestsSeq) return;
       setState(() {
         _programRequests = requests;
@@ -192,7 +262,7 @@ class _CoachPlayerHistoryScreenState
     try {
       final CoachExerciseHistory history = await ref
           .read(apiClientProvider)
-          .coachPlayerExerciseHistory(widget.entry.assignmentId, exercise.id);
+          .coachPlayerExerciseHistory(_entry.assignmentId, exercise.id);
       if (!mounted) return;
       setState(() {
         _histories[exercise.id] = history;
@@ -288,7 +358,7 @@ class _CoachPlayerHistoryScreenState
     try {
       final TrainingProgram program =
           await ref.read(apiClientProvider).coachPublishProgram(
-                widget.entry.assignmentId,
+                _entry.assignmentId,
                 splitOverride: request.split.isEmpty ? null : request.split,
                 repPreference: request.repPreference,
                 frequency: request.frequency,
@@ -316,7 +386,7 @@ class _CoachPlayerHistoryScreenState
     final CoachRequestResolution result = await showCoachRequestResolveSheet(
       context,
       request: request,
-      playerUsername: widget.entry.playerUsername,
+      playerUsername: _entry.playerUsername,
     );
     if (!mounted) return;
     await applyCoachRequestAction(
@@ -337,8 +407,8 @@ class _CoachPlayerHistoryScreenState
   Future<void> _openCheckInSheet() async {
     await showLogCheckInSheet(
       context,
-      assignmentId: widget.entry.assignmentId,
-      playerUsername: widget.entry.playerUsername,
+      assignmentId: _entry.assignmentId,
+      playerUsername: _entry.playerUsername,
       onSaved: _onCheckInSaved,
     );
   }
@@ -467,7 +537,7 @@ class _CoachPlayerHistoryScreenState
           for (final ProgramRequest request in _programRequests)
             CoachRequestCard(
               request: request,
-              playerUsername: widget.entry.playerUsername,
+              playerUsername: _entry.playerUsername,
               onTap: () => _resolveRequest(request),
             ),
       ],
@@ -678,60 +748,84 @@ class _CoachPlayerHistoryScreenState
 
   @override
   Widget build(BuildContext context) {
-    final CoachRosterEntry entry = widget.entry;
+    final CoachRosterEntry entry = _entry;
     final bool assistantEnabled =
         ref.watch(authControllerProvider).session?.account.coachAiEnabled ??
             false;
-    return Scaffold(
-      appBar: AppBar(
-        key: const Key('coach_player_history_app_bar'),
-        title: Text(entry.playerUsername),
-        actions: <Widget>[
-          // The header action of the player page (#120): it opens the
-          // channel + note sheet dated today.
-          TextButton(
-            key: const Key('log_check_in_action'),
-            onPressed: _loading ? null : _openCheckInSheet,
-            child: const Text('Log check-in'),
-          ),
-          // Three text actions do not fit a 360dp app bar, so the two
-          // player-scoped actions live behind the overflow (#G).
-          PopupMenuButton<_PlayerAction>(
-            key: const Key('player_page_actions'),
-            icon: const Icon(Icons.more_vert),
-            onSelected: (_PlayerAction action) {
-              switch (action) {
-                case _PlayerAction.publishProgram:
-                  if (!_publishing) {
-                    _openPublishDialog();
-                  }
-                case _PlayerAction.askAssistant:
-                  _openAssistant();
-              }
-            },
-            itemBuilder: (BuildContext context) =>
-                <PopupMenuEntry<_PlayerAction>>[
-              PopupMenuItem<_PlayerAction>(
-                key: const Key('publish_program_action'),
-                value: _PlayerAction.publishProgram,
-                enabled: !_publishing,
-                child: const Text('Publish program'),
-              ),
-              if (assistantEnabled)
-                const PopupMenuItem<_PlayerAction>(
-                  key: Key('coach_assistant_entry'),
-                  value: _PlayerAction.askAssistant,
-                  child: Text('Ask assistant'),
+    final bool phoneAssignmentRoute =
+        widget.assignmentId != null &&
+        MediaQuery.sizeOf(context).width <
+            MayosLayout.desktopNavigationBreakpoint;
+    return PopScope<void>(
+      onPopInvokedWithResult: (bool didPop, _) {
+        if (didPop) {
+          ref.read(coachRosterRevisionProvider.notifier).state++;
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          key: const Key('coach_player_history_app_bar'),
+          automaticallyImplyLeading: false,
+          leading: phoneAssignmentRoute
+              ? BackButton(
+                  onPressed: () {
+                    if (GoRouter.of(context).canPop()) {
+                      context.pop();
+                    } else {
+                      ref.read(coachRosterRevisionProvider.notifier).state++;
+                      context.go(coachRosterPath);
+                    }
+                  },
+                )
+              : null,
+          title: Text(entry.playerUsername),
+          actions: <Widget>[
+            // The header action of the player page (#120): it opens the
+            // channel + note sheet dated today.
+            TextButton(
+              key: const Key('log_check_in_action'),
+              onPressed: _loading ? null : _openCheckInSheet,
+              child: const Text('Log check-in'),
+            ),
+            // Three text actions do not fit a 360dp app bar, so the two
+            // player-scoped actions live behind the overflow (#G).
+            PopupMenuButton<_PlayerAction>(
+              key: const Key('player_page_actions'),
+              icon: const Icon(Icons.more_vert),
+              onSelected: (_PlayerAction action) {
+                switch (action) {
+                  case _PlayerAction.publishProgram:
+                    if (!_publishing) {
+                      _openPublishDialog();
+                    }
+                  case _PlayerAction.askAssistant:
+                    _openAssistant();
+                }
+              },
+              itemBuilder: (BuildContext context) =>
+                  <PopupMenuEntry<_PlayerAction>>[
+                PopupMenuItem<_PlayerAction>(
+                  key: const Key('publish_program_action'),
+                  value: _PlayerAction.publishProgram,
+                  enabled: !_publishing,
+                  child: const Text('Publish program'),
                 ),
-            ],
-          ),
-        ],
-      ),
-      body: Column(
-        children: <Widget>[
-          const OfflineBannerSlot(),
-          Expanded(child: _buildBody(context)),
-        ],
+                if (assistantEnabled)
+                  const PopupMenuItem<_PlayerAction>(
+                    key: Key('coach_assistant_entry'),
+                    value: _PlayerAction.askAssistant,
+                    child: Text('Ask assistant'),
+                  ),
+              ],
+            ),
+          ],
+        ),
+        body: Column(
+          children: <Widget>[
+            const OfflineBannerSlot(),
+            Expanded(child: _buildBody(context)),
+          ],
+        ),
       ),
     );
   }
@@ -742,7 +836,7 @@ class _CoachPlayerHistoryScreenState
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (BuildContext context) =>
-            CoachAssistantScreen(entry: widget.entry),
+            CoachAssistantScreen(entry: _entry),
       ),
     );
   }

@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../core/theme/mayos_spacing.dart';
 import '../../core/ui/mayos_app_header.dart';
 import '../../core/ui/mayos_bottom_navigation.dart';
 import '../../core/ui/mayos_scaffold.dart';
 import '../../providers.dart';
+import '../../router.dart';
 import '../shared/mode_switch.dart';
 import 'coach_alerts_screen.dart';
 import 'coach_assignments_screen.dart';
-import 'coach_profile_screen.dart';
 import 'coach_requests_screen.dart';
 
-/// The coach shell's bottom-tab indices (#119/#121). Named so a new tab never
+/// The coach shell's navigation indices (#119/#121). Named so a new tab never
 /// silently shifts an existing destination or a test's index.
 abstract final class CoachShellTab {
   static const int roster = 0;
@@ -20,21 +22,14 @@ abstract final class CoachShellTab {
   static const int profile = 3;
 }
 
-/// The Coach mode shell (#119/#121): bottom tabs **Roster · Alerts · Requests ·
-/// Profile**.
-///
-/// It opens on Roster; the Alerts tab carries a count badge of new alerts and
-/// the Requests tab a count badge of pending program requests. The three data
-/// tabs host today's coach screens; tapping a roster row still opens the
-/// player history drill-down.
-class CoachShell extends ConsumerStatefulWidget {
-  const CoachShell({super.key});
+/// The Coach mode shell (#119/#121). The browser location selects the active
+/// tab, and the assignment route keeps the roster open beside its player page
+/// on desktop.
+class CoachShell extends ConsumerWidget {
+  const CoachShell({super.key, required this.child});
 
-  @override
-  ConsumerState<CoachShell> createState() => _CoachShellState();
-}
+  final Widget child;
 
-class _CoachShellState extends ConsumerState<CoachShell> {
   static const List<MayosNavItem> _items = <MayosNavItem>[
     MayosNavItem(
       label: 'Roster',
@@ -59,24 +54,45 @@ class _CoachShellState extends ConsumerState<CoachShell> {
   ];
 
   @override
-  Widget build(BuildContext context) {
-    final int index = ref.watch(coachShellTabProvider);
+  Widget build(BuildContext context, WidgetRef ref) {
     final int newAlerts = ref.watch(coachNewAlertsCountProvider);
-    final int pendingRequests =
-        ref.watch(coachPendingRequestsCountProvider);
-    return MayosScaffold(
+    final int pendingRequests = ref.watch(coachPendingRequestsCountProvider);
+    final String path = GoRouterState.of(context).uri.path;
+    final int index = _tabForPath(path);
+    final bool assignmentSelected =
+        path.startsWith('$coachRosterPath/') &&
+        path.substring(coachRosterPath.length + 1).isNotEmpty;
+    final String assignmentId = assignmentSelected
+        ? Uri.decodeComponent(path.substring(coachRosterPath.length + 1))
+        : '';
+    final bool desktop = MediaQuery.sizeOf(context).width >=
+        MayosLayout.desktopNavigationBreakpoint;
+
+    final Widget paneBody = assignmentSelected && desktop
+        ? Row(
+            children: <Widget>[
+              SizedBox(
+                key: const Key('coach_roster_master_pane'),
+                width: MayosLayout.coachMasterPaneWidth,
+                child: CoachAssignmentsScreen(
+                  selectedAssignmentId: assignmentId,
+                ),
+              ),
+              const VerticalDivider(width: 1),
+              Expanded(
+                key: const Key('coach_player_detail_pane'),
+                child: child,
+              ),
+            ],
+          )
+        : child;
+    final Widget body = _keepBadgeTabsMounted(paneBody, path);
+
+    final Widget shell = MayosScaffold(
       header: const MayosAppHeader(
         actions: <Widget>[ModeAvatarButton()],
       ),
-      body: IndexedStack(
-        index: index,
-        children: const <Widget>[
-          CoachAssignmentsScreen(),
-          CoachAlertsScreen(),
-          CoachRequestsScreen(),
-          CoachProfileScreen(),
-        ],
-      ),
+      body: body,
       bottomBar: MayosBottomNavigation(
         items: <MayosNavItem>[
           for (int i = 0; i < _items.length; i++)
@@ -92,9 +108,42 @@ class _CoachShellState extends ConsumerState<CoachShell> {
             ),
         ],
         index: index,
-        onSelected: (int selected) =>
-            ref.read(coachShellTabProvider.notifier).state = selected,
+        onSelected: (int selected) {
+          context.go(switch (selected) {
+            CoachShellTab.alerts => coachAlertsPath,
+            CoachShellTab.requests => coachRequestsPath,
+            CoachShellTab.profile => coachProfilePath,
+            _ => coachRosterPath,
+          });
+        },
       ),
     );
+    // Below the desktop breakpoint the URL route replaces the shell, matching
+    // the existing phone drill-down page and keeping its controls unobscured.
+    if (assignmentSelected && !desktop) {
+      return child;
+    }
+    return shell;
+  }
+
+  Widget _keepBadgeTabsMounted(Widget body, String path) => Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          body,
+          if (path != coachAlertsPath)
+            const Offstage(child: CoachAlertsScreen()),
+          if (path != coachRequestsPath &&
+              !path.startsWith('$coachRequestsPath/'))
+            const Offstage(child: CoachRequestsScreen()),
+        ],
+      );
+
+  static int _tabForPath(String path) {
+    if (path == coachAlertsPath) return CoachShellTab.alerts;
+    if (path == coachRequestsPath || path.startsWith('$coachRequestsPath/')) {
+      return CoachShellTab.requests;
+    }
+    if (path == coachProfilePath) return CoachShellTab.profile;
+    return CoachShellTab.roster;
   }
 }

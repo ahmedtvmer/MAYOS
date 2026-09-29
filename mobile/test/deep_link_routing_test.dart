@@ -237,4 +237,23 @@ void main() {
       playerSetupPath,
     );
   });
+
+  test('a cold coach-tab deep link survives sign-in and capability checks', () {
+    const String target = '$coachRequestsPath/request-1?filter=pending';
+    final String held = _hold(target)!;
+    expect(_carried(held), target);
+
+    final AuthState coach = _authenticated(coach: true, onboarded: true);
+    expect(
+      redirectFor(coach, splashPath, _mode(AppMode.coach),
+          from: _carried(held)),
+      target,
+    );
+    expect(
+      redirectFor(_authenticated(coach: false, onboarded: true), splashPath,
+          _mode(AppMode.player),
+          from: _carried(held)),
+      homePath,
+    );
+  });
 }

@@ -5,6 +5,7 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/features/coach/coach_player_history_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
@@ -81,6 +82,11 @@ String _today() => _iso(DateTime.now());
 
 String _daysFromToday(int days) =>
     _iso(DateTime.now().add(Duration(days: days)));
+
+Finder _rosterChip(String label) => find.descendant(
+      of: find.byKey(const Key('coach_roster_list_screen')),
+      matching: find.text(label),
+    );
 
 FakeMayosApi _coachFake() {
   final FakeMayosApi fake = FakeMayosApi();
@@ -203,7 +209,7 @@ void main() {
     // Bob: missed streak, overdue follow-up, new alerts, pending requests.
     expect(find.text('Missed 3d'), findsOneWidget);
     expect(find.text('Follow-up overdue'), findsOneWidget);
-    expect(find.text('1 alert'), findsOneWidget);
+    expect(_rosterChip('1 alert'), findsOneWidget);
     expect(find.text('2 requests'), findsOneWidget);
     expect(find.text('Last workout 2026-09-20 · Upper/Lower'),
         findsOneWidget);
@@ -319,7 +325,7 @@ void main() {
     await tester.tap(find.byType(BackButton));
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await _pumpUntilFound(tester, find.text('1 alert'));
-    expect(find.text('1 alert'), findsOneWidget);
+    expect(_rosterChip('1 alert'), findsOneWidget);
     expect(find.text('2 alerts'), findsNothing);
     expect(
       find.descendant(of: find.byType(Badge), matching: find.text('1')),
@@ -434,7 +440,7 @@ void main() {
     await tester.tap(find.byType(BackButton));
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await _pumpUntilFound(tester, find.text('1 alert'));
-    expect(find.text('1 alert'), findsOneWidget);
+    expect(_rosterChip('1 alert'), findsOneWidget);
     expect(find.text('2 alerts'), findsNothing);
     expect(
       find.descendant(of: find.byType(Badge), matching: find.text('1')),
@@ -463,13 +469,17 @@ void main() {
     expect(find.text('Personal records'), findsOneWidget);
     // The Exercises section sits below the first viewport (#120).
     final Finder exercises = find.text('Exercises');
+    final Finder pageScrollables = find.descendant(
+      of: find.byType(CoachPlayerHistoryScreen),
+      matching: find.byType(Scrollable),
+    );
     await tester.scrollUntilVisible(exercises, 300,
-        scrollable: find.byType(Scrollable).first);
+        scrollable: pageScrollables.first);
     expect(exercises, findsOneWidget);
     expect(find.text('2026-09-20 · Message'), findsNothing);
 
     // Back to the top so the segment control and its list are on screen.
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, 4000));
+    await tester.drag(pageScrollables.first, const Offset(0, 4000));
     await tester.pump();
     final Finder checkInsSegment = find.text('Check-ins');
     await tester.ensureVisible(checkInsSegment);

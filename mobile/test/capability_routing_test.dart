@@ -140,8 +140,9 @@ void main() {
     final AuthState released =
         _authenticated(coach: true, onboarded: false, hasRecoveryEmail: true);
     expect(redirectFor(released, recoveryEmailPath, _mode(AppMode.coach)),
-        coachPath);
-    expect(redirectFor(released, splashPath, _mode(AppMode.coach)), coachPath);
+        coachRosterPath);
+    expect(redirectFor(released, splashPath, _mode(AppMode.coach)),
+        coachRosterPath);
   });
 
   test('onboarding gates the authenticated area for players', () {
@@ -166,9 +167,11 @@ void main() {
     final AuthState coach = _authenticated(coach: true, onboarded: false);
     // No forced trip to /onboarding: splash, recovery release and the player
     // shell all lead to the coach shell.
-    expect(redirectFor(coach, splashPath, _mode(AppMode.coach)), coachPath);
-    expect(redirectFor(coach, homePath, _mode(AppMode.coach)), coachPath);
-    expect(redirectFor(coach, onboardingPath, _mode(AppMode.coach)), coachPath);
+    expect(redirectFor(coach, splashPath, _mode(AppMode.coach)),
+        coachRosterPath);
+    expect(redirectFor(coach, homePath, _mode(AppMode.coach)), coachRosterPath);
+    expect(redirectFor(coach, onboardingPath, _mode(AppMode.coach)),
+        coachRosterPath);
     // The coach shell itself is the landing.
     expect(redirectFor(coach, coachPath, _mode(AppMode.coach)), isNull);
     // Awaiting the intake in Player mode is allowed too (the setup screen).
@@ -209,6 +212,24 @@ void main() {
           _mode(AppMode.player)),
       homePath,
     );
+  });
+
+  test('all coach tab and detail URLs share the capability and mode gate', () {
+    const List<String> coachLocations = <String>[
+      coachRosterPath,
+      '$coachRosterPath/assignment-1',
+      coachAlertsPath,
+      coachRequestsPath,
+      '$coachRequestsPath/request-1',
+      coachProfilePath,
+    ];
+    final AuthState player = _authenticated(coach: false, onboarded: true);
+    final AuthState coach = _authenticated(coach: true, onboarded: true);
+    for (final String location in coachLocations) {
+      expect(redirectFor(player, location, _mode(AppMode.player)), homePath);
+      expect(redirectFor(coach, location, _mode(AppMode.player)), homePath);
+      expect(redirectFor(coach, location, _mode(AppMode.coach)), isNull);
+    }
   });
 
   test('coach invite route is open to authenticated players', () {
@@ -277,7 +298,8 @@ void main() {
     expect(redirectFor(gated, homePath, _mode(AppMode.coach, ready: false)),
         recoveryEmailPath);
     // Once resolved for this account, the usual decision applies.
-    expect(redirectFor(coach, splashPath, _mode(AppMode.coach)), coachPath);
-    expect(redirectFor(coach, homePath, _mode(AppMode.coach)), coachPath);
+    expect(redirectFor(coach, splashPath, _mode(AppMode.coach)),
+        coachRosterPath);
+    expect(redirectFor(coach, homePath, _mode(AppMode.coach)), coachRosterPath);
   });
 }

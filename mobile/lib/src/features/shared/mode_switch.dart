@@ -103,7 +103,7 @@ void switchToMode(BuildContext context, WidgetRef ref, AppMode mode) {
       );
   context.go(
     mode == AppMode.coach
-        ? coachPath
+        ? coachRosterPath
         : (session.onboarded ? homePath : playerSetupPath),
   );
 }
