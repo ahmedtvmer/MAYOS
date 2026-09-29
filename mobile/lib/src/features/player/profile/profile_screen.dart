@@ -341,9 +341,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       _methodNoticeIsError = false;
     });
     try {
-      final ConnectGoogleResult connectResult = await connect();
+      final ConnectGoogleResult result = await connect();
       if (!mounted) return;
-      switch (connectResult) {
+      switch (result) {
         case GoogleConnectDone():
           _setMethodNotice('Google account connected.', error: false);
           await _refreshSignInMethods();
@@ -627,11 +627,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   GoogleWebSignInButton(
                     key: const Key('delete_account_google_web_button'),
                     loading: busy,
-                    fixedWidth: (MediaQuery.sizeOf(dialogContext).width - 128)
-                        .clamp(0.0, 400.0),
+                    fixedWidth: (MediaQuery.sizeOf(dialogContext).width -
+                            2 * (MayosSpacing.xxxl + MayosSpacing.xl))
+                        .clamp(0.0, MayosLayout.googleButtonMaxWidth),
                     onOutcome: (GoogleAuthOutcome outcome) =>
-                        _handleGoogleDeleteOutcome(
-                      outcome: outcome,
+                        _handleGoogleDelete(
+                      delete: () => ref
+                          .read(authControllerProvider.notifier)
+                          .deleteAccountWithGoogleOutcome(outcome),
+                      isBusy: () => busy,
                       dialogContext: dialogContext,
                       updateDialog: (bool nextBusy, String? nextError) =>
                           setDialogState(() {
@@ -669,46 +673,39 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 onPressed: busy
                     ? null
                     : () async {
-                      setDialogState(() {
-                        busy = true;
-                        error = null;
-                      });
-                      try {
                         if (googleOnly) {
-                          // The controller owns the Google flow, so the screen
-                          // only renders the outcome (#116).
-                          final DeleteWithGoogleResult deletionResult = await ref
-                              .read(authControllerProvider.notifier)
-                              .deleteAccountWithGoogle();
-                          if (deletionResult case DeleteWithGoogleRefused(
-                              :final message)) {
-                            setDialogState(() {
-                              busy = false;
-                              error = message;
-                            });
-                            return;
-                          }
-                          if (deletionResult is DeleteWithGoogleDismissed) {
-                            setDialogState(() {
-                              busy = false;
-                              error = kGoogleDeleteCancelledMessage;
-                            });
-                            return;
-                          }
-                        } else {
+                          await _handleGoogleDelete(
+                            delete: () => ref
+                                .read(authControllerProvider.notifier)
+                                .deleteAccountWithGoogle(),
+                            isBusy: () => busy,
+                            dialogContext: dialogContext,
+                            updateDialog: (bool nextBusy, String? nextError) {
+                              setDialogState(() {
+                                busy = nextBusy;
+                                error = nextError;
+                              });
+                            },
+                          );
+                          return;
+                        }
+                        setDialogState(() {
+                          busy = true;
+                          error = null;
+                        });
+                        try {
                           await ref
                               .read(authControllerProvider.notifier)
                               .deleteAccount(_deletePassword.text);
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                          }
+                        } on ApiException catch (failure) {
+                          setDialogState(() {
+                            busy = false;
+                            error = mutationFailureMessage(failure);
+                          });
                         }
-                        if (dialogContext.mounted) {
-                          Navigator.of(dialogContext).pop();
-                        }
-                      } on ApiException catch (failure) {
-                        setDialogState(() {
-                          busy = false;
-                          error = mutationFailureMessage(failure);
-                        });
-                      }
                     },
               ),
           ],
@@ -717,24 +714,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Future<DeleteWithGoogleResult> _deleteAccountWithGoogleOutcome(
-      GoogleAuthOutcome outcome) =>
-      ref.read(authControllerProvider.notifier)
-          .deleteAccountWithGoogleOutcome(outcome);
-
-  Future<void> _handleGoogleDeleteOutcome({
-    required GoogleAuthOutcome outcome,
+  Future<void> _handleGoogleDelete({
+    required Future<DeleteWithGoogleResult> Function() delete,
+    required bool Function() isBusy,
     required BuildContext dialogContext,
     required void Function(bool busy, String? error) updateDialog,
   }) async {
+    if (isBusy()) return;
     updateDialog(true, null);
-    final DeleteWithGoogleResult deletionResult =
-        await _deleteAccountWithGoogleOutcome(outcome);
-    if (deletionResult case DeleteWithGoogleRefused(:final message)) {
+    final DeleteWithGoogleResult result = await delete();
+    if (result case DeleteWithGoogleRefused(:final message)) {
       updateDialog(false, message);
       return;
     }
-    if (deletionResult is DeleteWithGoogleDismissed) {
+    if (result is DeleteWithGoogleDismissed) {
       updateDialog(false, kGoogleDeleteCancelledMessage);
       return;
     }

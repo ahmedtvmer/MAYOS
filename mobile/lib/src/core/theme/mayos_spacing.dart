@@ -28,6 +28,9 @@ abstract final class MayosLayout {
   /// Maximum desktop width for Player mode page content.
   static const double playerColumnMaxWidth = 480;
 
+  /// Maximum width Google Identity Services allows for its rendered button.
+  static const double googleButtonMaxWidth = 400;
+
   /// Width reserved for the desktop side navigation rail.
   static const double navigationRailWidth = 88;
 }

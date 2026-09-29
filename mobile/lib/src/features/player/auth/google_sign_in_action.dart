@@ -46,11 +46,11 @@ mixin GoogleSignInAction<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       _googleError = null;
     });
     try {
-      final ContinueWithGoogleResult flowResult = await start();
+      final ContinueWithGoogleResult result = await start();
       if (!mounted) {
         return;
       }
-      switch (flowResult) {
+      switch (result) {
         case GoogleSignUpPrompt():
           context.go(carryingLocation(context, googleSignupPath));
         case GoogleSignInRefused(:final message):
@@ -65,5 +65,4 @@ mixin GoogleSignInAction<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       }
     }
   }
-
 }

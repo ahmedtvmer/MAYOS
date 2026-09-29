@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,6 +19,7 @@ import 'package:mayos_mobile/src/features/player/auth/google_auth_gateway.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
+import 'support/fake_api_adapter.dart';
 import 'support/fake_google_auth.dart';
 import 'support/fake_mayos_api.dart';
 
@@ -277,6 +280,40 @@ void main() {
       expect(google.authenticateCalls, 0);
     });
 
+    testWidgets('a second web token is ignored while connect is busy',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi();
+      final Completer<void> gate = Completer<void>();
+      fake.adapter.beforeRespond = (FakeRequest request) async {
+        if (request.path == '/auth/google/link') {
+          await gate.future;
+        }
+      };
+      final InMemoryTokenStore tokens = InMemoryTokenStore();
+      await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
+      final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
+          buttonStyle: GoogleSignInButtonStyle.webRendered);
+      await _pumpProfile(tester, fake, tokens, google: google);
+
+      await _reveal(tester, find.byKey(const Key('connect_google_web_button')));
+      google.emitAuthenticationOutcome(const GoogleAuthIdToken('first-token'));
+      google.emitAuthenticationOutcome(const GoogleAuthIdToken('second-token'));
+      for (int i = 0; i < 20 &&
+          !fake.adapter.requests.any(
+              (FakeRequest r) => r.path == '/auth/google/link'); i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      expect(
+        fake.adapter.requests
+            .where((FakeRequest r) => r.path == '/auth/google/link'),
+        hasLength(1),
+      );
+
+      gate.complete();
+      await _pumpUntilFound(tester, find.text('Google account connected.'));
+      expect(fake.linkGoogleRequests, 1);
+    });
+
     testWidgets('a subject connected to another account is shown clearly',
         (WidgetTester tester) async {
       final FakeMayosApi fake = FakeMayosApi()
@@ -431,6 +468,12 @@ void main() {
     testWidgets('a web rendered button confirms Google-only deletion',
         (WidgetTester tester) async {
       final FakeMayosApi fake = FakeMayosApi();
+      final Completer<void> gate = Completer<void>();
+      fake.adapter.beforeRespond = (FakeRequest request) async {
+        if (request.path == '/auth/account') {
+          await gate.future;
+        }
+      };
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: false, googleLinked: true);
       final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
@@ -449,6 +492,20 @@ void main() {
 
       google.emitAuthenticationOutcome(
           const GoogleAuthIdToken('web-delete-token'));
+      google.emitAuthenticationOutcome(
+          const GoogleAuthIdToken('second-delete-token'));
+      for (int i = 0; i < 20 &&
+          !fake.adapter.requests.any(
+              (FakeRequest r) => r.path == '/auth/account'); i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      expect(
+        fake.adapter.requests
+            .where((FakeRequest r) => r.path == '/auth/account'),
+        hasLength(1),
+      );
+
+      gate.complete();
       await _pumpUntilFound(tester, find.text('Log in'));
 
       expect(fake.deleteAccountRequests, 1);

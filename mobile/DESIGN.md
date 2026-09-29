@@ -91,7 +91,10 @@ All under `lib/src/core/theme/`.
   The in-app code exception is third-party branding: Google's four "G" hues
   and its button light/dark theme colours live in the single commented
   `GoogleBrand` block in `features/player/auth/google_sign_in_button.dart`
-  (#115), because a partner mark must render exactly as published.
+  (#115), because a partner mark must render exactly as published. On web,
+  `GoogleWebSignInButton` hosts Google's `renderButton()`: outline in the light
+  theme and filled black in the dark theme, centred and capped at
+  `MayosLayout.googleButtonMaxWidth`.
   The pre-Flutter documents in `web/` are an intentional exception: `index.html`
   and `manifest.json` need `MayosPalette.darkCanvas` as a literal for the first
   browser frame, `theme-color`, and standalone launch metadata.
@@ -113,7 +116,8 @@ All under `lib/src/core/theme/`.
   `MayosIconSizes` (small 14 / medium 20 — named icon sizes, never raw pixel
   literals; navigation 24 for shell tabs and the rail), `kMayosMinTapTarget`
   (48), and `MayosLayout` (#133: `desktopNavigationBreakpoint` 1024,
-  `playerColumnMaxWidth` 480, `navigationRailWidth` 88).
+  `playerColumnMaxWidth` 480, `navigationRailWidth` 88,
+  `googleButtonMaxWidth` 400 for Google's rendered web button).
 - `mayos_theme.dart` — `MayosTheme.light` / `MayosTheme.dark` / `MayosTheme.of`,
   built from the tokens with component themes overridden for app bars, buttons,
   inputs, cards, navigation, dialogs, sheets, snackbars, chips, list tiles,
@@ -164,7 +168,10 @@ bar), `AuthHeading`, `AuthInlineNotice`, `AuthActionBar`, and
 toggle). Login, registration, the recovery-email gate, forgot-password and
 reset-password all use it and keep the onboarding look. The hero maps
 dark→white lockup and light→black lockup automatically, and shrinks on small
-phones or when the keyboard reduces the viewport.
+phones or when the keyboard reduces the viewport. `GoogleSignInSection` sits
+above the email/password form; on web its `GoogleWebSignInButton` hosts Google's
+`renderButton()` with the light outline or dark filled-black theme, capped at
+`MayosLayout.googleButtonMaxWidth`.
 
 ## Wallpaper (#110)
 

@@ -560,13 +560,14 @@ void main() {
       'opening the keyboard keeps the focused field alive with Google present',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _loginFake();
+    final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
+        buttonStyle: GoogleSignInButtonStyle.webRendered);
     await _pumpAuth(
       tester,
       fake,
       size: const Size(360, 640),
       extraOverrides: <Override>[
-        googleAuthGatewayProvider.overrideWithValue(FakeGoogleAuthGateway(
-            buttonStyle: GoogleSignInButtonStyle.webRendered)),
+        googleAuthGatewayProvider.overrideWithValue(google),
       ],
     );
     final Finder editable = find.descendant(
@@ -576,6 +577,7 @@ void main() {
     await tester.tap(find.byKey(const Key('login_username')));
     await tester.pump();
     final State<EditableText> before = tester.state(editable);
+    final int buttonBuildsBeforeKeyboard = google.webButtonBuildCalls;
     tester.view.viewInsets = const FakeViewPadding(bottom: 300);
     addTearDown(tester.view.resetViewInsets);
     await tester.pump(const Duration(milliseconds: 200));
@@ -586,6 +588,7 @@ void main() {
     expect(tester.state<State<EditableText>>(editable), same(before));
     expect(tester.widget<EditableText>(editable).focusNode.hasFocus, isTrue);
     expect(find.byKey(const Key('fake_google_web_button')), findsOneWidget);
+    expect(google.webButtonBuildCalls, buttonBuildsBeforeKeyboard);
   });
 
   testWidgets('on a desktop window the sign-in form keeps a phone-width column',
@@ -600,7 +603,8 @@ void main() {
     expect(field.right, lessThanOrEqualTo(640 + half));
   });
 
-  testWidgets('web Google button is centred and capped at 400px on desktop',
+  testWidgets(
+      'web Google button is centred and capped at the configured maximum',
       (WidgetTester tester) async {
     final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
         buttonStyle: GoogleSignInButtonStyle.webRendered);
@@ -615,8 +619,8 @@ void main() {
 
     final Rect button = tester.getRect(find.byKey(const Key('fake_google_web_button')));
     final Rect slot = tester.getRect(find.byType(GoogleWebSignInButton));
-    expect(google.renderedButtonWidth, 400);
-    expect(button.width, 400);
+    expect(google.renderedButtonWidth, MayosLayout.googleButtonMaxWidth);
+    expect(button.width, MayosLayout.googleButtonMaxWidth);
     expect(button.center.dx, closeTo(slot.center.dx, 0.5));
   });
 

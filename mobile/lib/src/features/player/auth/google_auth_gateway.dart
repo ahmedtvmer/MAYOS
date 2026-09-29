@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -72,11 +74,17 @@ abstract class GoogleAuthGateway {
 /// One v7 initialization, the platform's supported sign-in surface, and no
 /// scopes: MAYOS only ever needs to know who the person is (#113).
 class GoogleSdkAuthGateway implements GoogleAuthGateway {
+  GoogleSdkAuthGateway({
+    Stream<GoogleSignInAuthenticationEvent>? authenticationEventSource,
+  }) : _authenticationEventSource = authenticationEventSource;
+
   /// The single build-time configuration, supplied as
   /// `--dart-define=GOOGLE_WEB_CLIENT_ID=...`. Never hard-coded: without it
   /// Google sign-in stays switched off and the button stays hidden.
   static const String webClientId =
       String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+
+  final Stream<GoogleSignInAuthenticationEvent>? _authenticationEventSource;
 
   Future<void>? _ready;
 
@@ -84,25 +92,18 @@ class GoogleSdkAuthGateway implements GoogleAuthGateway {
 
   @override
   Stream<GoogleAuthOutcome> get authenticationEvents async* {
+    final Stream<GoogleSignInAuthenticationEvent>? injectedSource =
+        _authenticationEventSource;
+    if (injectedSource != null) {
+      yield* _mapAuthenticationEvents(injectedSource);
+      return;
+    }
     if (!_configured || !kIsWeb) {
       return;
     }
     await _initialize();
-    try {
-      await for (final GoogleSignInAuthenticationEvent event
-          in GoogleSignIn.instance.authenticationEvents) {
-        if (event is! GoogleSignInAuthenticationEventSignIn) {
-          continue;
-        }
-        final String? token = event.user.authentication.idToken;
-        yield token == null || token.isEmpty
-            ? const GoogleAuthFailed(
-                'Google did not return a sign-in token. Please try again.')
-            : GoogleAuthIdToken(token);
-      }
-    } on GoogleSignInException catch (error) {
-      yield GoogleAuthFailed(_messageFor(error.code));
-    }
+    yield* _mapAuthenticationEvents(
+        GoogleSignIn.instance.authenticationEvents);
   }
 
   @override
@@ -186,4 +187,42 @@ class GoogleSdkAuthGateway implements GoogleAuthGateway {
           'Google sign-in is unavailable on this device.',
         _ => 'Google sign-in failed. Please try again.',
       };
+
+  static Stream<GoogleAuthOutcome> _mapAuthenticationEvents(
+      Stream<GoogleSignInAuthenticationEvent> events) =>
+      events.transform<GoogleAuthOutcome>(
+        StreamTransformer<GoogleSignInAuthenticationEvent,
+            GoogleAuthOutcome>.fromHandlers(
+          handleData: (GoogleSignInAuthenticationEvent event,
+              EventSink<GoogleAuthOutcome> sink) {
+            final GoogleAuthOutcome? outcome = _outcomeForEvent(event);
+            if (outcome != null) sink.add(outcome);
+          },
+          handleError: _mapAuthenticationError,
+        ),
+      );
+
+  static GoogleAuthOutcome? _outcomeForEvent(
+      GoogleSignInAuthenticationEvent event) {
+    if (event is! GoogleSignInAuthenticationEventSignIn) return null;
+    final String? token = event.user.authentication.idToken;
+    return token == null || token.isEmpty
+        ? const GoogleAuthFailed(
+            'Google did not return a sign-in token. Please try again.')
+        : GoogleAuthIdToken(token);
+  }
+
+  static void _mapAuthenticationError(
+      Object error, StackTrace stackTrace, EventSink<GoogleAuthOutcome> sink) {
+    if (error is GoogleSignInException) {
+      if (error.code == GoogleSignInExceptionCode.canceled ||
+          error.code == GoogleSignInExceptionCode.interrupted) {
+        sink.add(const GoogleAuthCanceled());
+      } else {
+        sink.add(GoogleAuthFailed(_messageFor(error.code)));
+      }
+      return;
+    }
+    sink.addError(error, stackTrace);
+  }
 }

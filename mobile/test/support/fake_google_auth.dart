@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
 import 'package:mayos_mobile/src/features/player/auth/google_auth_gateway.dart';
 
 /// A scripted stand-in for the Google SDK, so the sign-in flows run without a
@@ -23,6 +24,7 @@ class FakeGoogleAuthGateway implements GoogleAuthGateway {
 
   int authenticateCalls = 0;
   int clearSdkStateCalls = 0;
+  int webButtonBuildCalls = 0;
   double? renderedButtonWidth;
   bool? renderedButtonDarkTheme;
 
@@ -36,11 +38,12 @@ class FakeGoogleAuthGateway implements GoogleAuthGateway {
 
   @override
   Widget buildWebButton({required bool darkTheme, required double width}) {
+    webButtonBuildCalls += 1;
     renderedButtonWidth = width;
     renderedButtonDarkTheme = darkTheme;
     return SizedBox(
         key: const Key('fake_google_web_button'),
-        height: 48,
+        height: kMayosMinTapTarget,
         width: width,
         child: const ColoredBox(color: Colors.transparent),
       );

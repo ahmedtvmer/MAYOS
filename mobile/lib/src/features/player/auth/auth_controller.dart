@@ -260,30 +260,28 @@ class AuthController extends StateNotifier<AuthState> {
   /// Applies a completed web-button event through the same sign-in flow.
   Future<ContinueWithGoogleResult> continueWithGoogleOutcome(
       GoogleAuthOutcome outcome) async {
-    if (outcome is GoogleAuthCanceled) {
-      return const GoogleSignInDismissed();
-    }
-    if (outcome is GoogleAuthFailed) {
-      return GoogleSignInRefused(outcome.message);
-    }
-    final String idToken = (outcome as GoogleAuthIdToken).idToken;
-    return _continueWithGoogleToken(idToken);
+    return _handleGoogleOutcome(
+      outcome,
+      onCanceled: () => const GoogleSignInDismissed(),
+      onFailed: (String message) => GoogleSignInRefused(message),
+      onIdToken: _continueWithGoogleToken,
+    );
   }
 
   Future<ContinueWithGoogleResult> _continueWithGoogleToken(
       String idToken) async {
     try {
-      final GoogleSignInFlowResult flowResult =
+      final GoogleSignInFlowResult result =
           await _repository.signInWithGoogle(idToken: idToken);
-      if (flowResult case GoogleAccountReady(:final session)) {
+      if (result case GoogleAccountReady(:final session)) {
         state = AuthState.authenticated(session);
         return const GoogleSignInDone();
       }
-      final GoogleUsernameRequired signupPrompt =
-          flowResult as GoogleUsernameRequired;
+      final GoogleUsernameRequired required =
+          result as GoogleUsernameRequired;
       _pendingSignup = PendingGoogleSignup(
-        signupTicket: signupPrompt.signupTicket,
-        suggestedUsername: signupPrompt.suggestedUsername,
+        signupTicket: required.signupTicket,
+        suggestedUsername: required.suggestedUsername,
       );
       return const GoogleSignUpPrompt();
     } on ApiException catch (error) {
@@ -375,14 +373,12 @@ class AuthController extends StateNotifier<AuthState> {
   /// Confirms deletion from Google's rendered web-button event.
   Future<DeleteWithGoogleResult> deleteAccountWithGoogleOutcome(
       GoogleAuthOutcome outcome) async {
-    if (outcome is GoogleAuthCanceled) {
-      return const DeleteWithGoogleDismissed();
-    }
-    if (outcome is GoogleAuthFailed) {
-      return DeleteWithGoogleRefused(outcome.message);
-    }
-    return _deleteAccountWithGoogleToken(
-        (outcome as GoogleAuthIdToken).idToken);
+    return _handleGoogleOutcome(
+      outcome,
+      onCanceled: () => const DeleteWithGoogleDismissed(),
+      onFailed: (String message) => DeleteWithGoogleRefused(message),
+      onIdToken: _deleteAccountWithGoogleToken,
+    );
   }
 
   Future<DeleteWithGoogleResult> _deleteAccountWithGoogleToken(
@@ -410,13 +406,27 @@ class AuthController extends StateNotifier<AuthState> {
   /// Connects the Google identity delivered by the rendered web button.
   Future<ConnectGoogleResult> connectGoogleOutcome(
       GoogleAuthOutcome outcome) async {
+    return _handleGoogleOutcome(
+      outcome,
+      onCanceled: () => const GoogleConnectDismissed(),
+      onFailed: (String message) => GoogleConnectRefused(message),
+      onIdToken: _connectGoogleToken,
+    );
+  }
+
+  Future<T> _handleGoogleOutcome<T>(
+    GoogleAuthOutcome outcome, {
+    required T Function() onCanceled,
+    required T Function(String message) onFailed,
+    required Future<T> Function(String idToken) onIdToken,
+  }) async {
     if (outcome is GoogleAuthCanceled) {
-      return const GoogleConnectDismissed();
+      return onCanceled();
     }
     if (outcome is GoogleAuthFailed) {
-      return GoogleConnectRefused(outcome.message);
+      return onFailed(outcome.message);
     }
-    return _connectGoogleToken((outcome as GoogleAuthIdToken).idToken);
+    return onIdToken((outcome as GoogleAuthIdToken).idToken);
   }
 
   Future<ConnectGoogleResult> _connectGoogleToken(String googleIdToken) async {

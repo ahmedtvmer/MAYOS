@@ -102,6 +102,10 @@ class GoogleWebSignInButton extends ConsumerStatefulWidget {
 
 class _GoogleWebSignInButtonState extends ConsumerState<GoogleWebSignInButton> {
   StreamSubscription<GoogleAuthOutcome>? _events;
+  GoogleAuthGateway? _cachedGateway;
+  bool? _cachedDarkTheme;
+  double? _cachedWidth;
+  Widget? _cachedWebButton;
 
   @override
   void initState() {
@@ -135,13 +139,13 @@ class _GoogleWebSignInButtonState extends ConsumerState<GoogleWebSignInButton> {
     final bool darkTheme = Theme.of(context).brightness == Brightness.dark;
     final double? fixedWidth = widget.fixedWidth;
     if (fixedWidth != null) {
-      return _button(gateway, darkTheme, fixedWidth.clamp(0.0, 400.0));
+      return _button(gateway, darkTheme, fixedWidth);
     }
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final double width = constraints.maxWidth.isFinite
-            ? constraints.maxWidth.clamp(0.0, 400.0)
-            : 400.0;
+            ? constraints.maxWidth
+            : MayosLayout.googleButtonMaxWidth;
         return _button(gateway, darkTheme, width);
       },
     );
@@ -150,9 +154,37 @@ class _GoogleWebSignInButtonState extends ConsumerState<GoogleWebSignInButton> {
   Widget _button(
     GoogleAuthGateway gateway,
     bool darkTheme,
-    double width,
-  ) =>
-      SizedBox(
+    double availableWidth,
+  ) {
+    final double? width = _widthBucket(availableWidth);
+    if (width == null) {
+      return const SizedBox(height: kMayosMinTapTarget);
+    }
+    _updateCachedButton(gateway, darkTheme, width);
+    return _buttonSlot(width, _cachedWebButton!);
+  }
+
+  double? _widthBucket(double availableWidth) {
+    final double width = availableWidth
+        .clamp(0.0, MayosLayout.googleButtonMaxWidth)
+        .floorToDouble();
+    return width < MayosSpacing.xxs ? null : width;
+  }
+
+  void _updateCachedButton(
+      GoogleAuthGateway gateway, bool darkTheme, double width) {
+    if (!identical(_cachedGateway, gateway) ||
+        _cachedDarkTheme != darkTheme ||
+        _cachedWidth != width) {
+      _cachedGateway = gateway;
+      _cachedDarkTheme = darkTheme;
+      _cachedWidth = width;
+      _cachedWebButton =
+          gateway.buildWebButton(darkTheme: darkTheme, width: width);
+    }
+  }
+
+  Widget _buttonSlot(double width, Widget webButton) => SizedBox(
         height: kMayosMinTapTarget,
         child: Center(
           child: SizedBox(
@@ -160,10 +192,7 @@ class _GoogleWebSignInButtonState extends ConsumerState<GoogleWebSignInButton> {
             height: kMayosMinTapTarget,
             child: AbsorbPointer(
               absorbing: widget.loading,
-              child: gateway.buildWebButton(
-                darkTheme: darkTheme,
-                width: width,
-              ),
+              child: webButton,
             ),
           ),
         ),

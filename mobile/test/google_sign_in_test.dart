@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
@@ -83,6 +84,34 @@ Future<void> _settleRoute(WidgetTester tester) async {
 }
 
 void main() {
+  test('SDK event errors do not close the web authentication stream', () async {
+    final StreamController<GoogleSignInAuthenticationEvent> source =
+        StreamController<GoogleSignInAuthenticationEvent>();
+    final GoogleSdkAuthGateway gateway = GoogleSdkAuthGateway(
+      authenticationEventSource: source.stream,
+    );
+    final List<GoogleAuthOutcome> outcomes = <GoogleAuthOutcome>[];
+    final StreamSubscription<GoogleAuthOutcome> subscription =
+        gateway.authenticationEvents.listen(outcomes.add);
+
+    source.addError(const GoogleSignInException(
+        code: GoogleSignInExceptionCode.uiUnavailable));
+    source.add(GoogleSignInAuthenticationEventSignIn(
+        user: _FakeGoogleAccount('sdk-event-token')));
+    source.addError(
+        const GoogleSignInException(code: GoogleSignInExceptionCode.canceled));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(outcomes, hasLength(3));
+    expect(outcomes[0], isA<GoogleAuthFailed>());
+    expect(outcomes[1], isA<GoogleAuthIdToken>());
+    expect((outcomes[1] as GoogleAuthIdToken).idToken, 'sdk-event-token');
+    expect(outcomes[2], isA<GoogleAuthCanceled>());
+
+    await subscription.cancel();
+    await source.close();
+  });
+
   testWidgets('the Google button is hidden without the dart-define',
       (WidgetTester tester) async {
     await _pumpAuth(tester, FakeMayosApi());
@@ -101,6 +130,30 @@ void main() {
     expect(find.byKey(const Key('fake_google_web_button')), findsOneWidget);
     expect(find.byType(AuthOrDivider), findsOneWidget);
     expect(google.authenticateCalls, 0);
+  });
+
+  testWidgets('a non-positive fixed web width skips Google configuration',
+      (WidgetTester tester) async {
+    final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
+        buttonStyle: GoogleSignInButtonStyle.webRendered);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: <Override>[
+          googleAuthGatewayProvider.overrideWithValue(google),
+        ],
+        child: MaterialApp(
+          home: SizedBox(
+            child: GoogleWebSignInButton(
+              fixedWidth: 0,
+              onOutcome: (_) async {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(google.webButtonBuildCalls, 0);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('a web ID token signs in and keeps the recovery-email gate',
@@ -132,6 +185,38 @@ void main() {
           .queryParameters['from'],
       planPath,
     );
+  });
+
+  testWidgets('a second web ID token is ignored while sign-in is busy',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..profileExists = true
+      ..recoveryEmail = 'alice@example.com';
+    final Completer<void> gate = Completer<void>();
+    fake.adapter.beforeRespond = (FakeRequest request) async {
+      if (request.path == '/auth/google') {
+        await gate.future;
+      }
+    };
+    final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
+        buttonStyle: GoogleSignInButtonStyle.webRendered);
+    await _pumpAuth(tester, fake, google: google);
+
+    google.emitAuthenticationOutcome(const GoogleAuthIdToken('first-token'));
+    google.emitAuthenticationOutcome(const GoogleAuthIdToken('second-token'));
+    for (int i = 0; i < 20 &&
+        !fake.adapter.requests
+            .any((FakeRequest r) => r.path == '/auth/google'); i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(
+      fake.adapter.requests.where((FakeRequest r) => r.path == '/auth/google'),
+      hasLength(1),
+    );
+
+    gate.complete();
+    await _pumpUntilFound(tester, find.byKey(const Key('recovery_email')));
+    expect(fake.googleSignInRequests, 1);
   });
 
   testWidgets('a web signup ticket opens the picker with its carried location',
@@ -535,4 +620,15 @@ void main() {
       kMayosMinTapTarget,
     );
   });
+}
+
+class _FakeGoogleAccount implements GoogleSignInAccount {
+  _FakeGoogleAccount(String idToken)
+      : authentication = GoogleSignInAuthentication(idToken: idToken);
+
+  @override
+  final GoogleSignInAuthentication authentication;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
