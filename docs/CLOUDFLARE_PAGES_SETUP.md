@@ -67,7 +67,7 @@ The API allows browser origins from `UI_BASE_URL`, a comma-separated list
   UI_BASE_URL = "https://mayos.pages.dev"
 ```
 
-then `fly deploy`. (`fly secrets set UI_BASE_URL="https://mayos.pages.dev"`
+then `fly deploy`. (`fly.toml` already carries `https://mayos.pages.dev`, the origin of the project created for #129; change it if yours differs.) (`fly secrets set UI_BASE_URL="https://mayos.pages.dev"`
 also works and restarts the Machine, but keep it in one place only: a secret
 overrides `[env]`.)
 
