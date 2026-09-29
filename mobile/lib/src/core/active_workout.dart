@@ -99,10 +99,53 @@ class ActiveWorkoutSet {
 /// table's previous column does.
 String setPerformanceLabel(ActiveWorkoutSet set) {
   final String effort = set.rir == null ? '' : ' @${formatRir(set.rir!)}';
-  final double weight = set.weightKg;
-  final String kg =
-      weight == weight.roundToDouble() ? weight.round().toString() : '$weight';
-  return '$kg × ${set.reps}$effort';
+  return '${formatCellWeight(set.weightKg)} × ${set.reps}$effort';
+}
+
+/// `100`, `92.5`, `33.33` — the cell/previous weight format.
+String formatCellWeight(double weight) =>
+    weight == weight.roundToDouble() ? weight.round().toString() : '$weight';
+
+/// The frozen previous working set matched set by set: set N of the table is
+/// the Nth working set of the baseline's `last_session` (#107/#123), for
+/// planned and unplanned exercises alike.
+///
+/// N counts only non-warm-up rows, because `last_session` carries working sets
+/// only — so a warm-up row has no previous set, shows `—`, and is never
+/// auto-filled from one (#123 item 1). Null when there is no previous set.
+BaselineSet? previousSetFor(
+  ActiveWorkoutExercise exercise,
+  int setIndex,
+  Map<String, BaselineExercise> baselines,
+) {
+  if (setIndex < 0 || setIndex >= exercise.sets.length) {
+    return null;
+  }
+  if (exercise.sets[setIndex].isWarmup) {
+    return null;
+  }
+  int workingNumber = 0;
+  for (int i = 0; i <= setIndex; i++) {
+    if (!exercise.sets[i].isWarmup) {
+      workingNumber += 1;
+    }
+  }
+  final List<BaselineSet> last =
+      baselines[exercise.exerciseId]?.lastSession.sets ?? const <BaselineSet>[];
+  if (workingNumber - 1 >= last.length) {
+    return null;
+  }
+  return last[workingNumber - 1];
+}
+
+/// `100 × 5 @1`, or `—` when there is no previous set. An unrated previous
+/// set drops the `@` part (`100 × 5`).
+String previousLabel(BaselineSet? set) {
+  if (set == null) {
+    return '—';
+  }
+  final String effort = set.rir == null ? '' : ' @${formatRir(set.rir!)}';
+  return '${formatCellWeight(set.weightKg)} × ${set.reps}$effort';
 }
 
 /// The running rest timer, stored inside the Active workout so it survives a

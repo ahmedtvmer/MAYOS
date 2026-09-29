@@ -24,6 +24,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
     required this.accentPressed,
     required this.onAccent,
     required this.accentSubtle,
+    required this.accentWash,
     required this.selectedSurface,
     required this.selectedBorder,
     required this.focusRing,
@@ -64,6 +65,11 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
 
   /// Faint blue wash for highlighted rows/chips (accent at low opacity).
   final Color accentSubtle;
+
+  /// The accent as a 14% wash: fills drawn *behind* accent content (the rest
+  /// bar's draining track, #125), lighter than [accentSubtle] so the accent
+  /// piece on top of it keeps its contrast.
+  final Color accentWash;
 
   final Color selectedSurface;
   final Color selectedBorder;
@@ -106,6 +112,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
     accentPressed: MayosPalette.bluePressed,
     onAccent: MayosPalette.white,
     accentSubtle: Color(0x1F2F6BFF),
+    accentWash: Color(0x242F6BFF),
     selectedSurface: MayosPalette.darkSelectedSurface,
     selectedBorder: MayosPalette.blue,
     focusRing: Color(0xFF6EA0FF),
@@ -141,6 +148,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
     accentPressed: MayosPalette.bluePressedDeep,
     onAccent: MayosPalette.white,
     accentSubtle: Color(0x142563EB),
+    accentWash: Color(0x242563EB),
     selectedSurface: MayosPalette.lightSelectedSurface,
     selectedBorder: MayosPalette.blueDeep,
     focusRing: MayosPalette.blueDeep,
@@ -197,6 +205,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
     Color? accentPressed,
     Color? onAccent,
     Color? accentSubtle,
+    Color? accentWash,
     Color? selectedSurface,
     Color? selectedBorder,
     Color? focusRing,
@@ -230,6 +239,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
       accentPressed: accentPressed ?? this.accentPressed,
       onAccent: onAccent ?? this.onAccent,
       accentSubtle: accentSubtle ?? this.accentSubtle,
+      accentWash: accentWash ?? this.accentWash,
       selectedSurface: selectedSurface ?? this.selectedSurface,
       selectedBorder: selectedBorder ?? this.selectedBorder,
       focusRing: focusRing ?? this.focusRing,
@@ -272,6 +282,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
       accentPressed: Color.lerp(accentPressed, other.accentPressed, t)!,
       onAccent: Color.lerp(onAccent, other.onAccent, t)!,
       accentSubtle: Color.lerp(accentSubtle, other.accentSubtle, t)!,
+      accentWash: Color.lerp(accentWash, other.accentWash, t)!,
       selectedSurface: Color.lerp(selectedSurface, other.selectedSurface, t)!,
       selectedBorder: Color.lerp(selectedBorder, other.selectedBorder, t)!,
       focusRing: Color.lerp(focusRing, other.focusRing, t)!,

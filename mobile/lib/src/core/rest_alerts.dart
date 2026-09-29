@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart'
-    show HapticFeedback, SystemSound, SystemSoundType;
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
@@ -35,8 +34,7 @@ class RestAlertInfo {
   final String? lastLabel;
 
   /// The notification's second line: `Next: <exercise> · set N · last <prev>`.
-  String get line =>
-      'Next: $exerciseName · set $setNumber'
+  String get line => 'Next: $exerciseName · set $setNumber'
       '${lastLabel == null ? '' : ' · last $lastLabel'}';
 }
 
@@ -68,8 +66,10 @@ abstract class RestAlerts {
   /// Cancels the scheduled end-of-rest alarm.
   Future<void> cancelEnd();
 
-  /// The in-app end-of-rest vibration + short sound.
-  Future<void> playEnd();
+  /// The in-app end-of-rest alert: vibration plus a short sound, announced
+  /// for [info] (the rest's "Back to <exercise>" line). Posted in the
+  /// foreground too — it is the end signal a killed app never reaches (#125).
+  Future<void> playEnd(RestAlertInfo info);
 }
 
 /// Web and other non-Android targets: no notifications, no alarms — the timer
@@ -94,7 +94,7 @@ class NoopRestAlerts implements RestAlerts {
   Future<void> cancelEnd() async {}
 
   @override
-  Future<void> playEnd() async {}
+  Future<void> playEnd(RestAlertInfo info) async {}
 }
 
 /// The real Android implementation (#125): an ongoing, system-drawn countdown
@@ -114,11 +114,13 @@ class AndroidRestAlerts implements RestAlerts {
     Future<bool?> Function()? requestNotificationsPermission,
     Future<bool?> Function()? requestExactAlarmsPermission,
     Future<bool?> Function()? canScheduleExactNotifications,
+    Future<void> Function()? initialize,
   })  : _store = store ?? SecureStore(),
         _explain = explain,
         _requestNotificationsPermission = requestNotificationsPermission,
         _requestExactAlarmsPermission = requestExactAlarmsPermission,
-        _canScheduleExact = canScheduleExactNotifications;
+        _canScheduleExact = canScheduleExactNotifications,
+        _initializePlugin = initialize;
 
   /// The ongoing countdown notification and the one-shot end alert, kept as
   /// two ids so ending a rest cancels only the right pair.
@@ -140,19 +142,27 @@ class AndroidRestAlerts implements RestAlerts {
   final Future<bool?> Function()? _requestNotificationsPermission;
   final Future<bool?> Function()? _requestExactAlarmsPermission;
   final Future<bool?> Function()? _canScheduleExact;
+
+  /// Injectable plugin/timezone initialization, so the "everything waits for
+  /// ONE init" policy can be tested without a platform (#125). Null means
+  /// "run the real initialization".
+  final Future<void> Function()? _initializePlugin;
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
-  bool _initialized = false;
+  /// The memoized initialization, created on first use and shared by every
+  /// entry point: a second call during the first rest awaits the same future
+  /// instead of racing ahead of an init that has not finished yet (#125).
+  Future<void>? _init;
+
+  Future<void> _ensureInitialized() => _init ??= _initialize();
 
   /// Runs [action] once the plugin is initialized, detached: an unavailable
   /// channel simply never answers, and the workout never waits on it.
   void _later(Future<void> Function() action) {
     Future<void>.microtask(() async {
       try {
-        if (!_initialized) {
-          await _initialize();
-        }
+        await _ensureInitialized();
         await action();
       } on Object {
         // Best-effort (#125).
@@ -161,7 +171,11 @@ class AndroidRestAlerts implements RestAlerts {
   }
 
   Future<void> _initialize() async {
-    _initialized = true;
+    final Future<void> Function()? injected = _initializePlugin;
+    if (injected != null) {
+      await injected();
+      return;
+    }
     try {
       tzdata.initializeTimeZones();
     } on Object {
@@ -192,7 +206,8 @@ class AndroidRestAlerts implements RestAlerts {
       _plugin.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
 
-  NotificationDetails _restDetails(RestAlertInfo info) => NotificationDetails(
+  NotificationDetails _restDetails(RestAlertInfo info, int timeoutAfterMs) =>
+      NotificationDetails(
         android: AndroidNotificationDetails(
           _restChannel,
           'Rest timer',
@@ -207,6 +222,10 @@ class AndroidRestAlerts implements RestAlerts {
           when: info.endsAt.millisecondsSinceEpoch,
           usesChronometer: true,
           chronometerCountDown: true,
+          // The countdown never outlives the rest: even if the app is killed,
+          // the system drops it at the rest's end instead of ticking into
+          // negative time. Re-posted by every ±15 with the new remainder.
+          timeoutAfter: timeoutAfterMs > 0 ? timeoutAfterMs : null,
           visibility: NotificationVisibility.public,
           playSound: false,
           enableVibration: false,
@@ -214,64 +233,91 @@ class AndroidRestAlerts implements RestAlerts {
         ),
       );
 
+  /// The end-of-rest alert: the vibration + default sound channel, shown by
+  /// the scheduled alarm and by the foreground [playEnd] with the same id, so
+  /// at most one "Rest complete" is ever posted for a rest (#125).
+  NotificationDetails get _endDetails => NotificationDetails(
+        android: AndroidNotificationDetails(
+          _endChannel,
+          'Rest complete',
+          channelDescription: 'The end-of-rest vibration and sound.',
+          importance: Importance.high,
+          priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
+          autoCancel: true,
+          visibility: NotificationVisibility.public,
+        ),
+      );
+
   @override
-  Future<void> ensureReady() async {
-    Future<void>.microtask(() async {
-      try {
-        final String asked = await _store.readString(_askedKey) ?? '';
-        if (asked == '1') {
-          return;
-        }
-      } on Object {
-        // An unreadable flag falls through to a fresh ask (still only once
-        // this install can tell).
+  Future<void> ensureReady() {
+    // One in-flight ask: two quick ticks share it instead of racing the
+    // "already asked" flag (#125). The prompts themselves stay detached, so
+    // the workout never waits on a system dialog.
+    _ready ??= _askOnce();
+    return Future<void>.value();
+  }
+
+  /// The in-flight (and then completed) ask of [ensureReady].
+  Future<void>? _ready;
+
+  Future<void> _askOnce() async {
+    try {
+      final String asked = await _store.readString(_askedKey) ?? '';
+      if (asked == '1') {
+        return;
       }
-      try {
-        _explain?.call(
-            'Rest alerts need permission to reach you when your screen is off.');
-      } on Object {
-        // No messenger attached (a headless test): the system prompt still
-        // carries its own wording.
+    } on Object {
+      // An unreadable flag falls through to a fresh ask (still only once
+      // this install can tell).
+    }
+    // Written *before* prompting: a second call landing while the dialogs are
+    // open already sees the flag, and an interrupted ask is never repeated
+    // (#125).
+    try {
+      await _store.writeString(_askedKey, '1');
+    } on Object {
+      // Best-effort, like the other protected-storage flags.
+    }
+    try {
+      _explain?.call(
+          'Rest alerts need permission to reach you when your screen is off.');
+    } on Object {
+      // No messenger attached (a headless test): the system prompt still
+      // carries its own wording.
+    }
+    try {
+      await _ensureInitialized();
+      final Future<bool?> Function()? notifications =
+          _requestNotificationsPermission;
+      if (notifications != null) {
+        await notifications();
+      } else {
+        await _android?.requestNotificationsPermission();
       }
-      try {
-        if (!_initialized) {
-          await _initialize();
-        }
-        final Future<bool?> Function()? notifications =
-            _requestNotificationsPermission;
-        if (notifications != null) {
-          await notifications();
-        } else {
-          await _android?.requestNotificationsPermission();
-        }
-        final Future<bool?> Function()? exact = _requestExactAlarmsPermission;
-        if (exact != null) {
-          await exact();
-        } else {
-          await _android?.requestExactAlarmsPermission();
-        }
-      } on Object {
-        // A refused or unavailable prompt is just "not granted"; scheduling
-        // then falls back to an inexact while-idle alarm.
+      final Future<bool?> Function()? exact = _requestExactAlarmsPermission;
+      if (exact != null) {
+        await exact();
+      } else {
+        await _android?.requestExactAlarmsPermission();
       }
-      try {
-        await _store.writeString(_askedKey, '1');
-      } on Object {
-        // Best-effort, like the other protected-storage flags.
-      }
-    });
+    } on Object {
+      // A refused or unavailable prompt is just "not granted"; scheduling
+      // then falls back to an inexact while-idle alarm.
+    }
   }
 
   @override
-  Future<void> showRest(RestAlertInfo info) async {
+  Future<void> showRest(RestAlertInfo info) {
     final int ms = info.endsAt.difference(DateTime.now()).inMilliseconds;
-    final int remaining = ms <= 0 ? 0 : (ms / 1000).ceil();
     _later(() => _plugin.show(
           id: _restId,
-          title: 'MAYOS · Rest ${restMmSs(remaining)}',
+          title: 'MAYOS · Rest ${restMmSs(ms <= 0 ? 0 : (ms / 1000).ceil())}',
           body: info.line,
-          notificationDetails: _restDetails(info),
+          notificationDetails: _restDetails(info, ms),
         ));
+    return Future<void>.value();
   }
 
   @override
@@ -292,10 +338,9 @@ class AndroidRestAlerts implements RestAlerts {
   /// it was refused (#125). Read live at every (re)schedule, so the ask
   /// happens only in [ensureReady] and a refusal is never re-asked — just
   /// downgraded. Exposed for the tests; [scheduleEnd] uses it.
-  Future<AndroidScheduleMode> endScheduleMode() async =>
-      await _exactAllowed()
-          ? AndroidScheduleMode.exactAllowWhileIdle
-          : AndroidScheduleMode.inexactAllowWhileIdle;
+  Future<AndroidScheduleMode> endScheduleMode() async => await _exactAllowed()
+      ? AndroidScheduleMode.exactAllowWhileIdle
+      : AndroidScheduleMode.inexactAllowWhileIdle;
 
   @override
   Future<void> scheduleEnd(RestAlertInfo info) async {
@@ -306,19 +351,7 @@ class AndroidRestAlerts implements RestAlerts {
         scheduledDate: tz.TZDateTime.from(info.endsAt, tz.local),
         title: 'Rest complete',
         body: 'Back to ${info.exerciseName}',
-        notificationDetails: NotificationDetails(
-          android: AndroidNotificationDetails(
-            _endChannel,
-            'Rest complete',
-            channelDescription: 'The end-of-rest vibration and sound.',
-            importance: Importance.high,
-            priority: Priority.high,
-            playSound: true,
-            enableVibration: true,
-            autoCancel: true,
-            visibility: NotificationVisibility.public,
-          ),
-        ),
+        notificationDetails: _endDetails,
         androidScheduleMode: mode,
       );
     });
@@ -330,19 +363,26 @@ class AndroidRestAlerts implements RestAlerts {
   }
 
   @override
-  Future<void> playEnd() async {
-    Future<void>.microtask(() async {
+  Future<void> playEnd(RestAlertInfo info) {
+    _later(() async {
       try {
         await HapticFeedback.vibrate();
       } on Object {
-        // Best-effort.
+        // Best-effort (#125).
       }
-      try {
-        await SystemSound.play(SystemSoundType.alert);
-      } on Object {
-        // Best-effort; the scheduled alarm carries the notification sound.
-      }
+      // The foreground end needs a sound Android actually plays:
+      // `SystemSound.alert` is a no-op there, so the end notification is
+      // posted in the foreground too — same id as the scheduled alarm's, so
+      // there is never a second one, and its default sound + vibration are
+      // the alert (#125).
+      await _plugin.show(
+        id: _endId,
+        title: 'Rest complete',
+        body: 'Back to ${info.exerciseName}',
+        notificationDetails: _endDetails,
+      );
     });
+    return Future<void>.value();
   }
 }
 

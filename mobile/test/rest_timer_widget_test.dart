@@ -206,8 +206,7 @@ Future<void> _pickRestOption(
     WidgetTester tester, int exerciseIndex, int seconds) async {
   await tester.tap(find.byKey(ValueKey<String>('logger.rest.$exerciseIndex')));
   await tester.pumpAndSettle();
-  final Finder option =
-      find.byKey(ValueKey<String>('rest.option.$seconds'));
+  final Finder option = find.byKey(ValueKey<String>('rest.option.$seconds'));
   if (option.evaluate().isEmpty) {
     // The picker scrolls: walk down to the options below the fold.
     await tester.drag(find.byType(ListView), const Offset(0, -800));
@@ -233,24 +232,28 @@ void main() {
   testWidgets(
       'the picker offers Off and 1:00–5:00 in 15-second steps and writes a '
       'device override', (WidgetTester tester) async {
-    final ({FakeRestAlerts alerts, InMemoryRestLengthStore restLengths,
-        InMemoryActiveWorkoutStore store}) harness = await _openLogger(tester);
+    final ({
+      FakeRestAlerts alerts,
+      InMemoryRestLengthStore restLengths,
+      InMemoryActiveWorkoutStore store
+    }) harness = await _openLogger(tester);
 
     await tester.tap(find.byKey(const ValueKey<String>('logger.rest.0')));
     await tester.pumpAndSettle();
     expect(find.text('Off'), findsOneWidget);
     expect(find.text('1:00'), findsOneWidget);
     expect(find.text('1:15'), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('rest.option.60')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey<String>('rest.option.60')), findsOneWidget);
     // 2:15 is in the first screenful of the sheet…
     expect(
         find.byKey(const ValueKey<String>('rest.option.135')), findsOneWidget);
     // …and 5:00 lives below the fold until the list is scrolled.
-    expect(
-        find.byKey(const ValueKey<String>('rest.option.300')), findsNothing);
+    expect(find.byKey(const ValueKey<String>('rest.option.300')), findsNothing);
     await tester.drag(find.byType(ListView), const Offset(0, -800));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey<String>('rest.option.300')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey<String>('rest.option.300')), findsOneWidget);
     expect(find.text('5:00'), findsOneWidget);
     await tester.drag(find.byType(ListView), const Offset(0, 800));
     await tester.pumpAndSettle();
@@ -274,12 +277,14 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('logger.rest.0')));
     await tester.pumpAndSettle();
     expect(
-      tester.widget<Icon>(
-        find.descendant(
-          of: find.byKey(const ValueKey<String>('rest.option.0')),
-          matching: find.byType(Icon),
-        ),
-      ).icon,
+      tester
+          .widget<Icon>(
+            find.descendant(
+              of: find.byKey(const ValueKey<String>('rest.option.0')),
+              matching: find.byType(Icon),
+            ),
+          )
+          .icon,
       Icons.check,
     );
   });
@@ -287,8 +292,11 @@ void main() {
   testWidgets(
       'the rest bar shows on a working tick, only while the keypad is '
       'hidden, and −15/+15/Skip drive the seam', (WidgetTester tester) async {
-    final ({FakeRestAlerts alerts, InMemoryRestLengthStore restLengths,
-        InMemoryActiveWorkoutStore store}) harness = await _openLogger(tester);
+    final ({
+      FakeRestAlerts alerts,
+      InMemoryRestLengthStore restLengths,
+      InMemoryActiveWorkoutStore store
+    }) harness = await _openLogger(tester);
 
     // No timer, no bar…
     expect(find.byKey(const ValueKey<String>('rest.bar')), findsNothing);
@@ -301,8 +309,10 @@ void main() {
     expect(find.text('3:00'), findsOneWidget);
     expect(harness.alerts.ensureReadyCalls, greaterThanOrEqualTo(1));
     expect(harness.alerts.shown, hasLength(1));
+    // The line describes the NEXT set to do — Bench's second row, with the
+    // baseline's value for it as the "last" — not the row just ticked (#125).
     expect(harness.alerts.shown.single.line,
-        'Next: Bench Press · set 1 · last 100 × 5 @1');
+        'Next: Bench Press · set 2 · last 95 × 6 @2');
     expect(harness.alerts.scheduled, hasLength(1));
     expect(harness.alerts.shown.single.totalSeconds, 180);
 
@@ -339,16 +349,20 @@ void main() {
 
     final BuildContext context =
         tester.element(find.byType(WorkoutLoggerScreen));
-    final ActiveWorkoutController controller = ProviderScope.containerOf(context)
-        .read(activeWorkoutControllerProvider.notifier);
+    final ActiveWorkoutController controller =
+        ProviderScope.containerOf(context)
+            .read(activeWorkoutControllerProvider.notifier);
     expect(controller.workout!.rest, isNull);
     expect((await harness.store.read(_account))!.rest, isNull);
   });
 
   testWidgets('a warm-up tick never starts the rest timer',
       (WidgetTester tester) async {
-    final ({FakeRestAlerts alerts, InMemoryRestLengthStore restLengths,
-        InMemoryActiveWorkoutStore store}) harness = await _openLogger(tester);
+    final ({
+      FakeRestAlerts alerts,
+      InMemoryRestLengthStore restLengths,
+      InMemoryActiveWorkoutStore store
+    }) harness = await _openLogger(tester);
 
     // Give the second row values, then mark it W and tick it: a warm-up is
     // not a working set, so no timer starts (#125).
@@ -367,8 +381,11 @@ void main() {
 
   testWidgets('Off rest: a working tick starts no timer',
       (WidgetTester tester) async {
-    final ({FakeRestAlerts alerts, InMemoryRestLengthStore restLengths,
-        InMemoryActiveWorkoutStore store}) harness = await _openLogger(tester);
+    final ({
+      FakeRestAlerts alerts,
+      InMemoryRestLengthStore restLengths,
+      InMemoryActiveWorkoutStore store
+    }) harness = await _openLogger(tester);
 
     await _pickRestOption(tester, 0, 0);
     expect(find.text('Rest Off'), findsOneWidget);

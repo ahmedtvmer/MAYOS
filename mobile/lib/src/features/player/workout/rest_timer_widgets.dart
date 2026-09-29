@@ -37,7 +37,8 @@ class RestLengthChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(Icons.timer_outlined, size: 14, color: c.accent),
+            Icon(Icons.timer_outlined,
+                size: MayosIconSizes.small, color: c.accent),
             const SizedBox(width: MayosSpacing.xxs),
             Text(
               _label,
@@ -73,24 +74,22 @@ Future<int?> showRestLengthPicker(
                 onTap: () => Navigator.of(context).pop(seconds),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: MayosSpacing.lg,
-                      vertical: MayosSpacing.sm),
+                      horizontal: MayosSpacing.lg, vertical: MayosSpacing.sm),
                   child: Row(
                     children: <Widget>[
                       Expanded(
                         child: Text(
-                          seconds <= 0
-                              ? 'Off'
-                              : restMmSs(seconds),
+                          seconds <= 0 ? 'Off' : restMmSs(seconds),
                           style: selected
-                              ? MayosTypography.bodySecondary
-                                  .copyWith(color: MayosTheme.of(context).accent)
+                              ? MayosTypography.bodySecondary.copyWith(
+                                  color: MayosTheme.of(context).accent)
                               : MayosTypography.bodySecondary,
                         ),
                       ),
                       if (selected)
                         Icon(Icons.check,
-                            size: 20, color: MayosTheme.of(context).accent),
+                            size: MayosIconSizes.medium,
+                            color: MayosTheme.of(context).accent),
                     ],
                   ),
                 ),
@@ -168,7 +167,9 @@ class RestTimerBar extends StatelessWidget {
             child: FractionallySizedBox(
               alignment: Alignment.centerLeft,
               widthFactor: _fill,
-              child: ColoredBox(color: c.accent.withValues(alpha: 0.14)),
+              // The draining fill: the rest's own accent wash, a token rather
+              // than a raw alpha (DESIGN.md).
+              child: ColoredBox(color: c.accentWash),
             ),
           ),
           Padding(
@@ -189,8 +190,8 @@ class RestTimerBar extends StatelessWidget {
                       ),
                       Text(
                         'Rest · $exerciseName',
-                        style:
-                            MayosTypography.caption.copyWith(color: c.textMuted),
+                        style: MayosTypography.caption
+                            .copyWith(color: c.textMuted),
                       ),
                     ],
                   ),

@@ -152,6 +152,21 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   /// returns (#125).
   bool _alertsSuspended = false;
 
+  /// `<workout id>:<rest end time>` of the rest this controller already ended.
+  /// The ticker, a late return to the logger, and a restore can all reach
+  /// [completeRest] for the same rest; only the first one may alert (#125).
+  String? _endedRest;
+
+  /// The end time whose platform alarm the foreground ticker already dropped
+  /// (see [dropImminentEndAlarm]); re-armed by every re-schedule (#125).
+  String? _droppedEndFor;
+
+  /// How long after its end time a rest may still alert in-app: within this
+  /// window the ticker was clearly counting down with the player; any later
+  /// and the rest ended while the app was away, where the platform alarm has
+  /// already had its say (#125).
+  static const Duration _endAlertGrace = Duration(seconds: 2);
+
   /// Invalidates an in-flight store read when the account changes (#119
   /// pattern), so a late read never overwrites a newer account's state.
   int _epoch = 0;
@@ -194,6 +209,17 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     }
     if (accountId == state.accountId && state.ready) {
       return;
+    }
+    // Switching straight to another account takes A's countdown with it: its
+    // lock-screen notification and alarm are removed exactly the way sign-out
+    // does, and A's device rest overrides never leak into B (#125).
+    if (state.accountId != null && state.accountId != accountId) {
+      _restOverrides = const <String, int>{};
+      if (_alertsLive) {
+        _alertsLive = false;
+        _alertsSuspended = false;
+        await _removeAlerts();
+      }
     }
     final Future<void>? inFlight = _pendingRestore;
     if (inFlight != null && _pendingRestoreFor == accountId) {
@@ -506,9 +532,8 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     if (store != null) {
       // Detached, like the other best-effort persistence: a keystore that
       // never answers (a test host) must not block the picker (#125).
-      unawaited(store
-          .write(accountId, _restOverrides)
-          .catchError((Object _) {}));
+      unawaited(
+          store.write(accountId, _restOverrides).catchError((Object _) {}));
     }
   }
 
@@ -518,9 +543,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   Future<void> maybeStartRest(int exerciseIndex, int setIndex) async {
     final ActiveWorkoutExercise? exercise = _exerciseAt(exerciseIndex);
     final ActiveWorkout? current = state.workout;
-    if (exercise == null ||
-        !_validSet(exercise, setIndex) ||
-        current == null) {
+    if (exercise == null || !_validSet(exercise, setIndex) || current == null) {
       return;
     }
     final ActiveWorkoutSet set = exercise.sets[setIndex];
@@ -537,9 +560,8 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       exerciseId: exercise.exerciseId,
       exerciseName: exercise.exerciseName,
       setNumber: setIndex + 1,
-      lastLabel: set.reps > 0 || set.weightKg > 0
-          ? setPerformanceLabel(set)
-          : null,
+      lastLabel:
+          set.reps > 0 || set.weightKg > 0 ? setPerformanceLabel(set) : null,
     );
     await _persist(current.copyWith(rest: rest));
     _alertsLive = true;
@@ -586,28 +608,68 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
 
   /// The rest ran out (the in-app ticker reached the end time): clears it,
   /// removes the notification and alarm, and plays the in-app vibration and
-  /// short sound (#125). [playAlert] is false when a stored rest is cleared
-  /// on restore, where the alarm has already had its say.
+  /// sound (#125). [playAlert] is false when a stored rest is cleared on
+  /// restore, where the alarm has already had its say.
+  ///
+  /// Ends at most once per rest: the ticker, a late return to the logger and
+  /// a restore all reach here for the same end time, and only the first call
+  /// touches the seam. A rest that ended more than [_endAlertGrace] ago is
+  /// cleared *silently* — it ended while the app was away, where the
+  /// scheduled alarm already alerted (#125).
   Future<void> completeRest({bool playAlert = true}) async {
     final ActiveWorkout? current = state.workout;
-    if (current == null || current.rest == null) {
+    final ActiveRestTimer? rest = current?.rest;
+    if (current == null || rest == null) {
       return;
     }
+    final String ended = '${current.id}:${rest.endsAt}';
+    if (_endedRest == ended) {
+      return;
+    }
+    _endedRest = ended;
+    final RestAlertInfo info = _alertInfo(rest);
+    final bool late = _now().difference(rest.endsAtClock) > _endAlertGrace;
     await _persist(current.copyWith(clearRest: true));
     if (_alertsLive) {
       _alertsLive = false;
       _alertsSuspended = false;
       await _removeAlerts();
     }
-    if (playAlert) {
+    if (playAlert && !late) {
       final RestAlerts? alerts = _alerts;
       if (alerts != null) {
         try {
-          await alerts.playEnd();
+          await alerts.playEnd(info);
         } on Object {
           // Best-effort; a missing vibration channel must not break the tick.
         }
       }
+    }
+  }
+
+  /// The rest is within its last second while the logger is open: drop the
+  /// platform alarm now, so the foreground ticker is the only thing that ends
+  /// this rest — the alarm must not fire a second "Rest complete" right after
+  /// the in-app one (#125). Driven by the logger's ticker, at most once per
+  /// end time; a ±15 (or Back from the summary) re-schedules the alarm and
+  /// re-arms the drop for the new end time.
+  Future<void> dropImminentEndAlarm() async {
+    final ActiveRestTimer? rest = state.workout?.rest;
+    if (rest == null || !_alertsLive || _alertsSuspended) {
+      return;
+    }
+    if (rest.remainingSeconds(_now()) > 1 || _droppedEndFor == rest.endsAt) {
+      return;
+    }
+    _droppedEndFor = rest.endsAt;
+    final RestAlerts? alerts = _alerts;
+    if (alerts == null) {
+      return;
+    }
+    try {
+      await alerts.cancelEnd();
+    } on Object {
+      // Best-effort (#125).
     }
   }
 
@@ -655,6 +717,8 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       // Best-effort: the platform layer is never load-bearing (#125).
     }
     try {
+      // Every (re)schedule arms the foreground drop again for this end time.
+      _droppedEndFor = null;
       await alerts.scheduleEnd(info);
     } on Object {
       // Best-effort: the in-app ticker still ends the rest (#125).
@@ -678,13 +742,70 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     }
   }
 
-  static RestAlertInfo _alertInfo(ActiveRestTimer rest) => RestAlertInfo(
-        endsAt: rest.endsAtClock,
-        totalSeconds: rest.totalSeconds,
-        exerciseName: rest.exerciseName,
-        setNumber: rest.setNumber,
-        lastLabel: rest.lastLabel,
-      );
+  /// The platform's view of the running rest: when it ends, plus the second
+  /// line that always describes the NEXT set to do — the next unticked row of
+  /// the exercise the rest started on, else the first unticked row of a later
+  /// exercise — with *that* row's previous value from the frozen baseline as
+  /// its "last", omitted when there is none (#125). Only when every row is
+  /// ticked does it fall back to the row that started the rest.
+  RestAlertInfo _alertInfo(ActiveRestTimer rest) {
+    final ActiveWorkout? current = state.workout;
+    RestAlertInfo origin() => RestAlertInfo(
+          endsAt: rest.endsAtClock,
+          totalSeconds: rest.totalSeconds,
+          exerciseName: rest.exerciseName,
+          setNumber: rest.setNumber,
+          lastLabel: rest.lastLabel,
+        );
+    if (current == null) {
+      return origin();
+    }
+    final ({ActiveWorkoutExercise exercise, int setIndex})? next =
+        _nextSetAfter(current, rest);
+    if (next == null) {
+      return origin();
+    }
+    final BaselineSet? previous =
+        previousSetFor(next.exercise, next.setIndex, current.baselines);
+    return RestAlertInfo(
+      endsAt: rest.endsAtClock,
+      totalSeconds: rest.totalSeconds,
+      exerciseName: next.exercise.exerciseName,
+      setNumber: next.setIndex + 1,
+      lastLabel: previous == null ? null : previousLabel(previous),
+    );
+  }
+
+  /// The next unticked row after the one [rest] started on: the rest of that
+  /// exercise first, then the first unticked row of every later exercise.
+  /// Null when the workout has nothing left to tick (#125).
+  static ({ActiveWorkoutExercise exercise, int setIndex})? _nextSetAfter(
+    ActiveWorkout workout,
+    ActiveRestTimer rest,
+  ) {
+    final int exerciseIndex = workout.exercises.indexWhere(
+        (ActiveWorkoutExercise e) => e.exerciseId == rest.exerciseId);
+    if (exerciseIndex < 0) {
+      return null;
+    }
+    // rest.setNumber is the 1-based row that started the rest, so the row
+    // after it is the one at that index.
+    final ActiveWorkoutExercise started = workout.exercises[exerciseIndex];
+    for (int i = rest.setNumber; i < started.sets.length; i++) {
+      if (!started.sets[i].ticked) {
+        return (exercise: started, setIndex: i);
+      }
+    }
+    for (int e = exerciseIndex + 1; e < workout.exercises.length; e++) {
+      final ActiveWorkoutExercise exercise = workout.exercises[e];
+      final int setIndex =
+          exercise.sets.indexWhere((ActiveWorkoutSet set) => !set.ticked);
+      if (setIndex >= 0) {
+        return (exercise: exercise, setIndex: setIndex);
+      }
+    }
+    return null;
+  }
 
   ActiveWorkoutExercise? _exerciseAt(int exerciseIndex) {
     final ActiveWorkout? current = state.workout;

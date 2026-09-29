@@ -32,51 +32,10 @@ import 'logger_keypad.dart';
 import 'personal_record_badge.dart';
 import 'rest_timer_widgets.dart';
 
-/// The frozen previous working set matched set by set: set N of the table is
-/// the Nth working set of the baseline's `last_session` (#107/#123), for
-/// planned and unplanned exercises alike.
-///
-/// N counts only non-warm-up rows, because `last_session` carries working sets
-/// only — so a warm-up row has no previous set, shows `—`, and is never
-/// auto-filled from one (#123 item 1). Null when there is no previous set.
-BaselineSet? previousSetFor(
-  ActiveWorkoutExercise exercise,
-  int setIndex,
-  Map<String, BaselineExercise> baselines,
-) {
-  if (setIndex < 0 || setIndex >= exercise.sets.length) {
-    return null;
-  }
-  if (exercise.sets[setIndex].isWarmup) {
-    return null;
-  }
-  int workingNumber = 0;
-  for (int i = 0; i <= setIndex; i++) {
-    if (!exercise.sets[i].isWarmup) {
-      workingNumber += 1;
-    }
-  }
-  final List<BaselineSet> last =
-      baselines[exercise.exerciseId]?.lastSession.sets ?? const <BaselineSet>[];
-  if (workingNumber - 1 >= last.length) {
-    return null;
-  }
-  return last[workingNumber - 1];
-}
-
-/// `100 × 5 @1`, or `—` when there is no previous set. An unrated previous
-/// set drops the `@` part (`100 × 5`).
-String previousLabel(BaselineSet? set) {
-  if (set == null) {
-    return '—';
-  }
-  final String effort = set.rir == null ? '' : ' @${formatRir(set.rir!)}';
-  return '${formatCellWeight(set.weightKg)} × ${set.reps}$effort';
-}
-
-/// `100`, `92.5`, `33.33` — the cell/previous weight format.
-String formatCellWeight(double weight) =>
-    weight == weight.roundToDouble() ? weight.round().toString() : '$weight';
+// The frozen previous working set, `100 × 5 @1`-style previous labels and the
+// cell weight format live beside the Active workout
+// (`core/active_workout.dart`): the table and the rest notification's
+// "Next: … · last …" line read the same functions (#125).
 
 /// The one mapping from a field to what its cell shows (#123 item 12): the
 /// typed [value] when there is one, else the faded [hint].
@@ -209,8 +168,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   void _syncRestTicker(ActiveWorkout workout) {
     final bool running = workout.rest != null;
     if (running && _restTicker == null) {
-      _restTicker =
-          Timer.periodic(const Duration(milliseconds: 250), (_) => _onRestTick());
+      _restTicker = Timer.periodic(
+          const Duration(milliseconds: 250), (_) => _onRestTick());
     } else if (!running && _restTicker != null) {
       _restTicker?.cancel();
       _restTicker = null;
@@ -222,9 +181,15 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     if (rest == null) {
       return;
     }
-    if (rest.isOver(DateTime.now())) {
+    final DateTime now = DateTime.now();
+    if (rest.isOver(now)) {
       unawaited(_controller.completeRest());
       return;
+    }
+    if (rest.remainingSeconds(now) <= 1) {
+      // The foreground end is a second away: drop the platform alarm so the
+      // ticker's own end is the only alert for this rest (#125).
+      unawaited(_controller.dropImminentEndAlarm());
     }
     if (mounted) {
       // Recompute the bar from the wall clock: exact in the foreground (#125).
@@ -435,8 +400,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   /// Settles the focused cell's edit: the heavy haptic fires only if its row
   /// now holds a record the focus-time snapshot did not.
   void _settleRecordFocus() {
-    final ({int exerciseIndex, String setId, Set<PrRecordKind> before})?
-        recordFocus = _recordFocus;
+    final ({
+      int exerciseIndex,
+      String setId,
+      Set<PrRecordKind> before
+    })? recordFocus = _recordFocus;
     _recordFocus = null;
     if (recordFocus == null) {
       return;
@@ -453,8 +421,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   /// on its own — tick, untick, warm-up toggle, delete — so only a cell edit
   /// can make a later settle vibrate (#124).
   void _refreshRecordFocus() {
-    final ({int exerciseIndex, String setId, Set<PrRecordKind> before})?
-        recordFocus = _recordFocus;
+    final ({
+      int exerciseIndex,
+      String setId,
+      Set<PrRecordKind> before
+    })? recordFocus = _recordFocus;
     if (recordFocus == null) {
       return;
     }
@@ -1263,8 +1234,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
           key: ValueKey<String>(
               'logger.cell.$exerciseIndex.$setIndex.${field.name}'),
           borderRadius: MayosRadii.smallRadius,
-          onTap: () => setState(() => _changeFocus(
-              LoggerCellFocus(exerciseIndex, setIndex, field))),
+          onTap: () => setState(() =>
+              _changeFocus(LoggerCellFocus(exerciseIndex, setIndex, field))),
           child: SizedBox(
             height: kMayosMinTapTarget,
             child: Center(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/active_workout.dart';
@@ -64,6 +66,43 @@ ActiveWorkout _workout() => ActiveWorkout(
       baselines: <String, BaselineExercise>{},
     );
 
+/// The same workout with the frozen baseline Bench ticks from: two working
+/// sets, so "last" in the notification line reads that next set's baseline
+/// value (#125).
+ActiveWorkout _workoutWithBaselines() => ActiveWorkout(
+      id: 'aw-1',
+      accountId: _account,
+      startedAt: '2026-09-29T08:00:00.000Z',
+      dayOrder: 2,
+      dayName: 'Upper A',
+      programVersion: 3,
+      exercises: <ActiveWorkoutExercise>[
+        ActiveWorkoutExercise(
+          exercise: _benchJson,
+          sets: <ActiveWorkoutSet>[ActiveWorkoutSet(), ActiveWorkoutSet()],
+        ),
+        ActiveWorkoutExercise(
+          exercise: _rowJson,
+          sets: <ActiveWorkoutSet>[ActiveWorkoutSet()],
+        ),
+      ],
+      baselines: <String, BaselineExercise>{
+        'bench_press': const BaselineExercise(
+          exerciseId: 'bench_press',
+          sessionsLogged: 3,
+          maxWeightKg: 100,
+          bestE1rmKg: 121.67,
+          lastSession: BaselineLastSession(
+            performedDate: '2026-09-26',
+            sets: <BaselineSet>[
+              BaselineSet(weightKg: 100, reps: 5, rir: 1),
+              BaselineSet(weightKg: 95, reps: 6, rir: 2),
+            ],
+          ),
+        ),
+      },
+    );
+
 ActiveWorkoutController _controller({
   required ActiveWorkoutStore store,
   required RestLengthStore restLengths,
@@ -122,8 +161,7 @@ void main() {
       expect(missing.restLabel, 'rest ${kDefaultRestSeconds}s');
 
       // A program that did carry a value keeps it, key and all.
-      final ProgramExercise given =
-          ProgramExercise.fromJson(<String, dynamic>{
+      final ProgramExercise given = ProgramExercise.fromJson(<String, dynamic>{
         'exercise_id': 'bench_press',
         'exercise_name': 'Bench Press',
         'rest_seconds': 180,
@@ -227,8 +265,9 @@ void main() {
       // The seam was prepared and got the notification + alarm to post.
       expect(alerts.ensureReadyCalls, 1);
       expect(alerts.shown, hasLength(1));
-      expect(alerts.shown.single.line,
-          'Next: Bench Press · set 1 · last 100 × 5 @1');
+      // The line describes the NEXT set to do — Bench's second row, with no
+      // baseline for this workout — not the row just ticked (#125).
+      expect(alerts.shown.single.line, 'Next: Bench Press · set 2');
       expect(alerts.scheduled, hasLength(1));
       expect(alerts.scheduled.single.endsAt, rest.endsAtClock);
     });
@@ -299,6 +338,35 @@ void main() {
       expect(controller.workout!.rest, isNull);
       expect(alerts.shown, isEmpty);
       expect(alerts.ensureReadyCalls, 0);
+    });
+
+    test('the alert line describes the NEXT set, not the one just ticked',
+        () async {
+      final InMemoryActiveWorkoutStore store = InMemoryActiveWorkoutStore();
+      final FakeRestAlerts alerts = FakeRestAlerts();
+      final DateTime now = DateTime.utc(2026, 9, 29, 10);
+      await store.write(_account, _workoutWithBaselines());
+      final ActiveWorkoutController controller = _controller(
+        store: store,
+        restLengths: InMemoryRestLengthStore(),
+        alerts: alerts,
+        now: () => now,
+      );
+      await controller.syncAccount(_account);
+
+      // Ticking Bench set 1: the next thing to do is Bench set 2, whose
+      // "last" is that set's own baseline value — not the row just ticked.
+      await controller.setTicked(0, 0, true);
+      expect(alerts.shown.single.line,
+          'Next: Bench Press · set 2 · last 95 × 6 @2');
+      // The rest itself still remembers the row that started it.
+      expect(controller.workout!.rest!.setNumber, 1);
+
+      // The last row of Bench is ticked: the next set is the following
+      // exercise's first, and with no baseline for it the "last" part is
+      // omitted rather than guessed.
+      await controller.setTicked(0, 1, true);
+      expect(alerts.shown.last.line, 'Next: Cable Row · set 1');
     });
   });
 
@@ -439,6 +507,135 @@ void main() {
       expect(alerts.cancelEndCalls, 1);
       expect(await store.read(_account), isNull);
     });
+
+    test('the end of a rest alerts exactly once, however it is reached',
+        () async {
+      final InMemoryActiveWorkoutStore store = InMemoryActiveWorkoutStore();
+      final FakeRestAlerts alerts = FakeRestAlerts();
+      final DateTime now = DateTime.utc(2026, 9, 29, 10);
+      await store.write(_account, _workout());
+      final ActiveWorkoutController controller = _controller(
+        store: store,
+        restLengths: InMemoryRestLengthStore(),
+        alerts: alerts,
+        now: () => now,
+      );
+      await controller.syncAccount(_account);
+      await controller.setTicked(0, 0, true);
+
+      // The ticker and a second, late call both reach this rest's end.
+      await controller.completeRest();
+      await controller.completeRest();
+
+      expect(controller.workout!.rest, isNull);
+      expect(alerts.playEndCalls, 1);
+      expect(alerts.ended, hasLength(1));
+      expect(alerts.ended.single.line, 'Next: Bench Press · set 2');
+      expect(alerts.removeCalls, 1);
+      expect(alerts.cancelEndCalls, 1);
+      expect((await store.read(_account))!.rest, isNull);
+    });
+
+    test('a rest that ended while the app was away clears silently', () async {
+      final InMemoryActiveWorkoutStore store = InMemoryActiveWorkoutStore();
+      final FakeRestAlerts alerts = FakeRestAlerts();
+      DateTime now = DateTime.utc(2026, 9, 29, 10);
+      await store.write(_account, _workout());
+      final ActiveWorkoutController controller = _controller(
+        store: store,
+        restLengths: InMemoryRestLengthStore(),
+        alerts: alerts,
+        now: () => now,
+      );
+      await controller.syncAccount(_account);
+      await controller.setTicked(0, 0, true);
+      final DateTime endsAt = controller.workout!.rest!.endsAtClock;
+
+      // The logger comes back minutes after the scheduled alarm fired: the
+      // bar clears without a second vibration/sound.
+      now = endsAt.add(const Duration(minutes: 3));
+      await controller.completeRest();
+      expect(controller.workout!.rest, isNull);
+      expect(alerts.playEndCalls, 0);
+      expect(alerts.ended, isEmpty);
+      // The stale platform artefacts are still taken down exactly once.
+      expect(alerts.removeCalls, 1);
+      expect(alerts.cancelEndCalls, 1);
+
+      await controller.completeRest();
+      expect(alerts.playEndCalls, 0);
+      expect(alerts.removeCalls, 1);
+    });
+
+    test('the foreground end drops the alarm a second before it fires',
+        () async {
+      final InMemoryActiveWorkoutStore store = InMemoryActiveWorkoutStore();
+      final FakeRestAlerts alerts = FakeRestAlerts();
+      DateTime now = DateTime.utc(2026, 9, 29, 10);
+      await store.write(_account, _workout());
+      final ActiveWorkoutController controller = _controller(
+        store: store,
+        restLengths: InMemoryRestLengthStore(),
+        alerts: alerts,
+        now: () => now,
+      );
+      await controller.syncAccount(_account);
+      await controller.setTicked(0, 0, true);
+      final DateTime endsAt = controller.workout!.rest!.endsAtClock;
+
+      // A long way from the end: the alarm the player may background into is
+      // still needed.
+      await controller.dropImminentEndAlarm();
+      expect(alerts.cancelEndCalls, 0);
+
+      // Inside the last second the ticker owns the end: dropped once, and a
+      // repeat tick does not cancel a second time.
+      now = endsAt.subtract(const Duration(milliseconds: 400));
+      await controller.dropImminentEndAlarm();
+      await controller.dropImminentEndAlarm();
+      expect(alerts.cancelEndCalls, 1);
+
+      // +15 re-posts the alarm, which re-arms the drop for the new end time.
+      await controller.adjustRest(const Duration(seconds: 15));
+      expect(alerts.scheduled, hasLength(2));
+      now = controller.workout!.rest!.endsAtClock
+          .subtract(const Duration(milliseconds: 400));
+      await controller.dropImminentEndAlarm();
+      expect(alerts.cancelEndCalls, 2);
+    });
+
+    test("switching A→B takes A's countdown and alarm off the screen",
+        () async {
+      final InMemoryActiveWorkoutStore store = InMemoryActiveWorkoutStore();
+      final FakeRestAlerts alerts = FakeRestAlerts();
+      final DateTime now = DateTime.utc(2026, 9, 29, 10);
+      await store.write(_account, _workout());
+      final ActiveWorkoutController controller = _controller(
+        store: store,
+        restLengths: InMemoryRestLengthStore(),
+        alerts: alerts,
+        now: () => now,
+      );
+      await controller.syncAccount(_account);
+      await controller.setTicked(0, 0, true);
+      expect(alerts.shown, hasLength(1));
+
+      // Straight to another account, with no signed-out moment in between:
+      // A's lock-screen notification and alarm go exactly like sign-out's.
+      await controller.syncAccount(_otherAccount);
+      expect(alerts.removeCalls, 1);
+      expect(alerts.cancelEndCalls, 1);
+      expect(controller.workout, isNull);
+      // B has no stored workout, so nothing of A's is re-posted for it.
+      expect(alerts.shown, hasLength(1));
+
+      // Back to A: its still-running rest posts again, and nothing that
+      // belongs to B is left behind to cancel.
+      await controller.syncAccount(_account);
+      expect(alerts.shown, hasLength(2));
+      expect(alerts.removeCalls, 1);
+      expect(alerts.cancelEndCalls, 1);
+    });
   });
 
   group('rest timer restore (#125)', () {
@@ -492,8 +689,10 @@ void main() {
         _account,
         _workout().copyWith(
           rest: ActiveRestTimer(
-            endsAt:
-                now.subtract(const Duration(seconds: 5)).toUtc().toIso8601String(),
+            endsAt: now
+                .subtract(const Duration(seconds: 5))
+                .toUtc()
+                .toIso8601String(),
             totalSeconds: 180,
             exerciseId: 'bench_press',
             exerciseName: 'Bench Press',
@@ -566,6 +765,93 @@ void main() {
       // system settings upgrades the next alarm to exact without a re-ask.
       expect(await alerts.endScheduleMode(),
           AndroidScheduleMode.exactAllowWhileIdle);
+    });
+
+    test('two quick ticks share one ask, with the flag written first',
+        () async {
+      final _MemorySecureStore store = _MemorySecureStore();
+      int notificationAsks = 0;
+      int exactAsks = 0;
+      bool flaggedFirst = false;
+      final AndroidRestAlerts alerts = AndroidRestAlerts(
+        store: store,
+        requestNotificationsPermission: () async {
+          notificationAsks += 1;
+          flaggedFirst = store.values['rest_alerts.asked'] == '1';
+          return true;
+        },
+        requestExactAlarmsPermission: () async {
+          exactAsks += 1;
+          flaggedFirst =
+              flaggedFirst && store.values['rest_alerts.asked'] == '1';
+          return true;
+        },
+        canScheduleExactNotifications: () async => true,
+      );
+
+      // Two starts a tick apart: the second must not race the flag the first
+      // one is about to write.
+      unawaited(alerts.ensureReady());
+      await alerts.ensureReady();
+      await _flush();
+
+      expect(notificationAsks, 1);
+      expect(exactAsks, 1);
+      // The "already asked" flag is on disk before either prompt shows.
+      expect(flaggedFirst, isTrue);
+      expect(store.values['rest_alerts.asked'], '1');
+    });
+
+    test('every entry point waits for ONE init before it runs', () async {
+      final _MemorySecureStore store = _MemorySecureStore();
+      final Completer<void> gate = Completer<void>();
+      int initCalls = 0;
+      int notificationAsks = 0;
+      int exactAsks = 0;
+      final AndroidRestAlerts alerts = AndroidRestAlerts(
+        store: store,
+        initialize: () {
+          initCalls += 1;
+          return gate.future;
+        },
+        requestNotificationsPermission: () async {
+          notificationAsks += 1;
+          return true;
+        },
+        requestExactAlarmsPermission: () async {
+          exactAsks += 1;
+          return true;
+        },
+        canScheduleExactNotifications: () async => true,
+      );
+      final RestAlertInfo info = RestAlertInfo(
+        endsAt: DateTime.utc(2026, 9, 29, 10, 3),
+        totalSeconds: 180,
+        exerciseName: 'Bench Press',
+        setNumber: 2,
+      );
+
+      // The first rest's entry points, all at once.
+      await alerts.ensureReady();
+      await alerts.ensureReady();
+      unawaited(alerts.showRest(info));
+      unawaited(alerts.scheduleEnd(info));
+      await _flush();
+
+      // ONE shared init is still in flight — and nothing that runs after it,
+      // not even the permission ask, has happened yet.
+      expect(initCalls, 1);
+      expect(notificationAsks, 0);
+      expect(exactAsks, 0);
+
+      gate.complete();
+      await _flush();
+
+      // Init finished once for all four calls, and the two quick
+      // ensureReady calls shared the single ask it was gating.
+      expect(initCalls, 1);
+      expect(notificationAsks, 1);
+      expect(exactAsks, 1);
     });
   });
 }

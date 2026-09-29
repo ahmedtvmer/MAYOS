@@ -10,6 +10,7 @@ class FakeRestAlerts implements RestAlerts {
   int removeCalls = 0;
   int cancelEndCalls = 0;
   int playEndCalls = 0;
+  final List<RestAlertInfo> ended = <RestAlertInfo>[];
 
   @override
   Future<void> ensureReady() async {
@@ -37,7 +38,8 @@ class FakeRestAlerts implements RestAlerts {
   }
 
   @override
-  Future<void> playEnd() async {
+  Future<void> playEnd(RestAlertInfo info) async {
     playEndCalls += 1;
+    ended.add(info);
   }
 }
