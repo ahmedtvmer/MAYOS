@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/connectivity.dart';
 import 'core/theme/mayos_theme.dart';
 import 'providers.dart';
 import 'router.dart';
@@ -62,6 +63,11 @@ class _MayosAppState extends ConsumerState<MayosApp>
   Widget build(BuildContext context) {
     final GoRouter router = ref.watch(routerProvider);
     final ThemeMode themeMode = ref.watch(themeModeControllerProvider);
+    // The offline banner is web-only (#127). The connectivity provider is
+    // watched only while the flag is on, so Android never creates it and its
+    // behaviour stays exactly as before.
+    final bool showOfflineBanner = ref.watch(offlineBannerEnabledProvider) &&
+        !ref.watch(connectivityControllerProvider);
 
     return MaterialApp.router(
       title: 'MAYOS',
@@ -77,7 +83,19 @@ class _MayosAppState extends ConsumerState<MayosApp>
         final MayosThemeExtension c = _effective(context, themeMode);
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: MayosTheme.overlayStyle(c),
-          child: child ?? const SizedBox.shrink(),
+          child: Stack(
+            fit: StackFit.passthrough,
+            children: <Widget>[
+              child ?? const SizedBox.shrink(),
+              if (showOfflineBanner)
+                const Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: OfflineBanner(),
+                ),
+            ],
+          ),
         );
       },
     );
