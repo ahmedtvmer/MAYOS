@@ -16,7 +16,9 @@ import 'package:mayos_mobile/src/core/connectivity_message.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/sse.dart';
+import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_markdown.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_repository.dart';
 import 'package:mayos_mobile/src/providers.dart';
@@ -66,9 +68,15 @@ Future<void> _pumpChat(
   required InMemoryChatCacheStore store,
   InMemoryWorkoutCacheStore? workoutCache,
   Key? scopeKey,
+  ThemeMode? themeMode,
+  Size? size,
 }) async {
   await _pumpHome(tester, fake,
-      chatCache: store, workoutCache: workoutCache, scopeKey: scopeKey);
+      chatCache: store,
+      workoutCache: workoutCache,
+      scopeKey: scopeKey,
+      themeMode: themeMode,
+      size: size);
   await tester.tap(find.byTooltip('Assistant'));
   await _pumpUntilFound(tester, find.byKey(const Key('chat_composer')));
 }
@@ -80,9 +88,11 @@ Future<void> _pumpHome(
   InMemoryChatCacheStore? chatCache,
   InMemoryWorkoutCacheStore? workoutCache,
   Key? scopeKey,
+  ThemeMode? themeMode,
+  Size? size,
 }) async {
-  tester.view.physicalSize = const Size(1080, 2400);
-  tester.view.devicePixelRatio = 2.0;
+  tester.view.physicalSize = size ?? const Size(1080, 2400);
+  tester.view.devicePixelRatio = size == null ? 2.0 : 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
@@ -94,6 +104,8 @@ Future<void> _pumpHome(
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
+        themeModeStoreProvider.overrideWithValue(
+            InMemoryThemeModeStore(themeMode)),
         _apiOverride(fake),
         chatCacheStoreProvider
             .overrideWithValue(chatCache ?? InMemoryChatCacheStore()),
@@ -116,6 +128,10 @@ Future<void> _acceptDisclosure(WidgetTester tester) async {
 
 TextField _composer(WidgetTester tester) =>
     tester.widget<TextField>(find.byKey(const Key('chat_composer')));
+
+Finder _chatMarkdown(String source) => find.byWidgetPredicate(
+      (Widget widget) => widget is MayosMarkdown && widget.source == source,
+    );
 
 Future<void> _openSettings(WidgetTester tester) async {
   await tester.tap(find.byIcon(Icons.settings_outlined));
@@ -229,19 +245,74 @@ void main() {
     expect(find.text('Assistant is replying…'), findsOneWidget);
 
     await tester.pump(const Duration(milliseconds: 120));
-    expect(find.text('Keep your '), findsOneWidget);
+    expect(_chatMarkdown('Keep your '), findsOneWidget);
 
     await tester.pump(const Duration(milliseconds: 120));
-    expect(find.text('Keep your elbows tucked.'), findsOneWidget);
+    expect(_chatMarkdown('Keep your elbows tucked.'), findsOneWidget);
 
     await tester.pump(const Duration(milliseconds: 120));
     expect(find.text('Assistant is replying…'), findsNothing);
-    expect(find.text('Keep your elbows tucked.'), findsOneWidget);
+    expect(_chatMarkdown('Keep your elbows tucked.'), findsOneWidget);
     // The finished reply is cached for offline reading.
     final List<ChatMessage> cached = await store.readHistory('account-alice');
     expect(
         cached.any((ChatMessage m) => m.content == 'Keep your elbows tucked.'),
         isTrue);
+  });
+
+  testWidgets(
+      'partial Markdown streams into the same selectable history render at 360 dp',
+      (tester) async {
+    for (final ThemeMode mode in <ThemeMode>[ThemeMode.light, ThemeMode.dark]) {
+      final InMemoryChatCacheStore store = InMemoryChatCacheStore();
+      final FakeMayosApi fake = _fakePlayer('alice')
+        ..chatReplyChunks = <String>['**Strong', '** and *steady*.'];
+      await _pumpChat(
+        tester,
+        fake,
+        store: store,
+        scopeKey: UniqueKey(),
+        themeMode: mode,
+        size: const Size(360, 640),
+      );
+      await _acceptDisclosure(tester);
+
+      await tester.enterText(
+          find.byKey(const Key('chat_composer')), '**How?**');
+      await tester.tap(find.byKey(const Key('chat_send')));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 120));
+
+      final MayosMarkdown partial = tester
+          .widgetList<MayosMarkdown>(
+            find.byKey(const Key('chat_streaming_markdown')),
+          )
+          .first;
+      expect(partial.source, '**Strong');
+      expect(find.text('**How?**'), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 120));
+      await tester.pump(const Duration(milliseconds: 120));
+      const String reply = '**Strong** and *steady*.';
+      expect(_chatMarkdown(reply), findsOneWidget);
+      expect(find.byKey(const Key('chat_streaming_markdown')), findsNothing);
+      expect(tester.takeException(), isNull);
+
+      // History reuses the same renderer after a stream finishes.
+      fake.chatOffline = true;
+      await tester.pumpWidget(const SizedBox());
+      await _pumpChat(
+        tester,
+        fake,
+        store: store,
+        scopeKey: UniqueKey(),
+        themeMode: mode,
+        size: const Size(360, 640),
+      );
+      expect(_chatMarkdown(reply), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    }
   });
 
   testWidgets('error event shows an error state and never persists a partial',
@@ -258,7 +329,7 @@ void main() {
         tester, find.text('The assistant is temporarily unavailable.'));
 
     expect(find.byKey(const Key('chat_send_error')), findsOneWidget);
-    expect(find.text('Keep your elbows tucked.'), findsNothing);
+    expect(_chatMarkdown('Keep your elbows tucked.'), findsNothing);
     // Only the user message reached the server; no assistant reply persisted.
     expect(
         fake.chatHistory
@@ -270,7 +341,7 @@ void main() {
     // Retrying after recovery succeeds without duplicating the user message.
     fake.chatSendError = false;
     await tester.tap(find.byKey(const Key('chat_retry')));
-    await _pumpUntilFound(tester, find.text('Keep your elbows tucked.'));
+    await _pumpUntilFound(tester, _chatMarkdown('Keep your elbows tucked.'));
     expect(find.byKey(const Key('chat_send_error')), findsNothing);
     expect(find.text('Cue my bench?'), findsOneWidget);
     expect(
@@ -307,6 +378,13 @@ void main() {
     // The commit pointer renders as a distinct debrief card, not a bubble.
     expect(find.byKey(const Key('chat_debrief')), findsOneWidget);
     expect(find.text('Session debrief'), findsOneWidget);
+    expect(
+      _chatMarkdown(
+        '📋 **Session Logged:** Full A (2026-09-26) | 12 Sets | '
+        'Volume: 4,200.0 kg | Readiness: 4/5 | Saved to Ledger.',
+      ),
+      findsOneWidget,
+    );
 
     expect(_composer(tester).enabled, isFalse);
     expect(find.text('Chat needs a connection.'), findsOneWidget);
@@ -324,7 +402,7 @@ void main() {
     await tester.enterText(
         find.byKey(const Key('chat_composer')), 'rebuild my routine to 3 days');
     await tester.tap(find.byKey(const Key('chat_send')));
-    await _pumpUntilFound(tester, find.text('Keep your elbows tucked.'));
+    await _pumpUntilFound(tester, _chatMarkdown('Keep your elbows tucked.'));
 
     // The program cache was refreshed from the authoritative active program.
     expect(await workoutCache.readProgram('account-alice'), isNotNull);
@@ -343,7 +421,7 @@ void main() {
     await tester.enterText(
         find.byKey(const Key('chat_composer')), 'Cue my bench?');
     await tester.tap(find.byKey(const Key('chat_send')));
-    await _pumpUntilFound(tester, find.text('Keep your elbows tucked.'));
+    await _pumpUntilFound(tester, _chatMarkdown('Keep your elbows tucked.'));
     expect(fake.chatHistory, isNotEmpty);
 
     await tester.tap(find.byKey(const Key('chat_clear')));

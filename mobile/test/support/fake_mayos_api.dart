@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'fake_api_adapter.dart';
 
 /// In-memory stand-in for the FastAPI service, mimicking the real route
@@ -187,6 +189,7 @@ class FakeMayosApi {
   bool chatSendError = false;
   // When true, the done frame reports `program_updated: true`.
   bool chatProgramUpdated = false;
+  List<String> chatReplyChunks = <String>['Keep your ', 'elbows tucked.'];
 
   // Exact method+path pairs that fail as a dropped connection (offline
   // program-changing action, spec AC3). Add via ``failOffline('POST', path)``.
@@ -1253,7 +1256,7 @@ class FakeMayosApi {
         'event: error\ndata: {"detail": "The assistant is temporarily unavailable."}\n\n',
       ]);
     }
-    const String reply = 'Keep your elbows tucked.';
+    final String reply = chatReplyChunks.join();
     chatHistory.add(<String, dynamic>{
       'id': 'chat-${++_chatSeq}',
       'role': 'assistant',
@@ -1261,9 +1264,9 @@ class FakeMayosApi {
       'created_at': '2026-09-26T12:00:01Z',
     });
     return FakeResponse(200, null, <String>[
-      'data: {"token": "Keep your "}\n\n',
-      'data: {"token": "elbows tucked."}\n\n',
-      'data: {"done": true, "response_content": "$reply", '
+      for (final String chunk in chatReplyChunks)
+        'data: {"token": ${jsonEncode(chunk)}}\n\n',
+      'data: {"done": true, "response_content": ${jsonEncode(reply)}, '
           '"program_updated": ${chatProgramUpdated ? 'true' : 'false'}}\n\n',
     ]);
   }

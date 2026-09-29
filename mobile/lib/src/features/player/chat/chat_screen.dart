@@ -11,6 +11,7 @@ import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_card.dart';
+import '../../../core/ui/mayos_markdown.dart';
 import '../../../core/ui/mayos_scaffold.dart';
 import '../../../core/ui/mayos_text_field.dart';
 import '../../../core/workout_storage.dart';
@@ -449,7 +450,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       return _bubble(
         context,
         role: 'assistant',
-        child: text.isEmpty ? const _TypingIndicator() : Text(text),
+        child: text.isEmpty
+            ? const _TypingIndicator()
+            : MayosMarkdown(
+                key: const Key('chat_streaming_markdown'),
+                source: text,
+              ),
       );
     }
     final ChatMessage message = _messages[index];
@@ -459,7 +465,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return _bubble(
       context,
       role: message.role,
-      child: Text(message.content),
+      child: message.role == 'assistant'
+          ? MayosMarkdown(source: message.content)
+          : Text(message.content),
     );
   }
 
@@ -579,7 +587,7 @@ class _DebriefCard extends StatelessWidget {
                   Text('Session debrief',
                       style: Theme.of(context).textTheme.titleSmall),
                   const SizedBox(height: MayosSpacing.xxs),
-                  Text(message.content),
+                  MayosMarkdown(source: message.content),
                 ],
               ),
             ),

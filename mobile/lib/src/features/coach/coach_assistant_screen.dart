@@ -8,6 +8,7 @@ import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
+import '../../core/ui/mayos_markdown.dart';
 import '../../core/ui/mayos_scaffold.dart';
 import '../../core/ui/mayos_text_field.dart';
 import '../../providers.dart';
@@ -202,9 +203,17 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
         final CoachAssistantTurn turn = turns[index];
         return _bubble(
           role: turn.role,
-          child: Text(turn.content,
-              style: MayosTypography.bodySecondary.copyWith(
-                  color: turn.role == 'coach' ? c.onAccent : c.textPrimary)),
+          child: turn.role == 'assistant'
+              ? MayosMarkdown(
+                  source: turn.content,
+                  bodyStyle: MayosTypography.bodySecondary,
+                )
+              : Text(
+                  turn.content,
+                  style: MayosTypography.bodySecondary.copyWith(
+                    color: c.onAccent,
+                  ),
+                ),
         );
       },
     );

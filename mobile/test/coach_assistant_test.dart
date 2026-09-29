@@ -8,7 +8,9 @@ import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/models.dart';
+import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_markdown.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/coach/coach_assistant_state.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
@@ -35,9 +37,14 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
-Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
-  tester.view.physicalSize = const Size(1080, 2400);
-  tester.view.devicePixelRatio = 2.0;
+Future<void> _pumpApp(
+  WidgetTester tester,
+  FakeMayosApi fake, {
+  ThemeMode? themeMode,
+  Size? size,
+}) async {
+  tester.view.physicalSize = size ?? const Size(1080, 2400);
+  tester.view.devicePixelRatio = size == null ? 2.0 : 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
@@ -48,6 +55,8 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
+        themeModeStoreProvider.overrideWithValue(
+            InMemoryThemeModeStore(themeMode)),
         chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
         // Logout must never reach the secure-storage plugin in a widget test.
         draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
@@ -98,6 +107,10 @@ FakeMayosApi _coachFake(
 
 ProviderContainer _container(WidgetTester tester) =>
     ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+
+Finder _assistantMarkdown(String source) => find.byWidgetPredicate(
+      (Widget widget) => widget is MayosMarkdown && widget.source == source,
+    );
 
 /// The coach shell opens on the Roster tab (#119).
 Future<void> _openRoster(WidgetTester tester) async {
@@ -210,10 +223,10 @@ void main() {
     expect(find.text('0/1000'), findsOneWidget);
 
     await _ask(tester, 'How is the bench progressing?');
-    await _pumpUntilFound(tester, find.text(fake.coachAssistantAnswer));
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
 
     expect(find.text('How is the bench progressing?'), findsOneWidget);
-    expect(find.text(fake.coachAssistantAnswer), findsOneWidget);
+    expect(_assistantMarkdown(fake.coachAssistantAnswer), findsOneWidget);
     expect(fake.coachAssistantRequests, hasLength(1));
     expect(fake.coachAssistantRequests.single['question'],
         'How is the bench progressing?');
@@ -226,6 +239,31 @@ void main() {
     expect(transcript.turns, hasLength(2));
   });
 
+  testWidgets('assistant Markdown fits at 360 dp in light and dark themes',
+      (WidgetTester tester) async {
+    for (final ThemeMode mode in <ThemeMode>[ThemeMode.light, ThemeMode.dark]) {
+      final FakeMayosApi fake = _coachFake()
+        ..coachAssistantAnswer =
+            '# Coaching notes\n\nKeep **one** lift moving.\n\n- Stay patient\n- Add weight slowly';
+      await _pumpApp(
+        tester,
+        fake,
+        themeMode: mode,
+        size: const Size(360, 640),
+      );
+      await _openRoster(tester);
+      await _openAssistant(tester, 'bob');
+      await _ask(tester, '**Keep** this question plain.');
+      await _pumpUntilFound(
+          tester, _assistantMarkdown(fake.coachAssistantAnswer));
+
+      expect(find.text('**Keep** this question plain.'), findsOneWidget);
+      expect(_assistantMarkdown(fake.coachAssistantAnswer), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
   testWidgets('the next question carries the previous exchange as history',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _coachFake();
@@ -234,9 +272,9 @@ void main() {
     await _openAssistant(tester, 'bob');
 
     await _ask(tester, 'First question?');
-    await _pumpUntilFound(tester, find.text(fake.coachAssistantAnswer));
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
     await _ask(tester, 'Second question?');
-    await _pumpUntilCount(tester, find.text(fake.coachAssistantAnswer), 2);
+    await _pumpUntilCount(tester, _assistantMarkdown(fake.coachAssistantAnswer), 2);
 
     expect(fake.coachAssistantRequests, hasLength(2));
     final List<dynamic> history =
@@ -263,7 +301,7 @@ void main() {
     }
 
     await _ask(tester, 'Latest question?');
-    await _pumpUntilFound(tester, find.text(fake.coachAssistantAnswer));
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
 
     final List<dynamic> history =
         fake.coachAssistantRequests.single['history'] as List<dynamic>;
@@ -340,7 +378,7 @@ void main() {
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
     await _ask(tester, 'Bob question?');
-    await _pumpUntilFound(tester, find.text(fake.coachAssistantAnswer));
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
     expect(find.text('Bob question?'), findsOneWidget);
 
     await _closeAssistant(tester);
@@ -348,7 +386,7 @@ void main() {
     await _openAssistant(tester, 'carol');
 
     expect(find.text('Bob question?'), findsNothing);
-    expect(find.text(fake.coachAssistantAnswer), findsNothing);
+    expect(_assistantMarkdown(fake.coachAssistantAnswer), findsNothing);
     final CoachAssistantTranscript? transcript =
         _container(tester).read(coachAssistantControllerProvider);
     expect(transcript!.assignmentId, 'assignment-2');
@@ -356,7 +394,7 @@ void main() {
 
     // The new player's first request carries no inherited history.
     await _ask(tester, 'Carol question?');
-    await _pumpUntilFound(tester, find.text(fake.coachAssistantAnswer));
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
     expect(fake.coachAssistantRequests, hasLength(2));
     expect(fake.coachAssistantRequests.last['history'], isEmpty);
   });
@@ -385,7 +423,7 @@ void main() {
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
     await _ask(tester, 'Bob question?');
-    await _pumpUntilFound(tester, find.text(fake.coachAssistantAnswer));
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
     expect(
         _container(tester).read(coachAssistantControllerProvider), isNotNull);
 
@@ -406,7 +444,7 @@ void main() {
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
     await _ask(tester, 'Bob question?');
-    await _pumpUntilFound(tester, find.text(fake.coachAssistantAnswer));
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
     expect(
         _container(tester).read(coachAssistantControllerProvider), isNotNull);
 
@@ -429,7 +467,7 @@ void main() {
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
     await _ask(tester, 'Bob question?');
-    await _pumpUntilFound(tester, find.text(fake.coachAssistantAnswer));
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
     expect(
         _container(tester).read(coachAssistantControllerProvider), isNotNull);
 
@@ -454,7 +492,7 @@ void main() {
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
     await _ask(tester, 'Bob question?');
-    await _pumpUntilFound(tester, find.text(fake.coachAssistantAnswer));
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
     expect(
         _container(tester).read(coachAssistantControllerProvider), isNotNull);
 
@@ -477,7 +515,7 @@ void main() {
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
     await _ask(tester, 'Bob question?');
-    await _pumpUntilFound(tester, find.text(fake.coachAssistantAnswer));
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
 
     await _closeAssistant(tester);
     // Revoked while the coach sits on the now-stale history screen.
@@ -501,7 +539,7 @@ void main() {
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
     await _ask(tester, 'Bob question?');
-    await _pumpUntilFound(tester, find.text(fake.coachAssistantAnswer));
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
     expect(
         _container(tester).read(coachAssistantControllerProvider), isNotNull);
 
@@ -539,7 +577,7 @@ void main() {
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
     await _ask(tester, 'Bob question?');
-    await _pumpUntilFound(tester, find.text(fake.coachAssistantAnswer));
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
     expect(
         _container(tester).read(coachAssistantControllerProvider), isNotNull);
 
@@ -563,7 +601,7 @@ void main() {
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
     await _ask(tester, 'Bob question?');
-    await _pumpUntilFound(tester, find.text(fake.coachAssistantAnswer));
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
     expect(
         _container(tester).read(coachAssistantControllerProvider), isNotNull);
 
@@ -586,7 +624,7 @@ void main() {
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
     await _ask(tester, 'Bob question?');
-    await _pumpUntilFound(tester, find.text(fake.coachAssistantAnswer));
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
     expect(
         _container(tester).read(coachAssistantControllerProvider), isNotNull);
 
@@ -607,7 +645,7 @@ void main() {
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
     await _ask(tester, 'Bob question?');
-    await _pumpUntilFound(tester, find.text(fake.coachAssistantAnswer));
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
     expect(
         _container(tester).read(coachAssistantControllerProvider), isNotNull);
 
