@@ -84,6 +84,8 @@ __all__ = [
     "ProgramExerciseSchema",
     "ProgramGenerateIn",
     "ProgramSubstitutionIn",
+    "ProgramSubstitutionUndoIn",
+    "ProgramSubstitutionOut",
     "ProgramRequestDeclineIn",
     "ProgramRequestOut",
     "RecoveryEmailOut",
@@ -728,6 +730,16 @@ class ProgramSubstitutionIn(BaseModel):
     exercise_id: str = Field(min_length=1, max_length=200)
     replacement_exercise_id: str = Field(min_length=1, max_length=200)
     all_occurrences: bool = False
+    expected_active_version: int | None = Field(default=None, ge=1)
+
+
+class ProgramSubstitutionUndoIn(BaseModel):
+    restore_version: int = Field(ge=1)
+    expected_active_version: int = Field(ge=1)
+
+
+class ProgramSubstitutionOut(GeneratedProgramSchema):
+    previous_version: int
 
 
 class PlayerProgramRequestIn(BaseModel):

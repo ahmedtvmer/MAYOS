@@ -5,12 +5,14 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/active_workout.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
+import 'package:mayos_mobile/src/core/baselines.dart';
+import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/providers.dart';
+import 'package:mayos_mobile/src/features/player/workout/active_workout_controller.dart';
 
 import 'support/fake_mayos_api.dart';
 
@@ -25,6 +27,17 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     }
     await tester.pump(const Duration(milliseconds: 100));
   }
+}
+
+Future<T> _waitWithPumps<T>(WidgetTester tester, Future<T> operation) async {
+  bool completed = false;
+  operation.then((_) => completed = true, onError: (Object error) {
+    completed = true;
+  });
+  for (int attempt = 0; attempt < 80 && !completed; attempt++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+  return operation;
 }
 
 FakeMayosApi _signedInFake() {
@@ -62,6 +75,8 @@ Future<void> _pumpProgram(
           activeWorkoutStoreProvider.overrideWithValue(activeWorkoutStore),
         workoutCacheStoreProvider
             .overrideWithValue(InMemoryWorkoutCacheStore()),
+        baselineCacheStoreProvider
+            .overrideWithValue(InMemoryBaselineCacheStore()),
         chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
         apiClientProvider.overrideWith((ref) {
           final ApiClient client = ApiClient(
@@ -93,8 +108,7 @@ Future<void> _pumpProgram(
 Future<void> _openSubstitutePicker(WidgetTester tester) async {
   await tester.drag(find.byType(ListView).first, const Offset(0, -180));
   await tester.pumpAndSettle();
-  final Finder moreActions =
-      find.byTooltip('More actions for Bench Press');
+  final Finder moreActions = find.byTooltip('More actions for Bench Press');
   await tester.ensureVisible(moreActions);
   await tester.tap(moreActions);
   await tester.pumpAndSettle();
@@ -184,7 +198,7 @@ void main() {
     });
   }
 
-  testWidgets('menu picker substitution refreshes program and Undo swaps back',
+  testWidgets('menu picker substitution refreshes program and exact Undo',
       (tester) async {
     final FakeMayosApi fake = _signedInFake();
     await _pumpProgram(tester, fake);
@@ -203,49 +217,81 @@ void main() {
     await tester.tap(find.text('Undo'));
     await tester.pumpAndSettle();
     await _pumpUntilFound(tester, find.text('Bench Press'));
-    expect(fake.programSubstitutionRequests, hasLength(2));
-    expect(fake.programSubstitutionRequests.last['exercise_id'], 'cable_fly');
-    expect(
-      fake.programSubstitutionRequests.last['replacement_exercise_id'],
-      'bench_press',
-    );
+    expect(fake.programSubstitutionRequests, hasLength(1));
+    expect(fake.programSubstitutionUndoRequests, hasLength(1));
+    expect(fake.programSubstitutionUndoRequests.single, <String, dynamic>{
+      'restore_version': 1,
+      'expected_active_version': 2,
+    });
   });
 
-  testWidgets('program substitution leaves the frozen Active workout intact',
+  testWidgets(
+      'substitution leaves an active workout frozen and seeds the next one',
       (tester) async {
     final FakeMayosApi fake = _signedInFake();
     final InMemoryActiveWorkoutStore activeWorkouts =
         InMemoryActiveWorkoutStore();
     await _pumpProgram(tester, fake, activeWorkoutStore: activeWorkouts);
-    final ActiveWorkout frozenWorkout = ActiveWorkout(
-      id: 'active-frozen',
-      accountId: 'account-alice',
-      startedAt: '2026-09-30T08:00:00Z',
-      dayOrder: 1,
-      dayName: 'Upper 1',
-      programVersion: 1,
-      exercises: <ActiveWorkoutExercise>[
-        ActiveWorkoutExercise(
-          exercise: <String, dynamic>{
-            'exercise_id': 'bench_press',
-            'exercise_name': 'Bench Press',
-            'target_sets': 3,
-          },
-          sets: <ActiveWorkoutSet>[ActiveWorkoutSet()],
-        ),
-      ],
-      baselines: const <String, BaselineExercise>{},
+    final ProviderContainer container = ProviderScope.containerOf(
+      tester.element(find.text('Day 1: Upper 1')),
+      listen: false,
     );
-    await activeWorkouts.write('account-alice', frozenWorkout);
-    final Map<String, dynamic> before = frozenWorkout.toJson();
-
+    final ApiClient api = container.read(apiClientProvider);
+    final TrainingProgram initialProgram =
+        (await _waitWithPumps(tester, api.activeProgram()))!;
+    final ActiveWorkoutController controller =
+        container.read(activeWorkoutControllerProvider.notifier);
+    expect(
+      await _waitWithPumps(
+        tester,
+        controller.startFromDay(
+          accountId: 'account-alice',
+          day: initialProgram.days.first,
+          programVersion: initialProgram.version,
+        ),
+      ),
+      StartWorkoutOutcome.started,
+    );
+    ActiveWorkout? frozenWorkout = await activeWorkouts.read('account-alice');
+    expect(frozenWorkout, isNotNull);
+    expect(frozenWorkout!.exercises.map((e) => e.exerciseId),
+        contains('bench_press'));
     await _chooseCableFly(tester);
     await _pumpUntilFound(tester, find.text('Cable Fly'));
 
-    expect(
-      (await activeWorkouts.read('account-alice'))?.toJson(),
-      before,
+    frozenWorkout = await activeWorkouts.read('account-alice');
+    expect(frozenWorkout!.exercises.map((e) => e.exerciseId),
+        contains('bench_press'));
+    expect(frozenWorkout.exercises.map((e) => e.exerciseId),
+        isNot(contains('cable_fly')));
+
+    await _waitWithPumps(
+      tester,
+      controller.discard(
+        accountId: 'account-alice',
+        workoutId: frozenWorkout.id,
+      ),
     );
+    final TrainingProgram updatedProgram =
+        (await _waitWithPumps(tester, api.activeProgram()))!;
+    expect(
+      await _waitWithPumps(
+        tester,
+        controller.startFromDay(
+          accountId: 'account-alice',
+          day: updatedProgram.days.first,
+          programVersion: updatedProgram.version,
+        ),
+      ),
+      StartWorkoutOutcome.started,
+    );
+    final ActiveWorkout? nextWorkout =
+        await activeWorkouts.read('account-alice');
+    expect(nextWorkout, isNotNull);
+    expect(
+        nextWorkout!.exercises.map((e) => e.exerciseId), contains('cable_fly'));
+    expect(nextWorkout.exercises.map((e) => e.exerciseId),
+        isNot(contains('bench_press')));
   });
 
   testWidgets('other-day choice substitutes all occurrences', (tester) async {
@@ -264,8 +310,8 @@ void main() {
     expect(fake.programSubstitutionRequests.single['all_occurrences'], isTrue);
     expect(
       (fake.programDaysOverride ?? <Map<String, dynamic>>[])
-          .expand((Map<String, dynamic> day) =>
-              day['exercises'] as List<dynamic>)
+          .expand(
+              (Map<String, dynamic> day) => day['exercises'] as List<dynamic>)
           .where((dynamic row) =>
               (row as Map<String, dynamic>)['exercise_id'] == 'bench_press'),
       isEmpty,

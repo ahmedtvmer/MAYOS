@@ -140,6 +140,7 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `SMTP_PORT` / `SMTP_USE_TLS` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | `587` / `true` / — / — / `no-reply@myos.local` | SMTP transport |
 | `RATE_LIMIT_LOGIN` / `_REGISTER` / `_PASSWORD` / `_RESET` / `_CHAT` / `_ONBOARDING` | `5/min` / `5/min` / `10/min` / `3/hour` / `30/min` / `30/min` | Per-route limits |
 | `RATE_LIMIT_USERNAME_CHECK` | `30/min` | `GET /auth/username-available`, the as-you-type username picker (#113) |
+| `RATE_LIMIT_PROGRAM_MUTATE` | `30/minute` | Player program mutations, including exercise substitutions and Undo |
 | `MODEL_RATE_LIMIT_REQUESTS` | `20` | Per-immutable-account model requests/minute; one turn counts once. `0` disables |
 | `MODEL_DAILY_TOKEN_LIMIT` | `200000` | Per-account input+output tokens/UTC day; `0` disables |
 | `MODEL_PRICING_JSON` | built-in defaults | `{model: {"input": usd, "output": usd}}` per 1M tokens; unknown model ⇒ cost 0 + warning |

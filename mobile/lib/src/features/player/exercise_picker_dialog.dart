@@ -15,6 +15,19 @@ import '../../providers.dart';
 
 const double kExercisePickerDialogWidth = 360;
 
+/// Returns the catalog's primary target muscle for a planned exercise.
+/// Missing/offline/slow detail lookups produce an unfiltered picker instead.
+Future<String?> exerciseTargetMuscle(ApiClient api, String exerciseId) async {
+  try {
+    final ExerciseCatalogDetail detail = await api
+        .exerciseCatalogDetail(exerciseId)
+        .timeout(const Duration(seconds: 3));
+    return detail.primaryMuscles.isEmpty ? null : detail.primaryMuscles.first;
+  } on Object {
+    return null;
+  }
+}
+
 /// Searches the real catalog so an exercise picked here carries an id the
 /// service can validate, rather than an invented one that would be refused on
 /// sync (ADR 020/033). It is both the **Add exercise** dialog and the search
@@ -54,8 +67,7 @@ class ExercisePickerDialog extends ConsumerStatefulWidget {
       _ExercisePickerDialogState();
 }
 
-class _ExercisePickerDialogState
-    extends ConsumerState<ExercisePickerDialog> {
+class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
   final TextEditingController _query = TextEditingController();
 
   bool _searching = false;
@@ -116,8 +128,8 @@ class _ExercisePickerDialogState
         _results = results;
         _error = results.isEmpty
             ? (muscle == null
-                  ? 'No matching exercise found.'
-                  : 'No $muscle exercise matched.')
+                ? 'No matching exercise found.'
+                : 'No $muscle exercise matched.')
             : null;
       });
     } on ApiException catch (error) {

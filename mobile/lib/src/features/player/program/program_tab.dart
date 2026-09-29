@@ -48,6 +48,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   bool _loading = true;
   bool _generating = false;
   bool _substituting = false;
+  bool _pickerBusy = false;
   String? _loadError;
   String? _actionError;
   TrainingProgram? _program;
@@ -145,16 +146,16 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     ProgramDay day,
     ProgramExercise exercise,
   ) async {
-    if (_substituting) return;
+    if (_substituting || _pickerBusy) return;
+    setState(() => _pickerBusy = true);
     try {
       final ExerciseCatalogEntry? replacement =
           await _pickProgramReplacement(day, exercise);
       if (replacement == null || !mounted) return;
       final String exerciseId = exercise.exerciseId;
       final int otherDays = _otherDaysWith(day, exerciseId);
-      final bool? allOccurrences = otherDays == 0
-          ? false
-          : await _chooseSubstitutionScope(otherDays);
+      final bool? allOccurrences =
+          otherDays == 0 ? false : await _chooseSubstitutionScope(otherDays);
       if (allOccurrences == null || !mounted) return;
       await _performProgramSwap(
         _ProgramSwap(
@@ -168,6 +169,8 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       );
     } on ApiException catch (error) {
       if (mounted) _showSwapError(error);
+    } finally {
+      if (mounted) setState(() => _pickerBusy = false);
     }
   }
 
@@ -175,12 +178,11 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     ProgramDay day,
     ProgramExercise exercise,
   ) async {
-    final ExerciseCatalogDetail detail = await ref
-        .read(apiClientProvider)
-        .exerciseCatalogDetail(exercise.exerciseId);
+    final String? targetMuscle = await exerciseTargetMuscle(
+      ref.read(apiClientProvider),
+      exercise.exerciseId,
+    );
     if (!mounted) return null;
-    final String? targetMuscle =
-        detail.primaryMuscles.isEmpty ? null : detail.primaryMuscles.first;
     return showDialog<ExerciseCatalogEntry>(
       context: context,
       builder: (BuildContext context) => ExercisePickerDialog(
@@ -196,9 +198,9 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
 
   int _otherDaysWith(ProgramDay selectedDay, String exerciseId) {
     return (_program?.days ?? const <ProgramDay>[]).where((ProgramDay day) {
-      return day.dayOrder != selectedDay.dayOrder &&
-          day.exercises.any((ProgramExercise exercise) =>
-              exercise.exerciseId == exerciseId);
+      return day.dayName != selectedDay.dayName &&
+          day.exercises.any(
+              (ProgramExercise exercise) => exercise.exerciseId == exerciseId);
     }).length;
   }
 
@@ -240,56 +242,70 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     );
   }
 
-  Future<void> _performProgramSwap(
-    _ProgramSwap swap,
-    _SwapDirection direction,
-  ) async {
+  Future<void> _performProgramSwap(_ProgramSwap swap, _SwapDirection direction,
+      {int? restoreVersion, int? expectedActiveVersion}) async {
     if (!mounted) return;
     setState(() {
       _substituting = true;
       _actionError = null;
     });
     try {
-      final TrainingProgram program = await _requestProgramSwap(swap, direction);
+      final ProgramSubstitutionResult swapResult = await _requestProgramSwap(
+        swap,
+        direction,
+        restoreVersion: restoreVersion,
+        expectedActiveVersion: expectedActiveVersion,
+      );
       if (!mounted) return;
       setState(() {
-        _program = program;
+        _program = swapResult.program;
         _fromCache = false;
         _substituting = false;
       });
-      _showSwapResult(swap, direction);
+      _showSwapResult(swap, direction, swapResult);
     } on ApiException catch (error) {
       if (mounted) _showSwapError(error);
     }
   }
 
-  Future<TrainingProgram> _requestProgramSwap(
-    _ProgramSwap swap,
-    _SwapDirection direction,
-  ) async {
+  Future<ProgramSubstitutionResult> _requestProgramSwap(
+      _ProgramSwap swap, _SwapDirection direction,
+      {int? restoreVersion, int? expectedActiveVersion}) async {
     final bool undo = direction == _SwapDirection.undo;
-    final TrainingProgram program = await ref
-        .read(apiClientProvider)
-        .substituteProgramExercise(
-          dayName: swap.dayName,
-          exerciseId: undo ? swap.replacement.id : swap.sourceId,
-          replacementExerciseId: undo ? swap.sourceId : swap.replacement.id,
-          allOccurrences: swap.allOccurrences,
-        );
+    final ApiClient api = ref.read(apiClientProvider);
+    final ProgramSubstitutionResult mutation;
+    if (undo) {
+      mutation = await api.undoProgramSubstitution(
+        restoreVersion: restoreVersion!,
+        expectedActiveVersion: expectedActiveVersion!,
+      );
+    } else {
+      mutation = await api.substituteProgramExercise(
+        dayName: swap.dayName,
+        exerciseId: swap.sourceId,
+        replacementExerciseId: swap.replacement.id,
+        allOccurrences: swap.allOccurrences,
+        expectedActiveVersion: _program?.version,
+      );
+    }
     final String? accountId = _accountId;
     if (accountId != null) {
       unawaited(cacheActiveProgram(
         ref.read(workoutCacheStoreProvider),
         accountId,
-        program,
+        mutation.program,
       ));
     }
-    return program;
+    return mutation;
   }
 
-  void _showSwapResult(_ProgramSwap swap, _SwapDirection direction) {
-    final ScaffoldMessengerState messenger =
-        ScaffoldMessenger.of(context)..hideCurrentSnackBar();
+  void _showSwapResult(
+    _ProgramSwap swap,
+    _SwapDirection direction,
+    ProgramSubstitutionResult swapResult,
+  ) {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar();
     if (direction == _SwapDirection.undo) {
       messenger.showSnackBar(
         const SnackBar(content: Text('Substitution undone.')),
@@ -298,12 +314,18 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     }
     messenger.showSnackBar(
       SnackBar(
-        content: Text('${swap.sourceName} replaced with ${swap.replacement.name}.'),
+        content:
+            Text('${swap.sourceName} replaced with ${swap.replacement.name}.'),
         duration: const Duration(seconds: 10),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () => unawaited(
-            _performProgramSwap(swap, _SwapDirection.undo),
+            _performProgramSwap(
+              swap,
+              _SwapDirection.undo,
+              restoreVersion: swapResult.previousVersion,
+              expectedActiveVersion: swapResult.version,
+            ),
           ),
         ),
       ),
@@ -447,7 +469,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                       _ExerciseRow(
                         exercise: exercise,
                         onTap: () => _openExercise(day, exercise),
-                        onSubstitute: _substituting
+                        onSubstitute: _substituting || _pickerBusy
                             ? null
                             : () => unawaited(
                                   _onSubstituteExercise(day, exercise),

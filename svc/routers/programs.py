@@ -12,57 +12,34 @@ from agent.program_generator import generate_program_pipeline
 from service import programs as programs_service
 from service.program_substitution import (
     ProgramSubstitution,
+    ProgramSubstitutionUndo,
     SubstitutionErrorCode,
-    substitute_program_exercise,
+    substitute_active_program_exercise as substitute_active_program_exercise_service,
+    undo_active_program_substitution,
 )
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
 from svc.llm import InferenceScope, run_inference_sync
 from svc.rate_limit import PROGRAM_MUTATE_LIMIT, limiter
-from svc.schemas import ProgramGenerateIn, ProgramSubstitutionIn
+from svc.schemas import (
+    ProgramGenerateIn,
+    ProgramSubstitutionIn,
+    ProgramSubstitutionOut,
+    ProgramSubstitutionUndoIn,
+)
 
 router = APIRouter(prefix="/programs", tags=["programs"])
 
 
-def _player_active_program(db: Any, ledger: Any, account_id: str | None) -> Any:
-    if not programs_service.player_controls_program(db, ledger, account_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=programs_service.COACH_CONTROLLED_ERROR,
-        )
-    active = ledger.get_active_program()
-    if active is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active program.")
-    return active
-
-
 def _raise_substitution_error(substitution: dict[str, Any]) -> None:
     code = substitution["code"]
-    http_status = (
-        status.HTTP_404_NOT_FOUND
-        if code is SubstitutionErrorCode.REPLACEMENT_NOT_FOUND
-        else status.HTTP_400_BAD_REQUEST
-    )
+    http_status = {
+        SubstitutionErrorCode.COACH_CONTROLLED: status.HTTP_403_FORBIDDEN,
+        SubstitutionErrorCode.NO_ACTIVE_PROGRAM: status.HTTP_404_NOT_FOUND,
+        SubstitutionErrorCode.RESTORE_VERSION_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+        SubstitutionErrorCode.REPLACEMENT_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+        SubstitutionErrorCode.PROGRAM_CHANGED: status.HTTP_409_CONFLICT,
+    }.get(code, status.HTTP_400_BAD_REQUEST)
     raise HTTPException(status_code=http_status, detail=substitution["error"])
-
-
-def _publish_substitution(ledger: Any, db: Any, active: Any, body: ProgramSubstitutionIn) -> Any:
-    substitution = substitute_program_exercise(
-        ledger,
-        db,
-        active,
-        ProgramSubstitution(
-            day_name=body.day_name,
-            exercise_id=body.exercise_id,
-            replacement_exercise_id=body.replacement_exercise_id,
-            all_occurrences=body.all_occurrences,
-        ),
-    )
-    if not substitution["ok"]:
-        _raise_substitution_error(substitution)
-    updated = ledger.get_active_program()
-    if updated is None:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Program update failed.")
-    return updated
 
 
 @router.post("/generate", response_model=GeneratedProgramSchema)
@@ -120,7 +97,7 @@ async def read_active_program(
     return await asyncio.to_thread(_run)
 
 
-@router.post("/active/substitutions", response_model=GeneratedProgramSchema)
+@router.post("/active/substitutions", response_model=ProgramSubstitutionOut)
 @limiter.limit(PROGRAM_MUTATE_LIMIT)
 async def substitute_active_program_exercise(
     request: Request,
@@ -132,9 +109,49 @@ async def substitute_active_program_exercise(
     """Permanently swaps one slot (or all occurrences) and returns the new version."""
 
     def _run():
-        account_id = account_id_of(player)
-        active = _player_active_program(db, ledger, account_id)
-        return _publish_substitution(ledger, db, active, body)
+        substitution = substitute_active_program_exercise_service(
+            db,
+            ledger,
+            account_id_of(player),
+            ProgramSubstitution(
+                day_name=body.day_name,
+                exercise_id=body.exercise_id,
+                replacement_exercise_id=body.replacement_exercise_id,
+                all_occurrences=body.all_occurrences,
+                expected_active_version=body.expected_active_version,
+            ),
+        )
+        if "code" in substitution:
+            _raise_substitution_error(substitution)
+        return substitution
+
+    return await asyncio.to_thread(_run)
+
+
+@router.post("/active/substitutions/undo", response_model=ProgramSubstitutionOut)
+@limiter.limit(PROGRAM_MUTATE_LIMIT)
+async def undo_active_program_exercise_substitution(
+    request: Request,
+    body: ProgramSubstitutionUndoIn,
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Restore an exact earlier program snapshot as a new version."""
+
+    def _run():
+        restoration = undo_active_program_substitution(
+            db,
+            ledger,
+            account_id_of(player),
+            ProgramSubstitutionUndo(
+                restore_version=body.restore_version,
+                expected_active_version=body.expected_active_version,
+            ),
+        )
+        if "code" in restoration:
+            _raise_substitution_error(restoration)
+        return restoration
 
     return await asyncio.to_thread(_run)
 

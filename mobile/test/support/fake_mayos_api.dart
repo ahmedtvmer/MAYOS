@@ -120,6 +120,10 @@ class FakeMayosApi {
   List<Map<String, dynamic>>? programDaysOverride;
   final List<Map<String, dynamic>> programSubstitutionRequests =
       <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> programSubstitutionUndoRequests =
+      <Map<String, dynamic>>[];
+  final Map<int, List<Map<String, dynamic>>> _programDaysByVersion =
+      <int, List<Map<String, dynamic>>>{};
   // When true, `GET /programs/active` fails with a transient 500 (offline
   // simulation for the Program tab's cache fallback, ADR 020/033).
   bool activeProgramFails = false;
@@ -424,6 +428,8 @@ class FakeMayosApi {
         return _activeProgram(request);
       case '/programs/active/substitutions':
         return _substituteActiveProgram(request);
+      case '/programs/active/substitutions/undo':
+        return _undoActiveProgramSubstitution(request);
       case '/dashboard/volume':
         return _volume(request);
       case '/dashboard/personal-records':
@@ -520,8 +526,8 @@ class FakeMayosApi {
     if (request.method == 'DELETE') {
       unlinkGoogleRequests++;
       if (!linkedSignIns.contains('google')) {
-        return const FakeResponse(
-            200, <String, dynamic>{'message': 'No Google account was connected.'});
+        return const FakeResponse(200,
+            <String, dynamic>{'message': 'No Google account was connected.'});
       }
       if (!hasPassword) {
         return const FakeResponse(409, <String, dynamic>{
@@ -536,7 +542,9 @@ class FakeMayosApi {
     linkGoogleRequests++;
     final String? idToken = request.body['id_token'] as String?;
     lastLinkGoogleIdToken = idToken;
-    if (idToken == null || idToken.isEmpty || idToken == 'google-invalid-id-token') {
+    if (idToken == null ||
+        idToken.isEmpty ||
+        idToken == 'google-invalid-id-token') {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Invalid Google credentials.'});
     }
@@ -2374,74 +2382,21 @@ class FakeMayosApi {
         'split_type': 'Upper/Lower',
         'weekly_frequency': 4,
         'instructions': '',
-        'days': programDaysOverride ?? <Map<String, dynamic>>[
-          <String, dynamic>{
-            'day_name': 'Upper 1',
-            'day_order': 1,
-            'warmup_exercises': <Map<String, dynamic>>[
+        'days': programDaysOverride ??
+            <Map<String, dynamic>>[
               <String, dynamic>{
-                'exercise_id': 'band_pull_apart',
-                'exercise_name': 'Band Pull-Apart',
-                'sets': 2,
-                'reps': 15,
-                'rest_seconds': 45,
-                'notes': 'Squeeze at the top.',
-              },
-            ],
-            'exercises': <Map<String, dynamic>>[
-              <String, dynamic>{
-                'exercise_id': 'bench_press',
-                'exercise_name': 'Bench Press',
-                'warmup_sets': 2,
-                'target_sets': 3,
-                'target_reps_min': 5,
-                'target_reps_max': 8,
-                'target_rpe': 8.5,
-                'rest_seconds': 180,
-                'notes': 'Pause on the chest.',
-              },
-              <String, dynamic>{
-                'exercise_id': 'overhead_press',
-                'exercise_name': 'Overhead Press',
-                'warmup_sets': 1,
-                'target_sets': 3,
-                'target_reps_min': 6,
-                'target_reps_max': 10,
-                'target_rpe': 8.0,
-                'rest_seconds': 150,
-                'notes': null,
-              },
-              <String, dynamic>{
-                'exercise_id': 'barbell_row',
-                'exercise_name': 'Barbell Row',
-                'warmup_sets': 1,
-                'target_sets': 3,
-                'target_reps_min': 6,
-                'target_reps_max': 10,
-                'target_rpe': 8.0,
-                'rest_seconds': 150,
-                'notes': null,
-              },
-              <String, dynamic>{
-                'exercise_id': 'lat_pulldown',
-                'exercise_name': 'Lat Pulldown',
-                'warmup_sets': 0,
-                'target_sets': 3,
-                'target_reps_min': 8,
-                'target_reps_max': 12,
-                'target_rpe': 8.0,
-                'rest_seconds': 120,
-                'notes': null,
-              },
-            ],
-            'cardio': '10 min incline walk',
-          },
-          if (repeatBenchPressOnOtherDays)
-            for (int order = 2; order <= 3; order++)
-              <String, dynamic>{
-                'day_name': 'Upper $order',
-                'day_order': order,
-                'warmup_exercises': <Map<String, dynamic>>[],
+                'day_name': 'Upper 1',
+                'day_order': 1,
+                'warmup_exercises': <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'exercise_id': 'band_pull_apart',
+                    'exercise_name': 'Band Pull-Apart',
+                    'sets': 2,
+                    'reps': 15,
+                    'rest_seconds': 45,
+                    'notes': 'Squeeze at the top.',
+                  },
+                ],
                 'exercises': <Map<String, dynamic>>[
                   <String, dynamic>{
                     'exercise_id': 'bench_press',
@@ -2453,6 +2408,17 @@ class FakeMayosApi {
                     'target_rpe': 8.5,
                     'rest_seconds': 180,
                     'notes': 'Pause on the chest.',
+                  },
+                  <String, dynamic>{
+                    'exercise_id': 'overhead_press',
+                    'exercise_name': 'Overhead Press',
+                    'warmup_sets': 1,
+                    'target_sets': 3,
+                    'target_reps_min': 6,
+                    'target_reps_max': 10,
+                    'target_rpe': 8.0,
+                    'rest_seconds': 150,
+                    'notes': null,
                   },
                   <String, dynamic>{
                     'exercise_id': 'barbell_row',
@@ -2477,8 +2443,51 @@ class FakeMayosApi {
                     'notes': null,
                   },
                 ],
+                'cardio': '10 min incline walk',
               },
-        ],
+              if (repeatBenchPressOnOtherDays)
+                for (int order = 2; order <= 3; order++)
+                  <String, dynamic>{
+                    'day_name': 'Upper $order',
+                    'day_order': order,
+                    'warmup_exercises': <Map<String, dynamic>>[],
+                    'exercises': <Map<String, dynamic>>[
+                      <String, dynamic>{
+                        'exercise_id': 'bench_press',
+                        'exercise_name': 'Bench Press',
+                        'warmup_sets': 2,
+                        'target_sets': 3,
+                        'target_reps_min': 5,
+                        'target_reps_max': 8,
+                        'target_rpe': 8.5,
+                        'rest_seconds': 180,
+                        'notes': 'Pause on the chest.',
+                      },
+                      <String, dynamic>{
+                        'exercise_id': 'barbell_row',
+                        'exercise_name': 'Barbell Row',
+                        'warmup_sets': 1,
+                        'target_sets': 3,
+                        'target_reps_min': 6,
+                        'target_reps_max': 10,
+                        'target_rpe': 8.0,
+                        'rest_seconds': 150,
+                        'notes': null,
+                      },
+                      <String, dynamic>{
+                        'exercise_id': 'lat_pulldown',
+                        'exercise_name': 'Lat Pulldown',
+                        'warmup_sets': 0,
+                        'target_sets': 3,
+                        'target_reps_min': 8,
+                        'target_reps_max': 12,
+                        'target_rpe': 8.0,
+                        'rest_seconds': 120,
+                        'notes': null,
+                      },
+                    ],
+                  },
+            ],
         if (programVersion != null) 'version': programVersion,
         if (programPublishedByCoachAccountId != null)
           'published_by_coach_account_id': programPublishedByCoachAccountId,
@@ -2504,8 +2513,19 @@ class FakeMayosApi {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
     }
-    final Map<String, dynamic> payload = Map<String, dynamic>.from(request.body);
+    final Map<String, dynamic> payload =
+        Map<String, dynamic>.from(request.body);
     programSubstitutionRequests.add(payload);
+    final int previousVersion = programVersion ?? 1;
+    final List<Map<String, dynamic>> priorDays =
+        List<Map<String, dynamic>>.from(
+      (programDaysOverride ??
+              _activeProgramBody()['days'] as List<Map<String, dynamic>>)
+          .map((Map<String, dynamic> day) => Map<String, dynamic>.from(
+                jsonDecode(jsonEncode(day)) as Map<String, dynamic>,
+              )),
+    );
+    _programDaysByVersion[previousVersion] = priorDays;
     final String dayName = '${payload['day_name'] ?? ''}';
     final String sourceId = '${payload['exercise_id'] ?? ''}';
     final String replacementId = '${payload['replacement_exercise_id'] ?? ''}';
@@ -2538,8 +2558,45 @@ class FakeMayosApi {
         if (!allOccurrences) break;
       }
     }
-    programVersion = (programVersion ?? 1) + 1;
-    return FakeResponse(200, _activeProgramBody());
+    programVersion = previousVersion + 1;
+    return FakeResponse(200, <String, dynamic>{
+      ..._activeProgramBody(),
+      'previous_version': previousVersion,
+    });
+  }
+
+  FakeResponse _undoActiveProgramSubstitution(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    final Map<String, dynamic> payload =
+        Map<String, dynamic>.from(request.body);
+    programSubstitutionUndoRequests.add(payload);
+    final int previousVersion = programVersion ?? 1;
+    final int restoreVersion = (payload['restore_version'] as num).toInt();
+    final List<Map<String, dynamic>>? restore =
+        _programDaysByVersion[restoreVersion];
+    if (restore == null) {
+      return const FakeResponse(
+          404, <String, dynamic>{'detail': 'No active program.'});
+    }
+    _programDaysByVersion[previousVersion] = List<Map<String, dynamic>>.from(
+      (programDaysOverride ?? <Map<String, dynamic>>[]).map(
+        (Map<String, dynamic> day) => Map<String, dynamic>.from(
+          jsonDecode(jsonEncode(day)) as Map<String, dynamic>,
+        ),
+      ),
+    );
+    programDaysOverride = List<Map<String, dynamic>>.from(
+      restore.map((Map<String, dynamic> day) => Map<String, dynamic>.from(
+          jsonDecode(jsonEncode(day)) as Map<String, dynamic>)),
+    );
+    programVersion = previousVersion + 1;
+    return FakeResponse(200, <String, dynamic>{
+      ..._activeProgramBody(),
+      'previous_version': previousVersion,
+    });
   }
 
   /// `GET /workouts/baselines` (#122/#123): the player's per-exercise

@@ -124,7 +124,10 @@ def test_substitution_changes_only_named_slot_and_keeps_old_version(api):
     )
 
     assert response.status_code == 200, response.text
-    active = response.json()
+    substitution_response = response.json()
+    active = substitution_response
+    assert substitution_response["previous_version"] == 1
+    assert substitution_response["version"] == 2
     assert active["version"] == 2
     assert active["published_by_coach_account_id"] is None
     assert active["days"][0]["exercises"][0]["exercise_id"] == "ohp"
@@ -144,9 +147,21 @@ def test_substitution_changes_only_named_slot_and_keeps_old_version(api):
     assert db.ledger.get_program_by_version(1).days[0].exercises[0].exercise_id == "sq"
 
 
-def test_substitution_can_replace_all_occurrences_and_undo_via_same_endpoint(api):
+def test_all_occurrences_undo_restores_exact_snapshot_with_existing_replacement(api):
     client, db = api
-    headers = _make_player_with_program(client, db)
+    registered = _register(client, "player")
+    headers = _headers(registered["access_token"])
+    db.switch_user("player")
+    program = _program().model_dump()
+    # The chosen replacement already exists on Full B, where the source does
+    # not occur. Undo must restore that exact pre-existing slot and prescription.
+    program["days"][1]["exercises"][0].update(
+        exercise_id="ohp", exercise_name="Overhead Press", notes="Existing OHP",
+        image_path="existing.png", gif_path="existing.gif", target_sets=4,
+    )
+    db.ledger.save_training_program(program)
+    original = db.ledger.get_active_program()
+    original_days = [day.model_dump() for day in original.days]
 
     swapped = client.post(
         "/programs/active/substitutions",
@@ -159,22 +174,83 @@ def test_substitution_can_replace_all_occurrences_and_undo_via_same_endpoint(api
         },
     )
     assert swapped.status_code == 200, swapped.text
+    assert swapped.json()["previous_version"] == 1
+    assert swapped.json()["version"] == 2
     assert [day["exercises"][0]["exercise_id"] for day in swapped.json()["days"]] == ["ohp", "ohp"]
 
     undone = client.post(
+        "/programs/active/substitutions/undo",
+        headers=headers,
+        json={"restore_version": 1, "expected_active_version": 2},
+    )
+    assert undone.status_code == 200, undone.text
+    assert undone.json()["version"] == 3
+    assert undone.json()["published_by_coach_account_id"] is None
+    assert [day for day in undone.json()["days"]] == original_days
+    assert db.ledger.get_program_by_version(2).days[0].exercises[0].exercise_id == "ohp"
+
+
+def test_undo_restores_duplicate_source_slots_on_the_same_day(api):
+    client, db = api
+    headers = _make_player_with_program(client, db)
+    program = db.ledger.get_active_program().model_dump()
+    program["days"][0]["exercises"].append(dict(program["days"][0]["exercises"][0]))
+    db.ledger.save_training_program(program)
+    original = db.ledger.get_active_program()
+    original_days = [day.model_dump() for day in original.days]
+
+    swapped = client.post(
         "/programs/active/substitutions",
         headers=headers,
         json={
             "day_name": "Full A",
-            "exercise_id": "ohp",
-            "replacement_exercise_id": "sq",
+            "exercise_id": "sq",
+            "replacement_exercise_id": "ohp",
             "all_occurrences": True,
         },
     )
+    assert swapped.status_code == 200, swapped.text
+    assert all(
+        exercise["exercise_id"] == "ohp"
+        for day in swapped.json()["days"]
+        for exercise in day["exercises"]
+        if exercise["exercise_id"] in {"sq", "ohp"}
+    )
+    undone = client.post(
+        "/programs/active/substitutions/undo",
+        headers=headers,
+        json={"restore_version": 2, "expected_active_version": 3},
+    )
     assert undone.status_code == 200, undone.text
-    assert undone.json()["version"] == 3
-    assert [day["exercises"][0]["exercise_id"] for day in undone.json()["days"]] == ["sq", "sq"]
-    assert db.ledger.get_program_by_version(2).days[0].exercises[0].exercise_id == "ohp"
+    assert undone.json()["days"] == original_days
+
+
+def test_substitution_expected_version_and_undo_reject_stale_program(api):
+    client, db = api
+    headers = _make_player_with_program(client, db)
+    stale = client.post(
+        "/programs/active/substitutions",
+        headers=headers,
+        json={"day_name": "Full A", "exercise_id": "sq", "replacement_exercise_id": "ohp", "expected_active_version": 9},
+    )
+    assert stale.status_code == 409
+    assert stale.json()["detail"] == "The program changed since this substitution"
+    swapped = client.post(
+        "/programs/active/substitutions",
+        headers=headers,
+        json={"day_name": "Full A", "exercise_id": "sq", "replacement_exercise_id": "ohp"},
+    )
+    assert swapped.status_code == 200, swapped.text
+    newer = db.ledger.get_active_program().model_dump()
+    newer["program_name"] = "Later plan"
+    db.ledger.save_training_program(newer)
+    stale_undo = client.post(
+        "/programs/active/substitutions/undo",
+        headers=headers,
+        json={"restore_version": 1, "expected_active_version": 2},
+    )
+    assert stale_undo.status_code == 409
+    assert stale_undo.json()["detail"] == "The program changed since this substitution"
 
 
 @pytest.mark.parametrize(
@@ -233,3 +309,10 @@ def test_substitution_refuses_a_coach_controlled_program(api):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Your assigned coach controls your program. Ask your coach for changes."
+    undo = client.post(
+        "/programs/active/substitutions/undo",
+        headers=player_headers,
+        json={"restore_version": 1, "expected_active_version": 1},
+    )
+    assert undo.status_code == 403
+    assert undo.json()["detail"] == response.json()["detail"]

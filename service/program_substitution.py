@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from service.programs import COACH_CONTROLLED_ERROR, player_controls_program
+
 
 class SubstitutionErrorCode(str, Enum):
     DAY_NOT_FOUND = "day_not_found"
@@ -12,6 +14,10 @@ class SubstitutionErrorCode(str, Enum):
     REPLACEMENT_IS_SOURCE = "replacement_is_source"
     REPLACEMENT_NOT_FOUND = "replacement_not_found"
     REPLACEMENT_ALREADY_ON_DAY = "replacement_already_on_day"
+    COACH_CONTROLLED = "coach_controlled"
+    NO_ACTIVE_PROGRAM = "no_active_program"
+    RESTORE_VERSION_NOT_FOUND = "restore_version_not_found"
+    PROGRAM_CHANGED = "program_changed"
 
 
 SUBSTITUTION_ERRORS = {
@@ -20,6 +26,10 @@ SUBSTITUTION_ERRORS = {
     SubstitutionErrorCode.REPLACEMENT_IS_SOURCE: "Choose a different replacement exercise.",
     SubstitutionErrorCode.REPLACEMENT_NOT_FOUND: "That replacement exercise was not found.",
     SubstitutionErrorCode.REPLACEMENT_ALREADY_ON_DAY: "That replacement exercise is already on the target day.",
+    SubstitutionErrorCode.COACH_CONTROLLED: COACH_CONTROLLED_ERROR,
+    SubstitutionErrorCode.NO_ACTIVE_PROGRAM: "No active program.",
+    SubstitutionErrorCode.RESTORE_VERSION_NOT_FOUND: "The program version to restore was not found.",
+    SubstitutionErrorCode.PROGRAM_CHANGED: "The program changed since this substitution",
 }
 
 
@@ -30,6 +40,13 @@ class ProgramSubstitution:
     replacement_exercise_id: str
     all_occurrences: bool = False
     published_by_coach_account_id: str | None = None
+    expected_active_version: int | None = None
+
+
+@dataclass(frozen=True)
+class ProgramSubstitutionUndo:
+    restore_version: int
+    expected_active_version: int
 
 
 def substitute_program_exercise(
@@ -54,6 +71,68 @@ def substitute_program_exercise(
         "replaced_count": replaced_count,
         "day_names": [day["day_name"] for day in target_days],
     }
+
+
+def substitute_active_program_exercise(
+    db: Any, ledger: Any, player_account_id: str | None, request: ProgramSubstitution
+) -> dict[str, Any]:
+    """Authorize, check the version, publish one substitution, and reread it."""
+    active, failure = _player_active_program(db, ledger, player_account_id)
+    if failure:
+        return failure
+    if request.expected_active_version is not None and active.version != request.expected_active_version:
+        return _failure(SubstitutionErrorCode.PROGRAM_CHANGED)
+    substitution = substitute_program_exercise(ledger, db, active, request)
+    return substitution if not substitution["ok"] else _updated_program_result(ledger, active.version)
+
+
+def undo_active_program_substitution(
+    db: Any,
+    ledger: Any,
+    player_account_id: str | None,
+    request: ProgramSubstitutionUndo,
+) -> dict[str, Any]:
+    """Restore an exact historical snapshot as a fresh, player-owned version."""
+    active, failure = _player_active_program(db, ledger, player_account_id)
+    if failure:
+        return failure
+    if active.version != request.expected_active_version:
+        return _failure(SubstitutionErrorCode.PROGRAM_CHANGED)
+    snapshot = ledger.get_program_by_version(request.restore_version)
+    if snapshot is None:
+        return _failure(SubstitutionErrorCode.RESTORE_VERSION_NOT_FOUND)
+    return _restore_program_snapshot(ledger, active.version, snapshot)
+
+
+def _player_active_program(db: Any, ledger: Any, account_id: str | None) -> tuple[Any, dict[str, Any] | None]:
+    if not player_controls_program(db, ledger, account_id):
+        return None, _failure(SubstitutionErrorCode.COACH_CONTROLLED)
+    active = ledger.get_active_program()
+    if active is None:
+        return None, _failure(SubstitutionErrorCode.NO_ACTIVE_PROGRAM)
+    return active, None
+
+
+def _updated_program_result(ledger: Any, previous_version: int | None) -> dict[str, Any]:
+    updated = ledger.get_active_program()
+    if updated is None:
+        return _failure(SubstitutionErrorCode.NO_ACTIVE_PROGRAM)
+    return {**updated.model_dump(), "previous_version": previous_version}
+
+
+def _restore_program_snapshot(ledger: Any, previous_version: int | None, snapshot: Any) -> dict[str, Any]:
+    program_data = _program_data(snapshot)
+    # Let the ledger allocate new identities and a monotonically increasing
+    # version while retaining every content field from the historical copy.
+    program_data.pop("id", None)
+    program_data.pop("version", None)
+    program_data.pop("created_at", None)
+    for day in program_data.get("days", []):
+        day.pop("id", None)
+        for exercise in day.get("exercises", []):
+            exercise.pop("id", None)
+    ledger.save_training_program(program_data, published_by_coach_account_id=None)
+    return _updated_program_result(ledger, previous_version)
 
 
 def _prepare_substitution(active_program: Any, catalog: Any, request: ProgramSubstitution) -> dict[str, Any]:

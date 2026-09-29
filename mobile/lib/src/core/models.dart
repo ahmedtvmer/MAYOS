@@ -1772,6 +1772,26 @@ class TrainingProgram {
       };
 }
 
+/// Program payload plus the ledger versions needed for exact substitution undo.
+class ProgramSubstitutionResult {
+  const ProgramSubstitutionResult({
+    required this.program,
+    required this.previousVersion,
+    required this.version,
+  });
+
+  factory ProgramSubstitutionResult.fromJson(Map<String, dynamic> json) =>
+      ProgramSubstitutionResult(
+        program: TrainingProgram.fromJson(json),
+        previousVersion: (json['previous_version'] as num).toInt(),
+        version: (json['version'] as num).toInt(),
+      );
+
+  final TrainingProgram program;
+  final int previousVersion;
+  final int version;
+}
+
 /// `GET /dashboard/personal-records` entry.
 class PersonalRecord {
   const PersonalRecord({

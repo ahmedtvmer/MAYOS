@@ -204,11 +204,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     if (mounted) {
       ref.read(loggerSummaryProvider.notifier).state = null;
     }
-    final String? accountId = ref
-        .read(authControllerProvider)
-        .session
-        ?.account
-        .accountId;
+    final String? accountId =
+        ref.read(authControllerProvider).session?.account.accountId;
     if (accountId == null) {
       setState(() {
         _loading = false;
@@ -282,8 +279,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     final DateTime clamped = performedDateWindow().clamp(started);
     _performedDate = clamped;
     if (formatPerformedDate(clamped) != formatPerformedDate(started)) {
-      _notice =
-          'This workout started on ${formatPerformedDate(started)}, '
+      _notice = 'This workout started on ${formatPerformedDate(started)}, '
           'outside the allowed entry window, so its performed date was set '
           'to ${formatPerformedDate(clamped)}.';
     }
@@ -366,8 +362,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     _recordFocus = (
       exerciseIndex: next.exerciseIndex,
       setId: setId,
-      before:
-          _recordBadges(next.exerciseIndex)[setId]?.current ??
+      before: _recordBadges(next.exerciseIndex)[setId]?.current ??
           const <PrRecordKind>{},
     );
   }
@@ -375,15 +370,18 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   /// Settles the focused cell's edit: the heavy haptic fires only if its row
   /// now holds a record the focus-time snapshot did not.
   void _settleRecordFocus() {
-    final ({int exerciseIndex, String setId, Set<PrRecordKind> before})?
-    recordFocus = _recordFocus;
+    final ({
+      int exerciseIndex,
+      String setId,
+      Set<PrRecordKind> before
+    })? recordFocus = _recordFocus;
     _recordFocus = null;
     if (recordFocus == null) {
       return;
     }
     final Set<PrRecordKind> now =
         _recordBadges(recordFocus.exerciseIndex)[recordFocus.setId]?.current ??
-        const <PrRecordKind>{};
+            const <PrRecordKind>{};
     if (now.difference(recordFocus.before).isNotEmpty) {
       unawaited(HapticFeedback.heavyImpact());
     }
@@ -393,18 +391,21 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   /// on its own — tick, untick, warm-up toggle, delete — so only a cell edit
   /// can make a later settle vibrate (#124).
   void _refreshRecordFocus() {
-    final ({int exerciseIndex, String setId, Set<PrRecordKind> before})?
-    recordFocus = _recordFocus;
+    final ({
+      int exerciseIndex,
+      String setId,
+      Set<PrRecordKind> before
+    })? recordFocus = _recordFocus;
     if (recordFocus == null) {
       return;
     }
     _recordFocus = (
       exerciseIndex: recordFocus.exerciseIndex,
       setId: recordFocus.setId,
-      before:
-          _recordBadges(
+      before: _recordBadges(
             recordFocus.exerciseIndex,
-          )[recordFocus.setId]?.current ??
+          )[recordFocus.setId]
+              ?.current ??
           const <PrRecordKind>{},
     );
   }
@@ -622,10 +623,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   // ---- finish / summary ----------------------------------------------------
 
   int _untickedCount(ActiveWorkout workout) => workout.exercises.fold<int>(
-    0,
-    (int total, ActiveWorkoutExercise exercise) =>
-        total + exercise.sets.where((ActiveWorkoutSet s) => !s.ticked).length,
-  );
+        0,
+        (int total, ActiveWorkoutExercise exercise) =>
+            total +
+            exercise.sets.where((ActiveWorkoutSet s) => !s.ticked).length,
+      );
 
   /// `{completed}/{total} exercises · {ticked}/{total} sets` under the day
   /// heading (#159): warm-ups excluded from both counts, an exercise done
@@ -638,8 +640,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       int exercisesTotal,
       int setsTicked,
       int setsTotal,
-    })
-    progress = workoutProgressOf(workout);
+    }) progress = workoutProgressOf(workout);
     return '${progress.exercisesCompleted}/${progress.exercisesTotal} '
         'exercises · ${progress.setsTicked}/${progress.setsTotal} sets';
   }
@@ -772,8 +773,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       );
       if (draft == null) {
         setState(() {
-          _error =
-              'Your program is unavailable offline. Connect once to '
+          _error = 'Your program is unavailable offline. Connect once to '
               'refresh it before saving this workout.';
         });
         return;
@@ -816,16 +816,15 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       _error = null;
     });
     try {
-      final WebWorkoutCommitResult result = await ref
-          .read(webWorkoutCommitterProvider)
-          .save(
-            workout: workout,
-            timezone: timezone,
-            now: DateTime.now(),
-            performedDate: formatPerformedDate(_performedDate),
-            readiness: _readiness,
-            notes: _notes.text.trim(),
-          );
+      final WebWorkoutCommitResult result =
+          await ref.read(webWorkoutCommitterProvider).save(
+                workout: workout,
+                timezone: timezone,
+                now: DateTime.now(),
+                performedDate: formatPerformedDate(_performedDate),
+                readiness: _readiness,
+                notes: _notes.text.trim(),
+              );
       if (!mounted) {
         return;
       }
@@ -854,8 +853,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       if (mounted) {
         setState(() {
           _summaryAction = _SummaryAction.retry;
-          _error =
-              "Couldn't reach MAYOS. Your workout is kept in "
+          _error = "Couldn't reach MAYOS. Your workout is kept in "
               'this browser.';
         });
       }
@@ -1030,8 +1028,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     return <Widget>[
       ConstrainedBox(
         constraints: BoxConstraints(
-          maxHeight:
-              MediaQuery.sizeOf(context).height *
+          maxHeight: MediaQuery.sizeOf(context).height *
               _kMessageSlotMaxHeightFraction,
         ),
         child: SingleChildScrollView(
@@ -1061,8 +1058,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       int exercisesTotal,
       int setsTicked,
       int setsTotal,
-    })
-    progress = workoutProgressOf(workout);
+    }) progress = workoutProgressOf(workout);
     final ActiveRestTimer? rest = workout.rest;
     return LoggerBottomBar(
       key: const ValueKey<String>('logger.bottomBar'),
@@ -1200,8 +1196,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       undoReplaceKey: ValueKey<String>('logger.cardMenu.$exerciseIndex.undo'),
       // The frozen baseline's last session, in logged order; empty hides the
       // "Last:" line entirely (#158).
-      lastSession:
-          workout.baselines[exercise.exerciseId]?.lastSession.sets ??
+      lastSession: workout.baselines[exercise.exerciseId]?.lastSession.sets ??
           const <BaselineSet>[],
       rows: <Widget>[
         for (int setIndex = 0; setIndex < exercise.sets.length; setIndex++)
@@ -1210,8 +1205,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
             exerciseIndex,
             setIndex,
             badges,
-            isCurrent:
-                current != null &&
+            isCurrent: current != null &&
                 current.exerciseIndex == exerciseIndex &&
                 current.setIndex == setIndex,
           ),
@@ -1225,9 +1219,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       onRemove: exercise.unplanned && !isReplacement
           ? () => unawaited(_onRemoveExercise(exerciseIndex))
           : null,
-      onUndoReplace: isReplacement
-          ? () => unawaited(_onUndoReplace(exerciseIndex))
-          : null,
+      onUndoReplace:
+          isReplacement ? () => unawaited(_onUndoReplace(exerciseIndex)) : null,
     );
   }
 
@@ -1244,9 +1237,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       return;
     }
     final ActiveWorkoutExercise exercise = workout.exercises[exerciseIndex];
-    final int ticked = exercise.sets
-        .where((ActiveWorkoutSet set) => set.ticked)
-        .length;
+    final int ticked =
+        exercise.sets.where((ActiveWorkoutSet set) => set.ticked).length;
     if (ticked > 0 && !await _confirmReplace(ticked)) {
       return;
     }
@@ -1333,17 +1325,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   /// offline, a catalog row with no muscle — just opens the search
   /// unfiltered, so the lookup can never block a replace.
   Future<String?> _targetMuscleOf(String exerciseId) async {
-    try {
-      final ExerciseCatalogDetail detail = await ref
-          .read(apiClientProvider)
-          .exerciseCatalogDetail(exerciseId)
-          .timeout(const Duration(seconds: 3));
-      return detail.primaryMuscles.isNotEmpty
-          ? detail.primaryMuscles.first
-          : null;
-    } on Object {
-      return null;
-    }
+    return exerciseTargetMuscle(
+      ref.read(apiClientProvider),
+      exerciseId,
+    );
   }
 
   /// The card menu's **Remove exercise** (#162): takes a plain unplanned
@@ -1451,8 +1436,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
         );
       }
     }
-    final ({int exerciseIndex, String setId, Set<PrRecordKind> before})?
-    recordFocus = _recordFocus;
+    final ({
+      int exerciseIndex,
+      String setId,
+      Set<PrRecordKind> before
+    })? recordFocus = _recordFocus;
     if (recordFocus != null) {
       if (recordFocus.exerciseIndex == editedIndex) {
         _recordFocus = null;
@@ -1519,8 +1507,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     final WorkoutSummary summary = _summary!;
     final String date = formatPerformedDate(_performedDate);
     final ActiveWorkout? workout = _workout;
-    final _SummaryAction action =
-        _summaryAction == _SummaryAction.save &&
+    final _SummaryAction action = _summaryAction == _SummaryAction.save &&
             workout?.commitAttempted == true
         ? _SummaryAction.retry
         : _summaryAction;
