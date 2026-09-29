@@ -337,7 +337,8 @@ def test_unknown_model_cost_is_zero():
     from utils.model_pricing import compute_cost
 
     assert compute_cost("nobody/unknown-model", 1_000_000, 1_000_000) == 0.0
-    assert compute_cost("Qwen/Qwen3.5-9B", 1_000_000, 0) == pytest.approx(0.10)
+    assert compute_cost("Qwen/Qwen3.5-9B", 1_000_000, 1_000_000) == pytest.approx(0.25)
+    assert compute_cost("Qwen/Qwen3.5-27B", 1_000_000, 1_000_000) == pytest.approx(2.86)
 
 
 def test_missing_provider_usage_is_flagged_estimated(api):

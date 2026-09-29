@@ -1,11 +1,11 @@
 """Per-model hosted-inference pricing for usage metering (ADR 038).
 
-Prices are USD per 1,000,000 tokens and are **trial assumptions**, not a
-provider contract: ``MODEL_PRICING_JSON`` (a JSON object mapping model id to
-``{"input": <usd>, "output": <usd>}``) overrides them per deployment. An
-unknown model meters its tokens at cost 0 and logs one warning per model, so a
-new hosted variant can never silently break metering (it only under-reports
-until priced).
+Prices are USD per 1,000,000 tokens and are **DeepInfra Standard-tier list
+prices**, not a provider contract: ``MODEL_PRICING_JSON`` (a JSON object mapping
+model id to ``{"input": <usd>, "output": <usd>}``) overrides them per
+deployment. An unknown model meters its tokens at cost 0 and logs one warning
+per model, so a new hosted variant can never silently break metering (it only
+under-reports until priced).
 """
 
 import json
@@ -14,12 +14,13 @@ import os
 
 logger = logging.getLogger(__name__)
 
-#: USD per 1M tokens for the configured default hosted models. These are
-#: conservative closed-trial estimates that must be reconciled against the
-#: provider's invoice before expansion (AC3); override in production.
+#: USD per 1M tokens for the configured default hosted models: DeepInfra
+#: Standard-tier list prices checked 2026-09-29. ``MODEL_PRICING_JSON`` can
+#: override them per deployment. ``cost_usd`` is fixed when each row is
+#: written, so a price change only affects rows written after it.
 DEFAULT_MODEL_PRICING: dict[str, dict[str, float]] = {
-    "Qwen/Qwen3.5-9B": {"input": 0.10, "output": 0.30},
-    "Qwen/Qwen3.5-27B": {"input": 0.30, "output": 0.90},
+    "Qwen/Qwen3.5-9B": {"input": 0.10, "output": 0.15},
+    "Qwen/Qwen3.5-27B": {"input": 0.26, "output": 2.60},
 }
 
 #: Models already warned about, so an unpriced model does not spam the log.
