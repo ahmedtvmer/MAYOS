@@ -241,7 +241,7 @@ def test_phase3_substitution_lookup_candidates(fresh_store):
         patch.object(fresh_store.ledger, "get_active_program", return_value=mock_prog),
         patch.object(fresh_store, "catalog_conn", mock_conn),
         patch.object(fresh_store, "search_similar_exercises") as mock_search,
-        patch.object(fresh_store.ledger, "swap_program_exercise") as mock_swap,
+        patch("agent.assistant_graph.substitute_program_exercise") as mock_substitute,
     ):
         mock_search.return_value = [
             {
@@ -269,7 +269,7 @@ def test_phase3_substitution_lookup_candidates(fresh_store):
 
         result = exercise_substitution_node(state, {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}})
 
-        mock_swap.assert_not_called()
+        mock_substitute.assert_not_called()
         assert result["program_updated"] is False
         assert "Leg Press" in result["response_content"]
         assert "Pendulum Squat" in result["response_content"]
@@ -280,7 +280,7 @@ def test_phase3_substitution_lookup_candidates(fresh_store):
 
 
 def test_phase3_substitution_direct_swap(fresh_store):
-    """Validates that 'direct_swap' calls swap_program_exercise and triggers UI sync."""
+    """Validates that a resolved direct swap targets its resolved training day."""
     state = {
         "messages": [HumanMessage(content="swap hack squat for leg press")],
         "trainee_id": "test_user",
@@ -302,37 +302,44 @@ def test_phase3_substitution_direct_swap(fresh_store):
     mock_conn = MagicMock()
     mock_conn.cursor.return_value = mock_cur_instance
 
+    replacement = {
+        "id": "ex_999",
+        "name": "Leg Press",
+        "target_muscle": "quadriceps",
+        "body_part": "quadriceps",
+        "equipment": "machine",
+        "instructions": "Press through your feet.",
+        "image_path": None,
+        "gif_path": None,
+    }
     with (
         patch.object(fresh_store.ledger, "get_active_program", return_value=mock_prog),
         patch.object(fresh_store, "catalog_conn", mock_conn),
         patch.object(fresh_store, "find_exercises_by_name") as mock_find,
         patch.object(fresh_store, "search_similar_exercises") as mock_search,
-        patch.object(fresh_store.ledger, "swap_program_exercise", return_value=True) as mock_swap,
+        patch("agent.assistant_graph.substitute_program_exercise") as mock_substitute,
     ):
         mock_find.return_value = [
             {
-                "id": "ex_999",
-                "name": "Leg Press",
-                "target_muscle": "quadriceps",
-                "body_part": "quadriceps",
-                "equipment": "machine",
+                **replacement,
             }
         ]
         mock_search.return_value = [
             {
-                "id": "ex_999",
-                "name": "Leg Press",
-                "target_muscle": "quadriceps",
-                "body_part": "quadriceps",
-                "equipment": "machine",
+                **replacement,
             }
         ]
+        mock_substitute.return_value = {
+            "ok": True,
+            "replacement": replacement,
+            "replaced_count": 1,
+            "day_names": ["Lower A"],
+        }
 
         result = exercise_substitution_node(state, {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}})
 
-        mock_swap.assert_called_once_with(
-            old_exercise_id="ex_123", new_exercise_id="ex_999", new_notes=mock_swap.call_args[1]["new_notes"]
-        )
+        mock_substitute.assert_called_once()
+        assert mock_substitute.call_args.args[3].day_name == "Lower A"
 
         assert result["program_updated"] is True
         assert "Installed:" in result["response_content"]

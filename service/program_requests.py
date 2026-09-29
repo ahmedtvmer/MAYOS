@@ -20,6 +20,7 @@ from service._base import ledger_scope
 from service.assignments import authorized_player_ledger, coach_identity
 from service.email_sender import send_program_request_email
 from service.programs import player_controls_program
+from service.program_substitution import ProgramSubstitution, substitute_program_exercise
 
 logger = logging.getLogger(__name__)
 
@@ -50,27 +51,6 @@ def _day_contains(program: Any, day_name: Any, exercise_id: Any) -> bool:
     if day is None:
         return False
     return any(str(exercise.exercise_id) == str(exercise_id) for exercise in day.exercises)
-
-
-def _swap_slot(
-    program: Any, day_name: Any, exercise_id: Any, replacement: dict[str, Any]
-) -> dict[str, Any] | None:
-    """A mutable program dump with one slot swapped; ``None`` when the slot is gone."""
-    data = program.model_dump()
-    data.pop("created_at", None)
-    for day in data.get("days", []):
-        if day.get("day_name") != day_name:
-            continue
-        for exercise in day.get("exercises", []):
-            if str(exercise.get("exercise_id")) != str(exercise_id):
-                continue
-            exercise["exercise_id"] = str(replacement["id"])
-            exercise["exercise_name"] = str(replacement["name"])
-            exercise["notes"] = replacement.get("instructions") or ""
-            exercise["image_path"] = replacement.get("image_path")
-            exercise["gif_path"] = replacement.get("gif_path")
-            return data
-    return None
 
 
 def _notify_player(
@@ -247,11 +227,8 @@ def apply_request(
         if stale:
             return {"ok": False, "error": STALE_REQUEST_ERROR, "stale": True}
 
-        data = None
         if request["kind"] == EXERCISE_SUBSTITUTION:
-            replacement = db.get_exercise_library_entry(request["replacement_exercise_id"])
-            data = _swap_slot(active, request["day_name"], request["exercise_id"], replacement) if replacement else None
-            if data is None:
+            if db.get_exercise_library_entry(request["replacement_exercise_id"]) is None:
                 return {"ok": False, "error": STALE_REQUEST_ERROR, "stale": True}
 
         claimed = db.resolve_program_request(request_id, "applied", None, coach_account_id, _now_iso())
@@ -260,7 +237,30 @@ def apply_request(
 
         try:
             if request["kind"] == EXERCISE_SUBSTITUTION:
-                ledger.save_training_program(data, published_by_coach_account_id=coach_account_id)
+                substitution = substitute_program_exercise(
+                    ledger,
+                    db,
+                    active,
+                    ProgramSubstitution(
+                        day_name=request["day_name"],
+                        exercise_id=request["exercise_id"],
+                        replacement_exercise_id=request["replacement_exercise_id"],
+                        published_by_coach_account_id=coach_account_id,
+                    ),
+                )
+                if not substitution["ok"]:
+                    reverted = db.reopen_program_request(request_id, _now_iso())
+                    if not reverted["ok"]:
+                        logger.error(
+                            "Program request %s could not be reverted after substitution validation",
+                            request_id,
+                        )
+                    if substitution["error"] in {
+                        "That day is not part of your current program.",
+                        "That exercise is not in that day of your current program.",
+                    }:
+                        return {"ok": False, "error": STALE_REQUEST_ERROR, "stale": True}
+                    return {"ok": False, "error": substitution["error"]}
             else:
                 from svc.llm import InferenceScope, run_inference_sync
 

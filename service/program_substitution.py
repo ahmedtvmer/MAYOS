@@ -1,0 +1,113 @@
+"""Permanent exercise substitutions in a player's active training program."""
+
+from copy import deepcopy
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass(frozen=True)
+class ProgramSubstitution:
+    day_name: str
+    exercise_id: str
+    replacement_exercise_id: str
+    all_occurrences: bool = False
+    published_by_coach_account_id: str | None = None
+
+
+def substitute_program_exercise(
+    ledger: Any, catalog: Any, active_program: Any, request: ProgramSubstitution
+) -> dict[str, Any]:
+    """Replace the requested slot(s), validate the new exercise, and publish a version."""
+    prepared = _prepare_substitution(active_program, catalog, request)
+    if not prepared["ok"]:
+        return prepared
+    program_data = prepared["program_data"]
+    target_days = prepared["target_days"]
+    replacement = prepared["replacement"]
+    if request.all_occurrences:
+        replaced_count = _replace_every_slot(target_days, str(request.exercise_id), replacement)
+    else:
+        replaced_count = _replace_first_slot(target_days[0], str(request.exercise_id), replacement)
+    program_data.pop("created_at", None)
+    ledger.save_training_program(program_data, published_by_coach_account_id=request.published_by_coach_account_id)
+    return {
+        "ok": True,
+        "replacement": replacement,
+        "replaced_count": replaced_count,
+        "day_names": [day["day_name"] for day in target_days],
+    }
+
+
+def _prepare_substitution(active_program: Any, catalog: Any, request: ProgramSubstitution) -> dict[str, Any]:
+    source_id = str(request.exercise_id)
+    replacement = _replacement(catalog, source_id, request.replacement_exercise_id)
+    if not replacement["ok"]:
+        return replacement
+    program_data = _program_data(active_program)
+    target_days = _target_days(program_data, request, source_id)
+    if not target_days["ok"]:
+        return target_days
+    target_days = target_days["days"]
+    if any(_day_has_exercise(day, replacement["entry"]["id"]) for day in target_days):
+        return {"ok": False, "error": "That replacement exercise is already on the target day."}
+    return {"ok": True, "program_data": program_data, "target_days": target_days, "replacement": replacement["entry"]}
+
+
+def _target_days(program_data: dict[str, Any], request: ProgramSubstitution, source_id: str) -> dict[str, Any]:
+    days = program_data.get("days", [])
+    named_day = next((day for day in days if day.get("day_name") == request.day_name), None)
+    if named_day is None:
+        return {"ok": False, "error": "That day is not part of your current program."}
+    if not _day_has_exercise(named_day, source_id):
+        return {"ok": False, "error": "That exercise is not in that day of your current program."}
+    target_days = [day for day in days if _day_has_exercise(day, source_id)] if request.all_occurrences else [named_day]
+    return {"ok": True, "days": target_days}
+
+
+def _replacement(catalog: Any, source_id: str, replacement_id: str) -> dict[str, Any]:
+    replacement_id = str(replacement_id)
+    if source_id == replacement_id:
+        return {"ok": False, "error": "Choose a different replacement exercise."}
+    entry = catalog.get_exercise_library_entry(replacement_id)
+    if entry is None:
+        return {"ok": False, "error": "That replacement exercise was not found."}
+    return {"ok": True, "entry": entry}
+
+
+def _program_data(active_program: Any) -> dict[str, Any]:
+    if isinstance(active_program, dict):
+        return deepcopy(active_program)
+    return active_program.model_dump()
+
+
+def _day_has_exercise(day: dict[str, Any], exercise_id: str) -> bool:
+    return any(str(exercise.get("exercise_id")) == exercise_id for exercise in day.get("exercises", []))
+
+
+def _replace_first_slot(day: dict[str, Any], source_id: str, replacement: dict[str, Any]) -> int:
+    for exercise in day.get("exercises", []):
+        if str(exercise.get("exercise_id")) == source_id:
+            _set_replacement(exercise, replacement)
+            return 1
+    return 0
+
+
+def _replace_every_slot(days: list[dict[str, Any]], source_id: str, replacement: dict[str, Any]) -> int:
+    replaced_count = 0
+    for day in days:
+        for exercise in day.get("exercises", []):
+            if str(exercise.get("exercise_id")) != source_id:
+                continue
+            _set_replacement(exercise, replacement)
+            replaced_count += 1
+    return replaced_count
+
+
+def _set_replacement(exercise: dict[str, Any], replacement: dict[str, Any]) -> None:
+    exercise.update(
+        exercise_id=str(replacement["id"]),
+        exercise_name=str(replacement["name"]),
+        notes=replacement.get("instructions") or "",
+        image_path=replacement.get("image_path"),
+        gif_path=replacement.get("gif_path"),
+    )

@@ -265,7 +265,7 @@ def test_assistant_swap_refused_when_coach_controls_program(api, monkeypatch):
 
     db.switch_user("p1")
     swap = MagicMock(return_value=True)
-    monkeypatch.setattr(db.ledger, "swap_program_exercise", swap)
+    monkeypatch.setattr(assistant_graph, "substitute_program_exercise", swap)
 
     from langchain_core.messages import HumanMessage
 

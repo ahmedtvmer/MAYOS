@@ -49,6 +49,10 @@ def api(tmp_path: Path, monkeypatch):
         " ('sq', 'Squat', 'Upper Legs', 'Quads'), ('bp', 'Bench Press', 'Chest', 'Chest'),"
         " ('row', 'Row', 'Back', 'Back'), ('ohp', 'Overhead Press', 'Shoulders', 'Shoulders');"
     )
+    cat_conn.execute(
+        "UPDATE exercises SET instructions = 'Press overhead with control', image_path = 'ohp.png',"
+        " gif_path = 'ohp.gif' WHERE id = 'ohp'"
+    )
     cat_conn.commit()
     cat_conn.close()
     db = DatabaseManager(
@@ -386,6 +390,27 @@ def test_apply_substitution_publishes_new_version_preserving_provenance(api, mon
     coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
     _coach_generation(db, monkeypatch)
     assert _publish(client, coach_headers, assignment_id).status_code == 200
+
+    db.switch_user("p1")
+    original = db.ledger.get_active_program()
+    program_data = original.model_dump()
+    program_data.pop("created_at", None)
+    program_data["days"][0]["exercises"][0].update(
+        warmup_sets=2,
+        target_sets=3,
+        target_reps_min=6,
+        target_reps_max=9,
+        target_rpe=8.0,
+        rest_seconds=120,
+        notes="Original cue",
+    )
+    program_data["days"][0]["warmup_exercises"] = [
+        {"exercise_id": "warmup", "exercise_name": "Dead Bug", "sets": 2, "reps": 10}
+    ]
+    second_day = {**program_data["days"][0], "day_name": "Full B", "day_order": 2}
+    program_data["days"].append(second_day)
+    db.ledger.save_training_program(program_data, published_by_coach_account_id=coach_account_id)
+
     created = _create(client, player_headers, **_substitution())
     request_id = created.json()["request_id"]
 
@@ -400,16 +425,31 @@ def test_apply_substitution_publishes_new_version_preserving_provenance(api, mon
     rows = db.conn.execute(
         "SELECT version, published_by_coach_account_id FROM training_programs ORDER BY version ASC"
     ).fetchall()
-    assert [int(row[0]) for row in rows] == [1, 2]
+    assert [int(row[0]) for row in rows] == [1, 2, 3]
     assert all(row[1] == coach_account_id for row in rows)
     active = db.ledger.get_active_program()
-    assert active.version == 2
-    slot_ids = [ex.exercise_id for day in active.days for ex in day.exercises]
-    assert "ohp" in slot_ids and "sq" not in slot_ids
+    assert active.version == 3
+    full_a = active.days[0]
+    full_b = active.days[1]
+    assert full_a.exercises[0].exercise_id == "ohp"
+    assert full_a.exercises[0].exercise_name == "Overhead Press"
+    assert full_a.exercises[0].notes == "Press overhead with control"
+    assert full_a.exercises[0].image_path == "ohp.png"
+    assert full_a.exercises[0].gif_path == "ohp.gif"
+    assert full_a.warmup_exercises[0].exercise_name == "Dead Bug"
+    assert (
+        full_a.exercises[0].warmup_sets,
+        full_a.exercises[0].target_sets,
+        full_a.exercises[0].target_reps_min,
+        full_a.exercises[0].target_reps_max,
+        full_a.exercises[0].target_rpe,
+        full_a.exercises[0].rest_seconds,
+    ) == (2, 3, 6, 9, 8.0, 120)
+    assert full_b.exercises[0].exercise_id == "sq"
 
     notices = client.get("/assignments/notices", headers=player_headers).json()["notices"]
     applied_notices = [n for n in notices if n["kind"] == "program_request"]
-    assert applied_notices and "version 2" in applied_notices[0]["message"]
+    assert applied_notices and "version 3" in applied_notices[0]["message"]
 
 
 def test_apply_split_change_publishes_desired_frequency(api, monkeypatch):

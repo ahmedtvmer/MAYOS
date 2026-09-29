@@ -46,6 +46,7 @@ from agent.telemetry_reconciler import (
     reconcile_telemetry_query,
 )
 from service import programs as programs_service
+from service.program_substitution import ProgramSubstitution, substitute_program_exercise
 from utils.logger import MyosLogger
 from utils.model_downloader import llm, uses_cloud_backend
 from utils.text_scrubber import CoachOutputScrubber, EMPTY_RESPONSE_FALLBACK, PIPELINE_ERROR_RESPONSE, finalize_coach_output
@@ -840,6 +841,27 @@ def _target_is_name_like(target_desc: str, candidates: list[dict[str, Any]]) -> 
     return False
 
 
+def _requested_substitution_day(state: AssistantState, program: Any, query: str) -> str | None:
+    """Resolve a day supplied in node state, intent metadata, or the user's message."""
+    meta = state.get("intent_metadata", {})
+    target = state.get("target_day") or meta.get("target_day") or meta.get("day_name")
+    if isinstance(target, dict):
+        target = target.get("day_name")
+    if target:
+        return next((day.day_name for day in program.days if day.day_name.casefold() == str(target).casefold()), str(target))
+
+    for day in sorted(program.days, key=lambda candidate: len(candidate.day_name), reverse=True):
+        if re.search(rf"(?<!\w){re.escape(day.day_name)}(?!\w)", query, re.IGNORECASE):
+            return day.day_name
+    return None
+
+
+def _remove_day_suffix(exercise_name: str, day_name: str | None) -> str:
+    if not day_name:
+        return exercise_name
+    return re.sub(rf"\s+(?:on\s+)?{re.escape(day_name)}\s*$", "", exercise_name, flags=re.IGNORECASE)
+
+
 #: Bare number words reply to the numbered alternatives list rather than naming a movement
 #: ("one" substring-matches "one arm dip"/"one leg squat"). Whole-string equality only, so
 #: multi-word names containing them ("one arm pulldown") are unaffected.
@@ -864,8 +886,17 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         msg = "No active routine found in your ledger. Generate a baseline routine first."
         return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
+    requested_day_name = _requested_substitution_day(state, active_program, query)
+    candidate_days = active_program.days
+    if requested_day_name:
+        candidate_days = [day for day in active_program.days if day.day_name == requested_day_name]
+        if not candidate_days:
+            msg = "That day is not part of your current program."
+            return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
+
     raw_source = source_name
-    raw_target = target_desc
+    raw_target = _remove_day_suffix(target_desc, requested_day_name)
+    target_desc = raw_target
 
     # Expand fitness abbreviations (e.g. RDLs -> romanian deadlift, OHP -> overhead press, DB -> dumbbell)
     source_name = expand_fitness_abbreviations(source_name)
@@ -896,7 +927,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     matched_ex, target_day, best_similarity = None, None, 0.0
     source_stem = clean_movement_stem(source_name.lower())
 
-    for day in active_program.days:
+    for day in candidate_days:
         for ex in day.exercises:
             ex_name_clean = ex.exercise_name.lower()
             ex_stem = clean_movement_stem(ex_name_clean)
@@ -926,7 +957,10 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
             for d in active_program.days
             for ex in d.exercises
         ]
-        msg = f"Could not identify **'{raw_source or source_name or query}'** in your active split.\n\n**Active Movements:**\n" + "\n".join(routine_list)
+        if requested_day_name:
+            msg = f"Could not identify **'{raw_source or source_name or query}'** in {requested_day_name}."
+        else:
+            msg = f"Could not identify **'{raw_source or source_name or query}'** in your active split.\n\n**Active Movements:**\n" + "\n".join(routine_list)
         return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
     with store.catalog_locked() as conn:
@@ -1071,19 +1105,23 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
             msg += f"\n\n*To select one, reply:* `swap {matched_ex.exercise_name} for [Choice]`"
         return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
-    is_compound = any(kw in replacement["name"].lower() for kw in COMPOUND_KEYWORDS) and "calf" not in replacement["name"].lower()
-    # Prefer the catalog's own step-by-step execution text so the Form Demos panel
-    # stays populated after a swap; fall back to the generic biomechanical cue.
-    new_notes = replacement.get("instructions") or get_biomechanical_cue(
-        replacement["name"], "compound" if is_compound else "isolation"
+    substitution = substitute_program_exercise(
+        ledger,
+        store,
+        active_program,
+        ProgramSubstitution(
+            day_name=target_day.day_name,
+            exercise_id=matched_ex.exercise_id,
+            replacement_exercise_id=str(replacement["id"]),
+            all_occurrences=meta.get("all_occurrences") is True,
+        ),
     )
-
-    success = ledger.swap_program_exercise(
-        old_exercise_id=matched_ex.exercise_id,
-        new_exercise_id=str(replacement["id"]),
-        new_notes=new_notes,
-    )
-    if success:
+    if substitution["ok"]:
+        replacement = substitution["replacement"]
+        is_compound = any(kw in replacement["name"].lower() for kw in COMPOUND_KEYWORDS) and "calf" not in replacement["name"].lower()
+        new_notes = replacement.get("instructions") or get_biomechanical_cue(
+            replacement["name"], "compound" if is_compound else "isolation"
+        )
         note_suffix = ""
         alt_variant = next(
             (c for c in valid_replacements if str(c["id"]) != str(replacement["id"]) and c["name"].split()[-2:] == replacement["name"].split()[-2:]),
@@ -1104,7 +1142,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         )
         return {"program_updated": True, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
-    msg = "Database error: unable to update program slot in SQLite ledger."
+    msg = substitution["error"]
     return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
 

@@ -77,6 +77,9 @@ The right to change a player's program structure. It remains with the player unt
 **Substitution request**:
 A player's request for their coach to replace an exercise in a coach-controlled program. The program does not change until the coach applies a replacement.
 
+**Exercise substitution**:
+A permanent change of one exercise in the player's own program, made by the player while they hold Program authority. It is distinct from Replace exercise, which changes one workout only, and Substitution request, which asks the coach to make a permanent change.
+
 **Unplanned exercise**:
 An exercise the player performed and recorded that was not prescribed in the active program. Recording it does not change the program.
 

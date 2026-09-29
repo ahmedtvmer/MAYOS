@@ -532,9 +532,6 @@ def test_assistant_swap_proceeds_before_publication(api, monkeypatch):
     assert calls["n"] == 1
 
     db.switch_user("p1")
-    swap = MagicMock(return_value=True)
-    monkeypatch.setattr(db.ledger, "swap_program_exercise", swap)
-
     state = {
         "messages": [HumanMessage(content="swap bench press for dumbbell press")],
         "trainee_id": "p1",
@@ -544,7 +541,13 @@ def test_assistant_swap_proceeds_before_publication(api, monkeypatch):
     }
     result = assistant_graph.exercise_substitution_node(state, {"configurable": {"ledger": db.ledger, "store": db}})
     assert result["response_content"] != programs_service.COACH_CONTROLLED_ERROR
-    swap.assert_called_once()
+    active = db.ledger.get_active_program()
+    assert active.version == 2
+    assert active.days[0].exercises[1].exercise_id == "dbp"
+    rows = db.conn.execute(
+        "SELECT version, is_active, published_by_coach_account_id FROM training_programs ORDER BY version"
+    ).fetchall()
+    assert [(row[0], row[1], row[2]) for row in rows] == [(1, 0, None), (2, 1, None)]
 
 
 def test_assistant_swap_refused_during_control(api, monkeypatch):
@@ -557,8 +560,8 @@ def test_assistant_swap_refused_during_control(api, monkeypatch):
     assert _publish(client, coach_headers, assignment_id).status_code == 200
 
     db.switch_user("p1")
-    swap = MagicMock(return_value=True)
-    monkeypatch.setattr(db.ledger, "swap_program_exercise", swap)
+    swap = MagicMock()
+    monkeypatch.setattr(assistant_graph, "substitute_program_exercise", swap)
 
     state = {
         "messages": [HumanMessage(content="swap bench press for dumbbell press")],
@@ -583,9 +586,6 @@ def test_assistant_swap_proceeds_after_unassignment(api, monkeypatch):
     _end_assignment(client, player_headers)
 
     db.switch_user("p1")
-    swap = MagicMock(return_value=True)
-    monkeypatch.setattr(db.ledger, "swap_program_exercise", swap)
-
     state = {
         "messages": [HumanMessage(content="swap bench press for dumbbell press")],
         "trainee_id": "p1",
@@ -595,4 +595,65 @@ def test_assistant_swap_proceeds_after_unassignment(api, monkeypatch):
     }
     result = assistant_graph.exercise_substitution_node(state, {"configurable": {"ledger": db.ledger, "store": db}})
     assert result["response_content"] != programs_service.COACH_CONTROLLED_ERROR
-    swap.assert_called_once()
+    active = db.ledger.get_active_program()
+    assert active.version == 2
+    assert active.days[0].exercises[1].exercise_id == "dbp"
+
+
+def test_assistant_substitution_targets_named_day_and_publishes_version(api, monkeypatch):
+    from agent import assistant_graph
+    from agent.fitness_abbreviations import AbbreviationExpansion
+    from copy import deepcopy
+    from langchain_core.messages import HumanMessage
+
+    client, db, _ = api
+    _, player_headers, _, _, player_account_id = _assigned_player(api)
+    _, calls = _player_generation(db, monkeypatch)
+    generated = client.post("/programs/generate", headers=player_headers, json={})
+    assert generated.status_code == 200, generated.text
+    assert calls["n"] == 1
+
+    db.switch_user("p1")
+    original = db.ledger.get_active_program()
+    program_data = original.model_dump()
+    program_data.pop("created_at", None)
+    second_day = deepcopy(program_data["days"][0])
+    second_day["day_name"] = "Full B"
+    second_day["day_order"] = 2
+    program_data["days"].append(second_day)
+    db.ledger.save_training_program(program_data)
+
+    structured_model = MagicMock()
+    structured_model.invoke.return_value = AbbreviationExpansion(
+        is_fitness_movement=True,
+        canonical_name="dumbbell press",
+    )
+    model = MagicMock()
+    model.with_structured_output.return_value = structured_model
+    monkeypatch.setattr("agent.fitness_abbreviations.llm", model)
+
+    state = {
+        "messages": [HumanMessage(content="swap bench press for XYZ on Full B")],
+        "trainee_id": "p1",
+        "player_account_id": player_account_id,
+        "intent": "exercise_substitution",
+        "intent_metadata": {
+            "mode": "direct_swap",
+            "source_exercise": "Bench Press",
+            "target_exercise": "XYZ on Full B",
+        },
+    }
+    result = assistant_graph.exercise_substitution_node(state, {"configurable": {"ledger": db.ledger, "store": db}})
+
+    assert result["program_updated"] is True, result["response_content"]
+    structured_model.invoke.assert_called_once()
+    active = db.ledger.get_active_program()
+    assert active.version == 3
+    assert active.days[0].day_name == "Full A"
+    assert active.days[0].exercises[1].exercise_id == "bp"
+    assert active.days[1].day_name == "Full B"
+    assert active.days[1].exercises[1].exercise_id == "dbp"
+    rows = db.conn.execute(
+        "SELECT version, is_active, published_by_coach_account_id FROM training_programs ORDER BY version"
+    ).fetchall()
+    assert [(row[0], row[1], row[2]) for row in rows] == [(1, 0, None), (2, 0, None), (3, 1, None)]

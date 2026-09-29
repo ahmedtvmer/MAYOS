@@ -114,14 +114,18 @@ def _good_morning_db(tmp_path_factory):
     assert active is not None
 
     # Replace the first exercise of Day 1 with Machine Seated Good Morning for reliable testing
-    target_day = active.days[0]
-    target_ex = target_day.exercises[0]
-
-    db.ledger.swap_program_exercise(
-        old_exercise_id=target_ex.exercise_id,
-        new_exercise_id="3759",  # machine seated good morning (glutes / upper legs)
-        new_notes="Hinge at the hips with neutral spine",
+    program_data = active.model_dump()
+    program_data.pop("created_at", None)
+    target_data = program_data["days"][0]["exercises"][0]
+    seated_good_morning = db.get_exercise_library_entry("3759")
+    target_data.update(
+        exercise_id="3759",
+        exercise_name=seated_good_morning["name"],
+        notes=seated_good_morning.get("instructions") or "",
+        image_path=seated_good_morning.get("image_path"),
+        gif_path=seated_good_morning.get("gif_path"),
     )
+    db.ledger.save_training_program(program_data)
     try:
         yield db
     finally:
@@ -250,4 +254,3 @@ def test_end_to_end_router_with_abbreviation(db_with_good_morning):
     assert routed.get("intent") == "exercise_substitution"
     assert routed["intent_metadata"]["source_exercise"].lower() == "dumbbell romanian deadlift"
     assert routed["intent_metadata"]["target_exercise"].lower() == "ohp"
-

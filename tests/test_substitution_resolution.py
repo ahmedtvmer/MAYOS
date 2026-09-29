@@ -13,6 +13,7 @@ from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
 CHEST_SLOT = "577"  # machine chest press (pectorals | chest)
 REVERSE_LAT_SLOT = "673"  # reverse grip machine lat pulldown (lats | back)
 CABLE_LAT_SLOT = "150"  # cable bar lateral pulldown (lats | back)
+MACHINE_LAT_VARIANT = "2736"  # machine reverse grip lateral pulldown (lats | back)
 
 HALLUCINATED_TARGET = "Machine Two-Arm Lateral Pulldown"
 
@@ -158,16 +159,16 @@ def test_followup_hint_uses_real_catalog_name(sub_db, monkeypatch):
     monkeypatch.setattr(DatabaseManager, "find_exercises_by_name", lambda self, query, limit=5: [])
     variants = [
         {
-            "id": "9001",
-            "name": "machine lateral pulldown",
+            "id": MACHINE_LAT_VARIANT,
+            "name": "machine reverse grip lateral pulldown",
             "target_muscle": "lats",
             "body_part": "back",
             "equipment": "leverage machine",
             "distance": 0.10,
         },
         {
-            "id": "9002",
-            "name": "cable lateral pulldown",
+            "id": CABLE_LAT_SLOT,
+            "name": "cable bar lateral pulldown",
             "target_muscle": "lats",
             "body_part": "back",
             "equipment": "cable",
@@ -178,5 +179,9 @@ def test_followup_hint_uses_real_catalog_name(sub_db, monkeypatch):
 
     res = exercise_substitution_node(_state("reverse grip machine lat pulldown", "something easier on my elbows"), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert res["program_updated"] is True
-    assert "swap reverse grip machine lat pulldown for cable lateral pulldown" in res["response_content"]
+    assert "swap reverse grip machine lat pulldown for cable bar lateral pulldown" in res["response_content"]
     assert "swap for cable machine" not in res["response_content"]
+    assert _slot_name(sub_db, 1) == "machine reverse grip lateral pulldown"
+    active = sub_db.ledger.get_active_program()
+    assert active.version == 2
+    assert active.published_by_coach_account_id is None

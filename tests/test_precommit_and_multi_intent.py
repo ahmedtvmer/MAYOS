@@ -311,7 +311,7 @@ def test_isolated_gen_qa_04_coherent_veto(graph, mode):
     assert result["program_updated"] is False
     graph.llm.invoke.assert_not_called()
     graph.generate_program_pipeline.assert_not_called()
-    graph.db.swap_program_exercise.assert_not_called()
+    graph.db.save_training_program.assert_not_called()
     graph.db.clear_chat_history.assert_not_called()
 
 
@@ -325,7 +325,7 @@ def test_isolated_clinical_subintent_dominates_entire_turn(graph, mode, clinical
     assert result["program_updated"] is False
     graph.llm.invoke.assert_not_called()
     graph.generate_program_pipeline.assert_not_called()
-    graph.db.swap_program_exercise.assert_not_called()
+    graph.db.save_training_program.assert_not_called()
     graph.db.clear_chat_history.assert_not_called()
     graph.db.set_assistant_memory.assert_not_called()
 
@@ -344,7 +344,7 @@ def test_isolated_direct_composite_preflights_before_mutations(graph, explicit_c
     assert result["program_updated"] is False
     graph.llm.invoke.assert_not_called()
     graph.generate_program_pipeline.assert_not_called()
-    graph.db.swap_program_exercise.assert_not_called()
+    graph.db.save_training_program.assert_not_called()
     graph.db.clear_chat_history.assert_not_called()
 
 
