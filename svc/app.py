@@ -38,6 +38,17 @@ from svc.schemas import HealthOut
 
 logger = logging.getLogger(__name__)
 
+
+def web_origins() -> list[str]:
+    """Browser origins allowed by CORS, from comma-separated ``UI_BASE_URL``.
+
+    Holds the web app's host (e.g. the Cloudflare Pages origin, ADR 048) and any
+    local development origin. A browser's ``Origin`` never has a trailing slash,
+    so one is stripped to keep a pasted URL from silently failing every request.
+    """
+    raw = os.getenv("UI_BASE_URL", "http://localhost:8501")
+    return [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
+
 _ready = {"model": False, "catalog": False, "storage": False, "draining": False}
 
 
@@ -248,10 +259,9 @@ def create_app() -> FastAPI:
         """
         return JSONResponse(status_code=401, content={"error": "account_deleted"})
 
-    ui_origin = os.getenv("UI_BASE_URL", "http://localhost:8501")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[ui_origin],
+        allow_origins=web_origins(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

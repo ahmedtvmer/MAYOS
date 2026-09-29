@@ -254,7 +254,7 @@ Rate-limit keys combine the client IP with a bearer-token suffix when present, s
 | :--- | :--- | :--- |
 | `JWT_SECRET` | **required** | HS256 signing/verification key; service refuses to start signing without it |
 | `JWT_EXPIRY_HOURS` | `2` | Access-token lifetime |
-| `UI_BASE_URL` | `http://localhost:8501` | CORS origin (not used for reset links) |
+| `UI_BASE_URL` | `http://localhost:8501` | CORS origin(s), comma-separated (not used for reset links) |
 | `RESET_LINK_BASE_URL` | `http://localhost:8000` | Reset-link / App Link base (`<base>/reset-password?token=…`) |
 | `ANDROID_APP_PACKAGE` | `com.mayos.mayos_mobile` | Package name in `assetlinks.json` |
 | `ANDROID_APP_SHA256_CERT_FINGERPRINTS` | unset (⇒ 404) | Comma-separated signing-cert SHA-256 fingerprints (case/colons optional; normalised) |

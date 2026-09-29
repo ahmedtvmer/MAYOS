@@ -1,0 +1,3 @@
+# SPA fallback: every app path serves index.html so deep links and reloads work.
+# Real files (main.dart.js, assets/, canvaskit/, ...) are served first by Pages.
+/*  /index.html  200
