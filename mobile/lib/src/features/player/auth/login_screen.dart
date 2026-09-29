@@ -10,7 +10,9 @@ import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
+import 'auth_controller.dart';
 import 'auth_widgets.dart';
+import 'google_sign_in_button.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -48,6 +50,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } on ApiException catch (error) {
       if (mounted) {
         setState(() => _error = error.message);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  /// "Continue with Google": a linked subject signs in here, any other
+  /// subject continues into the username picker (#115).
+  Future<void> _continueWithGoogle() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final ContinueWithGoogleResult result =
+          await ref.read(authControllerProvider.notifier).continueWithGoogle();
+      if (!mounted) {
+        return;
+      }
+      switch (result) {
+        case GoogleSignUpPrompt():
+          context.go(googleSignupPath);
+        case GoogleSignInRefused(:final message):
+          setState(() => _error = message);
+        case GoogleSignInDone():
+        case GoogleSignInDismissed():
+          break;
       }
     } finally {
       if (mounted) {
@@ -101,6 +132,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           AuthInlineNotice(kind: AuthNoticeKind.info, message: notice),
         if (resetJustCompleted || notice != null)
           const SizedBox(height: MayosSpacing.md),
+        GoogleSignInSection(
+          key: const Key('login_google'),
+          loading: _busy,
+          onPressed: _busy ? null : _continueWithGoogle,
+        ),
         MayosTextField(
           fieldKey: const Key('login_username'),
           controller: _username,

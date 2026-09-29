@@ -36,6 +36,30 @@ class WorkoutCommitResult {
   bool get created => statusCode == 201;
 }
 
+/// What `POST /auth/google` answered for one ID token (#113).
+sealed class GoogleAuthStart {
+  const GoogleAuthStart();
+}
+
+/// The Google subject is already linked to a live account: here is its session.
+final class GoogleAuthSession extends GoogleAuthStart {
+  const GoogleAuthSession(this.tokens);
+
+  final AuthTokens tokens;
+}
+
+/// First sign-in: no account exists yet, so the service hands back a short-lived
+/// ticket and a username guess for the picker.
+final class GoogleAuthSignupTicket extends GoogleAuthStart {
+  const GoogleAuthSignupTicket({
+    required this.signupTicket,
+    required this.suggestedUsername,
+  });
+
+  final String signupTicket;
+  final String suggestedUsername;
+}
+
 /// Thin typed wrapper over the FastAPI service.
 ///
 /// Every request except register/login/logout carries the persisted bearer
@@ -224,6 +248,77 @@ class ApiClient {
   Future<Account> currentAccount() async {
     final response = await _send(() => _dio.get<dynamic>('/auth/me'));
     return _parseAccount(response.data);
+  }
+
+  /// The `POST /auth/google` answer (#113/#115): a session when the Google
+  /// subject is already linked, otherwise the ticket that opens the picker.
+  Future<GoogleAuthStart> googleSignIn({required String idToken}) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/auth/google',
+        data: <String, dynamic>{'id_token': idToken},
+        options: Options(extra: {_skipAuth: true}),
+      ),
+    );
+    final dynamic data = response.data;
+    if (data is! Map<String, dynamic>) {
+      throw const ApiException(
+          'The service returned an invalid Google sign-in answer.');
+    }
+    final dynamic ticket = data['signup_ticket'];
+    if (ticket is String) {
+      return GoogleAuthSignupTicket(
+        signupTicket: ticket,
+        suggestedUsername: data['suggested_username'] is String
+            ? data['suggested_username'] as String
+            : '',
+      );
+    }
+    return GoogleAuthSession(AuthTokens.fromJson(data));
+  }
+
+  /// `GET /auth/username-available` for the picker (#113): the signup ticket
+  /// travels as the bearer so the device's own session token is never sent.
+  Future<bool> usernameAvailable(
+    String username, {
+    required String ticket,
+  }) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/auth/username-available',
+        queryParameters: <String, dynamic>{'username': username},
+        options: Options(
+          extra: {_skipAuth: true},
+          headers: <String, dynamic>{'Authorization': 'Bearer $ticket'},
+        ),
+      ),
+    );
+    final dynamic data = response.data;
+    if (data is! Map<String, dynamic>) {
+      throw const ApiException(
+          'The service returned an invalid username answer.');
+    }
+    return data['available'] == true;
+  }
+
+  /// `POST /auth/google/complete`: creates the account and its Google link in
+  /// one transaction (#113). 409 when the username is taken, 401 when the
+  /// signup ticket expired.
+  Future<AuthTokens> googleComplete({
+    required String signupTicket,
+    required String username,
+  }) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/auth/google/complete',
+        data: <String, dynamic>{
+          'signup_ticket': signupTicket,
+          'username': username,
+        },
+        options: Options(extra: {_skipAuth: true}),
+      ),
+    );
+    return AuthTokens.fromJson(response.data as Map<String, dynamic>);
   }
 
   /// Redeems an owner-issued, single-use coach invite and returns the updated account.

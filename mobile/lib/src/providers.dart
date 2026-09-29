@@ -22,6 +22,7 @@ import 'core/workout_storage.dart';
 import 'features/coach/coach_assistant_state.dart';
 import 'features/player/auth/auth_controller.dart';
 import 'features/player/auth/auth_repository.dart';
+import 'features/player/auth/google_auth_gateway.dart';
 import 'features/player/workout/active_workout_controller.dart';
 import 'features/player/workout/draft_sync_service.dart';
 
@@ -85,8 +86,14 @@ final StateNotifierProvider<AuthController, AuthState> authControllerProvider =
     ref.watch(authRepositoryProvider),
     ref.watch(unauthorizedEventsProvider),
     ref.watch(accountDeletedEventsProvider),
+    ref.watch(googleAuthGatewayProvider),
   );
 });
+
+/// The one seam to the Google SDK (#115): tests replace it with a fake, and
+/// the web half (#127) plugs in behind the same interface.
+final Provider<GoogleAuthGateway> googleAuthGatewayProvider =
+    Provider<GoogleAuthGateway>((ref) => GoogleSdkAuthGateway());
 
 /// Device-level persistence of the last Player mode / Coach mode per account
 /// (issue #119).

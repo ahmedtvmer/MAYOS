@@ -6,8 +6,75 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_client.dart';
 import '../../../core/models.dart';
 import 'auth_repository.dart';
+import 'google_auth_gateway.dart';
 
 enum AuthStatus { loading, unauthenticated, authenticated }
+
+/// The first Google sign-up that is waiting for a username (#115).
+class PendingGoogleSignup {
+  const PendingGoogleSignup({
+    required this.signupTicket,
+    required this.suggestedUsername,
+  });
+
+  final String signupTicket;
+  final String suggestedUsername;
+}
+
+/// What one "Continue with Google" tap produced (#115).
+sealed class ContinueWithGoogleResult {
+  const ContinueWithGoogleResult();
+}
+
+/// The Google subject was already linked: the session is applied.
+final class GoogleSignInDone extends ContinueWithGoogleResult {
+  const GoogleSignInDone();
+}
+
+/// No account exists yet: open the username picker.
+final class GoogleSignUpPrompt extends ContinueWithGoogleResult {
+  const GoogleSignUpPrompt();
+}
+
+/// The person dismissed the Google sheet; nothing happened.
+final class GoogleSignInDismissed extends ContinueWithGoogleResult {
+  const GoogleSignInDismissed();
+}
+
+/// The SDK refused; [message] explains it on the sign-in screen.
+final class GoogleSignInRefused extends ContinueWithGoogleResult {
+  const GoogleSignInRefused(this.message);
+
+  final String message;
+}
+
+/// What `POST /auth/google/complete` produced (#115).
+sealed class CompleteGoogleSignupResult {
+  const CompleteGoogleSignupResult();
+}
+
+/// The account was created and the device signed in.
+final class GoogleSignupDone extends CompleteGoogleSignupResult {
+  const GoogleSignupDone();
+}
+
+/// The picked username is already taken; the live check shows the same error.
+final class GoogleUsernameTaken extends CompleteGoogleSignupResult {
+  const GoogleUsernameTaken();
+}
+
+/// The signup ticket aged out: back to sign-in with a short explanation.
+final class GoogleSignupTicketExpired extends CompleteGoogleSignupResult {
+  const GoogleSignupTicketExpired();
+}
+
+/// Any other refusal; [message] explains it on the picker.
+final class GoogleSignupRefused extends CompleteGoogleSignupResult {
+  const GoogleSignupRefused(this.message);
+
+  final String message;
+}
+
 
 @immutable
 class AuthState {
@@ -47,8 +114,12 @@ class AccountDeletedEvents extends ChangeNotifier {
 }
 
 class AuthController extends StateNotifier<AuthState> {
-  AuthController(this._repository, this._events, this._accountDeletedEvents)
-      : super(const AuthState.loading()) {
+  AuthController(
+    this._repository,
+    this._events,
+    this._accountDeletedEvents,
+    this._google,
+  ) : super(const AuthState.loading()) {
     _events.addListener(_onUnauthorized);
     _accountDeletedEvents.addListener(_onAccountDeleted);
   }
@@ -56,6 +127,12 @@ class AuthController extends StateNotifier<AuthState> {
   final AuthRepository _repository;
   final UnauthorizedEvents _events;
   final AccountDeletedEvents _accountDeletedEvents;
+  final GoogleAuthGateway _google;
+
+  PendingGoogleSignup? _pendingSignup;
+
+  /// The sign-up the username picker is completing, or null when none is open.
+  PendingGoogleSignup? get pendingSignup => _pendingSignup;
 
   /// Resolves a persisted session once at startup.
   Future<void> initialize() async {
@@ -102,6 +179,95 @@ class AuthController extends StateNotifier<AuthState> {
     final String? accountId = state.session?.account.accountId;
     await _repository.logout(accountId: accountId);
     state = const AuthState.unauthenticated();
+  }
+
+  /// One "Continue with Google" tap: get an ID token, then hand it to
+  /// `POST /auth/google`. A linked subject signs in exactly like password
+  /// login; any other subject parks a signup ticket for the picker.
+  Future<ContinueWithGoogleResult> continueWithGoogle() async {
+    final GoogleAuthOutcome outcome = await _google.authenticate();
+    if (outcome is GoogleAuthCanceled) {
+      return const GoogleSignInDismissed();
+    }
+    if (outcome is GoogleAuthFailed) {
+      return GoogleSignInRefused(outcome.message);
+    }
+    final String idToken = (outcome as GoogleAuthIdToken).idToken;
+    try {
+      final GoogleSignInFlowResult result =
+          await _repository.signInWithGoogle(idToken: idToken);
+      if (result case GoogleAccountReady(:final session)) {
+        state = AuthState.authenticated(session);
+        return const GoogleSignInDone();
+      }
+      final GoogleUsernameRequired required =
+          result as GoogleUsernameRequired;
+      _pendingSignup = PendingGoogleSignup(
+        signupTicket: required.signupTicket,
+        suggestedUsername: required.suggestedUsername,
+      );
+      return const GoogleSignUpPrompt();
+    } on ApiException catch (error) {
+      return GoogleSignInRefused(error.message);
+    }
+  }
+
+  /// Live availability for the picker, authorised by the pending ticket.
+  Future<bool> googleUsernameAvailable(String username) {
+    final PendingGoogleSignup? pending = _pendingSignup;
+    if (pending == null) {
+      throw const ApiException('Your Google sign-up expired. Please try again.');
+    }
+    return _repository.googleUsernameAvailable(
+      signupTicket: pending.signupTicket,
+      username: username,
+    );
+  }
+
+  /// Picks the username and creates the account behind the pending ticket.
+  Future<CompleteGoogleSignupResult> completeGoogleSignup(
+      {required String username}) async {
+    final PendingGoogleSignup? pending = _pendingSignup;
+    if (pending == null) {
+      return const GoogleSignupTicketExpired();
+    }
+    try {
+      final AccountSession session = await _repository.completeGoogleSignup(
+        signupTicket: pending.signupTicket,
+        username: username,
+      );
+      _pendingSignup = null;
+      state = AuthState.authenticated(session);
+      return const GoogleSignupDone();
+    } on ApiException catch (error) {
+      if (error.statusCode == 401) {
+        await _expireGoogleSignup();
+        return const GoogleSignupTicketExpired();
+      }
+      if (error.statusCode == 409) {
+        return const GoogleUsernameTaken();
+      }
+      return GoogleSignupRefused(error.message);
+    }
+  }
+
+  /// Leaves the picker without submitting: no account was created, and the
+  /// Google SDK's own sign-in state is dropped (#115).
+  Future<void> abandonGoogleSignup() async {
+    if (_pendingSignup == null) {
+      return;
+    }
+    _pendingSignup = null;
+    await _google.clearSdkState();
+  }
+
+  /// The ticket aged out: drop it and send the person back to sign-in with a
+  /// short explanation (#115).
+  Future<void> _expireGoogleSignup() async {
+    _pendingSignup = null;
+    await _google.clearSdkState();
+    state = const AuthState.unauthenticated(
+        'Your Google sign-up expired. Please try again.');
   }
 
   /// Password-confirmed account deletion: on success the server has ended every

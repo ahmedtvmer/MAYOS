@@ -6,6 +6,29 @@ import '../../../core/chat_storage.dart';
 import '../../../core/models.dart';
 import '../../../core/token_store.dart';
 
+/// What the first Google sign-in needs from the screens (#115).
+sealed class GoogleSignInFlowResult {
+  const GoogleSignInFlowResult();
+}
+
+/// A linked Google subject: the session is already applied.
+final class GoogleAccountReady extends GoogleSignInFlowResult {
+  const GoogleAccountReady(this.session);
+
+  final AccountSession session;
+}
+
+/// No account yet: the username picker must open with this ticket and guess.
+final class GoogleUsernameRequired extends GoogleSignInFlowResult {
+  const GoogleUsernameRequired({
+    required this.signupTicket,
+    required this.suggestedUsername,
+  });
+
+  final String signupTicket;
+  final String suggestedUsername;
+}
+
 /// Coordinates the API and the persisted token for the auth lifecycle.
 class AuthRepository {
   AuthRepository({
@@ -45,8 +68,39 @@ class AuthRepository {
     );
   }
 
-  /// Restores a persisted session, or returns null when there is no live one.
-  ///
+  /// Exchanges a Google ID token for either a session or a signup ticket
+  /// (#113/#115). A session is applied through the same path password login
+  /// uses, so a Google sign-in lands exactly like a password one.
+  Future<GoogleSignInFlowResult> signInWithGoogle({required String idToken}) async {
+    final GoogleAuthStart start = await _api.googleSignIn(idToken: idToken);
+    if (start case GoogleAuthSession(:final tokens)) {
+      return GoogleAccountReady(await _establishSession(() async => tokens));
+    }
+    final GoogleAuthSignupTicket ticket = start as GoogleAuthSignupTicket;
+    return GoogleUsernameRequired(
+      signupTicket: ticket.signupTicket,
+      suggestedUsername: ticket.suggestedUsername,
+    );
+  }
+
+  /// Creates the account behind a signup ticket and signs the device in.
+  Future<AccountSession> completeGoogleSignup({
+    required String signupTicket,
+    required String username,
+  }) {
+    return _establishSession(
+      () => _api.googleComplete(signupTicket: signupTicket, username: username),
+    );
+  }
+
+  /// Asks whether [username] is still free, authorised by the signup ticket.
+  Future<bool> googleUsernameAvailable({
+    required String signupTicket,
+    required String username,
+  }) =>
+      _api.usernameAvailable(username, ticket: signupTicket);
+
+  /// Restores a persisted session, or returns null when there is no live one.  ///
   /// A 401 clears the stale token; any other failure (for example, no network)
   /// propagates so the caller can keep the token for a later retry. A 401 that
   /// carries `account_deleted` erases that account's protected local data before
