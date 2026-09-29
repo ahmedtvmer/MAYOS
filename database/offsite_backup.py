@@ -22,47 +22,15 @@ from typing import Any, Iterator
 
 from database.backup import OffsiteBackupStore, clamp_backup_retention_days
 from utils.logger import MyosLogger
+from utils.r2 import R2_ENV_NAMES as _R2_ENV_NAMES
+from utils.r2 import create_r2_client_from_environment as _create_r2_client_from_environment
 
 logger = MyosLogger().get_logger(__name__)
 
-R2_ENDPOINT_ENV = "R2_ENDPOINT"
-R2_BUCKET_ENV = "R2_BUCKET"
-R2_ACCESS_KEY_ENV = "R2_ACCESS_KEY_ID"
-R2_SECRET_KEY_ENV = "R2_SECRET_ACCESS_KEY"
-R2_ENV_NAMES = (R2_ENDPOINT_ENV, R2_BUCKET_ENV, R2_ACCESS_KEY_ENV, R2_SECRET_KEY_ENV)
 DAILY_PREFIX = "daily/"
 COMPLETE_MARKER = "_COMPLETE.json"
 SNAPSHOT_DATE_RE = re.compile(r"^\d{8}$")
 LEDGER_FILE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*\.db$")
-
-
-def create_r2_client_from_environment() -> tuple[Any, str] | None:
-    """Create the shared S3-compatible client from the named R2 settings.
-
-    The backup and media adapters use the same client construction, including
-    its timeout, retry, and signature policy.
-    """
-    environment_values = {name: os.getenv(name, "").strip() for name in R2_ENV_NAMES}
-    if not all(environment_values.values()):
-        return None
-
-    import boto3
-    from botocore.config import Config
-
-    client = boto3.client(
-        "s3",
-        region_name="auto",
-        endpoint_url=environment_values[R2_ENDPOINT_ENV],
-        aws_access_key_id=environment_values[R2_ACCESS_KEY_ENV],
-        aws_secret_access_key=environment_values[R2_SECRET_KEY_ENV],
-        config=Config(
-            connect_timeout=5,
-            read_timeout=30,
-            retries={"mode": "standard", "max_attempts": 3},
-            signature_version="s3v4",
-        ),
-    )
-    return client, environment_values[R2_BUCKET_ENV]
 
 
 class R2BackupStore:
@@ -77,7 +45,7 @@ class R2BackupStore:
     @classmethod
     def from_environment(cls, lock_path: Path | None = None) -> R2BackupStore | None:
         """Build the R2 adapter when all four configured secrets are present."""
-        connection = create_r2_client_from_environment()
+        connection = _create_r2_client_from_environment()
         if connection is None:
             return None
         client, bucket = connection
@@ -371,7 +339,7 @@ def configure_r2_backup(
     *, lock_path: Path | None = None, log_disabled: bool = False
 ) -> OffsiteBackupStore | None:
     """Build the configured provider and emit one non-sensitive startup line."""
-    if not all(os.getenv(name, "").strip() for name in R2_ENV_NAMES):
+    if not all(os.getenv(name, "").strip() for name in _R2_ENV_NAMES):
         if log_disabled:
             logger.info("Off-site R2 backups disabled; set R2_ENDPOINT, R2_BUCKET, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY.")
         return None

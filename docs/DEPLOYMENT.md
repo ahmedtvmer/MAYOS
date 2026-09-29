@@ -847,8 +847,10 @@ streams the object from the private R2 bucket configured for off-site backups,
 under a separate `media/` prefix. A catalog path such as
 `images/0001-2gPfomN.jpg` maps to the R2 object
 `media/images/0001-2gPfomN.jpg`; `videos/0001-2gPfomN.gif` maps to
-`media/videos/0001-2gPfomN.gif`. The API streams the bytes and applies a
-one-year cache header. The bucket remains private with public access disabled;
+`media/videos/0001-2gPfomN.gif`. The API streams the bytes, returns ETag and
+Last-Modified validators, and applies a one-day cache header with
+`stale-while-revalidate`. Conditional requests return 304 without streaming
+the body. The bucket remains private with public access disabled;
 the API's public `/media` route exposes only approved image/GIF paths, and
 backup objects remain under `daily/`.
 
@@ -881,9 +883,10 @@ returns 404 instead of silently falling back to a local copy.
   ```
 
   The script uploads `data/images/` and `data/videos/` to `media/images/` and
-  `media/videos/` with `image/jpeg` / `image/gif` content types and a one-year
-  cache header. It records each object's SHA-256 in metadata and skips it on a
-  rerun when both that digest and object size match. The local `.env` must not
+  `media/videos/` with `image/jpeg` / `image/gif` content types and a one-day
+  `Cache-Control` max-age plus `stale-while-revalidate`. It records each object's
+  SHA-256 in metadata and skips it on a rerun when both that digest and object
+  size match. The local `.env` must not
   be committed. The API Machine must already have the four secrets from §1a.
 - **Deploy after the upload.** Upload before the first deployment of this
   version, and repeat the upload before deploying any changed media files:

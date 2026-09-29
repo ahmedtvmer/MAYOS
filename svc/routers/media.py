@@ -1,37 +1,46 @@
 """Catalog demo media. Public: assets are generic, not per-player data."""
 
-import mimetypes
+from datetime import UTC, datetime
+from email.utils import format_datetime, parsedate_to_datetime
 from functools import lru_cache
 from pathlib import Path
+import re
 from typing import Any, Iterator
 
-from fastapi import APIRouter, HTTPException, status
 from botocore.exceptions import BotoCoreError, ClientError
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse, StreamingResponse
 
-from database.offsite_backup import create_r2_client_from_environment
+from utils.r2 import (
+    MEDIA_CACHE_CONTROL,
+    MEDIA_CONTENT_TYPES,
+    MEDIA_DIRECTORIES,
+    MEDIA_PREFIX,
+    MISSING_R2_OBJECT_CODES,
+    create_r2_client_from_environment,
+)
 
 router = APIRouter(prefix="/media", tags=["media"])
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 SEARCH_DIRS = (BASE_DIR / "data", BASE_DIR / "dataset")
-R2_MEDIA_PREFIX = "media/"
-MEDIA_CACHE_CONTROL = "public, max-age=31536000"
-R2_MEDIA_PATHS = {"images": {".jpg", ".jpeg"}, "videos": {".gif"}}
 
 
 @lru_cache(maxsize=1)
 def _configured_r2_connection() -> tuple[Any, str] | None:
-    """Reuse the R2 client while the process environment is stable."""
-    return create_r2_client_from_environment()
+    """Reuse the media-specific client while the process environment is stable."""
+    return create_r2_client_from_environment(connect_timeout=2, read_timeout=5, max_attempts=1)
 
 
-def _allowed_r2_media(name: str) -> bool:
+def _allowed_media_path(name: str) -> bool:
     parts = Path(name).parts
     return (
-        len(parts) >= 2
-        and parts[0] in R2_MEDIA_PATHS
-        and Path(parts[-1]).suffix.lower() in R2_MEDIA_PATHS[parts[0]]
+        "\\" not in name
+        and not Path(name).is_absolute()
+        and ".." not in parts
+        and len(parts) >= 2
+        and parts[0] in MEDIA_DIRECTORIES
+        and Path(parts[-1]).suffix.lower() in MEDIA_DIRECTORIES[parts[0]]
     )
 
 
@@ -43,34 +52,89 @@ def _stream_body(streaming_body: Any) -> Iterator[bytes]:
         streaming_body.close()
 
 
-def _missing_object(exc: ClientError) -> bool:
-    response = getattr(exc, "response", {})
-    code = str(response.get("Error", {}).get("Code", ""))
-    return code in {"404", "NoSuchKey", "NotFound"}
-
-
-def _get_r2_media_object(name: str, client: Any, bucket: str) -> dict[str, Any]:
-    try:
-        return client.get_object(Bucket=bucket, Key=f"{R2_MEDIA_PREFIX}{name}")
-    except ClientError as exc:
-        if _missing_object(exc):
+def _raise_provider_error(exc: Exception) -> None:
+    if isinstance(exc, ClientError):
+        error = exc.response.get("Error", {})
+        if str(error.get("Code", "")) in MISSING_R2_OBJECT_CODES:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media not found.") from None
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Media is temporarily unavailable.") from None
-    except BotoCoreError:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Media is temporarily unavailable.") from None
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Media is temporarily unavailable.",
+    ) from None
 
 
-def _r2_media_response(name: str, client: Any, bucket: str) -> StreamingResponse:
-    if not _allowed_r2_media(name):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media not found.")
-    remote_object = _get_r2_media_object(name, client, bucket)
-    content_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
-    headers = {
-        "Cache-Control": MEDIA_CACHE_CONTROL,
-        "X-Content-Type-Options": "nosniff",
-    }
+def _head_r2_media(name: str, client: Any, bucket: str) -> dict[str, Any]:
+    try:
+        return client.head_object(Bucket=bucket, Key=f"{MEDIA_PREFIX}{name}")
+    except (BotoCoreError, ClientError, OSError, TimeoutError) as exc:
+        _raise_provider_error(exc)
+
+
+def _get_r2_media(name: str, client: Any, bucket: str) -> dict[str, Any]:
+    try:
+        return client.get_object(Bucket=bucket, Key=f"{MEDIA_PREFIX}{name}")
+    except (BotoCoreError, ClientError, OSError, TimeoutError) as exc:
+        _raise_provider_error(exc)
+
+
+def _validator_headers(remote_object: dict[str, Any]) -> dict[str, str]:
+    headers = {"Cache-Control": MEDIA_CACHE_CONTROL, "X-Content-Type-Options": "nosniff"}
+    etag = remote_object.get("ETag")
+    if not etag:
+        sha256 = remote_object.get("Metadata", {}).get("sha256")
+        if isinstance(sha256, str) and re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
+            etag = f'"{sha256}"'
+    if etag:
+        headers["ETag"] = str(etag)
+    last_modified = remote_object.get("LastModified")
+    if isinstance(last_modified, datetime):
+        if last_modified.tzinfo is None:
+            last_modified = last_modified.replace(tzinfo=UTC)
+        headers["Last-Modified"] = format_datetime(last_modified.astimezone(UTC), usegmt=True)
     if remote_object.get("ContentLength") is not None:
         headers["Content-Length"] = str(remote_object["ContentLength"])
+    return headers
+
+
+def _etag_matches(request_value: str, etag: str | None) -> bool:
+    if etag is None:
+        return False
+    current = etag.removeprefix("W/")
+    return any(
+        candidate.strip() == "*" or candidate.strip().removeprefix("W/") == current
+        for candidate in request_value.split(",")
+    )
+
+
+def _not_modified(request: Request, headers: dict[str, str]) -> bool:
+    if_none_match = request.headers.get("if-none-match")
+    if if_none_match is not None:
+        if if_none_match.strip() == "*":
+            return True
+        return _etag_matches(if_none_match, headers.get("ETag"))
+    if_modified_since = request.headers.get("if-modified-since")
+    last_modified = headers.get("Last-Modified")
+    if not if_modified_since or not last_modified:
+        return False
+    try:
+        requested_date = parsedate_to_datetime(if_modified_since)
+        modified_date = parsedate_to_datetime(last_modified)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if requested_date.tzinfo is None:
+        requested_date = requested_date.replace(tzinfo=UTC)
+    return modified_date <= requested_date.astimezone(UTC)
+
+
+def _r2_media_response(name: str, client: Any, bucket: str, request: Request) -> Response:
+    if not _allowed_media_path(name):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media not found.")
+    metadata = _head_r2_media(name, client, bucket)
+    headers = _validator_headers(metadata)
+    if _not_modified(request, headers):
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+    remote_object = _get_r2_media(name, client, bucket)
+    content_type = MEDIA_CONTENT_TYPES[Path(name).suffix.lower()]
     return StreamingResponse(_stream_body(remote_object["Body"]), media_type=content_type, headers=headers)
 
 
@@ -87,12 +151,12 @@ def _local_media_response(name: str) -> FileResponse:
 
 
 @router.get("/{name:path}")
-def get_media(name: str):
-    if not name or name.startswith(("http://", "https://", "/")) or ".." in Path(name).parts:
+def get_media(name: str, request: Request) -> Response:
+    if not _allowed_media_path(name):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media not found.")
 
     connection = _configured_r2_connection()
     if connection is not None:
         client, bucket = connection
-        return _r2_media_response(name, client, bucket)
+        return _r2_media_response(name, client, bucket, request)
     return _local_media_response(name)

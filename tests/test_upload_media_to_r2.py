@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 from botocore.exceptions import ClientError
 
-from scripts.upload_media_to_r2 import CACHE_CONTROL, plan_media_upload, upload_media
+from scripts.upload_media_to_r2 import plan_media_upload, upload_media
+from utils.r2 import MEDIA_CACHE_CONTROL
 
 
 class MissingObject(ClientError):
@@ -50,7 +51,7 @@ def test_upload_media_preserves_paths_content_types_and_is_idempotent(tmp_path):
     }
     assert client.objects["media/images/nested/still.jpg"][1]["ContentType"] == "image/jpeg"
     assert client.objects["media/videos/motion.gif"][1]["ContentType"] == "image/gif"
-    assert all(extra["CacheControl"] == CACHE_CONTROL for _, _, extra in client.uploads)
+    assert all(extra["CacheControl"] == MEDIA_CACHE_CONTROL for _, _, extra in client.uploads)
     assert all(len(extra["Metadata"]["sha256"]) == 64 for _, _, extra in client.uploads)
 
     assert upload_media(data_dir, client, "private-bucket") == (0, 2)

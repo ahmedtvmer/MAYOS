@@ -19,10 +19,14 @@ from botocore.exceptions import ClientError
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
-MEDIA_PREFIX = "media/"
-CACHE_CONTROL = "public, max-age=31536000"
-MEDIA_DIRECTORIES = {"images": {".jpg", ".jpeg"}, "videos": {".gif"}}
-MISSING_OBJECT_CODES = {"404", "NoSuchKey", "NotFound"}
+from utils.r2 import (
+    MEDIA_CACHE_CONTROL,
+    MEDIA_CONTENT_TYPES,
+    MEDIA_DIRECTORIES,
+    MEDIA_PREFIX,
+    MISSING_R2_OBJECT_CODES,
+    create_r2_client_from_environment,
+)
 
 
 @dataclass(frozen=True)
@@ -47,7 +51,7 @@ def _existing_object(client: Any, bucket: str, key: str) -> dict[str, Any] | Non
     except ClientError as exc:
         response = getattr(exc, "response", {})
         code = str(response.get("Error", {}).get("Code", ""))
-        if code in MISSING_OBJECT_CODES:
+        if code in MISSING_R2_OBJECT_CODES:
             return None
         raise
 
@@ -74,7 +78,7 @@ def _directory_media_files(data_dir: Path, directory: str, extensions: set[str])
             raise ValueError(f"Media file resolves outside its source directory: {path}")
         if path.suffix.lower() not in extensions:
             raise ValueError(f"Unsupported file in {source_dir}: {path.name}")
-        content_type = "image/gif" if directory == "videos" else "image/jpeg"
+        content_type = MEDIA_CONTENT_TYPES[path.suffix.lower()]
         relative_path = path.relative_to(data_dir).as_posix()
         files.append(MediaUpload(path, f"{MEDIA_PREFIX}{relative_path}", content_type, _sha256(path)))
     if not files:
@@ -118,7 +122,7 @@ def upload_media(data_dir: Path, client: Any, bucket: str) -> tuple[int, int]:
             media_file.object_key,
             ExtraArgs={
                 "ContentType": media_file.content_type,
-                "CacheControl": CACHE_CONTROL,
+                "CacheControl": MEDIA_CACHE_CONTROL,
                 "Metadata": {"sha256": media_file.sha256},
             },
         )
@@ -132,8 +136,6 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="list changed objects without uploading them")
     parser.add_argument("--data-dir", type=Path, default=BASE_DIR / "data", help="catalog data directory")
     args = parser.parse_args()
-
-    from database.offsite_backup import create_r2_client_from_environment
 
     connection = create_r2_client_from_environment()
     if connection is None:
