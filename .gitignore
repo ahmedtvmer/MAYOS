@@ -42,3 +42,6 @@ programs/
 key.properties
 *.jks
 *.keystore
+
+# Wrangler (Cloudflare Pages deploy, scripts/deploy_web.sh) local cache
+.wrangler/
