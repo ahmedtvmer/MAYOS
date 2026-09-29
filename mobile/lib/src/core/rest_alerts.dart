@@ -34,7 +34,8 @@ class RestAlertInfo {
   final String? lastLabel;
 
   /// The notification's second line: `Next: <exercise> · set N · last <prev>`.
-  String get line => 'Next: $exerciseName · set $setNumber'
+  String get line =>
+      'Next: $exerciseName · set $setNumber'
       '${lastLabel == null ? '' : ' · last $lastLabel'}';
 }
 
@@ -115,12 +116,14 @@ class AndroidRestAlerts implements RestAlerts {
     Future<bool?> Function()? requestExactAlarmsPermission,
     Future<bool?> Function()? canScheduleExactNotifications,
     Future<void> Function()? initialize,
-  })  : _store = store ?? SecureStore(),
-        _explain = explain,
-        _requestNotificationsPermission = requestNotificationsPermission,
-        _requestExactAlarmsPermission = requestExactAlarmsPermission,
-        _canScheduleExact = canScheduleExactNotifications,
-        _initializePlugin = initialize;
+    DateTime Function()? now,
+  }) : _store = store ?? SecureStore(),
+       _explain = explain,
+       _requestNotificationsPermission = requestNotificationsPermission,
+       _requestExactAlarmsPermission = requestExactAlarmsPermission,
+       _canScheduleExact = canScheduleExactNotifications,
+       _initializePlugin = initialize,
+       _now = now ?? DateTime.now;
 
   /// The ongoing countdown notification and the one-shot end alert, kept as
   /// two ids so ending a rest cancels only the right pair.
@@ -147,6 +150,7 @@ class AndroidRestAlerts implements RestAlerts {
   /// ONE init" policy can be tested without a platform (#125). Null means
   /// "run the real initialization".
   final Future<void> Function()? _initializePlugin;
+  final DateTime Function() _now;
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
@@ -202,9 +206,10 @@ class AndroidRestAlerts implements RestAlerts {
     }
   }
 
-  AndroidFlutterLocalNotificationsPlugin? get _android =>
-      _plugin.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
+  AndroidFlutterLocalNotificationsPlugin? get _android => _plugin
+      .resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin
+      >();
 
   NotificationDetails _restDetails(RestAlertInfo info, int timeoutAfterMs) =>
       NotificationDetails(
@@ -237,18 +242,18 @@ class AndroidRestAlerts implements RestAlerts {
   /// the scheduled alarm and by the foreground [playEnd] with the same id, so
   /// at most one "Rest complete" is ever posted for a rest (#125).
   NotificationDetails get _endDetails => NotificationDetails(
-        android: AndroidNotificationDetails(
-          _endChannel,
-          'Rest complete',
-          channelDescription: 'The end-of-rest vibration and sound.',
-          importance: Importance.high,
-          priority: Priority.high,
-          playSound: true,
-          enableVibration: true,
-          autoCancel: true,
-          visibility: NotificationVisibility.public,
-        ),
-      );
+    android: AndroidNotificationDetails(
+      _endChannel,
+      'Rest complete',
+      channelDescription: 'The end-of-rest vibration and sound.',
+      importance: Importance.high,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+      autoCancel: true,
+      visibility: NotificationVisibility.public,
+    ),
+  );
 
   @override
   Future<void> ensureReady() {
@@ -282,7 +287,8 @@ class AndroidRestAlerts implements RestAlerts {
     }
     try {
       _explain?.call(
-          'Rest alerts need permission to reach you when your screen is off.');
+        'Rest alerts need permission to reach you when your screen is off.',
+      );
     } on Object {
       // No messenger attached (a headless test): the system prompt still
       // carries its own wording.
@@ -310,13 +316,15 @@ class AndroidRestAlerts implements RestAlerts {
 
   @override
   Future<void> showRest(RestAlertInfo info) {
-    final int ms = info.endsAt.difference(DateTime.now()).inMilliseconds;
-    _later(() => _plugin.show(
-          id: _restId,
-          title: 'MAYOS · Rest ${restMmSs(ms <= 0 ? 0 : (ms / 1000).ceil())}',
-          body: info.line,
-          notificationDetails: _restDetails(info, ms),
-        ));
+    final int ms = info.endsAt.difference(_now()).inMilliseconds;
+    _later(
+      () => _plugin.show(
+        id: _restId,
+        title: 'MAYOS · Rest ${restMmSs(ms <= 0 ? 0 : (ms / 1000).ceil())}',
+        body: info.line,
+        notificationDetails: _restDetails(info, ms),
+      ),
+    );
     return Future<void>.value();
   }
 
@@ -388,9 +396,12 @@ class AndroidRestAlerts implements RestAlerts {
 
 /// The alert layer for this build: the real Android implementation on Android,
 /// an in-app-only no-op everywhere else (web included, #125).
-RestAlerts platformRestAlerts({void Function(String line)? explain}) {
+RestAlerts platformRestAlerts({
+  void Function(String line)? explain,
+  DateTime Function()? now,
+}) {
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-    return AndroidRestAlerts(explain: explain);
+    return AndroidRestAlerts(explain: explain, now: now);
   }
   return const NoopRestAlerts();
 }

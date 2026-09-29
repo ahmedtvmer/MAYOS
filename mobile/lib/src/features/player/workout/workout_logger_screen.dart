@@ -133,7 +133,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     final bool running = workout.rest != null;
     if (running && _restTicker == null) {
       _restTicker = Timer.periodic(
-          const Duration(milliseconds: 250), (_) => _onRestTick());
+        const Duration(milliseconds: 250),
+        (_) => _onRestTick(),
+      );
     } else if (!running && _restTicker != null) {
       _restTicker?.cancel();
       _restTicker = null;
@@ -145,7 +147,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     if (rest == null) {
       return;
     }
-    final DateTime now = DateTime.now();
+    final DateTime now = ref.read(clockProvider)();
     if (rest.isOver(now)) {
       unawaited(_controller.completeRest());
       return;
@@ -207,8 +209,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       setState(() => _loading = false);
       return;
     }
-    final String? accountId =
-        ref.read(authControllerProvider).session?.account.accountId;
+    final String? accountId = ref
+        .read(authControllerProvider)
+        .session
+        ?.account
+        .accountId;
     if (accountId == null) {
       setState(() {
         _loading = false;
@@ -226,8 +231,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       fromCache = true;
     }
 
-    final ActiveWorkoutController controller =
-        ref.read(activeWorkoutControllerProvider.notifier);
+    final ActiveWorkoutController controller = ref.read(
+      activeWorkoutControllerProvider.notifier,
+    );
     // Waits for the device restore for this account, so a workout that is
     // still loading is never mistaken for a missing one.
     await controller.syncAccount(accountId);
@@ -281,7 +287,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     final DateTime clamped = performedDateWindow().clamp(started);
     _performedDate = clamped;
     if (formatPerformedDate(clamped) != formatPerformedDate(started)) {
-      _notice = 'This workout started on ${formatPerformedDate(started)}, '
+      _notice =
+          'This workout started on ${formatPerformedDate(started)}, '
           'outside the allowed entry window, so its performed date was set '
           'to ${formatPerformedDate(clamped)}.';
     }
@@ -364,7 +371,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     _recordFocus = (
       exerciseIndex: next.exerciseIndex,
       setId: setId,
-      before: _recordBadges(next.exerciseIndex)[setId]?.current ??
+      before:
+          _recordBadges(next.exerciseIndex)[setId]?.current ??
           const <PrRecordKind>{},
     );
   }
@@ -372,18 +380,15 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   /// Settles the focused cell's edit: the heavy haptic fires only if its row
   /// now holds a record the focus-time snapshot did not.
   void _settleRecordFocus() {
-    final ({
-      int exerciseIndex,
-      String setId,
-      Set<PrRecordKind> before
-    })? recordFocus = _recordFocus;
+    final ({int exerciseIndex, String setId, Set<PrRecordKind> before})?
+    recordFocus = _recordFocus;
     _recordFocus = null;
     if (recordFocus == null) {
       return;
     }
     final Set<PrRecordKind> now =
         _recordBadges(recordFocus.exerciseIndex)[recordFocus.setId]?.current ??
-            const <PrRecordKind>{};
+        const <PrRecordKind>{};
     if (now.difference(recordFocus.before).isNotEmpty) {
       unawaited(HapticFeedback.heavyImpact());
     }
@@ -393,19 +398,18 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   /// on its own — tick, untick, warm-up toggle, delete — so only a cell edit
   /// can make a later settle vibrate (#124).
   void _refreshRecordFocus() {
-    final ({
-      int exerciseIndex,
-      String setId,
-      Set<PrRecordKind> before
-    })? recordFocus = _recordFocus;
+    final ({int exerciseIndex, String setId, Set<PrRecordKind> before})?
+    recordFocus = _recordFocus;
     if (recordFocus == null) {
       return;
     }
     _recordFocus = (
       exerciseIndex: recordFocus.exerciseIndex,
       setId: recordFocus.setId,
-      before: _recordBadges(recordFocus.exerciseIndex)[recordFocus.setId]
-              ?.current ??
+      before:
+          _recordBadges(
+            recordFocus.exerciseIndex,
+          )[recordFocus.setId]?.current ??
           const <PrRecordKind>{},
     );
   }
@@ -458,11 +462,21 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     // commit — Next, Hide, or leaving the cell (#124).
     switch (focus.field) {
       case LoggerField.kg:
-        unawaited(_controller.updateCell(focus.exerciseIndex, focus.setIndex,
-            weightKg: double.tryParse(text) ?? 0));
+        unawaited(
+          _controller.updateCell(
+            focus.exerciseIndex,
+            focus.setIndex,
+            weightKg: double.tryParse(text) ?? 0,
+          ),
+        );
       case LoggerField.reps:
-        unawaited(_controller.updateCell(focus.exerciseIndex, focus.setIndex,
-            reps: int.tryParse(text) ?? 0));
+        unawaited(
+          _controller.updateCell(
+            focus.exerciseIndex,
+            focus.setIndex,
+            reps: int.tryParse(text) ?? 0,
+          ),
+        );
       case LoggerField.rir:
         break; // RIR is one-tap chips only.
     }
@@ -483,11 +497,17 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   /// and the record haptic can fire — the moment the chip is tapped.
   Future<void> _commitRir(LoggerCellFocus focus, double? rir) async {
     if (rir == null) {
-      await _controller.updateCell(focus.exerciseIndex, focus.setIndex,
-          unrated: true);
+      await _controller.updateCell(
+        focus.exerciseIndex,
+        focus.setIndex,
+        unrated: true,
+      );
     } else {
-      await _controller.updateCell(focus.exerciseIndex, focus.setIndex,
-          rir: rir);
+      await _controller.updateCell(
+        focus.exerciseIndex,
+        focus.setIndex,
+        rir: rir,
+      );
     }
     if (!mounted) {
       return;
@@ -533,8 +553,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       _refreshRecordFocus();
       return;
     }
-    final BaselineSet? prev =
-        previousSetFor(exercise, setIndex, workout.baselines);
+    final BaselineSet? prev = previousSetFor(
+      exercise,
+      setIndex,
+      workout.baselines,
+    );
     double weight = set.weightKg;
     int reps = set.reps;
     double? rir = set.rir;
@@ -553,15 +576,25 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     }
     if (weight <= 0 || reps <= 0) {
       // Nothing to log yet: open the keypad at the first required cell.
-      setState(() => _changeFocus(LoggerCellFocus(exerciseIndex, setIndex,
-          weight <= 0 ? LoggerField.kg : LoggerField.reps)));
+      setState(
+        () => _changeFocus(
+          LoggerCellFocus(
+            exerciseIndex,
+            setIndex,
+            weight <= 0 ? LoggerField.kg : LoggerField.reps,
+          ),
+        ),
+      );
       return;
     }
     if (changed) {
-      await _controller.updateCell(exerciseIndex, setIndex,
-          weightKg: set.weightKg <= 0 ? weight : null,
-          reps: set.reps <= 0 ? reps : null,
-          rir: set.rir == null && rir != null ? rir : null);
+      await _controller.updateCell(
+        exerciseIndex,
+        setIndex,
+        weightKg: set.weightKg <= 0 ? weight : null,
+        reps: set.reps <= 0 ? reps : null,
+        rir: set.rir == null && rir != null ? rir : null,
+      );
     }
     await _updateWithRecordHaptic(
       exerciseIndex,
@@ -594,10 +627,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   // ---- finish / summary ----------------------------------------------------
 
   int _untickedCount(ActiveWorkout workout) => workout.exercises.fold<int>(
-      0,
-      (int total, ActiveWorkoutExercise exercise) =>
-          total +
-          exercise.sets.where((ActiveWorkoutSet s) => !s.ticked).length);
+    0,
+    (int total, ActiveWorkoutExercise exercise) =>
+        total + exercise.sets.where((ActiveWorkoutSet s) => !s.ticked).length,
+  );
 
   /// `{completed}/{total} exercises · {ticked}/{total} sets` under the day
   /// heading (#159): warm-ups excluded from both counts, an exercise done
@@ -609,8 +642,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       int exercisesCompleted,
       int exercisesTotal,
       int setsTicked,
-      int setsTotal
-    }) progress = workoutProgressOf(workout);
+      int setsTotal,
+    })
+    progress = workoutProgressOf(workout);
     return '${progress.exercisesCompleted}/${progress.exercisesTotal} '
         'exercises · ${progress.setsTicked}/${progress.setsTotal} sets';
   }
@@ -627,8 +661,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       return;
     }
     final bool anyWorking = workout.exercises.any(
-        (ActiveWorkoutExercise exercise) => exercise.sets
-            .any((ActiveWorkoutSet s) => s.ticked && s.countsAsWorkingSet));
+      (ActiveWorkoutExercise exercise) => exercise.sets.any(
+        (ActiveWorkoutSet s) => s.ticked && s.countsAsWorkingSet,
+      ),
+    );
     if (!anyWorking) {
       setState(() => _error = _kFinishBlockedError);
       return;
@@ -737,7 +773,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       );
       if (draft == null) {
         setState(() {
-          _error = 'No cached program version is available offline. Connect '
+          _error =
+              'No cached program version is available offline. Connect '
               'once to refresh your program before logging this workout.';
         });
         return;
@@ -747,7 +784,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       // The controller waits for every pending store write before deleting, so
       // a late write can never resurrect it (#123 item 5).
       await _controller.discard(
-          accountId: workout.accountId, workoutId: workout.id);
+        accountId: workout.accountId,
+        workoutId: workout.id,
+      );
       if (!mounted) {
         return;
       }
@@ -818,8 +857,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
         ),
       );
     }
-    final ActiveWorkoutState active =
-        ref.watch(activeWorkoutControllerProvider);
+    final ActiveWorkoutState active = ref.watch(
+      activeWorkoutControllerProvider,
+    );
     if (_loading || !active.ready) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -898,7 +938,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     return <Widget>[
       ConstrainedBox(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height *
+          maxHeight:
+              MediaQuery.sizeOf(context).height *
               _kMessageSlotMaxHeightFraction,
         ),
         child: SingleChildScrollView(
@@ -927,8 +968,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       int exercisesCompleted,
       int exercisesTotal,
       int setsTicked,
-      int setsTotal
-    }) progress = workoutProgressOf(workout);
+      int setsTotal,
+    })
+    progress = workoutProgressOf(workout);
     final ActiveRestTimer? rest = workout.rest;
     return LoggerBottomBar(
       key: const ValueKey<String>('logger.bottomBar'),
@@ -942,7 +984,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   }
 
   /// #125's rest controls for the bar: −15 / m:ss / +15 / Skip. The row
-  /// carries its own quarter-second ticker and reads the wall clock itself,
+  /// carries its own quarter-second ticker and reads the app clock itself,
   /// so a running rest never repaints the screen; no new timer state and no
   /// "+30s" (#125 unchanged, absorbed by the bottom bar in #160).
   Widget _buildRestControls(ActiveRestTimer rest) {
@@ -1007,8 +1049,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
           Text(
             _progressLine(workout),
             key: const ValueKey<String>('logger.progress'),
-            style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+            style: MayosTypography.bodySecondary.copyWith(
+              color: c.textSecondary,
+            ),
           ),
           if (_fromCache) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
@@ -1039,8 +1082,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   /// One exercise, one compact card (#158): the card and its rows are pure
   /// presentation — this method only assembles what they show, including the
   /// Current set's highlight and the records the rows carry.
-  Widget _buildExerciseCard(ActiveWorkout workout, int exerciseIndex,
-      ({int exerciseIndex, int setIndex})? current) {
+  Widget _buildExerciseCard(
+    ActiveWorkout workout,
+    int exerciseIndex,
+    ({int exerciseIndex, int setIndex})? current,
+  ) {
     final ActiveWorkoutExercise exercise = workout.exercises[exerciseIndex];
     // A replacement is undone rather than removed: taking it out brings the
     // hidden planned exercise back (#162).
@@ -1059,11 +1105,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       replaceKey: ValueKey<String>('logger.cardMenu.$exerciseIndex.replace'),
       restKey: ValueKey<String>('logger.cardMenu.$exerciseIndex.rest'),
       removeKey: ValueKey<String>('logger.cardMenu.$exerciseIndex.remove'),
-      undoReplaceKey:
-          ValueKey<String>('logger.cardMenu.$exerciseIndex.undo'),
+      undoReplaceKey: ValueKey<String>('logger.cardMenu.$exerciseIndex.undo'),
       // The frozen baseline's last session, in logged order; empty hides the
       // "Last:" line entirely (#158).
-      lastSession: workout.baselines[exercise.exerciseId]?.lastSession.sets ??
+      lastSession:
+          workout.baselines[exercise.exerciseId]?.lastSession.sets ??
           const <BaselineSet>[],
       rows: <Widget>[
         for (int setIndex = 0; setIndex < exercise.sets.length; setIndex++)
@@ -1072,7 +1118,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
             exerciseIndex,
             setIndex,
             badges,
-            isCurrent: current != null &&
+            isCurrent:
+                current != null &&
                 current.exerciseIndex == exerciseIndex &&
                 current.setIndex == setIndex,
           ),
@@ -1105,8 +1152,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       return;
     }
     final ActiveWorkoutExercise exercise = workout.exercises[exerciseIndex];
-    final int ticked =
-        exercise.sets.where((ActiveWorkoutSet set) => set.ticked).length;
+    final int ticked = exercise.sets
+        .where((ActiveWorkoutSet set) => set.ticked)
+        .length;
     if (ticked > 0 && !await _confirmReplace(ticked)) {
       return;
     }
@@ -1118,7 +1166,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       return;
     }
     final Set<String> inWorkout = <String>{
-      for (final ActiveWorkoutExercise e in _workout?.exercises ?? <ActiveWorkoutExercise>[])
+      for (final ActiveWorkoutExercise e
+          in _workout?.exercises ?? <ActiveWorkoutExercise>[])
         e.exerciseId,
     };
     final ExerciseCatalogEntry? entry = await showDialog<ExerciseCatalogEntry>(
@@ -1157,9 +1206,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     final bool? replace = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: Text(ticked == 1
-            ? 'Replace and discard 1 logged set?'
-            : 'Replace and discard $ticked logged sets?'),
+        title: Text(
+          ticked == 1
+              ? 'Replace and discard 1 logged set?'
+              : 'Replace and discard $ticked logged sets?',
+        ),
         content: Text(
           "The sets you've logged on this exercise will be cleared.",
           style: MayosTypography.bodySecondary.copyWith(color: c.textPrimary),
@@ -1213,8 +1264,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
         exerciseIndex >= workout.exercises.length) {
       return;
     }
-    final int ticked = workout.exercises[exerciseIndex]
-        .sets
+    final int ticked = workout.exercises[exerciseIndex].sets
         .where((ActiveWorkoutSet set) => set.ticked)
         .length;
     if (ticked > 0 && !await _confirmDiscardSets(ticked, confirm: 'Remove')) {
@@ -1237,8 +1287,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
         exerciseIndex >= workout.exercises.length) {
       return;
     }
-    final int ticked = workout.exercises[exerciseIndex]
-        .sets
+    final int ticked = workout.exercises[exerciseIndex].sets
         .where((ActiveWorkoutSet set) => set.ticked)
         .length;
     if (ticked > 0 &&
@@ -1256,14 +1305,19 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   /// exercise and Undo replace raise over an exercise that holds ticked sets.
   /// Nothing is discarded unless [confirm] is tapped; "Keep logging" and any
   /// dismissal change nothing.
-  Future<bool> _confirmDiscardSets(int ticked, {required String confirm}) async {
+  Future<bool> _confirmDiscardSets(
+    int ticked, {
+    required String confirm,
+  }) async {
     final MayosThemeExtension c = MayosTheme.of(context);
     final bool? discard = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: Text(ticked == 1
-            ? 'Remove and discard 1 logged set?'
-            : 'Remove and discard $ticked logged sets?'),
+        title: Text(
+          ticked == 1
+              ? 'Remove and discard 1 logged set?'
+              : 'Remove and discard $ticked logged sets?',
+        ),
         content: Text(
           "The sets you've logged on this exercise will be discarded.",
           style: MayosTypography.bodySecondary.copyWith(color: c.textPrimary),
@@ -1299,14 +1353,14 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
         _focus = null;
       } else if (focus.exerciseIndex > editedIndex && delta != 0) {
         _focus = LoggerCellFocus(
-            focus.exerciseIndex + delta, focus.setIndex, focus.field);
+          focus.exerciseIndex + delta,
+          focus.setIndex,
+          focus.field,
+        );
       }
     }
-    final ({
-      int exerciseIndex,
-      String setId,
-      Set<PrRecordKind> before
-    })? recordFocus = _recordFocus;
+    final ({int exerciseIndex, String setId, Set<PrRecordKind> before})?
+    recordFocus = _recordFocus;
     if (recordFocus != null) {
       if (recordFocus.exerciseIndex == editedIndex) {
         _recordFocus = null;
@@ -1323,9 +1377,13 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   /// One row, assembled here so the screen keeps every decision it makes:
   /// which previous set it hints from, whether the derived Current set lands
   /// on it, what the keypad's focus is, and which records it holds (#158).
-  Widget _buildSetRow(ActiveWorkout workout, int exerciseIndex, int setIndex,
-      Map<String, SetRecordBadges> badges,
-      {required bool isCurrent}) {
+  Widget _buildSetRow(
+    ActiveWorkout workout,
+    int exerciseIndex,
+    int setIndex,
+    Map<String, SetRecordBadges> badges, {
+    required bool isCurrent,
+  }) {
     final ActiveWorkoutExercise exercise = workout.exercises[exerciseIndex];
     final ActiveWorkoutSet set = exercise.sets[setIndex];
     return SetLoggingRow(
@@ -1337,13 +1395,16 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       badges: badges[set.id] ?? const SetRecordBadges(),
       focus: _focus,
       isCurrent: isCurrent,
-      onSelectCell: (LoggerField field) => setState(() =>
-          _changeFocus(LoggerCellFocus(exerciseIndex, setIndex, field))),
-      onToggleWarmup: () => unawaited(_updateWithRecordHaptic(
-        exerciseIndex,
-        setIndex,
-        () => _controller.toggleWarmup(exerciseIndex, setIndex),
-      )),
+      onSelectCell: (LoggerField field) => setState(
+        () => _changeFocus(LoggerCellFocus(exerciseIndex, setIndex, field)),
+      ),
+      onToggleWarmup: () => unawaited(
+        _updateWithRecordHaptic(
+          exerciseIndex,
+          setIndex,
+          () => _controller.toggleWarmup(exerciseIndex, setIndex),
+        ),
+      ),
       onToggleTick: () => _toggleTick(exerciseIndex, setIndex),
       // A row is swiped away only when the exercise keeps at least one row,
       // exactly as before (#123 item 3).
@@ -1380,8 +1441,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
               ),
               Text(
                 'Workout summary',
-                style: MayosTypography.sectionHeading
-                    .copyWith(color: c.textPrimary),
+                style: MayosTypography.sectionHeading.copyWith(
+                  color: c.textPrimary,
+                ),
               ),
             ],
           ),
@@ -1455,8 +1517,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
               padding: const EdgeInsets.only(bottom: MayosSpacing.xxs),
               child: Text(
                 record.line,
-                style: MayosTypography.bodySecondary
-                    .copyWith(color: c.textPrimary),
+                style: MayosTypography.bodySecondary.copyWith(
+                  color: c.textPrimary,
+                ),
               ),
             ),
         ],
@@ -1529,8 +1592,9 @@ class _MessageLine extends StatelessWidget {
       padding: const EdgeInsets.only(top: MayosSpacing.sm),
       child: Text(
         text,
-        style: MayosTypography.bodySecondary
-            .copyWith(color: danger ? c.danger : c.textSecondary),
+        style: MayosTypography.bodySecondary.copyWith(
+          color: danger ? c.danger : c.textSecondary,
+        ),
       ),
     );
   }
@@ -1545,7 +1609,9 @@ class _OfflineLoggerNotice extends StatelessWidget {
     final MayosThemeExtension c = MayosTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(
-          horizontal: MayosSpacing.md, vertical: MayosSpacing.sm),
+        horizontal: MayosSpacing.md,
+        vertical: MayosSpacing.sm,
+      ),
       decoration: BoxDecoration(
         color: c.secondarySurface,
         borderRadius: MayosRadii.mediumRadius,
@@ -1558,8 +1624,9 @@ class _OfflineLoggerNotice extends StatelessWidget {
           Expanded(
             child: Text(
               'Offline: showing your cached program.',
-              style: MayosTypography.bodySecondary
-                  .copyWith(color: c.textSecondary),
+              style: MayosTypography.bodySecondary.copyWith(
+                color: c.textSecondary,
+              ),
             ),
           ),
         ],
@@ -1665,8 +1732,8 @@ class _UnplannedExerciseDialogState
         _results = results;
         _error = results.isEmpty
             ? (muscle == null
-                ? 'No matching exercise found.'
-                : 'No $muscle exercise matched.')
+                  ? 'No matching exercise found.'
+                  : 'No $muscle exercise matched.')
             : null;
       });
     } on ApiException catch (error) {
@@ -1684,8 +1751,10 @@ class _UnplannedExerciseDialogState
   /// `GET /workouts/exercises?target_muscle=` — so this list is whatever that
   /// query returned, minus the workout's own exercises.
   List<ExerciseCatalogEntry> get _visible => _results
-      .where((ExerciseCatalogEntry entry) =>
-          !widget.excludeExerciseIds.contains(entry.id))
+      .where(
+        (ExerciseCatalogEntry entry) =>
+            !widget.excludeExerciseIds.contains(entry.id),
+      )
       .toList(growable: false);
 
   /// The pill (#162): on, the server lists the target muscle (no name needed);
@@ -1746,8 +1815,9 @@ class _UnplannedExerciseDialogState
                 padding: const EdgeInsets.only(top: MayosSpacing.sm),
                 child: Text(
                   _error!,
-                  style:
-                      MayosTypography.bodySecondary.copyWith(color: c.danger),
+                  style: MayosTypography.bodySecondary.copyWith(
+                    color: c.danger,
+                  ),
                 ),
               ),
             if (filteredOut)
@@ -1755,8 +1825,9 @@ class _UnplannedExerciseDialogState
                 padding: const EdgeInsets.only(top: MayosSpacing.sm),
                 child: Text(
                   'Every match is already in this workout.',
-                  style: MayosTypography.bodySecondary
-                      .copyWith(color: c.textSecondary),
+                  style: MayosTypography.bodySecondary.copyWith(
+                    color: c.textSecondary,
+                  ),
                 ),
               ),
             if (visible.isNotEmpty)
@@ -1822,7 +1893,9 @@ class _MuscleFilterChip extends StatelessWidget {
           onTap: onToggle,
           child: Container(
             padding: const EdgeInsets.symmetric(
-                horizontal: MayosSpacing.sm, vertical: MayosSpacing.xxs),
+              horizontal: MayosSpacing.sm,
+              vertical: MayosSpacing.xxs,
+            ),
             decoration: BoxDecoration(
               color: active ? c.accentSubtle : c.surfaceSunken,
               borderRadius: MayosRadii.pillRadius,
@@ -1834,7 +1907,8 @@ class _MuscleFilterChip extends StatelessWidget {
                 Text(
                   'Muscle: $muscle',
                   style: MayosTypography.caption.copyWith(
-                      color: active ? c.accent : c.textSecondary),
+                    color: active ? c.accent : c.textSecondary,
+                  ),
                 ),
                 if (active) ...<Widget>[
                   const SizedBox(width: MayosSpacing.xs),

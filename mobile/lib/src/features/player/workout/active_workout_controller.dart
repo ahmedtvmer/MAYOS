@@ -24,8 +24,9 @@ Future<Prescription?> prescriptionAtStart({
   Duration timeout = const Duration(seconds: 5),
 }) async {
   try {
-    final Prescription fresh =
-        await api.prescription(dayOrder).timeout(timeout);
+    final Prescription fresh = await api
+        .prescription(dayOrder)
+        .timeout(timeout);
     try {
       await cache.writePrescription(accountId, dayOrder, fresh);
     } on Object {
@@ -103,23 +104,21 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     required ActiveWorkoutStore store,
     required BaselinesService baselines,
     Future<Prescription?> Function(String accountId, int dayOrder)?
-        loadPrescription,
+    loadPrescription,
     DateTime Function()? now,
     String Function()? newId,
     RestLengthStore? restLengths,
     RestAlerts? alerts,
-  })  : _store = store,
-        _baselines = baselines,
-        _loadPrescription = loadPrescription,
-        _now = now ?? DateTime.now,
-        _newId = newId ?? _fallbackId,
-        _restLengths = restLengths,
-        _alerts = alerts,
-        super(const ActiveWorkoutState(
-          accountId: null,
-          ready: true,
-          workout: null,
-        ));
+  }) : _store = store,
+       _baselines = baselines,
+       _loadPrescription = loadPrescription,
+       _now = now ?? DateTime.now,
+       _newId = newId ?? _fallbackId,
+       _restLengths = restLengths,
+       _alerts = alerts,
+       super(
+         const ActiveWorkoutState(accountId: null, ready: true, workout: null),
+       );
 
   final ActiveWorkoutStore _store;
   final BaselinesService _baselines;
@@ -127,7 +126,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   /// Fresh `GET /workouts/prescription` with a short timeout, else the cached
   /// prescription — how the old logger resolved it (#123 item 4).
   final Future<Prescription?> Function(String accountId, int dayOrder)?
-      _loadPrescription;
+  _loadPrescription;
   final DateTime Function() _now;
   final String Function() _newId;
 
@@ -196,8 +195,11 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       _epoch++;
       _pendingRestore = null;
       _pendingRestoreFor = null;
-      state =
-          const ActiveWorkoutState(accountId: null, ready: true, workout: null);
+      state = const ActiveWorkoutState(
+        accountId: null,
+        ready: true,
+        workout: null,
+      );
       _restOverrides = const <String, int>{};
       // A signed-out account's countdown must not outlive its session (#125).
       if (_alertsLive) {
@@ -226,8 +228,11 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       return inFlight;
     }
     final int epoch = ++_epoch;
-    state =
-        ActiveWorkoutState(accountId: accountId, ready: false, workout: null);
+    state = ActiveWorkoutState(
+      accountId: accountId,
+      ready: false,
+      workout: null,
+    );
     final Future<void> pending = _restore(accountId, epoch);
     _pendingRestore = pending;
     _pendingRestoreFor = accountId;
@@ -321,8 +326,9 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     if (loadPrescription != null) {
       prescriptionFuture = loadPrescription(accountId, day.dayOrder);
     }
-    final BaselineResolution resolution =
-        await _baselines.resolveForStart(accountId);
+    final BaselineResolution resolution = await _baselines.resolveForStart(
+      accountId,
+    );
     if (!mounted || epoch != _epoch || state.accountId != accountId) {
       return StartWorkoutOutcome.aborted;
     }
@@ -397,10 +403,9 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     }
     await _updateExerciseAt(
       exerciseIndex,
-      exercise.copyWith(sets: <ActiveWorkoutSet>[
-        ...exercise.sets,
-        ActiveWorkoutSet(),
-      ]),
+      exercise.copyWith(
+        sets: <ActiveWorkoutSet>[...exercise.sets, ActiveWorkoutSet()],
+      ),
     );
   }
 
@@ -429,23 +434,24 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     int? reps,
     double? rir,
     bool unrated = false,
-  }) =>
-      _updateSet(
-          exerciseIndex,
-          setIndex,
-          (ActiveWorkoutSet set) => set.copyWith(
-                weightKg: weightKg,
-                reps: reps,
-                rir: rir,
-                clearRir: unrated,
-              ));
+  }) => _updateSet(
+    exerciseIndex,
+    setIndex,
+    (ActiveWorkoutSet set) => set.copyWith(
+      weightKg: weightKg,
+      reps: reps,
+      rir: rir,
+      clearRir: unrated,
+    ),
+  );
 
   /// Toggles a set row between working and warm-up (`N ↔ W`); warm-ups never
   /// count as working sets.
   Future<void> toggleWarmup(int exerciseIndex, int setIndex) => _updateSet(
-      exerciseIndex,
-      setIndex,
-      (ActiveWorkoutSet set) => set.copyWith(isWarmup: !set.isWarmup));
+    exerciseIndex,
+    setIndex,
+    (ActiveWorkoutSet set) => set.copyWith(isWarmup: !set.isWarmup),
+  );
 
   /// Ticks or unticks a set row; only ticked rows reach the Workout draft.
   ///
@@ -458,8 +464,11 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       return;
     }
     final bool wasWarmup = exercise.sets[setIndex].isWarmup;
-    await _updateSet(exerciseIndex, setIndex,
-        (ActiveWorkoutSet set) => set.copyWith(ticked: ticked));
+    await _updateSet(
+      exerciseIndex,
+      setIndex,
+      (ActiveWorkoutSet set) => set.copyWith(ticked: ticked),
+    );
     if (ticked && !wasWarmup) {
       await maybeStartRest(exerciseIndex, setIndex);
     }
@@ -482,8 +491,11 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       exerciseName: exerciseName,
       imagePath: imagePath,
     );
-    await _persist(current.copyWith(
-        exercises: <ActiveWorkoutExercise>[...current.exercises, added]));
+    await _persist(
+      current.copyWith(
+        exercises: <ActiveWorkoutExercise>[...current.exercises, added],
+      ),
+    );
   }
 
   /// The `ProgramExerciseSchema` payload an exercise picked from the catalog
@@ -527,9 +539,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     );
     return ActiveWorkoutExercise(
       exercise: payload,
-      sets: <ActiveWorkoutSet>[
-        for (int i = 0; i < 3; i++) ActiveWorkoutSet(),
-      ],
+      sets: <ActiveWorkoutSet>[for (int i = 0; i < 3; i++) ActiveWorkoutSet()],
       unplanned: true,
       prescriptionHint: _prescriptionHint(payload, null),
     );
@@ -585,12 +595,9 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     // that no longer exists, so it stops here with Skip's own effect (#162):
     // the countdown leaves the bar and the lock screen, and the platform
     // alarm is cancelled. A rest for any other exercise keeps running.
-    final bool stopRest = current.rest != null &&
-        current.rest!.exerciseId == planned.exerciseId;
-    await _persist(current.copyWith(
-      exercises: exercises,
-      clearRest: stopRest,
-    ));
+    final bool stopRest =
+        current.rest != null && current.rest!.exerciseId == planned.exerciseId;
+    await _persist(current.copyWith(exercises: exercises, clearRest: stopRest));
     if (stopRest && _alertsLive) {
       _alertsLive = false;
       _alertsSuspended = false;
@@ -622,8 +629,9 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     // Back with the rows it was seeded with, all empty (#162 review): the
     // replace cleared them, so nothing logged survives, and the card is
     // loggable again straight away.
-    final int rows =
-        planned.effectiveSetCount > 0 ? planned.effectiveSetCount : 1;
+    final int rows = planned.effectiveSetCount > 0
+        ? planned.effectiveSetCount
+        : 1;
     exercises[exerciseIndex - 1] = planned.copyWith(
       replaced: false,
       sets: <ActiveWorkoutSet>[
@@ -632,7 +640,6 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     );
     await _persist(current.copyWith(exercises: exercises));
   }
-
 
   /// The card menu's **Remove exercise** (#162): takes an unplanned exercise
   /// out of the workout. Planned exercises — replaced ones included — are
@@ -685,7 +692,8 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       // Detached, like the other best-effort persistence: a keystore that
       // never answers (a test host) must not block the picker (#125).
       unawaited(
-          store.write(accountId, _restOverrides).catchError((Object _) {}));
+        store.write(accountId, _restOverrides).catchError((Object _) {}),
+      );
     }
   }
 
@@ -712,8 +720,9 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       exerciseId: exercise.exerciseId,
       exerciseName: exercise.exerciseName,
       setNumber: setIndex + 1,
-      lastLabel:
-          set.reps > 0 || set.weightKg > 0 ? setPerformanceLabel(set) : null,
+      lastLabel: set.reps > 0 || set.weightKg > 0
+          ? setPerformanceLabel(set)
+          : null,
     );
     await _persist(current.copyWith(rest: rest));
     _alertsLive = true;
@@ -730,13 +739,14 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     if (current == null || rest == null) {
       return;
     }
-    DateTime ends = rest.endsAtClock.add(delta);
     final DateTime now = _now();
+    DateTime ends = rest.endsAtClock(now).add(delta);
     if (ends.isBefore(now)) {
       ends = now;
     }
-    final ActiveRestTimer next =
-        rest.copyWith(endsAt: ends.toUtc().toIso8601String());
+    final ActiveRestTimer next = rest.copyWith(
+      endsAt: ends.toUtc().toIso8601String(),
+    );
     await _persist(current.copyWith(rest: next));
     if (!_alertsSuspended) {
       await _applyAlerts(next, requestPermission: false);
@@ -779,8 +789,9 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       return;
     }
     _endedRest = ended;
-    final RestAlertInfo info = _alertInfo(rest);
-    final bool late = _now().difference(rest.endsAtClock) > _endAlertGrace;
+    final DateTime now = _now();
+    final RestAlertInfo info = _alertInfo(rest, now);
+    final bool late = now.difference(rest.endsAtClock(now)) > _endAlertGrace;
     await _persist(current.copyWith(clearRest: true));
     if (_alertsLive) {
       _alertsLive = false;
@@ -849,13 +860,15 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   /// The platform calls for one running rest: the one-time permission ask on
   /// first start, then the ongoing notification and the end alarm. Each call
   /// is isolated so a plugin failure never breaks a workout (#125).
-  Future<void> _applyAlerts(ActiveRestTimer rest,
-      {required bool requestPermission}) async {
+  Future<void> _applyAlerts(
+    ActiveRestTimer rest, {
+    required bool requestPermission,
+  }) async {
     final RestAlerts? alerts = _alerts;
     if (alerts == null || _alertsSuspended) {
       return;
     }
-    final RestAlertInfo info = _alertInfo(rest);
+    final RestAlertInfo info = _alertInfo(rest, _now());
     if (requestPermission) {
       try {
         await alerts.ensureReady();
@@ -900,15 +913,15 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   /// exercise — with *that* row's previous value from the frozen baseline as
   /// its "last", omitted when there is none (#125). Only when every row is
   /// ticked does it fall back to the row that started the rest.
-  RestAlertInfo _alertInfo(ActiveRestTimer rest) {
+  RestAlertInfo _alertInfo(ActiveRestTimer rest, DateTime now) {
     final ActiveWorkout? current = state.workout;
     RestAlertInfo origin() => RestAlertInfo(
-          endsAt: rest.endsAtClock,
-          totalSeconds: rest.totalSeconds,
-          exerciseName: rest.exerciseName,
-          setNumber: rest.setNumber,
-          lastLabel: rest.lastLabel,
-        );
+      endsAt: rest.endsAtClock(now),
+      totalSeconds: rest.totalSeconds,
+      exerciseName: rest.exerciseName,
+      setNumber: rest.setNumber,
+      lastLabel: rest.lastLabel,
+    );
     if (current == null) {
       return origin();
     }
@@ -917,10 +930,13 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     if (next == null) {
       return origin();
     }
-    final BaselineSet? previous =
-        previousSetFor(next.exercise, next.setIndex, current.baselines);
+    final BaselineSet? previous = previousSetFor(
+      next.exercise,
+      next.setIndex,
+      current.baselines,
+    );
     return RestAlertInfo(
-      endsAt: rest.endsAtClock,
+      endsAt: rest.endsAtClock(now),
       totalSeconds: rest.totalSeconds,
       exerciseName: next.exercise.exerciseName,
       setNumber: next.setIndex + 1,
@@ -936,7 +952,8 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     ActiveRestTimer rest,
   ) {
     final int exerciseIndex = workout.exercises.indexWhere(
-        (ActiveWorkoutExercise e) => e.exerciseId == rest.exerciseId);
+      (ActiveWorkoutExercise e) => e.exerciseId == rest.exerciseId,
+    );
     if (exerciseIndex < 0) {
       return null;
     }
@@ -950,8 +967,9 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     }
     for (int e = exerciseIndex + 1; e < workout.exercises.length; e++) {
       final ActiveWorkoutExercise exercise = workout.exercises[e];
-      final int setIndex =
-          exercise.sets.indexWhere((ActiveWorkoutSet set) => !set.ticked);
+      final int setIndex = exercise.sets.indexWhere(
+        (ActiveWorkoutSet set) => !set.ticked,
+      );
       if (setIndex >= 0) {
         return (exercise: exercise, setIndex: setIndex);
       }
@@ -983,14 +1001,17 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     if (exercise == null || !_validSet(exercise, setIndex)) {
       return;
     }
-    final List<ActiveWorkoutSet> sets =
-        List<ActiveWorkoutSet>.of(exercise.sets);
+    final List<ActiveWorkoutSet> sets = List<ActiveWorkoutSet>.of(
+      exercise.sets,
+    );
     sets[setIndex] = fn(sets[setIndex]);
     await _updateExerciseAt(exerciseIndex, exercise.copyWith(sets: sets));
   }
 
   Future<void> _updateExerciseAt(
-      int exerciseIndex, ActiveWorkoutExercise exercise) async {
+    int exerciseIndex,
+    ActiveWorkoutExercise exercise,
+  ) async {
     final ActiveWorkout? current = state.workout;
     if (current == null) {
       return;
@@ -1024,8 +1045,9 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   /// best-effort, like `AppModeStore`, and one failed write must not break the
   /// chain for the writes after it.
   Future<void> _enqueue(Future<void> Function() action) {
-    final Future<void> next =
-        _writeChain.then<void>((_) => action()).catchError((Object _) {});
+    final Future<void> next = _writeChain
+        .then<void>((_) => action())
+        .catchError((Object _) {});
     _writeChain = next;
     return next;
   }
@@ -1034,9 +1056,12 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   /// prescription) prescribes, the card's caption, and the prescription hint
   /// the empty cells fall back to (#123 item 2).
   static ActiveWorkoutExercise _seedExercise(
-      ProgramExercise exercise, Prescription? prescription) {
-    final PrescriptionTarget? target =
-        prescription?.forExercise(exercise.exerciseId);
+    ProgramExercise exercise,
+    Prescription? prescription,
+  ) {
+    final PrescriptionTarget? target = prescription?.forExercise(
+      exercise.exerciseId,
+    );
     final int setCount = target?.effectiveSets ?? exercise.targetSets;
     final PrescriptionHint? hint = _prescriptionHint(exercise.toJson(), target);
     return ActiveWorkoutExercise(
@@ -1071,7 +1096,8 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   ) {
     final double projected = target?.projectedWeight ?? 0;
     final int reps = (exercise['target_reps_min'] as num?)?.toInt() ?? 0;
-    final double rpe = target?.targetRpeCap ??
+    final double rpe =
+        target?.targetRpeCap ??
         (exercise['target_rpe'] as num?)?.toDouble() ??
         8.5;
     return PrescriptionHint(

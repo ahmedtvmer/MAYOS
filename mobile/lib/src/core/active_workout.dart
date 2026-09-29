@@ -62,11 +62,8 @@ class ActiveWorkoutSet {
   final bool isWarmup;
   final bool ticked;
 
-  bool get countsAsWorkingSet => isWorkingSet(
-        isWarmup: isWarmup,
-        weightKg: weightKg,
-        reps: reps,
-      );
+  bool get countsAsWorkingSet =>
+      isWorkingSet(isWarmup: isWarmup, weightKg: weightKg, reps: reps);
 
   /// Whether this row is a working row for the **Current set** and the
   /// progress line (#158/#159): the row's *role* — not a warm-up — rather
@@ -82,24 +79,23 @@ class ActiveWorkoutSet {
     bool? isWarmup,
     bool? ticked,
     bool clearRir = false,
-  }) =>
-      ActiveWorkoutSet(
-        id: id,
-        weightKg: weightKg ?? this.weightKg,
-        reps: reps ?? this.reps,
-        rir: clearRir ? null : (rir ?? this.rir),
-        isWarmup: isWarmup ?? this.isWarmup,
-        ticked: ticked ?? this.ticked,
-      );
+  }) => ActiveWorkoutSet(
+    id: id,
+    weightKg: weightKg ?? this.weightKg,
+    reps: reps ?? this.reps,
+    rir: clearRir ? null : (rir ?? this.rir),
+    isWarmup: isWarmup ?? this.isWarmup,
+    ticked: ticked ?? this.ticked,
+  );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'id': id,
-        'weight_kg': weightKg,
-        'reps': reps,
-        'rir': rir,
-        'is_warmup': isWarmup,
-        'ticked': ticked,
-      };
+    'id': id,
+    'weight_kg': weightKg,
+    'reps': reps,
+    'rir': rir,
+    'is_warmup': isWarmup,
+    'ticked': ticked,
+  };
 }
 
 /// `100 × 5 @1` — one ticked row as the rest notification's "last" shows it
@@ -179,14 +175,13 @@ String prescriptionCaption({
   required int maxReps,
   double? projectedWeightKg,
   double? rir,
-}) =>
-    <String>[
-      setCount == 1 ? '1 set' : '$setCount sets',
-      if (minReps > 0 && maxReps > 0) '$minReps–$maxReps reps',
-      if (projectedWeightKg != null && projectedWeightKg > 0)
-        '${formatCellWeight(projectedWeightKg)} kg',
-      if (rir != null) 'RIR ${formatMinRir(rir)}',
-    ].join(' · ');
+}) => <String>[
+  setCount == 1 ? '1 set' : '$setCount sets',
+  if (minReps > 0 && maxReps > 0) '$minReps–$maxReps reps',
+  if (projectedWeightKg != null && projectedWeightKg > 0)
+    '${formatCellWeight(projectedWeightKg)} kg',
+  if (rir != null) 'RIR ${formatMinRir(rir)}',
+].join(' · ');
 
 /// The card's prescription line (#158): [prescriptionCaption] over the
 /// effective prescription the rows were seeded from — so it never says
@@ -200,7 +195,8 @@ String exercisePrescriptionLine(
   final int minReps = (payload['target_reps_min'] as num?)?.toInt() ?? 0;
   final int maxReps = (payload['target_reps_max'] as num?)?.toInt() ?? 0;
   final double? targetRpe = (payload['target_rpe'] as num?)?.toDouble();
-  final double? rir = exercise.prescriptionHint?.rir ??
+  final double? rir =
+      exercise.prescriptionHint?.rir ??
       (targetRpe == null ? null : rirFromRpe(clampRpe(targetRpe)));
   final String caption = prescriptionCaption(
     setCount: exercise.effectiveSetCount,
@@ -210,8 +206,9 @@ String exercisePrescriptionLine(
     projectedWeightKg: exercise.prescriptionHint?.weightKg,
     rir: rir,
   );
-  final String rest =
-      restSeconds <= 0 ? 'Rest Off' : 'Rest ${restMmSs(restSeconds)}';
+  final String rest = restSeconds <= 0
+      ? 'Rest Off'
+      : 'Rest ${restMmSs(restSeconds)}';
   return '$caption · $rest';
 }
 
@@ -224,8 +221,7 @@ bool isReplacementExerciseAt(ActiveWorkout workout, int exerciseIndex) {
   if (exerciseIndex <= 0 || exerciseIndex >= workout.exercises.length) {
     return false;
   }
-  final ActiveWorkoutExercise replacement =
-      workout.exercises[exerciseIndex];
+  final ActiveWorkoutExercise replacement = workout.exercises[exerciseIndex];
   final ActiveWorkoutExercise planned = workout.exercises[exerciseIndex - 1];
   return replacement.unplanned && planned.replaced;
 }
@@ -239,11 +235,12 @@ bool isReplacementExerciseAt(ActiveWorkout workout, int exerciseIndex) {
 /// [workoutProgressOf]: the next set to do is normally still empty, and an
 /// empty pending row is exactly the set the player logs next.
 ({int exerciseIndex, int setIndex})? currentSetOf(ActiveWorkout workout) {
-  for (int exerciseIndex = 0;
-      exerciseIndex < workout.exercises.length;
-      exerciseIndex++) {
-    final List<ActiveWorkoutSet> sets =
-        workout.exercises[exerciseIndex].sets;
+  for (
+    int exerciseIndex = 0;
+    exerciseIndex < workout.exercises.length;
+    exerciseIndex++
+  ) {
+    final List<ActiveWorkoutSet> sets = workout.exercises[exerciseIndex].sets;
     for (int setIndex = 0; setIndex < sets.length; setIndex++) {
       final ActiveWorkoutSet set = sets[setIndex];
       if (set.isWorkingRow && !set.ticked) {
@@ -266,7 +263,7 @@ bool isReplacementExerciseAt(ActiveWorkout workout, int exerciseIndex) {
 /// The workout summary's own "exercises done" keeps its looser meaning — at
 /// least one ticked working set (#124).
 ({int exercisesCompleted, int exercisesTotal, int setsTicked, int setsTotal})
-    workoutProgressOf(ActiveWorkout workout) {
+workoutProgressOf(ActiveWorkout workout) {
   int exercisesCompleted = 0;
   int exercisesTotal = 0;
   int setsTicked = 0;
@@ -312,8 +309,9 @@ double workoutSetsFractionOf(ActiveWorkout workout) {
     int exercisesCompleted,
     int exercisesTotal,
     int setsTicked,
-    int setsTotal
-  }) progress = workoutProgressOf(workout);
+    int setsTotal,
+  })
+  progress = workoutProgressOf(workout);
   if (progress.setsTotal <= 0) {
     return 0;
   }
@@ -384,37 +382,38 @@ class ActiveRestTimer {
   /// `100 × 5 @1` of the ticked set, when there were values to show.
   final String? lastLabel;
 
-  DateTime get endsAtClock => DateTime.tryParse(endsAt) ?? DateTime.now();
+  DateTime endsAtClock(DateTime fallback) =>
+      DateTime.tryParse(endsAt) ?? fallback;
 
   /// Whole seconds left, rounded up — exact while the app is in the
   /// foreground because it is computed from the clock, never decremented.
   int remainingSeconds(DateTime now) {
-    final int ms = endsAtClock.difference(now).inMilliseconds;
+    final int ms = endsAtClock(now).difference(now).inMilliseconds;
     if (ms <= 0) {
       return 0;
     }
     return (ms / 1000).ceil();
   }
 
-  bool isOver(DateTime now) => !endsAtClock.isAfter(now);
+  bool isOver(DateTime now) => !endsAtClock(now).isAfter(now);
 
   ActiveRestTimer copyWith({String? endsAt}) => ActiveRestTimer(
-        endsAt: endsAt ?? this.endsAt,
-        totalSeconds: totalSeconds,
-        exerciseId: exerciseId,
-        exerciseName: exerciseName,
-        setNumber: setNumber,
-        lastLabel: lastLabel,
-      );
+    endsAt: endsAt ?? this.endsAt,
+    totalSeconds: totalSeconds,
+    exerciseId: exerciseId,
+    exerciseName: exerciseName,
+    setNumber: setNumber,
+    lastLabel: lastLabel,
+  );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'ends_at': endsAt,
-        'total_seconds': totalSeconds,
-        'exercise_id': exerciseId,
-        'exercise_name': exerciseName,
-        'set_number': setNumber,
-        'last_label': lastLabel,
-      };
+    'ends_at': endsAt,
+    'total_seconds': totalSeconds,
+    'exercise_id': exerciseId,
+    'exercise_name': exerciseName,
+    'set_number': setNumber,
+    'last_label': lastLabel,
+  };
 }
 
 /// The prescription target an empty cell falls back to as its faded hint when
@@ -440,10 +439,10 @@ class PrescriptionHint {
   final double? rir;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'weight_kg': weightKg,
-        'reps': reps,
-        'rir': rir,
-      };
+    'weight_kg': weightKg,
+    'reps': reps,
+    'rir': rir,
+  };
 }
 
 /// One exercise of the Active workout: planned (from the program day) or
@@ -461,18 +460,22 @@ class ActiveWorkoutExercise {
 
   factory ActiveWorkoutExercise.fromJson(Map<String, dynamic> json) =>
       ActiveWorkoutExercise(
-        exercise:
-            Map<String, dynamic>.from(json['exercise'] as Map<String, dynamic>),
+        exercise: Map<String, dynamic>.from(
+          json['exercise'] as Map<String, dynamic>,
+        ),
         sets: (json['sets'] as List<dynamic>? ?? const <dynamic>[])
-            .map((dynamic s) =>
-                ActiveWorkoutSet.fromJson(s as Map<String, dynamic>))
+            .map(
+              (dynamic s) =>
+                  ActiveWorkoutSet.fromJson(s as Map<String, dynamic>),
+            )
             .toList(growable: false),
         unplanned: json['unplanned'] as bool? ?? false,
         replaced: json['replaced'] as bool? ?? false,
         targetLabel: json['target_label'] as String?,
         prescriptionHint: json['prescription_hint'] is Map<String, dynamic>
             ? PrescriptionHint.fromJson(
-                json['prescription_hint'] as Map<String, dynamic>)
+                json['prescription_hint'] as Map<String, dynamic>,
+              )
             : null,
         effectiveSets: (json['effective_sets'] as num?)?.toInt(),
       );
@@ -524,30 +527,29 @@ class ActiveWorkoutExercise {
     List<ActiveWorkoutSet>? sets,
     bool? unplanned,
     bool? replaced,
-  }) =>
-      ActiveWorkoutExercise(
-        exercise: exercise,
-        sets: sets ?? this.sets,
-        unplanned: unplanned ?? this.unplanned,
-        replaced: replaced ?? this.replaced,
-        targetLabel: targetLabel,
-        prescriptionHint: prescriptionHint,
-        effectiveSets: effectiveSets,
-      );
+  }) => ActiveWorkoutExercise(
+    exercise: exercise,
+    sets: sets ?? this.sets,
+    unplanned: unplanned ?? this.unplanned,
+    replaced: replaced ?? this.replaced,
+    targetLabel: targetLabel,
+    prescriptionHint: prescriptionHint,
+    effectiveSets: effectiveSets,
+  );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'exercise': exercise,
-        'sets': <Map<String, dynamic>>[
-          for (final ActiveWorkoutSet set in sets) set.toJson(),
-        ],
-        'unplanned': unplanned,
-        // Omitted unless true, so every exercise that was never replaced
-        // stores exactly the JSON it did before this field existed (#162).
-        if (replaced) 'replaced': true,
-        'target_label': targetLabel,
-        'prescription_hint': prescriptionHint?.toJson(),
-        'effective_sets': effectiveSets,
-      };
+    'exercise': exercise,
+    'sets': <Map<String, dynamic>>[
+      for (final ActiveWorkoutSet set in sets) set.toJson(),
+    ],
+    'unplanned': unplanned,
+    // Omitted unless true, so every exercise that was never replaced
+    // stores exactly the JSON it did before this field existed (#162).
+    if (replaced) 'replaced': true,
+    'target_label': targetLabel,
+    'prescription_hint': prescriptionHint?.toJson(),
+    'effective_sets': effectiveSets,
+  };
 }
 
 /// The unfinished workout the player is logging right now (CONTEXT.md).
@@ -569,21 +571,23 @@ class ActiveWorkout {
   });
 
   factory ActiveWorkout.fromJson(Map<String, dynamic> json) => ActiveWorkout(
-        id: json['id'] as String,
-        accountId: json['account_id'] as String,
-        startedAt: json['started_at'] as String,
-        dayOrder: (json['day_order'] as num).toInt(),
-        dayName: json['day_name'] as String? ?? 'Day',
-        programVersion: (json['program_version'] as num?)?.toInt(),
-        exercises: (json['exercises'] as List<dynamic>? ?? const <dynamic>[])
-            .map((dynamic e) =>
-                ActiveWorkoutExercise.fromJson(e as Map<String, dynamic>))
-            .toList(growable: false),
-        baselines: _baselinesFromJson(json['baselines']),
-        rest: json['rest'] is Map<String, dynamic>
-            ? ActiveRestTimer.fromJson(json['rest'] as Map<String, dynamic>)
-            : null,
-      );
+    id: json['id'] as String,
+    accountId: json['account_id'] as String,
+    startedAt: json['started_at'] as String,
+    dayOrder: (json['day_order'] as num).toInt(),
+    dayName: json['day_name'] as String? ?? 'Day',
+    programVersion: (json['program_version'] as num?)?.toInt(),
+    exercises: (json['exercises'] as List<dynamic>? ?? const <dynamic>[])
+        .map(
+          (dynamic e) =>
+              ActiveWorkoutExercise.fromJson(e as Map<String, dynamic>),
+        )
+        .toList(growable: false),
+    baselines: _baselinesFromJson(json['baselines']),
+    rest: json['rest'] is Map<String, dynamic>
+        ? ActiveRestTimer.fromJson(json['rest'] as Map<String, dynamic>)
+        : null,
+  );
 
   static Map<String, BaselineExercise> _baselinesFromJson(dynamic raw) {
     if (raw is! Map<String, dynamic>) {
@@ -591,8 +595,9 @@ class ActiveWorkout {
     }
     return <String, BaselineExercise>{
       for (final MapEntry<String, dynamic> entry in raw.entries)
-        entry.key:
-            BaselineExercise.fromJson(entry.value as Map<String, dynamic>),
+        entry.key: BaselineExercise.fromJson(
+          entry.value as Map<String, dynamic>,
+        ),
     };
   }
 
@@ -631,37 +636,34 @@ class ActiveWorkout {
     int? programVersion,
     ActiveRestTimer? rest,
     bool clearRest = false,
-  }) =>
-      ActiveWorkout(
-        id: id,
-        accountId: accountId,
-        startedAt: startedAt,
-        dayOrder: dayOrder,
-        dayName: dayName,
-        programVersion: programVersion ?? this.programVersion,
-        exercises: exercises ?? this.exercises,
-        baselines: baselines ?? this.baselines,
-        rest: clearRest ? null : (rest ?? this.rest),
-      );
+  }) => ActiveWorkout(
+    id: id,
+    accountId: accountId,
+    startedAt: startedAt,
+    dayOrder: dayOrder,
+    dayName: dayName,
+    programVersion: programVersion ?? this.programVersion,
+    exercises: exercises ?? this.exercises,
+    baselines: baselines ?? this.baselines,
+    rest: clearRest ? null : (rest ?? this.rest),
+  );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'id': id,
-        'account_id': accountId,
-        'started_at': startedAt,
-        'day_order': dayOrder,
-        'day_name': dayName,
-        'program_version': programVersion,
-        'exercises': <Map<String, dynamic>>[
-          for (final ActiveWorkoutExercise exercise in exercises)
-            exercise.toJson(),
-        ],
-        'baselines': <String, dynamic>{
-          for (final MapEntry<String, BaselineExercise> entry
-              in baselines.entries)
-            entry.key: entry.value.toJson(),
-        },
-        'rest': rest?.toJson(),
-      };
+    'id': id,
+    'account_id': accountId,
+    'started_at': startedAt,
+    'day_order': dayOrder,
+    'day_name': dayName,
+    'program_version': programVersion,
+    'exercises': <Map<String, dynamic>>[
+      for (final ActiveWorkoutExercise exercise in exercises) exercise.toJson(),
+    ],
+    'baselines': <String, dynamic>{
+      for (final MapEntry<String, BaselineExercise> entry in baselines.entries)
+        entry.key: entry.value.toJson(),
+    },
+    'rest': rest?.toJson(),
+  };
 
   /// The `WorkoutDraft` this workout finishes into, built exactly the way the
   /// logger builds one today: only ticked sets are logged, and an exercise
@@ -735,7 +737,7 @@ abstract class ActiveWorkoutStore {
 
 class SecureActiveWorkoutStore implements ActiveWorkoutStore {
   SecureActiveWorkoutStore({FlutterSecureStorage? storage})
-      : _store = SecureStore(storage: storage);
+    : _store = SecureStore(storage: storage);
 
   final SecureStore _store;
 
