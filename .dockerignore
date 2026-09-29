@@ -23,10 +23,15 @@ database/*.db
 logs/
 programs/
 
-# Local dataset artifacts. Only the catalog seed CSV is a build input; the raw
-# JSON dump and demo media stay local (they are large and gitignored).
+# Local dataset artifacts. The catalog seed CSV and the catalog pictures are
+# build inputs; the raw JSON dump, the videos and the rest of the local data
+# stay out (they are large and gitignored).
 data/*
 !data/processed_exercises.csv
+# Catalog pictures ship in the image so the public GET /media route can serve
+# them (#161); everything else under data/ stays excluded.
+!data/images/
+!data/images/**
 
 # Future Flutter client (not part of the API image)
 mobile/

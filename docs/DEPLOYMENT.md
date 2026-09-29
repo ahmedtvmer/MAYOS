@@ -682,9 +682,14 @@ catalog before giving the Fly hostname to trial users.
    `curl -fsS "https://${APP}.fly.dev/readyz"` return 200; `/readyz` details
    report `storage: true`. (`APP` is set in §10.3.)
 4. **Catalog seeded:** `fly ssh console -C "sqlite3 /data/catalog.db 'SELECT COUNT(*) FROM exercises;'"` is non-zero.
-5. **App round-trip over HTTPS:** register → login → chat SSE against the Fly
+5. **Catalog pictures:** `curl -fsSI "https://${APP}.fly.dev/media/images/<image_path>"`
+   returns 200 (`<image_path>` is any `image_path` from
+   `sqlite3 /data/catalog.db "SELECT image_path FROM exercises WHERE image_path IS NOT NULL LIMIT 1;"`);
+   an image built before issue #161 answers 404 and needs the redeploy in
+   §10.8. The route is public: no `Authorization` header.
+6. **App round-trip over HTTPS:** register → login → chat SSE against the Fly
    hostname from the Android client.
-6. **Restart persistence:** record the counts below, restart the app, and
+7. **Restart persistence:** record the counts below, restart the app, and
    confirm they are unchanged.
 
 ```bash
@@ -757,11 +762,32 @@ immediately for local/offline use, keeping the current `/data/deletions.db`. See
 [§9](#9-backup-disaster-recovery--wal-checkpointing) for the full procedure and
 the deletion-replay guarantees.
 
-### 10.8 Deferred to later tickets
+### 10.8 Exercise catalog pictures served by `/media` (issue #161)
 
-- **Exercise demo media:** `data/images` and `data/videos` are large, gitignored
-  local artifacts and are excluded from the build context, so `/media/*` does
-  not serve them in this deployment yet.
+The app's exercise cards show the catalog picture through the API's public
+`GET /media/<image_path>` route (`svc/routers/media.py`), which resolves the
+relative ExerciseDB path (`images/0001-2gPfomN.jpg`) under `BASE_DIR/data` —
+`/app/data/images/…` inside the container. The route needs no auth and sends
+no per-player data.
+
+- **The pictures ship in the image.** `.dockerignore` re-includes
+  `data/images/` (~12 MB, 1,324 JPEGs; gitignored like the CSV, so it must
+  exist in the tree you deploy from) and `Dockerfile.fly` copies it to
+  `/app/data/images` alongside the seed CSV. No volume is involved: the
+  pictures are read-only build inputs, the volume stays the mutable data root.
+- **Everything else under `data/` stays out of the build context**, including
+  `data/videos`, `data/exercises.json` and the databases, so `/media/videos/…`
+  still answers 404 here — that part stays deferred.
+- **Redeploy required.** A Machine running an image built before this change
+  has no pictures and `/media/images/…` answers 404. From the repository root
+  (with `data/images/` present), run:
+
+  ```bash
+  fly deploy --ha=false
+  ```
+
+  The build fails fast if `data/images/` is missing, the same way it already
+  fails without `data/processed_exercises.csv`.
 
 ### 10.9 Password reset: App Link and hosted fallback (issue #38, ADR 037)
 

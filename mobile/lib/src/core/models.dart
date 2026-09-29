@@ -1535,6 +1535,7 @@ class ProgramExercise {
     this.warmupSets = 0,
     this.restSeconds,
     this.notes,
+    this.imagePath,
   });
 
   factory ProgramExercise.fromJson(Map<String, dynamic> json) =>
@@ -1550,6 +1551,11 @@ class ProgramExercise {
         // resolves it to the flat 2:00 instead of a phantom 3:00 (#125).
         restSeconds: (json['rest_seconds'] as num?)?.toInt(),
         notes: json['notes'] as String?,
+        // The catalog's ExerciseDB path (`images/…`), already on the program
+        // payload (`ProgramExerciseSchema.image_path`), kept so the logger can
+        // build its public `/media` URL (#161). Null when the program carried
+        // none, which is what an older stored program looks like.
+        imagePath: json['image_path'] as String?,
       );
 
   final String exerciseId;
@@ -1568,6 +1574,11 @@ class ProgramExercise {
   /// a program that omits the field still reads "rest 120s".
   final int? restSeconds;
   final String? notes;
+
+  /// The catalog picture path the program payload carried (#161), relative
+  /// (`images/0001-2gPfomN.jpg`), never a served URL: the logger builds the
+  /// public `/media` address from the API base.
+  final String? imagePath;
 
   int get restSecondsOrDefault => restSeconds ?? kDefaultRestSeconds;
 
@@ -1599,6 +1610,11 @@ class ProgramExercise {
       json['rest_seconds'] = restSeconds;
     }
     json['notes'] = notes;
+    // Omitted when the program carried none (#161), so a payload without a
+    // picture still encodes exactly as it did before this field existed.
+    if (imagePath != null) {
+      json['image_path'] = imagePath;
+    }
     return json;
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/active_workout.dart';
 import '../../../core/baselines.dart';
+import '../../../core/config.dart';
 import '../../../core/effort.dart';
 import '../../../core/personal_records.dart';
 import '../../../core/theme/mayos_spacing.dart';
@@ -157,11 +158,113 @@ class LoggerTableHeader extends StatelessWidget {
   }
 }
 
+/// The exercise's catalog picture (#161), a fixed rounded thumbnail.
+///
+/// The box is a constant [size] square whatever the picture does: while it
+/// loads it shows a placeholder on the sunken surface, a catalog row without
+/// an image path shows the missing-picture fallback, and a picture the API
+/// answers 404 (or fails to decode) shows the failed-picture fallback — the
+/// three states occupy identical space, so the card never shifts.
+///
+/// The bytes come from the public `GET /media/<image_path>` route built from
+/// the configured API base ([mediaUrlFor]); no token is sent and no picture
+/// is bundled. Flutter's own image cache holds the decoded result, so a
+/// rebuild paints from memory instead of refetching, and `gaplessPlayback`
+/// keeps the last frame across rebuilds.
+class ExerciseCatalogThumbnail extends StatelessWidget {
+  const ExerciseCatalogThumbnail({super.key, required this.imagePath});
+
+  /// Fixed 48dp: a full-size tap-adjacent block that still leaves the title,
+  /// the Unplanned pill and the rest chip their room at 360dp (#161).
+  static const double size = kMayosMinTapTarget;
+
+  /// The catalog's relative image path (`images/0001-2gPfomN.jpg`), null
+  /// when the exercise has no picture.
+  final String? imagePath;
+
+  /// The loadable address: the served `/media` URL for a catalog path, or an
+  /// absolute URL if the payload ever carries one (the schema allows both).
+  String? get _url {
+    final String? path = imagePath;
+    if (path == null || path.trim().isEmpty) {
+      return null;
+    }
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return path;
+    }
+    return mediaUrlFor(path);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final String? url = _url;
+    return ClipRRect(
+      borderRadius: MayosRadii.mediumRadius,
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: ColoredBox(
+          color: c.surfaceSunken,
+          child: url == null
+              ? _fallback(c, failed: false)
+              : Image.network(
+                  url,
+                  width: size,
+                  height: size,
+                  fit: BoxFit.cover,
+                  // No flash of an empty box while the cached frame resolves.
+                  gaplessPlayback: true,
+                  // Decode at display size: the picture never needs more
+                  // pixels than the thumbnail shows.
+                  cacheWidth:
+                      (size * MediaQuery.devicePixelRatioOf(context)).round(),
+                  loadingBuilder: (_, Widget child, ImageChunkEvent? progress) =>
+                      progress == null ? child : _placeholder(c),
+                  errorBuilder: (_, __, ___) => _fallback(c, failed: true),
+                ),
+        ),
+      ),
+    );
+  }
+
+  /// The loading state (#161): a static glyph, never a spinner, so a picture
+  /// that takes a moment cannot keep the screen animating.
+  Widget _placeholder(MayosThemeExtension c) => ColoredBox(
+        color: c.surfaceSunken,
+        child: Center(
+          child: Icon(
+            Icons.image_outlined,
+            size: MayosIconSizes.medium,
+            color: c.textDisabled,
+          ),
+        ),
+      );
+
+  /// The missing- and failed-picture states: an exercise glyph on a surface
+  /// tint, in the same fixed box (#161).
+  Widget _fallback(MayosThemeExtension c, {required bool failed}) =>
+      ColoredBox(
+        color: c.secondarySurface,
+        child: Center(
+          child: Icon(
+            Icons.fitness_center,
+            size: MayosIconSizes.medium,
+            color: c.textMuted,
+            // The failure only differs from a missing picture in the logs;
+            // the player sees the same calm fallback either way.
+            semanticLabel: failed ? 'Picture unavailable' : 'No picture',
+          ),
+        ),
+      );
+}
+
 /// One compact exercise card (#158, plan §2): the name in primary text
-/// colour, the prescription line, the `Last:` line when there is history,
-/// the leaner table, and a full-width "+ Add set". The rest chip (#125)
-/// trails the title so a later slice can park a menu beside it; nothing
-/// here decides anything — rows and callbacks arrive from the logger.
+/// colour, the catalog picture (#161), the prescription line, the `Last:`
+/// line when there is history, the leaner table, and a full-width "+ Add
+/// set". The rest chip (#125) trails the title so a later slice can park a
+/// menu beside it; nothing here decides anything — rows and callbacks arrive
+/// from the logger.
 class ExerciseLoggingCard extends StatelessWidget {
   const ExerciseLoggingCard({
     super.key,
@@ -228,18 +331,42 @@ class ExerciseLoggingCard extends StatelessWidget {
                 ),
               ],
             ),
+            // The picture sits beside the caption lines rather than the title
+            // row (#161): the pill and the chip already fill that row at 2.0
+            // text scale, and the caption text wraps into the room the fixed
+            // thumbnail leaves.
             Padding(
               padding: const EdgeInsets.only(top: MayosSpacing.xxs),
-              child: Text(
-                exercisePrescriptionLine(exercise, restSeconds: restSeconds),
-                style: MayosTypography.caption.copyWith(color: c.textMuted),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  // A fixed box, so a card with, without, or waiting for a
+                  // picture is laid out the same way and never shifts.
+                  ExerciseCatalogThumbnail(imagePath: exercise.imagePath),
+                  const SizedBox(width: MayosSpacing.xs),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        Text(
+                          exercisePrescriptionLine(exercise,
+                              restSeconds: restSeconds),
+                          style: MayosTypography.caption
+                              .copyWith(color: c.textMuted),
+                        ),
+                        if (lastSession.isNotEmpty)
+                          Padding(
+                            padding:
+                                const EdgeInsets.only(top: MayosSpacing.xxs),
+                            child:
+                                PreviousPerformanceSummary(sets: lastSession),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-            if (lastSession.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: MayosSpacing.xxs),
-                child: PreviousPerformanceSummary(sets: lastSession),
-              ),
             const LoggerTableHeader(),
             ...rows,
             MayosButton(

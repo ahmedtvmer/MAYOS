@@ -484,6 +484,11 @@ class ActiveWorkoutExercise {
   String get exerciseId => exercise['exercise_id'] as String;
   String get exerciseName => exercise['exercise_name'] as String;
 
+  /// The catalog image path the program payload carried (#161), for the
+  /// card's picture. Null when the program (or an unplanned addition) had
+  /// none, so the card falls back without a network lookup.
+  String? get imagePath => exercise['image_path'] as String?;
+
   /// What the card's prescription line reports as the set count, in order:
   /// the seeded effective sets, else the program target, else today's rows.
   int get effectiveSetCount =>

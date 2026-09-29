@@ -44,6 +44,12 @@ RUN python -c "from langchain_huggingface import HuggingFaceEmbeddings; \
 # instead of producing an image that cannot seed the catalog.
 COPY data/processed_exercises.csv /app/data/processed_exercises.csv
 
+# The catalog pictures behind the app's exercise cards (#161): .dockerignore
+# re-includes data/images, so `COPY . .` would ship them too — copied here as
+# well so a tree without them fails this build instead of shipping an API whose
+# public GET /media route answers 404 for every picture.
+COPY data/images /app/data/images
+
 COPY . .
 
 EXPOSE 8000

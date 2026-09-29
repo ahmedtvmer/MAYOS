@@ -37,6 +37,20 @@ String resolveApiBaseUrl(
 String get apiBaseUrl => resolveApiBaseUrl(
     isRelease: kReleaseMode, configured: configuredApiBaseUrl);
 
+/// The public address of one catalog picture (#161): the configured API base
+/// plus `GET /media/<image_path>` (`svc/routers/media.py`), which serves the
+/// ExerciseDB paths the program payload carries. The route is public — the
+/// caller must not attach the bearer token.
+String mediaUrlFor(String imagePath) {
+  final String base = apiBaseUrl.endsWith('/')
+      ? apiBaseUrl.substring(0, apiBaseUrl.length - 1)
+      : apiBaseUrl;
+  final String path = imagePath.startsWith('/')
+      ? imagePath.substring(1)
+      : imagePath;
+  return '$base/media/$path';
+}
+
 /// Build-time gate for ExerciseDB-derived exercise media (#53).
 ///
 /// Exercise media is not bundled into the app and its provenance is not yet
