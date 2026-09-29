@@ -16,6 +16,7 @@ import '../../../core/ui/mayos_card.dart';
 import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
+import '../assignment/program_request_dialog.dart';
 import '../exercise_picker_dialog.dart';
 import '../workout/active_workout_prompt.dart';
 
@@ -58,6 +59,9 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   /// (e.g. offline), so the label never wrongly claims a coach is "former".
   Assignment? _assignment;
   bool _assignmentKnown = false;
+
+  bool get _coachControlsProgram =>
+      _program?.isCoachPublished == true && _assignment?.status == 'active';
 
   /// True only when [_program] is being served from the offline cache after
   /// an online fetch failed (ADR 020/033) — never merely because a cache
@@ -152,26 +156,112 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       final ExerciseCatalogEntry? replacement =
           await _pickProgramReplacement(day, exercise);
       if (replacement == null || !mounted) return;
-      final String exerciseId = exercise.exerciseId;
-      final int otherDays = _otherDaysWith(day, exerciseId);
-      final bool? allOccurrences =
-          otherDays == 0 ? false : await _chooseSubstitutionScope(otherDays);
-      if (allOccurrences == null || !mounted) return;
-      await _performProgramSwap(
-        _ProgramSwap(
-          dayName: day.dayName,
-          sourceId: exerciseId,
-          sourceName: exercise.exerciseName,
-          replacement: replacement,
-          allOccurrences: allOccurrences,
-        ),
-        _SwapDirection.apply,
-      );
+      final bool coachControlsProgram = await _resolveProgramAuthority();
+      if (!mounted) return;
+      if (coachControlsProgram) {
+        await _requestSubstitution(day, exercise, replacement);
+        return;
+      }
+      await _substitutePlayerProgram(day, exercise, replacement);
     } on ApiException catch (error) {
       if (mounted) _showSwapError(error);
     } finally {
       if (mounted) setState(() => _pickerBusy = false);
     }
+  }
+
+  Future<bool> _resolveProgramAuthority() async {
+    if (_program?.isCoachPublished != true) return false;
+    if (_assignmentKnown) return _coachControlsProgram;
+    final Assignment? assignment =
+        await ref.read(apiClientProvider).myAssignment();
+    if (!mounted) return false;
+    setState(() {
+      _assignment = assignment;
+      _assignmentKnown = true;
+    });
+    return assignment?.status == 'active';
+  }
+
+  Future<void> _substitutePlayerProgram(
+    ProgramDay day,
+    ProgramExercise exercise,
+    ExerciseCatalogEntry replacement,
+  ) async {
+    final int otherDays = _otherDaysWith(day, exercise.exerciseId);
+    final bool? allOccurrences =
+        otherDays == 0 ? false : await _chooseSubstitutionScope(otherDays);
+    if (allOccurrences == null || !mounted) return;
+    await _performProgramSwap(
+      _ProgramSwap(
+        dayName: day.dayName,
+        sourceId: exercise.exerciseId,
+        sourceName: exercise.exerciseName,
+        replacement: replacement,
+        allOccurrences: allOccurrences,
+      ),
+      _SwapDirection.apply,
+    );
+  }
+
+  Future<void> _requestSubstitution(
+    ProgramDay day,
+    ProgramExercise exercise,
+    ExerciseCatalogEntry replacement,
+  ) async {
+    final ProgramRequestDraft? draft = await showDialog<ProgramRequestDraft>(
+      context: context,
+      builder: (BuildContext context) => ProgramRequestDialog.forSubstitution(
+        dayName: day.dayName,
+        exerciseId: exercise.exerciseId,
+        replacementExerciseId: replacement.id,
+      ),
+    );
+    if (draft == null || !mounted) return;
+    await _submitSubstitutionRequest(draft, exercise, replacement);
+  }
+
+  Future<void> _submitSubstitutionRequest(
+    ProgramRequestDraft draft,
+    ProgramExercise exercise,
+    ExerciseCatalogEntry replacement,
+  ) async {
+    setState(() {
+      _substituting = true;
+      _actionError = null;
+    });
+    await _createSubstitutionRequest(draft);
+    if (!mounted) return;
+    setState(() => _substituting = false);
+    _showSubstitutionRequestSent(exercise, replacement);
+  }
+
+  Future<void> _createSubstitutionRequest(ProgramRequestDraft draft) async {
+    await ref.read(apiClientProvider).createPlayerProgramRequest(
+          kind: draft.kind,
+          dayName: draft.dayName,
+          exerciseId: draft.exerciseId,
+          replacementExerciseId: draft.replacementExerciseId,
+          desiredWeeklyFrequency: draft.desiredWeeklyFrequency,
+          desiredSplitPreference: draft.desiredSplitPreference,
+          reason: draft.reason,
+        );
+  }
+
+  void _showSubstitutionRequestSent(
+    ProgramExercise exercise,
+    ExerciseCatalogEntry replacement,
+  ) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            'Your coach has been asked to replace ${exercise.exerciseName} '
+            'with ${replacement.name}.',
+          ),
+        ),
+      );
   }
 
   Future<ExerciseCatalogEntry?> _pickProgramReplacement(

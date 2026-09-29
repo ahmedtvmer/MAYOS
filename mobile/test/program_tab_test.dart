@@ -198,9 +198,10 @@ void main() {
     });
   }
 
-  testWidgets('menu picker substitution refreshes program and exact Undo',
+  testWidgets('former-coach program keeps direct substitution and exact Undo',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMayosApi fake = _signedInFake()
+      ..programPublishedByCoachAccountId = 'account-former-coach';
     await _pumpProgram(tester, fake);
 
     await _chooseCableFly(tester);
@@ -224,6 +225,81 @@ void main() {
       'expected_active_version': 2,
     });
   });
+
+  for (final ThemeMode mode in <ThemeMode>[ThemeMode.light, ThemeMode.dark]) {
+    testWidgets(
+        'coach substitution requests are prefilled and fit 360dp in ${mode.name} theme',
+        (tester) async {
+      final FakeMayosApi fake = _signedInFake()
+        ..activeAssignmentId = 'assignment-1'
+        ..activeCoachDisplayName = 'Coach Alice'
+        ..programPublishedByCoachAccountId = 'account-coach-1'
+        ..coachControlsProgram = true;
+      await _pumpProgram(
+        tester,
+        fake,
+        mode: mode,
+        size: const Size(360, 640),
+      );
+
+      await _openSubstitutePicker(tester);
+      await tester.tap(find.text('Cable Fly'));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<TextField>(
+                find.byKey(const Key('program_request_day_field')))
+            .controller!
+            .text,
+        'Upper 1',
+      );
+      expect(
+        tester
+            .widget<TextField>(
+                find.byKey(const Key('program_request_exercise_field')))
+            .controller!
+            .text,
+        'bench_press',
+      );
+      expect(
+        tester
+            .widget<TextField>(
+                find.byKey(const Key('program_request_replacement_field')))
+            .controller!
+            .text,
+        'cable_fly',
+      );
+
+      await tester.tap(find.byKey(const Key('program_request_submit_button')));
+      await tester.pumpAndSettle();
+      expect(find.text('A reason is required.'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('program_request_reason_field')),
+        'The current movement hurts my shoulder.',
+      );
+      await tester.tap(find.byKey(const Key('program_request_submit_button')));
+      await tester.pumpAndSettle();
+      await _pumpUntilFound(
+        tester,
+        find.textContaining('Your coach has been asked to replace'),
+      );
+
+      expect(fake.programRequests, hasLength(1));
+      expect(fake.programRequests.single,
+          containsPair('kind', 'exercise_substitution'));
+      expect(fake.programRequests.single, containsPair('day_name', 'Upper 1'));
+      expect(fake.programRequests.single,
+          containsPair('exercise_id', 'bench_press'));
+      expect(fake.programRequests.single,
+          containsPair('replacement_exercise_id', 'cable_fly'));
+      expect(fake.programRequests.single,
+          containsPair('reason', 'The current movement hurts my shoulder.'));
+      expect(fake.programSubstitutionRequests, isEmpty);
+      expect(find.text('Bench Press'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets(
       'substitution leaves an active workout frozen and seeds the next one',

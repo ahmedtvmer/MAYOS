@@ -12,6 +12,7 @@ import '../../../core/ui/mayos_card.dart';
 import '../../../core/ui/mayos_section_header.dart';
 import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
+import 'program_request_dialog.dart';
 
 /// Player-side coaching assignment (#24).
 ///
@@ -227,9 +228,9 @@ class _PlayerAssignmentScreenState
   }
 
   Future<void> _requestChange() async {
-    final _ProgramRequestDraft? draft = await showDialog<_ProgramRequestDraft>(
+    final ProgramRequestDraft? draft = await showDialog<ProgramRequestDraft>(
       context: context,
-      builder: (BuildContext context) => const _ProgramRequestDialog(),
+      builder: (BuildContext context) => const ProgramRequestDialog(),
     );
     if (draft == null || !mounted) return;
     setState(() {
@@ -576,186 +577,6 @@ class _PlayerAssignmentScreenState
         else
           _inviteSection(context),
         _checkInsCard(context),
-      ],
-    );
-  }
-}
-
-/// A locally assembled player program-request payload awaiting submission.
-class _ProgramRequestDraft {
-  const _ProgramRequestDraft({
-    required this.kind,
-    required this.reason,
-    this.dayName,
-    this.exerciseId,
-    this.replacementExerciseId,
-    this.desiredWeeklyFrequency,
-    this.desiredSplitPreference,
-  });
-
-  final String kind;
-  final String reason;
-  final String? dayName;
-  final String? exerciseId;
-  final String? replacementExerciseId;
-  final int? desiredWeeklyFrequency;
-  final String? desiredSplitPreference;
-}
-
-/// The create-request dialog. It owns its controllers so they are disposed
-/// only after the route fully leaves the tree.
-class _ProgramRequestDialog extends StatefulWidget {
-  const _ProgramRequestDialog();
-
-  @override
-  State<_ProgramRequestDialog> createState() => _ProgramRequestDialogState();
-}
-
-class _ProgramRequestDialogState extends State<_ProgramRequestDialog> {
-  final TextEditingController _day = TextEditingController();
-  final TextEditingController _exercise = TextEditingController();
-  final TextEditingController _replacement = TextEditingController();
-  final TextEditingController _preference = TextEditingController();
-  final TextEditingController _reason = TextEditingController();
-  String _kind = 'exercise_substitution';
-  int _frequency = 4;
-  String? _localError;
-
-  @override
-  void dispose() {
-    _day.dispose();
-    _exercise.dispose();
-    _replacement.dispose();
-    _preference.dispose();
-    _reason.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final String reason = _reason.text.trim();
-    if (reason.isEmpty) {
-      setState(() => _localError = 'A reason is required.');
-      return;
-    }
-    if (_kind == 'exercise_substitution' &&
-        (_day.text.trim().isEmpty ||
-            _exercise.text.trim().isEmpty ||
-            _replacement.text.trim().isEmpty)) {
-      setState(() =>
-          _localError = 'Pick the day, the exercise, and its replacement.');
-      return;
-    }
-    Navigator.of(context).pop(
-      _ProgramRequestDraft(
-        kind: _kind,
-        reason: reason,
-        dayName: _kind == 'exercise_substitution' ? _day.text.trim() : null,
-        exerciseId:
-            _kind == 'exercise_substitution' ? _exercise.text.trim() : null,
-        replacementExerciseId:
-            _kind == 'exercise_substitution' ? _replacement.text.trim() : null,
-        desiredWeeklyFrequency: _kind == 'split_change' ? _frequency : null,
-        desiredSplitPreference:
-            _kind == 'split_change' ? _preference.text.trim() : null,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    return AlertDialog(
-      title: const Text('Request a program change'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            DropdownButtonFormField<String>(
-              key: const Key('program_request_kind_field'),
-              initialValue: _kind,
-              decoration: const InputDecoration(
-                  labelText: 'Request type', border: OutlineInputBorder()),
-              items: const <DropdownMenuItem<String>>[
-                DropdownMenuItem<String>(
-                    value: 'exercise_substitution',
-                    child: Text('Exercise substitution')),
-                DropdownMenuItem<String>(
-                    value: 'split_change', child: Text('Split change')),
-              ],
-              onChanged: (String? value) => setState(() {
-                _kind = value ?? _kind;
-                _localError = null;
-              }),
-            ),
-            const SizedBox(height: MayosSpacing.md),
-            if (_kind == 'exercise_substitution') ...<Widget>[
-              MayosTextField(
-                fieldKey: const Key('program_request_day_field'),
-                controller: _day,
-                label: 'Day name',
-              ),
-              const SizedBox(height: MayosSpacing.md),
-              MayosTextField(
-                fieldKey: const Key('program_request_exercise_field'),
-                controller: _exercise,
-                label: 'Current exercise id',
-              ),
-              const SizedBox(height: MayosSpacing.md),
-              MayosTextField(
-                fieldKey: const Key('program_request_replacement_field'),
-                controller: _replacement,
-                label: 'Replacement exercise id',
-              ),
-            ] else ...<Widget>[
-              DropdownButtonFormField<int>(
-                key: const Key('program_request_frequency_field'),
-                initialValue: _frequency,
-                decoration: const InputDecoration(
-                    labelText: 'Days per week', border: OutlineInputBorder()),
-                items: <DropdownMenuItem<int>>[
-                  for (int day = 1; day <= 5; day++)
-                    DropdownMenuItem<int>(value: day, child: Text('$day')),
-                ],
-                onChanged: (int? value) =>
-                    setState(() => _frequency = value ?? _frequency),
-              ),
-              const SizedBox(height: MayosSpacing.md),
-              MayosTextField(
-                fieldKey: const Key('program_request_split_field'),
-                controller: _preference,
-                label: 'Split preference (optional)',
-              ),
-            ],
-            const SizedBox(height: MayosSpacing.md),
-            MayosTextField(
-              fieldKey: const Key('program_request_reason_field'),
-              controller: _reason,
-              maxLines: 2,
-              label: 'Reason',
-            ),
-            if (_localError != null) ...<Widget>[
-              const SizedBox(height: MayosSpacing.sm),
-              Text(
-                _localError!,
-                style: MayosTypography.bodySecondary.copyWith(color: c.danger),
-              ),
-            ],
-          ],
-        ),
-      ),
-      actions: <Widget>[
-        MayosButton(
-          label: 'Cancel',
-          variant: MayosButtonVariant.tertiary,
-          expand: false,
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        MayosButton(
-          key: const Key('program_request_submit_button'),
-          label: 'Submit request',
-          expand: false,
-          onPressed: _submit,
-        ),
       ],
     );
   }
