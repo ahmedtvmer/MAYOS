@@ -77,7 +77,9 @@ def sign_in(db: Any, subject: str, given_name: Any = None) -> dict[str, Any]:
     The link is keyed on ``(google, subject)`` and matched to a **live**
     account only; a link to a deleted account is treated as no link, so the
     person simply picks a username again and the link is re-pointed in the
-    completion transaction.
+    completion transaction. A live account whose ledger never materialised
+    (an interrupted completion) is repaired here before the session is
+    issued, so nobody is stranded behind the registry's ledger gate.
     """
     account_id = db.get_linked_sign_in_account_id(PROVIDER, subject)
     account = db.get_account(account_id) if account_id else None
@@ -85,7 +87,7 @@ def sign_in(db: Any, subject: str, given_name: Any = None) -> dict[str, Any]:
         return {
             "kind": "session",
             "account_id": account["account_id"],
-            "trainee_id": account["ledger_id"],
+            "trainee_id": _materialise_ledger(db, account),
             "session_epoch": account["session_epoch"],
         }
     return {"kind": "signup", "suggested_username": suggest_username(db, given_name)}
@@ -98,8 +100,16 @@ def complete_signup(db: Any, subject: str, username: Any) -> dict[str, Any]:
     hash. Every race loses cleanly — a username taken by another registration
     or a subject linked concurrently fails the transaction, so no second
     account is ever created for one Google identity.
+
+    A retry of a completion that committed the account and the link but died
+    while materialising the ledger heals into that account's session instead
+    of a conflict (:func:`_self_heal`), so a partial completion can never
+    strand the subject.
     """
     clean = validate_username(username)
+    healed = _self_heal(db, subject)
+    if healed is not None:
+        return healed
     linked_at = datetime.now(UTC).isoformat()
     with db.catalog_transaction():
         existing_id = db.get_linked_sign_in_account_id(PROVIDER, subject)
@@ -120,17 +130,58 @@ def complete_signup(db: Any, subject: str, username: Any) -> dict[str, Any]:
             # unwinding here takes the freshly created account with it.
             raise SignUpConflictError(ALREADY_LINKED) from None
     account = db.get_account(account_id) or {}
-    ledger_id = account.get("ledger_id") or clean
     # Materialise the ledger, as registration does when it stores the hash, so
     # the session this returns passes the registry's ledger-existence gate.
-    with db.open_ledger(ledger_id):
-        pass
+    # If this fails, the committed account + link are self-healed by the next
+    # sign-in or retry (see _self_heal).
+    ledger_id = _materialise_ledger(db, account, fallback=clean)
     return {
         "ok": True,
         "account_id": account_id,
         "trainee_id": ledger_id,
         "session_epoch": account.get("session_epoch", 1),
     }
+
+
+def _self_heal(db: Any, subject: str) -> dict[str, Any] | None:
+    """Reissues the session for a linked live account whose ledger is missing.
+
+    A completion may have committed the account and the link and then died
+    creating the ledger file. Such a subject must not be stuck behind the
+    ``409 already linked`` path or the registry's ledger-existence gate: the
+    next sign-in (or a retry of complete) recreates the ledger and signs the
+    person in. A healthy linked account is left alone — it keeps answering the
+    normal conflict — and a dead account reports nothing, so the caller falls
+    through to the fresh signup path.
+    """
+    account_id = db.get_linked_sign_in_account_id(PROVIDER, subject)
+    account = db.get_account(account_id) if account_id else None
+    if not db.is_live_account(account) or db.ledger_exists(account["ledger_id"]):
+        return None
+    ledger_id = _materialise_ledger(db, account)
+    return {
+        "ok": True,
+        "account_id": account["account_id"],
+        "trainee_id": ledger_id,
+        "session_epoch": account["session_epoch"],
+    }
+
+
+def _materialise_ledger(db: Any, account: dict[str, Any], fallback: str | None = None) -> str:
+    """Creates the account's ledger file when it is missing; returns its id.
+
+    Registration creates the ledger as it stores the password hash; a Google
+    account has no hash, so the file is created here — idempotently, so a
+    repaired account and a fresh one behave identically.
+    """
+    ledger_id = str(account.get("ledger_id") or fallback or "")
+    if not ledger_id:
+        # Invariant: every catalog account carries a ledger id (NOT NULL).
+        raise RuntimeError("Account has no ledger id; refusing to guess one.")
+    if not db.ledger_exists(ledger_id):
+        with db.open_ledger(ledger_id):
+            pass
+    return ledger_id
 
 
 def _is_free(db: Any, clean: str) -> bool:

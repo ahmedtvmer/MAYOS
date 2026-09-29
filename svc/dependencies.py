@@ -1,6 +1,7 @@
 """FastAPI dependencies: database handle, verified player identity, Google ID-token seam."""
 
 import os
+import threading
 from collections.abc import Callable
 from typing import Annotated, Any, NamedTuple
 
@@ -15,6 +16,9 @@ _bearer = HTTPBearer(auto_error=False)
 #: Config read **by name only** — never hard-coded, never logged (#113).
 GOOGLE_WEB_CLIENT_ID_ENV = "GOOGLE_WEB_CLIENT_ID"
 _GOOGLE_ISSUERS = ("https://accounts.google.com", "accounts.google.com")
+#: Leeway for ``exp``/``iat`` so a few seconds of clock drift between the app
+#: server and Google does not refuse an otherwise valid ID token.
+GOOGLE_CLOCK_SKEW_SECONDS = 10
 
 
 class AccountDeletedError(HTTPException):
@@ -217,7 +221,7 @@ def google_web_client_id() -> str:
 
 
 def google_sign_in_enabled() -> None:
-    """Gate for every Google endpoint: 503 while ``GOOGLE_WEB_CLIENT_ID`` is unset.
+    """The **one** place that decides "unconfigured → 503": gate for every Google endpoint.
 
     Nothing else changes when the variable is absent — password registration,
     login, claim and the rest of the service behave exactly as before (#113).
@@ -227,13 +231,13 @@ def google_sign_in_enabled() -> None:
 
 
 def get_google_verifier() -> GoogleVerifier:
-    """The production ID-token seam, injected like the other app-owned dependencies.
+    """The production verifier seam, injected like the other app-owned dependencies.
 
     Tests replace this dependency with a fake, so no test reaches Google's
-    network; production replaces nothing and never sees a fake.
+    network; production replaces nothing and never sees a fake. Configuration
+    is *not* checked here: ``google_sign_in_enabled`` owns that decision, so
+    the 503 path exists in exactly one place.
     """
-    if not google_web_client_id():
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google sign-in is not configured.")
     return _verify_google_id_token
 
 
@@ -254,24 +258,60 @@ def get_signup_subject(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired signup ticket.") from None
 
 
+_GOOGLE_TRANSPORT: Any | None = None
+_GOOGLE_TRANSPORT_LOCK = threading.Lock()
+
+
+def _google_transport() -> Any:
+    """The one cached google-auth ``Request``, built over a module-level session.
+
+    Every verification shares a single ``Request`` wrapping a single
+    ``requests.Session``, so sign-ins reuse one pooled connection instead of
+    building a fresh ``Session``/``Request`` pair per call (cachecontrol is
+    not a dependency of this project, so no HTTP-level response cache is
+    layered on — a module-level session is the fallback). Built lazily, on
+    first use, and guarded so concurrent first sign-ins build it once.
+    """
+    global _GOOGLE_TRANSPORT
+    if _GOOGLE_TRANSPORT is None:
+        with _GOOGLE_TRANSPORT_LOCK:
+            if _GOOGLE_TRANSPORT is None:
+                import requests
+                from google.auth.transport import requests as google_requests
+
+                _GOOGLE_TRANSPORT = google_requests.Request(requests.Session())
+    return _GOOGLE_TRANSPORT
+
+
 def _verify_google_id_token(raw_id_token: str) -> GoogleIdentity:
     """``verify_oauth2_token`` against ``GOOGLE_WEB_CLIENT_ID``, narrowed to sub/iat.
 
-    google-auth checks the signature, the audience, ``exp``/``iat``, and the
-    issuer; every rejection — wrong audience or issuer included — collapses
-    into :class:`GoogleIdentityError`, so callers see one generic failure.
-    Imports are lazy so a missing optional transport can only ever affect
-    these endpoints, never the rest of the service.
+    google-auth checks the signature, the audience, ``exp``/``iat`` (with a
+    small clock skew), and the issuer; every rejection — wrong audience or
+    issuer included — collapses into :class:`GoogleIdentityError`, so callers
+    see one generic failure.
+
+    Verification runs on the one cached transport (:func:`_google_transport`)
+    instead of a fresh ``Session`` per sign-in. Imports stay lazy so a missing
+    optional transport can only ever affect these endpoints, never the rest of
+    the service.
     """
     audience = google_web_client_id()
     if not audience:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google sign-in is not configured.")
-    import requests
+        # The routes never reach this: google_sign_in_enabled is the single
+        # place that answers 503 for an unconfigured audience. Fail closed if
+        # this seam is called directly, rather than verifying with no audience.
+        raise GoogleIdentityError("Google sign-in is not configured.")
     from google.auth import exceptions as google_auth_exceptions
     from google.oauth2 import id_token as google_id_token
 
     try:
-        info = google_id_token.verify_oauth2_token(raw_id_token, requests.Request(), audience=audience)
+        info = google_id_token.verify_oauth2_token(
+            raw_id_token,
+            _google_transport(),
+            audience=audience,
+            clock_skew_in_seconds=GOOGLE_CLOCK_SKEW_SECONDS,
+        )
     except (ValueError, KeyError, google_auth_exceptions.GoogleAuthError):
         raise GoogleIdentityError("Google rejected the ID token.") from None
     # google-auth enforces this too; keeping our own check states the contract

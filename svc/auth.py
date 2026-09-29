@@ -108,13 +108,21 @@ def create_signup_ticket(subject: str) -> str:
 def signup_ticket_subject(token: str) -> str:
     """The Google subject on a valid signup ticket, else raises :class:`jwt.PyJWTError`.
 
-    ``audience=`` refuses a session token (or any other JWT) here, and the
-    ``type`` marker refuses everything that is not a signup ticket; expiry and
-    tampering are refused by the signature check.
+    ``options={"require": [...]}`` makes ``exp``, ``aud`` and ``sub``
+    mandatory, so a stripped or hand-rolled ticket never decodes: ``audience=``
+    refuses a session token (or any other JWT), ``exp`` refuses a ticket with
+    its lifetime removed, the ``type`` marker refuses everything that is not a
+    signup ticket, and the signature check refuses tampering.
     """
     if not isinstance(token, str) or not token:
         raise jwt.InvalidTokenError("Signup ticket is missing.")
-    payload = jwt.decode(token, _secret(), algorithms=[ALGORITHM], audience=SIGNUP_TICKET_AUDIENCE)
+    payload = jwt.decode(
+        token,
+        _secret(),
+        algorithms=[ALGORITHM],
+        audience=SIGNUP_TICKET_AUDIENCE,
+        options={"require": ["exp", "aud", "sub"]},
+    )
     if payload.get("type") != SIGNUP_TICKET_TYPE:
         raise jwt.InvalidTokenError("Token is not a signup ticket.")
     subject = payload.get("sub")

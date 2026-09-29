@@ -36,6 +36,9 @@ limiter = Limiter(key_func=_key)
 
 LOGIN_LIMIT = os.getenv("RATE_LIMIT_LOGIN", "5/minute")
 REGISTER_LIMIT = os.getenv("RATE_LIMIT_REGISTER", "5/minute")
+#: The username picker asks on every keystroke pause, so it gets a roomier
+#: budget than login/register while still being per-client (issue #113).
+USERNAME_CHECK_LIMIT = os.getenv("RATE_LIMIT_USERNAME_CHECK", "30/minute")
 PASSWORD_LIMIT = os.getenv("RATE_LIMIT_PASSWORD", "10/minute")
 RESET_LIMIT = os.getenv("RATE_LIMIT_RESET", "3/hour")
 CHAT_LIMIT = os.getenv("RATE_LIMIT_CHAT", "30/minute")

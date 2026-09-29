@@ -14,7 +14,7 @@ from service import google_sign_in as google_service
 from service._tokens import hash_token
 from svc.app import create_app
 from svc.auth import SIGNUP_TICKET_AUDIENCE, SIGNUP_TICKET_TYPE, create_signup_ticket, token_claims
-from svc.dependencies import GoogleIdentity, GoogleIdentityError, get_db, get_google_verifier
+from svc.dependencies import GoogleIdentity, GoogleIdentityError, GOOGLE_CLOCK_SKEW_SECONDS, get_db, get_google_verifier
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
 TEST_WEB_CLIENT_ID = "1234567890-testapps.googleusercontent.com"
@@ -229,8 +229,20 @@ def test_expired_tampered_and_wrong_audience_tickets_are_refused(api):
         algorithm="HS256",
     )
     tampered = ticket[:-4] + ("AAAA" if not ticket.endswith("AAAA") else "BBBB")
+    # A correctly signed ticket with its lifetime stripped must still be
+    # refused: exp/aud/sub are required claims, not optional ones.
+    missing_exp = pyjwt.encode(
+        {
+            "sub": "sub-alice-token",
+            "type": SIGNUP_TICKET_TYPE,
+            "aud": SIGNUP_TICKET_AUDIENCE,
+            "iat": now,
+        },
+        TEST_JWT_SECRET,
+        algorithm="HS256",
+    )
 
-    for bad in (expired, wrong_audience, tampered, "not-a-jwt"):
+    for bad in (expired, wrong_audience, missing_exp, tampered, "not-a-jwt"):
         complete = client.post("/auth/google/complete", json={"signup_ticket": bad, "username": "alice"})
         assert complete.status_code == 401, complete.text
         availability = client.get(
@@ -333,6 +345,74 @@ def test_taken_username_returns_conflict(api):
     assert _link_rows(db) == []
 
 
+def _break_next_ledger_creation(monkeypatch) -> dict:
+    """Arms a one-shot fault: the next attempt to create a missing ledger fails.
+
+    Models a completion whose catalog transaction committed (account + link)
+    but whose ledger file was never created — the "stuck account" case (#113).
+    """
+    from database.database_manager import DatabaseManager
+
+    real_open = DatabaseManager.open_ledger
+    state = {"armed": True}
+
+    def flaky_open_ledger(self, ledger_id):
+        if state["armed"] and not self.ledger_exists(ledger_id):
+            state["armed"] = False
+            raise RuntimeError("injected: ledger creation failed")
+        return real_open(self, ledger_id)
+
+    monkeypatch.setattr(DatabaseManager, "open_ledger", flaky_open_ledger)
+    return state
+
+
+def _account_without_ledger(api, id_token: str, username: str) -> dict:
+    """Runs a completion through the fault, leaving a committed account with no ledger."""
+    client, db, _verifier = api
+    ticket = _sign_in_for_ticket(client, id_token)["signup_ticket"]
+    # Server-side failures return 502; the TestClient default re-raises them.
+    faulty = TestClient(client.app, raise_server_exceptions=False)
+    response = faulty.post("/auth/google/complete", json={"signup_ticket": ticket, "username": username})
+    assert response.status_code == 502, response.text
+    account = db.get_active_account_by_username(username)
+    assert account is not None
+    assert not db.ledger_exists(account["ledger_id"])
+    assert len(_link_rows(db)) == 1
+    return {"ticket": ticket, "account": account}
+
+
+def test_retry_of_complete_self_heals_an_account_whose_ledger_never_materialised(api, monkeypatch):
+    client, db, _verifier = api
+    _break_next_ledger_creation(monkeypatch)
+    state = _account_without_ledger(api, "heal-token:Helen", "helen")
+
+    # The retry must not answer 409: it materialises the ledger and issues the
+    # session for the already-linked account, creating nothing new.
+    retry = client.post(
+        "/auth/google/complete",
+        json={"signup_ticket": state["ticket"], "username": "helen"},
+    )
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["trainee_id"] == "helen"
+    assert db.ledger_exists(state["account"]["ledger_id"])
+    assert len(_accounts(client)) == 1 and len(_link_rows(db)) == 1
+    assert client.get("/auth/me", headers=_headers(retry.json()["access_token"])).status_code == 200
+
+
+def test_next_google_sign_in_self_heals_an_account_whose_ledger_never_materialised(api, monkeypatch):
+    client, db, _verifier = api
+    _break_next_ledger_creation(monkeypatch)
+    state = _account_without_ledger(api, "heal2-token:Hana", "hana")
+
+    signin = client.post("/auth/google", json={"id_token": "heal2-token:Hana"})
+    assert signin.status_code == 200, signin.text
+    assert signin.json()["trainee_id"] == "hana"
+    assert db.ledger_exists(state["account"]["ledger_id"])
+    assert len(_accounts(client)) == 1 and len(_link_rows(db)) == 1
+    # The issued session passes the registry's ledger gate instead of 401.
+    assert client.get("/auth/me", headers=_headers(signin.json()["access_token"])).status_code == 200
+
+
 def test_suggestion_is_suffixed_when_taken_and_is_never_stored(api):
     client, db, _verifier = api
     client.post("/auth/register", json={"trainee_id": "alfred", "password": "correct-horse-1"})
@@ -408,7 +488,9 @@ def test_claim_and_password_login_on_a_google_only_account_are_refused(api):
     assert login.status_code == 401
     assert login.json() == {"detail": "Invalid credentials."}
 
-    # Even a genuine, unused claim code must not take such an account over.
+    # Even a genuine, unused claim code must not take such an account over —
+    # and the refusal must be indistinguishable from any other claim failure,
+    # so the endpoint cannot reveal that the account is Google-linked.
     raw_code = "single-use-claim-code-123"
     db.create_claim_code(account["account_id"], hash_token(raw_code), "2999-01-01T00:00:00+00:00")
     claim = client.post(
@@ -416,7 +498,13 @@ def test_claim_and_password_login_on_a_google_only_account_are_refused(api):
         json={"trainee_id": "gina", "claim_code": raw_code, "password": "new-horse-22"},
     )
     assert claim.status_code == 401
-    assert claim.json() == {"detail": "Invalid credentials."}
+    assert claim.json() == {"detail": "Invalid or expired claim code."}
+    ghost = client.post(
+        "/auth/claim",
+        json={"trainee_id": "ghost", "claim_code": raw_code, "password": "new-horse-22"},
+    )
+    assert ghost.status_code == claim.status_code
+    assert ghost.json() == claim.json()
     with db.open_ledger(account["ledger_id"]) as ledger:
         assert ledger.get_password_hash() is None
     assert client.post("/auth/login", json={"trainee_id": "gina", "password": "new-horse-22"}).status_code == 401
@@ -439,16 +527,19 @@ def test_google_endpoints_are_rate_limited_like_login(api):
 
     _reset_limits()
     ticket = _sign_in_for_ticket(client)["signup_ticket"]
+    # The picker is a debounced as-you-type check, so it has its own 30/min
+    # budget (RATE_LIMIT_USERNAME_CHECK) instead of login's 5/min.
     availability = [
         client.get(
             "/auth/username-available",
             params={"username": f"check-{index}"},
             headers=_headers(ticket),
         ).status_code
-        for index in range(7)
+        for index in range(31)
     ]
-    assert sum(1 for code in availability if code == 200) == 5
-    assert availability.count(429) == 2
+    assert availability[:30] == [200] * 30
+    assert availability[30] == 429
+    assert availability.count(429) == 1
 
 
 def test_google_endpoints_return_503_when_unconfigured_and_nothing_else_changes(api, monkeypatch):
@@ -473,6 +564,13 @@ def test_google_endpoints_return_503_when_unconfigured_and_nothing_else_changes(
     assert client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"}).status_code == 201
     assert client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}).status_code == 200
 
+    # Exactly one place decides "unconfigured → 503": the routes' shared gate.
+    # The verifier seam itself fails closed rather than raising a second 503.
+    from svc.dependencies import _verify_google_id_token
+
+    with pytest.raises(GoogleIdentityError):
+        _verify_google_id_token("raw-google-token")
+
 
 def test_production_verifier_uses_configured_audience_and_rejects_bad_issuer(monkeypatch):
     from google.auth import exceptions as google_auth_exceptions
@@ -482,11 +580,13 @@ def test_production_verifier_uses_configured_audience_and_rejects_bad_issuer(mon
 
     monkeypatch.setenv("GOOGLE_WEB_CLIENT_ID", TEST_WEB_CLIENT_ID)
     seen: dict[str, object] = {}
+    transports: list[object] = []
 
-    def fake_verify(raw_id_token, request, audience=None, **kwargs):
+    def fake_verify(raw_id_token, request, audience=None, clock_skew_in_seconds=0, **kwargs):
         seen["token"] = raw_id_token
-        seen["request"] = request
         seen["audience"] = audience
+        seen["clock_skew"] = clock_skew_in_seconds
+        transports.append(request)
         return {"iss": "https://accounts.google.com", "sub": "sub-123", "iat": 1_700_000_000, "given_name": "Ada"}
 
     monkeypatch.setattr(google_id_token, "verify_oauth2_token", fake_verify)
@@ -496,7 +596,12 @@ def test_production_verifier_uses_configured_audience_and_rejects_bad_issuer(mon
     assert identity.given_name == "Ada"
     assert seen["token"] == "raw-google-token"
     assert seen["audience"] == TEST_WEB_CLIENT_ID
-    assert type(seen["request"]).__name__ == "Request"
+    # A little clock skew is allowed so drift does not refuse a fresh token.
+    assert seen["clock_skew"] == GOOGLE_CLOCK_SKEW_SECONDS == 10
+    assert type(transports[0]).__name__ == "Request"
+    # One cached transport over a shared session: never a fresh one per sign-in.
+    _verify_google_id_token("raw-google-token-2")
+    assert transports[1] is transports[0]
 
     def wrong_issuer(*args, **kwargs):
         return {"iss": "https://accounts.example.com", "sub": "sub-123", "iat": 1_700_000_000}

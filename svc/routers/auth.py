@@ -26,7 +26,7 @@ from svc.dependencies import (
     get_verified_player,
     google_sign_in_enabled,
 )
-from svc.rate_limit import PASSWORD_LIMIT, REGISTER_LIMIT, LOGIN_LIMIT, RESET_LIMIT, limiter
+from svc.rate_limit import PASSWORD_LIMIT, REGISTER_LIMIT, LOGIN_LIMIT, RESET_LIMIT, USERNAME_CHECK_LIMIT, limiter
 from svc.schemas import (
     AccountCapabilitiesOut,
     AccountDeleteIn,
@@ -140,7 +140,7 @@ async def google_sign_in(
 
 
 @router.get("/username-available", response_model=UsernameAvailableOut, response_model_exclude_none=True)
-@limiter.limit(LOGIN_LIMIT)
+@limiter.limit(USERNAME_CHECK_LIMIT)
 async def username_available(
     request: Request,
     db: Annotated[Any, Depends(get_db)],

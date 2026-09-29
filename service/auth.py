@@ -122,8 +122,11 @@ def claim_player(db: Any, username: str, claim_code: str, password: str) -> dict
         return generic
     if db.account_has_linked_sign_in(account["account_id"]):
         # An account that signs in with a Linked sign-in never takes a password
-        # this way (issue #113); the refusal is generic, like every other one.
-        return {"ok": False, "error": INVALID_CREDENTIALS}
+        # this way (issue #113). The refusal is this endpoint's own generic
+        # claim error — never login's "Invalid credentials." — so /auth/claim
+        # still answers identically for every failure and cannot be used to
+        # discover that an account is Google-linked.
+        return generic
     now_iso = datetime.now(UTC).isoformat()
     with db.open_ledger(account["ledger_id"]) as ledger:
         if ledger.get_password_hash() is not None:
