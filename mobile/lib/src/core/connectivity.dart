@@ -52,24 +52,28 @@ final StateNotifierProvider<ConnectivityController, bool>
     connectivityControllerProvider =
     StateNotifierProvider<ConnectivityController, bool>((ref) {
   final ConnectivityController controller = ConnectivityController();
-  ref.watch(apiClientProvider).dio.interceptors.add(
-        InterceptorsWrapper(
-          onResponse: (Response<dynamic> response,
-              ResponseInterceptorHandler handler) {
-            controller.markOnline();
-            handler.next(response);
-          },
-          onError: (DioException error, ErrorInterceptorHandler handler) {
-            // A refusal still carries a response, so the service was reached.
-            if (_isTransportFailure(error)) {
-              controller.markOffline();
-            } else {
-              controller.markOnline();
-            }
-            handler.next(error);
-          },
-        ),
-      );
+  final Interceptors interceptors =
+      ref.watch(apiClientProvider).dio.interceptors;
+  final InterceptorsWrapper watcher = InterceptorsWrapper(
+    onResponse:
+        (Response<dynamic> response, ResponseInterceptorHandler handler) {
+      controller.markOnline();
+      handler.next(response);
+    },
+    onError: (DioException error, ErrorInterceptorHandler handler) {
+      // A refusal still carries a response, so the service was reached.
+      if (_isTransportFailure(error)) {
+        controller.markOffline();
+      } else {
+        controller.markOnline();
+      }
+      handler.next(error);
+    },
+  );
+  interceptors.add(watcher);
+  // A rebuilt provider must not leave its old watcher on the client, feeding a
+  // disposed controller.
+  ref.onDispose(() => interceptors.remove(watcher));
   return controller;
 });
 
@@ -96,7 +100,8 @@ class OfflineBanner extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(Icons.cloud_off, size: 16, color: c.textSecondary),
+              Icon(Icons.cloud_off,
+                  size: MayosIconSizes.small, color: c.textSecondary),
               const SizedBox(width: MayosSpacing.xs),
               Text(
                 message,
