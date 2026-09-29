@@ -154,9 +154,13 @@ class AccountDeletionMixin:
         # (b) catalog: mark deleted, revoke sessions, end relationships.
         self._force_delete_account_catalog(str(account_id), now)
         # (c) live ledger + any user-specific backup copies.
-        remote_cleanup_complete = self._remove_account_files(resolved_ledger_id)
+        # Keep network I/O off the request path. With R2 configured, the
+        # durable record remains pending until startup/hourly replay completes it.
+        remote_cleanup_complete = self._remove_account_files(resolved_ledger_id, remove_offsite=False)
         if remote_cleanup_complete:
             self._mark_deletion_applied(str(account_id))
+        else:
+            self._mark_deletion_pending(str(account_id))
         # model_usage rows keep the opaque account id for billing reconciliation
         # (documented in ADR 039); they carry no username or contact details.
         return {"ok": True, "account_id": str(account_id), "ledger_id": resolved_ledger_id, "deleted_at": now}
@@ -296,12 +300,12 @@ class AccountDeletionMixin:
             )
             return cursor.fetchone() is not None
 
-    def _remove_account_files(self, ledger_id: str) -> bool:
+    def _remove_account_files(self, ledger_id: str, *, remove_offsite: bool = True) -> bool:
         """Closes this thread's connection, then removes the live ledger and backups.
 
         Fails closed on an empty, non-canonical, or reserved (``default``) ledger
         id, so a bad record can never delete an unrelated or shared ledger. A
-        remote cleanup failure returns ``False`` so replay retries the record.
+        deferred or failed remote cleanup returns ``False`` so replay retries it.
         """
         raw = "" if ledger_id is None else str(ledger_id)
         if not raw.strip():
@@ -339,6 +343,9 @@ class AccountDeletionMixin:
         remote_cleanup_complete = True
         offsite = getattr(self, "offsite_backup", None)
         if offsite is not None:
+            if not remove_offsite:
+                logger.info("Off-site ledger cleanup deferred to deletion replay.")
+                return False
             try:
                 offsite.remove_ledger(sanitized)
             except Exception as exc:

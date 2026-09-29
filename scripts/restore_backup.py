@@ -20,6 +20,7 @@ snapshot's copy, so a pre-deletion snapshot cannot resurrect a deleted identity.
 
 import argparse
 import os
+import shutil
 import sys
 import uuid
 from pathlib import Path
@@ -38,7 +39,7 @@ from database.database_manager import (  # noqa: E402
     DEFAULT_LEDGERS_DIR,
     DatabaseManager,
 )
-from database.offsite_backup import configure_r2_backup  # noqa: E402
+from database.offsite_backup import configure_database_offsite_backup  # noqa: E402
 from utils.logger import MyosLogger  # noqa: E402
 
 logger = MyosLogger().get_logger(__name__)
@@ -75,51 +76,64 @@ def main(argv: list[str] | None = None) -> int:
     if sum((bool(args.snapshot), args.latest, bool(args.r2_snapshot))) != 1:
         parser.error("provide exactly one local snapshot directory, --latest, or --r2 YYYYMMDD")
 
-    if args.r2_snapshot:
-        store = configure_r2_backup(lock_path=Path(args.backups_dir) / ".offsite-r2.lock")
-        if store is None:
-            logger.error("Cannot restore from R2: off-site backup configuration is incomplete.")
+    db = None
+    snapshot = None
+    store = None
+    scheduled = False
+    try:
+        if args.r2_snapshot:
+            store = configure_database_offsite_backup(
+                backups_dir=Path(args.backups_dir),
+                log_disabled=True,
+            )
+            if store is None:
+                logger.error("Cannot restore from R2: off-site backup configuration is incomplete.")
+                return 1
+            snapshot = Path(args.backups_dir) / "r2-restore" / f"{args.r2_snapshot}-{uuid.uuid4().hex}"
+            try:
+                store.download_snapshot(args.r2_snapshot, snapshot)
+            except Exception as exc:
+                logger.error("Could not fetch the complete R2 snapshot %s (%s).", args.r2_snapshot, type(exc).__name__)
+                return 1
+        else:
+            snapshot = _resolve_snapshot(args, parser)
+            if snapshot is None:
+                return 1
+        if not snapshot.is_dir():
+            print(f"Snapshot not found: {snapshot}")
             return 1
-        snapshot = Path(args.backups_dir) / "r2-restore" / f"{args.r2_snapshot}-{uuid.uuid4().hex}"
-        try:
-            store.download_snapshot(args.r2_snapshot, snapshot)
-        except Exception as exc:
-            logger.error("Could not fetch the complete R2 snapshot %s (%s).", args.r2_snapshot, type(exc).__name__)
-            return 1
-    else:
-        snapshot = _resolve_snapshot(args, parser)
-        if snapshot is None:
-            return 1
-    if not snapshot.is_dir():
-        print(f"Snapshot not found: {snapshot}")
-        return 1
 
-    if args.on_next_boot:
-        marker = schedule_restore(Path(args.backups_dir), snapshot)
-        logger.info("Restore scheduled from %s (marker %s).", snapshot, marker)
+        if args.on_next_boot:
+            marker = schedule_restore(
+                Path(args.backups_dir),
+                snapshot,
+                r2_snapshot_date=args.r2_snapshot,
+            )
+            scheduled = args.r2_snapshot is not None
+            logger.info("Restore scheduled from %s (marker %s).", snapshot, marker)
+            print(
+                f"Restore scheduled from {snapshot}; it will apply on the next API boot. "
+                f"Now restart the API Machine (fly machine restart <id>) and verify."
+            )
+            return 0
+
+        if db is None:
+            db = DatabaseManager(catalog_path=args.catalog, ledgers_dir=args.ledgers_dir, backups_dir=args.backups_dir)
+        configure_database_offsite_backup(db, store=store, log_disabled=True)
+        summary = restore_daily_backup(snapshot, db=db)
+        logger.info("Restore complete: %s", summary)
         print(
-            f"Restore scheduled from {snapshot}; it will apply on the next API boot. "
-            f"Now restart the API Machine (fly machine restart <id>) and verify."
+            f"Restored {snapshot} (catalog + {len(summary['restored_ledgers'])} ledger(s)); "
+            f"reapplied {summary['deletions_reapplied']} deletion(s); "
+            f"quarantined {len(summary['quarantined_ledgers'])} orphaned ledger(s). "
+            "The current deletions.db was kept and is authoritative."
         )
         return 0
-
-    db = DatabaseManager(catalog_path=args.catalog, ledgers_dir=args.ledgers_dir, backups_dir=args.backups_dir)
-    db.offsite_backup = store if args.r2_snapshot else configure_r2_backup(
-        lock_path=db.backups_dir / ".offsite-r2.lock"
-    )
-    try:
-        summary = restore_daily_backup(snapshot, db=db)
     finally:
-        db.catalog_conn.close()
-
-    logger.info("Restore complete: %s", summary)
-    print(
-        f"Restored {snapshot} (catalog + {len(summary['restored_ledgers'])} ledger(s)); "
-        f"reapplied {summary['deletions_reapplied']} deletion(s); "
-        f"quarantined {len(summary['quarantined_ledgers'])} orphaned ledger(s). "
-        "The current deletions.db was kept and is authoritative."
-    )
-    return 0
+        if db is not None:
+            db.catalog_conn.close()
+        if args.r2_snapshot and not scheduled and snapshot is not None:
+            shutil.rmtree(snapshot, ignore_errors=True)
 
 
 if __name__ == "__main__":

@@ -251,9 +251,9 @@ def test_delete_account_holds_no_ledger_handle_while_removing_files(api, monkeyp
     observed = {}
     real_remove = db._remove_account_files
 
-    def checking_remove(ledger_id):
+    def checking_remove(ledger_id, **kwargs):
         observed["open"] = [handle for handle in opened if is_open(handle)]
-        return real_remove(ledger_id)
+        return real_remove(ledger_id, **kwargs)
 
     monkeypatch.setattr(db, "_remove_account_files", checking_remove)
 

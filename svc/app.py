@@ -166,12 +166,9 @@ async def lifespan(app: FastAPI):
             validate_data_root()
             _ready["storage"] = True
             db = DatabaseManager()
-            from database.offsite_backup import configure_r2_backup
+            from database.offsite_backup import configure_database_offsite_backup
 
-            db.offsite_backup = configure_r2_backup(
-                lock_path=db.backups_dir / ".offsite-r2.lock",
-                log_disabled=True,
-            )
+            configure_database_offsite_backup(db, log_disabled=True)
             # The app owns the one store; requests receive it via get_db.
             app.state.db = db
             # Complete any deletion whose catalog transaction did not finish, so

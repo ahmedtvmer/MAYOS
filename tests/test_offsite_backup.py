@@ -1,9 +1,13 @@
 """Hermetic Cloudflare R2 adapter and restore/deletion coverage (#164)."""
 
 import io
+import fcntl
+import hashlib
 import json
+import os
 import sqlite3
 import sys
+import threading
 import types
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,7 +15,11 @@ from pathlib import Path
 import pytest
 
 from database.backup import create_daily_backup, restore_daily_backup
-from database.offsite_backup import COMPLETE_MARKER, R2BackupStore, configure_r2_backup
+from database.offsite_backup import (
+    COMPLETE_MARKER,
+    R2BackupStore,
+    configure_r2_backup,
+)
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
 
@@ -177,6 +185,42 @@ def test_r2_download_requires_a_complete_manifest_and_fetches_to_staging(tmp_pat
     assert not list(tmp_path.glob(".restore.staging-*"))
 
 
+def test_r2_download_rejects_same_size_corruption_before_publish(tmp_path):
+    client = FakeS3Client()
+    store = R2BackupStore(client, "private-bucket")
+    snapshot = _snapshot(tmp_path, "20260929")
+    store.upload_snapshot(snapshot, "20260929")
+    client.objects["daily/20260929/catalog.db"] = b"corrupt"
+
+    with pytest.raises(IOError, match="SHA-256"):
+        store.download_snapshot("20260929", tmp_path / "restore")
+
+    assert not (tmp_path / "restore").exists()
+    assert not list(tmp_path.glob(".restore.staging-*"))
+
+
+def test_legacy_manifest_remains_restorable_and_rerun_upgrades_it(tmp_path):
+    client = FakeS3Client()
+    store = R2BackupStore(client, "private-bucket")
+    snapshot = _snapshot(tmp_path, "20260929")
+    store.upload_snapshot(snapshot, "20260929")
+    marker_key = f"daily/20260929/{COMPLETE_MARKER}"
+    manifest = json.loads(client.objects[marker_key])
+    manifest["version"] = 1
+    for entry in manifest["files"]:
+        entry.pop("sha256")
+    client.objects[marker_key] = json.dumps(manifest).encode()
+
+    assert store.is_snapshot_complete("20260929") is False
+    downloaded = store.download_snapshot("20260929", tmp_path / "legacy-restore")
+    assert (downloaded / "catalog.db").read_bytes() == b"catalog"
+
+    store.upload_snapshot(snapshot, "20260929")
+    upgraded = json.loads(client.objects[marker_key])
+    assert upgraded["version"] == 2
+    assert all("sha256" in entry for entry in upgraded["files"])
+
+
 def test_r2_configuration_uses_only_the_four_named_secrets(monkeypatch):
     captured = {}
 
@@ -193,6 +237,7 @@ def test_r2_configuration_uses_only_the_four_named_secrets(monkeypatch):
 
     store = configure_r2_backup()
     assert isinstance(store, R2BackupStore)
+    config = captured.pop("config")
     assert captured == {
         "service": "s3",
         "region_name": "auto",
@@ -200,6 +245,10 @@ def test_r2_configuration_uses_only_the_four_named_secrets(monkeypatch):
         "aws_access_key_id": "never-log-this-id",
         "aws_secret_access_key": "never-log-this-secret",
     }
+    assert config.connect_timeout == 5
+    assert config.read_timeout == 30
+    assert config.retries == {"mode": "standard", "max_attempts": 3}
+    assert config.signature_version == "s3v4"
 
 
 def test_missing_r2_configuration_skips_provider(monkeypatch, caplog):
@@ -224,11 +273,68 @@ def test_restore_cli_fetches_the_requested_r2_snapshot_before_scheduling(tmp_pat
     from scripts.restore_backup import main
 
     backups_dir = tmp_path / "backups"
-    assert main(["--r2", "20260929", "--on-next-boot", "--backups-dir", str(backups_dir)]) == 0
+    assert main([
+        "--r2", "20260929", "--on-next-boot",
+        "--backups-dir", str(backups_dir),
+        "--catalog", str(tmp_path / "catalog.db"),
+        "--users-dir", str(tmp_path / "users"),
+    ]) == 0
     payload = json.loads(restore_pending_path(backups_dir).read_text(encoding="utf-8"))
     restored = Path(payload["snapshot"])
     assert restored.name.startswith("20260929-")
+    assert payload["r2_snapshot_date"] == "20260929"
     assert (restored / "catalog.db").read_bytes() == b"catalog"
+
+
+def _set_fake_r2_environment(monkeypatch, client):
+    monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=lambda service, **kwargs: client))
+    monkeypatch.setenv("R2_ENDPOINT", "https://example.r2.cloudflarestorage.com")
+    monkeypatch.setenv("R2_BUCKET", "backup-bucket")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "test-access-key")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "test-secret-key")
+
+
+@pytest.mark.parametrize("fail_restore", [False, True], ids=["success", "failure"])
+def test_r2_restore_cli_removes_download_after_immediate_restore(tmp_path, monkeypatch, fail_restore):
+    client = FakeS3Client()
+    source = _snapshot(tmp_path, "20260929")
+    R2BackupStore(client, "backup-bucket").upload_snapshot(source, "20260929")
+    _set_fake_r2_environment(monkeypatch, client)
+
+    import scripts.restore_backup as restore_cli
+
+    class FakeDatabase:
+        def __init__(self, **kwargs):
+            self.backups_dir = Path(kwargs["backups_dir"])
+            self.catalog_conn = types.SimpleNamespace(close=lambda: None)
+
+    monkeypatch.setattr(restore_cli, "DatabaseManager", FakeDatabase)
+
+    def restore(snapshot, *, db):
+        assert (Path(snapshot) / "catalog.db").is_file()
+        if fail_restore:
+            raise RuntimeError("simulated restore failure")
+        return {
+            "restored_ledgers": [],
+            "deletions_reapplied": 0,
+            "quarantined_ledgers": [],
+        }
+
+    monkeypatch.setattr(restore_cli, "restore_daily_backup", restore)
+    backups_dir = tmp_path / "backups"
+    argv = [
+        "--r2", "20260929",
+        "--backups-dir", str(backups_dir),
+        "--catalog", str(tmp_path / "catalog.db"),
+        "--users-dir", str(tmp_path / "users"),
+    ]
+    if fail_restore:
+        with pytest.raises(RuntimeError, match="simulated restore failure"):
+            restore_cli.main(argv)
+    else:
+        assert restore_cli.main(argv) == 0
+
+    assert not list((backups_dir / "r2-restore").glob("*"))
 
 
 @pytest.fixture
@@ -255,7 +361,7 @@ def r2_api(tmp_path: Path, monkeypatch):
         default_ledger_id="bootstrap",
     )
     client = FakeS3Client()
-    db.offsite_backup = R2BackupStore(client, "private-bucket")
+    db.offsite_backup = R2BackupStore(client, "private-bucket", tmp_path / "backups" / ".offsite-r2.lock")
     try:
         yield db, client, tmp_path
     finally:
@@ -285,6 +391,9 @@ def test_r2_restore_replays_current_deletions_and_keeps_old_token_invalid(r2_api
     assert ledger_key in r2.objects
 
     db.delete_account(account_id, datetime.now(UTC).isoformat(), ledger_id=registered["ledger_id"])
+    assert ledger_key in r2.objects
+    assert db.list_account_deletions()[0]["applied_at"] is None
+    assert db.replay_deletions() == 1
     assert ledger_key not in r2.objects
     manifest = json.loads(r2.objects[marker_key])
     assert "ledgers/alice.db" not in {entry["path"] for entry in manifest["files"]}
@@ -303,6 +412,33 @@ def test_r2_restore_replays_current_deletions_and_keeps_old_token_invalid(r2_api
     with pytest.raises(AccountDeletedError):
         _authorize_account(db, claims["sub"], token_version_of(claims))
     assert login_player(db, "alice", "correct-horse-1")["ok"] is False
+
+
+def test_pending_boot_r2_restore_cleans_copy_after_success_and_failure(r2_api, monkeypatch):
+    db, _, _ = r2_api
+    summary = create_daily_backup(db, now=datetime(2026, 9, 29, tzinfo=UTC))
+    snapshot_date = summary["date"]
+    downloaded = db.backups_dir / "r2-restore" / f"{snapshot_date}-initial"
+    db.offsite_backup.download_snapshot(snapshot_date, downloaded)
+
+    from database import backup
+
+    backup.schedule_restore(db.backups_dir, downloaded, r2_snapshot_date=snapshot_date)
+
+    def fail_restore(snapshot, *, db):
+        raise RuntimeError("simulated boot restore failure")
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(backup, "restore_daily_backup", fail_restore)
+        with pytest.raises(RuntimeError, match="simulated boot restore failure"):
+            backup.apply_pending_restore(db)
+    assert not downloaded.exists()
+    assert backup.restore_pending_path(db.backups_dir).is_file()
+
+    result = backup.apply_pending_restore(db)
+    assert result is not None
+    assert not list((db.backups_dir / "r2-restore").glob("*"))
+    assert not backup.restore_pending_path(db.backups_dir).exists()
 
 
 def test_local_daily_backup_succeeds_without_an_r2_store(r2_api):
@@ -346,7 +482,13 @@ def test_deletion_replay_retries_r2_cleanup(r2_api):
     marker = f"daily/{day}/{COMPLETE_MARKER}"
     r2.objects[key] = b"stray deleted account ledger"
     content = json.loads(r2.objects[marker])
-    content["files"].append({"path": "ledgers/alice.db", "size": len(r2.objects[key])})
+    content["files"].append(
+        {
+            "path": "ledgers/alice.db",
+            "size": len(r2.objects[key]),
+            "sha256": hashlib.sha256(r2.objects[key]).hexdigest(),
+        }
+    )
     r2.objects[marker] = json.dumps(content).encode()
 
     assert db.reapply_deletions() >= 1
@@ -372,11 +514,51 @@ def test_r2_deletion_failure_keeps_record_pending_until_replay_succeeds(r2_api, 
     assert deletion["ok"] is True
     assert ledger_key in r2.objects
     assert db.list_account_deletions()[0]["applied_at"] is None
+    assert db.replay_deletions() == 0
 
     monkeypatch.setattr(offsite, "remove_ledger", remove_remote_ledger)
     assert db.replay_deletions() >= 1
     assert ledger_key not in r2.objects
     assert db.list_account_deletions()[0]["applied_at"] is not None
+
+
+def test_account_delete_returns_while_r2_flock_is_held_then_replay_cleans(r2_api):
+    db, r2, tmp_path = r2_api
+    registered = _register(db, "alice")
+    summary = create_daily_backup(db, now=datetime(2026, 9, 29, tzinfo=UTC))
+    ledger_key = f"daily/{summary['date']}/ledgers/alice.db"
+    lock_fd = os.open(tmp_path / "backups" / ".offsite-r2.lock", os.O_CREAT | os.O_RDWR, 0o600)
+    fcntl.flock(lock_fd, fcntl.LOCK_EX)
+    result = []
+    error = []
+
+    def delete():
+        try:
+            result.append(db.delete_account(
+                registered["account_id"],
+                datetime.now(UTC).isoformat(),
+                ledger_id=registered["ledger_id"],
+            ))
+        except Exception as exc:
+            error.append(exc)
+
+    worker = threading.Thread(target=delete)
+    try:
+        worker.start()
+        worker.join(timeout=1)
+        returned_while_locked = not worker.is_alive()
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
+    worker.join(timeout=5)
+
+    assert returned_while_locked
+    assert not error
+    assert result[0]["ok"] is True
+    assert ledger_key in r2.objects
+    assert db.list_account_deletions()[0]["applied_at"] is None
+    assert db.replay_deletions() == 1
+    assert ledger_key not in r2.objects
 
 
 def test_full_replay_marks_failed_remote_cleanup_pending_again(r2_api, monkeypatch):
@@ -391,7 +573,13 @@ def test_full_replay_marks_failed_remote_cleanup_pending_again(r2_api, monkeypat
     marker_key = f"daily/{summary['date']}/{COMPLETE_MARKER}"
     r2.objects[ledger_key] = b"stray deleted account ledger"
     manifest = json.loads(r2.objects[marker_key])
-    manifest["files"].append({"path": "ledgers/alice.db", "size": len(r2.objects[ledger_key])})
+    manifest["files"].append(
+        {
+            "path": "ledgers/alice.db",
+            "size": len(r2.objects[ledger_key]),
+            "sha256": hashlib.sha256(r2.objects[ledger_key]).hexdigest(),
+        }
+    )
     r2.objects[marker_key] = json.dumps(manifest).encode()
 
     offsite = db.offsite_backup

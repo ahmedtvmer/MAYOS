@@ -108,7 +108,7 @@ def _live_ledger_ids(db: Any) -> list[str]:
     return sorted(ids)
 
 
-def _clamp_retention_days(days: int) -> int:
+def clamp_backup_retention_days(days: int) -> int:
     return max(1, min(int(days), MAX_BACKUP_RETENTION_DAYS))
 
 
@@ -120,7 +120,7 @@ def backup_retention_days(raw: str | None = None) -> int:
     except (TypeError, ValueError):
         logger.warning("Invalid MAYOS_BACKUP_RETENTION_DAYS=%r; using the default.", value)
         days = DEFAULT_BACKUP_RETENTION_DAYS
-    return _clamp_retention_days(days)
+    return clamp_backup_retention_days(days)
 
 
 def _require_catalog_snapshot(snapshot_dir: Path) -> Path:
@@ -250,7 +250,7 @@ def _publish_offsite_snapshot(
     store = getattr(db, "offsite_backup", None)
     if store is None:
         return None
-    days = _clamp_retention_days(retention_days if retention_days is not None else backup_retention_days())
+    days = clamp_backup_retention_days(retention_days if retention_days is not None else backup_retention_days())
     uploaded = False
     try:
         already_complete = store.is_snapshot_complete(snapshot_date)
@@ -294,7 +294,7 @@ def _prune_dated_dirs(root: Path, retention_days: int | None, now: datetime | No
     root = Path(root)
     if not root.is_dir():
         return []
-    days = _clamp_retention_days(retention_days if retention_days is not None else backup_retention_days())
+    days = clamp_backup_retention_days(retention_days if retention_days is not None else backup_retention_days())
     cutoff = (now or datetime.now(UTC)) - timedelta(days=days)
     pruned: list[str] = []
     for entry in sorted(root.iterdir()):
@@ -459,7 +459,12 @@ def restore_daily_backup(snapshot: Path, *, db: Any) -> dict[str, Any]:
     }
 
 
-def schedule_restore(backups_dir: Path, snapshot: Path) -> Path:
+def schedule_restore(
+    backups_dir: Path,
+    snapshot: Path,
+    *,
+    r2_snapshot_date: str | None = None,
+) -> Path:
     """Validates a snapshot and atomically writes a pending-restore marker.
 
     This makes restore a boot-time step of the API Machine: the operator cannot
@@ -474,6 +479,8 @@ def schedule_restore(backups_dir: Path, snapshot: Path) -> Path:
         "snapshot": str(Path(snapshot).resolve()),
         "requested_at": datetime.now(UTC).isoformat(),
     }
+    if r2_snapshot_date is not None:
+        payload["r2_snapshot_date"] = str(r2_snapshot_date)
     marker.parent.mkdir(parents=True, exist_ok=True)
     tmp = marker.with_name(f"{marker.name}.{uuid.uuid4().hex}.tmp")
     tmp.write_text(json.dumps(payload), encoding="utf-8")
@@ -482,16 +489,17 @@ def schedule_restore(backups_dir: Path, snapshot: Path) -> Path:
     return marker
 
 
-def _read_pending_restore(backups_dir: Path) -> Path | None:
+def _read_pending_restore(backups_dir: Path) -> tuple[Path, str | None] | None:
     marker = restore_pending_path(backups_dir)
     if not marker.is_file():
         return None
     try:
         payload = json.loads(marker.read_text(encoding="utf-8"))
         raw = str(payload["snapshot"])
+        r2_snapshot_date = payload.get("r2_snapshot_date")
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise RuntimeError(f"Pending-restore marker {marker} is unreadable; refusing to serve.") from exc
-    return Path(raw)
+    return Path(raw), str(r2_snapshot_date) if r2_snapshot_date is not None else None
 
 
 def apply_pending_restore(db: Any) -> dict[str, Any] | None:
@@ -503,10 +511,24 @@ def apply_pending_restore(db: Any) -> dict[str, Any] | None:
     serve a half-restored catalog; the next boot retries.
     """
     backups_dir = Path(db.backups_dir)
-    snapshot = _read_pending_restore(backups_dir)
-    if snapshot is None:
+    pending = _read_pending_restore(backups_dir)
+    if pending is None:
         return None
-    result = restore_daily_backup(snapshot, db=db)
-    restore_pending_path(backups_dir).unlink(missing_ok=True)
-    logger.warning("Pending restore from %s applied at boot.", snapshot)
-    return result
+    snapshot, r2_snapshot_date = pending
+    if r2_snapshot_date is not None and not snapshot.is_dir():
+        store = getattr(db, "offsite_backup", None)
+        if store is None:
+            raise RuntimeError("Pending R2 restore cannot run without R2 configuration.")
+        snapshot = backups_dir / "r2-restore" / f"{r2_snapshot_date}-{uuid.uuid4().hex}"
+        store.download_snapshot(r2_snapshot_date, snapshot)
+    try:
+        result = restore_daily_backup(snapshot, db=db)
+        restore_pending_path(backups_dir).unlink(missing_ok=True)
+        logger.warning("Pending restore from %s applied at boot.", snapshot)
+        return result
+    finally:
+        if r2_snapshot_date is not None:
+            restore_root = (backups_dir / "r2-restore").resolve()
+            candidate = snapshot.resolve()
+            if candidate.is_relative_to(restore_root):
+                shutil.rmtree(candidate, ignore_errors=True)

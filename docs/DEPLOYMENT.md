@@ -500,6 +500,17 @@ cleanup. Restricted whole-catalog copies can still contain deleted catalog rows
 for up to the disclosed 30-day recovery window, and the durable deletion record
 must remain separately protected and append-only.
 
+The API removes the local ledger and local snapshot copies during deletion.
+R2 ledger cleanup is queued in the durable deletion record and performed by
+startup or the hourly deletion replay; an R2 failure leaves that cleanup pending
+for another replay.
+
+R2 downloads are temporary restore work files under
+`/data/backups/r2-restore/`. An immediate restore removes its downloaded copy
+after the attempt, whether it succeeds or fails. A boot-scheduled restore keeps
+the copy until boot applies it, then removes it; if apply fails, the next boot
+fetches a fresh copy from R2 before retrying.
+
 > **Disclosure text (ADR 015).** Restricted whole-catalog recovery backups may
 > retain deleted rows (for example, an account's former catalog row) for up to
 > **30 days** after deletion, as disclosed to users. User-specific copies are

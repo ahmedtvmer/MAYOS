@@ -8,6 +8,7 @@ has uploaded, and keeps deletion cleanup and restore on the same interface.
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -19,7 +20,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterator
 
-from database.backup import OffsiteBackupStore
+from database.backup import OffsiteBackupStore, clamp_backup_retention_days
 from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
@@ -51,6 +52,7 @@ class R2BackupStore:
         if not all(environment_values.values()):
             return None
         import boto3
+        from botocore.config import Config
 
         client = boto3.client(
             "s3",
@@ -58,6 +60,12 @@ class R2BackupStore:
             endpoint_url=environment_values[R2_ENDPOINT_ENV],
             aws_access_key_id=environment_values[R2_ACCESS_KEY_ENV],
             aws_secret_access_key=environment_values[R2_SECRET_KEY_ENV],
+            config=Config(
+                connect_timeout=5,
+                read_timeout=30,
+                retries={"mode": "standard", "max_attempts": 3},
+                signature_version="s3v4",
+            ),
         )
         return cls(client, environment_values[R2_BUCKET_ENV], lock_path)
 
@@ -75,17 +83,19 @@ class R2BackupStore:
             raise FileNotFoundError(f"Snapshot has no catalog.db: {snapshot_dir}")
 
         with self._operation_lock():
-            if self._read_manifest(snapshot_date) is not None:
+            existing_manifest = self._read_manifest(snapshot_date)
+            if existing_manifest is not None and existing_manifest.get("version") == 2:
                 return
             self._delete_keys([marker_key])
             self._delete_stale_objects(prefix, files, marker_key)
-            manifest = {"version": 1, "date": snapshot_date, "files": self._upload_files(prefix, files)}
+            manifest = {"version": 2, "date": snapshot_date, "files": self._upload_files(prefix, files)}
             self._write_manifest(snapshot_date, manifest)
 
     def is_snapshot_complete(self, snapshot_date: str) -> bool:
         """True only when R2 has a valid marker for every uploaded object."""
         with self._operation_lock():
-            return self._read_manifest(snapshot_date) is not None
+            manifest = self._read_manifest(snapshot_date)
+            return manifest is not None and manifest.get("version") == 2
 
     def remove_ledger(self, ledger_id: str) -> None:
         """Deletes one account's ledger copy from every R2 snapshot.
@@ -105,7 +115,7 @@ class R2BackupStore:
 
     def prune_snapshots(self, *, retention_days: int, now: datetime | None = None) -> list[str]:
         """Deletes every R2 snapshot older than the local bounded retention."""
-        days = max(1, min(int(retention_days), 30))
+        days = clamp_backup_retention_days(retention_days)
         cutoff = (now or datetime.now(UTC)) - timedelta(days=days)
         with self._operation_lock():
             keys = self._list_keys(DAILY_PREFIX)
@@ -175,6 +185,9 @@ class R2BackupStore:
         self._client.download_file(self._bucket, key, str(target))
         if target.stat().st_size != int(entry["size"]):
             raise IOError(f"Downloaded snapshot file has the wrong size: {relative}")
+        expected_digest = entry.get("sha256")
+        if expected_digest is not None and self._sha256_file(target) != expected_digest:
+            raise IOError(f"Downloaded snapshot file failed its SHA-256 check: {relative}")
 
     def _delete_stale_objects(self, prefix: str, files: list[tuple[str, Path]], marker_key: str) -> None:
         expected = {f"{prefix}{relative}" for relative, _ in files}
@@ -185,8 +198,18 @@ class R2BackupStore:
         manifest_files = []
         for relative, path in files:
             self._client.upload_file(str(path), self._bucket, f"{prefix}{relative}")
-            manifest_files.append({"path": relative, "size": path.stat().st_size})
+            manifest_files.append(
+                {"path": relative, "size": path.stat().st_size, "sha256": self._sha256_file(path)}
+            )
         return manifest_files
+
+    @staticmethod
+    def _sha256_file(path: Path) -> str:
+        digest = hashlib.sha256()
+        with Path(path).open("rb") as file_obj:
+            for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
 
     @staticmethod
     def _ledger_object_keys(keys: list[str], ledger_id: str) -> list[str]:
@@ -275,7 +298,7 @@ class R2BackupStore:
     def _manifest_is_valid(self, manifest: Any, snapshot_date: str) -> bool:
         if (
             not isinstance(manifest, dict)
-            or manifest.get("version") != 1
+            or manifest.get("version") not in {1, 2}
             or manifest.get("date") != snapshot_date
             or not isinstance(manifest.get("files"), list)
         ):
@@ -286,6 +309,11 @@ class R2BackupStore:
                 return False
             for entry in manifest["files"]:
                 if isinstance(entry.get("size"), bool) or int(entry.get("size")) < 0:
+                    return False
+                digest = entry.get("sha256")
+                if manifest["version"] == 2 and not re.fullmatch(r"[0-9a-f]{64}", digest or ""):
+                    return False
+                if digest is not None and not re.fullmatch(r"[0-9a-f]{64}", digest):
                     return False
         except (AttributeError, TypeError, ValueError):
             return False
@@ -340,4 +368,25 @@ def configure_r2_backup(
         return None
     if log_disabled:
         logger.info("Off-site R2 backups enabled.")
+    return store
+
+
+def configure_database_offsite_backup(
+    db: Any | None = None,
+    *,
+    backups_dir: Path | None = None,
+    store: OffsiteBackupStore | None = None,
+    log_disabled: bool = False,
+) -> OffsiteBackupStore | None:
+    """Create or attach the configured store using the shared backup lock."""
+    if db is None and backups_dir is None:
+        raise ValueError("Pass a database or backups directory to configure off-site backups.")
+    directory = Path(backups_dir if backups_dir is not None else db.backups_dir)
+    if store is None:
+        store = configure_r2_backup(
+            lock_path=directory / ".offsite-r2.lock",
+            log_disabled=log_disabled,
+        )
+    if db is not None:
+        db.offsite_backup = store
     return store
