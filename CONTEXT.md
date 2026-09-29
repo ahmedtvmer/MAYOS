@@ -95,11 +95,15 @@ _Avoid_: PR (in prose), PB
 The two app surfaces of one account: training for oneself, or coaching assigned players. An account holding both capabilities switches between them; neither is a separate account.
 _Avoid_: Lifter UI, coach account
 
+**Display language**:
+The language, English or Arabic, an account chooses for the app and for messages MAYOS sends it. It belongs to the account, not the device. It does not bind the assistant, which replies in the language of the player's latest message and falls back to the Display language only when that message has no clear language.
+_Avoid_: Locale (implementation term), app language
+
 **Linked sign-in**:
 An external identity, such as a Google account, attached to exactly one MAYOS account and usable to sign in to it. It never replaces the account's username. An account always keeps at least one way to sign in, so a Linked sign-in can be removed only while the account has a password.
 
 **Active workout**:
-A workout the player is logging right now and has not yet finished. A device holds at most one, and it survives the app closing. Finishing it produces a Workout draft.
+A workout the player is logging right now and has not yet finished. A device holds at most one, and it survives the app closing; in the web app it survives a reload of that browser. Finishing it produces a Workout draft on Android; in the web app, finishing commits it directly, and a failed commit keeps the Active workout for retry.
 
 **Current set**:
 The next set of an Active workout the player should log: the first working set that is not yet ticked, in workout order, skipping warm-ups and moving across exercises. There is no Current set once every working set is ticked.
@@ -108,7 +112,7 @@ The next set of an Active workout the player should log: the first working set t
 The time a player has spent on the Active workout they are logging: measured from when that workout started to the present, with no pause, shown live in the logger and as the workout's total duration in its summary.
 
 **Workout draft**:
-A workout the player has recorded on their device but has not yet committed to their training history. A draft may be captured without connectivity.
+A workout the player has recorded on their Android device but has not yet committed to their training history. A draft may be captured without connectivity. The web app has no Workout drafts.
 
 **Training schedule**:
 The weekdays on which a player expects to train, interpreted in the player's timezone. It is separate from the ordered training days in a program.
