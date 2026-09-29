@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
 from database.database_manager import DatabaseManager
@@ -363,7 +363,18 @@ def test_system_prompt_forbids_computation_and_medical_advice():
     assert "Never compute, estimate, or invent" in coach_ai.SYSTEM_PROMPT
     assert "no diagnosis" in coach_ai.SYSTEM_PROMPT
     assert '"the player"' in coach_ai.SYSTEM_PROMPT
-    assert coach_ai.CONTEXT_VERSION == "coach-context-v1"
+    assert coach_ai.CONTEXT_VERSION == "coach-context-v2"
+
+
+def test_issue_148_messages_have_one_leading_system_message():
+    context_text = coach_ai.render_context(coach_ai.CANONICAL_FIXTURE)
+    messages = coach_ai.build_messages(context_text, "How is progress?", [])
+
+    system_message_indexes = [
+        index for index, message in enumerate(messages) if isinstance(message, SystemMessage)
+    ]
+    assert system_message_indexes == [0]
+    assert messages[0].content == f"{coach_ai.SYSTEM_PROMPT}\n\n{context_text}"
 
 
 # --------------------------------------------------------------------------

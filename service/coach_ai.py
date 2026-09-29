@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 #: Bumped whenever the prompt or the context shape changes; the eval report's
 #: ``prompt_hash`` must match :func:`prompt_version_hash` for the flag to enable.
-CONTEXT_VERSION = "coach-context-v1"
+CONTEXT_VERSION = "coach-context-v2"
 
 #: Schema version of the enablement report; a report written by another
 #: runner version is refused (ADR 049).
@@ -755,7 +755,7 @@ def build_messages(context_text: str, question: str, history: list[dict[str, Any
     """
     from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-    messages: list[Any] = [SystemMessage(content=SYSTEM_PROMPT), SystemMessage(content=context_text)]
+    messages: list[Any] = [SystemMessage(content=f"{SYSTEM_PROMPT}\n\n{context_text}")]
     for turn in history:
         content = str(turn.get("content", ""))
         if turn.get("role") == "assistant":

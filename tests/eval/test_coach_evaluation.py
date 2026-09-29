@@ -138,8 +138,7 @@ def test_prompt_sent_to_the_model_is_the_production_prompt(cases, mock_results):
     result = mock_results[0]
     case = cases[0]
     messages = coach_ai.build_messages(result["context"], case["question"], case["history"])
-    assert str(messages[0].content) == coach_ai.SYSTEM_PROMPT
-    assert str(messages[1].content) == result["context"]
+    assert str(messages[0].content) == f"{coach_ai.SYSTEM_PROMPT}\n\n{result['context']}"
     assert str(messages[-1].content) == case["question"]
 
 
