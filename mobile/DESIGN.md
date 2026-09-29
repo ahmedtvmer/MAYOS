@@ -87,10 +87,13 @@ small transparent pad, never edit pixels inside the mark or wordmark.
 All under `lib/src/core/theme/`.
 
 - `mayos_colors.dart` — `MayosPalette`: the only literal hex colors in the app.
-  The one documented exception is third-party branding: Google's four "G"
-  hues and its button light/dark theme colours live in the single commented
+  The in-app code exception is third-party branding: Google's four "G" hues
+  and its button light/dark theme colours live in the single commented
   `GoogleBrand` block in `features/player/auth/google_sign_in_button.dart`
   (#115), because a partner mark must render exactly as published.
+  The pre-Flutter documents in `web/` are an intentional exception: `index.html`
+  and `manifest.json` need `MayosPalette.darkCanvas` as a literal for the first
+  browser frame, `theme-color`, and standalone launch metadata.
 - `mayos_theme_extension.dart` — `MayosThemeExtension` (a `ThemeExtension`) with
   MAYOS-only semantics: `canvas`, `surface`, `surfaceElevated`, `surfaceSunken`,
   `secondarySurface`, `border`, `borderStrong`, `textPrimary`, `textSecondary`,
@@ -138,10 +141,19 @@ page to a centred `playerColumnMaxWidth` column; Coach mode keeps the full
 width. `AuthScaffold` applies the same column. Below the breakpoint nothing
 changes.
 
-The web-only `OfflineBannerSlot` sits below the header in `MayosScaffold` and at the top of `AuthScaffold` content.
+The web-only `OfflineBannerSlot` sits below the header in `MayosScaffold` and
+at the top of `AuthScaffold` content. `AuthScaffold` keeps a fixed Home Screen
+hint slot beside the auth hero structure; it collapses to zero height unless
+the iPhone Safari hint is eligible, and while the keyboard is open.
 
-Screens consume these and the tokens; there are no hard-coded brand or
-light/dark literal colors outside `core/theme/`.
+The online-only web loading page in `web/index.html` uses same-origin MAYOS
+wallpaper and lockup assets until Flutter's first frame; `web/manifest.json` and
+its icons provide standalone Home Screen launch branding. No offline service
+worker is registered.
+
+Flutter screens consume these tokens and have no hard-coded brand or light/dark
+colors outside `core/theme/`. The pre-Flutter `web/` literals are the documented
+browser-startup exception above.
 
 The authentication and recovery screens share one composition in
 `features/player/auth/auth_widgets.dart` (issue #52): `AuthScaffold` (brand

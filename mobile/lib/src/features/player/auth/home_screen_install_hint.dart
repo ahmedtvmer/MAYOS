@@ -3,15 +3,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/home_screen_install_hint_store.dart';
+import '../../../core/home_screen_install_hint_store_stub.dart'
+    if (dart.library.js_interop) '../../../core/home_screen_install_hint_store_web.dart'
+    as platform;
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
-import 'home_screen_install_hint_store.dart';
-import 'home_screen_install_hint_store_stub.dart'
-    if (dart.library.js_interop) 'home_screen_install_hint_store_web.dart'
-    as platform;
 
-export 'home_screen_install_hint_store.dart';
+export '../../../core/home_screen_install_hint_store.dart';
 
 final Provider<HomeScreenInstallHintStore> homeScreenInstallHintStoreProvider =
     Provider<HomeScreenInstallHintStore>(
@@ -51,31 +51,37 @@ class HomeScreenInstallHintController extends StateNotifier<bool> {
 /// A stable auth-frame slot, so showing or dismissing the hint cannot recreate
 /// authentication fields. It gives space back to the form while typing.
 class HomeScreenInstallHintSlot extends ConsumerWidget {
-  const HomeScreenInstallHintSlot({super.key});
+  const HomeScreenInstallHintSlot({super.key, required this.enabled});
+
+  final bool enabled;
 
   static const String message = 'Add MAYOS: Share → Add to Home Screen.';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final bool hintEligible = ref.watch(homeScreenInstallHintProvider);
-    return AnimatedSwitcher(
+    final bool hintVisible =
+        enabled && ref.watch(homeScreenInstallHintProvider);
+    return AnimatedSize(
+      key: const Key('home-screen-install-hint-slot'),
+      alignment: Alignment.topCenter,
       duration: MayosMotion.fast,
-      child: hintEligible
-          ? _HomeScreenInstallHintBanner(
-              key: const ValueKey<String>('home-screen-install-hint'),
-              onDismiss: () => unawaited(
-                ref.read(homeScreenInstallHintProvider.notifier).dismiss(),
+      curve: Curves.easeOut,
+      child: hintVisible
+          ? SizedBox(
+              height: kMayosMinTapTarget + MayosSpacing.xs,
+              child: _HomeScreenInstallHintBanner(
+                onDismiss: () => unawaited(
+                  ref.read(homeScreenInstallHintProvider.notifier).dismiss(),
+                ),
               ),
             )
-          : const SizedBox.shrink(
-              key: ValueKey<String>('home-screen-install-hint-hidden'),
-            ),
+          : const SizedBox.shrink(),
     );
   }
 }
 
 class _HomeScreenInstallHintBanner extends StatelessWidget {
-  const _HomeScreenInstallHintBanner({super.key, required this.onDismiss});
+  const _HomeScreenInstallHintBanner({required this.onDismiss});
 
   final VoidCallback onDismiss;
 
@@ -93,10 +99,7 @@ class _HomeScreenInstallHintBanner extends StatelessWidget {
         child: Row(
           children: <Widget>[
             const Expanded(child: _HomeScreenInstallHintText()),
-            _HomeScreenInstallHintDismissButton(
-              color: colors.textSecondary,
-              onDismiss: onDismiss,
-            ),
+            _HomeScreenInstallHintDismissButton(onDismiss: onDismiss),
           ],
         ),
       ),
@@ -121,16 +124,13 @@ class _HomeScreenInstallHintText extends StatelessWidget {
 }
 
 class _HomeScreenInstallHintDismissButton extends StatelessWidget {
-  const _HomeScreenInstallHintDismissButton({
-    required this.color,
-    required this.onDismiss,
-  });
+  const _HomeScreenInstallHintDismissButton({required this.onDismiss});
 
-  final Color color;
   final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
+    final MayosThemeExtension colors = MayosTheme.of(context);
     return IconButton(
       tooltip: 'Dismiss Home Screen hint',
       onPressed: onDismiss,
@@ -142,7 +142,7 @@ class _HomeScreenInstallHintDismissButton extends StatelessWidget {
       icon: Icon(
         Icons.close,
         size: MayosIconSizes.medium,
-        color: color,
+        color: colors.textSecondary,
       ),
     );
   }

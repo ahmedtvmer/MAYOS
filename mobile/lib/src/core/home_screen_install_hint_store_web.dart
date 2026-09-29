@@ -4,6 +4,7 @@ import 'dart:js_interop_unsafe';
 import 'package:web/web.dart' as web;
 
 import 'home_screen_install_hint_store.dart';
+import 'ios_safari_detection.dart';
 
 const String _dismissalStorageKey = 'mayos.homeScreenInstallHint.dismissed';
 
@@ -14,7 +15,6 @@ class _WebHomeScreenInstallHintStore implements HomeScreenInstallHintStore {
   @override
   Future<HomeScreenInstallHintEnvironment> readEnvironment() async =>
       HomeScreenInstallHintEnvironment(
-        isWeb: true,
         isIosSafari: _isIosSafari,
         isStandalone: _isStandalone,
         wasDismissed: _wasDismissed(),
@@ -25,15 +25,7 @@ class _WebHomeScreenInstallHintStore implements HomeScreenInstallHintStore {
     final String platform = web.window.navigator.platform;
     final bool iPadDesktop =
         platform == 'MacIntel' && web.window.navigator.maxTouchPoints > 1;
-    final bool appleMobile = userAgent.contains('iPhone') ||
-        userAgent.contains('iPad') ||
-        iPadDesktop;
-    final bool safari = userAgent.contains('Safari') &&
-        !RegExp(
-          r'CriOS|FxiOS|EdgiOS',
-          caseSensitive: false,
-        ).hasMatch(userAgent);
-    return appleMobile && safari;
+    return isIosSafariUserAgent(userAgent, iPadDesktop: iPadDesktop);
   }
 
   bool get _isStandalone {
@@ -53,13 +45,11 @@ class _WebHomeScreenInstallHintStore implements HomeScreenInstallHintStore {
   }
 
   @override
-  Future<bool> rememberDismissal() async {
+  Future<void> rememberDismissal() async {
     try {
       web.window.localStorage.setItem(_dismissalStorageKey, 'true');
-      return true;
     } catch (_) {
-      // Storage denial leaves the hint visible and available to try again.
-      return false;
+      // A denied write leaves the hint available again on the next screen.
     }
   }
 }

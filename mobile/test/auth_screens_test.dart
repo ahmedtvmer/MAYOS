@@ -83,30 +83,30 @@ class _MemoryHomeScreenInstallHintStore implements HomeScreenInstallHintStore {
   @override
   Future<HomeScreenInstallHintEnvironment> readEnvironment() async =>
       HomeScreenInstallHintEnvironment(
-        isWeb: environment.isWeb,
         isIosSafari: environment.isIosSafari,
         isStandalone: environment.isStandalone,
         wasDismissed: environment.wasDismissed || dismissed,
       );
 
   @override
-  Future<bool> rememberDismissal() async {
-    dismissed = canPersistDismissal;
-    return canPersistDismissal;
+  Future<void> rememberDismissal() async {
+    if (canPersistDismissal) dismissed = true;
   }
 }
+
+const HomeScreenInstallHintEnvironment _eligibleIPhoneSafari =
+    HomeScreenInstallHintEnvironment(
+  isIosSafari: true,
+  isStandalone: false,
+  wasDismissed: false,
+);
 
 void main() {
   testWidgets('iPhone Safari sees the hint outside standalone',
       (WidgetTester tester) async {
     final _MemoryHomeScreenInstallHintStore store =
         _MemoryHomeScreenInstallHintStore(
-      const HomeScreenInstallHintEnvironment(
-        isWeb: true,
-        isIosSafari: true,
-        isStandalone: false,
-        wasDismissed: false,
-      ),
+      _eligibleIPhoneSafari,
     );
     await _pumpAuth(tester, _loginFake(), extraOverrides: <Override>[
       homeScreenInstallHintStoreProvider.overrideWithValue(store),
@@ -124,7 +124,6 @@ void main() {
       (
         'standalone Safari',
         const HomeScreenInstallHintEnvironment(
-          isWeb: true,
           isIosSafari: true,
           isStandalone: true,
           wasDismissed: false,
@@ -138,7 +137,6 @@ void main() {
         (
           browser,
           const HomeScreenInstallHintEnvironment(
-            isWeb: true,
             isIosSafari: false,
             isStandalone: false,
             wasDismissed: false,
@@ -159,16 +157,36 @@ void main() {
     }
   });
 
+  testWidgets('non-eligible login collapses the fixed hint slot',
+      (WidgetTester tester) async {
+    await _pumpAuth(
+      tester,
+      _loginFake(),
+      extraOverrides: <Override>[
+        homeScreenInstallHintStoreProvider.overrideWithValue(
+          _MemoryHomeScreenInstallHintStore(
+            const HomeScreenInstallHintEnvironment(
+              isIosSafari: false,
+              isStandalone: false,
+              wasDismissed: false,
+            ),
+          ),
+        ),
+      ],
+    );
+    await tester.pumpAndSettle();
+
+    final Finder slot = find.byKey(const Key('home-screen-install-hint-slot'));
+    expect(slot, findsOneWidget);
+    expect(tester.getSize(slot).height, 0);
+    expect(find.text(HomeScreenInstallHintSlot.message), findsNothing);
+  });
+
   testWidgets('dismissal persists when the login screen is rebuilt',
       (WidgetTester tester) async {
     final _MemoryHomeScreenInstallHintStore store =
         _MemoryHomeScreenInstallHintStore(
-      const HomeScreenInstallHintEnvironment(
-        isWeb: true,
-        isIosSafari: true,
-        isStandalone: false,
-        wasDismissed: false,
-      ),
+      _eligibleIPhoneSafari,
     );
     final List<Override> overrides = <Override>[
       homeScreenInstallHintStoreProvider.overrideWithValue(store),
@@ -191,12 +209,7 @@ void main() {
       'on the next visit', (WidgetTester tester) async {
     final _MemoryHomeScreenInstallHintStore store =
         _MemoryHomeScreenInstallHintStore(
-      const HomeScreenInstallHintEnvironment(
-        isWeb: true,
-        isIosSafari: true,
-        isStandalone: false,
-        wasDismissed: false,
-      ),
+      _eligibleIPhoneSafari,
     )..canPersistDismissal = false;
     final List<Override> overrides = <Override>[
       homeScreenInstallHintStoreProvider.overrideWithValue(store),
@@ -217,12 +230,7 @@ void main() {
       (WidgetTester tester) async {
     final _MemoryHomeScreenInstallHintStore store =
         _MemoryHomeScreenInstallHintStore(
-      const HomeScreenInstallHintEnvironment(
-        isWeb: true,
-        isIosSafari: true,
-        isStandalone: false,
-        wasDismissed: false,
-      ),
+      _eligibleIPhoneSafari,
     );
     await _pumpAuth(tester, _loginFake(),
         size: const Size(360, 640),
@@ -240,7 +248,22 @@ void main() {
     tester.view.viewInsets = const FakeViewPadding(bottom: 300);
     addTearDown(tester.view.resetViewInsets);
     await tester.pump(const Duration(milliseconds: 200));
+    expect(
+      tester
+          .widget<HomeScreenInstallHintSlot>(
+            find.byType(HomeScreenInstallHintSlot),
+          )
+          .enabled,
+      isFalse,
+    );
+    await tester.pumpAndSettle();
 
+    expect(
+      tester
+          .getSize(find.byKey(const Key('home-screen-install-hint-slot')))
+          .height,
+      0,
+    );
     expect(tester.state<State<EditableText>>(editable), same(before));
     expect(tester.widget<EditableText>(editable).focusNode.hasFocus, isTrue);
   });

@@ -22,7 +22,7 @@
   <meta name="theme-color" content="#0A1422">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="MAYOS">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
 
   <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
@@ -30,6 +30,7 @@
 
   <title>MAYOS</title>
   <style>
+    /* Pre-Flutter fallback mirrors MayosPalette.darkCanvas. */
     html,
     body {
       width: 100%;
@@ -46,6 +47,7 @@
       display: grid;
       place-items: center;
       overflow: hidden;
+      /* Mirrors MayosPalette.darkCanvas. */
       background: #0A1422;
       opacity: 1;
       transition: opacity 320ms ease-out;
@@ -56,6 +58,7 @@
       inset: -12px;
       content: "";
       background: url("mayos-loading-wallpaper.jpg") center / cover no-repeat;
+      /* Mirrors MayosWallpaper.blurSigma. */
       filter: blur(6px);
       transform: scale(1.02);
     }
@@ -64,6 +67,7 @@
       position: absolute;
       inset: 0;
       content: "";
+      /* Mirrors MayosWallpaper.overlayOpacity. */
       background: rgb(0 0 0 / 60%);
     }
 
@@ -72,7 +76,8 @@
       z-index: 1;
       display: block;
       width: auto;
-      height: clamp(72px, 22vw, 120px);
+      /* Mirrors SplashScreen: min(0.42 × width, 0.22 × height), 72–120dp. */
+      height: clamp(72px, min(42vw, 22vh), 120px);
     }
 
     #mayos-loading.is-hidden {
