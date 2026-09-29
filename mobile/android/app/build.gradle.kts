@@ -69,6 +69,9 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // flutter_local_notifications requires core library desugaring for
+        // its scheduled-notification APIs (#125).
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -114,6 +117,11 @@ kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
+}
+
+// Required by flutter_local_notifications' scheduled alarms (#125).
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 flutter {

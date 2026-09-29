@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show immutable;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'baselines.dart';
+import 'effort.dart';
 import 'models.dart';
 import 'performed_date_window.dart';
 import 'secure_store.dart';
@@ -90,6 +91,90 @@ class ActiveWorkoutSet {
         'rir': rir,
         'is_warmup': isWarmup,
         'ticked': ticked,
+      };
+}
+
+/// `100 × 5 @1` — one ticked row as the rest notification's "last" shows it
+/// (`last 100 × 5 @1`, #125), unrated rows dropping the `@` part like the
+/// table's previous column does.
+String setPerformanceLabel(ActiveWorkoutSet set) {
+  final String effort = set.rir == null ? '' : ' @${formatRir(set.rir!)}';
+  final double weight = set.weightKg;
+  final String kg =
+      weight == weight.roundToDouble() ? weight.round().toString() : '$weight';
+  return '$kg × ${set.reps}$effort';
+}
+
+/// The running rest timer, stored inside the Active workout so it survives a
+/// restart (#125): when it ends, plus what the bar and the lock-screen
+/// notification label it with.
+@immutable
+class ActiveRestTimer {
+  const ActiveRestTimer({
+    required this.endsAt,
+    required this.totalSeconds,
+    required this.exerciseId,
+    required this.exerciseName,
+    required this.setNumber,
+    this.lastLabel,
+  });
+
+  factory ActiveRestTimer.fromJson(Map<String, dynamic> json) =>
+      ActiveRestTimer(
+        endsAt: json['ends_at'] as String,
+        totalSeconds: (json['total_seconds'] as num?)?.toInt() ?? 0,
+        exerciseId: json['exercise_id'] as String? ?? '',
+        exerciseName: json['exercise_name'] as String? ?? '',
+        setNumber: (json['set_number'] as num?)?.toInt() ?? 0,
+        lastLabel: json['last_label'] as String?,
+      );
+
+  /// When the rest ends, as a UTC ISO-8601 string.
+  final String endsAt;
+
+  /// The length the rest started with — the bar's draining fill and the
+  /// notification's "Rest m:ss" read this.
+  final int totalSeconds;
+
+  final String exerciseId;
+  final String exerciseName;
+
+  /// The 1-based row number that started the rest, as the keypad numbers it.
+  final int setNumber;
+
+  /// `100 × 5 @1` of the ticked set, when there were values to show.
+  final String? lastLabel;
+
+  DateTime get endsAtClock => DateTime.tryParse(endsAt) ?? DateTime.now();
+
+  /// Whole seconds left, rounded up — exact while the app is in the
+  /// foreground because it is computed from the clock, never decremented.
+  int remainingSeconds(DateTime now) {
+    final int ms = endsAtClock.difference(now).inMilliseconds;
+    if (ms <= 0) {
+      return 0;
+    }
+    return (ms / 1000).ceil();
+  }
+
+  bool isOver(DateTime now) => !endsAtClock.isAfter(now);
+
+  ActiveRestTimer copyWith({String? endsAt}) => ActiveRestTimer(
+        endsAt: endsAt ?? this.endsAt,
+        totalSeconds: totalSeconds,
+        exerciseId: exerciseId,
+        exerciseName: exerciseName,
+        setNumber: setNumber,
+        lastLabel: lastLabel,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'ends_at': endsAt,
+        'total_seconds': totalSeconds,
+        'exercise_id': exerciseId,
+        'exercise_name': exerciseName,
+        'set_number': setNumber,
+        'last_label': lastLabel,
       };
 }
 
@@ -199,6 +284,7 @@ class ActiveWorkout {
     required this.exercises,
     required this.baselines,
     this.programVersion,
+    this.rest,
   });
 
   factory ActiveWorkout.fromJson(Map<String, dynamic> json) => ActiveWorkout(
@@ -213,6 +299,9 @@ class ActiveWorkout {
                 ActiveWorkoutExercise.fromJson(e as Map<String, dynamic>))
             .toList(growable: false),
         baselines: _baselinesFromJson(json['baselines']),
+        rest: json['rest'] is Map<String, dynamic>
+            ? ActiveRestTimer.fromJson(json['rest'] as Map<String, dynamic>)
+            : null,
       );
 
   static Map<String, BaselineExercise> _baselinesFromJson(dynamic raw) {
@@ -245,6 +334,10 @@ class ActiveWorkout {
   /// The baselines frozen at start, keyed by exercise id.
   final Map<String, BaselineExercise> baselines;
 
+  /// The rest timer currently running, or null (#125). It is persisted with
+  /// the workout, so the countdown survives an app restart.
+  final ActiveRestTimer? rest;
+
   DateTime get startedAtClock => DateTime.tryParse(startedAt) ?? DateTime.now();
 
   /// The day the workout started, in the device's local zone — the default
@@ -255,6 +348,8 @@ class ActiveWorkout {
     List<ActiveWorkoutExercise>? exercises,
     Map<String, BaselineExercise>? baselines,
     int? programVersion,
+    ActiveRestTimer? rest,
+    bool clearRest = false,
   }) =>
       ActiveWorkout(
         id: id,
@@ -265,6 +360,7 @@ class ActiveWorkout {
         programVersion: programVersion ?? this.programVersion,
         exercises: exercises ?? this.exercises,
         baselines: baselines ?? this.baselines,
+        rest: clearRest ? null : (rest ?? this.rest),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -283,6 +379,7 @@ class ActiveWorkout {
               in baselines.entries)
             entry.key: entry.value.toJson(),
         },
+        'rest': rest?.toJson(),
       };
 
   /// The `WorkoutDraft` this workout finishes into, built exactly the way the

@@ -30,6 +30,7 @@ import 'active_workout_controller.dart';
 import 'draft_sync_service.dart';
 import 'logger_keypad.dart';
 import 'personal_record_badge.dart';
+import 'rest_timer_widgets.dart';
 
 /// The frozen previous working set matched set by set: set N of the table is
 /// the Nth working set of the baseline's `last_session` (#107/#123), for
@@ -181,6 +182,12 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   bool _saving = false;
   LoggerCellFocus? _focus;
 
+  /// The foreground countdown ticker (#125): while a rest runs it wakes the
+  /// bar every quarter second and, at the end time, completes the rest — the
+  /// vibration, the sound, and the bar going away — even when the keypad (and
+  /// so the bar) is hidden.
+  Timer? _restTicker;
+
   @override
   void initState() {
     super.initState();
@@ -190,9 +197,57 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
 
   @override
   void dispose() {
+    _restTicker?.cancel();
+    _restTicker = null;
     unawaited(_keepAwake(false));
     _notes.dispose();
     super.dispose();
+  }
+
+  /// Starts or stops the ticker to match whether a rest is running. Called
+  /// from build, which only ever touches the timer, never the tree.
+  void _syncRestTicker(ActiveWorkout workout) {
+    final bool running = workout.rest != null;
+    if (running && _restTicker == null) {
+      _restTicker =
+          Timer.periodic(const Duration(milliseconds: 250), (_) => _onRestTick());
+    } else if (!running && _restTicker != null) {
+      _restTicker?.cancel();
+      _restTicker = null;
+    }
+  }
+
+  void _onRestTick() {
+    final ActiveRestTimer? rest = _workout?.rest;
+    if (rest == null) {
+      return;
+    }
+    if (rest.isOver(DateTime.now())) {
+      unawaited(_controller.completeRest());
+      return;
+    }
+    if (mounted) {
+      // Recompute the bar from the wall clock: exact in the foreground (#125).
+      setState(() {});
+    }
+  }
+
+  /// The chip's picker (#125): Off, then 1:00–5:00 in 15-second steps, saved
+  /// as this device's override for the exercise.
+  Future<void> _pickRest(int exerciseIndex) async {
+    final int? picked = await showRestLengthPicker(
+      context,
+      initial: _controller.restLengthFor(exerciseIndex),
+    );
+    if (picked == null || !mounted) {
+      return;
+    }
+    await _controller.setRestLength(exerciseIndex, picked);
+    // The override lives in the device store, not in the Active workout's
+    // state, so the chip has to be rebuilt by hand (#125).
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   /// The screen stays awake while the logger is open (#107). Kept best-effort
@@ -631,6 +686,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       _recordFocus = null;
       _focus = null;
     });
+    // The summary replaces the workout: the lock-screen notification and the
+    // end alarm come off until Back returns to a still-running rest (#125).
+    unawaited(_controller.suspendRestAlerts());
   }
 
   /// "N sets aren't ticked · Discard unticked sets and finish / Keep logging"
@@ -762,13 +820,15 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   }
 
   /// Back from the summary returns to the Active workout (#124). The snapshot
-  /// is dropped, so a later Finish computes a fresh one from the rows.
+  /// is dropped, so a later Finish computes a fresh one from the rows. A rest
+  /// that kept counting gets its notification and alarm back (#125).
   void _backFromSummary() {
     setState(() {
       _summaryStep = false;
       _summary = null;
       _error = null;
     });
+    unawaited(_controller.restoreRestAlerts());
   }
 
   // ---- build --------------------------------------------------------------
@@ -804,6 +864,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       // The workout was just cleared by Save; the route moves away next frame.
       return const Center(child: CircularProgressIndicator());
     }
+    _syncRestTicker(workout);
+    final bool keypadVisible = _validFocus(workout) && _focus != null;
     return PopScope(
       canPop: !_summaryStep,
       onPopInvokedWithResult: (bool didPop, Object? result) {
@@ -816,10 +878,27 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
           Expanded(
             child: _summaryStep ? _buildSummary() : _buildActive(workout),
           ),
-          if (_validFocus(workout) && _focus != null)
-            _buildKeypad(workout, _focus!),
+          // The slim rest bar is pinned to the bottom and shown only while
+          // the keypad is hidden (#125).
+          if (!_summaryStep && !keypadVisible && workout.rest != null)
+            _buildRestBar(workout.rest!),
+          if (keypadVisible) _buildKeypad(workout, _focus!),
         ],
       ),
+    );
+  }
+
+  Widget _buildRestBar(ActiveRestTimer rest) {
+    final DateTime now = DateTime.now();
+    return RestTimerBar(
+      remainingSeconds: rest.remainingSeconds(now),
+      totalSeconds: rest.totalSeconds,
+      exerciseName: rest.exerciseName,
+      onMinus: () =>
+          unawaited(_controller.adjustRest(const Duration(seconds: -15))),
+      onPlus: () =>
+          unawaited(_controller.adjustRest(const Duration(seconds: 15))),
+      onSkip: () => unawaited(_controller.skipRest()),
     );
   }
 
@@ -924,6 +1003,18 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
                 exercise.targetLabel!,
                 style: MayosTypography.caption.copyWith(color: c.textMuted),
               ),
+            // The rest chip (#125): the resolved length, tap to change it.
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(top: MayosSpacing.xxs),
+                child: RestLengthChip(
+                  key: ValueKey<String>('logger.rest.$exerciseIndex'),
+                  seconds: _controller.restLengthFor(exerciseIndex),
+                  onPressed: () => _pickRest(exerciseIndex),
+                ),
+              ),
+            ),
             _tableHeader(c),
             for (int setIndex = 0; setIndex < exercise.sets.length; setIndex++)
               _buildSetRow(workout, exerciseIndex, setIndex, badges),
