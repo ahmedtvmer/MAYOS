@@ -208,10 +208,24 @@ Future<void> _typeCell(
   await tester.pump(const Duration(milliseconds: 100));
 }
 
+Finder _cardMenu(int exerciseIndex) =>
+    find.byKey(ValueKey<String>('logger.cardMenu.$exerciseIndex'));
+
+Finder _restMenuItem(int exerciseIndex) =>
+    find.byKey(ValueKey<String>('logger.cardMenu.$exerciseIndex.rest'));
+
+/// Opens the card's ⋮ menu and picks **Rest time…** — the #125 picker now
+/// lives behind the #162 menu rather than in a chip on the title row.
+Future<void> _openRestPicker(WidgetTester tester, int exerciseIndex) async {
+  await tester.tap(_cardMenu(exerciseIndex));
+  await tester.pumpAndSettle();
+  await tester.tap(_restMenuItem(exerciseIndex));
+  await tester.pumpAndSettle();
+}
+
 Future<void> _pickRestOption(
     WidgetTester tester, int exerciseIndex, int seconds) async {
-  await tester.tap(find.byKey(ValueKey<String>('logger.rest.$exerciseIndex')));
-  await tester.pumpAndSettle();
+  await _openRestPicker(tester, exerciseIndex);
   final Finder option = find.byKey(ValueKey<String>('rest.option.$seconds'));
   if (option.evaluate().isEmpty) {
     // The picker scrolls: walk down to the options below the fold.
@@ -227,12 +241,22 @@ void main() {
       (WidgetTester tester) async {
     await _openLogger(tester);
 
-    // Bench carries the program's 180 → "Rest 3:00"…
-    expect(find.text('Rest 3:00'), findsOneWidget);
+    // Bench carries the program's 180 → "Rest 3:00" on the prescription
+    // line, which is where the rest length now stays visible (#162)…
+    expect(find.textContaining('Rest 3:00'), findsOneWidget);
     // …the exercise with no rest_seconds resolves to the flat 2:00 (#125).
-    expect(find.text('Rest 2:00'), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('logger.rest.0')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('logger.rest.1')), findsOneWidget);
+    expect(find.textContaining('Rest 2:00'), findsOneWidget);
+    // The picker itself is reached through the card's ⋮ menu (#162), and
+    // every card carries its own menu entry point.
+    expect(_cardMenu(0), findsOneWidget);
+    expect(_cardMenu(1), findsOneWidget);
+    await tester.tap(_cardMenu(0));
+    await tester.pumpAndSettle();
+    expect(find.text('Rest time…'), findsOneWidget);
+    expect(_restMenuItem(0), findsOneWidget);
+    await tester.tap(_restMenuItem(0));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey<String>('rest.option.60')), findsOneWidget);
   });
 
   testWidgets(
@@ -244,8 +268,7 @@ void main() {
       InMemoryActiveWorkoutStore store
     }) harness = await _openLogger(tester);
 
-    await tester.tap(find.byKey(const ValueKey<String>('logger.rest.0')));
-    await tester.pumpAndSettle();
+    await _openRestPicker(tester, 0);
     expect(find.text('Off'), findsOneWidget);
     expect(find.text('1:00'), findsOneWidget);
     expect(find.text('1:15'), findsOneWidget);
@@ -269,19 +292,18 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('rest.option.135')));
     await tester.pumpAndSettle();
-    expect(find.text('Rest 2:15'), findsOneWidget);
+    expect(find.textContaining('Rest 2:15'), findsOneWidget);
     expect(harness.restLengths.values[_account]?['bench_press'], 135);
     // The other exercise keeps its default: the override is per exercise.
     expect(harness.restLengths.values[_account]?['cable_row'], isNull);
-    expect(find.text('Rest 2:00'), findsOneWidget);
+    expect(find.textContaining('Rest 2:00'), findsOneWidget);
 
     // Off is a first-class choice: the chip reads it back…
     await _pickRestOption(tester, 0, 0);
-    expect(find.text('Rest Off'), findsOneWidget);
+    expect(find.textContaining('Rest Off'), findsOneWidget);
     expect(harness.restLengths.values[_account]?['bench_press'], 0);
     // …and the sheet reopens with Off as the current value.
-    await tester.tap(find.byKey(const ValueKey<String>('logger.rest.0')));
-    await tester.pumpAndSettle();
+    await _openRestPicker(tester, 0);
     expect(
       tester
           .widget<Icon>(
@@ -417,7 +439,7 @@ void main() {
     }) harness = await _openLogger(tester);
 
     await _pickRestOption(tester, 0, 0);
-    expect(find.text('Rest Off'), findsOneWidget);
+    expect(find.textContaining('Rest Off'), findsOneWidget);
 
     await tester.tap(_tick(0, 0));
     await tester.pump(const Duration(milliseconds: 100));

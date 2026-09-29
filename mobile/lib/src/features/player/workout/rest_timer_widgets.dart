@@ -8,60 +8,6 @@ import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
 
-/// The exercise card's rest chip (#125): a compact "Rest m:ss" (or
-/// "Rest Off") pill that opens the rest-length picker.
-class RestLengthChip extends StatelessWidget {
-  const RestLengthChip({
-    super.key,
-    required this.seconds,
-    required this.onPressed,
-  });
-
-  /// The resolved rest length: 0 means Off.
-  final int seconds;
-
-  final VoidCallback onPressed;
-
-  String get _label => seconds <= 0 ? 'Rest Off' : 'Rest ${restMmSs(seconds)}';
-
-  @override
-  Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    // The pill stays compact; the tappable area around it is a full 48dp
-    // (#158), so the chip meets the accessibility guidance without growing
-    // into a fat button.
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: MayosRadii.pillRadius,
-      child: SizedBox(
-        height: kMayosMinTapTarget,
-        child: Center(
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: MayosSpacing.sm, vertical: MayosSpacing.xxs),
-            decoration: BoxDecoration(
-              color: c.selectedSurface,
-              borderRadius: MayosRadii.pillRadius,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Icon(Icons.timer_outlined,
-                    size: MayosIconSizes.small, color: c.accent),
-                const SizedBox(width: MayosSpacing.xxs),
-                Text(
-                  _label,
-                  style: MayosTypography.captionStrong.copyWith(color: c.accent),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// The rest picker (#125): Off, then 1:00–5:00 in 15-second steps. Returns
 /// the picked length in seconds, or null when dismissed.
 Future<int?> showRestLengthPicker(

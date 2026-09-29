@@ -80,6 +80,9 @@ A player's request for their coach to replace an exercise in a coach-controlled 
 **Unplanned exercise**:
 An exercise the player performed and recorded that was not prescribed in the active program. Recording it does not change the program.
 
+**Replace exercise**:
+Swapping a prescribed exercise for a different one while logging a workout. It applies to that workout only: the program is unchanged, the replaced exercise is recorded as skipped and the replacement as performed.
+
 **Reps in reserve (RIR)**:
 The player's own estimate of how many more reps they could have completed in a set. It is the effort measure players see and enter; it is optional, and a blank value means the player did not rate the set.
 _Avoid_: RPE (internal legacy measure; RIR = 10 − RPE)

@@ -2166,11 +2166,15 @@ class Prescription {
 ///
 /// [imagePath] is the catalog's relative picture path, carried so an exercise
 /// added this way gets its card's picture like any planned one (#161).
+/// [targetMuscle] is the catalog's `target_muscle` column, carried so the
+/// Replace exercise search can pre-filter its results to the planned
+/// exercise's muscle client-side (#162).
 class ExerciseCatalogEntry {
   const ExerciseCatalogEntry({
     required this.id,
     required this.name,
     this.imagePath,
+    this.targetMuscle,
   });
 
   factory ExerciseCatalogEntry.fromJson(Map<String, dynamic> json) =>
@@ -2178,11 +2182,16 @@ class ExerciseCatalogEntry {
         id: json['id'] as String,
         name: json['name'] as String,
         imagePath: json['image_path'] as String?,
+        targetMuscle: json['target_muscle'] as String?,
       );
 
   final String id;
   final String name;
   final String? imagePath;
+
+  /// The muscle the catalog file trains (`Quads`, `Chest`, …), or null when
+  /// the row carries none.
+  final String? targetMuscle;
 }
 
 /// `GET /workouts/exercises/{exercise_id}`: read-only catalog detail for the

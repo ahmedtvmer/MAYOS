@@ -438,6 +438,7 @@ class ActiveWorkoutExercise {
     required this.exercise,
     required this.sets,
     this.unplanned = false,
+    this.replaced = false,
     this.targetLabel,
     this.prescriptionHint,
     this.effectiveSets,
@@ -452,6 +453,7 @@ class ActiveWorkoutExercise {
                 ActiveWorkoutSet.fromJson(s as Map<String, dynamic>))
             .toList(growable: false),
         unplanned: json['unplanned'] as bool? ?? false,
+        replaced: json['replaced'] as bool? ?? false,
         targetLabel: json['target_label'] as String?,
         prescriptionHint: json['prescription_hint'] is Map<String, dynamic>
             ? PrescriptionHint.fromJson(
@@ -464,6 +466,13 @@ class ActiveWorkoutExercise {
   final Map<String, dynamic> exercise;
   final List<ActiveWorkoutSet> sets;
   final bool unplanned;
+
+  /// A planned exercise the player swapped out with **Replace exercise**
+  /// (#162): it keeps its place and its exact program payload so the Workout
+  /// draft still carries it as skipped, but it holds no rows, is never
+  /// rendered as a card, and is excluded from progress by having no working
+  /// rows. The replacement sits right after it as an unplanned exercise.
+  final bool replaced;
 
   /// The program day's own caption, kept on the exercise and persisted with
   /// the Active workout; the card rebuilds its own line from the same facts
@@ -496,11 +505,16 @@ class ActiveWorkoutExercise {
       (exercise['target_sets'] as num?)?.toInt() ??
       sets.length;
 
-  ActiveWorkoutExercise copyWith({List<ActiveWorkoutSet>? sets}) =>
+  ActiveWorkoutExercise copyWith({
+    List<ActiveWorkoutSet>? sets,
+    bool? unplanned,
+    bool? replaced,
+  }) =>
       ActiveWorkoutExercise(
         exercise: exercise,
         sets: sets ?? this.sets,
-        unplanned: unplanned,
+        unplanned: unplanned ?? this.unplanned,
+        replaced: replaced ?? this.replaced,
         targetLabel: targetLabel,
         prescriptionHint: prescriptionHint,
         effectiveSets: effectiveSets,
@@ -512,6 +526,9 @@ class ActiveWorkoutExercise {
           for (final ActiveWorkoutSet set in sets) set.toJson(),
         ],
         'unplanned': unplanned,
+        // Omitted unless true, so every exercise that was never replaced
+        // stores exactly the JSON it did before this field existed (#162).
+        if (replaced) 'replaced': true,
         'target_label': targetLabel,
         'prescription_hint': prescriptionHint?.toJson(),
         'effective_sets': effectiveSets,

@@ -12,7 +12,6 @@ import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_card.dart';
 import 'logger_keypad.dart';
 import 'personal_record_badge.dart';
-import 'rest_timer_widgets.dart';
 
 // Presentation only (#158, plan §13): one compact card per exercise, a
 // leaner SET · KG · REPS · RIR · ✓ table with no PREVIOUS column, the
@@ -265,10 +264,12 @@ class ExerciseCatalogThumbnail extends StatelessWidget {
 
 /// One compact exercise card (#158, plan §2): the name in primary text
 /// colour, the catalog picture (#161), the prescription line, the `Last:`
-/// line when there is history, the leaner table, and a full-width "+ Add
-/// set". The rest chip (#125) trails the title so a later slice can park a
-/// menu beside it; nothing here decides anything — rows and callbacks arrive
-/// from the logger.
+/// line when there is history, the leaner table, a full-width "+ Add set"
+/// and the card's ⋮ menu (#162) — **Replace exercise**, **Rest time…** and
+/// **Remove exercise** (unplanned exercises only). The rest length is no
+/// longer a chip beside the title: it stays visible at the end of the
+/// prescription line, and the picker opens from the menu (#125). Nothing here
+/// decides anything — rows and callbacks arrive from the logger.
 class ExerciseLoggingCard extends StatelessWidget {
   const ExerciseLoggingCard({
     super.key,
@@ -278,15 +279,20 @@ class ExerciseLoggingCard extends StatelessWidget {
     required this.rows,
     required this.onPickRest,
     required this.onAddSet,
+    required this.onReplace,
+    this.onRemove,
     this.unplanned = false,
-    this.restChipKey,
+    this.menuKey,
+    this.replaceKey,
+    this.restKey,
+    this.removeKey,
     this.addSetKey,
   });
 
   final ActiveWorkoutExercise exercise;
 
-  /// The rest length this card is using right now (#125), for the chip and
-  /// the prescription line alike.
+  /// The rest length this card is using right now (#125), for the
+  /// prescription line and the picker's starting value alike.
   final int restSeconds;
 
   /// The frozen baseline's last session; empty hides the `Last:` line.
@@ -298,8 +304,21 @@ class ExerciseLoggingCard extends StatelessWidget {
 
   final VoidCallback onPickRest;
   final VoidCallback onAddSet;
+
+  /// **Replace exercise** (#162), offered on every card.
+  final VoidCallback onReplace;
+
+  /// **Remove exercise** (#162): non-null only for an unplanned exercise, so
+  /// the menu offers it exactly where a player may undo an accidental add.
+  final VoidCallback? onRemove;
+
   final bool unplanned;
-  final Key? restChipKey;
+
+  /// Keys for the menu and its entries, so tests open what a player opens.
+  final Key? menuKey;
+  final Key? replaceKey;
+  final Key? restKey;
+  final Key? removeKey;
   final Key? addSetKey;
 
   @override
@@ -308,7 +327,7 @@ class ExerciseLoggingCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: MayosSpacing.md),
       child: MayosCard(
-        padding: const EdgeInsets.fromLTRB(MayosSpacing.md, MayosSpacing.sm,
+        padding: const EdgeInsets.fromLTRB(MayosSpacing.md, MayosSpacing.xxs,
             MayosSpacing.md, MayosSpacing.xxs),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -325,18 +344,51 @@ class ExerciseLoggingCard extends StatelessWidget {
                   ),
                 ),
                 if (unplanned) const _UnplannedTag(),
-                Padding(
-                  padding: const EdgeInsets.only(left: MayosSpacing.xs),
-                  child: RestLengthChip(
-                    key: restChipKey,
-                    seconds: restSeconds,
-                    onPressed: onPickRest,
-                  ),
+                // The ⋮ menu (#162), the same PopupMenu pattern the logger's
+                // top bar uses (#159): 48dp target, entries in the body role.
+                PopupMenuButton<String>(
+                  key: menuKey,
+                  tooltip: 'Exercise menu',
+                  onSelected: (String value) {
+                    switch (value) {
+                      case 'replace':
+                        onReplace();
+                      case 'rest':
+                        onPickRest();
+                      case 'remove':
+                        onRemove?.call();
+                    }
+                  },
+                  itemBuilder: (BuildContext context) =>
+                      <PopupMenuItem<String>>[
+                    PopupMenuItem<String>(
+                      key: replaceKey,
+                      value: 'replace',
+                      child: Text(
+                        'Replace exercise',
+                        style: MayosTypography.body,
+                      ),
+                    ),
+                    PopupMenuItem<String>(
+                      key: restKey,
+                      value: 'rest',
+                      child: Text('Rest time…', style: MayosTypography.body),
+                    ),
+                    if (onRemove != null)
+                      PopupMenuItem<String>(
+                        key: removeKey,
+                        value: 'remove',
+                        child: Text(
+                          'Remove exercise',
+                          style: MayosTypography.body,
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),
             // The picture sits beside the caption lines rather than the title
-            // row (#161): the pill and the chip already fill that row at 2.0
+            // row (#161): the pill and the menu already fill that row at 2.0
             // text scale, and the caption text wraps into the room the fixed
             // thumbnail leaves.
             Padding(

@@ -1016,7 +1016,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
           ],
           const SizedBox(height: MayosSpacing.md),
           for (int i = 0; i < workout.exercises.length; i++)
-            _buildExerciseCard(workout, i, current),
+            // A replaced planned exercise (#162) keeps its place in the
+            // workout for the draft but is never a card: it has no rows and
+            // is nothing left to do.
+            if (!workout.exercises[i].replaced)
+              _buildExerciseCard(workout, i, current),
           // Add exercise stays the list's last action; Finish lives in the
           // fixed bottom bar (#160), so it never needs scrolling to.
           MayosButton(
@@ -1046,7 +1050,12 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       exercise: exercise,
       unplanned: exercise.unplanned,
       restSeconds: _controller.restLengthFor(exerciseIndex),
-      restChipKey: ValueKey<String>('logger.rest.$exerciseIndex'),
+      // The card's ⋮ menu and its entries (#162), keyed the way the rows are,
+      // so a test opens exactly what a player opens.
+      menuKey: ValueKey<String>('logger.cardMenu.$exerciseIndex'),
+      replaceKey: ValueKey<String>('logger.cardMenu.$exerciseIndex.replace'),
+      restKey: ValueKey<String>('logger.cardMenu.$exerciseIndex.rest'),
+      removeKey: ValueKey<String>('logger.cardMenu.$exerciseIndex.remove'),
       // The frozen baseline's last session, in logged order; empty hides the
       // "Last:" line entirely (#158).
       lastSession: workout.baselines[exercise.exerciseId]?.lastSession.sets ??
@@ -1066,7 +1075,132 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       addSetKey: ValueKey<String>('logger.addSet.$exerciseIndex'),
       onPickRest: () => unawaited(_pickRest(exerciseIndex)),
       onAddSet: () => _controller.addSet(exerciseIndex),
+      // Replace is for every player whatever the Program authority (#162);
+      // Remove exists only where it can undo an accidental add.
+      onReplace: () => unawaited(_replaceExercise(exerciseIndex)),
+      onRemove: exercise.unplanned
+          ? () => unawaited(_removeExercise(exerciseIndex))
+          : null,
     );
+  }
+
+  /// **Replace exercise** (#162, #157 Q15–Q17): confirm first when the
+  /// exercise holds ticked sets, then open the same catalog search Add
+  /// exercise uses — pre-filtered to this exercise's target muscle, still
+  /// searchable across the whole catalog — and hand the pick to the
+  /// controller. This changes the workout only; the program is never touched.
+  Future<void> _replaceExercise(int exerciseIndex) async {
+    final ActiveWorkout? workout = _workout;
+    if (workout == null ||
+        exerciseIndex < 0 ||
+        exerciseIndex >= workout.exercises.length) {
+      return;
+    }
+    final ActiveWorkoutExercise exercise = workout.exercises[exerciseIndex];
+    final int ticked =
+        exercise.sets.where((ActiveWorkoutSet set) => set.ticked).length;
+    if (ticked > 0 && !await _confirmReplace(ticked)) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    final String? muscle = await _targetMuscleOf(exercise.exerciseId);
+    if (!mounted) {
+      return;
+    }
+    final ExerciseCatalogEntry? entry = await showDialog<ExerciseCatalogEntry>(
+      context: context,
+      builder: (BuildContext context) => _UnplannedExerciseDialog(
+        title: 'Replace exercise',
+        targetMuscle: muscle,
+      ),
+    );
+    if (entry == null || !mounted) {
+      return;
+    }
+    setState(() {
+      if (_focus?.exerciseIndex == exerciseIndex) {
+        _focus = null;
+      }
+      if (_recordFocus?.exerciseIndex == exerciseIndex) {
+        _recordFocus = null;
+      }
+    });
+    await _controller.replaceExercise(
+      exerciseIndex: exerciseIndex,
+      exerciseId: entry.id,
+      exerciseName: entry.name,
+      imagePath: entry.imagePath,
+    );
+  }
+
+  /// "Replace and discard N logged sets?" (#162): the confirmation that comes
+  /// before a replace can touch rows the player has already ticked. Resolves
+  /// true only for Replace; "Keep logging" and any dismissal change nothing.
+  Future<bool> _confirmReplace(int ticked) async {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final bool? replace = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: Text(ticked == 1
+            ? 'Replace and discard 1 logged set?'
+            : 'Replace and discard $ticked logged sets?'),
+        content: Text(
+          "The sets you've logged on this exercise will be cleared.",
+          style: MayosTypography.bodySecondary.copyWith(color: c.textPrimary),
+        ),
+        actions: <Widget>[
+          MayosButton(
+            label: 'Keep logging',
+            variant: MayosButtonVariant.secondary,
+            expand: false,
+            onPressed: () => Navigator.of(context).pop(false),
+          ),
+          MayosButton(
+            label: 'Replace',
+            destructive: true,
+            expand: false,
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+        ],
+      ),
+    );
+    return replace ?? false;
+  }
+
+  /// The exercise's target muscle, read from the catalog detail the app
+  /// already has a call for (`GET /workouts/exercises/{id}`): its first
+  /// primary muscle is the catalog's `target_muscle`, the same column the
+  /// search rows carry, so the two compare exactly. Null — unknown id,
+  /// offline, a catalog row with no muscle — just opens the search
+  /// unfiltered, so the lookup can never block a replace.
+  Future<String?> _targetMuscleOf(String exerciseId) async {
+    try {
+      final ExerciseCatalogDetail detail = await ref
+          .read(apiClientProvider)
+          .exerciseCatalogDetail(exerciseId)
+          .timeout(const Duration(seconds: 3));
+      return detail.primaryMuscles.isNotEmpty
+          ? detail.primaryMuscles.first
+          : null;
+    } on Object {
+      return null;
+    }
+  }
+
+  /// The card menu's **Remove exercise** (#162): only the controller decides
+  /// whether that is allowed (unplanned exercises only).
+  Future<void> _removeExercise(int exerciseIndex) async {
+    setState(() {
+      if (_focus?.exerciseIndex == exerciseIndex) {
+        _focus = null;
+      }
+      if (_recordFocus?.exerciseIndex == exerciseIndex) {
+        _recordFocus = null;
+      }
+    });
+    await _controller.removeExercise(exerciseIndex);
   }
 
   /// One row, assembled here so the screen keeps every decision it makes:
@@ -1317,11 +1451,28 @@ class _OfflineLoggerNotice extends StatelessWidget {
   }
 }
 
-/// Searches the real catalog so an unplanned exercise carries an id the
+/// Searches the real catalog so an exercise picked here carries an id the
 /// service can validate, rather than an invented one that would be refused on
-/// sync (ADR 020/033).
+/// sync (ADR 020/033). It is both the **Add exercise** dialog and the search
+/// **Replace exercise** opens (#162), which passes [targetMuscle].
+///
+/// The service's search matches names only — `GET /workouts/exercises` has no
+/// muscle parameter — so the pre-filter is applied here: while the chip is on,
+/// only rows whose `target_muscle` equals [targetMuscle] are offered, and
+/// clearing the chip (or any query the player types) searches the whole
+/// catalog again.
 class _UnplannedExerciseDialog extends ConsumerStatefulWidget {
-  const _UnplannedExerciseDialog();
+  const _UnplannedExerciseDialog({
+    this.title = 'Add unplanned exercise',
+    this.targetMuscle,
+  });
+
+  /// The dialog's heading: "Add unplanned exercise", or "Replace exercise".
+  final String title;
+
+  /// The planned exercise's target muscle (#162): when present the search
+  /// opens pre-filtered to it, with a chip that turns the filter off.
+  final String? targetMuscle;
 
   @override
   ConsumerState<_UnplannedExerciseDialog> createState() =>
@@ -1335,6 +1486,16 @@ class _UnplannedExerciseDialogState
   bool _searching = false;
   String? _error;
   List<ExerciseCatalogEntry> _results = const <ExerciseCatalogEntry>[];
+
+  /// Whether [widget.targetMuscle] narrows the results right now (#162).
+  bool _muscleFilter = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Replace opens pre-filtered; Add exercise never filters.
+    _muscleFilter = widget.targetMuscle != null;
+  }
 
   @override
   void dispose() {
@@ -1371,11 +1532,27 @@ class _UnplannedExerciseDialogState
     }
   }
 
+  /// What the player is offered: the search's rows, narrowed to the target
+  /// muscle while the pre-filter is on (#162).
+  List<ExerciseCatalogEntry> get _visible {
+    final String? muscle = widget.targetMuscle;
+    if (!_muscleFilter || muscle == null) {
+      return _results;
+    }
+    return _results
+        .where((ExerciseCatalogEntry entry) =>
+            (entry.targetMuscle ?? '').toLowerCase() == muscle.toLowerCase())
+        .toList(growable: false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final List<ExerciseCatalogEntry> visible = _visible;
+    final bool filteredOut =
+        _results.isNotEmpty && visible.isEmpty && _muscleFilter;
     return AlertDialog(
-      title: const Text('Add unplanned exercise'),
+      title: Text(widget.title),
       content: SizedBox(
         width: kLoggerDialogWidth,
         child: Column(
@@ -1389,6 +1566,16 @@ class _UnplannedExerciseDialogState
               onSubmitted: (_) => _search(),
               label: 'Search the exercise catalog',
             ),
+            if (widget.targetMuscle != null)
+              Padding(
+                padding: const EdgeInsets.only(top: MayosSpacing.xs),
+                child: _MuscleFilterChip(
+                  muscle: widget.targetMuscle!,
+                  active: _muscleFilter,
+                  onToggle: () =>
+                      setState(() => _muscleFilter = !_muscleFilter),
+                ),
+              ),
             if (_searching)
               const Padding(
                 padding: EdgeInsets.only(top: MayosSpacing.sm),
@@ -1403,12 +1590,22 @@ class _UnplannedExerciseDialogState
                       MayosTypography.bodySecondary.copyWith(color: c.danger),
                 ),
               ),
-            if (_results.isNotEmpty)
+            if (filteredOut)
+              Padding(
+                padding: const EdgeInsets.only(top: MayosSpacing.sm),
+                child: Text(
+                  'No ${widget.targetMuscle} exercise matched. Tap the muscle '
+                  'filter to search the whole catalog.',
+                  style: MayosTypography.bodySecondary
+                      .copyWith(color: c.textSecondary),
+                ),
+              ),
+            if (visible.isNotEmpty)
               Flexible(
                 child: ListView(
                   shrinkWrap: true,
                   children: <Widget>[
-                    for (final ExerciseCatalogEntry entry in _results)
+                    for (final ExerciseCatalogEntry entry in visible)
                       MayosSettingsTile(
                         icon: Icons.fitness_center,
                         title: entry.name,
@@ -1434,6 +1631,65 @@ class _UnplannedExerciseDialogState
           onPressed: _searching ? null : _search,
         ),
       ],
+    );
+  }
+}
+
+/// The Replace search's pre-filter (#162): a full-height pill naming the
+/// target muscle. On, it narrows the results to that muscle; the ✕ (or a
+/// tap) clears it, so the same dialog still searches the whole catalog.
+class _MuscleFilterChip extends StatelessWidget {
+  const _MuscleFilterChip({
+    required this.muscle,
+    required this.active,
+    required this.onToggle,
+  });
+
+  final String muscle;
+  final bool active;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return SizedBox(
+      height: kMayosMinTapTarget,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: InkWell(
+          key: const ValueKey<String>('logger.search.muscleFilter'),
+          borderRadius: MayosRadii.pillRadius,
+          onTap: onToggle,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: MayosSpacing.sm, vertical: MayosSpacing.xxs),
+            decoration: BoxDecoration(
+              color: active ? c.accentSubtle : c.surfaceSunken,
+              borderRadius: MayosRadii.pillRadius,
+              border: Border.all(color: active ? c.accent : c.border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  'Muscle: $muscle',
+                  style: MayosTypography.caption.copyWith(
+                      color: active ? c.accent : c.textSecondary),
+                ),
+                if (active) ...<Widget>[
+                  const SizedBox(width: MayosSpacing.xs),
+                  Icon(
+                    Icons.close,
+                    size: MayosIconSizes.small,
+                    color: c.textMuted,
+                    semanticLabel: 'Clear the muscle filter',
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

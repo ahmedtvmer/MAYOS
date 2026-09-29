@@ -477,6 +477,23 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     if (current == null) {
       return;
     }
+    final ActiveWorkoutExercise added = _unplannedExercise(
+      exerciseId: exerciseId,
+      exerciseName: exerciseName,
+      imagePath: imagePath,
+    );
+    await _persist(current.copyWith(
+        exercises: <ActiveWorkoutExercise>[...current.exercises, added]));
+  }
+
+  /// The `ProgramExerciseSchema` payload an exercise picked from the catalog
+  /// search is logged with (#34/#161/#162): the unplanned defaults the logger
+  /// has always written, plus the search's picture path when it carried one.
+  static Map<String, dynamic> _unplannedPayload({
+    required String exerciseId,
+    required String exerciseName,
+    String? imagePath,
+  }) {
     final Map<String, dynamic> exercise = <String, dynamic>{
       'exercise_id': exerciseId,
       'exercise_name': exerciseName,
@@ -493,16 +510,94 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     if (imagePath != null && imagePath.isNotEmpty) {
       exercise['image_path'] = imagePath;
     }
-    final ActiveWorkoutExercise added = ActiveWorkoutExercise(
-      exercise: exercise,
+    return exercise;
+  }
+
+  /// One unplanned exercise as the logger builds it: the catalog payload plus
+  /// three empty starter rows and the unplanned default hints (#34/#161).
+  static ActiveWorkoutExercise _unplannedExercise({
+    required String exerciseId,
+    required String exerciseName,
+    String? imagePath,
+  }) {
+    final Map<String, dynamic> payload = _unplannedPayload(
+      exerciseId: exerciseId,
+      exerciseName: exerciseName,
+      imagePath: imagePath,
+    );
+    return ActiveWorkoutExercise(
+      exercise: payload,
       sets: <ActiveWorkoutSet>[
         for (int i = 0; i < 3; i++) ActiveWorkoutSet(),
       ],
       unplanned: true,
-      prescriptionHint: _prescriptionHint(exercise, null),
+      prescriptionHint: _prescriptionHint(payload, null),
     );
-    await _persist(current.copyWith(
-        exercises: <ActiveWorkoutExercise>[...current.exercises, added]));
+  }
+
+  /// **Replace exercise** (#162, #157 Q15–Q17): swaps the exercise at
+  /// [exerciseIndex] for [exerciseId] in *this workout only* — the program,
+  /// the frozen baselines and every other exercise are untouched, whatever
+  /// the player's Program authority.
+  ///
+  /// A planned exercise keeps its place and its exact program payload but
+  /// loses every row and is marked [ActiveWorkoutExercise.replaced], so it is
+  /// never rendered as a card, never counts towards progress, and still
+  /// reaches the Workout draft as **skipped** — the divergence recording then
+  /// sees exactly "planned skipped + unplanned performed". The replacement is
+  /// inserted right after it as an unplanned exercise whose three rows start
+  /// empty, so it drafts as **performed** once the player ticks it, and it
+  /// looks up its own entry in the frozen baselines (or none). Replacing an
+  /// unplanned exercise simply swaps it in place: it was never prescribed, so
+  /// there is no skipped row to keep.
+  Future<void> replaceExercise({
+    required int exerciseIndex,
+    required String exerciseId,
+    required String exerciseName,
+    String? imagePath,
+  }) async {
+    final ActiveWorkout? current = state.workout;
+    final ActiveWorkoutExercise? planned = _exerciseAt(exerciseIndex);
+    if (current == null || planned == null || planned.replaced) {
+      return;
+    }
+    if (exerciseId == planned.exerciseId) {
+      // Picking the same exercise again changes nothing.
+      return;
+    }
+    final ActiveWorkoutExercise replacement = _unplannedExercise(
+      exerciseId: exerciseId,
+      exerciseName: exerciseName,
+      imagePath: imagePath,
+    );
+    final List<ActiveWorkoutExercise> exercises =
+        List<ActiveWorkoutExercise>.of(current.exercises);
+    if (planned.unplanned) {
+      exercises[exerciseIndex] = replacement;
+    } else {
+      exercises[exerciseIndex] = planned.copyWith(
+        sets: const <ActiveWorkoutSet>[],
+        replaced: true,
+      );
+      exercises.insert(exerciseIndex + 1, replacement);
+    }
+    await _persist(current.copyWith(exercises: exercises));
+  }
+
+  /// The card menu's **Remove exercise** (#162): takes an unplanned exercise
+  /// out of the workout. Planned exercises — replaced ones included — are
+  /// never removed here, so a prescribed exercise can only leave the workout
+  /// as the skipped row its draft already carries.
+  Future<void> removeExercise(int exerciseIndex) async {
+    final ActiveWorkout? current = state.workout;
+    final ActiveWorkoutExercise? exercise = _exerciseAt(exerciseIndex);
+    if (current == null || exercise == null || !exercise.unplanned) {
+      return;
+    }
+    final List<ActiveWorkoutExercise> exercises =
+        List<ActiveWorkoutExercise>.of(current.exercises)
+          ..removeAt(exerciseIndex);
+    await _persist(current.copyWith(exercises: exercises));
   }
 
   // ---- rest timer (#125) ---------------------------------------------------
