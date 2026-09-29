@@ -10,12 +10,15 @@ import '../../../core/home_screen_install_hint_store_stub.dart'
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
+import '../../../providers.dart';
 
 export '../../../core/home_screen_install_hint_store.dart';
 
 final Provider<HomeScreenInstallHintStore> homeScreenInstallHintStoreProvider =
     Provider<HomeScreenInstallHintStore>(
-  (ref) => platform.createHomeScreenInstallHintStore(),
+  (ref) => platform.createHomeScreenInstallHintStore(
+    ref.watch(browserKeyValueStoreProvider),
+  ),
 );
 
 final StateNotifierProvider<HomeScreenInstallHintController, bool>

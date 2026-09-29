@@ -3,15 +3,22 @@ import 'dart:js_interop_unsafe';
 
 import 'package:web/web.dart' as web;
 
+import 'browser_key_value_store.dart';
 import 'home_screen_install_hint_store.dart';
 import 'ios_safari_detection.dart';
 
 const String _dismissalStorageKey = 'mayos.homeScreenInstallHint.dismissed';
 
-HomeScreenInstallHintStore createHomeScreenInstallHintStore() =>
-    _WebHomeScreenInstallHintStore();
+HomeScreenInstallHintStore createHomeScreenInstallHintStore(
+  BrowserKeyValueStore storage,
+) =>
+    _WebHomeScreenInstallHintStore(storage);
 
 class _WebHomeScreenInstallHintStore implements HomeScreenInstallHintStore {
+  _WebHomeScreenInstallHintStore(this._storage);
+
+  final BrowserKeyValueStore _storage;
+
   @override
   Future<HomeScreenInstallHintEnvironment> readEnvironment() async =>
       HomeScreenInstallHintEnvironment(
@@ -37,7 +44,7 @@ class _WebHomeScreenInstallHintStore implements HomeScreenInstallHintStore {
 
   bool _wasDismissed() {
     try {
-      return web.window.localStorage.getItem(_dismissalStorageKey) == 'true';
+      return _storage.getItem(_dismissalStorageKey) == 'true';
     } catch (_) {
       // Storage is optional: a denied read leaves the hint visible.
       return false;
@@ -47,7 +54,7 @@ class _WebHomeScreenInstallHintStore implements HomeScreenInstallHintStore {
   @override
   Future<void> rememberDismissal() async {
     try {
-      web.window.localStorage.setItem(_dismissalStorageKey, 'true');
+      _storage.setItem(_dismissalStorageKey, 'true');
     } catch (_) {
       // A denied write leaves the hint available again on the next screen.
     }

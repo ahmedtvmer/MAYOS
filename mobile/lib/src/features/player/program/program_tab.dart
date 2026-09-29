@@ -222,24 +222,21 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                         .copyWith(color: c.textPrimary),
                   ),
                   children: <Widget>[
-                    if (ref.watch(
-                        offlineWorkoutDraftsEnabledProvider)) ...<Widget>[
-                      MayosButton(
-                        label: 'Log workout',
-                        icon: Icons.edit_note,
-                        onPressed: () {
-                          // Runs the Resume/Discard guard and creates the
-                          // Active workout before routing to the logger (#123).
-                          startWorkoutFromDay(
-                            context,
-                            ref,
-                            day: day,
-                            programVersion: program.version,
-                          );
-                        },
-                      ),
-                      const SizedBox(height: MayosSpacing.md),
-                    ],
+                    MayosButton(
+                      label: 'Log workout',
+                      icon: Icons.edit_note,
+                      onPressed: () {
+                        // Runs the Resume/Discard guard and creates the
+                        // workout before routing to the logger (#123).
+                        startWorkoutFromDay(
+                          context,
+                          ref,
+                          day: day,
+                          programVersion: program.version,
+                        );
+                      },
+                    ),
+                    const SizedBox(height: MayosSpacing.md),
                     if (day.hasWarmup) ...<Widget>[
                       const _SectionLabel('Warm-up'),
                       for (final WarmupExercise warmup in day.warmupExercises)

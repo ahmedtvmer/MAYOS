@@ -8,6 +8,7 @@ import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_button.dart';
+import '../../../core/workout_start_notice_store.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'active_workout_controller.dart';
@@ -186,6 +187,14 @@ Future<bool> startWorkoutFromDay(
     }
   }
 
+  if (ref.read(webDirectWorkoutCommitEnabledProvider) &&
+      !await _showFirstWebWorkoutNotice(context, ref, accountId)) {
+    return false;
+  }
+  if (!context.mounted) {
+    return false;
+  }
+
   final StartWorkoutOutcome outcome = await controller.startFromDay(
     accountId: accountId,
     day: day,
@@ -198,5 +207,48 @@ Future<bool> startWorkoutFromDay(
   // there (#156). `go` replaced the whole stack, leaving the logger as the
   // only page with nothing to pop.
   context.push('$logWorkoutPath/${day.dayOrder}');
+  return true;
+}
+
+Future<bool> _showFirstWebWorkoutNotice(
+  BuildContext context,
+  WidgetRef ref,
+  String accountId,
+) async {
+  final WorkoutStartNoticeStore store =
+      ref.read(workoutStartNoticeStoreProvider);
+  bool seen = false;
+  try {
+    seen = await store.hasSeenWorkoutStartNotice(accountId);
+  } on Object {
+    // If browser storage is denied, show the notice again next time.
+  }
+  if (seen) {
+    return true;
+  }
+  if (!context.mounted) return false;
+  final bool? acknowledged = await showDialog<bool>(
+    context: context,
+    builder: (BuildContext context) => AlertDialog(
+      title: const Text('Logging workouts on web'),
+      content: const Text(
+        'You need a connection to finish saving. An unfinished workout is kept only in this browser.',
+      ),
+      actions: <Widget>[
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Continue logging'),
+        ),
+      ],
+    ),
+  );
+  if (acknowledged != true || !context.mounted) {
+    return false;
+  }
+  try {
+    await store.markWorkoutStartNoticeSeen(accountId);
+  } on Object {
+    // If browser storage is denied, show the notice again next time.
+  }
   return true;
 }

@@ -172,6 +172,10 @@ class FakeMayosApi {
       <String, Map<String, dynamic>>{};
   int commitRequests = 0;
   bool commitFails = false;
+  bool commitResponseLost = false;
+  int? commitRefusalStatusCode;
+  String commitRefusalMessage = 'The workout could not be recorded.';
+  String? commitRefusalErrorCode;
   // Performed-date corrections (#36): when true every correction is refused 409,
   // emulating a session outside the window.
   bool correctionRefused = false;
@@ -2760,6 +2764,16 @@ class FakeMayosApi {
       return const FakeResponse(
           500, <String, dynamic>{'detail': 'The service is unavailable.'});
     }
+    final int? refusalStatus = commitRefusalStatusCode;
+    if (refusalStatus != null) {
+      final String? errorCode = commitRefusalErrorCode;
+      return FakeResponse(
+        refusalStatus,
+        errorCode == null
+            ? <String, dynamic>{'detail': commitRefusalMessage}
+            : <String, dynamic>{'error': errorCode},
+      );
+    }
     final Map<String, dynamic> body = request.body;
     final String? clientId = body['client_session_id'] as String?;
     if (clientId != null) {
@@ -2783,6 +2797,7 @@ class FakeMayosApi {
     if (clientId != null) {
       sessionCommits[clientId] = session;
       committedSessions.add(session);
+      if (commitResponseLost) return const FakeResponse.networkFailure();
     }
     return FakeResponse(201, session);
   }
@@ -3041,6 +3056,10 @@ class FakeMayosApi {
       sessionCommits.clear();
       commitRequests = 0;
       commitFails = false;
+      commitResponseLost = false;
+      commitRefusalStatusCode = null;
+      commitRefusalMessage = 'The workout could not be recorded.';
+      commitRefusalErrorCode = null;
       correctionRefused = false;
       correctedSessions.clear();
       _sessionSeq = 0;

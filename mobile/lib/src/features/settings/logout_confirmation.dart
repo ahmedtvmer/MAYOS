@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/active_workout.dart';
 import '../../providers.dart';
+import '../player/workout/active_workout_controller.dart';
 import '../player/workout/draft_sync_service.dart';
 
 enum _LogoutChoice { keep, discard }
@@ -14,6 +16,13 @@ enum _LogoutChoice { keep, discard }
 Future<void> confirmLogout(BuildContext context, WidgetRef ref) async {
   final String? accountId =
       ref.read(authControllerProvider).session?.account.accountId;
+  if (ref.read(webDirectWorkoutCommitEnabledProvider)) {
+    if (!await _confirmWebLogout(context, ref, accountId)) {
+      return;
+    }
+    await ref.read(authControllerProvider.notifier).logout();
+    return;
+  }
   final DraftSyncService sync = ref.read(draftSyncServiceProvider);
   final int unsynced =
       accountId == null ? 0 : await sync.unsyncedCountFor(accountId);
@@ -53,4 +62,48 @@ Future<void> confirmLogout(BuildContext context, WidgetRef ref) async {
     }
   }
   await ref.read(authControllerProvider.notifier).logout();
+}
+
+Future<bool> _confirmWebLogout(
+  BuildContext context,
+  WidgetRef ref,
+  String? accountId,
+) async {
+  if (accountId == null) {
+    return true;
+  }
+  final ActiveWorkoutController controller =
+      ref.read(activeWorkoutControllerProvider.notifier);
+  await controller.syncAccount(accountId);
+  final ActiveWorkout? workout = controller.workout;
+  if (!context.mounted) {
+    return false;
+  }
+  if (workout == null) {
+    return true;
+  }
+  final bool? discard = await showDialog<bool>(
+    context: context,
+    builder: (BuildContext context) => AlertDialog(
+      title: const Text('Discard unfinished workout?'),
+      content: const Text(
+        'Logging out will discard this workout from this browser.',
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Discard and log out'),
+        ),
+      ],
+    ),
+  );
+  if (discard != true || !context.mounted) {
+    return false;
+  }
+  await controller.discard(accountId: accountId, workoutId: workout.id);
+  return true;
 }

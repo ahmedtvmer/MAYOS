@@ -7,13 +7,13 @@ import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
+import 'package:mayos_mobile/src/core/client_session_id.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/auth/google_auth_gateway.dart';
-import 'package:mayos_mobile/src/features/player/workout/draft_sync_service.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
@@ -418,7 +418,7 @@ void main() {
       await _seedSignedIn(fake, tokens, hasPassword: false, googleLinked: true);
       await drafts.write(_accountAlice, <WorkoutDraft>[
         WorkoutDraft(
-          clientSessionId: generateUuidV4(),
+          clientSessionId: newClientSessionId(),
           accountId: _accountAlice,
           performedDate: '2026-09-26',
           performedTimezone: 'UTC',

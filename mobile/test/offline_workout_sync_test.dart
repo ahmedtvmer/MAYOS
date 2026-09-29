@@ -8,6 +8,7 @@ import 'package:mayos_mobile/src/core/active_workout.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/baselines.dart';
+import 'package:mayos_mobile/src/core/client_session_id.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/performed_date_window.dart';
@@ -30,7 +31,7 @@ WorkoutDraft _draft({
   String capturedAt = '2026-09-26T11:00:00.000Z',
 }) =>
     WorkoutDraft(
-      clientSessionId: clientSessionId ?? generateUuidV4(),
+      clientSessionId: clientSessionId ?? newClientSessionId(),
       accountId: accountId,
       performedDate: '2026-09-26',
       performedTimezone: 'UTC',
@@ -677,7 +678,7 @@ void main() {
   });
 
   group('web online-only boundary', () {
-    testWidgets('hides offline workout entry points when disabled',
+    testWidgets('keeps logging available while hiding drafts when disabled',
         (WidgetTester tester) async {
       final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
       await _pumpApp(tester, fake,
@@ -689,10 +690,10 @@ void main() {
       await _pumpUntilFound(tester, find.text('Home'));
       await tester.tap(find.text('Program'));
       await _pumpUntilFound(tester, find.text('Upper/Lower 4x'));
-      expect(find.text('Log workout'), findsNothing);
+      expect(find.text('Log workout'), findsOneWidget);
     });
 
-    testWidgets('the logger refuses to capture drafts when disabled',
+    testWidgets('the logger is available when drafts are disabled',
         (WidgetTester tester) async {
       await tester.pumpWidget(
         ProviderScope(
@@ -705,8 +706,8 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(
-          find.textContaining('available in the Android app'), findsOneWidget);
+      expect(find.text('You are not signed in.'), findsOneWidget);
+      expect(find.textContaining('available in the Android app'), findsNothing);
     });
   });
 

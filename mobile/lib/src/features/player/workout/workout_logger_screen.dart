@@ -9,6 +9,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../core/active_workout.dart';
 import '../../../core/api_client.dart';
 import '../../../core/baselines.dart';
+import '../../../core/client_session_id.dart';
 import '../../../core/device_timezone.dart';
 import '../../../core/models.dart';
 import '../../../core/performed_date_window.dart';
@@ -31,6 +32,7 @@ import 'logger_bottom_bar.dart';
 import 'logger_card_widgets.dart';
 import 'logger_keypad.dart';
 import 'rest_timer_widgets.dart';
+import 'web_workout_committer.dart';
 
 // The frozen previous working set and the cell weight format live beside the
 // Active workout (`core/active_workout.dart`); the cell/hint mapping, the
@@ -55,6 +57,8 @@ const String _kFinishBlockedError = 'Log at least one set';
 /// height, scrolling inside itself, so a long line at a large text scale
 /// can never push the bottom bar (or the keypad) off the screen.
 const double _kMessageSlotMaxHeightFraction = 1 / 3;
+
+enum _SummaryAction { save, retry, discardWorkout, done }
 
 /// The Hevy-style table logger (#107 Variant A), backed entirely by the
 /// Active workout: one scrolling list of compact exercise cards with a
@@ -103,6 +107,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   /// already shown is never rewritten after a sync).
   WorkoutSummary? _summary;
   bool _saving = false;
+  _SummaryAction _summaryAction = _SummaryAction.save;
   LoggerCellFocus? _focus;
 
   /// The foreground countdown ticker (#125): while a rest runs it wakes the
@@ -204,11 +209,6 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     if (mounted) {
       ref.read(loggerSummaryProvider.notifier).state = null;
     }
-    if (!ref.read(offlineWorkoutDraftsEnabledProvider)) {
-      // The web client is online-only and never captures drafts (ADR 022).
-      setState(() => _loading = false);
-      return;
-    }
     final String? accountId = ref
         .read(authControllerProvider)
         .session
@@ -308,8 +308,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
           'settings and try again.';
     }
     if (_workout?.programVersion == null && _workout != null) {
-      return 'No cached program version is available offline. Connect once '
-          'to refresh your program before logging this workout.';
+      return 'Your program is unavailable. Reconnect to refresh it before '
+          'logging this workout.';
     }
     return null;
   }
@@ -752,6 +752,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   }
 
   Future<void> _save() async {
+    if (ref.read(webDirectWorkoutCommitEnabledProvider)) {
+      await _saveWebWorkout();
+      return;
+    }
     final ActiveWorkout? workout = _workout;
     final String? timezone = _timezone;
     if (workout == null || timezone == null || _blockReason != null) {
@@ -765,7 +769,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       final DraftSyncService sync = ref.read(draftSyncServiceProvider);
       final WorkoutDraft? draft = workout.buildWorkoutDraft(
         timezone: timezone,
-        clientSessionId: sync.newClientSessionId(),
+        clientSessionId: newClientSessionId(),
         now: DateTime.now(),
         performedDate: formatPerformedDate(_performedDate),
         readiness: _readiness,
@@ -774,8 +778,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       if (draft == null) {
         setState(() {
           _error =
-              'No cached program version is available offline. Connect '
-              'once to refresh your program before logging this workout.';
+              'Your program is unavailable offline. Connect once to '
+              'refresh it before saving this workout.';
         });
         return;
       }
@@ -806,6 +810,67 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     }
   }
 
+  Future<void> _saveWebWorkout() async {
+    final ActiveWorkout? workout = _workout;
+    final String? timezone = _timezone;
+    if (workout == null || timezone == null || _blockReason != null) {
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final WebWorkoutCommitResult result = await ref
+          .read(webWorkoutCommitterProvider)
+          .save(
+            workout: workout,
+            timezone: timezone,
+            now: DateTime.now(),
+            performedDate: formatPerformedDate(_performedDate),
+            readiness: _readiness,
+            notes: _notes.text.trim(),
+          );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        switch (result.status) {
+          case WebWorkoutCommitStatus.committed:
+            _summaryAction = _SummaryAction.done;
+            _error = null;
+            _notice = 'Workout saved to your training history.';
+            break;
+          case WebWorkoutCommitStatus.retryable:
+            _summaryAction = _SummaryAction.retry;
+            _error = result.message;
+            break;
+          case WebWorkoutCommitStatus.sessionProblem:
+            _summaryAction = _SummaryAction.retry;
+            _error = result.message;
+            break;
+          case WebWorkoutCommitStatus.refused:
+            _summaryAction = _SummaryAction.discardWorkout;
+            _error = result.message;
+            break;
+        }
+      });
+    } on Object {
+      if (mounted) {
+        setState(() {
+          _summaryAction = _SummaryAction.retry;
+          _error =
+              "Couldn't reach MAYOS. Your workout is kept in "
+              'this browser.';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
+  }
+
   /// How a failed save is reported: the service's own message when it has one,
   /// otherwise a line that promises the workout is still on screen (#123
   /// item 6).
@@ -828,14 +893,53 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     );
   }
 
+  Future<void> _discardRefusedWebWorkout() async {
+    final ActiveWorkout? workout = _workout;
+    if (workout == null || !await _confirmWebWorkoutDiscard()) return;
+    await _controller.discard(
+      accountId: workout.accountId,
+      workoutId: workout.id,
+    );
+    if (mounted) context.go(homePath);
+  }
+
+  Future<bool> _confirmWebWorkoutDiscard() async {
+    final bool? discard = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Discard this workout?'),
+        content: const Text('Its sets will be removed from this browser.'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    return discard == true && mounted;
+  }
+
   /// Back from the summary returns to the Active workout (#124). The snapshot
   /// is dropped, so a later Finish computes a fresh one from the rows. A rest
   /// that kept counting gets its notification and alarm back (#125).
   void _backFromSummary() {
+    if (_saving) {
+      return;
+    }
+    if (_summaryAction == _SummaryAction.done) {
+      context.go(homePath);
+      return;
+    }
     setState(() {
       _summaryStep = false;
       _summary = null;
       _error = null;
+      _summaryAction = _SummaryAction.save;
     });
     // Back to the logger: the top bar's Workout time runs live again (#159).
     ref.read(loggerSummaryProvider.notifier).state = null;
@@ -846,17 +950,6 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (!ref.watch(offlineWorkoutDraftsEnabledProvider)) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(MayosSpacing.xl),
-          child: Text(
-            'Offline workout logging is available in the Android app.',
-            textAlign: TextAlign.center,
-          ),
-        ),
-      );
-    }
     final ActiveWorkoutState active = ref.watch(
       activeWorkoutControllerProvider,
     );
@@ -872,12 +965,15 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       );
     }
     final ActiveWorkout? workout = active.workout;
-    if (workout == null) {
+    if (workout == null && !_summaryStep) {
       // The workout was just cleared by Save; the route moves away next frame.
       return const Center(child: CircularProgressIndicator());
     }
-    _syncRestTicker(workout);
-    final bool keypadVisible = _validFocus(workout) && _focus != null;
+    if (workout != null) {
+      _syncRestTicker(workout);
+    }
+    final bool keypadVisible =
+        workout != null && _validFocus(workout) && _focus != null;
     return PopScope(
       canPop: !_summaryStep,
       onPopInvokedWithResult: (bool didPop, Object? result) {
@@ -896,7 +992,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
                     top: false,
                     child: _buildSummary(),
                   )
-                : _buildActive(workout),
+                : _buildActive(workout!),
           ),
           if (!_summaryStep) ...<Widget>[
             // Messages sit above the bottom bar, never scrolled away at the
@@ -905,10 +1001,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
             // The keypad replaces the bottom bar outright while an edit is
             // open, so the screen has exactly one bottom bar at a time and
             // the keypad never covers it (#160).
-            if (keypadVisible)
-              _buildKeypad(workout, _focus!)
-            else
-              _buildBottomBar(workout),
+            if (workout != null)
+              if (keypadVisible)
+                _buildKeypad(workout, _focus!)
+              else
+                _buildBottomBar(workout),
           ],
         ],
       ),
@@ -1426,6 +1523,23 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     final MayosThemeExtension c = MayosTheme.of(context);
     final WorkoutSummary summary = _summary!;
     final String date = formatPerformedDate(_performedDate);
+    final ActiveWorkout? workout = _workout;
+    final _SummaryAction action =
+        _summaryAction == _SummaryAction.save &&
+            workout?.commitAttempted == true
+        ? _SummaryAction.retry
+        : _summaryAction;
+    final String actionLabel = switch (action) {
+      _SummaryAction.save => 'Save workout',
+      _SummaryAction.retry => 'Retry',
+      _SummaryAction.discardWorkout => 'Discard workout',
+      _SummaryAction.done => 'Done',
+    };
+    final VoidCallback actionHandler = switch (action) {
+      _SummaryAction.save || _SummaryAction.retry => _save,
+      _SummaryAction.discardWorkout => _discardRefusedWebWorkout,
+      _SummaryAction.done => () => context.go(homePath),
+    };
     return SingleChildScrollView(
       padding: MayosSpacing.screen,
       child: Column(
@@ -1433,12 +1547,13 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
         children: <Widget>[
           Row(
             children: <Widget>[
-              IconButton(
-                key: const ValueKey<String>('logger.save.back'),
-                tooltip: 'Back to workout',
-                onPressed: _backFromSummary,
-                icon: const Icon(Icons.arrow_back),
-              ),
+              if (!_saving)
+                IconButton(
+                  key: const ValueKey<String>('logger.save.back'),
+                  tooltip: 'Back to workout',
+                  onPressed: _backFromSummary,
+                  icon: const Icon(Icons.arrow_back),
+                ),
               Text(
                 'Workout summary',
                 style: MayosTypography.sectionHeading.copyWith(
@@ -1487,10 +1602,12 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
           const SizedBox(height: MayosSpacing.lg),
           MayosButton(
             key: const ValueKey<String>('logger.save'),
-            label: 'Save workout',
-            icon: Icons.check,
+            label: actionLabel,
+            icon: action == _SummaryAction.discardWorkout
+                ? Icons.delete_outline
+                : Icons.check,
             loading: _saving,
-            onPressed: _saving || _blockReason != null ? null : _save,
+            onPressed: _saving || _blockReason != null ? null : actionHandler,
           ),
         ],
       ),

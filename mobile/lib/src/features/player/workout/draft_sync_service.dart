@@ -1,23 +1,10 @@
 import 'dart:async';
-import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/models.dart';
 import '../../../core/workout_storage.dart';
-
-/// Generates a random RFC 4122 v4 UUID (no external dependency).
-String generateUuidV4() {
-  final Random random = Random.secure();
-  final List<int> bytes = List<int>.generate(16, (_) => random.nextInt(256));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  String hex(int value) => value.toRadixString(16).padLeft(2, '0');
-  final String h = bytes.map(hex).join();
-  return '${h.substring(0, 8)}-${h.substring(8, 12)}-'
-      '${h.substring(12, 16)}-${h.substring(16, 20)}-${h.substring(20)}';
-}
 
 /// Exponential backoff for network/timeout/5xx failures: 30s, 60s, 2m, 5m,
 /// capped at 15m; reset on success or a manual retry (ADR 020/033).
@@ -49,17 +36,14 @@ class DraftSyncService extends ChangeNotifier {
     required DraftStore store,
     this.retryInterval = const Duration(seconds: 60),
     DateTime Function()? now,
-    String Function()? idGenerator,
   })  : _api = api,
         _store = store,
-        _now = now ?? DateTime.now,
-        _newId = idGenerator ?? generateUuidV4;
+        _now = now ?? DateTime.now;
 
   final ApiClient _api;
   final DraftStore _store;
   final Duration? retryInterval;
   final DateTime Function() _now;
-  final String Function() _newId;
 
   String? _accountId;
   int _generation = 0;
@@ -81,8 +65,6 @@ class DraftSyncService extends ChangeNotifier {
     final String? id = _accountId;
     return id != null && _store.isQuarantined(id);
   }
-
-  String newClientSessionId() => _newId();
 
   /// How many drafts for an account are not yet committed.
   Future<int> unsyncedCountFor(String accountId) async {

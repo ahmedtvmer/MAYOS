@@ -176,7 +176,6 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
           onOpenDrafts: _openDrafts,
           onOpenProgram: _openProgram,
           onLogWorkout: _logWorkout,
-          draftsEnabled: ref.watch(offlineWorkoutDraftsEnabledProvider),
           trainedDays: <TrainedDay>[
             if (latest != null) TrainedDay.fromLatestSession(latest),
             for (final WorkoutDraft draft in drafts)
@@ -197,7 +196,6 @@ class _HomeBody extends StatelessWidget {
     required this.onOpenDrafts,
     required this.onOpenProgram,
     required this.onLogWorkout,
-    required this.draftsEnabled,
     required this.trainedDays,
     required this.pendingDrafts,
   });
@@ -208,7 +206,6 @@ class _HomeBody extends StatelessWidget {
   final VoidCallback onOpenDrafts;
   final VoidCallback onOpenProgram;
   final void Function(ProgramDay day, int? programVersion) onLogWorkout;
-  final bool draftsEnabled;
   final List<TrainedDay> trainedDays;
   final int pendingDrafts;
 
@@ -257,7 +254,7 @@ class _HomeBody extends StatelessWidget {
               onOpenExercise: onOpenExercise,
               onLogWorkout: () =>
                   onLogWorkout(nextDay, data.program?.version),
-              logEnabled: draftsEnabled,
+              logEnabled: true,
             ),
           ],
           const SizedBox(height: MayosSpacing.xl),

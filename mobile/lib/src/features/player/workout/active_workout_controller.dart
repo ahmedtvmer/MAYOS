@@ -6,6 +6,7 @@ import '../../../core/active_workout.dart';
 import '../../../core/api_client.dart';
 import '../../../core/baseline_service.dart';
 import '../../../core/baselines.dart';
+import '../../../core/client_session_id.dart';
 import '../../../core/models.dart';
 import '../../../core/rest_alerts.dart';
 import '../../../core/rest_length.dart';
@@ -97,8 +98,8 @@ class ActiveWorkoutState {
 /// baseline), applies every set-row change by persisting after each one, and
 /// discards it.
 ///
-/// The set-row operations are the seam the table logger drives; the draft the
-/// finish step saves comes from [ActiveWorkout.buildWorkoutDraft].
+/// The set-row operations are the seam the table logger drives. Android's
+/// finish step uses [ActiveWorkout.buildWorkoutDraft]; web commits directly.
 class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   ActiveWorkoutController({
     required ActiveWorkoutStore store,
@@ -107,6 +108,8 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     loadPrescription,
     DateTime Function()? now,
     String Function()? newId,
+    String Function()? clientSessionIdGenerator,
+    this.persistClientSessionId = false,
     RestLengthStore? restLengths,
     RestAlerts? alerts,
   }) : _store = store,
@@ -114,6 +117,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
        _loadPrescription = loadPrescription,
        _now = now ?? DateTime.now,
        _newId = newId ?? _fallbackId,
+       _newClientSessionId = clientSessionIdGenerator ?? newClientSessionId,
        _restLengths = restLengths,
        _alerts = alerts,
        super(
@@ -129,6 +133,8 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   _loadPrescription;
   final DateTime Function() _now;
   final String Function() _newId;
+  final String Function() _newClientSessionId;
+  final bool persistClientSessionId;
 
   /// The player's per-exercise rest overrides for this account, loaded with
   /// the workout and written back on every change (#125). Null in builds or
@@ -256,6 +262,15 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     if (!mounted || epoch != _epoch) {
       return;
     }
+    if (persistClientSessionId &&
+        stored != null &&
+        stored.clientSessionId == null) {
+      stored = stored.copyWith(clientSessionId: _newClientSessionId());
+      await _enqueue(() => _store.write(accountId, stored!));
+      if (!mounted || epoch != _epoch) {
+        return;
+      }
+    }
     // The rest overrides load beside the restore rather than inside it: a
     // keystore that is slow (or unavailable, as on a test host) must never
     // hold the workout back, and any override picked while it was in flight
@@ -344,6 +359,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     final ActiveWorkout created = ActiveWorkout(
       id: _newId(),
       accountId: accountId,
+      clientSessionId: persistClientSessionId ? _newClientSessionId() : null,
       startedAt: _now().toUtc().toIso8601String(),
       dayOrder: day.dayOrder,
       dayName: day.dayName,
@@ -359,6 +375,39 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     );
     await _persist(created);
     return StartWorkoutOutcome.started;
+  }
+
+  /// Ensures legacy Active workouts have an idempotency key before a direct
+  /// web commit. Once assigned, the id is persisted and never replaced.
+  Future<ActiveWorkout> ensureClientSessionId() async {
+    final ActiveWorkout? current = state.workout;
+    if (current == null) {
+      throw StateError('There is no workout to save.');
+    }
+    if (current.clientSessionId != null) {
+      return current;
+    }
+    final ActiveWorkout updated = current.copyWith(
+      clientSessionId: _newClientSessionId(),
+    );
+    await _persist(updated);
+    return updated;
+  }
+
+  /// Persists the first-attempt marker before a network write, so a later
+  /// reload always reconciles by client id before sending another POST.
+  Future<void> markCommitAttempted({
+    required String accountId,
+    required String workoutId,
+  }) async {
+    final ActiveWorkout? current = state.workout;
+    if (current == null ||
+        current.accountId != accountId ||
+        current.id != workoutId ||
+        current.commitAttempted) {
+      return;
+    }
+    await _persist(current.copyWith(commitAttempted: true));
   }
 
   /// Discards the Active workout of [accountId]: clears the state and the

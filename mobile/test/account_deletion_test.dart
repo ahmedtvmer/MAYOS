@@ -12,6 +12,7 @@ import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_models.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
+import 'package:mayos_mobile/src/core/client_session_id.dart';
 import 'package:mayos_mobile/src/core/connectivity_message.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
@@ -27,7 +28,7 @@ import 'support/fake_mayos_api.dart';
 const String _accountAlice = 'account-alice';
 
 WorkoutDraft _draft() => WorkoutDraft(
-      clientSessionId: generateUuidV4(),
+      clientSessionId: newClientSessionId(),
       accountId: _accountAlice,
       performedDate: '2026-09-26',
       performedTimezone: 'UTC',

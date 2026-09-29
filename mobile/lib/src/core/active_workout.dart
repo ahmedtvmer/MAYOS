@@ -561,6 +561,8 @@ class ActiveWorkout {
   const ActiveWorkout({
     required this.id,
     required this.accountId,
+    this.clientSessionId,
+    this.commitAttempted = false,
     required this.startedAt,
     required this.dayOrder,
     required this.dayName,
@@ -573,6 +575,8 @@ class ActiveWorkout {
   factory ActiveWorkout.fromJson(Map<String, dynamic> json) => ActiveWorkout(
     id: json['id'] as String,
     accountId: json['account_id'] as String,
+    clientSessionId: json['client_session_id'] as String?,
+    commitAttempted: json['commit_attempted'] as bool? ?? false,
     startedAt: json['started_at'] as String,
     dayOrder: (json['day_order'] as num).toInt(),
     dayName: json['day_name'] as String? ?? 'Day',
@@ -604,6 +608,14 @@ class ActiveWorkout {
   final String id;
   final String accountId;
 
+  /// Stable idempotency key created when this workout starts (ADR 033).
+  /// Null only for workouts persisted by an older app version.
+  final String? clientSessionId;
+
+  /// True once a direct commit has been attempted, so a reload retries through
+  /// the by-client-id reconciliation endpoint before posting again.
+  final bool commitAttempted;
+
   /// When it started, as a UTC ISO-8601 string.
   final String startedAt;
 
@@ -633,12 +645,16 @@ class ActiveWorkout {
   ActiveWorkout copyWith({
     List<ActiveWorkoutExercise>? exercises,
     Map<String, BaselineExercise>? baselines,
+    String? clientSessionId,
+    bool? commitAttempted,
     int? programVersion,
     ActiveRestTimer? rest,
     bool clearRest = false,
   }) => ActiveWorkout(
     id: id,
     accountId: accountId,
+    clientSessionId: clientSessionId ?? this.clientSessionId,
+    commitAttempted: commitAttempted ?? this.commitAttempted,
     startedAt: startedAt,
     dayOrder: dayOrder,
     dayName: dayName,
@@ -651,6 +667,8 @@ class ActiveWorkout {
   Map<String, dynamic> toJson() => <String, dynamic>{
     'id': id,
     'account_id': accountId,
+    if (clientSessionId != null) 'client_session_id': clientSessionId,
+    if (commitAttempted) 'commit_attempted': true,
     'started_at': startedAt,
     'day_order': dayOrder,
     'day_name': dayName,
@@ -664,6 +682,56 @@ class ActiveWorkout {
     },
     'rest': rest?.toJson(),
   };
+
+  /// Builds the direct `POST /workouts/sessions` body from this Active
+  /// workout, without turning it into a Workout draft (the web contract).
+  /// Returns null when this workout has no stable id or program version.
+  Map<String, dynamic>? buildCommitBody({
+    required String timezone,
+    required DateTime now,
+    String? performedDate,
+    int readiness = 4,
+    String notes = '',
+  }) {
+    final int? version = programVersion;
+    final String? sessionId = clientSessionId;
+    if (version == null || sessionId == null) return null;
+    final List<Map<String, dynamic>> loggedExercises = <Map<String, dynamic>>[];
+    for (final ActiveWorkoutExercise exercise in exercises) {
+      final List<WorkoutSetLog> sets = _loggedSets(exercise);
+      if (sets.isNotEmpty) {
+        loggedExercises.add(<String, dynamic>{
+          'exercise': exercise.exercise,
+          'sets': <Map<String, dynamic>>[
+            for (final WorkoutSetLog set in sets) set.toJson(),
+          ],
+        });
+      }
+    }
+    return <String, dynamic>{
+      'day_order': dayOrder,
+      'readiness': readiness,
+      'session_notes': notes,
+      'sets': loggedExercises,
+      'client_session_id': sessionId,
+      'performed_date': performedDate ?? startedDate,
+      'performed_timezone': timezone,
+      'program_version': version,
+      'captured_at': now.toUtc().toIso8601String(),
+    };
+  }
+
+  static List<WorkoutSetLog> _loggedSets(ActiveWorkoutExercise exercise) =>
+      <WorkoutSetLog>[
+        for (final ActiveWorkoutSet set in exercise.sets)
+          if (set.ticked)
+            WorkoutSetLog(
+              weightKg: set.weightKg,
+              reps: set.reps,
+              rpe: rpeFromRir(set.rir),
+              isWarmup: set.isWarmup,
+            ),
+      ];
 
   /// The `WorkoutDraft` this workout finishes into, built exactly the way the
   /// logger builds one today: only ticked sets are logged, and an exercise
@@ -707,16 +775,7 @@ class ActiveWorkout {
   }
 
   static DraftExercise _draftExercise(ActiveWorkoutExercise exercise) {
-    final List<WorkoutSetLog> ticked = <WorkoutSetLog>[
-      for (final ActiveWorkoutSet set in exercise.sets)
-        if (set.ticked)
-          WorkoutSetLog(
-            weightKg: set.weightKg,
-            reps: set.reps,
-            rpe: rpeFromRir(set.rir),
-            isWarmup: set.isWarmup,
-          ),
-    ];
+    final List<WorkoutSetLog> ticked = _loggedSets(exercise);
     return DraftExercise(
       exercise: exercise.exercise,
       sets: ticked,

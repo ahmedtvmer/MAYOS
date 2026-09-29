@@ -1,6 +1,7 @@
 import 'active_workout.dart';
 import 'baselines.dart';
 import 'chat_storage.dart';
+import 'workout_start_notice_store.dart';
 import 'workout_storage.dart';
 
 /// The single place that erases every account-namespaced protected local value.
@@ -16,17 +17,20 @@ class AccountDataEraser {
     required ChatCacheStore chatCache,
     required BaselineCacheStore baselines,
     required ActiveWorkoutStore activeWorkout,
+    required WorkoutStartNoticeStore workoutStartNotice,
   })  : _drafts = drafts,
         _workoutCache = workoutCache,
         _chatCache = chatCache,
         _baselines = baselines,
-        _activeWorkout = activeWorkout;
+        _activeWorkout = activeWorkout,
+        _workoutStartNotice = workoutStartNotice;
 
   final DraftStore _drafts;
   final WorkoutCacheStore _workoutCache;
   final ChatCacheStore _chatCache;
   final BaselineCacheStore _baselines;
   final ActiveWorkoutStore _activeWorkout;
+  final WorkoutStartNoticeStore _workoutStartNotice;
 
   Future<void> erase(String accountId) async {
     await _bestEffort(() => _drafts.deleteForAccount(accountId));
@@ -34,6 +38,9 @@ class AccountDataEraser {
     await _bestEffort(() => _chatCache.deleteAccount(accountId));
     await _bestEffort(() => _baselines.deleteForAccount(accountId));
     await _bestEffort(() => _activeWorkout.deleteForAccount(accountId));
+    await _bestEffort(
+      () => _workoutStartNotice.clearWorkoutStartNotice(accountId),
+    );
   }
 
   Future<void> _bestEffort(Future<void> Function() action) async {

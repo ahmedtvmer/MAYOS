@@ -15,6 +15,7 @@ import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/chat_models.dart';
 import 'package:mayos_mobile/src/core/connectivity_message.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
+import 'package:mayos_mobile/src/core/workout_start_notice_store.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/sse.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
@@ -470,6 +471,7 @@ void main() {
         chatCache: store,
         baselines: InMemoryBaselineCacheStore(),
         activeWorkout: InMemoryActiveWorkoutStore(),
+        workoutStartNotice: InMemoryWorkoutStartNoticeStore(),
       ),
     );
 

@@ -1,6 +1,9 @@
+import 'browser_key_value_store.dart';
 import 'home_screen_install_hint_store.dart';
 
-HomeScreenInstallHintStore createHomeScreenInstallHintStore() =>
+HomeScreenInstallHintStore createHomeScreenInstallHintStore(
+  BrowserKeyValueStore _,
+) =>
     _StubHomeScreenInstallHintStore();
 
 class _StubHomeScreenInstallHintStore implements HomeScreenInstallHintStore {

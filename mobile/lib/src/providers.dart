@@ -9,6 +9,7 @@ import 'core/api_client.dart';
 import 'core/app_mode.dart';
 import 'core/baseline_service.dart';
 import 'core/baselines.dart';
+import 'core/browser_key_value_store.dart';
 import 'core/chat_storage.dart';
 import 'core/config.dart';
 import 'core/models.dart';
@@ -18,6 +19,8 @@ import 'core/rest_length.dart';
 import 'core/theme/theme_mode_controller.dart';
 import 'core/theme/theme_mode_store.dart';
 import 'core/token_store.dart';
+import 'core/web_active_workout_store.dart';
+import 'core/workout_start_notice_store.dart';
 import 'core/workout_storage.dart';
 import 'features/coach/coach_assistant_state.dart';
 import 'features/player/auth/auth_controller.dart';
@@ -25,6 +28,7 @@ import 'features/player/auth/auth_repository.dart';
 import 'features/player/auth/google_auth_gateway.dart';
 import 'features/player/workout/active_workout_controller.dart';
 import 'features/player/workout/draft_sync_service.dart';
+import 'features/player/workout/web_workout_committer.dart';
 
 final Provider<TokenStore> tokenStoreProvider = Provider<TokenStore>(
   (ref) => SecureTokenStore(),
@@ -76,6 +80,7 @@ final Provider<AuthRepository> authRepositoryProvider =
           chatCache: ref.watch(chatCacheStoreProvider),
           baselines: ref.watch(baselineCacheStoreProvider),
           activeWorkout: ref.watch(activeWorkoutStoreProvider),
+          workoutStartNotice: ref.watch(workoutStartNoticeStoreProvider),
         ),
       ),
     );
@@ -156,12 +161,21 @@ coachAssistantControllerProvider =
 
 /// Whether this client captures protected offline workout drafts (ADR 020).
 ///
-/// Offline drafts are Android-only (ADR 022): the web client stays online-only
-/// and must never write training data to browser storage. The web target
-/// therefore falls back to in-memory stores and hides the offline entry points.
+/// Offline Workout drafts remain Android-only (ADR 022). On web, only the
+/// account-scoped Active workout and its first-start notice use browser storage;
+/// every other protected store stays in memory.
 final Provider<bool> offlineWorkoutDraftsEnabledProvider = Provider<bool>(
   (ref) => !kIsWeb,
 );
+
+/// The web Active workout commits directly instead of becoming a Workout
+/// draft. Injectable so tests can exercise the web flow on a native host.
+final Provider<bool> webDirectWorkoutCommitEnabledProvider = Provider<bool>(
+  (ref) => !ref.watch(offlineWorkoutDraftsEnabledProvider),
+);
+
+final Provider<BrowserKeyValueStore> browserKeyValueStoreProvider =
+    Provider<BrowserKeyValueStore>((ref) => createBrowserKeyValueStore());
 
 /// The wall clock **Workout time** reads: the top bar's label and the
 /// workout summary's duration snapshot (#159). Injectable so a test can tick
@@ -198,6 +212,20 @@ final Provider<ChatCacheStore> chatCacheStoreProvider =
       (ref) => ref.watch(offlineWorkoutDraftsEnabledProvider)
           ? SecureChatCacheStore()
           : InMemoryChatCacheStore(),
+    );
+
+final Provider<WebActiveWorkoutStore> webActiveWorkoutStoreProvider =
+    Provider<WebActiveWorkoutStore>(
+      (ref) => WebActiveWorkoutStore(
+        storage: ref.watch(browserKeyValueStoreProvider),
+      ),
+    );
+
+final Provider<WorkoutStartNoticeStore> workoutStartNoticeStoreProvider =
+    Provider<WorkoutStartNoticeStore>(
+      (ref) => ref.watch(webDirectWorkoutCommitEnabledProvider)
+          ? ref.watch(webActiveWorkoutStoreProvider)
+          : InMemoryWorkoutStartNoticeStore(),
     );
 
 /// Runs [reset] whenever the signed-in account changes or the session ends.
@@ -308,7 +336,7 @@ final ChangeNotifierProvider<DraftSyncService> draftSyncServiceProvider =
 
 /// Protected, account-separated cache of the last successful
 /// `GET /workouts/baselines` fetch (#123). Same offline gate as the drafts:
-/// the web client never writes training data to browser storage (ADR 022).
+/// it stays in memory on web (ADR 022).
 final Provider<BaselineCacheStore> baselineCacheStoreProvider =
     Provider<BaselineCacheStore>(
       (ref) => ref.watch(offlineWorkoutDraftsEnabledProvider)
@@ -321,7 +349,7 @@ final Provider<ActiveWorkoutStore> activeWorkoutStoreProvider =
     Provider<ActiveWorkoutStore>(
       (ref) => ref.watch(offlineWorkoutDraftsEnabledProvider)
           ? SecureActiveWorkoutStore()
-          : InMemoryActiveWorkoutStore(),
+          : ref.watch(webActiveWorkoutStoreProvider),
     );
 
 /// The baselines reader: Home's fire-and-forget prefetch and the fresh →
@@ -355,7 +383,7 @@ final Provider<RestAlerts> restAlertsProvider = Provider<RestAlerts>((ref) {
 
 /// Device persistence for the player's per-exercise rest overrides, per
 /// account (#125) — the same online/offline gate as the other protected
-/// stores, so web never writes to browser storage (ADR 022).
+/// stores, so this store stays in memory on web (ADR 022).
 final Provider<RestLengthStore> restLengthStoreProvider =
     Provider<RestLengthStore>(
       (ref) => ref.watch(offlineWorkoutDraftsEnabledProvider)
@@ -373,6 +401,9 @@ activeWorkoutControllerProvider =
       final ActiveWorkoutController controller = ActiveWorkoutController(
         store: ref.watch(activeWorkoutStoreProvider),
         baselines: ref.watch(baselinesServiceProvider),
+        persistClientSessionId: ref.watch(
+          webDirectWorkoutCommitEnabledProvider,
+        ),
         // The prescription a start seeds and hints from: fresh with a short
         // timeout, else the cache, as the old logger resolved it (#123).
         loadPrescription: (String accountId, int dayOrder) =>
@@ -399,3 +430,11 @@ activeWorkoutControllerProvider =
       }, fireImmediately: true);
       return controller;
     });
+
+final Provider<WebWorkoutCommitter> webWorkoutCommitterProvider =
+    Provider<WebWorkoutCommitter>(
+      (ref) => WebWorkoutCommitter(
+        api: ref.watch(apiClientProvider),
+        controller: ref.watch(activeWorkoutControllerProvider.notifier),
+      ),
+    );

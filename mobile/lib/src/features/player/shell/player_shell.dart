@@ -69,13 +69,12 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
 
   /// Offers Resume / Discard when this account restored an Active workout
   /// from device storage; a workout the player just started never re-triggers
-  /// the offer. The offline-craft gate keeps the web client (ADR 022) out.
+  /// the offer. Web resumes its browser-stored workout too.
   void _offerResume(ActiveWorkoutState active) {
     if (_offeredResume ||
         !active.ready ||
         !active.restoredFromDevice ||
-        active.workout == null ||
-        !ref.read(offlineWorkoutDraftsEnabledProvider)) {
+        active.workout == null) {
       return;
     }
     _offeredResume = true;
