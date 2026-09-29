@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../router.dart';
 import '../theme/mayos_spacing.dart';
 import '../theme/mayos_theme.dart';
 import '../theme/mayos_typography.dart';
@@ -61,7 +63,19 @@ class MayosAppHeader extends StatelessWidget {
           if (showBack)
             IconButton(
               tooltip: 'Back',
-              onPressed: () => Navigator.of(context).maybePop(),
+              // Pop the page underneath when there is one. A deep link or a
+              // cold start leaves the stack empty, so `maybePop` reports the
+              // pop unhandled and Back resolves to Home instead of doing
+              // nothing (#156). The router's redirect maps homePath to the
+              // account's real landing (coach, login, deferred intake), so
+              // this is safe for every sub-page that shows the affordance.
+              onPressed: () async {
+                final bool handled = await Navigator.of(context).maybePop();
+                if (!context.mounted || handled) {
+                  return;
+                }
+                context.go(homePath);
+              },
               icon: const Icon(Icons.arrow_back),
             )
           else if (showLogo)

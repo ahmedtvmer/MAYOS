@@ -103,7 +103,9 @@ Future<void> offerActiveWorkoutOnOpen(
   if (choice == ActiveWorkoutPromptChoice.discard) {
     await controller.discard(accountId: active.accountId, workoutId: active.id);
   } else if (choice == ActiveWorkoutPromptChoice.resume) {
-    context.go('$logWorkoutPath/${active.dayOrder}');
+    // Pushed, not `go`: the logger must sit on top of the screen the offer
+    // was made on, so its back affordance has somewhere to return to (#156).
+    context.push('$logWorkoutPath/${active.dayOrder}');
   }
 }
 
@@ -135,7 +137,9 @@ Future<bool> startWorkoutFromDay(
       return false;
     }
     if (choice == ActiveWorkoutPromptChoice.resume) {
-      context.go('$logWorkoutPath/${active.dayOrder}');
+      // Pushed, not `go`, so Back from the logger returns to the screen the
+      // guard was raised on (#156).
+      context.push('$logWorkoutPath/${active.dayOrder}');
       return false;
     }
     if (choice != ActiveWorkoutPromptChoice.discard) {
@@ -155,6 +159,9 @@ Future<bool> startWorkoutFromDay(
   if (!context.mounted || outcome != StartWorkoutOutcome.started) {
     return false;
   }
-  context.go('$logWorkoutPath/${day.dayOrder}');
+  // Pushed, not `go`: the logger sits above Home or Program and Back returns
+  // there (#156). `go` replaced the whole stack, leaving the logger as the
+  // only page with nothing to pop.
+  context.push('$logWorkoutPath/${day.dayOrder}');
   return true;
 }
