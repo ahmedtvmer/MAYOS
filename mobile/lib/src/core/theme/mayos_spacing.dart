@@ -12,6 +12,16 @@ abstract final class MayosSpacing {
   static const double xxl = 32;
   static const double xxxl = 40;
 
+  /// Standard horizontal inset for full-width screen content.
+  static const EdgeInsets screenHorizontal =
+      EdgeInsets.symmetric(horizontal: lg);
+
+  /// Standard page padding for scrollable content.
+  static const EdgeInsets screen = EdgeInsets.fromLTRB(lg, md, lg, xxl);
+}
+
+/// Responsive layout sizes for wide (desktop browser) windows (#133).
+abstract final class MayosLayout {
   /// Logical viewport width at which shell tabs move to a side rail.
   static const double desktopNavigationBreakpoint = 1024;
 
@@ -20,13 +30,6 @@ abstract final class MayosSpacing {
 
   /// Width reserved for the desktop side navigation rail.
   static const double navigationRailWidth = 88;
-
-  /// Standard horizontal inset for full-width screen content.
-  static const EdgeInsets screenHorizontal =
-      EdgeInsets.symmetric(horizontal: lg);
-
-  /// Standard page padding for scrollable content.
-  static const EdgeInsets screen = EdgeInsets.fromLTRB(lg, md, lg, xxl);
 }
 
 /// A deliberately small radius set. Screens pick one of these rather than

@@ -45,63 +45,59 @@ class MayosScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
-    final _MayosScaffoldLayout layout = _buildLayout(context);
+    final bool desktop = MediaQuery.sizeOf(context).width >=
+        MayosLayout.desktopNavigationBreakpoint;
+    final Widget? rail = desktop ? _rail() : null;
+    // Player mode reads as a phone-width column on desktop; Coach mode uses
+    // the full width (#133).
+    final bool playerColumn =
+        desktop && MayosAppModeScope.maybeOf(context) == AppMode.player;
     return Scaffold(
       backgroundColor: c.canvas,
       resizeToAvoidBottomInset: resizeToAvoidBottomInset,
       body: SafeArea(
-        bottom: safeBottom && (bottomBar == null || layout.showRail),
-        child: layout.content,
+        bottom: safeBottom && (bottomBar == null || rail != null),
+        // The rail slot and the content wrapper stay in the tree at every
+        // width, so resizing across the breakpoint keeps tab state.
+        child: Row(
+          children: <Widget>[
+            SizedBox(
+              width: rail == null ? 0 : MayosLayout.navigationRailWidth,
+              child: rail,
+            ),
+            Expanded(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: playerColumn
+                        ? MayosLayout.playerColumnMaxWidth
+                        : double.infinity,
+                  ),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: _buildContentColumn(),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
-      bottomNavigationBar: layout.showRail ? null : bottomBar,
+      bottomNavigationBar: rail == null ? bottomBar : null,
     );
   }
 
-  _MayosScaffoldLayout _buildLayout(BuildContext context) {
-    final bool desktop = MediaQuery.sizeOf(context).width >=
-        MayosSpacing.desktopNavigationBreakpoint;
-    final Widget? rail = desktop ? _buildRail(context, bottomBar) : null;
-    return _MayosScaffoldLayout(
-      content: Row(
-        children: <Widget>[
-          // Keep the content column in the same slot so tab state survives
-          // resizing.
-          SizedBox(
-            width: rail == null ? 0 : MayosSpacing.navigationRailWidth,
-            child: rail,
-          ),
-          Expanded(child: _buildResponsiveContent(context)),
-        ],
-      ),
-      showRail: rail != null,
-    );
-  }
-
-  Widget? _buildRail(BuildContext context, Widget? bottomNavigation) {
-    if (bottomNavigation is! MayosBottomNavigation) {
+  /// The desktop rail for this screen's tabs, or null when it has none.
+  Widget? _rail() {
+    final Widget? tabs = bottomBar;
+    if (tabs is! MayosBottomNavigation) {
       return null;
     }
     return MayosNavigationRail(
-      items: bottomNavigation.items,
-      index: bottomNavigation.index,
-      onSelected: bottomNavigation.onSelected,
-    );
-  }
-
-  Widget _buildResponsiveContent(BuildContext context) {
-    final double viewportWidth = MediaQuery.sizeOf(context).width;
-    final bool constrainPlayer =
-        viewportWidth >= MayosSpacing.desktopNavigationBreakpoint &&
-            MayosAppModeScope.maybeOf(context) == AppMode.player;
-    final double maxWidth =
-        constrainPlayer ? MayosSpacing.playerColumnMaxWidth : viewportWidth;
-    // Keep the wrapper ancestry stable; resizing changes only this constraint.
-    return Align(
-      alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth),
-        child: SizedBox(width: double.infinity, child: _buildContentColumn()),
-      ),
+      items: tabs.items,
+      index: tabs.index,
+      onSelected: tabs.onSelected,
     );
   }
 
@@ -123,11 +119,4 @@ class MayosScaffold extends StatelessWidget {
           ),
         ],
       );
-}
-
-class _MayosScaffoldLayout {
-  const _MayosScaffoldLayout({required this.content, required this.showRail});
-
-  final Widget content;
-  final bool showRail;
 }

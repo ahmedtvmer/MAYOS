@@ -91,7 +91,7 @@ class MayosNavigationRail extends StatelessWidget {
         border: Border(right: BorderSide(color: c.border)),
       ),
       child: SizedBox(
-        width: MayosSpacing.navigationRailWidth,
+        width: MayosLayout.navigationRailWidth,
         child: _buildRail(context, c),
       ),
     );
@@ -104,7 +104,7 @@ class MayosNavigationRail extends StatelessWidget {
       indicatorColor: c.selectedSurface,
       selectedIndex: index,
       onDestinationSelected: onSelected,
-      minWidth: MayosSpacing.navigationRailWidth,
+      minWidth: MayosLayout.navigationRailWidth,
       labelType: NavigationRailLabelType.all,
       groupAlignment: -1,
       selectedIconTheme: IconThemeData(color: c.accent),

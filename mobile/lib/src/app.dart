@@ -64,12 +64,13 @@ class _MayosAppState extends ConsumerState<MayosApp>
   @override
   Widget build(BuildContext context) {
     final GoRouter router = ref.watch(routerProvider);
-    // The capability caps the mode, as in the router: a lost coach capability
-    // lays out as Player mode whatever is stored.
-    final bool isCoach =
-        ref.watch(authControllerProvider).session?.account.isCoach ?? false;
-    final AppMode appMode =
-        isCoach ? ref.watch(appModeControllerProvider).mode : AppMode.player;
+    // The capability caps the mode: a lost coach capability lays out as
+    // Player mode whatever is stored.
+    final AppMode appMode = resolveAppMode(
+      isCoach:
+          ref.watch(authControllerProvider).session?.account.isCoach ?? false,
+      stored: ref.watch(appModeControllerProvider).mode,
+    );
     final ThemeMode themeMode = ref.watch(themeModeControllerProvider);
     // The offline banner is web-only (#127). The connectivity provider is
     // watched only while the flag is on, so Android never creates it and its

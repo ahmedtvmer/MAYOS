@@ -107,7 +107,9 @@ All under `lib/src/core/theme/`.
 - `mayos_spacing.dart` — `MayosSpacing` (4…40), `MayosRadii` (8/12/16/24/pill),
   `MayosMotion` (150/220/320 ms with standard/emphasized curves),
   `MayosIconSizes` (small 14 / medium 20 — named icon sizes, never raw pixel
-  literals), `kMayosMinTapTarget` (48).
+  literals; navigation 24 for shell tabs and the rail), `kMayosMinTapTarget`
+  (48), and `MayosLayout` (#133: `desktopNavigationBreakpoint` 1024,
+  `playerColumnMaxWidth` 480, `navigationRailWidth` 88).
 - `mayos_theme.dart` — `MayosTheme.light` / `MayosTheme.dark` / `MayosTheme.of`,
   built from the tokens with component themes overridden for app bars, buttons,
   inputs, cards, navigation, dialogs, sheets, snackbars, chips, list tiles,
@@ -125,7 +127,16 @@ warm off-white canvas (`#F6F5F2`) with white elevated surfaces and navy text.
 `MayosButton` (primary/secondary/tertiary; pressed/disabled/loading),
 `MayosCard`, `MayosTextField`, `MayosSectionHeader`, `MayosChoiceCard`,
 `MayosStat`, `MayosProgressIndicator`, `MayosBottomNavigation`,
-`MayosSegmentedControl`, `MayosSettingsTile`.
+`MayosNavigationRail`, `MayosSegmentedControl`, `MayosSettingsTile`,
+`MayosAppModeScope`.
+
+Responsive web shell (#133): at `MayosLayout.desktopNavigationBreakpoint` and
+wider, `MayosScaffold` swaps a `MayosBottomNavigation` for a
+`MayosNavigationRail` with the same destinations and badges, and in Player mode
+(read from `MayosAppModeScope`, installed once in `app.dart`) constrains the
+page to a centred `playerColumnMaxWidth` column; Coach mode keeps the full
+width. `AuthScaffold` applies the same column. Below the breakpoint nothing
+changes.
 
 Screens consume these and the tokens; there are no hard-coded brand or
 light/dark literal colors outside `core/theme/`.

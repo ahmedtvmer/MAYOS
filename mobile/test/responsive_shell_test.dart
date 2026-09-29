@@ -152,10 +152,10 @@ void main() {
       final Rect shellBody = tester.getRect(
         find.byKey(MayosScaffold.bodyContentKey),
       );
-      expect(shellBody.width, MayosSpacing.playerColumnMaxWidth);
+      expect(shellBody.width, MayosLayout.playerColumnMaxWidth);
       expect(
         shellBody.center.dx,
-        (MayosSpacing.navigationRailWidth + 1280) / 2,
+        (MayosLayout.navigationRailWidth + 1280) / 2,
       );
 
       await tester.tap(_railDestination('Progress'));
@@ -210,7 +210,7 @@ void main() {
       final Rect pushedBody = tester.getRect(
         find.byKey(MayosScaffold.bodyContentKey),
       );
-      expect(pushedBody.width, MayosSpacing.playerColumnMaxWidth);
+      expect(pushedBody.width, MayosLayout.playerColumnMaxWidth);
       expect(pushedBody.center.dx, 640);
     },
   );
@@ -296,11 +296,11 @@ void main() {
       await _pumpUntilFound(tester, find.text('Active assignments'));
       expect(
         tester.getRect(find.byKey(MayosScaffold.bodyContentKey)).width,
-        1280 - MayosSpacing.navigationRailWidth,
+        1280 - MayosLayout.navigationRailWidth,
       );
       expect(
         tester.getRect(find.byType(CoachAssignmentsScreen)).width,
-        1280 - MayosSpacing.navigationRailWidth,
+        1280 - MayosLayout.navigationRailWidth,
       );
     },
   );

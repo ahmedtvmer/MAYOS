@@ -8,6 +8,7 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
+import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
@@ -376,6 +377,18 @@ void main() {
     // hero back — an open/close loop on mobile Safari.
     expect(tester.state<State<EditableText>>(editable), same(before));
     expect(tester.widget<EditableText>(editable).focusNode.hasFocus, isTrue);
+  });
+
+  testWidgets('on a desktop window the sign-in form keeps a phone-width column',
+      (WidgetTester tester) async {
+    await _pumpAuth(tester, _loginFake(), size: const Size(1280, 800));
+
+    final Rect field = tester.getRect(find.byKey(const Key('login_username')));
+    expect(field.width, lessThanOrEqualTo(MayosLayout.playerColumnMaxWidth));
+    // Inside the column centred in the 1280 window, not stretched across it.
+    const double half = MayosLayout.playerColumnMaxWidth / 2;
+    expect(field.left, greaterThanOrEqualTo(640 - half));
+    expect(field.right, lessThanOrEqualTo(640 + half));
   });
 
   testWidgets('remember-me consent is a tappable 48dp row with state',

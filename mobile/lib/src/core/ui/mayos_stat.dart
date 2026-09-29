@@ -37,11 +37,14 @@ class MayosStat extends StatelessWidget {
           // instead of overflowing a narrow column.
           FittedBox(
             fit: BoxFit.scaleDown,
-            alignment: alignment == CrossAxisAlignment.end
-                ? AlignmentDirectional.centerEnd
-                : alignment == CrossAxisAlignment.center
-                    ? AlignmentDirectional.center
-                    : AlignmentDirectional.centerStart,
+            alignment: switch (alignment) {
+              CrossAxisAlignment.end => AlignmentDirectional.centerEnd,
+              CrossAxisAlignment.center => AlignmentDirectional.center,
+              CrossAxisAlignment.start ||
+              CrossAxisAlignment.stretch ||
+              CrossAxisAlignment.baseline =>
+                AlignmentDirectional.centerStart,
+            },
             child: Row(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.baseline,

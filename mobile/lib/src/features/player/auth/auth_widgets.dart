@@ -62,74 +62,84 @@ class AuthScaffold extends StatelessWidget {
       backgroundColor: wallpaper ? Colors.transparent : c.canvas,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: AutofillGroup(
-          child: Column(
-            children: <Widget>[
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (BuildContext context, BoxConstraints constraints) {
-                    final double byWidth = constraints.maxWidth * 0.42;
-                    final double byHeight = constraints.maxHeight * 0.17;
-                    final double logoHeight =
-                        (byWidth < byHeight ? byWidth : byHeight)
-                            .clamp(72.0, 120.0);
-                    return SingleChildScrollView(
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      padding: EdgeInsets.fromLTRB(
-                        MayosSpacing.lg,
-                        keyboardOpen ? MayosSpacing.sm : MayosSpacing.md,
-                        MayosSpacing.lg,
-                        MayosSpacing.lg,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          // One fixed slot, never a conditional spread: shifting
-                          // the fields' positions rebuilds them, dropping focus
-                          // and closing the keyboard (an open/close loop on
-                          // mobile Safari).
-                          Visibility(
-                            visible: showHero,
-                            child: Padding(
-                              padding: const EdgeInsets.only(
-                                  bottom: MayosSpacing.xl),
-                              child: Center(
-                                child: MayosBrandLockup(
-                                  height: logoHeight,
-                                  variant: wallpaper
-                                      ? MayosBrandVariant.white
-                                      : MayosBrandVariant.auto,
+        // A phone-width column on desktop (#133); a no-op on phones. Applied at
+        // every width so the fields' widget tree never changes shape.
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+                maxWidth: MayosLayout.playerColumnMaxWidth),
+            child: AutofillGroup(
+              child: Column(
+                children: <Widget>[
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder:
+                          (BuildContext context, BoxConstraints constraints) {
+                        final double byWidth = constraints.maxWidth * 0.42;
+                        final double byHeight = constraints.maxHeight * 0.17;
+                        final double logoHeight =
+                            (byWidth < byHeight ? byWidth : byHeight)
+                                .clamp(72.0, 120.0);
+                        return SingleChildScrollView(
+                          keyboardDismissBehavior:
+                              ScrollViewKeyboardDismissBehavior.onDrag,
+                          padding: EdgeInsets.fromLTRB(
+                            MayosSpacing.lg,
+                            keyboardOpen ? MayosSpacing.sm : MayosSpacing.md,
+                            MayosSpacing.lg,
+                            MayosSpacing.lg,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              // One fixed slot, never a conditional spread: shifting
+                              // the fields' positions rebuilds them, dropping focus
+                              // and closing the keyboard (an open/close loop on
+                              // mobile Safari).
+                              Visibility(
+                                visible: showHero,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(
+                                      bottom: MayosSpacing.xl),
+                                  child: Center(
+                                    child: MayosBrandLockup(
+                                      height: logoHeight,
+                                      variant: wallpaper
+                                          ? MayosBrandVariant.white
+                                          : MayosBrandVariant.auto,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
+                              AuthHeading(title: title, lead: lead),
+                              const SizedBox(height: MayosSpacing.xl),
+                              ...children,
+                              if (keyboardOpen && links.isNotEmpty) ...<Widget>[
+                                const SizedBox(height: MayosSpacing.md),
+                                Wrap(
+                                  alignment: WrapAlignment.center,
+                                  spacing: MayosSpacing.xs,
+                                  runSpacing: MayosSpacing.xxs,
+                                  children: links,
+                                ),
+                              ],
+                            ],
                           ),
-                          AuthHeading(title: title, lead: lead),
-                          const SizedBox(height: MayosSpacing.xl),
-                          ...children,
-                          if (keyboardOpen && links.isNotEmpty) ...<Widget>[
-                            const SizedBox(height: MayosSpacing.md),
-                            Wrap(
-                              alignment: WrapAlignment.center,
-                              spacing: MayosSpacing.xs,
-                              runSpacing: MayosSpacing.xxs,
-                              children: links,
-                            ),
-                          ],
-                        ],
-                      ),
-                    );
-                  },
-                ),
+                        );
+                      },
+                    ),
+                  ),
+                  AuthActionBar(
+                    primary: primary,
+                    message: message,
+                    links: keyboardOpen ? const <Widget>[] : links,
+                    compact: keyboardOpen,
+                    wallpaper: wallpaper,
+                  ),
+                ],
               ),
-              AuthActionBar(
-                primary: primary,
-                message: message,
-                links: keyboardOpen ? const <Widget>[] : links,
-                compact: keyboardOpen,
-                wallpaper: wallpaper,
-              ),
-            ],
+            ),
           ),
         ),
       ),
