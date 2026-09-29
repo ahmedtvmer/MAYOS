@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/config.dart';
 import '../../core/models.dart';
 import '../../core/privacy_policy.dart';
 import '../../core/theme/mayos_spacing.dart';
@@ -13,6 +14,7 @@ import '../../core/ui/mayos_segmented_control.dart';
 import '../../core/ui/mayos_settings_tile.dart';
 import '../../providers.dart';
 import '../../router.dart';
+import 'credits_dialog.dart';
 import 'logout_confirmation.dart';
 
 /// Settings: appearance, account, coaching, and device entry points.
@@ -141,11 +143,22 @@ class SettingsScreen extends ConsumerWidget {
           MayosCard(
             padding: const EdgeInsets.symmetric(
                 horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
-            child: MayosSettingsTile(
-              icon: Icons.privacy_tip_outlined,
-              title: 'Privacy policy',
-              subtitle: 'What MAYOS collects, who can see it, and deletion',
-              onTap: () => openPrivacyPolicy(context, ref),
+            child: Column(
+              children: <Widget>[
+                MayosSettingsTile(
+                  icon: Icons.privacy_tip_outlined,
+                  title: 'Privacy policy',
+                  subtitle: 'What MAYOS collects, who can see it, and deletion',
+                  onTap: () => openPrivacyPolicy(context, ref),
+                ),
+                Divider(height: 1, color: c.border),
+                MayosSettingsTile(
+                  icon: Icons.image_outlined,
+                  title: 'Credits',
+                  subtitle: gymVisualCreditShort,
+                  onTap: () => showMediaCredits(context, ref),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: MayosSpacing.xl),

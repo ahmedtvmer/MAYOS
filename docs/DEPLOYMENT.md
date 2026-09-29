@@ -682,10 +682,11 @@ catalog before giving the Fly hostname to trial users.
    `curl -fsS "https://${APP}.fly.dev/readyz"` return 200; `/readyz` details
    report `storage: true`. (`APP` is set in §10.3.)
 4. **Catalog seeded:** `fly ssh console -C "sqlite3 /data/catalog.db 'SELECT COUNT(*) FROM exercises;'"` is non-zero.
-5. **Catalog pictures:** `curl -fsSI "https://${APP}.fly.dev/media/images/<image_path>"`
-   returns 200 (`<image_path>` is any `image_path` from
-   `sqlite3 /data/catalog.db "SELECT image_path FROM exercises WHERE image_path IS NOT NULL LIMIT 1;"`);
-   an image built before issue #161 answers 404 and needs the redeploy in
+5. **Catalog media:** `curl -fsSI "https://${APP}.fly.dev/media/images/<image_path>"`
+   and `curl -fsSI "https://${APP}.fly.dev/media/videos/<gif_path>"` return 200
+   (take the paths from
+   `sqlite3 /data/catalog.db "SELECT image_path, gif_path FROM exercises LIMIT 1;"`);
+   an image built before issues #161/#53 answers 404 and needs the redeploy in
    §10.8. The route is public: no `Authorization` header.
 6. **App round-trip over HTTPS:** register → login → chat SSE against the Fly
    hostname from the Android client.
@@ -762,31 +763,39 @@ immediately for local/offline use, keeping the current `/data/deletions.db`. See
 [§9](#9-backup-disaster-recovery--wal-checkpointing) for the full procedure and
 the deletion-replay guarantees.
 
-### 10.8 Exercise catalog pictures served by `/media` (issue #161)
+### 10.8 Exercise catalog pictures and GIFs served by `/media` (issues #161, #53)
 
-The app's exercise cards show the catalog picture through the API's public
+The app's exercise cards show the catalog picture and the exercise-detail
+screen shows the catalog GIF through the API's public
 `GET /media/<image_path>` route (`svc/routers/media.py`), which resolves the
-relative ExerciseDB path (`images/0001-2gPfomN.jpg`) under `BASE_DIR/data` —
-`/app/data/images/…` inside the container. The route needs no auth and sends
-no per-player data.
+relative ExerciseDB paths (`images/0001-2gPfomN.jpg`, `videos/0001-2gPfomN.gif`)
+under `BASE_DIR/data` — `/app/data/images/…` and `/app/data/videos/…` inside
+the container. The route needs no auth and sends no per-player data.
 
-- **The pictures ship in the image.** `.dockerignore` re-includes
-  `data/images/` (~12 MB, 1,324 JPEGs; gitignored like the CSV, so it must
-  exist in the tree you deploy from) and `Dockerfile.fly` copies it to
-  `/app/data/images` alongside the seed CSV. No volume is involved: the
-  pictures are read-only build inputs, the volume stays the mutable data root.
+- **The media ships in the image.** `.dockerignore` re-includes `data/images/`
+  (~12 MB, 1,324 JPEGs) and `data/videos/` (~126 MB, 1,324 GIFs) — both
+  gitignored like the CSV, so both must exist in the tree you deploy from —
+  and `Dockerfile.fly` copies them to `/app/data/images` and `/app/data/videos`
+  alongside the seed CSV. No volume is involved: the media are read-only build
+  inputs, the volume stays the mutable data root.
+- **Credit is required.** Gym visual's terms apply to this media: every use
+  carries "© Gym visual — https://gymvisual.com/" and the media is never shown
+  larger than its native 180×180 (the exercise-detail hero caps its box at
+  180 dp; Settings → About → Credits holds the full notice). The provenance
+  record and the 2026-09-29 decision to display it pending MAYOS's own licence
+  are in `docs/design-review/53/MEDIA-PROVENANCE.md`. The app's kill switch is
+  `--dart-define=MAYOS_EXERCISE_MEDIA=false`.
 - **Everything else under `data/` stays out of the build context**, including
-  `data/videos`, `data/exercises.json` and the databases, so `/media/videos/…`
-  still answers 404 here — that part stays deferred.
+  `data/exercises.json`, `data/exercises.csv` and the databases.
 - **Redeploy required.** A Machine running an image built before this change
-  has no pictures and `/media/images/…` answers 404. From the repository root
-  (with `data/images/` present), run:
+  has no media: `/media/images/…` and `/media/videos/…` answer 404. From the
+  repository root (with `data/images/` and `data/videos/` present), run:
 
   ```bash
   fly deploy --ha=false
   ```
 
-  The build fails fast if `data/images/` is missing, the same way it already
+  The build fails fast if either directory is missing, the same way it already
   fails without `data/processed_exercises.csv`.
 
 ### 10.9 Password reset: App Link and hosted fallback (issue #38, ADR 037)

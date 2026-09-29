@@ -2276,9 +2276,21 @@ class FakeMayosApi {
     }
     final String query = '${request.query['query'] ?? ''}'.trim().toLowerCase();
     const List<Map<String, dynamic>> catalog = <Map<String, dynamic>>[
-      <String, dynamic>{'id': 'bicep_curl', 'name': 'Bicep Curl'},
-      <String, dynamic>{'id': 'cable_fly', 'name': 'Cable Fly'},
-      <String, dynamic>{'id': 'bench_press', 'name': 'Bench Press'},
+      <String, dynamic>{
+        'id': 'bicep_curl',
+        'name': 'Bicep Curl',
+        'image_path': 'images/bicep_curl.jpg',
+      },
+      <String, dynamic>{
+        'id': 'cable_fly',
+        'name': 'Cable Fly',
+        'image_path': 'images/cable_fly.jpg',
+      },
+      <String, dynamic>{
+        'id': 'bench_press',
+        'name': 'Bench Press',
+        'image_path': 'images/bench_press.jpg',
+      },
     ];
     final List<Map<String, dynamic>> matches = query.isEmpty
         ? const <Map<String, dynamic>>[]

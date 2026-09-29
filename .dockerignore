@@ -28,10 +28,13 @@ programs/
 # stay out (they are large and gitignored).
 data/*
 !data/processed_exercises.csv
-# Catalog pictures ship in the image so the public GET /media route can serve
-# them (#161); everything else under data/ stays excluded.
+# Catalog pictures and GIFs ship in the image so the public GET /media route
+# can serve them (#161, #53): the cards' stills and the exercise-detail GIF.
+# Everything else under data/ stays excluded.
 !data/images/
 !data/images/**
+!data/videos/
+!data/videos/**
 
 # Future Flutter client (not part of the API image)
 mobile/

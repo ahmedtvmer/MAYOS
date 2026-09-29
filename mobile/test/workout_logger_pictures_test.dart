@@ -9,6 +9,7 @@ import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
+import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
@@ -367,5 +368,59 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
     }
+  });
+
+  mediaTest(
+      'an exercise added from the search gets its catalog picture (#53)',
+      (WidgetTester tester, FakeMediaCatalog media) async {
+    // The picture the fake `/media` serves for the exercise the search picks.
+    media.serve('images/bicep_curl.jpg');
+    await _openLogger(tester);
+    await _settlePictures(tester);
+
+    await tester.tap(find.byKey(const ValueKey<String>('logger.addExercise')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'bicep');
+    await tester.tap(find.text('Search'));
+    await _pumpUntilFound(tester, find.text('Bicep Curl'));
+    await tester.tap(find.text('Bicep Curl'));
+    await tester.pumpAndSettle();
+
+    // The card carries the picture the catalog search returned for it: the
+    // `/media` request went out and no fallback is standing in.
+    expect(find.byType(ExerciseLoggingCard), findsNWidgets(4));
+    final Finder added = find
+        .ancestor(
+            of: find.text('Bicep Curl'),
+            matching: find.byType(ExerciseLoggingCard))
+        .first;
+    await _settlePictures(tester);
+    expect(media.requestCount('images/bicep_curl.jpg'), 1);
+    expect(
+      find.descendant(of: added, matching: find.byIcon(Icons.fitness_center)),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  mediaTest(
+      'media kill switch: the thumbnail falls back and never asks (#53)',
+      (WidgetTester tester, FakeMediaCatalog media) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: MayosTheme.light,
+      home: const Scaffold(
+        body: ExerciseCatalogThumbnail(
+          imagePath: 'images/incline.jpg',
+          enabled: false,
+        ),
+      ),
+    ));
+
+    expect(find.byType(ExerciseCatalogThumbnail), findsOneWidget);
+    expect(find.byIcon(Icons.fitness_center), findsOneWidget);
+    expect(find.byType(Image), findsNothing);
+    await _settlePictures(tester);
+    expect(media.totalRequests, 0);
+    expect(tester.takeException(), isNull);
   });
 }

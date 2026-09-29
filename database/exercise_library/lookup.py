@@ -80,7 +80,7 @@ class ExerciseLookupMixin:
         if not clean or limit <= 0:
             return []
 
-        columns = "id, name, body_part, target_muscle, equipment"
+        columns = "id, name, body_part, target_muscle, equipment, image_path"
         matches: list[dict[str, Any]] = []
         seen: set[str] = set()
 
@@ -98,6 +98,9 @@ class ExerciseLookupMixin:
                     "body_part": row[2],
                     "target_muscle": row[3],
                     "equipment": row[4],
+                    # The client's card thumbnail builds its /media URL from
+                    # this (#53/#161), so an added exercise gets a picture.
+                    "image_path": row[5],
                 }
             )
 

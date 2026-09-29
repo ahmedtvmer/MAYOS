@@ -143,7 +143,8 @@ def test_required_persistent_root_fails_closed_without_mount(monkeypatch, tmp_pa
 
 
 # --------------------------------------------------------------------------
-# Build context: the catalog pictures ship, the rest of data/ stays out (#161)
+# Build context: the catalog pictures and GIFs ship, the rest of data/ stays
+# out (#161, #53)
 # --------------------------------------------------------------------------
 
 
@@ -172,8 +173,10 @@ def _dockerignore_rules(path: Path = REPO_ROOT / ".dockerignore") -> list[tuple[
     """`.dockerignore` as (negated, compiled pattern) pairs, in file order.
 
     Mirrors how the Docker CLI resolves the build context: rules are matched
-    against context-relative paths, the last matching rule wins, and a path
-    under an excluded directory is never re-included from deeper down.
+    against context-relative paths and the last matching rule wins — modern
+    Docker can re-include a path under an excluded parent when a later `!`
+    rule matches it (`!data/videos/**`), while a subtree no rule re-includes
+    stays out.
     """
     rules: list[tuple[bool, re.Pattern]] = []
     for raw in path.read_text(encoding="utf-8").splitlines():
@@ -193,40 +196,42 @@ def _dockerignore_rules(path: Path = REPO_ROOT / ".dockerignore") -> list[tuple[
     return rules
 
 
-def _last_rule_matches(rules: list[tuple[bool, re.Pattern]], path: str) -> bool:
-    """Whether `path` ends up excluded: the last rule matching it decides."""
-    excluded = False
-    for negated, pattern in rules:
-        if pattern.match(path):
-            excluded = not negated
-    return excluded
-
-
 def _in_build_context(path: str, rules: list[tuple[bool, re.Pattern]]) -> bool:
-    """True when `fly deploy` would send `path` to `docker build`."""
+    """True when `fly deploy` would send `path` to `docker build`.
+
+    Walks every prefix from the context root down to the path itself, last
+    matching rule wins across the whole walk: a later `!` rule re-includes
+    even under an excluded parent, and a prefix no rule re-includes keeps an
+    earlier exclusion.
+    """
     parts = path.split("/")
-    for depth in range(1, len(parts)):
-        if _last_rule_matches(rules, "/".join(parts[:depth])):
-            return False
-    return not _last_rule_matches(rules, path)
+    excluded = False
+    for depth in range(1, len(parts) + 1):
+        prefix = "/".join(parts[:depth])
+        for negated, pattern in rules:
+            if pattern.match(prefix):
+                excluded = not negated
+    return not excluded
 
 
-def test_build_context_ships_catalog_pictures_and_nothing_else_from_data():
-    """`data/images` is in the Fly build context; the rest of `data/` is not.
+def test_build_context_ships_catalog_media_and_nothing_else_from_data():
+    """`data/images` and `data/videos` are in the Fly build context; the rest
+    of `data/` is not.
 
-    The app's exercise cards load `GET /media/<image_path>` (#161), and the
-    route resolves those paths under `/app/data`, so the pictures have to be
-    in the image while the databases, the raw dump and the videos stay out.
+    The app loads `GET /media/<image_path>` and `GET /media/<gif_path>` (#161,
+    #53), and the route resolves those paths under `/app/data`, so the cards'
+    pictures and the exercise-detail GIFs have to be in the image while the
+    databases and the raw dump stay out.
     """
     rules = _dockerignore_rules()
 
     assert _in_build_context("data/images/0001-2gPfomN.jpg", rules)
     assert _in_build_context("data/images/nested/one.jpg", rules)
+    assert _in_build_context("data/videos/0001-2gPfomN.gif", rules)
     assert _in_build_context("data/processed_exercises.csv", rules)
 
     assert not _in_build_context("data/catalog.db", rules)
     assert not _in_build_context("data/exercises.json", rules)
-    assert not _in_build_context("data/videos/demo.mp4", rules)
     assert not _in_build_context("data/deletions.db", rules)
 
 
@@ -244,28 +249,37 @@ def test_build_context_keeps_the_owner_exclusions():
     assert not _in_build_context(".venv/lib/python3.12/site-packages/x.py", rules)
 
 
-def test_dockerfile_fly_copies_catalog_pictures_where_media_looks():
-    """`Dockerfile.fly` puts the pictures at `/app/data/images`, the directory
-    `svc/routers/media.py` resolves `image_path` against (BASE_DIR/data)."""
+def test_dockerfile_fly_copies_catalog_media_where_media_looks():
+    """`Dockerfile.fly` puts the media at `/app/data/{images,videos}`, the
+    directories `svc/routers/media.py` resolves `image_path`/`gif_path`
+    against (BASE_DIR/data)."""
     dockerfile = (REPO_ROOT / "Dockerfile.fly").read_text(encoding="utf-8")
 
     assert re.search(r"^COPY data/images /app/data/images$", dockerfile, re.M)
+    assert re.search(r"^COPY data/videos /app/data/videos$", dockerfile, re.M)
     # `COPY . .` is filtered by .dockerignore, so the re-included pictures
     # reach the same directory from the context as well.
     assert re.search(r"^COPY \. \.$", dockerfile, re.M)
     assert re.search(r"^COPY data/processed_exercises\.csv ", dockerfile, re.M)
 
 
-def test_real_checkout_catalog_pictures_are_in_the_context():
-    """In a checkout that has the (gitignored) pictures, every one of them
-    reaches the build context — the case the owner actually deploys from."""
-    images = REPO_ROOT / "data" / "images"
-    if not images.is_dir():
-        pytest.skip("data/images is not present in this checkout")
-
+def test_real_checkout_catalog_media_are_in_the_context():
+    """In a checkout that has the (gitignored) media, every one of the
+    pictures and GIFs reaches the build context — the case the owner actually
+    deploys from."""
     rules = _dockerignore_rules()
-    files = [entry for entry in images.rglob("*") if entry.is_file()]
-    assert files, "data/images is empty"
+    media = [
+        entry
+        for directory in (REPO_ROOT / "data" / "images", REPO_ROOT / "data" / "videos")
+        if directory.is_dir()
+        for entry in directory.rglob("*")
+        if entry.is_file()
+    ]
+    if not media:
+        pytest.skip("data/images and data/videos are not present in this checkout")
+
+    files = media
+    assert files
     for file in files:
         relative = file.relative_to(REPO_ROOT).as_posix()
         assert _in_build_context(relative, rules), relative

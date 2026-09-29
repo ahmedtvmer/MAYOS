@@ -206,27 +206,28 @@ class _Hero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ExerciseCatalogDetail? detail = catalog;
+    final MayosThemeExtension c = MayosTheme.of(context);
 
-    // Media is gated behind the build flag AND a loadable absolute URL; the
-    // catalog stores relative ExerciseDB file paths, so today the hero is
-    // always the typographic header (see MEDIA-PROVENANCE.md).
+    // Media is gated behind the build flag (#53: off is the kill switch) and
+    // a path `/media` can serve; with neither, today's typographic header is
+    // the whole hero.
     if (mayosExerciseMediaEnabled &&
         detail != null &&
         detail.hasLoadableMedia) {
-      final String url = detail.imagePath ?? detail.gifPath!;
       return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Image.network(
-              url,
-              height: 200,
-              width: double.infinity,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) =>
-                  _typographicHeader(context, name, detail),
-            ),
+          // A fixed 180×180 box — Gym visual's native size, never upscaled
+          // past it — so loading and failure states never shift the layout.
+          Align(
+            alignment: Alignment.center,
+            child: _CatalogMedia(detail: detail),
+          ),
+          const SizedBox(height: MayosSpacing.xxs),
+          Text(
+            gymVisualCreditShort,
+            textAlign: TextAlign.center,
+            style: MayosTypography.caption.copyWith(color: c.textMuted),
           ),
           const SizedBox(height: MayosSpacing.md),
           _typographicHeader(context, name, detail),
@@ -295,6 +296,98 @@ class _Hero extends StatelessWidget {
       ],
     );
   }
+}
+
+/// The catalog media in its fixed box (#53/#161): the animated GIF first,
+/// the still picture when the GIF is missing or fails, then a calm glyph —
+/// every state inside the same 180×180 footprint, centred, so loading and
+/// failure never shift the layout.
+class _CatalogMedia extends StatelessWidget {
+  const _CatalogMedia({required this.detail});
+
+  /// Gym visual's native size: the box never grows past it and the picture
+  /// is painted `contain` inside it, so the media is never stretched larger
+  /// than 180×180 logical pixels either (Gym visual's terms).
+  static const double size = 180;
+
+  final ExerciseCatalogDetail detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return ClipRRect(
+      borderRadius: MayosRadii.mediumRadius,
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: ColoredBox(
+          color: c.surfaceSunken,
+          child: _gif(c),
+        ),
+      ),
+    );
+  }
+
+  /// The GIF animates as any multi-frame network image does; a failed or
+  /// absent GIF falls back to the still picture in the same box.
+  Widget _gif(MayosThemeExtension c) {
+    final String? url = detail.gifUrl;
+    if (url == null) {
+      return _still(c);
+    }
+    return Image.network(
+      url,
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      gaplessPlayback: true,
+      loadingBuilder: (_, Widget child, ImageChunkEvent? progress) =>
+          progress == null ? child : _placeholder(c),
+      errorBuilder: (_, __, ___) => _still(c),
+    );
+  }
+
+  Widget _still(MayosThemeExtension c) {
+    final String? url = detail.imageUrl;
+    if (url == null) {
+      return _fallback(c);
+    }
+    return Image.network(
+      url,
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      gaplessPlayback: true,
+      loadingBuilder: (_, Widget child, ImageChunkEvent? progress) =>
+          progress == null ? child : _placeholder(c),
+      errorBuilder: (_, __, ___) => _fallback(c),
+    );
+  }
+
+  /// A static glyph while the bytes arrive — never a spinner, so the screen
+  /// keeps no animation running (#161).
+  Widget _placeholder(MayosThemeExtension c) => ColoredBox(
+        color: c.surfaceSunken,
+        child: Center(
+          child: Icon(
+            Icons.image_outlined,
+            size: MayosIconSizes.medium,
+            color: c.textDisabled,
+          ),
+        ),
+      );
+
+  Widget _fallback(MayosThemeExtension c) => ColoredBox(
+        color: c.secondarySurface,
+        child: Center(
+          child: Icon(
+            Icons.fitness_center,
+            size: MayosIconSizes.large,
+            color: c.textMuted,
+            semanticLabel: 'Exercise media unavailable',
+          ),
+        ),
+      );
 }
 
 /// Chip emphasis: primary muscles highlighted, secondary muted, equipment

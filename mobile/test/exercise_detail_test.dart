@@ -181,11 +181,32 @@ void main() {
     );
   });
 
-  testWidgets('media flag off renders no Image widgets', (tester) async {
+  testWidgets(
+      'catalog media: the GIF through /media, capped at 180dp, credited (#53)',
+      (tester) async {
     final FakeMayosApi fake = _signedInFake();
     await _pumpDetail(tester, fake, 'bench_press');
-    expect(find.byType(Image), findsNothing);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // The relative catalog path resolved through mediaUrlFor: the GIF first
+    // (the still-picture Image only exists inside its failure fallback).
+    final Image image = tester.widget<Image>(find.byType(Image).first);
+    final ImageProvider provider =
+        image.image is ResizeImage ? (image.image as ResizeImage).imageProvider : image.image;
+    expect(provider, isA<NetworkImage>());
+    expect(
+      (provider as NetworkImage).url,
+      'http://10.0.2.2:8000/media/videos/bench_press.gif',
+    );
+
+    // Never larger than Gym visual's native size, and always credited.
+    final Size box = tester.getSize(find.byType(Image).first);
+    expect(box.width, lessThanOrEqualTo(180));
+    expect(box.height, lessThanOrEqualTo(180));
+    expect(find.text('© Gym visual — gymvisual.com'), findsOneWidget);
+    // The hero's own header still renders underneath.
     expect(find.text('Bench Press'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('exercise detail renders in both themes without overflow',

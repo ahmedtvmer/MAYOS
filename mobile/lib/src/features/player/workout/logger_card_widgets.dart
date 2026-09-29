@@ -171,8 +171,16 @@ class LoggerTableHeader extends StatelessWidget {
 /// is bundled. Flutter's own image cache holds the decoded result, so a
 /// rebuild paints from memory instead of refetching, and `gaplessPlayback`
 /// keeps the last frame across rebuilds.
+///
+/// The build-time media flag gates it (#53): when [mayosExerciseMediaEnabled]
+/// is off (`--dart-define=MAYOS_EXERCISE_MEDIA=false`) the box shows the
+/// missing-picture fallback and no request is ever made.
 class ExerciseCatalogThumbnail extends StatelessWidget {
-  const ExerciseCatalogThumbnail({super.key, required this.imagePath});
+  const ExerciseCatalogThumbnail({
+    super.key,
+    required this.imagePath,
+    this.enabled = mayosExerciseMediaEnabled,
+  });
 
   /// Fixed 48dp: a full-size tap-adjacent block that still leaves the title,
   /// the Unplanned pill and the rest chip their room at 360dp (#161).
@@ -182,18 +190,15 @@ class ExerciseCatalogThumbnail extends StatelessWidget {
   /// when the exercise has no picture.
   final String? imagePath;
 
-  /// The loadable address: the served `/media` URL for a catalog path, or an
-  /// absolute URL if the payload ever carries one (the schema allows both).
-  String? get _url {
-    final String? path = imagePath;
-    if (path == null || path.trim().isEmpty) {
-      return null;
-    }
-    if (path.startsWith('http://') || path.startsWith('https://')) {
-      return path;
-    }
-    return mediaUrlFor(path);
-  }
+  /// The media flag this card renders under (#53): with [mayosExerciseMediaEnabled]
+  /// as its default the widget follows the build-time kill switch, while a
+  /// test can pin either state.
+  final bool enabled;
+
+  /// The served `/media` URL for the catalog path, or null when there is
+  /// nothing to load (no path, media switched off, or a payload pointing at
+  /// another host — [mediaUrlFor] refuses those).
+  String? get _url => enabled ? mediaUrlFor(imagePath) : null;
 
   @override
   Widget build(BuildContext context) {
@@ -242,7 +247,8 @@ class ExerciseCatalogThumbnail extends StatelessWidget {
       );
 
   /// The missing- and failed-picture states: an exercise glyph on a surface
-  /// tint, in the same fixed box (#161).
+  /// tint, in the same fixed box (#161). Both look alike on purpose — only
+  /// the semantic label tells a screen reader which one it is.
   Widget _fallback(MayosThemeExtension c, {required bool failed}) =>
       ColoredBox(
         color: c.secondarySurface,
@@ -251,8 +257,6 @@ class ExerciseCatalogThumbnail extends StatelessWidget {
             Icons.fitness_center,
             size: MayosIconSizes.medium,
             color: c.textMuted,
-            // The failure only differs from a missing picture in the logs;
-            // the player sees the same calm fallback either way.
             semanticLabel: failed ? 'Picture unavailable' : 'No picture',
           ),
         ),

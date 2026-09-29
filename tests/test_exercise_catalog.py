@@ -102,3 +102,20 @@ def test_exercise_detail_requires_auth(api):
     client, _ = api
     resp = client.get("/workouts/exercises/bp")
     assert resp.status_code == 401
+
+
+def test_catalog_search_returns_the_image_path_for_added_exercise_pictures(api):
+    """`GET /workouts/exercises?query=` carries `image_path` so an exercise
+    added from this search gets its card's catalog picture like a planned one
+    (#53/#161): the client builds the public `/media` URL from it."""
+    client, _ = api
+    token = _register(client, "searcher")["access_token"]
+
+    resp = client.get("/workouts/exercises", headers=_authed(token), params={"query": "bench"})
+    assert resp.status_code == 200, resp.text
+    matches = resp.json()["exercises"]
+    assert matches, "expected the fixture's Bench Press"
+    assert matches[0]["id"] == "bp"
+    assert matches[0]["image_path"] == "images/bp.jpg"
+    # The client's own thumbnail URL builder is fed from this field alone.
+    assert matches[0]["image_path"].startswith("images/")

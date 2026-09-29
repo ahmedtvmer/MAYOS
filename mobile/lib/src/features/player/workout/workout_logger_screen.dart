@@ -785,6 +785,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     await _controller.addUnplannedExercise(
       exerciseId: entry.id,
       exerciseName: entry.name,
+      imagePath: entry.imagePath,
     );
   }
 

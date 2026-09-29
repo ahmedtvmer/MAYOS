@@ -64,3 +64,48 @@ builds an `Image` only when the flag is ON **and** the catalog detail carries a
 loadable `http(s)` media URL (`ExerciseCatalogDetail.hasLoadableMedia`). Today
 neither condition holds, so the hero is always the typographic/muscle-group
 header and no `Image` widget is ever built on the exercise-detail screen.
+
+## 2026-09-29 — Owner decision: display the media, pending MAYOS's licence
+
+This section records the facts known on 2026-09-29 and the owner's decision
+made that day. It supersedes the "must **not** display" conclusion above for
+the current build; the earlier sections are kept as the record of what was
+known before.
+
+### Facts
+
+- **The dataset's MIT `LICENSE` covers the data only.** It grants rights to
+  the repository's data files; it does not licence the images and GIFs.
+- **The source repository's `NOTICE.md` states** that the media is
+  **© Gym visual**, and that it is redistributed in that source repository
+  under the author's **separate written permission**.
+- **That source repository grants no media rights.** Its permission to
+  redistribute there does not extend to MAYOS: we hold no licence to the
+  images or GIFs from it.
+- **Gym visual's terms apply to any use** (site: `https://gymvisual.com/`),
+  and require, on every use:
+  - the credit **"© Gym visual — https://gymvisual.com/"**, and
+  - the media shown **no larger than its native 180 × 180** — the files are
+    used as-is, never scaled or stretched past 180 × 180 logical pixels.
+- **MAYOS's own licence from Gym visual is pending.** Nothing here records
+  that licence as held.
+
+### Decision
+
+The owner decided on **2026-09-29** to display the ExerciseDB/Gym visual
+images and GIFs in the app **now, pending MAYOS's own licence from Gym
+visual**, with Gym visual's terms honoured as above.
+
+What that means in the build:
+
+- The media is served by the API's public `GET /media` route and ships in the
+  Fly image (`data/images`, `data/videos`; `docs/DEPLOYMENT.md` §10.8).
+- The exercise-detail hero shows the GIF first, falls back to the still image,
+  caps its box at **180 × 180 logical pixels** (`contain`, so nothing is
+  stretched), and carries the credit caption underneath; Settings → About →
+  Credits holds the full notice and link.
+- The logger thumbnail (#161) shows the still at 48 dp and, being tiny, may
+  omit its own caption — the credit lives in the app.
+- **Kill switch:** `--dart-define=MAYOS_EXERCISE_MEDIA=false` turns
+  `mayosExerciseMediaEnabled` off, and then no catalog `Image` widget is built
+  anywhere (the thumbnail shows its icon, the hero is the typographic header).

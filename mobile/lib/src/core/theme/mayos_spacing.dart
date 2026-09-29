@@ -62,4 +62,7 @@ abstract final class MayosIconSizes {
 
   /// Standard inline icon: trailing chevrons, row actions, sheet checks.
   static const double medium = 20;
+
+  /// Empty-state glyph inside a large surface (a 180dp media box, #53).
+  static const double large = 32;
 }

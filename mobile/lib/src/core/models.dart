@@ -2,6 +2,7 @@
 /// `agent/ProgramState.py`.
 library;
 
+import 'config.dart';
 import 'effort.dart';
 import 'rest_length.dart';
 
@@ -2162,17 +2163,26 @@ class Prescription {
 
 /// One catalog exercise from `GET /workouts/exercises?query=`, used to pick a
 /// real unplanned exercise instead of inventing an id (ADR 020/033, #34).
+///
+/// [imagePath] is the catalog's relative picture path, carried so an exercise
+/// added this way gets its card's picture like any planned one (#161).
 class ExerciseCatalogEntry {
-  const ExerciseCatalogEntry({required this.id, required this.name});
+  const ExerciseCatalogEntry({
+    required this.id,
+    required this.name,
+    this.imagePath,
+  });
 
   factory ExerciseCatalogEntry.fromJson(Map<String, dynamic> json) =>
       ExerciseCatalogEntry(
         id: json['id'] as String,
         name: json['name'] as String,
+        imagePath: json['image_path'] as String?,
       );
 
   final String id;
   final String name;
+  final String? imagePath;
 }
 
 /// `GET /workouts/exercises/{exercise_id}`: read-only catalog detail for the
@@ -2180,8 +2190,10 @@ class ExerciseCatalogEntry {
 ///
 /// [category] mirrors [bodyPart] in the source data (the same field upstream).
 /// [imagePath]/[gifPath] are the ExerciseDB-derived local file paths stored in
-/// the catalog; they are relative paths, never served URLs, and must not be
-/// rendered without the build-time media flag and a resolved provenance.
+/// the catalog; they are relative paths (`images/…`, `videos/…`) that resolve
+/// to the API's public `/media` route through [mediaUrlFor]. Rendering them
+/// stays behind the build-time media flag and Gym visual's terms
+/// (`docs/design-review/53/MEDIA-PROVENANCE.md`).
 class ExerciseCatalogDetail {
   const ExerciseCatalogDetail({
     required this.id,
@@ -2231,14 +2243,18 @@ class ExerciseCatalogDetail {
           if (!primaryMuscles.contains(muscle)) muscle,
       ];
 
-  /// True only when a media path is a loadable absolute http(s) URL. The catalog
-  /// stores relative ExerciseDB file paths (`images/…`, `videos/…`), which are
-  /// never loadable in-app and must not be turned into invented URLs.
-  bool get hasLoadableMedia => _isHttpUrl(imagePath) || _isHttpUrl(gifPath);
+  /// The served address of the animated GIF (`GET /media/videos/…`), null
+  /// when the catalog row carries no GIF (#53/#161).
+  String? get gifUrl => mediaUrlFor(gifPath);
 
-  static bool _isHttpUrl(String? value) =>
-      value != null &&
-      (value.startsWith('https://') || value.startsWith('http://'));
+  /// The served address of the still picture (`GET /media/images/…`), null
+  /// when the catalog row carries no picture (#53/#161).
+  String? get imageUrl => mediaUrlFor(imagePath);
+
+  /// True when any of the catalog's media can be shown: the relative
+  /// ExerciseDB paths resolve through [mediaUrlFor], which refuses a payload
+  /// that would point the app at a host other than the configured API base.
+  bool get hasLoadableMedia => gifUrl != null || imageUrl != null;
 }
 
 /// One distinct exercise the player has logged history for

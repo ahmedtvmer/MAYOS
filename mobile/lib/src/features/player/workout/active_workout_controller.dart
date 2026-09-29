@@ -471,6 +471,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   Future<void> addUnplannedExercise({
     required String exerciseId,
     required String exerciseName,
+    String? imagePath,
   }) async {
     final ActiveWorkout? current = state.workout;
     if (current == null) {
@@ -486,6 +487,12 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       'rest_seconds': 120,
       'notes': null,
     };
+    // The catalog search's picture path, so an unplanned exercise gets the
+    // same card picture as a planned one (#161). Omitted when the search
+    // carried none, exactly like `ProgramExercise.toJson` (#53/#161).
+    if (imagePath != null && imagePath.isNotEmpty) {
+      exercise['image_path'] = imagePath;
+    }
     final ActiveWorkoutExercise added = ActiveWorkoutExercise(
       exercise: exercise,
       sets: <ActiveWorkoutSet>[
