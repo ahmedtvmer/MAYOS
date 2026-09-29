@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 from agent.ProgramState import GeneratedProgramSchema, ProgramExerciseSchema
 
 __all__ = [
+    "ActiveProgramOut",
     "AccountCapabilitiesOut",
     "AccountOut",
     "AccountPlansOut",
@@ -738,8 +739,15 @@ class ProgramSubstitutionUndoIn(BaseModel):
     expected_active_version: int = Field(ge=1)
 
 
+class ActiveProgramOut(GeneratedProgramSchema):
+    """An active program plus the server's current Program-authority decision."""
+
+    player_controls_program: bool
+
+
 class ProgramSubstitutionOut(GeneratedProgramSchema):
     previous_version: int
+    player_controls_program: bool
 
 
 class PlayerProgramRequestIn(BaseModel):

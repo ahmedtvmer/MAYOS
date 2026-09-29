@@ -27,28 +27,33 @@ class ProgramRequestDraft {
   final String? desiredSplitPreference;
 }
 
+/// The read-only substitution slot shown before the player enters a reason.
+class ProgramSubstitutionRequestPrefill {
+  const ProgramSubstitutionRequestPrefill({
+    required this.dayName,
+    required this.exerciseId,
+    required this.exerciseName,
+    required this.replacementExerciseId,
+    required this.replacementName,
+  });
+
+  final String dayName;
+  final String exerciseId;
+  final String exerciseName;
+  final String replacementExerciseId;
+  final String replacementName;
+}
+
 /// The shared request form used from both the assignment page and Program tab.
 class ProgramRequestDialog extends StatefulWidget {
-  const ProgramRequestDialog({super.key})
-      : initialDayName = null,
-        initialExerciseId = null,
-        initialReplacementExerciseId = null,
-        _substitutionOnly = false;
+  const ProgramRequestDialog({super.key}) : substitution = null;
 
   const ProgramRequestDialog.forSubstitution({
     super.key,
-    required String dayName,
-    required String exerciseId,
-    required String replacementExerciseId,
-  })  : initialDayName = dayName,
-        initialExerciseId = exerciseId,
-        initialReplacementExerciseId = replacementExerciseId,
-        _substitutionOnly = true;
+    required this.substitution,
+  }) : assert(substitution != null);
 
-  final String? initialDayName;
-  final String? initialExerciseId;
-  final String? initialReplacementExerciseId;
-  final bool _substitutionOnly;
+  final ProgramSubstitutionRequestPrefill? substitution;
 
   @override
   State<ProgramRequestDialog> createState() => _ProgramRequestDialogState();
@@ -67,10 +72,11 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
   @override
   void initState() {
     super.initState();
-    _day = TextEditingController(text: widget.initialDayName);
-    _exercise = TextEditingController(text: widget.initialExerciseId);
-    _replacement =
-        TextEditingController(text: widget.initialReplacementExerciseId);
+    _day = TextEditingController(text: widget.substitution?.dayName);
+    _exercise = TextEditingController(text: widget.substitution?.exerciseId);
+    _replacement = TextEditingController(
+      text: widget.substitution?.replacementExerciseId,
+    );
   }
 
   @override
@@ -134,25 +140,53 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
         }),
       );
 
-  List<Widget> _buildSubstitutionFields() => <Widget>[
-        MayosTextField(
-          fieldKey: const Key('program_request_day_field'),
-          controller: _day,
-          label: 'Day name',
+  Widget _buildReadOnlyValue(String label, String value) => InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
         ),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            style: MayosTypography.body.copyWith(
+              color: MayosTheme.of(context).textPrimary,
+            ),
+          ),
+        ),
+      );
+
+  List<Widget> _buildSubstitutionFields() {
+    final ProgramSubstitutionRequestPrefill? prefill = widget.substitution;
+    if (prefill != null) {
+      return <Widget>[
+        _buildReadOnlyValue('Day', prefill.dayName),
         const SizedBox(height: MayosSpacing.md),
-        MayosTextField(
-          fieldKey: const Key('program_request_exercise_field'),
-          controller: _exercise,
-          label: 'Current exercise id',
-        ),
+        _buildReadOnlyValue('Exercise', prefill.exerciseName),
         const SizedBox(height: MayosSpacing.md),
-        MayosTextField(
-          fieldKey: const Key('program_request_replacement_field'),
-          controller: _replacement,
-          label: 'Replacement exercise id',
-        ),
+        _buildReadOnlyValue('Replacement', prefill.replacementName),
       ];
+    }
+    return <Widget>[
+      MayosTextField(
+        fieldKey: const Key('program_request_day_field'),
+        controller: _day,
+        label: 'Day name',
+      ),
+      const SizedBox(height: MayosSpacing.md),
+      MayosTextField(
+        fieldKey: const Key('program_request_exercise_field'),
+        controller: _exercise,
+        label: 'Current exercise id',
+      ),
+      const SizedBox(height: MayosSpacing.md),
+      MayosTextField(
+        fieldKey: const Key('program_request_replacement_field'),
+        controller: _replacement,
+        label: 'Replacement exercise id',
+      ),
+    ];
+  }
 
   List<Widget> _buildSplitChangeFields() => <Widget>[
         DropdownButtonFormField<int>(
@@ -215,7 +249,7 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            if (!widget._substitutionOnly) ...<Widget>[
+            if (widget.substitution == null) ...<Widget>[
               _buildRequestTypeField(),
               const SizedBox(height: MayosSpacing.md),
             ],

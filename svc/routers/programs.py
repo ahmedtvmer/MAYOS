@@ -5,9 +5,8 @@ import io
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
-from agent.ProgramState import GeneratedProgramSchema
 from agent.program_generator import generate_program_pipeline
 from service import programs as programs_service
 from service.program_substitution import (
@@ -21,6 +20,7 @@ from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_pla
 from svc.llm import InferenceScope, run_inference_sync
 from svc.rate_limit import PROGRAM_MUTATE_LIMIT, limiter
 from svc.schemas import (
+    ActiveProgramOut,
     ProgramGenerateIn,
     ProgramSubstitutionIn,
     ProgramSubstitutionOut,
@@ -30,7 +30,7 @@ from svc.schemas import (
 router = APIRouter(prefix="/programs", tags=["programs"])
 
 
-def _raise_substitution_error(substitution: dict[str, Any]) -> None:
+def _substitution_error_response(substitution: dict[str, Any]) -> JSONResponse:
     code = substitution["code"]
     http_status = {
         SubstitutionErrorCode.COACH_CONTROLLED: status.HTTP_403_FORBIDDEN,
@@ -39,10 +39,13 @@ def _raise_substitution_error(substitution: dict[str, Any]) -> None:
         SubstitutionErrorCode.REPLACEMENT_NOT_FOUND: status.HTTP_404_NOT_FOUND,
         SubstitutionErrorCode.PROGRAM_CHANGED: status.HTTP_409_CONFLICT,
     }.get(code, status.HTTP_400_BAD_REQUEST)
-    raise HTTPException(status_code=http_status, detail=substitution["error"])
+    return JSONResponse(
+        status_code=http_status,
+        content={"detail": substitution["error"], "code": code.value},
+    )
 
 
-@router.post("/generate", response_model=GeneratedProgramSchema)
+@router.post("/generate", response_model=ActiveProgramOut)
 async def generate_program(
     body: ProgramGenerateIn,
     player: Annotated[Any, Depends(get_verified_player)],
@@ -52,9 +55,7 @@ async def generate_program(
     def _run():
         account_id = account_id_of(player)
         if not programs_service.player_controls_program(db, ledger, account_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail=programs_service.COACH_CONTROLLED_ERROR
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=programs_service.COACH_CONTROLLED_ERROR)
         try:
             program, _ = run_inference_sync(
                 generate_program_pipeline,
@@ -62,18 +63,19 @@ async def generate_program(
                 rep_preference_override=body.rep_preference_override,
                 frequency_override=body.frequency_override,
                 ledger=ledger,
-                scope=InferenceScope(
-                    account_id=account_id, role="player", purpose="program_generate", store=db
-                ),
+                scope=InferenceScope(account_id=account_id, role="player", purpose="program_generate", store=db),
             )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-        return program
+        return {
+            **program.model_dump(),
+            "player_controls_program": programs_service.player_controls_program(db, ledger, account_id),
+        }
 
     return await asyncio.to_thread(_run)
 
 
-@router.get("/active", response_model=GeneratedProgramSchema | None)
+@router.get("/active", response_model=ActiveProgramOut | None)
 async def read_active_program(
     player: Annotated[Any, Depends(get_verified_player)],
     ledger: Annotated[Any, Depends(get_ledger)],
@@ -83,16 +85,20 @@ async def read_active_program(
         account_id = account_id_of(player)
         # Reads that return a saved program never call the model, so they are
         # attributed but not admitted; any synthesizing call is still metered.
-        return run_inference_sync(
+        program = run_inference_sync(
             programs_service.ensure_active_program,
             db,
             str(player),
             player_account_id=account_id,
             ledger=ledger,
-            scope=InferenceScope(
-                account_id=account_id, role="player", purpose="program_active", admit=False, store=db
-            ),
+            scope=InferenceScope(account_id=account_id, role="player", purpose="program_active", admit=False, store=db),
         )
+        if program is None:
+            return None
+        return {
+            **program.model_dump(),
+            "player_controls_program": programs_service.player_controls_program(db, ledger, account_id),
+        }
 
     return await asyncio.to_thread(_run)
 
@@ -122,10 +128,16 @@ async def substitute_active_program_exercise(
             ),
         )
         if "code" in substitution:
-            _raise_substitution_error(substitution)
+            return substitution
+        substitution["player_controls_program"] = programs_service.player_controls_program(
+            db, ledger, account_id_of(player)
+        )
         return substitution
 
-    return await asyncio.to_thread(_run)
+    substitution = await asyncio.to_thread(_run)
+    if "code" in substitution:
+        return _substitution_error_response(substitution)
+    return substitution
 
 
 @router.post("/active/substitutions/undo", response_model=ProgramSubstitutionOut)
@@ -150,10 +162,16 @@ async def undo_active_program_exercise_substitution(
             ),
         )
         if "code" in restoration:
-            _raise_substitution_error(restoration)
+            return restoration
+        restoration["player_controls_program"] = programs_service.player_controls_program(
+            db, ledger, account_id_of(player)
+        )
         return restoration
 
-    return await asyncio.to_thread(_run)
+    restoration = await asyncio.to_thread(_run)
+    if "code" in restoration:
+        return _substitution_error_response(restoration)
+    return restoration
 
 
 @router.get("/active.xlsx")

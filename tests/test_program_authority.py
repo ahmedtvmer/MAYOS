@@ -213,6 +213,7 @@ def test_direct_generation_allowed_before_publication(api, monkeypatch):
 
     generated = client.post("/programs/generate", headers=player_headers, json={})
     assert generated.status_code == 200, generated.text
+    assert generated.json()["player_controls_program"] is True
     assert calls["n"] == 1
     assert client.get("/programs/active", headers=player_headers).json()["published_by_coach_account_id"] is None
 

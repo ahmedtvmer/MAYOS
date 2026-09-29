@@ -126,6 +126,7 @@ def test_substitution_changes_only_named_slot_and_keeps_old_version(api):
     assert response.status_code == 200, response.text
     substitution_response = response.json()
     active = substitution_response
+    assert substitution_response["player_controls_program"] is True
     assert substitution_response["previous_version"] == 1
     assert substitution_response["version"] == 2
     assert active["version"] == 2
@@ -156,8 +157,12 @@ def test_all_occurrences_undo_restores_exact_snapshot_with_existing_replacement(
     # The chosen replacement already exists on Full B, where the source does
     # not occur. Undo must restore that exact pre-existing slot and prescription.
     program["days"][1]["exercises"][0].update(
-        exercise_id="ohp", exercise_name="Overhead Press", notes="Existing OHP",
-        image_path="existing.png", gif_path="existing.gif", target_sets=4,
+        exercise_id="ohp",
+        exercise_name="Overhead Press",
+        notes="Existing OHP",
+        image_path="existing.png",
+        gif_path="existing.gif",
+        target_sets=4,
     )
     db.ledger.save_training_program(program)
     original = db.ledger.get_active_program()
@@ -185,6 +190,7 @@ def test_all_occurrences_undo_restores_exact_snapshot_with_existing_replacement(
     )
     assert undone.status_code == 200, undone.text
     assert undone.json()["version"] == 3
+    assert undone.json()["player_controls_program"] is True
     assert undone.json()["published_by_coach_account_id"] is None
     assert [day for day in undone.json()["days"]] == original_days
     assert db.ledger.get_program_by_version(2).days[0].exercises[0].exercise_id == "ohp"
@@ -231,7 +237,12 @@ def test_substitution_expected_version_and_undo_reject_stale_program(api):
     stale = client.post(
         "/programs/active/substitutions",
         headers=headers,
-        json={"day_name": "Full A", "exercise_id": "sq", "replacement_exercise_id": "ohp", "expected_active_version": 9},
+        json={
+            "day_name": "Full A",
+            "exercise_id": "sq",
+            "replacement_exercise_id": "ohp",
+            "expected_active_version": 9,
+        },
     )
     assert stale.status_code == 409
     assert stale.json()["detail"] == "The program changed since this substitution"
@@ -256,11 +267,31 @@ def test_substitution_expected_version_and_undo_reject_stale_program(api):
 @pytest.mark.parametrize(
     ("body", "status_code", "message"),
     [
-        ({"day_name": "Missing", "exercise_id": "sq", "replacement_exercise_id": "ohp"}, 400, "That day is not part of your current program."),
-        ({"day_name": "Full A", "exercise_id": "missing", "replacement_exercise_id": "ohp"}, 400, "That exercise is not in that day of your current program."),
-        ({"day_name": "Full A", "exercise_id": "sq", "replacement_exercise_id": "sq"}, 400, "Choose a different replacement exercise."),
-        ({"day_name": "Full A", "exercise_id": "sq", "replacement_exercise_id": "missing"}, 404, "That replacement exercise was not found."),
-        ({"day_name": "Full A", "exercise_id": "sq", "replacement_exercise_id": "bp"}, 400, "That replacement exercise is already on the target day."),
+        (
+            {"day_name": "Missing", "exercise_id": "sq", "replacement_exercise_id": "ohp"},
+            400,
+            "That day is not part of your current program.",
+        ),
+        (
+            {"day_name": "Full A", "exercise_id": "missing", "replacement_exercise_id": "ohp"},
+            400,
+            "That exercise is not in that day of your current program.",
+        ),
+        (
+            {"day_name": "Full A", "exercise_id": "sq", "replacement_exercise_id": "sq"},
+            400,
+            "Choose a different replacement exercise.",
+        ),
+        (
+            {"day_name": "Full A", "exercise_id": "sq", "replacement_exercise_id": "missing"},
+            404,
+            "That replacement exercise was not found.",
+        ),
+        (
+            {"day_name": "Full A", "exercise_id": "sq", "replacement_exercise_id": "bp"},
+            400,
+            "That replacement exercise is already on the target day.",
+        ),
     ],
 )
 def test_substitution_validation_returns_clear_client_error(api, body, status_code, message):
@@ -280,12 +311,17 @@ def test_substitution_refuses_a_coach_controlled_program(api):
     coach_headers = _headers(coach["access_token"])
     issued = coach_service.issue_coach_invite(db, "coach")
     assert issued["ok"]
-    assert client.post("/coach/invite/redeem", headers=coach_headers, json={"token": issued["token"]}).status_code == 200
-    assert client.put(
-        "/coach/profile",
-        headers=coach_headers,
-        json={"display_name": "Coach", "bio": "", "specialization": "Strength", "capacity": 5},
-    ).status_code == 200
+    assert (
+        client.post("/coach/invite/redeem", headers=coach_headers, json={"token": issued["token"]}).status_code == 200
+    )
+    assert (
+        client.put(
+            "/coach/profile",
+            headers=coach_headers,
+            json={"display_name": "Coach", "bio": "", "specialization": "Strength", "capacity": 5},
+        ).status_code
+        == 200
+    )
     invite = client.post("/coach/assignments/invites", headers=coach_headers)
     player = _register(client, "player")
     player_headers = _headers(player["access_token"])
@@ -297,9 +333,7 @@ def test_substitution_refuses_a_coach_controlled_program(api):
     assert joined.status_code == 200, joined.text
     coach_account_id = db.get_active_account_by_username("coach")["account_id"]
     db.switch_user("player")
-    db.ledger.save_training_program(
-        _program().model_dump(), published_by_coach_account_id=coach_account_id
-    )
+    db.ledger.save_training_program(_program().model_dump(), published_by_coach_account_id=coach_account_id)
 
     response = client.post(
         "/programs/active/substitutions",
@@ -309,6 +343,7 @@ def test_substitution_refuses_a_coach_controlled_program(api):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Your assigned coach controls your program. Ask your coach for changes."
+    assert response.json()["code"] == "coach_controlled"
     undo = client.post(
         "/programs/active/substitutions/undo",
         headers=player_headers,
@@ -316,3 +351,56 @@ def test_substitution_refuses_a_coach_controlled_program(api):
     )
     assert undo.status_code == 403
     assert undo.json()["detail"] == response.json()["detail"]
+    assert undo.json()["code"] == "coach_controlled"
+
+
+def test_issue_170_authority_flag_tracks_current_assigned_publisher(api):
+    client, db = api
+
+    def create_coach(username):
+        registered = _register(client, username)
+        headers = _headers(registered["access_token"])
+        issued = coach_service.issue_coach_invite(db, username)
+        assert issued["ok"]
+        redeemed = client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]})
+        assert redeemed.status_code == 200, redeemed.text
+        profile = client.put(
+            "/coach/profile",
+            headers=headers,
+            json={"display_name": username, "bio": "", "specialization": "Strength", "capacity": 5},
+        )
+        assert profile.status_code == 200, profile.text
+        account_id = db.get_active_account_by_username(username)["account_id"]
+        return headers, account_id
+
+    previous_coach_headers, previous_coach_id = create_coach("previous-coach")
+    previous_invite = client.post("/coach/assignments/invites", headers=previous_coach_headers)
+    player = _register(client, "player")
+    player_headers = _headers(player["access_token"])
+    first_assignment = client.post(
+        "/assignments/invites/redeem",
+        headers=player_headers,
+        json={"token": previous_invite.json()["token"], "consent": True},
+    )
+    assert first_assignment.status_code == 200, first_assignment.text
+
+    db.switch_user("player")
+    db.ledger.save_training_program(_program().model_dump(), published_by_coach_account_id=previous_coach_id)
+    current_coach_program = client.get("/programs/active", headers=player_headers)
+    assert current_coach_program.status_code == 200, current_coach_program.text
+    assert current_coach_program.json()["player_controls_program"] is False
+
+    ended = client.post("/assignments/me/end", headers=player_headers)
+    assert ended.status_code == 200, ended.text
+    new_coach_headers, _ = create_coach("new-coach")
+    new_invite = client.post("/coach/assignments/invites", headers=new_coach_headers)
+    second_assignment = client.post(
+        "/assignments/invites/redeem",
+        headers=player_headers,
+        json={"token": new_invite.json()["token"], "consent": True},
+    )
+    assert second_assignment.status_code == 200, second_assignment.text
+
+    previous_coach_program = client.get("/programs/active", headers=player_headers)
+    assert previous_coach_program.status_code == 200, previous_coach_program.text
+    assert previous_coach_program.json()["player_controls_program"] is True

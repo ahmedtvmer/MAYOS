@@ -198,15 +198,19 @@ void main() {
     });
   }
 
-  testWidgets('former-coach program keeps direct substitution and exact Undo',
+  testWidgets(
+      'issue 170: previous coach publication leaves the new assignment in direct control',
       (tester) async {
     final FakeMayosApi fake = _signedInFake()
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Alice'
       ..programPublishedByCoachAccountId = 'account-former-coach';
     await _pumpProgram(tester, fake);
 
     await _chooseCableFly(tester);
     await _pumpUntilFound(tester, find.text('Cable Fly'));
     expect(fake.programSubstitutionRequests, hasLength(1));
+    expect(fake.programRequests, isEmpty);
     expect(fake.programSubstitutionRequests.single, <String, dynamic>{
       'day_name': 'Upper 1',
       'exercise_id': 'bench_press',
@@ -246,29 +250,27 @@ void main() {
       await tester.tap(find.text('Cable Fly'));
       await tester.pumpAndSettle();
 
+      final Finder requestDialog = find.byType(AlertDialog);
       expect(
-        tester
-            .widget<TextField>(
-                find.byKey(const Key('program_request_day_field')))
-            .controller!
-            .text,
-        'Upper 1',
+        find.descendant(of: requestDialog, matching: find.text('Upper 1')),
+        findsOneWidget,
       );
       expect(
-        tester
-            .widget<TextField>(
-                find.byKey(const Key('program_request_exercise_field')))
-            .controller!
-            .text,
-        'bench_press',
+        find.descendant(of: requestDialog, matching: find.text('Bench Press')),
+        findsOneWidget,
       );
       expect(
-        tester
-            .widget<TextField>(
-                find.byKey(const Key('program_request_replacement_field')))
-            .controller!
-            .text,
-        'cable_fly',
+        find.descendant(of: requestDialog, matching: find.text('Cable Fly')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('program_request_day_field')), findsNothing);
+      expect(find.byKey(const Key('program_request_exercise_field')),
+          findsNothing);
+      expect(find.byKey(const Key('program_request_replacement_field')),
+          findsNothing);
+      expect(
+        find.descendant(of: requestDialog, matching: find.text('bench_press')),
+        findsNothing,
       );
 
       await tester.tap(find.byKey(const Key('program_request_submit_button')));
@@ -300,6 +302,62 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('stale request authority refreshes into direct substitution',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Alice'
+      ..programPublishedByCoachAccountId = 'account-coach-1'
+      ..coachControlsProgram = true;
+    await _pumpProgram(tester, fake);
+
+    await _openSubstitutePicker(tester);
+    await tester.tap(find.text('Cable Fly'));
+    await tester.pumpAndSettle();
+    fake.coachControlsProgram = false;
+    await tester.enterText(
+      find.byKey(const Key('program_request_reason_field')),
+      'The current movement hurts my shoulder.',
+    );
+    await tester.tap(find.byKey(const Key('program_request_submit_button')));
+    await tester.pumpAndSettle();
+    await _pumpUntilFound(tester, find.text('Undo'));
+
+    expect(fake.programRequests, isEmpty);
+    expect(fake.programSubstitutionRequests, hasLength(1));
+    expect(
+      find.textContaining(
+          'Program authority changed. Continuing with direct substitution.'),
+      findsOneWidget,
+    );
+    expect(find.text('Cable Fly'), findsOneWidget);
+  });
+
+  testWidgets('stale direct authority refreshes into a coach request',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpProgram(tester, fake);
+
+    await _openSubstitutePicker(tester);
+    fake.coachControlsProgram = true;
+    await tester.tap(find.text('Cable Fly'));
+    await tester.pumpAndSettle();
+
+    expect(
+        find.byKey(const Key('program_request_reason_field')), findsOneWidget);
+    expect(fake.programSubstitutionRequests, isEmpty);
+    await tester.enterText(
+      find.byKey(const Key('program_request_reason_field')),
+      'The current movement hurts my shoulder.',
+    );
+    await tester.tap(find.byKey(const Key('program_request_submit_button')));
+    await tester.pumpAndSettle();
+
+    expect(fake.programRequests, hasLength(1));
+    expect(fake.programRequests.single['replacement_exercise_id'], 'cable_fly');
+    expect(fake.programSubstitutionRequests, isEmpty);
+  });
 
   testWidgets(
       'substitution leaves an active workout frozen and seeds the next one',

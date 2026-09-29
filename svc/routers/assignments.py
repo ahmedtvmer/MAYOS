@@ -17,6 +17,7 @@ import asyncio
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 
 from agent.ProgramState import GeneratedProgramSchema
 from service import assignments as assignment_service
@@ -24,7 +25,14 @@ from service import check_ins as check_ins_service
 from service import coach_history as coach_history_service
 from service import coach_programs as coach_programs_service
 from service import program_requests as program_requests_service
-from svc.dependencies import VerifiedPlayer, get_current_coach, get_current_player, get_db, get_ledger, get_verified_player
+from svc.dependencies import (
+    VerifiedPlayer,
+    get_current_coach,
+    get_current_player,
+    get_db,
+    get_ledger,
+    get_verified_player,
+)
 from svc.rate_limit import (
     ASSIGNMENT_INVITE_LIMIT,
     ASSIGNMENT_MUTATE_LIMIT,
@@ -197,9 +205,7 @@ async def read_assigned_player_exercise_history(
     """Progression history, latest caption, and records for one exercise."""
 
     def _run():
-        history = coach_history_service.player_exercise_history(
-            db, coach.account_id, assignment_id, exercise_id
-        )
+        history = coach_history_service.player_exercise_history(db, coach.account_id, assignment_id, exercise_id)
         if history is None:
             raise _no_active_assignment()
         return history
@@ -207,9 +213,7 @@ async def read_assigned_player_exercise_history(
     return CoachExerciseHistoryOut(**await asyncio.to_thread(_run))
 
 
-@coach_router.post(
-    "/{assignment_id}/check-ins", response_model=CoachCheckInCreateOut
-)
+@coach_router.post("/{assignment_id}/check-ins", response_model=CoachCheckInCreateOut)
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def create_assignment_check_in(
     request: Request,
@@ -221,9 +225,7 @@ async def create_assignment_check_in(
     """Records an immutable check-in for an actively assigned player (ADR 031)."""
 
     def _run():
-        result = check_ins_service.create_check_in(
-            db, coach.account_id, assignment_id, body.model_dump()
-        )
+        result = check_ins_service.create_check_in(db, coach.account_id, assignment_id, body.model_dump())
         if not result["ok"]:
             if result.get("denied"):
                 raise _no_active_assignment()
@@ -245,9 +247,7 @@ async def list_assignment_check_ins(
 ):
     """Lists an actively assigned player's check-ins, newest date first (catalog-only)."""
 
-    rows = await asyncio.to_thread(
-        check_ins_service.list_coach_check_ins, db, coach.account_id, assignment_id
-    )
+    rows = await asyncio.to_thread(check_ins_service.list_coach_check_ins, db, coach.account_id, assignment_id)
     if rows is None:
         raise _no_active_assignment()
     return CoachCheckInListOut(check_ins=[CheckInOut(**row) for row in rows])
@@ -339,12 +339,8 @@ async def list_coach_program_requests(
     client can apply or decline through the existing per-assignment endpoints.
     """
 
-    rows = await asyncio.to_thread(
-        program_requests_service.list_coach_program_requests, db, coach.account_id
-    )
-    return CoachCrossRosterProgramRequestListOut(
-        requests=[CoachCrossRosterProgramRequestOut(**row) for row in rows]
-    )
+    rows = await asyncio.to_thread(program_requests_service.list_coach_program_requests, db, coach.account_id)
+    return CoachCrossRosterProgramRequestListOut(requests=[CoachCrossRosterProgramRequestOut(**row) for row in rows])
 
 
 @coach_router.get("/{assignment_id}/program-requests", response_model=CoachProgramRequestListOut)
@@ -365,9 +361,7 @@ async def list_assignment_program_requests(
     return CoachProgramRequestListOut(requests=[ProgramRequestOut(**row) for row in rows])
 
 
-@coach_router.post(
-    "/{assignment_id}/program-requests/{request_id}/apply", response_model=ProgramRequestOut
-)
+@coach_router.post("/{assignment_id}/program-requests/{request_id}/apply", response_model=ProgramRequestOut)
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def apply_assignment_program_request(
     request: Request,
@@ -389,9 +383,7 @@ async def apply_assignment_program_request(
     return ProgramRequestOut(**await asyncio.to_thread(_run))
 
 
-@coach_router.post(
-    "/{assignment_id}/program-requests/{request_id}/decline", response_model=ProgramRequestOut
-)
+@coach_router.post("/{assignment_id}/program-requests/{request_id}/decline", response_model=ProgramRequestOut)
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def decline_assignment_program_request(
     request: Request,
@@ -494,9 +486,7 @@ async def list_my_check_ins(
     after the former coach's access ends (ADR 031).
     """
 
-    rows = await asyncio.to_thread(
-        check_ins_service.list_player_check_ins, db, player.account_id
-    )
+    rows = await asyncio.to_thread(check_ins_service.list_player_check_ins, db, player.account_id)
     return PlayerCheckInListOut(check_ins=[CheckInOut(**row) for row in rows])
 
 
@@ -537,9 +527,7 @@ async def end_my_assignment(
         assignment = assignment_service.get_player_assignment(db, player.account_id)
         if assignment is None:
             raise _bad_request("You have no active coaching assignment.")
-        result = assignment_service.end_assignment(
-            db, player.account_id, assignment["assignment_id"], "player"
-        )
+        result = assignment_service.end_assignment(db, player.account_id, assignment["assignment_id"], "player")
         if not result["ok"]:
             raise _bad_request(result["error"])
         return result
@@ -555,9 +543,7 @@ async def list_my_program_requests(
 ):
     """Lists the caller's program requests, newest-first."""
 
-    rows = await asyncio.to_thread(
-        program_requests_service.list_player_requests, db, player.account_id
-    )
+    rows = await asyncio.to_thread(program_requests_service.list_player_requests, db, player.account_id)
     return PlayerProgramRequestListOut(requests=[ProgramRequestOut(**row) for row in rows])
 
 
@@ -573,12 +559,17 @@ async def create_my_program_request(
     """Records a pending exercise-substitution or split-change request; the program is untouched."""
 
     def _run():
-        result = program_requests_service.create_request(db, player.account_id, body.model_dump(), ledger=ledger)
-        if not result["ok"]:
-            raise _bad_request(result["error"])
-        return result["request"]
+        return program_requests_service.create_request(db, player.account_id, body.model_dump(), ledger=ledger)
 
-    return ProgramRequestOut(**await asyncio.to_thread(_run))
+    result = await asyncio.to_thread(_run)
+    if not result["ok"]:
+        if "code" in result:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"detail": result["error"], "code": result["code"]},
+            )
+        raise _bad_request(result["error"])
+    return ProgramRequestOut(**result["request"])
 
 
 @player_router.post("/me/program-requests/{request_id}/cancel", response_model=ProgramRequestOut)

@@ -29,6 +29,7 @@ from service.program_substitution import (
 logger = logging.getLogger(__name__)
 
 DIRECT_CHANGE_ERROR = "You can change your own program directly."
+PLAYER_CONTROLS_PROGRAM_CODE = "player_controls_program"
 STALE_REQUEST_ERROR = "The program changed since this request was created. Ask the player to update it."
 NOT_PENDING_ERROR = "This request is no longer pending."
 REQUEST_NOT_FOUND_ERROR = "Request not found."
@@ -57,9 +58,7 @@ def _day_contains(program: Any, day_name: Any, exercise_id: Any) -> bool:
     return any(str(exercise.exercise_id) == str(exercise_id) for exercise in day.exercises)
 
 
-def _notify_player(
-    db: Any, player_account_id: str, assignment_id: str, message: str, now_iso: str
-) -> None:
+def _notify_player(db: Any, player_account_id: str, assignment_id: str, message: str, now_iso: str) -> None:
     """Best-effort player in-app notice; a notice failure never fails the resolution."""
     try:
         db.create_assignment_notice(player_account_id, assignment_id, "program_request", message, now_iso)
@@ -91,11 +90,19 @@ def create_request(
 
     with ledger_scope(db, ledger, account["ledger_id"]) as ledger:
         if player_controls_program(db, ledger, player_account_id):
-            return {"ok": False, "error": DIRECT_CHANGE_ERROR}
+            return {
+                "ok": False,
+                "error": DIRECT_CHANGE_ERROR,
+                "code": PLAYER_CONTROLS_PROGRAM_CODE,
+            }
 
         assignment = db.get_active_assignment_for_player(player_account_id)
         if assignment is None:
-            return {"ok": False, "error": DIRECT_CHANGE_ERROR}
+            return {
+                "ok": False,
+                "error": DIRECT_CHANGE_ERROR,
+                "code": PLAYER_CONTROLS_PROGRAM_CODE,
+            }
 
         active = ledger.get_active_program()
         if active is None:
@@ -131,7 +138,10 @@ def create_request(
                 return {"ok": False, "error": "Weekly frequency must be between 1 and 5."}
             desired_split_preference = str(payload.get("desired_split_preference") or "").strip() or None
             if desired_split_preference and len(desired_split_preference) > MAX_SPLIT_PREFERENCE_CHARS:
-                return {"ok": False, "error": f"Keep the split preference under {MAX_SPLIT_PREFERENCE_CHARS} characters."}
+                return {
+                    "ok": False,
+                    "error": f"Keep the split preference under {MAX_SPLIT_PREFERENCE_CHARS} characters.",
+                }
 
         now_iso = _now_iso()
         request_id = uuid.uuid4().hex
@@ -151,17 +161,13 @@ def create_request(
             reason=reason,
             now_iso=now_iso,
         )
-        email_sent = _notify_coach(
-            db, coach_account_id, assignment["assignment_id"], account["username"], now_iso
-        )
+        email_sent = _notify_coach(db, coach_account_id, assignment["assignment_id"], account["username"], now_iso)
 
         request = db.get_program_request(request_id)
         return {"ok": True, "request": request, "email_sent": email_sent}
 
 
-def _notify_coach(
-    db: Any, coach_account_id: str, assignment_id: str, player_username: str, now_iso: str
-) -> bool:
+def _notify_coach(db: Any, coach_account_id: str, assignment_id: str, player_username: str, now_iso: str) -> bool:
     """Generic in-app + email coach notice; neither path ever carries training detail.
 
     The two paths are independent best-effort side effects: one failing never
@@ -200,9 +206,7 @@ def _pending_request(db: Any, coach_account_id: str, assignment_id: Any, request
     return request
 
 
-def apply_request(
-    db: Any, coach_account_id: str, assignment_id: Any, request_id: Any
-) -> dict[str, Any] | None:
+def apply_request(db: Any, coach_account_id: str, assignment_id: Any, request_id: Any) -> dict[str, Any] | None:
     """Revalidates and applies a pending request, writing a NEW immutable program version.
 
     ``None`` is the generic assignment denial. A stale target stays pending and
@@ -276,9 +280,7 @@ def apply_request(
                     ),
                 )
         except Exception:
-            logger.exception(
-                "Program request %s write failed after claim; reverting to pending", request_id
-            )
+            logger.exception("Program request %s write failed after claim; reverting to pending", request_id)
             now_iso = _now_iso()
             try:
                 reverted = db.reopen_program_request(request_id, now_iso)
@@ -356,9 +358,7 @@ def list_player_requests(db: Any, player_account_id: str) -> list[dict[str, Any]
     return db.list_program_requests_for_player(player_account_id)
 
 
-def list_assignment_requests(
-    db: Any, coach_account_id: str, assignment_id: Any
-) -> list[dict[str, Any]] | None:
+def list_assignment_requests(db: Any, coach_account_id: str, assignment_id: Any) -> list[dict[str, Any]] | None:
     """Catalog-only queue listing; ``None`` is the generic denial (no ledger mounted)."""
     if not isinstance(assignment_id, str) or not assignment_id:
         return None

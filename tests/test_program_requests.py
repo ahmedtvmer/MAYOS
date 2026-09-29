@@ -136,9 +136,7 @@ def _program(frequency=1) -> GeneratedProgramSchema:
                     ProgramExerciseSchema(
                         exercise_id="bp", exercise_name="Bench Press", target_reps_min=5, target_reps_max=8
                     ),
-                    ProgramExerciseSchema(
-                        exercise_id="row", exercise_name="Row", target_reps_min=5, target_reps_max=8
-                    ),
+                    ProgramExerciseSchema(exercise_id="row", exercise_name="Row", target_reps_min=5, target_reps_max=8),
                 ],
             )
         )
@@ -316,6 +314,7 @@ def test_create_refused_when_player_controls_program(api, monkeypatch):
     refused = _create(client, player_headers, **_substitution())
     assert refused.status_code == 400
     assert refused.json()["detail"] == "You can change your own program directly."
+    assert refused.json()["code"] == "player_controls_program"
     assert db.list_program_requests_for_player(player_account_id) == []
 
 
@@ -349,9 +348,7 @@ def test_create_missing_reason_and_bad_frequency_are_rejected(api, monkeypatch):
     )
     assert missing_reason.status_code == 422
 
-    bad_frequency = _create(
-        client, player_headers, kind="split_change", desired_weekly_frequency=9
-    )
+    bad_frequency = _create(client, player_headers, kind="split_change", desired_weekly_frequency=9)
     assert bad_frequency.status_code == 422
 
 
@@ -577,7 +574,9 @@ def test_apply_stale_request_after_new_publication(api, monkeypatch):
         f"/coach/assignments/{assignment_id}/program-requests/{request_id}/apply", headers=coach_headers
     )
     assert applied.status_code == 400
-    assert applied.json()["detail"] == "The program changed since this request was created. Ask the player to update it."
+    assert (
+        applied.json()["detail"] == "The program changed since this request was created. Ask the player to update it."
+    )
 
     listed = client.get("/assignments/me/program-requests", headers=player_headers).json()["requests"]
     assert listed[0]["status"] == "pending"
@@ -627,9 +626,7 @@ def test_cancel_pending_then_apply_is_refused(api, monkeypatch):
     created = _create(client, player_headers, **_substitution())
     request_id = created.json()["request_id"]
 
-    cancelled = client.post(
-        f"/assignments/me/program-requests/{request_id}/cancel", headers=player_headers
-    )
+    cancelled = client.post(f"/assignments/me/program-requests/{request_id}/cancel", headers=player_headers)
     assert cancelled.status_code == 200, cancelled.text
     assert cancelled.json()["status"] == "cancelled"
     assert cancelled.json()["resolved_by"] == "player"
@@ -648,11 +645,14 @@ def test_cancel_non_pending_request_is_refused(api, monkeypatch):
     assert _publish(client, coach_headers, assignment_id).status_code == 200
     created = _create(client, player_headers, **_substitution())
     request_id = created.json()["request_id"]
-    assert client.post(
-        f"/coach/assignments/{assignment_id}/program-requests/{request_id}/decline",
-        headers=coach_headers,
-        json={"response": "No."},
-    ).status_code == 200
+    assert (
+        client.post(
+            f"/coach/assignments/{assignment_id}/program-requests/{request_id}/decline",
+            headers=coach_headers,
+            json={"response": "No."},
+        ).status_code
+        == 200
+    )
 
     again = client.post(f"/assignments/me/program-requests/{request_id}/cancel", headers=player_headers)
     assert again.status_code == 400
@@ -681,9 +681,7 @@ def test_wrong_coach_and_unknown_assignment_are_indistinguishable(api, monkeypat
     other_apply = client.post(
         f"/coach/assignments/{assignment_id}/program-requests/{request_id}/apply", headers=other_headers
     )
-    unknown_apply = client.post(
-        "/coach/assignments/does-not-exist/program-requests/x/apply", headers=other_headers
-    )
+    unknown_apply = client.post("/coach/assignments/does-not-exist/program-requests/x/apply", headers=other_headers)
     assert other_apply.status_code == unknown_apply.status_code == 403
     assert other_apply.json()["detail"] == coach_history_service.DENIED_ERROR
 
@@ -736,8 +734,7 @@ def _assign_player_to(client, coach_headers, player_name):
 
 def _pin_request_times(db, request_id, created_at, resolved_at=None):
     db.catalog_conn.execute(
-        "UPDATE program_requests SET created_at = ?, resolved_at = COALESCE(?, resolved_at)"
-        " WHERE request_id = ?",
+        "UPDATE program_requests SET created_at = ?, resolved_at = COALESCE(?, resolved_at) WHERE request_id = ?",
         (created_at, resolved_at, request_id),
     )
     db.catalog_conn.commit()
@@ -787,8 +784,7 @@ def test_cross_roster_listing_orders_pending_then_answered(api, monkeypatch):
 
     # The row's own ids drive resolution through the per-assignment endpoints.
     declined = client.post(
-        f"/coach/assignments/{other['assignment_id']}/program-requests"
-        f"/{other['request_id']}/decline",
+        f"/coach/assignments/{other['assignment_id']}/program-requests/{other['request_id']}/decline",
         headers=coach_headers,
         json={"response": "Not now."},
     )
@@ -796,8 +792,7 @@ def test_cross_roster_listing_orders_pending_then_answered(api, monkeypatch):
     _pin_request_times(db, other["request_id"], "2026-09-02T10:00:00+00:00", "2026-09-10T10:00:00+00:00")
 
     declined = client.post(
-        f"/coach/assignments/{first['assignment_id']}/program-requests"
-        f"/{first['request_id']}/decline",
+        f"/coach/assignments/{first['assignment_id']}/program-requests/{first['request_id']}/decline",
         headers=coach_headers,
         json={"response": "Keep it."},
     )
@@ -822,10 +817,13 @@ def test_cross_roster_listing_keeps_player_cancelled_requests_visible(api, monke
 
     pending = _create(client, player_headers, **_substitution()).json()
     cancelled = _create(client, player_headers, **_substitution()).json()
-    assert client.post(
-        f"/assignments/me/program-requests/{cancelled['request_id']}/cancel",
-        headers=player_headers,
-    ).status_code == 200
+    assert (
+        client.post(
+            f"/assignments/me/program-requests/{cancelled['request_id']}/cancel",
+            headers=player_headers,
+        ).status_code
+        == 200
+    )
 
     rows = _cross_roster(client, coach_headers)
     assert [row["request_id"] for row in rows] == [pending["request_id"], cancelled["request_id"]]
@@ -847,16 +845,12 @@ def test_cross_roster_listing_hides_other_coaches_and_ended_assignments(api, mon
     rows = _cross_roster(client, coach_headers)
     assert [row["request_id"] for row in rows] == [mine["request_id"]]
     assert rows[0]["player_username"] == "p1"
-    assert [row["request_id"] for row in _cross_roster(client, intruder_headers)] == [
-        theirs["request_id"]
-    ]
+    assert [row["request_id"] for row in _cross_roster(client, intruder_headers)] == [theirs["request_id"]]
 
     # Ending the assignment removes its requests from the listing entirely.
     assert client.post(f"/coach/assignments/{assignment_id}/revoke", headers=coach_headers).status_code == 200
     assert _cross_roster(client, coach_headers) == []
-    assert [row["request_id"] for row in _cross_roster(client, intruder_headers)] == [
-        theirs["request_id"]
-    ]
+    assert [row["request_id"] for row in _cross_roster(client, intruder_headers)] == [theirs["request_id"]]
 
 
 def test_cross_roster_listing_requires_the_coach_capability(api):

@@ -1609,6 +1609,12 @@ class FakeMayosApi {
       return const FakeResponse(
           400, <String, dynamic>{'detail': 'A reason is required.'});
     }
+    if (!coachControlsProgram) {
+      return const FakeResponse(400, <String, dynamic>{
+        'detail': 'You can change your own program directly.',
+        'code': 'player_controls_program',
+      });
+    }
     final Map<String, dynamic> row = <String, dynamic>{
       'request_id': 'request-${++_programRequestSeq}',
       'assignment_id': activeAssignmentId ?? 'assignment-1',
@@ -2491,6 +2497,7 @@ class FakeMayosApi {
         if (programVersion != null) 'version': programVersion,
         if (programPublishedByCoachAccountId != null)
           'published_by_coach_account_id': programPublishedByCoachAccountId,
+        'player_controls_program': !coachControlsProgram,
       };
 
   FakeResponse _activeProgram(FakeRequest request) {
@@ -2512,6 +2519,13 @@ class FakeMayosApi {
     if (!_authorized(request)) {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (coachControlsProgram) {
+      return const FakeResponse(403, <String, dynamic>{
+        'detail':
+            'Your assigned coach controls your program. Ask your coach for changes.',
+        'code': 'coach_controlled',
+      });
     }
     final Map<String, dynamic> payload =
         Map<String, dynamic>.from(request.body);

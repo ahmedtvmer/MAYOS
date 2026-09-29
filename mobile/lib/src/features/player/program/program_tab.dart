@@ -29,6 +29,7 @@ class _ProgramSwap {
     required this.sourceName,
     required this.replacement,
     required this.allOccurrences,
+    this.authorityNotice,
   });
 
   final String dayName;
@@ -36,7 +37,15 @@ class _ProgramSwap {
   final String sourceName;
   final ExerciseCatalogEntry replacement;
   final bool allOccurrences;
+  final String? authorityNotice;
 }
+
+typedef _SubstitutionRecovery = ({
+  ProgramDay selectedDay,
+  ProgramExercise selectedExercise,
+  ExerciseCatalogEntry replacement,
+  bool requestWasRefused,
+});
 
 class ProgramTab extends ConsumerStatefulWidget {
   const ProgramTab({super.key});
@@ -59,9 +68,6 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   /// (e.g. offline), so the label never wrongly claims a coach is "former".
   Assignment? _assignment;
   bool _assignmentKnown = false;
-
-  bool get _coachControlsProgram =>
-      _program?.isCoachPublished == true && _assignment?.status == 'active';
 
   /// True only when [_program] is being served from the offline cache after
   /// an online fetch failed (ADR 020/033) — never merely because a cache
@@ -152,42 +158,32 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   ) async {
     if (_substituting || _pickerBusy) return;
     setState(() => _pickerBusy = true);
+    ExerciseCatalogEntry? replacement;
     try {
-      final ExerciseCatalogEntry? replacement =
-          await _pickProgramReplacement(day, exercise);
+      replacement = await _pickProgramReplacement(day, exercise);
       if (replacement == null || !mounted) return;
-      final bool coachControlsProgram = await _resolveProgramAuthority();
-      if (!mounted) return;
-      if (coachControlsProgram) {
+      if (_program?.playerControlsProgram == true) {
+        await _substitutePlayerProgram(day, exercise, replacement);
+      } else {
         await _requestSubstitution(day, exercise, replacement);
-        return;
       }
-      await _substitutePlayerProgram(day, exercise, replacement);
     } on ApiException catch (error) {
-      if (mounted) _showSwapError(error);
+      if (_isAuthorityMismatch(error) && replacement != null) {
+        await _refreshAndRouteSubstitution(day, exercise, replacement, error);
+      } else if (mounted) {
+        _showSwapError(error);
+      }
     } finally {
       if (mounted) setState(() => _pickerBusy = false);
     }
   }
 
-  Future<bool> _resolveProgramAuthority() async {
-    if (_program?.isCoachPublished != true) return false;
-    if (_assignmentKnown) return _coachControlsProgram;
-    final Assignment? assignment =
-        await ref.read(apiClientProvider).myAssignment();
-    if (!mounted) return false;
-    setState(() {
-      _assignment = assignment;
-      _assignmentKnown = true;
-    });
-    return assignment?.status == 'active';
-  }
-
   Future<void> _substitutePlayerProgram(
     ProgramDay day,
     ProgramExercise exercise,
-    ExerciseCatalogEntry replacement,
-  ) async {
+    ExerciseCatalogEntry replacement, {
+    String? authorityNotice,
+  }) async {
     final int otherDays = _otherDaysWith(day, exercise.exerciseId);
     final bool? allOccurrences =
         otherDays == 0 ? false : await _chooseSubstitutionScope(otherDays);
@@ -199,9 +195,148 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         sourceName: exercise.exerciseName,
         replacement: replacement,
         allOccurrences: allOccurrences,
+        authorityNotice: authorityNotice,
       ),
       _SwapDirection.apply,
     );
+  }
+
+  bool _isAuthorityMismatch(ApiException error) =>
+      error.errorCode == 'player_controls_program' ||
+      error.errorCode == 'coach_controlled';
+
+  Future<void> _refreshAndRouteSubstitution(
+    ProgramDay selectedDay,
+    ProgramExercise selectedExercise,
+    ExerciseCatalogEntry replacement,
+    ApiException error,
+  ) async {
+    final _SubstitutionRecovery recovery = (
+      selectedDay: selectedDay,
+      selectedExercise: selectedExercise,
+      replacement: replacement,
+      requestWasRefused: error.errorCode == 'player_controls_program',
+    );
+    if (mounted) setState(() => _substituting = false);
+    try {
+      final TrainingProgram? refreshedProgram = await _refreshActiveProgram();
+      if (!mounted) return;
+      await _continueAfterAuthorityRefresh(refreshedProgram, recovery);
+    } on ApiException catch (refreshError) {
+      if (mounted) _showSwapError(refreshError);
+    }
+  }
+
+  Future<void> _continueAfterAuthorityRefresh(
+    TrainingProgram? program,
+    _SubstitutionRecovery recovery,
+  ) async {
+    if (program == null) {
+      _showAuthorityMessage(
+          'Your program changed. Refresh before substituting.');
+      return;
+    }
+    if (program.playerControlsProgram != recovery.requestWasRefused) {
+      _showAuthorityMessage('Program authority changed again. Try once more.');
+      return;
+    }
+    await _continueWithRefreshedProgram(program, recovery);
+  }
+
+  Future<void> _continueWithRefreshedProgram(
+    TrainingProgram program,
+    _SubstitutionRecovery recovery,
+  ) async {
+    final (ProgramDay, ProgramExercise)? target =
+        _findRefreshedSubstitutionTarget(program, recovery);
+    if (target == null) {
+      _showAuthorityMessage(
+          'The program changed. Choose the exercise and replacement again.');
+      return;
+    }
+    await _routeSubstitutionForRefreshedProgram(
+      program,
+      target.$1,
+      target.$2,
+      recovery.replacement,
+    );
+  }
+
+  (ProgramDay, ProgramExercise)? _findRefreshedSubstitutionTarget(
+    TrainingProgram program,
+    _SubstitutionRecovery recovery,
+  ) {
+    final ProgramDay? day = _findDay(program, recovery.selectedDay.dayName);
+    final ProgramExercise? exercise = day == null
+        ? null
+        : _findExercise(day, recovery.selectedExercise.exerciseId);
+    if (day == null ||
+        exercise == null ||
+        day.exercises.any((ProgramExercise item) =>
+            item.exerciseId == recovery.replacement.id)) {
+      return null;
+    }
+    return (day, exercise);
+  }
+
+  Future<void> _routeSubstitutionForRefreshedProgram(
+    TrainingProgram program,
+    ProgramDay day,
+    ProgramExercise exercise,
+    ExerciseCatalogEntry replacement,
+  ) async {
+    if (program.playerControlsProgram) {
+      await _substitutePlayerProgram(
+        day,
+        exercise,
+        replacement,
+        authorityNotice:
+            'Program authority changed. Continuing with direct substitution.',
+      );
+      return;
+    }
+    _showAuthorityMessage(
+        'Program authority changed. Opening a request for your coach.');
+    await _requestSubstitution(day, exercise, replacement);
+  }
+
+  Future<TrainingProgram?> _refreshActiveProgram() async {
+    final TrainingProgram? refreshedProgram =
+        await ref.read(apiClientProvider).activeProgram();
+    if (!mounted) return null;
+    final String? accountId = _accountId;
+    if (refreshedProgram != null && accountId != null) {
+      unawaited(cacheActiveProgram(
+        ref.read(workoutCacheStoreProvider),
+        accountId,
+        refreshedProgram,
+      ));
+    }
+    setState(() {
+      _program = refreshedProgram;
+      _fromCache = false;
+    });
+    return refreshedProgram;
+  }
+
+  ProgramDay? _findDay(TrainingProgram program, String dayName) {
+    for (final ProgramDay day in program.days) {
+      if (day.dayName == dayName) return day;
+    }
+    return null;
+  }
+
+  ProgramExercise? _findExercise(ProgramDay day, String exerciseId) {
+    for (final ProgramExercise exercise in day.exercises) {
+      if (exercise.exerciseId == exerciseId) return exercise;
+    }
+    return null;
+  }
+
+  void _showAuthorityMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _requestSubstitution(
@@ -212,9 +347,13 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     final ProgramRequestDraft? draft = await showDialog<ProgramRequestDraft>(
       context: context,
       builder: (BuildContext context) => ProgramRequestDialog.forSubstitution(
-        dayName: day.dayName,
-        exerciseId: exercise.exerciseId,
-        replacementExerciseId: replacement.id,
+        substitution: ProgramSubstitutionRequestPrefill(
+          dayName: day.dayName,
+          exerciseId: exercise.exerciseId,
+          exerciseName: exercise.exerciseName,
+          replacementExerciseId: replacement.id,
+          replacementName: replacement.name,
+        ),
       ),
     );
     if (draft == null || !mounted) return;
@@ -230,22 +369,23 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       _substituting = true;
       _actionError = null;
     });
-    await _createSubstitutionRequest(draft);
+    try {
+      await ref.read(apiClientProvider).createPlayerProgramRequest(
+            kind: draft.kind,
+            dayName: draft.dayName,
+            exerciseId: draft.exerciseId,
+            replacementExerciseId: draft.replacementExerciseId,
+            desiredWeeklyFrequency: draft.desiredWeeklyFrequency,
+            desiredSplitPreference: draft.desiredSplitPreference,
+            reason: draft.reason,
+          );
+    } on ApiException {
+      if (mounted) setState(() => _substituting = false);
+      rethrow;
+    }
     if (!mounted) return;
     setState(() => _substituting = false);
     _showSubstitutionRequestSent(exercise, replacement);
-  }
-
-  Future<void> _createSubstitutionRequest(ProgramRequestDraft draft) async {
-    await ref.read(apiClientProvider).createPlayerProgramRequest(
-          kind: draft.kind,
-          dayName: draft.dayName,
-          exerciseId: draft.exerciseId,
-          replacementExerciseId: draft.replacementExerciseId,
-          desiredWeeklyFrequency: draft.desiredWeeklyFrequency,
-          desiredSplitPreference: draft.desiredSplitPreference,
-          reason: draft.reason,
-        );
   }
 
   void _showSubstitutionRequestSent(
@@ -354,6 +494,11 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       });
       _showSwapResult(swap, direction, swapResult);
     } on ApiException catch (error) {
+      if (direction == _SwapDirection.apply &&
+          error.errorCode == 'coach_controlled') {
+        if (mounted) setState(() => _substituting = false);
+        rethrow;
+      }
       if (mounted) _showSwapError(error);
     }
   }
@@ -404,8 +549,12 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     }
     messenger.showSnackBar(
       SnackBar(
-        content:
-            Text('${swap.sourceName} replaced with ${swap.replacement.name}.'),
+        content: Text(
+          <String>[
+            if (swap.authorityNotice != null) swap.authorityNotice!,
+            '${swap.sourceName} replaced with ${swap.replacement.name}.',
+          ].join(' '),
+        ),
         duration: const Duration(seconds: 10),
         action: SnackBarAction(
           label: 'Undo',

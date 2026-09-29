@@ -1732,6 +1732,7 @@ class TrainingProgram {
     required this.days,
     this.version,
     this.publishedByCoachAccountId,
+    this.playerControlsProgram = false,
   });
 
   factory TrainingProgram.fromJson(Map<String, dynamic> json) =>
@@ -1745,6 +1746,8 @@ class TrainingProgram {
         version: (json['version'] as num?)?.toInt(),
         publishedByCoachAccountId:
             json['published_by_coach_account_id'] as String?,
+        playerControlsProgram:
+            json['player_controls_program'] as bool? ?? false,
       );
 
   final String programName;
@@ -1758,6 +1761,9 @@ class TrainingProgram {
   /// Publishing coach's account id, or null for player self-service.
   final String? publishedByCoachAccountId;
 
+  /// Server-computed Program-authority decision for the active program.
+  final bool playerControlsProgram;
+
   bool get isCoachPublished => publishedByCoachAccountId != null;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -1769,6 +1775,7 @@ class TrainingProgram {
         ],
         'version': version,
         'published_by_coach_account_id': publishedByCoachAccountId,
+        'player_controls_program': playerControlsProgram,
       };
 }
 
