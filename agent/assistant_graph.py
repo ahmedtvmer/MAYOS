@@ -207,6 +207,38 @@ def _valid_preferred_name(value: Any) -> str | None:
     return value
 
 
+def _match_substitution_source(days: list[Any], source_name: str) -> tuple[Any, Any, float]:
+    matched_ex, target_day, best_similarity = None, None, 0.0
+    source_stem = clean_movement_stem(source_name.lower())
+    for day in days:
+        for exercise in day.exercises:
+            similarity = _substitution_source_similarity(source_name, source_stem, exercise)
+            if similarity == 1.0:
+                return exercise, day, similarity
+            if similarity > best_similarity:
+                matched_ex, target_day, best_similarity = exercise, day, similarity
+    return matched_ex, target_day, best_similarity
+
+
+def _substitution_source_similarity(source_name: str, source_stem: str, exercise: Any) -> float:
+    exercise_name = exercise.exercise_name.lower()
+    exercise_stem = clean_movement_stem(exercise_name)
+    if source_stem and exercise_stem and (
+        source_stem == exercise_stem
+        or len(source_stem) >= 4
+        and len(exercise_stem) >= 4
+        and (
+            re.search(r"\b" + re.escape(source_stem) + r"\b", exercise_stem)
+            or re.search(r"\b" + re.escape(exercise_stem) + r"\b", source_stem)
+        )
+    ):
+        return 1.0
+    return max(
+        SequenceMatcher(None, source_name.lower(), exercise_name).ratio(),
+        SequenceMatcher(None, source_stem, exercise_stem).ratio(),
+    )
+
+
 def _explicit_preferred_name(query: str) -> str | None:
     if len(query) > 90:
         return None
@@ -841,25 +873,37 @@ def _target_is_name_like(target_desc: str, candidates: list[dict[str, Any]]) -> 
     return False
 
 
-def _requested_substitution_day(state: AssistantState, program: Any, query: str) -> str | None:
-    """Resolve a day supplied in node state, intent metadata, or the user's message."""
-    meta = state.get("intent_metadata", {})
-    target = state.get("target_day") or meta.get("target_day") or meta.get("day_name")
-    if isinstance(target, dict):
-        target = target.get("day_name")
-    if target:
-        return next((day.day_name for day in program.days if day.day_name.casefold() == str(target).casefold()), str(target))
-
+def _requested_substitution_day(program: Any, query: str) -> str | None:
+    """Resolve a day only when the message uses an explicit day reference."""
+    normalized_query = query.strip().rstrip(".!?,").casefold()
     for day in sorted(program.days, key=lambda candidate: len(candidate.day_name), reverse=True):
-        if re.search(rf"(?<!\w){re.escape(day.day_name)}(?!\w)", query, re.IGNORECASE):
+        day_name = day.day_name.strip()
+        base_name = re.sub(r"\s+day$", "", day_name, flags=re.IGNORECASE)
+        names = {day_name, base_name}
+        if normalized_query in {name.casefold() for name in names if name}:
             return day.day_name
+        if normalized_query in {f"{name} day".casefold() for name in names if name}:
+            return day.day_name
+        for name in names:
+            if not name:
+                continue
+            reference = re.escape(name)
+            if re.search(rf"\b(?:on|in)\s+{reference}(?:\s+day)?\b", query, re.IGNORECASE):
+                return day.day_name
+            if re.search(rf"\bfor\s+{reference}\s+day\b", query, re.IGNORECASE):
+                return day.day_name
     return None
 
 
 def _remove_day_suffix(exercise_name: str, day_name: str | None) -> str:
     if not day_name:
         return exercise_name
-    return re.sub(rf"\s+(?:on\s+)?{re.escape(day_name)}\s*$", "", exercise_name, flags=re.IGNORECASE)
+    return re.sub(
+        rf"\s+(?:(?:on|in|for)\s+)?{re.escape(day_name)}(?:\s+day)?\s*$",
+        "",
+        exercise_name,
+        flags=re.IGNORECASE,
+    )
 
 
 #: Bare number words reply to the numbered alternatives list rather than naming a movement
@@ -886,13 +930,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         msg = "No active routine found in your ledger. Generate a baseline routine first."
         return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
-    requested_day_name = _requested_substitution_day(state, active_program, query)
-    candidate_days = active_program.days
-    if requested_day_name:
-        candidate_days = [day for day in active_program.days if day.day_name == requested_day_name]
-        if not candidate_days:
-            msg = "That day is not part of your current program."
-            return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
+    requested_day_name = _requested_substitution_day(active_program, query)
 
     raw_source = source_name
     raw_target = _remove_day_suffix(target_desc, requested_day_name)
@@ -924,32 +962,23 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         if resolved_tgt:
             target_desc = expand_fitness_abbreviations(resolved_tgt)
 
-    matched_ex, target_day, best_similarity = None, None, 0.0
-    source_stem = clean_movement_stem(source_name.lower())
+    matched_ex, target_day, best_similarity = _match_substitution_source(active_program.days, source_name)
+    if requested_day_name:
+        requested_day = next(day for day in active_program.days if day.day_name == requested_day_name)
+        requested_match = _match_substitution_source([requested_day], source_name)
+        if requested_match[0] and requested_match[2] >= 0.70:
+            matched_ex, target_day, best_similarity = requested_match
 
-    for day in candidate_days:
-        for ex in day.exercises:
-            ex_name_clean = ex.exercise_name.lower()
-            ex_stem = clean_movement_stem(ex_name_clean)
-            if source_stem and ex_stem:
-                if source_stem == ex_stem:
-                    matched_ex, target_day, best_similarity = ex, day, 1.0
-                    break
-                if len(source_stem) >= 4 and len(ex_stem) >= 4:
-                    if re.search(r"\b" + re.escape(source_stem) + r"\b", ex_stem) or re.search(r"\b" + re.escape(ex_stem) + r"\b", source_stem):
-                        matched_ex, target_day, best_similarity = ex, day, 1.0
-                        break
-
-            sim = max(
-                SequenceMatcher(None, source_name.lower(), ex_name_clean).ratio(),
-                SequenceMatcher(None, source_stem, ex_stem).ratio(),
-            )
-            if sim > best_similarity:
-                best_similarity = sim
-                matched_ex, target_day = ex, day
-
-        if best_similarity == 1.0:
-            break
+    if requested_day_name is None and matched_ex and best_similarity >= 0.70:
+        matching_days = [
+            day
+            for day in active_program.days
+            if any(str(ex.exercise_id) == str(matched_ex.exercise_id) for ex in day.exercises)
+        ]
+        if len(matching_days) > 1:
+            day_list = ", ".join(day.day_name for day in matching_days)
+            msg = f"I found **{matched_ex.exercise_name.title()}** on more than one day: {day_list}. Which day should I change?"
+            return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
     if not matched_ex or best_similarity < 0.70:
         routine_list = [
@@ -1113,7 +1142,6 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
             day_name=target_day.day_name,
             exercise_id=matched_ex.exercise_id,
             replacement_exercise_id=str(replacement["id"]),
-            all_occurrences=meta.get("all_occurrences") is True,
         ),
     )
     if substitution["ok"]:

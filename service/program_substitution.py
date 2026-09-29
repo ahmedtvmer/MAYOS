@@ -2,7 +2,25 @@
 
 from copy import deepcopy
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
+
+
+class SubstitutionErrorCode(str, Enum):
+    DAY_NOT_FOUND = "day_not_found"
+    SOURCE_NOT_ON_DAY = "source_not_on_day"
+    REPLACEMENT_IS_SOURCE = "replacement_is_source"
+    REPLACEMENT_NOT_FOUND = "replacement_not_found"
+    REPLACEMENT_ALREADY_ON_DAY = "replacement_already_on_day"
+
+
+SUBSTITUTION_ERRORS = {
+    SubstitutionErrorCode.DAY_NOT_FOUND: "That day is not part of your current program.",
+    SubstitutionErrorCode.SOURCE_NOT_ON_DAY: "That exercise is not in that day of your current program.",
+    SubstitutionErrorCode.REPLACEMENT_IS_SOURCE: "Choose a different replacement exercise.",
+    SubstitutionErrorCode.REPLACEMENT_NOT_FOUND: "That replacement exercise was not found.",
+    SubstitutionErrorCode.REPLACEMENT_ALREADY_ON_DAY: "That replacement exercise is already on the target day.",
+}
 
 
 @dataclass(frozen=True)
@@ -49,7 +67,7 @@ def _prepare_substitution(active_program: Any, catalog: Any, request: ProgramSub
         return target_days
     target_days = target_days["days"]
     if any(_day_has_exercise(day, replacement["entry"]["id"]) for day in target_days):
-        return {"ok": False, "error": "That replacement exercise is already on the target day."}
+        return _failure(SubstitutionErrorCode.REPLACEMENT_ALREADY_ON_DAY)
     return {"ok": True, "program_data": program_data, "target_days": target_days, "replacement": replacement["entry"]}
 
 
@@ -57,9 +75,9 @@ def _target_days(program_data: dict[str, Any], request: ProgramSubstitution, sou
     days = program_data.get("days", [])
     named_day = next((day for day in days if day.get("day_name") == request.day_name), None)
     if named_day is None:
-        return {"ok": False, "error": "That day is not part of your current program."}
+        return _failure(SubstitutionErrorCode.DAY_NOT_FOUND)
     if not _day_has_exercise(named_day, source_id):
-        return {"ok": False, "error": "That exercise is not in that day of your current program."}
+        return _failure(SubstitutionErrorCode.SOURCE_NOT_ON_DAY)
     target_days = [day for day in days if _day_has_exercise(day, source_id)] if request.all_occurrences else [named_day]
     return {"ok": True, "days": target_days}
 
@@ -67,11 +85,15 @@ def _target_days(program_data: dict[str, Any], request: ProgramSubstitution, sou
 def _replacement(catalog: Any, source_id: str, replacement_id: str) -> dict[str, Any]:
     replacement_id = str(replacement_id)
     if source_id == replacement_id:
-        return {"ok": False, "error": "Choose a different replacement exercise."}
+        return _failure(SubstitutionErrorCode.REPLACEMENT_IS_SOURCE)
     entry = catalog.get_exercise_library_entry(replacement_id)
     if entry is None:
-        return {"ok": False, "error": "That replacement exercise was not found."}
+        return _failure(SubstitutionErrorCode.REPLACEMENT_NOT_FOUND)
     return {"ok": True, "entry": entry}
+
+
+def _failure(code: SubstitutionErrorCode) -> dict[str, Any]:
+    return {"ok": False, "code": code, "error": SUBSTITUTION_ERRORS[code]}
 
 
 def _program_data(active_program: Any) -> dict[str, Any]:

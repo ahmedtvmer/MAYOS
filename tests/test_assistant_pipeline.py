@@ -339,7 +339,10 @@ def test_phase3_substitution_direct_swap(fresh_store):
         result = exercise_substitution_node(state, {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}})
 
         mock_substitute.assert_called_once()
-        assert mock_substitute.call_args.args[3].day_name == "Lower A"
+        requested = mock_substitute.call_args.args[3]
+        assert requested.day_name == "Lower A"
+        assert requested.exercise_id == "ex_123"
+        assert requested.replacement_exercise_id == "ex_999"
 
         assert result["program_updated"] is True
         assert "Installed:" in result["response_content"]

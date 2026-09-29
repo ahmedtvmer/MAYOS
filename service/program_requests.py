@@ -20,7 +20,11 @@ from service._base import ledger_scope
 from service.assignments import authorized_player_ledger, coach_identity
 from service.email_sender import send_program_request_email
 from service.programs import player_controls_program
-from service.program_substitution import ProgramSubstitution, substitute_program_exercise
+from service.program_substitution import (
+    ProgramSubstitution,
+    SubstitutionErrorCode,
+    substitute_program_exercise,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -227,10 +231,6 @@ def apply_request(
         if stale:
             return {"ok": False, "error": STALE_REQUEST_ERROR, "stale": True}
 
-        if request["kind"] == EXERCISE_SUBSTITUTION:
-            if db.get_exercise_library_entry(request["replacement_exercise_id"]) is None:
-                return {"ok": False, "error": STALE_REQUEST_ERROR, "stale": True}
-
         claimed = db.resolve_program_request(request_id, "applied", None, coach_account_id, _now_iso())
         if not claimed["ok"]:
             return {"ok": False, "error": NOT_PENDING_ERROR}
@@ -255,9 +255,10 @@ def apply_request(
                             "Program request %s could not be reverted after substitution validation",
                             request_id,
                         )
-                    if substitution["error"] in {
-                        "That day is not part of your current program.",
-                        "That exercise is not in that day of your current program.",
+                    if substitution["code"] in {
+                        SubstitutionErrorCode.DAY_NOT_FOUND,
+                        SubstitutionErrorCode.SOURCE_NOT_ON_DAY,
+                        SubstitutionErrorCode.REPLACEMENT_NOT_FOUND,
                     }:
                         return {"ok": False, "error": STALE_REQUEST_ERROR, "stale": True}
                     return {"ok": False, "error": substitution["error"]}

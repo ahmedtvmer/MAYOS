@@ -14,6 +14,12 @@ CHEST_SLOT = "577"  # machine chest press (pectorals | chest)
 REVERSE_LAT_SLOT = "673"  # reverse grip machine lat pulldown (lats | back)
 CABLE_LAT_SLOT = "150"  # cable bar lateral pulldown (lats | back)
 MACHINE_LAT_VARIANT = "2736"  # machine reverse grip lateral pulldown (lats | back)
+PULL_THROUGH = "196"  # cable pull through (with rope)
+HIP_THRUST = "3236"  # resistance band hip thrusts on knees (female)
+PUSH_UP = "662"  # push-up
+DECLINE_PUSH_UP = "279"  # decline push-up
+STIFF_LEG_DEADLIFT = "432"  # dumbbell stiff leg deadlift
+ROMANIAN_DEADLIFT = "85"  # barbell romanian deadlift
 
 HALLUCINATED_TARGET = "Machine Two-Arm Lateral Pulldown"
 
@@ -79,6 +85,161 @@ def _slot_name(db, index: int) -> str:
     program = db.ledger.get_active_program()
     assert program is not None
     return program.days[0].exercises[index].exercise_name.lower()
+
+
+def _save_program_days(db, day_specs: list[tuple[str, list[str]]]) -> None:
+    program = db.ledger.get_active_program().model_dump()
+    program.pop("created_at", None)
+    program["days"] = [
+        {
+            "day_name": day_name,
+            "day_order": index,
+            "exercises": [_exercise(exercise_id) for exercise_id in exercise_ids],
+        }
+        for index, (day_name, exercise_ids) in enumerate(day_specs, start=1)
+    ]
+    db.ledger.save_training_program(program)
+
+
+@pytest.mark.parametrize(
+    ("message", "source_id", "replacement_id", "false_day", "source_day"),
+    [
+        (
+            "swap cable pull-through for hip thrust",
+            PULL_THROUGH,
+            HIP_THRUST,
+            "Pull",
+            "Posterior 1",
+        ),
+        ("swap push-ups for decline push-up", PUSH_UP, DECLINE_PUSH_UP, "Push", "Upper 1"),
+        (
+            "swap stiff legs deadlift for barbell romanian deadlift",
+            STIFF_LEG_DEADLIFT,
+            ROMANIAN_DEADLIFT,
+            "Legs",
+            "Posterior 1",
+        ),
+    ],
+)
+def test_exercise_words_do_not_select_a_day(
+    sub_db, message, source_id, replacement_id, false_day, source_day
+):
+    _save_program_days(
+        sub_db,
+        [
+            (false_day, [CHEST_SLOT, REVERSE_LAT_SLOT, CABLE_LAT_SLOT]),
+            (source_day, [source_id, CHEST_SLOT, REVERSE_LAT_SLOT]),
+        ],
+    )
+    state = _state("", "")
+    state["messages"] = [HumanMessage(content=message)]
+    state["intent_metadata"].update(
+        source_exercise=message.removeprefix("swap ").split(" for ", 1)[0],
+        target_exercise=message.split(" for ", 1)[1],
+    )
+
+    result = exercise_substitution_node(
+        state, {"configurable": {"ledger": sub_db.ledger, "store": sub_db}}
+    )
+
+    assert result["program_updated"] is True
+    active = sub_db.ledger.get_active_program()
+    assert active.version == 3
+    by_day = {day.day_name: day for day in active.days}
+    assert by_day[source_day].exercises[0].exercise_id == replacement_id
+    assert by_day[false_day].exercises[0].exercise_id == CHEST_SLOT
+
+
+def test_explicit_on_day_reference_selects_that_day(sub_db):
+    _save_program_days(
+        sub_db,
+        [
+            ("Upper 1", [PULL_THROUGH, CHEST_SLOT, REVERSE_LAT_SLOT]),
+            ("Pull", [PULL_THROUGH, CHEST_SLOT, REVERSE_LAT_SLOT]),
+        ],
+    )
+    state = _state("cable pull-through", "hip thrust")
+    state["messages"] = [HumanMessage(content="swap cable pull-through on Pull day for hip thrust")]
+
+    result = exercise_substitution_node(
+        state, {"configurable": {"ledger": sub_db.ledger, "store": sub_db}}
+    )
+
+    assert result["program_updated"] is True
+    active = sub_db.ledger.get_active_program()
+    assert active.days[0].exercises[0].exercise_id == PULL_THROUGH
+    assert active.days[1].exercises[0].exercise_id == HIP_THRUST
+    assert "Pull" in result["response_content"]
+
+
+def test_swap_request_without_replacement_resolves_on_day_reference(sub_db, monkeypatch):
+    _save_program_days(
+        sub_db,
+        [
+            ("Upper 1", [PULL_THROUGH, CHEST_SLOT, REVERSE_LAT_SLOT]),
+            ("Pull", [PULL_THROUGH, CHEST_SLOT, REVERSE_LAT_SLOT]),
+        ],
+    )
+    candidate = sub_db.get_exercise_library_entry(HIP_THRUST)
+    monkeypatch.setattr(
+        assistant_graph,
+        "EMBED_MODEL",
+        SimpleNamespace(embed_query=lambda _query: [], embed_documents=lambda _documents: []),
+    )
+    monkeypatch.setattr(sub_db, "search_similar_exercises", lambda *_args, **_kwargs: [candidate])
+    state = _state("cable pull-through", "")
+    state["messages"] = [HumanMessage(content="swap cable pull-through on Pull day")]
+
+    result = exercise_substitution_node(
+        state, {"configurable": {"ledger": sub_db.ledger, "store": sub_db}}
+    )
+
+    assert result["program_updated"] is False
+    assert "(`glutes` | `pull`)" in result["response_content"].lower()
+    assert sub_db.ledger.get_active_program().version == 2
+
+
+def test_day_without_source_falls_back_to_the_source_day(sub_db):
+    _save_program_days(
+        sub_db,
+        [
+            ("Pull", [CHEST_SLOT, REVERSE_LAT_SLOT, CABLE_LAT_SLOT]),
+            ("Posterior 1", [PULL_THROUGH, CHEST_SLOT, REVERSE_LAT_SLOT]),
+        ],
+    )
+    state = _state("cable pull-through", "hip thrust")
+    state["messages"] = [HumanMessage(content="swap cable pull-through on Pull day for hip thrust")]
+
+    result = exercise_substitution_node(
+        state, {"configurable": {"ledger": sub_db.ledger, "store": sub_db}}
+    )
+
+    assert result["program_updated"] is True
+    active = sub_db.ledger.get_active_program()
+    assert active.days[0].exercises[0].exercise_id == CHEST_SLOT
+    assert active.days[1].exercises[0].exercise_id == HIP_THRUST
+
+
+def test_ambiguous_source_asks_which_day_without_publishing(sub_db):
+    _save_program_days(
+        sub_db,
+        [
+            ("Upper 1", [REVERSE_LAT_SLOT, CHEST_SLOT, CABLE_LAT_SLOT]),
+            ("Pull", [REVERSE_LAT_SLOT, CHEST_SLOT, CABLE_LAT_SLOT]),
+        ],
+    )
+    before = sub_db.ledger.get_active_program()
+    result = exercise_substitution_node(
+        _state("reverse grip machine lat pulldown", "machine front pulldown"),
+        {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
+    )
+
+    assert result["program_updated"] is False
+    assert "Upper 1" in result["response_content"]
+    assert "Pull" in result["response_content"]
+    after = sub_db.ledger.get_active_program()
+    assert after.version == before.version
+    assert [day.exercises[0].exercise_id for day in after.days] == [REVERSE_LAT_SLOT, REVERSE_LAT_SLOT]
 
 
 def test_catalog_name_resolution_tiers(sub_db):

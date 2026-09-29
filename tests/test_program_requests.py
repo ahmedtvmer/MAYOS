@@ -492,12 +492,46 @@ def test_apply_replacement_missing_after_creation_stays_pending(api, monkeypatch
     assert result["ok"] is False
     assert result["error"] == program_requests_service.STALE_REQUEST_ERROR
 
-    # The failed pre-claim validation leaves the request pending and the program untouched.
+    # The shared service validation leaves the request pending and the program untouched.
     assert db.get_program_request(request_id)["status"] == "pending"
     db.switch_user("p1")
     assert db.ledger.get_active_program().version == 1
     rows = db.conn.execute("SELECT COUNT(*) FROM training_programs").fetchone()
     assert int(rows[0]) == 1
+
+
+def test_apply_refuses_replacement_already_on_target_day(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+
+    db.switch_user("p1")
+    program = db.ledger.get_active_program().model_dump()
+    program.pop("created_at", None)
+    program["days"] = [
+        {
+            "day_name": "Full A",
+            "day_order": 1,
+            "exercises": [
+                {"exercise_id": exercise_id, "target_sets": 3, "target_reps_min": 8, "target_reps_max": 12}
+                for exercise_id in ("sq", "ohp", "row")
+            ],
+        }
+    ]
+    db.ledger.save_training_program(program, published_by_coach_account_id=coach_account_id)
+
+    created = _create(client, player_headers, **_substitution())
+    request_id = created.json()["request_id"]
+    result = program_requests_service.apply_request(db, coach_account_id, assignment_id, request_id)
+
+    assert result["ok"] is False
+    assert result["error"] == "That replacement exercise is already on the target day."
+    assert db.get_program_request(request_id)["status"] == "pending"
+    db.switch_user("p1")
+    active = db.ledger.get_active_program()
+    assert active.version == 2
+    assert [exercise.exercise_id for exercise in active.days[0].exercises] == ["sq", "ohp", "row"]
 
 
 def test_apply_write_failure_reverts_request_to_pending(api, monkeypatch):

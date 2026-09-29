@@ -1,6 +1,10 @@
 import pytest
 
-from service.program_substitution import ProgramSubstitution, substitute_program_exercise
+from service.program_substitution import (
+    ProgramSubstitution,
+    SubstitutionErrorCode,
+    substitute_program_exercise,
+)
 
 
 class FakeCatalog:
@@ -126,20 +130,41 @@ def test_substitution_default_changes_only_first_matching_slot(program_data, rep
 
 
 @pytest.mark.parametrize(
-    ("substitution_request", "entries", "message"),
+    ("substitution_request", "entries", "code", "message"),
     [
-        (ProgramSubstitution("Full A", "squat", "squat"), {"squat": {"id": "squat"}}, "Choose a different replacement exercise."),
-        (ProgramSubstitution("Full A", "squat", "missing"), {}, "That replacement exercise was not found."),
-        (ProgramSubstitution("Missing", "squat", "leg_press"), {"leg_press": {"id": "leg_press"}}, "That day is not part of your current program."),
-        (ProgramSubstitution("Full A", "missing", "leg_press"), {"leg_press": {"id": "leg_press"}}, "That exercise is not in that day of your current program."),
+        (
+            ProgramSubstitution("Full A", "squat", "squat"),
+            {"squat": {"id": "squat"}},
+            SubstitutionErrorCode.REPLACEMENT_IS_SOURCE,
+            "Choose a different replacement exercise.",
+        ),
+        (
+            ProgramSubstitution("Full A", "squat", "missing"),
+            {},
+            SubstitutionErrorCode.REPLACEMENT_NOT_FOUND,
+            "That replacement exercise was not found.",
+        ),
+        (
+            ProgramSubstitution("Missing", "squat", "leg_press"),
+            {"leg_press": {"id": "leg_press"}},
+            SubstitutionErrorCode.DAY_NOT_FOUND,
+            "That day is not part of your current program.",
+        ),
+        (
+            ProgramSubstitution("Full A", "missing", "leg_press"),
+            {"leg_press": {"id": "leg_press"}},
+            SubstitutionErrorCode.SOURCE_NOT_ON_DAY,
+            "That exercise is not in that day of your current program.",
+        ),
         (
             ProgramSubstitution("Full A", "squat", "leg_press"),
             {"leg_press": {"id": "leg_press"}},
+            SubstitutionErrorCode.REPLACEMENT_ALREADY_ON_DAY,
             "That replacement exercise is already on the target day.",
         ),
     ],
 )
-def test_substitution_validation_errors_do_not_publish(program_data, substitution_request, entries, message):
+def test_substitution_validation_errors_do_not_publish(program_data, substitution_request, entries, code, message):
     ledger = FakeLedger()
     catalog = FakeCatalog(entries)
     if message == "That replacement exercise is already on the target day.":
@@ -147,7 +172,9 @@ def test_substitution_validation_errors_do_not_publish(program_data, substitutio
 
     result = substitute_program_exercise(ledger, catalog, program_data, substitution_request)
 
-    assert result == {"ok": False, "error": message}
+    assert result["ok"] is False
+    assert result["error"] == message
+    assert result["code"] is code
     assert ledger.saved == []
 
 

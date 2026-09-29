@@ -174,7 +174,7 @@ def test_substitution_rdls_confident_install(db_with_good_morning):
 def test_substitution_db_rdl_explicit_variant(db_with_good_morning):
     """Verifies that 'swap barbell romanian deadlift for dumbbell RDL' installs Dumbbell Romanian Deadlift."""
     state: AssistantState = {
-        "messages": [HumanMessage(content="swap barbell romanian deadlift for dumbbell RDL")],
+        "messages": [HumanMessage(content="swap barbell romanian deadlift on Lower 2 for dumbbell RDL")],
         "trainee_id": "default",
         "coach_tone": "Direct",
         "custom_instructions": "",
@@ -198,14 +198,15 @@ def test_substitution_db_rdl_explicit_variant(db_with_good_morning):
 
     # Check database program slot
     active_after = db_with_good_morning.ledger.get_active_program()
-    first_ex = active_after.days[0].exercises[0]
-    assert first_ex.exercise_name.lower() == "dumbbell romanian deadlift"
+    lower_day = next(day for day in active_after.days if day.day_name == "Lower 2")
+    assert any(ex.exercise_name.lower() == "dumbbell romanian deadlift" for ex in lower_day.exercises)
+    assert any(ex.exercise_name.lower() == "barbell romanian deadlift" for ex in active_after.days[0].exercises)
 
 
 def test_substitution_unknown_abbreviation_asks_illustration(db_with_good_morning):
     """Verifies that an unknown abbreviation prompts for further illustration without modifying the ledger."""
     state: AssistantState = {
-        "messages": [HumanMessage(content="swap dumbbell romanian deadlift for XYZ")],
+        "messages": [HumanMessage(content="swap dumbbell romanian deadlift on Lower 2 for XYZ")],
         "trainee_id": "default",
         "coach_tone": "Direct",
         "custom_instructions": "",
@@ -221,6 +222,11 @@ def test_substitution_unknown_abbreviation_asks_illustration(db_with_good_mornin
         "response_content": None,
     }
 
+    before = db_with_good_morning.ledger.get_active_program()
+    before_ids = [
+        [exercise.exercise_id for exercise in day.exercises]
+        for day in before.days
+    ]
     res = exercise_substitution_node(
         state, {"configurable": {"ledger": db_with_good_morning.ledger, "store": db_with_good_morning}}
     )
@@ -230,8 +236,11 @@ def test_substitution_unknown_abbreviation_asks_illustration(db_with_good_mornin
 
     # Verify the database was NOT mutated
     active_after = db_with_good_morning.ledger.get_active_program()
-    first_ex = active_after.days[0].exercises[0]
-    assert first_ex.exercise_name.lower() == "dumbbell romanian deadlift"
+    assert active_after.version == before.version
+    assert [
+        [exercise.exercise_id for exercise in day.exercises]
+        for day in active_after.days
+    ] == before_ids
 
 
 def test_end_to_end_router_with_abbreviation(db_with_good_morning):
