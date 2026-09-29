@@ -25,6 +25,12 @@ class _MayosAppState extends ConsumerState<MayosApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Keep API and browser signals alive during splash and auth startup, before
+    // either shared screen frame has mounted its banner slot. Android remains
+    // outside the provider because the banner flag is false there.
+    if (ref.read(offlineBannerEnabledProvider)) {
+      ref.read(connectivityControllerProvider);
+    }
     // Eagerly build the draft sync service so its auth listener is attached
     // before any screen reads it, so a stored session starts syncing at app
     // start rather than only once the home screen mounts (ADR 020/033).
@@ -72,12 +78,6 @@ class _MayosAppState extends ConsumerState<MayosApp>
       stored: ref.watch(appModeControllerProvider).mode,
     );
     final ThemeMode themeMode = ref.watch(themeModeControllerProvider);
-    // The offline banner is web-only (#127). The connectivity provider is
-    // watched only while the flag is on, so Android never creates it and its
-    // behaviour stays exactly as before.
-    final bool showOfflineBanner = ref.watch(offlineBannerEnabledProvider) &&
-        !ref.watch(connectivityControllerProvider);
-
     return MaterialApp.router(
       title: 'MAYOS',
       debugShowCheckedModeBanner: false,
@@ -94,19 +94,7 @@ class _MayosAppState extends ConsumerState<MayosApp>
           mode: appMode,
           child: AnnotatedRegion<SystemUiOverlayStyle>(
             value: MayosTheme.overlayStyle(c),
-            child: Stack(
-              fit: StackFit.passthrough,
-              children: <Widget>[
-                child ?? const SizedBox.shrink(),
-                if (showOfflineBanner)
-                  const Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: OfflineBanner(),
-                  ),
-              ],
-            ),
+            child: child ?? const SizedBox.shrink(),
           ),
         );
       },

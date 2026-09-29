@@ -39,7 +39,10 @@ mixin GoogleSignInAction<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       }
       switch (result) {
         case GoogleSignUpPrompt():
-          context.go(googleSignupPath);
+          context.go(withCarry(
+            googleSignupPath,
+            carryTargetFromUri(GoRouterState.of(context).uri),
+          ));
         case GoogleSignInRefused(:final message):
           setState(() => _googleError = message);
         case GoogleSignInDone():

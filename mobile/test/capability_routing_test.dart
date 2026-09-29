@@ -47,7 +47,7 @@ void main() {
     expect(
         redirectFor(
             const AuthState.unauthenticated(), homePath, _mode(AppMode.player)),
-        loginPath);
+        withCarry(loginPath, homePath));
     expect(
         redirectFor(const AuthState.unauthenticated(), loginPath,
             _mode(AppMode.player)),

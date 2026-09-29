@@ -1,10 +1,17 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/connectivity.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_app_header.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_scaffold.dart';
+import 'package:mayos_mobile/src/features/player/auth/auth_widgets.dart';
 import 'package:mayos_mobile/src/providers.dart';
+import 'package:mayos_mobile/src/router.dart';
 
 import 'support/auth_harness.dart';
 import 'support/fake_api_adapter.dart';
@@ -114,23 +121,99 @@ void main() {
       ],
     ));
     await _pumpUntilFound(tester, find.text('Home'));
-    expect(find.text(OfflineBanner.message), findsNothing);
-
     final ProviderContainer container = ProviderScope.containerOf(
       tester.element(find.byType(MayosApp)),
       listen: false,
     );
-    container
-        .read(connectivityControllerProvider.notifier)
-        .markOffline();
+    container.read(routerProvider).go('/no-such-page');
+    await _pumpUntilFound(tester, find.text('Page not found'));
+    expect(find.text(OfflineBanner.message), findsNothing);
+
+    container.read(connectivityControllerProvider.notifier).markOffline();
     await tester.pump();
     expect(find.text(OfflineBanner.message), findsOneWidget);
 
-    container
-        .read(connectivityControllerProvider.notifier)
-        .markOnline();
+    container.read(connectivityControllerProvider.notifier).markOnline();
     await tester.pump();
     expect(find.text(OfflineBanner.message), findsNothing);
+  });
+
+  testWidgets('browser events drive the banner below the app header',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    final InMemoryTokenStore tokens = InMemoryTokenStore();
+    await tokens.save('token-alice');
+    final StreamController<bool> browserEvents =
+        StreamController<bool>.broadcast();
+    addTearDown(browserEvents.close);
+
+    await tester.pumpWidget(authApp(
+      fake,
+      tokens,
+      extraOverrides: <Override>[
+        offlineBannerEnabledProvider.overrideWithValue(true),
+        browserConnectivityEventsProvider.overrideWithValue(
+          browserEvents.stream,
+        ),
+      ],
+    ));
+    await _pumpUntilFound(tester, find.text('Home'));
+    expect(find.text(OfflineBanner.message), findsNothing);
+
+    browserEvents.add(false);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text(OfflineBanner.message), findsOneWidget);
+
+    final Rect header = tester.getRect(find.byType(MayosAppHeader));
+    final Rect banner = tester.getRect(find.byType(OfflineBanner));
+    final Rect body = tester.getRect(find.byKey(MayosScaffold.bodyContentKey));
+    expect(banner.top, greaterThanOrEqualTo(header.bottom));
+    expect(banner.bottom, lessThanOrEqualTo(body.top));
+
+    browserEvents.add(true);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text(OfflineBanner.message), findsNothing);
+  });
+
+  testWidgets('the auth banner is at the top of content and keeps its slot',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi();
+    final StreamController<bool> browserEvents =
+        StreamController<bool>.broadcast();
+    addTearDown(browserEvents.close);
+    await tester.pumpWidget(authApp(
+      fake,
+      InMemoryTokenStore(),
+      extraOverrides: <Override>[
+        offlineBannerEnabledProvider.overrideWithValue(true),
+        browserConnectivityEventsProvider.overrideWithValue(
+          browserEvents.stream,
+        ),
+      ],
+    ));
+    await _pumpUntilFound(tester, find.byKey(const Key('login_username')));
+
+    browserEvents.add(false);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(OfflineBanner), findsOneWidget);
+    expect(
+      tester.getRect(find.byType(OfflineBanner)).bottom,
+      lessThanOrEqualTo(tester.getRect(find.byType(AuthHeading)).top),
+    );
+
+    final Finder editable = find.descendant(
+      of: find.byKey(const Key('login_username')),
+      matching: find.byType(EditableText),
+    );
+    final State<EditableText> fieldState = tester.state(editable);
+    await tester.tap(find.byKey(const Key('login_username')));
+    await tester.pump();
+    browserEvents.add(true);
+    await tester.pump();
+    expect(tester.state<State<EditableText>>(editable), same(fieldState));
   });
 
   testWidgets('no banner without the web flag, even when offline',
@@ -148,9 +231,7 @@ void main() {
       tester.element(find.byType(MayosApp)),
       listen: false,
     );
-    container
-        .read(connectivityControllerProvider.notifier)
-        .markOffline();
+    container.read(connectivityControllerProvider.notifier).markOffline();
     await tester.pump();
     expect(find.text(OfflineBanner.message), findsNothing);
   });

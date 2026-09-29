@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -5,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers.dart';
 import 'api_client.dart';
+import 'connectivity_events.dart';
 import 'connectivity_message.dart';
 import 'theme/mayos_spacing.dart';
 import 'theme/mayos_theme.dart';
@@ -15,12 +18,16 @@ import 'theme/mayos_typography.dart';
 final Provider<bool> offlineBannerEnabledProvider =
     Provider<bool>((ref) => kIsWeb);
 
-/// Connectivity derived from the API client's own transport, with no
-/// connectivity package and no polling (#127): an [ApiException] with a null
-/// status code (`isNetworkFailure`) means the client cannot reach the
-/// service — offline — and the next successful response means it can again.
+/// Browser online/offline events. Tests can override this stream to exercise
+/// the web connectivity source without a browser runtime.
+final Provider<Stream<bool>> browserConnectivityEventsProvider =
+    Provider<Stream<bool>>((ref) => browserConnectivityEvents());
+
+/// Connectivity combines browser events with the API client's transport:
+/// browser events report navigator status, a transport failure means offline,
+/// and any API response means online (#127/#172).
 ///
-/// `true` is online. The state lives on the provider so one overlay reads it.
+/// `true` is online. Shared screen frames read the provider for the banner.
 class ConnectivityController extends StateNotifier<bool> {
   ConnectivityController() : super(true);
 
@@ -44,14 +51,21 @@ bool _isTransportFailure(DioException error) => isNetworkFailure(ApiException(
       statusCode: error.response?.statusCode,
     ));
 
-/// The app's connectivity flag, fed by the interceptors on the shared
-/// [ApiClient] (#127): offline on a transport failure, online on the next
-/// successful response. Created on first read, which the offline banner
-/// overlay performs on web only, so Android adds no behaviour at all.
+/// The app's connectivity flag, fed by browser events and interceptors on the
+/// shared [ApiClient]. Created only when web banner display is enabled, so
+/// Android adds no behavior at all.
 final StateNotifierProvider<ConnectivityController, bool>
     connectivityControllerProvider =
     StateNotifierProvider<ConnectivityController, bool>((ref) {
   final ConnectivityController controller = ConnectivityController();
+  final StreamSubscription<bool> browserEvents =
+      ref.watch(browserConnectivityEventsProvider).listen((bool online) {
+    if (online) {
+      controller.markOnline();
+    } else {
+      controller.markOffline();
+    }
+  });
   final Interceptors interceptors =
       ref.watch(apiClientProvider).dio.interceptors;
   final InterceptorsWrapper watcher = InterceptorsWrapper(
@@ -73,12 +87,15 @@ final StateNotifierProvider<ConnectivityController, bool>
   interceptors.add(watcher);
   // A rebuilt provider must not leave its old watcher on the client, feeding a
   // disposed controller.
-  ref.onDispose(() => interceptors.remove(watcher));
+  ref.onDispose(() {
+    unawaited(browserEvents.cancel());
+    interceptors.remove(watcher);
+  });
   return controller;
 });
 
-/// Compact, non-blocking "You're offline" line shown over the app while the
-/// client cannot reach the service (#127). Web only; no interaction.
+/// Compact, non-blocking "You're offline" line shown in shared screen frames
+/// when either connectivity source reports offline. Web only; no interaction.
 class OfflineBanner extends StatelessWidget {
   const OfflineBanner({super.key});
 
@@ -110,6 +127,29 @@ class OfflineBanner extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Fixed banner slot used by app frames. It remains in the widget tree while
+/// hidden, so changing connectivity cannot shift auth fields out from under
+/// the focused input.
+class OfflineBannerSlot extends ConsumerWidget {
+  const OfflineBannerSlot({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bool enabled = ref.watch(offlineBannerEnabledProvider);
+    final bool online =
+        enabled ? ref.watch(connectivityControllerProvider) : true;
+    return Visibility(
+      visible: enabled && !online,
+      maintainState: true,
+      maintainAnimation: true,
+      child: const SizedBox(
+        width: double.infinity,
+        child: OfflineBanner(),
       ),
     );
   }

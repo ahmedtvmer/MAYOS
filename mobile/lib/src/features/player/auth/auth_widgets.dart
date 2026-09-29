@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/connectivity.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -72,6 +73,7 @@ class AuthScaffold extends StatelessWidget {
             child: AutofillGroup(
               child: Column(
                 children: <Widget>[
+                  const OfflineBannerSlot(),
                   Expanded(
                     child: LayoutBuilder(
                       builder:

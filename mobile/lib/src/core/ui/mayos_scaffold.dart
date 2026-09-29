@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_mode.dart';
+import '../connectivity.dart';
 import '../theme/mayos_spacing.dart';
 import '../theme/mayos_theme.dart';
 import 'mayos_app_header.dart';
@@ -110,6 +111,7 @@ class MayosScaffold extends StatelessWidget {
                 showBack: showBack,
                 actions: actions,
               ),
+          const OfflineBannerSlot(),
           Expanded(
             child: SizedBox(
               key: bodyContentKey,

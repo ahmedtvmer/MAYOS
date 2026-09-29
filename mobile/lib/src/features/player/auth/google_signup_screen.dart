@@ -52,6 +52,11 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
   _UsernameCheck _check = _UsernameCheck.idle;
   String? _error;
 
+  String _loginLocation() => withCarry(
+        loginPath,
+        carryTargetFromUri(GoRouterState.of(context).uri),
+      );
+
   @override
   void initState() {
     super.initState();
@@ -116,7 +121,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
       if (error.statusCode == 401) {
         await _auth.abandonGoogleSignup(notice: kGoogleSignupExpiredMessage);
         if (mounted) {
-          context.go(loginPath);
+          context.go(_loginLocation());
         }
         return;
       }
@@ -181,9 +186,9 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
         case GoogleUsernameTaken():
           setState(() => _check = _UsernameCheck.taken);
         case GoogleAccountAlreadyLinked():
-          context.go(loginPath);
+          context.go(_loginLocation());
         case GoogleSignupTicketExpired():
-          context.go(loginPath);
+          context.go(_loginLocation());
         case GoogleSignupRefused(:final message):
           setState(() => _error = message);
       }
@@ -197,7 +202,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
   Future<void> _leaveToLogin() async {
     await _auth.abandonGoogleSignup();
     if (mounted) {
-      context.go(loginPath);
+      context.go(_loginLocation());
     }
   }
 
@@ -263,7 +268,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
       primary: MayosButton(
         key: const Key('google_signup_submit'),
         label: 'Back to sign in',
-        onPressed: () => context.go(loginPath),
+        onPressed: () => context.go(_loginLocation()),
       ),
       children: <Widget>[
         Text(

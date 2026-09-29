@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
@@ -11,7 +12,9 @@ import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_controller.dart';
 import 'package:mayos_mobile/src/features/player/auth/google_auth_gateway.dart';
 import 'package:mayos_mobile/src/features/player/auth/google_sign_in_button.dart';
+import 'package:mayos_mobile/src/features/player/plan/plan_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
+import 'package:mayos_mobile/src/router.dart';
 
 import 'support/auth_harness.dart';
 import 'support/fake_api_adapter.dart';
@@ -38,7 +41,13 @@ Future<ProviderContainer> _pumpAuth(
   WidgetTester tester,
   FakeMayosApi fake, {
   FakeGoogleAuthGateway? google,
+  String? initialRoute,
 }) async {
+  if (initialRoute != null) {
+    tester.binding.platformDispatcher.defaultRouteNameTestValue = initialRoute;
+    addTearDown(
+        tester.binding.platformDispatcher.clearDefaultRouteNameTestValue);
+  }
   tester.view.physicalSize = const Size(393, 852);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
@@ -105,6 +114,44 @@ void main() {
     expect(fake.googleSignInRequests, 1);
     expect(fake.googleCompleteRequests, 0);
     expect(google.authenticateCalls, 1);
+  });
+
+  testWidgets('Google signup and sign-in keep a cold deep link',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..profileExists = true
+      ..recoveryEmail = 'alice@example.com';
+    final FakeGoogleAuthGateway google = FakeGoogleAuthGateway();
+    final ProviderContainer container = await _pumpAuth(
+      tester,
+      fake,
+      google: google,
+      initialRoute: planPath,
+    );
+
+    await _openPicker(tester);
+    final GoRouter router = container.read(routerProvider);
+    expect(
+        router.routerDelegate.currentConfiguration.uri.path, googleSignupPath);
+    expect(
+      router.routerDelegate.currentConfiguration.uri.queryParameters['from'],
+      planPath,
+    );
+
+    await tester.tap(find.byKey(const Key('google_signup_cancel')));
+    await _pumpUntilFound(tester, find.byKey(const Key('login_username')));
+    await _settleRoute(tester);
+    expect(router.routerDelegate.currentConfiguration.uri.path, loginPath);
+    expect(
+      router.routerDelegate.currentConfiguration.uri.queryParameters['from'],
+      planPath,
+    );
+
+    google.idToken = fake.googleLinkedIdToken;
+    await tester.tap(find.text('Continue with Google'));
+    await _pumpUntilFound(tester, find.byType(PlanScreen));
+    expect(find.byType(PlanScreen), findsOneWidget);
+    expect(router.routerDelegate.currentConfiguration.uri.path, planPath);
   });
 
   testWidgets(

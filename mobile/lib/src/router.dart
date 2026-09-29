@@ -58,9 +58,10 @@ const String splashPath = '/splash';
 /// [location] is the requested location: its path drives every rule, while the
 /// full string (query included) is what a cold deep link is carried on (#127).
 ///
-/// [from] is the deep link carried on a splash hold (`/splash?from=…`): the
-/// location the user originally asked for, remembered across the startup
-/// resolution so it is not lost to `landing()` (#127).
+/// [from] is the deep link carried through splash and sign-in gates
+/// (`/splash?from=…`, `/login?from=…`, or `/recovery-email?from=…`): the
+/// location the user originally asked for, remembered until all routing rules
+/// have resolved it (#127/#172).
 ///
 /// Returns the location to redirect to, or null to stay.
 String? redirectFor(AuthState auth, String location, AppModeState mode,
@@ -79,7 +80,8 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
         return null;
       }
       if (!_isCarryable(path)) {
-        return splashPath;
+        final String? target = _carriedTarget(from);
+        return target == null ? splashPath : splashHold(target);
       }
       // Carry the whole requested location (query included) on the splash
       // hold, so a cold deep link still lands where the user asked for (#127).
@@ -89,7 +91,13 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
           path == registerPath ||
           path == googleSignupPath ||
           _isPasswordRecoveryPage(path);
-      return atAuthPage ? null : loginPath;
+      if (atAuthPage) {
+        return null;
+      }
+      final String? target = path == splashPath
+          ? _carriedTarget(from)
+          : (_isCarryable(path) ? location : null);
+      return target == null ? loginPath : withCarry(loginPath, target);
     case AuthStatus.authenticated:
       // Password recovery is public; it must work even for a signed-in device,
       // and its success clears the session and returns to login.
@@ -102,14 +110,22 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
       // The capability caps the mode: a lost coach capability always resolves
       // to Player mode, whatever is stored.
       final bool coachMode = isCoach && mode.mode == AppMode.coach;
-      final bool atAuthPage = path == loginPath ||
-          path == registerPath ||
-          path == googleSignupPath;
+      final bool atAuthPage =
+          path == loginPath || path == registerPath || path == googleSignupPath;
+      final bool atRecoveryGate = path == recoveryEmailPath;
+      final String? target = path == splashPath || atAuthPage || atRecoveryGate
+          ? _carriedTarget(from)
+          : null;
 
       // ADR 007: a recovery email is mandatory before dashboard or onboarding.
       // It stays first, ahead of the mode and onboarding rules (#119).
       if (!accountSession.hasRecoveryEmail) {
-        return path == recoveryEmailPath ? null : recoveryEmailPath;
+        if (path == recoveryEmailPath) {
+          return null;
+        }
+        return target == null
+            ? recoveryEmailPath
+            : withCarry(recoveryEmailPath, target);
       }
 
       // Hold on splash until this account's stored mode is known, so the app
@@ -119,8 +135,11 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
       if (!mode.isResolvedFor(accountSession.account.accountId)) {
         // On a splash hold the query is the only record of the carried deep
         // link, so staying must not rewrite the location to plain splash (#127).
-        if (path == splashPath && _carriedTarget(from) != null) {
+        if (path == splashPath && target != null) {
           return null;
+        }
+        if (target != null) {
+          return splashHold(target);
         }
         return splashPath;
       }
@@ -138,16 +157,10 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
         return isCoach ? playerSetupPath : onboardingPath;
       }
 
-      if (path == recoveryEmailPath || atAuthPage) {
-        return landing();
-      }
-      if (path == splashPath) {
-        final String? target = _carriedTarget(from);
+      if (path == splashPath || path == recoveryEmailPath || atAuthPage) {
         if (target != null) {
-          // Release the hold onto the requested location, but only after every
-          // rule has run against it: the recovery gate, onboarding and the
-          // mode/capability checks still win over a deep link (#127). The
-          // rules read the path; the target keeps its own query.
+          // Re-run the full rule set before releasing a target carried through
+          // sign-in or the recovery-email gate. Unknown routes reach not-found.
           return redirectFor(auth, target, mode) ?? target;
         }
         return landing();
@@ -192,32 +205,56 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
 bool _isPasswordRecoveryPage(String location) =>
     location == forgotPasswordPath || location == resetPasswordPath;
 
-/// The location part of [location], without its query (#127).
+/// The route path without its query or fragment.
 String _pathOf(String location) {
-  final int cut = location.indexOf('?');
-  return cut == -1 ? location : location.substring(0, cut);
+  final int queryStart = location.indexOf('?');
+  final int fragmentStart = location.indexOf('#');
+  int pathEnd = location.length;
+  if (queryStart >= 0 && queryStart < pathEnd) {
+    pathEnd = queryStart;
+  }
+  if (fragmentStart >= 0 && fragmentStart < pathEnd) {
+    pathEnd = fragmentStart;
+  }
+  return location.substring(0, pathEnd);
 }
 
-/// Whether [path] is a page a splash hold may remember as its target (#127).
+/// Whether [path] can be carried through a startup or sign-in gate (#127/#172).
 ///
 /// Splash, the auth screens and the recovery-email gate are never carried:
 /// they are the hold itself or the gates the hold exists to pass.
 bool _isCarryable(String path) =>
     path.startsWith('/') &&
+    !path.startsWith('//') &&
     path != splashPath &&
     path != loginPath &&
     path != registerPath &&
     path != googleSignupPath &&
-    path != recoveryEmailPath;
+    path != recoveryEmailPath &&
+    !_isPasswordRecoveryPage(path);
 
-/// The carried deep link on a splash hold, or null when there is none (#127).
+/// A validated carried deep link, or null when there is none (#127/#172).
 String? _carriedTarget(String? from) =>
-    from != null && _isCarryable(_pathOf(from)) ? from : null;
+    from != null && from.startsWith('/') && _isCarryable(_pathOf(from))
+        ? from
+        : null;
+
+/// Reads and validates the `from` target on auth and gate locations.
+String? carryTargetFromUri(Uri uri) =>
+    _carriedTarget(uri.queryParameters['from']);
+
+/// Adds a validated carry to a sign-in flow destination.
+String withCarry(String destination, String? target) {
+  final String? carry = _carriedTarget(target);
+  return carry == null ? destination : _locationWithCarry(destination, carry);
+}
 
 /// The splash location carrying [location] across the startup hold (#127):
 /// `'/splash?from=<encoded location>'`, decoded by the router's redirect.
-String splashHold(String location) =>
-    '$splashPath?from=${Uri.encodeComponent(location)}';
+String splashHold(String location) => _locationWithCarry(splashPath, location);
+
+String _locationWithCarry(String route, String target) =>
+    '$route?from=${Uri.encodeComponent(target)}';
 
 final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   final ValueNotifier<int> refresh = ValueNotifier<int>(0);
@@ -240,9 +277,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       final Uri uri = state.uri;
       final String location =
           uri.hasQuery ? '${uri.path}?${uri.query}' : uri.path;
-      return redirectFor(
-          ref.read(authControllerProvider),
-          location,
+      return redirectFor(ref.read(authControllerProvider), location,
           ref.read(appModeControllerProvider),
           from: uri.queryParameters['from']);
     },

@@ -87,4 +87,104 @@ void main() {
         planPath);
     expect(find.byType(PlanScreen), findsOneWidget);
   });
+
+  testWidgets('a signed-out cold deep link survives password login',
+      (WidgetTester tester) async {
+    tester.binding.platformDispatcher.defaultRouteNameTestValue = planPath;
+    addTearDown(
+        tester.binding.platformDispatcher.clearDefaultRouteNameTestValue);
+    final FakeMayosApi fake = _signedInFake()
+      ..passwords['alice'] = 'correct-horse-1';
+    final InMemoryTokenStore tokens = InMemoryTokenStore();
+
+    await tester.pumpWidget(authApp(fake, tokens));
+    await _pumpUntilFound(tester, find.byKey(const Key('login_username')));
+
+    final ProviderContainer container = ProviderScope.containerOf(
+      tester.element(find.byType(MayosApp)),
+      listen: false,
+    );
+    final Uri loginUri =
+        container.read(routerProvider).routerDelegate.currentConfiguration.uri;
+    expect(loginUri.path, loginPath);
+    expect(loginUri.queryParameters['from'], planPath);
+
+    await tester.enterText(find.byKey(const Key('login_username')), 'alice');
+    await tester.enterText(
+        find.byKey(const Key('login_password')), 'correct-horse-1');
+    await tester.tap(find.byKey(const Key('login_submit')));
+    await _pumpUntilFound(tester, find.byType(PlanScreen));
+
+    expect(find.byType(PlanScreen), findsOneWidget);
+    expect(
+      container
+          .read(routerProvider)
+          .routerDelegate
+          .currentConfiguration
+          .uri
+          .path,
+      planPath,
+    );
+  });
+
+  testWidgets('register and return to login keep the requested page',
+      (WidgetTester tester) async {
+    tester.binding.platformDispatcher.defaultRouteNameTestValue = planPath;
+    addTearDown(
+        tester.binding.platformDispatcher.clearDefaultRouteNameTestValue);
+    await tester.pumpWidget(authApp(FakeMayosApi(), InMemoryTokenStore()));
+    await _pumpUntilFound(tester, find.byKey(const Key('login_username')));
+
+    await tester.tap(find.text('Create an account'));
+    await _pumpUntilFound(tester, find.byKey(const Key('register_username')));
+    final ProviderContainer container = ProviderScope.containerOf(
+      tester.element(find.byType(MayosApp)),
+      listen: false,
+    );
+    Uri currentUri() =>
+        container.read(routerProvider).routerDelegate.currentConfiguration.uri;
+    expect(currentUri().path, registerPath);
+    expect(currentUri().queryParameters['from'], planPath);
+
+    await tester.tap(find.text('I already have an account'));
+    await _pumpUntilFound(tester, find.byKey(const Key('login_username')));
+    expect(currentUri().path, loginPath);
+    expect(currentUri().queryParameters['from'], planPath);
+  });
+
+  testWidgets('the recovery-email gate releases a carried page after saving',
+      (WidgetTester tester) async {
+    tester.binding.platformDispatcher.defaultRouteNameTestValue = planPath;
+    addTearDown(
+        tester.binding.platformDispatcher.clearDefaultRouteNameTestValue);
+    final FakeMayosApi fake = _signedInFake()
+      ..passwords['alice'] = 'correct-horse-1'
+      ..recoveryEmail = null;
+    final InMemoryTokenStore tokens = InMemoryTokenStore();
+
+    await tester.pumpWidget(authApp(fake, tokens));
+    await _pumpUntilFound(tester, find.byKey(const Key('login_username')));
+    await tester.enterText(find.byKey(const Key('login_username')), 'alice');
+    await tester.enterText(
+        find.byKey(const Key('login_password')), 'correct-horse-1');
+    await tester.tap(find.byKey(const Key('login_submit')));
+    await _pumpUntilFound(tester, find.byKey(const Key('recovery_email')));
+
+    final ProviderContainer container = ProviderScope.containerOf(
+      tester.element(find.byType(MayosApp)),
+      listen: false,
+    );
+    final Uri recoveryUri =
+        container.read(routerProvider).routerDelegate.currentConfiguration.uri;
+    expect(recoveryUri.path, recoveryEmailPath);
+    expect(recoveryUri.queryParameters['from'], planPath);
+
+    await tester.enterText(
+        find.byKey(const Key('recovery_email')), 'alice@example.com');
+    await tester.tap(find.byKey(const Key('recovery_submit')));
+    await _pumpUntilFound(tester, find.byType(PlanScreen));
+
+    expect(fake.recoveryEmail, 'alice@example.com');
+    expect(find.byType(PlanScreen), findsOneWidget);
+  });
 }
