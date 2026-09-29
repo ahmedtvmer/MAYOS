@@ -10,21 +10,29 @@ enum PrRecordKind {
   weight,
 
   /// Best e1RM, by the server's `set_e1rm` formula.
-  e1rm,
+  e1rm;
+
+  /// The badge text: `PR kg` / `PR e1RM` (#107 resolution, #124).
+  String get badgeLabel => this == PrRecordKind.weight ? 'PR kg' : 'PR e1RM';
+
+  /// The `PR … ` before the value in a celebration line: `PR 140 kg` for a
+  /// heaviest-weight record, `PR e1RM 112.5 kg` for an e1RM one (#124).
+  String get celebrationPrefix =>
+      this == PrRecordKind.weight ? 'PR ' : 'PR e1RM ';
+
+  /// The value this record tracks for one set row: the row's weight for
+  /// [weight], its e1RM by the server's `set_e1rm` for [e1rm].
+  double valueOf(ActiveWorkoutSet set) => this == PrRecordKind.weight
+      ? set.weightKg
+      : setE1rm(weightKg: set.weightKg, reps: set.reps, rir: set.rir);
 }
 
-/// The badge text: `PR kg` / `PR e1RM` (#107 resolution, #124).
-String prBadgeLabel(PrRecordKind kind) =>
-    kind == PrRecordKind.weight ? 'PR kg' : 'PR e1RM';
-
-/// `140`, `112.5`, `116.67` — how a record value reads in a badge line or the
-/// summary. Values are rounded to 2 dp first, the same precision the server's
-/// aggregates carry, so a raw e1RM never prints as `116.66666666666667`.
+/// `140`, `112.5`, `139.3` — how a record value reads in the celebration:
+/// at most one decimal, a trailing `.0` dropped, so the issue's examples read
+/// `140 kg` and `112.5 kg` rather than `140.0 kg`.
 String formatRecordKg(double value) {
-  final double rounded = round2(value);
-  return rounded == rounded.roundToDouble()
-      ? rounded.round().toString()
-      : '$rounded';
+  final double tenth = (value * 10).round() / 10;
+  return tenth == tenth.roundToDouble() ? tenth.round().toString() : '$tenth';
 }
 
 /// What one set row earned: the records it still holds solidly (it is the
@@ -162,8 +170,7 @@ class WorkoutRecord {
   final double value;
 
   /// The `PR … kg` half of the celebration line.
-  String get label => 'PR ${kind == PrRecordKind.weight ? '' : 'e1RM '}'
-      '${formatRecordKg(value)} kg';
+  String get label => '${kind.celebrationPrefix}${formatRecordKg(value)} kg';
 
   /// The full celebration line the summary lists.
   String get line => '$exerciseName · $label';
@@ -187,13 +194,7 @@ List<WorkoutRecord> workoutRecords(ActiveWorkout workout) {
         records.add(WorkoutRecord(
           exerciseName: exercise.exerciseName,
           kind: kind,
-          value: kind == PrRecordKind.weight
-              ? set.weightKg
-              : setE1rm(
-                  weightKg: set.weightKg,
-                  reps: set.reps,
-                  rir: set.rir,
-                ),
+          value: kind.valueOf(set),
         ));
       }
     }

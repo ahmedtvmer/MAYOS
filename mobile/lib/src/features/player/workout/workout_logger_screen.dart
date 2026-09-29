@@ -349,8 +349,72 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     );
   }
 
+  /// The row the focused cell belongs to, and the records it held when that
+  /// cell took focus: the snapshot a settled edit is compared against, so the
+  /// heavy haptic fires once when the player leaves the cell — never per
+  /// keystroke (#124).
+  ({int exerciseIndex, String setId, Set<PrRecordKind> before})? _recordFocus;
+
+  /// Moves focus to [next]: the old cell settles first (its row's records are
+  /// compared with the snapshot it took at focus, and a record the edit newly
+  /// earned gets the heavy haptic), then [next] takes its own snapshot.
+  void _changeFocus(LoggerCellFocus? next) {
+    _settleRecordFocus();
+    _focus = next;
+    _recordFocus = null;
+    if (next == null) {
+      return;
+    }
+    final String? setId = _setIdAt(next.exerciseIndex, next.setIndex);
+    if (setId == null) {
+      return;
+    }
+    _recordFocus = (
+      exerciseIndex: next.exerciseIndex,
+      setId: setId,
+      before: _recordBadges(next.exerciseIndex)[setId]?.current ??
+          const <PrRecordKind>{},
+    );
+  }
+
+  /// Settles the focused cell's edit: the heavy haptic fires only if its row
+  /// now holds a record the focus-time snapshot did not.
+  void _settleRecordFocus() {
+    final ({int exerciseIndex, String setId, Set<PrRecordKind> before})?
+        recordFocus = _recordFocus;
+    _recordFocus = null;
+    if (recordFocus == null) {
+      return;
+    }
+    final Set<PrRecordKind> now =
+        _recordBadges(recordFocus.exerciseIndex)[recordFocus.setId]?.current ??
+            const <PrRecordKind>{};
+    if (now.difference(recordFocus.before).isNotEmpty) {
+      unawaited(HapticFeedback.heavyImpact());
+    }
+  }
+
+  /// Re-snapshots the focused cell's row after an action that settles a value
+  /// on its own — tick, untick, warm-up toggle, delete — so only a cell edit
+  /// can make a later settle vibrate (#124).
+  void _refreshRecordFocus() {
+    final ({int exerciseIndex, String setId, Set<PrRecordKind> before})?
+        recordFocus = _recordFocus;
+    if (recordFocus == null) {
+      return;
+    }
+    _recordFocus = (
+      exerciseIndex: recordFocus.exerciseIndex,
+      setId: recordFocus.setId,
+      before: _recordBadges(recordFocus.exerciseIndex)[recordFocus.setId]
+              ?.current ??
+          const <PrRecordKind>{},
+    );
+  }
+
   /// Applies [mutate] and then heavy-haptics when the row it touched newly
-  /// holds a solid record — the badge's vibration, with no pop-up (#124).
+  /// holds a solid record — for the actions that settle a value themselves
+  /// (the tick, the warm-up toggle), with no pop-up (#124).
   Future<void> _updateWithRecordHaptic(
     int exerciseIndex,
     int setIndex,
@@ -359,7 +423,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     final String? setId = _setIdAt(exerciseIndex, setIndex);
     final Map<String, SetRecordBadges> before = _recordBadges(exerciseIndex);
     await mutate();
-    if (setId == null || !mounted) {
+    if (!mounted) {
+      return;
+    }
+    _refreshRecordFocus();
+    if (setId == null) {
       return;
     }
     final Set<PrRecordKind> held =
@@ -388,21 +456,15 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     if (focus == null) {
       return;
     }
+    // A keystroke is never settled: the heavy haptic waits for the edit to
+    // commit — Next, Hide, or leaving the cell (#124).
     switch (focus.field) {
       case LoggerField.kg:
-        unawaited(_updateWithRecordHaptic(
-          focus.exerciseIndex,
-          focus.setIndex,
-          () => _controller.updateCell(focus.exerciseIndex, focus.setIndex,
-              weightKg: double.tryParse(text) ?? 0),
-        ));
+        unawaited(_controller.updateCell(focus.exerciseIndex, focus.setIndex,
+            weightKg: double.tryParse(text) ?? 0));
       case LoggerField.reps:
-        unawaited(_updateWithRecordHaptic(
-          focus.exerciseIndex,
-          focus.setIndex,
-          () => _controller.updateCell(focus.exerciseIndex, focus.setIndex,
-              reps: int.tryParse(text) ?? 0),
-        ));
+        unawaited(_controller.updateCell(focus.exerciseIndex, focus.setIndex,
+            reps: int.tryParse(text) ?? 0));
       case LoggerField.rir:
         break; // RIR is one-tap chips only.
     }
@@ -416,26 +478,27 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     if (focus == null) {
       return;
     }
+    unawaited(_commitRir(focus, rir));
+  }
+
+  /// The chip's value and its advance are one action, so the edit settles —
+  /// and the record haptic can fire — the moment the chip is tapped.
+  Future<void> _commitRir(LoggerCellFocus focus, double? rir) async {
     if (rir == null) {
-      unawaited(_updateWithRecordHaptic(
-        focus.exerciseIndex,
-        focus.setIndex,
-        () => _controller.updateCell(focus.exerciseIndex, focus.setIndex,
-            unrated: true),
-      ));
+      await _controller.updateCell(focus.exerciseIndex, focus.setIndex,
+          unrated: true);
     } else {
-      unawaited(_updateWithRecordHaptic(
-        focus.exerciseIndex,
-        focus.setIndex,
-        () => _controller.updateCell(focus.exerciseIndex, focus.setIndex,
-            rir: rir),
-      ));
+      await _controller.updateCell(focus.exerciseIndex, focus.setIndex,
+          rir: rir);
+    }
+    if (!mounted) {
+      return;
     }
     final ActiveWorkout? workout = _workout;
     if (workout == null) {
       return;
     }
-    setState(() => _focus = nextLoggerCellFocus(workout, focus));
+    setState(() => _changeFocus(nextLoggerCellFocus(workout, focus)));
   }
 
   void _onKeypadNext() {
@@ -444,11 +507,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     if (workout == null || focus == null) {
       return;
     }
-    setState(() => _focus = nextLoggerCellFocus(workout, focus));
+    setState(() => _changeFocus(nextLoggerCellFocus(workout, focus)));
   }
 
   void _onKeypadHide() {
-    setState(() => _focus = null);
+    setState(() => _changeFocus(null));
   }
 
   /// Ticking: empty cells take the previous value first; when a required cell
@@ -462,6 +525,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     final ActiveWorkoutSet set = exercise.sets[setIndex];
     if (set.ticked) {
       await _controller.setTicked(exerciseIndex, setIndex, false);
+      // An untick only recalculates: it never vibrates (#124).
+      _refreshRecordFocus();
       return;
     }
     final BaselineSet? prev =
@@ -484,10 +549,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     }
     if (weight <= 0 || reps <= 0) {
       // Nothing to log yet: open the keypad at the first required cell.
-      setState(() {
-        _focus = LoggerCellFocus(exerciseIndex, setIndex,
-            weight <= 0 ? LoggerField.kg : LoggerField.reps);
-      });
+      setState(() => _changeFocus(LoggerCellFocus(exerciseIndex, setIndex,
+          weight <= 0 ? LoggerField.kg : LoggerField.reps)));
       return;
     }
     if (changed) {
@@ -509,13 +572,18 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       if (_focus != null &&
           _focus!.exerciseIndex == exerciseIndex &&
           _focus!.setIndex == setIndex) {
-        _focus = null;
+        _changeFocus(null);
       }
     });
   }
 
   Future<void> _removeSet(int exerciseIndex, int setIndex) async {
-    setState(() => _focus = null);
+    // A delete recalculates badges; it never vibrates, so the focused cell's
+    // snapshot goes with the focus (#124).
+    setState(() {
+      _recordFocus = null;
+      _focus = null;
+    });
     await _controller.removeSet(exerciseIndex, setIndex);
   }
 
@@ -560,6 +628,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       _summary = WorkoutSummary.of(finished);
       _summaryStep = true;
       _error = null;
+      _recordFocus = null;
       _focus = null;
     });
   }
@@ -745,8 +814,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       child: Column(
         children: <Widget>[
           Expanded(
-            child:
-                _summaryStep ? _buildSummary(workout) : _buildActive(workout),
+            child: _summaryStep ? _buildSummary() : _buildActive(workout),
           ),
           if (_validFocus(workout) && _focus != null)
             _buildKeypad(workout, _focus!),
@@ -825,13 +893,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   Widget _buildExerciseCard(ActiveWorkout workout, int exerciseIndex) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final ActiveWorkoutExercise exercise = workout.exercises[exerciseIndex];
-    // Recomputed on every render from the persisted rows and the frozen
-    // baseline, so the badges are what the Active workout holds — restart
-    // included (#124).
-    final Map<String, SetRecordBadges> badges = exerciseRecordBadges(
-      sets: exercise.sets,
-      baseline: workout.baselines[exercise.exerciseId],
-    );
+    // One computation per exercise per build: the calculator is pure over the
+    // persisted rows and the frozen baseline, so the badges are what the
+    // Active workout holds — restart included (#124).
+    final Map<String, SetRecordBadges> badges = _recordBadges(exerciseIndex);
     return Padding(
       padding: const EdgeInsets.only(bottom: MayosSpacing.md),
       child: MayosCard(
@@ -951,8 +1016,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
                   key: ValueKey<String>(
                       'logger.setlabel.$exerciseIndex.$setIndex'),
                   borderRadius: MayosRadii.smallRadius,
-                  onTap: () =>
-                      _controller.toggleWarmup(exerciseIndex, setIndex),
+                  onTap: () => unawaited(_updateWithRecordHaptic(
+                    exerciseIndex,
+                    setIndex,
+                    () => _controller.toggleWarmup(exerciseIndex, setIndex),
+                  )),
                   child: SizedBox(
                     height: kMayosMinTapTarget,
                     child: Center(
@@ -1104,8 +1172,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
           key: ValueKey<String>(
               'logger.cell.$exerciseIndex.$setIndex.${field.name}'),
           borderRadius: MayosRadii.smallRadius,
-          onTap: () => setState(
-              () => _focus = LoggerCellFocus(exerciseIndex, setIndex, field)),
+          onTap: () => setState(() => _changeFocus(
+              LoggerCellFocus(exerciseIndex, setIndex, field))),
           child: SizedBox(
             height: kMayosMinTapTarget,
             child: Center(
@@ -1124,9 +1192,13 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   /// celebration and the stats of the snapshot computed at Finish, then the
   /// performed date, readiness, notes and Save workout — the save step's own
   /// behaviour, unchanged. Back returns to the Active workout.
-  Widget _buildSummary(ActiveWorkout workout) {
+  ///
+  /// The snapshot is `_summary`, taken by [_finish]: there is no fallback
+  /// computation here, because a summary must never be derived from rows
+  /// that changed after Finish (#124).
+  Widget _buildSummary() {
     final MayosThemeExtension c = MayosTheme.of(context);
-    final WorkoutSummary summary = _summary ?? WorkoutSummary.of(workout);
+    final WorkoutSummary summary = _summary!;
     final String date = formatPerformedDate(_performedDate);
     return SingleChildScrollView(
       padding: MayosSpacing.screen,

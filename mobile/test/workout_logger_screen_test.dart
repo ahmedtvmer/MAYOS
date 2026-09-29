@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
@@ -286,6 +287,28 @@ Future<void> _typeCell(
   await tester.tap(find.byKey(const ValueKey<String>('logger.key.hide')));
   await tester.pump(const Duration(milliseconds: 100));
 }
+
+/// Records every message the app sends on `SystemChannels.platform`, so a
+/// test can count its `HapticFeedback` calls.
+List<MethodCall> _recordPlatformCalls(WidgetTester tester) {
+  final List<MethodCall> calls = <MethodCall>[];
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform, (MethodCall call) async {
+    calls.add(call);
+    return null;
+  });
+  addTearDown(() => tester.binding.defaultBinaryMessenger
+      .setMockMethodCallHandler(SystemChannels.platform, null));
+  return calls;
+}
+
+/// How many heavy vibrations the app has fired — the record badge's haptic
+/// (#124), as opposed to the selection click every tick also plays.
+int _heavyImpacts(List<MethodCall> calls) => calls
+    .where((MethodCall call) =>
+        call.method == 'HapticFeedback.vibrate' &&
+        call.arguments == 'HapticFeedbackType.heavyImpact')
+    .length;
 
 void main() {
   testWidgets('PREVIOUS is matched set by set and shows — with none',
@@ -773,7 +796,7 @@ void main() {
     expect(find.text('Personal records'), findsOneWidget);
     // Only the current bests celebrate: 105's badges were taken over by 110.
     expect(find.text('Bench Press · PR 110 kg'), findsOneWidget);
-    expect(find.text('Bench Press · PR e1RM 139.33 kg'), findsOneWidget);
+    expect(find.text('Bench Press · PR e1RM 139.3 kg'), findsOneWidget);
     expect(find.textContaining('PR 105 kg'), findsNothing);
 
     // Exercises done, ticked working sets, total volume (105×5 + 110×6).
@@ -815,5 +838,121 @@ void main() {
     expect(find.text('Exercises done'), findsOneWidget);
     expect(find.text('Ticked working sets'), findsOneWidget);
     expect(find.widgetWithText(MayosStat, '500'), findsOneWidget);
+  });
+
+  testWidgets('a newly earned record vibrates heavily once, and an untick '
+      'never vibrates', (WidgetTester tester) async {
+    final List<MethodCall> calls = _recordPlatformCalls(tester);
+    await _openLogger(tester);
+
+    await _typeCell(tester, 0, 0, 'kg', '105');
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_heavyImpacts(calls), 1);
+    expect(_badge(0, 0, PrRecordKind.weight), findsOneWidget);
+
+    // Unticking only recalculates the badges away.
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_heavyImpacts(calls), 1);
+    expect(_badge(0, 0, PrRecordKind.weight), findsNothing);
+
+    // Tick it again: a record is earned anew, so it vibrates again.
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_heavyImpacts(calls), 2);
+    expect(_badge(0, 0, PrRecordKind.weight), findsOneWidget);
+  });
+
+  testWidgets('a cell edit vibrates when it settles, never per keystroke',
+      (WidgetTester tester) async {
+    final List<MethodCall> calls = _recordPlatformCalls(tester);
+    await _openLogger(tester);
+
+    // Ticking with the previous values only ties bench's baseline: 100 × 5
+    // @1 beats nothing, so the tick itself is silent.
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_heavyImpacts(calls), 0);
+
+    // Edit the reps cell of the ticked set: each keystroke takes the e1RM
+    // past the baseline, but nothing settles until the player leaves.
+    await tester.tap(_cell(0, 0, 'reps'));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.5')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_heavyImpacts(calls), 0);
+
+    // Next commits the edit: exactly one heavy vibration.
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.next')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_heavyImpacts(calls), 1);
+
+    // Leaving the next cell, which earned nothing new, stays silent.
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.hide')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_heavyImpacts(calls), 1);
+  });
+
+  testWidgets('turning a ticked warm-up into a working set vibrates (#124)',
+      (WidgetTester tester) async {
+    final List<MethodCall> calls = _recordPlatformCalls(tester);
+    await _openLogger(tester);
+
+    // 105 kg × 5 would beat both aggregates — but the row is a warm-up.
+    await _typeCell(tester, 0, 0, 'kg', '105');
+    await _typeCell(tester, 0, 0, 'reps', '5');
+    await tester.tap(find.byKey(const ValueKey<String>('logger.setlabel.0.0')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('W'), findsOneWidget);
+
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_heavyImpacts(calls), 0);
+    expect(_badge(0, 0, PrRecordKind.weight), findsNothing);
+
+    // The same ticked row becomes a working set: the record appears now.
+    await tester.tap(find.byKey(const ValueKey<String>('logger.setlabel.0.0')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('W'), findsNothing);
+    expect(_badge(0, 0, PrRecordKind.weight), findsOneWidget);
+    expect(_heavyImpacts(calls), 1);
+  });
+
+  testWidgets('the summary snapshot never changes after the rows change (#124)',
+      (WidgetTester tester) async {
+    await _openLogger(tester);
+
+    await _typeCell(tester, 0, 0, 'kg', '105');
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    await _typeCell(tester, 0, 1, 'kg', '110');
+    await tester.tap(_tick(0, 1));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Finish workout'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discard unticked sets and finish'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bench Press · PR 110 kg'), findsOneWidget);
+    expect(find.widgetWithText(MayosStat, '1185'), findsOneWidget);
+
+    // Rows change under the open summary: a heavier record and more volume
+    // land in the Active workout (and reach the store, like any sync would).
+    final BuildContext context =
+        tester.element(find.byType(WorkoutLoggerScreen));
+    final ActiveWorkoutController controller =
+        ProviderScope.containerOf(context)
+            .read(activeWorkoutControllerProvider.notifier);
+    await controller.updateCell(0, 2, weightKg: 200, reps: 5);
+    await controller.setTicked(0, 2, true);
+    await tester.pumpAndSettle();
+
+    // The summary is still the snapshot taken at Finish.
+    expect(find.text('Bench Press · PR 110 kg'), findsOneWidget);
+    expect(find.widgetWithText(MayosStat, '1185'), findsOneWidget);
+    expect(find.textContaining('PR 200 kg'), findsNothing);
+    expect(find.widgetWithText(MayosStat, '2185'), findsNothing);
   });
 }

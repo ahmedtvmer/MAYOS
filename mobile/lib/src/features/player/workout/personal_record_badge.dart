@@ -49,7 +49,7 @@ class PersonalRecordBadge extends StatelessWidget {
             Icon(Icons.emoji_events, size: 12, color: fg),
             const SizedBox(width: MayosSpacing.xxs),
             Text(
-              prBadgeLabel(kind),
+              kind.badgeLabel,
               style: MayosTypography.captionStrong.copyWith(
                 color: fg,
                 decoration: beaten ? TextDecoration.lineThrough : null,
