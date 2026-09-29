@@ -39,6 +39,12 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
+# Agent tooling and design/test scratch (a local .claude/ can hold GBs of
+# worktrees; none of it is a build input, and it slows every `fly deploy`)
+.claude/
+.pytest_cwd/
+UI_app_design/
+
 # Git & IDE
 .git/
 .gitignore
