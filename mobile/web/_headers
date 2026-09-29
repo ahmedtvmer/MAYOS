@@ -1,0 +1,23 @@
+# Cloudflare Pages response headers for the MAYOS web app (issues #129, #130; ADR 047/048).
+# The API origin below must match MAYOS_API_BASE_URL in the deploy build.
+# The CSP is only correct for a build made with --no-web-resources-cdn
+# (self-hosted CanvasKit, no gstatic.com) and --pwa-strategy=none (see scripts/deploy_web.sh).
+# Never set Cross-Origin-Opener-Policy: same-origin: it breaks Google sign-in popups.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: blob: https://mayos-api.fly.dev https://*.googleusercontent.com; font-src 'self' data:; connect-src 'self' https://mayos-api.fly.dev https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Cache-Control: no-cache
+
+# Flutter's entry files are not content-hashed: always revalidate (ETag makes this cheap).
+# The default above already covers /, /index.html, /flutter_bootstrap.js, /main.dart.js,
+# /flutter.js, /version.json and /flutter_service_worker.js.
+
+# Fonts and images under assets/ change rarely; CanvasKit is pinned to the engine version.
+/assets/*
+  Cache-Control: public, max-age=86400
+/canvaskit/*
+  Cache-Control: public, max-age=86400
