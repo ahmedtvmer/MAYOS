@@ -12,6 +12,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from service import assignments as assignment_service
+from service import auth as auth_service
 from service import coach as coach_service
 from service import coach_ai as coach_ai_service
 from service import plans as plans_service
@@ -45,6 +46,11 @@ async def redeem_coach_invite(
         if not result["ok"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
         result["plans"] = plans_service.read_plans(db, result["account_id"])
+        # Same sign-in-method fields /auth/me reports (#114), read for real
+        # rather than defaulted, so the two AccountOut producers agree.
+        account = db.get_account(result["account_id"])
+        result["has_password"] = auth_service.account_has_password(db, account)
+        result["linked_sign_ins"] = db.list_linked_sign_in_providers(result["account_id"])
         return result
 
     result = await asyncio.to_thread(_run)
@@ -53,6 +59,8 @@ async def redeem_coach_invite(
         trainee_id=result["username"],
         capabilities=AccountCapabilitiesOut(**result["capabilities"]),
         plans=AccountPlansOut(**result["plans"]),
+        has_password=result["has_password"],
+        linked_sign_ins=result["linked_sign_ins"],
         coach_ai_enabled=coach_ai_service.coach_ai_enabled(),
     )
 

@@ -1,4 +1,4 @@
-"""Player registration, login, and opt-in claim. Returns plain dicts; no session state.
+"""Player registration, login, opt-in claim, and first password. Returns plain dicts; no session state.
 
 Proof level is password possession. Unknown users and wrong passwords are
 indistinguishable (``Invalid credentials.``); only registration reveals
@@ -140,6 +140,48 @@ def claim_player(db: Any, username: str, claim_code: str, password: str) -> dict
         "account_id": account["account_id"],
         "session_epoch": account["session_epoch"],
     }
+
+
+def account_has_password(db: Any, account: dict[str, Any] | None) -> bool:
+    """True when the account's ledger carries a password hash (short-lived mount).
+
+    One helper for every "does this account have a password?" question
+    (``/auth/me``, disconnect, set-password, #114), so they cannot disagree.
+    A missing ledger answers False: there is nothing to sign in with.
+    """
+    if not account or not db.ledger_exists(account["ledger_id"]):
+        return False
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        return ledger.get_password_hash() is not None
+
+
+def set_initial_password(db: Any, account_id: str, new_password: Any) -> dict[str, Any]:
+    """Authenticated: gives a passwordless account its first password (#114).
+
+    Only an account that has **no** password may use it; one that already has a
+    password is pointed at ``change-password`` instead. Validation is
+    :func:`validate_password`, the same rule registration and claim use.
+
+    Deliberately does **not** bump the session epoch: adding a sign-in method
+    must not sign anyone out (connect, disconnect, and the first password all
+    share this rule), while changing an existing password still does.
+    """
+    account = db.get_account(account_id)
+    if not db.is_live_account(account) or not account["is_player"] or not db.ledger_exists(account["ledger_id"]):
+        return {"ok": False, "error": "Trainee ledger not found."}
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        if ledger.get_password_hash() is not None:
+            return {
+                "ok": False,
+                "error": "A password is already set. Use change-password to change it.",
+                "code": "password_exists",
+            }
+        try:
+            clean = validate_password(new_password)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc), "code": "weak_new"}
+        ledger.set_password_hash(hash_password(clean))
+    return {"ok": True, "trainee_id": account["ledger_id"], "account_id": account_id}
 
 
 def change_password(

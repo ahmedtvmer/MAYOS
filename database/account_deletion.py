@@ -202,6 +202,11 @@ class AccountDeletionMixin:
                 (account_id, legacy_key),
             )
             cursor.execute("DELETE FROM coach_invites WHERE account_id = ?", (account_id,))
+            # Linked sign-ins (Google) go with the account, in this same
+            # transaction: the subject is freed so it can later create (or
+            # link to) a brand-new account, and a replayed deletion clears
+            # them too (#114).
+            cursor.execute("DELETE FROM linked_sign_ins WHERE account_id = ?", (account_id,))
             # Import audit and claim codes carry the source file name and the
             # operator's opt-in reference, so they are removed with the account
             # rather than kept as an identifying record (ADR 019/015/039).

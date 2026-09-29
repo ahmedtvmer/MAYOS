@@ -60,6 +60,7 @@ __all__ = [
     "ForgotPasswordIn",
     "GeneratedProgramSchema",
     "GoogleCompleteIn",
+    "GoogleLinkIn",
     "GoogleSignInIn",
     "GoogleSignUpOut",
     "IntakeAnswerIn",
@@ -88,6 +89,7 @@ __all__ = [
     "ResetPasswordIn",
     "ScheduledPauseOut",
     "SessionCommitIn",
+    "SetPasswordIn",
     "TraineeIn",
     "TrainingPauseCreateOut",
     "TrainingPauseIn",
@@ -148,6 +150,18 @@ class GoogleCompleteIn(BaseModel):
     username: str
 
 
+class GoogleLinkIn(BaseModel):
+    """Connects a Google identity to the signed-in caller (issue #114)."""
+
+    id_token: str
+
+
+class SetPasswordIn(BaseModel):
+    """First password for an account that has none, e.g. a Google-only one (#114)."""
+
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 class UsernameAvailableOut(BaseModel):
     """Picker answer: ``reason`` is present only when the username is taken."""
 
@@ -181,6 +195,10 @@ class AccountPlansOut(BaseModel):
 class AccountOut(BaseModel):
     """Current account identity, capabilities, and plan states, read from the durable registry.
 
+    ``has_password`` and ``linked_sign_ins`` report how the account can sign in
+    (issue #114): providers only, never a subject, so a client can render
+    "Connected: Google" without ever seeing Google's ``sub``.
+
     ``coach_ai_enabled`` is the server's effective feature state (flag plus
     recorded eval/privacy report, ADR 049), so a client can hide the coach
     assistant entry point when the operator has not enabled it.
@@ -190,6 +208,8 @@ class AccountOut(BaseModel):
     trainee_id: str
     capabilities: AccountCapabilitiesOut
     plans: AccountPlansOut
+    has_password: bool
+    linked_sign_ins: list[str]
     coach_ai_enabled: bool = False
 
 
@@ -584,9 +604,20 @@ class PasswordChangeIn(BaseModel):
 
 
 class AccountDeleteIn(BaseModel):
-    """Password confirmation for an in-app, irreversible account deletion (ADR 015/039)."""
+    """Confirmation for an in-app, irreversible account deletion (ADR 015/039).
 
-    password: str = Field(min_length=1, max_length=128)
+    Exactly one proof is accepted (#114): the account's password, or a fresh
+    Google ID token whose subject is linked to the caller.
+    """
+
+    password: str | None = Field(default=None, min_length=1, max_length=128)
+    google_id_token: str | None = Field(default=None, min_length=1, max_length=8192)
+
+    @model_validator(mode="after")
+    def _exactly_one_proof(self) -> "AccountDeleteIn":
+        if (self.password is None) == (self.google_id_token is None):
+            raise ValueError("Provide either password or google_id_token.")
+        return self
 
 
 class EmailUpdateIn(BaseModel):

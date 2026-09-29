@@ -118,7 +118,7 @@ sequenceDiagram
     Note over UI,DB: Every token stamped tv=1 now fails verification step 3 — all devices logged out
 ```
 
-`bump_account_session_epoch()` is invoked by **every** password event:
+`bump_account_session_epoch()` is invoked by **every** password *change*:
 
 | Event | Path |
 | :--- | :--- |
@@ -127,6 +127,8 @@ sequenceDiagram
 | Operator CLI reset | `scripts/reset_password.py` (mandatory registry epoch when enrolled; ledger `token_version` fallback for a bare local ledger) |
 
 Change-password failures return **400, never 401** — so a wrong current password is not misread by clients as session expiry.
+
+**What does not bump the epoch (#114).** Connecting a Linked sign-in (`POST /auth/google/link`), disconnecting it (`DELETE /auth/google/link`), and setting an account's **first** password (`POST /auth/set-password`) add or remove a *way to sign in*, not a credential that is being replaced, so they leave every existing session valid. Changing an existing password — through `POST /auth/change-password` or an emailed reset — still revokes all sessions as above.
 
 ---
 
@@ -193,6 +195,7 @@ Defensive details:
   * `GET /.well-known/assetlinks.json` serves the Digital Asset Links statement (`ANDROID_APP_PACKAGE`, `ANDROID_APP_SHA256_CERT_FINGERPRINTS`). Each fingerprint may use upper/lower case and colons or not; it is normalised to the uppercase colon-separated 32-byte form, invalid entries are skipped with a logged warning, and no valid fingerprint returns 404 rather than an invalid file.
   * The API installs an `uvicorn.access` log filter (`svc/app.py::RedactResetTokenFilter`) that rewrites any `token=…` query value to `token=[REDACTED]`, so the single-use token never lands in access logs regardless of the uvicorn CLI flags.
 * The legacy `UI_BASE_URL/?reset_token=…` link for the retired Streamlit Recover Access tab is no longer emitted (ADR 037).
+* A **Google-only account** uses this flow unchanged (#114): it sets a recovery email with `POST /auth/email`, redeems the emailed token, and gets its first password. The Linked sign-in is untouched, so afterwards the account can sign in with either method (and may then disconnect Google).
 
 ---
 
@@ -238,10 +241,14 @@ Delivery failures are logged and swallowed; the client response stays generic. T
 | `POST /auth/google` | — | 5/min | Verifies a Google ID token: linked subject ⇒ `TokenOut` (remember-me lifetime), otherwise `{signup_ticket, suggested_username}`; 503 when `GOOGLE_WEB_CLIENT_ID` is unset |
 | `GET /auth/username-available` | signup ticket (Bearer) | 30/min | `{available, reason?}`; clear 400 for a username that breaks the rule; 401 for a missing/expired ticket |
 | `POST /auth/google/complete` | — | 5/min | One catalog transaction: account + link; 400 invalid username, 409 taken or already linked |
+| `POST /auth/google/link` | Bearer | 10/min | Connects a verified Google identity to the caller; idempotent; 409 conflicts (never which other account); 503 when `GOOGLE_WEB_CLIENT_ID` is unset |
+| `DELETE /auth/google/link` | Bearer | 10/min | Disconnects Google; **409 unless the account has a password** (an account always keeps one way to sign in); idempotent; 503 when unconfigured |
+| `POST /auth/set-password` | Bearer | 10/min | First password only (e.g. a Google-only account); 409 pointing at `change-password` when one exists; no epoch bump |
+| `GET /auth/me` | Bearer | — | Identity, capabilities, plans, plus `has_password` and `linked_sign_ins` (provider names only, never a subject) |
 | `POST /auth/claim` | — | 5/min | Requires owner-issued single-use claim code; 401 generic |
 | `POST /auth/logout` | Bearer | — | Revokes presenting `jti`; 204 |
 | `POST /auth/change-password` | Bearer | 10/min | Revokes **all** sessions; 400 on failure |
-| `DELETE /auth/account` | Bearer | 10/min | Password-confirmed durable deletion (ADR 039); 400 generic on wrong password |
+| `DELETE /auth/account` | Bearer | 10/min | Exactly one proof: `password` **or** a fresh `google_id_token` (ADR 039); 400 generic on any failure |
 | `GET /auth/email` | Bearer | — | `{"email": str \| null}` |
 | `POST /auth/email` | Bearer | 10/min | Normalizes; 400 on invalid/conflict |
 | `POST /auth/forgot-password` | — | 3/hour | Always 202 with generic message |
@@ -282,7 +289,7 @@ Rate-limit keys combine the client IP with a bearer-token suffix when present, s
 
 ## 12. Durable Account Deletion (ADR 015/039)
 
-An account holder deletes their account with `DELETE /auth/account` carrying `{"password": "..."}` (rate-limited with the password limit). A wrong password returns a generic `400 Invalid credentials.` and changes nothing. On success every session is dead and the account's active data is gone. The full decision and per-table breakdown are ADR 039; the operator-facing recovery details are in [`DEPLOYMENT.md`](DEPLOYMENT.md).
+An account holder deletes their account with `DELETE /auth/account` carrying **exactly one** proof (rate-limited with the password limit): `{"password": "..."}`, or `{"google_id_token": "..."}` for an account that signs in with a Linked sign-in (#114). The Google proof must be an ID token that passes the same verification sign-in uses **and** whose `sub` is linked to the caller **and** whose `iat` is within the last **5 minutes** — a stale, wrong-sub, or unverifiable token returns the very same generic `400 Invalid credentials.` as a wrong password, so the endpoint reveals nothing about the link. A wrong password likewise returns that generic 400 and changes nothing. On success every session is dead and the account's active data is gone. The full decision and per-table breakdown are ADR 039; the operator-facing recovery details are in [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ```mermaid
 sequenceDiagram
@@ -293,10 +300,14 @@ sequenceDiagram
     participant DEL as deletions.db
     participant FS as Users / backups
 
-    App->>API: DELETE /auth/account {password} (Bearer)
-    API->>DB: verify password (bcrypt, ledger)
+    App->>API: DELETE /auth/account {password | google_id_token} (Bearer)
+    alt password proof
+        API->>DB: verify password (bcrypt, ledger)
+    else google proof
+        API->>API: verify id_token; sub must be linked to caller; iat ≤ 5 min
+    end
     API->>DEL: (a) write durable deletion record FIRST
-    API->>DB: (b) one transaction: status='deleted', deleted_at, session_epoch+1, clear recovery/invites/coach profile, end assignments, delete relationships
+    API->>DB: (b) one transaction: status='deleted', deleted_at, session_epoch+1, clear recovery/invites/coach profile, linked_sign_ins, end assignments, delete relationships
     API->>FS: (c) close conn, remove ledger (.db/-wal/-shm) + backups/<ledger>/
     API-->>App: 200 "Account deleted. All sessions have been ended."
     Note over DEL,DB: Any later startup/restore replays the record, so an old token or a restored catalog snapshot cannot resurrect the identity
@@ -305,6 +316,7 @@ sequenceDiagram
 Key properties:
 
 * **Revoke-all + fail closed.** The catalog transaction bumps `session_epoch`, so every bearer and remember-me token fails verification (Section 4/5). The partially-deleted account also fails closed because `deleted_at` is authoritative (a non-NULL `deleted_at` wins over a stale `status='active'`).
+* **The link dies with the account (#114).** The `linked_sign_ins` rows are deleted **inside the same catalog transaction** as the account row, so the Google subject is freed for a later brand-new MAYOS account and a username that is reused afterwards inherits nothing. Deletion replay (`replay_deletions`/`reapply_deletions`) runs the same transaction, so a restored snapshot that brings a link row back loses it again on the next pass.
 * **Crash-safe and resumable, never rolled back.** The durable record is written before any catalog change and carries an `applied_at` marker. Service startup and the hourly sweep run an incremental replay that completes only not-yet-applied records (so an interrupted deletion resolves without a restart); the restore path runs the full replay (`scripts/reapply_deletions.py`) which re-checks every record. `deletions.db` is kept **outside** the catalog/ledger backup archive, backed up separately and append-only, and is never restored over a newer copy — so a restore cannot undo a deletion. A replayed record never removes a ledger that a reused username's **new** account owns.
 * **Username reuse only as a new account.** The partial unique username index (`WHERE deleted_at IS NULL`) frees the name; registering it again creates a new immutable `account_id` with an empty ledger, and the old `sub` still resolves to the deleted id, never the new account. A reused username also gets a **distinct `ledger_id`/ledger path** (`<username>-<account_id[:12]>`), so replaying the old deletion record can never remove the new account's ledger.
 * **Deletion signal for other devices.** An authenticated request whose token signature verifies but whose subject is deleted returns `401 {"error": "account_deleted"}` (distinct from the ordinary `{"detail": ...}` 401 for expiry/revocation). The Flutter client uses it to erase that account's protected local data — drafts, cached program/prescriptions, cached chat history, and disclosure acceptance — without the logout keep/discard prompt, then clears the session. An ordinary 401 keeps the normal logout behavior.
@@ -315,11 +327,11 @@ Key properties:
 
 ---
 
-## 13. Google Linked Sign-in (issue #113)
+## 13. Google Linked Sign-in (issues #113 / #114)
 
 A **Linked sign-in** ([`CONTEXT.md`](../CONTEXT.md)) attaches an external identity to exactly one account. The link is keyed on `(provider, subject)` — `('google', <Google sub>)` — and stored in the shared catalog table `linked_sign_ins (provider, subject, account_id, linked_at)` with `UNIQUE(provider, subject)` and an index on `account_id`. It lives in the catalog, never in a player's ledger, because the flow runs logged out. It is **never matched by email**; no email, name, or picture from Google is stored anywhere, and `provider` is data, so another provider needs no schema change.
 
-**Configuration.** `GOOGLE_WEB_CLIENT_ID` is read **by name only** — never hard-coded, never logged — and is the single audience for verification. Android obtains its ID token for the web client ID passed as `serverClientId`, and the web client uses the same ID, so one web client ID covers both clients and no Android-specific audience is needed. While the variable is unset, all three `/auth/google*` endpoints answer `503` and nothing else in the service changes.
+**Configuration.** `GOOGLE_WEB_CLIENT_ID` is read **by name only** — never hard-coded, never logged — and is the single audience for verification. Android obtains its ID token for the web client ID passed as `serverClientId`, and the web client uses the same ID, so one web client ID covers both clients and no Android-specific audience is needed. While the variable is unset, every `/auth/google*` endpoint — sign-in, the picker, completion, connect, and disconnect — answers `503` and nothing else in the service changes (`svc/dependencies.py::google_sign_in_enabled` is the single place that decides this).
 
 ```mermaid
 sequenceDiagram
@@ -353,7 +365,15 @@ sequenceDiagram
 * `GET /auth/username-available?username=…` answers `{available, reason?}` (`reason` is `"taken"`). The same rule the completion enforces applies here: a username outside `3–30 × a–z 0–9 _ -` after lowercasing is a clear `400`, never a silent rewrite.
 * `POST /auth/google/complete {signup_ticket, username}` validates the picked username and then, **in one catalog transaction**, creates the account exactly as `register_player` does (player capability, its own ledger, no password hash) and inserts the link. A taken username returns `409`; if the same subject is linked concurrently, the `UNIQUE(provider, subject)` constraint aborts the transaction so the losing request creates no second account. Success returns `TokenOut`, again with the remember-me lifetime, and materialises the ledger before the token is handed out so the session passes the normal registry gate.
 
-**Google-only accounts.** A Google account has no password and must never be claimable: `/auth/claim` refuses it with the claim flow's own generic `401 Invalid or expired claim code.` — identical to every other claim failure, so the endpoint cannot reveal that the account is Google-linked — and `/auth/login` returns the plain generic `401 Invalid credentials.` — never `403 claim_required` (Section 3). Connect/disconnect, setting a password, and deletion are out of scope here (issue 3 in the set).
+**Google-only accounts.** A Google account has no password and must never be claimable: `/auth/claim` refuses it with the claim flow's own generic `401 Invalid or expired claim code.` — identical to every other claim failure, so the endpoint cannot reveal that the account is Google-linked — and `/auth/login` returns the plain generic `401 Invalid credentials.` — never `403 claim_required` (Section 3).
+
+**Managing sign-in methods (#114).** `GET /auth/me` reports the current state as `has_password` plus `linked_sign_ins` — provider names only, never a subject — so a client can render "Connected: Google" without ever seeing the `sub`. The glossary rule holds throughout: **an account always keeps at least one way to sign in** ([`CONTEXT.md`](../CONTEXT.md)).
+
+* `POST /auth/google/link {id_token}` (Bearer) verifies the token exactly as sign-in does and connects the verified `sub` to the caller in one catalog transaction. It is **idempotent** when that subject is already connected. Two conflicts, both `409`, both deliberately uninformative: a subject already connected to another MAYOS account answers exactly `"This Google account is already connected to another MAYOS account"` (never which one), and a caller who already connected a *different* Google identity is told to disconnect that one first. A subject whose only link points at a deleted account is treated as free and repointed here, exactly as a first sign-in does.
+* `DELETE /auth/google/link` (Bearer) removes the caller's link — **refused with `409` while the account has no password**, because disconnecting would otherwise leave no way back in. An account with no link is an idempotent success. The subject is read and deleted inside the same catalog transaction, so a race cannot touch another account's row.
+* `POST /auth/set-password {new_password}` (Bearer) gives a passwordless account its **first** password, using the existing `validate_password` rule (Section 2). An account that already has one gets a `409` pointing at `change-password`; a weak password is refused like every other password body. This is how a Google-only account makes itself disconnectable — and how password reset lands a password on it (Section 7).
+* `DELETE /auth/account {google_id_token}` is the Google path of durable deletion (Section 12): the token must be fresh (`iat` within 5 minutes) and its subject linked to the caller, and every failure is the same generic `400 Invalid credentials.` as a wrong password. The link rows go in the deletion's own catalog transaction, so the subject — and a reused username — start clean.
+* **Epochs (Section 5).** Connecting, disconnecting, and the first `set-password` do **not** bump the session epoch; changing an existing password still does.
 
 **No stuck accounts.** The completion's catalog transaction commits the account and the link; the ledger file is created immediately after. If that last step fails, the account is stranded mid-signup — so both a later `POST /auth/google` and a retry of `POST /auth/google/complete` for the same subject detect a linked live account with a missing ledger, recreate it, and issue that account's session instead of answering `409` or failing the registry's ledger-existence gate.
 

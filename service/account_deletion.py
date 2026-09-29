@@ -1,17 +1,22 @@
-"""Password-confirmed durable account deletion (ADR 015/039).
+"""Password- or Google-confirmed durable account deletion (ADR 015/039).
 
-The account holder proves possession of their password, then the account is
+The account holder proves possession — with their password, or with a fresh
+Google ID token whose linked subject is their own (#114) — then the account is
 durably deleted: every session invalidated in the registry, the live ledger and
-its backups removed, and a record kept outside the catalog snapshot so a
-restored backup cannot resurrect the identity. The caller is JWT-authenticated,
-so a wrong password is reported plainly (400-class) and changes nothing; route
-layers must NOT map it to 401 or clients will treat it as session expiry.
+its backups removed, the ``linked_sign_ins`` rows dropped in the same catalog
+transaction (so that Google account can later create a new MAYOS account), and a
+record kept outside the catalog snapshot so a restored backup cannot resurrect
+the identity. The caller is JWT-authenticated, so a wrong password or a
+stale/wrong-sub/unverifiable token is reported plainly (400-class) and changes
+nothing; route layers must NOT map it to 401 or clients will treat it as session
+expiry.
 
 Every refusal — unknown or non-live account, non-player account, a ledger with
-no password hash (imported-but-unclaimed, ADR 045), a non-string password, or a
-wrong password — spends exactly one bcrypt verification, so neither the in-app
-path nor the public web form leaks "does this account exist?" through timing
-(#43).
+no password hash (imported-but-unclaimed, ADR 045), a non-string password, a
+wrong password, or a Google identity that fails any part of its check — returns
+the same generic ``Invalid credentials.`` (#43, #114), and the password path
+spends exactly one bcrypt verification, so neither the in-app path nor the
+public web form leaks "does this account exist?" through timing.
 """
 
 from datetime import UTC, datetime
@@ -19,6 +24,12 @@ from typing import Any
 
 from service._base import ledger_scope
 from service.auth import INVALID_CREDENTIALS, hash_password, verify_password
+from service.google_sign_in import PROVIDER
+
+#: The Google proof must be this fresh: ``iat`` within the last 5 minutes (#114).
+GOOGLE_TOKEN_MAX_AGE_SECONDS = 5 * 60
+#: Clock drift between the app server and Google before a token is "from the future".
+GOOGLE_IAT_FUTURE_SKEW_SECONDS = 10
 
 # Lazily built so importing this module stays cheap; one bcrypt verification is
 # spent against it for every refusal that has no stored hash to compare with.
@@ -38,28 +49,70 @@ def _spend_one_bcrypt(password: Any) -> None:
     verify_password(password if isinstance(password, str) else "", _UNKNOWN_ACCOUNT_HASH)
 
 
-def delete_account(db: Any, account_id: str, password: Any, ledger: Any | None = None) -> dict[str, Any]:
-    """Verifies the password and deletes the account and its active data.
+def delete_account(
+    db: Any,
+    account_id: str,
+    password: Any = None,
+    *,
+    google_identity: Any | None = None,
+    ledger: Any | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Verifies one proof and deletes the account and its active data.
+
+    The proof is either ``password`` or ``google_identity`` — the ``sub``/``iat``
+    of an ID token the route already verified against Google (:func:`_google_identity_deletes`)
+    — never both. Both paths answer with the same generic ``Invalid credentials.``
+    on failure, so the endpoint cannot be used to tell a wrong password from a
+    stale or foreign Google token.
 
     ``account_id`` is the immutable id verified from the caller's JWT, never the
     reusable username, so a request that raced a deletion and username reuse can
     never delete the new account that inherited the name.
     """
+    if password is not None and google_identity is not None:
+        raise ValueError("Deletion accepts one proof at a time: password or google_identity.")
     account = db.get_account(account_id)
     if not db.is_live_account(account) or not account["is_player"]:
-        _spend_one_bcrypt(password)
+        if password is not None:
+            _spend_one_bcrypt(password)
         return {"ok": False, "error": INVALID_CREDENTIALS}
 
-    with ledger_scope(db, ledger, account["ledger_id"]) as ledger:
-        stored = ledger.get_password_hash()
-        if stored is None:
-            _spend_one_bcrypt(password)
-            return {"ok": False, "error": INVALID_CREDENTIALS}
-        if not verify_password(password if isinstance(password, str) else "", stored):
-            return {"ok": False, "error": INVALID_CREDENTIALS}
+    if google_identity is None:
+        with ledger_scope(db, ledger, account["ledger_id"]) as ledger:
+            stored = ledger.get_password_hash()
+            if stored is None:
+                _spend_one_bcrypt(password)
+                return {"ok": False, "error": INVALID_CREDENTIALS}
+            if not verify_password(password if isinstance(password, str) else "", stored):
+                return {"ok": False, "error": INVALID_CREDENTIALS}
+    elif not _google_identity_deletes(db, account_id, google_identity, now):
+        return {"ok": False, "error": INVALID_CREDENTIALS}
 
     db.delete_account(account["account_id"], datetime.now(UTC).isoformat(), ledger_id=account["ledger_id"])
     return {"ok": True, "account_id": account["account_id"], "trainee_id": account["ledger_id"]}
+
+
+def _google_identity_deletes(db: Any, account_id: str, identity: Any, now: datetime | None = None) -> bool:
+    """True when a verified Google identity proves possession of *this* account.
+
+    Every condition must hold: the token's ``sub`` is linked to the caller
+    (never merely to any account), and its ``iat`` is within the last
+    :data:`GOOGLE_TOKEN_MAX_AGE_SECONDS`, so a stale or replayed ID token is
+    refused exactly like a wrong password. Each failure collapses to the same
+    ``False``, so nothing here reveals whether the subject is linked, whose it
+    is, or that the token was merely old.
+    """
+    sub = getattr(identity, "sub", None)
+    iat = getattr(identity, "iat", None)
+    if not isinstance(sub, str) or not sub:
+        return False
+    if isinstance(iat, bool) or not isinstance(iat, int):
+        return False
+    age = (now or datetime.now(UTC)).timestamp() - float(iat)
+    if age < -GOOGLE_IAT_FUTURE_SKEW_SECONDS or age > GOOGLE_TOKEN_MAX_AGE_SECONDS:
+        return False
+    return db.get_linked_sign_in_account_id(PROVIDER, sub) == account_id
 
 
 def delete_account_by_username(db: Any, username: Any, password: Any) -> dict[str, Any]:

@@ -1,10 +1,16 @@
-"""Google sign-in: username picker and first-sign-in account creation (#113).
+"""Google sign-in: username picker, first-sign-in account creation, and link management (#113/#114).
 
 A Verified Google identity is a ``sub`` (plus the token's ``iat``) — never an
 email address, and no name from the token is persisted: ``given_name`` is read
 once to seed a *suggestion* that the person may change before anything is
 written. No account exists until a username is picked, so abandoning the flow
 leaves nothing behind.
+
+Once an account exists, the same identity can be connected or disconnected
+(:func:`link_account` / :func:`unlink_account`): connect is idempotent and
+conflicts never say which other account holds the subject, and disconnect is
+refused while the account has no password, because an account always keeps at
+least one way to sign in (CONTEXT.md, "Linked sign-in").
 
 The picker's rule is stricter than ``/auth/register``: after lowercasing, a
 picked username must be 3–30 characters of ``a–z 0–9 _ -`` and is **refused**
@@ -17,12 +23,20 @@ import sqlite3
 from datetime import UTC, datetime
 from typing import Any
 
+from service import auth as auth_service
+
 PROVIDER = "google"
 MIN_USERNAME_LENGTH = 3
 MAX_USERNAME_LENGTH = 30
 INVALID_USERNAME = "Username must be 3–30 characters of a–z, 0–9, _ or - (lowercase)."
 USERNAME_TAKEN = "This username is already taken."
 ALREADY_LINKED = "This Google account is already linked to a MAYOS account."
+#: Connect conflict: the subject belongs to someone else. Never says who (#114).
+LINKED_ELSEWHERE = "This Google account is already connected to another MAYOS account"
+#: Connect conflict: the caller already has a different Google identity.
+DIFFERENT_GOOGLE = "This account already has a different Google account connected. Disconnect it first."
+#: Disconnect refusal: an account always keeps at least one way to sign in.
+NEEDS_PASSWORD = "Set a password before disconnecting Google, so you can still sign in."
 
 _USERNAME_RE = re.compile(r"[a-z0-9_-]{3,30}")
 #: Used when the token carries no usable given name (or only punctuation).
@@ -31,6 +45,10 @@ _SUGGESTION_FALLBACK = "player"
 
 class SignUpConflictError(Exception):
     """A completion that must not create an account: taken username, live link."""
+
+
+class SignInMethodError(Exception):
+    """A refused sign-in-method change; its message is safe to show the caller."""
 
 
 def validate_username(raw: Any) -> str:
@@ -141,6 +159,66 @@ def complete_signup(db: Any, subject: str, username: Any) -> dict[str, Any]:
         "trainee_id": ledger_id,
         "session_epoch": account.get("session_epoch", 1),
     }
+
+
+def link_account(db: Any, account_id: str, subject: str) -> dict[str, Any]:
+    """Connects a verified Google identity to the signed-in caller's account (#114).
+
+    Idempotent when that exact subject is already connected. Both conflict
+    directions are refused with their own message and neither ever reveals
+    *which* other account is involved: a subject held by a live account answers
+    :data:`LINKED_ELSEWHERE`, and a caller who already connected a different
+    Google identity is told to disconnect that one first (:data:`DIFFERENT_GOOGLE`).
+
+    A subject whose only link points at a deleted account is treated as free —
+    the same rule sign-in applies — and repointed here, inside this one
+    catalog transaction, so no second account is ever created for it. The
+    session epoch is untouched: connecting is not a credential change.
+    """
+    account = db.get_account(account_id)
+    if not db.is_live_account(account) or not account["is_player"]:
+        return {"ok": False, "error": "Trainee ledger not found."}
+    linked_at = datetime.now(UTC).isoformat()
+    with db.catalog_transaction():
+        holder = db.get_linked_sign_in_account_id(PROVIDER, subject)
+        if holder == account_id:
+            return {"ok": True, "message": "Google account already connected."}
+        if holder is not None:
+            if db.is_live_account(db.get_account(holder)):
+                raise SignInMethodError(LINKED_ELSEWHERE)
+            db.remove_linked_sign_in(PROVIDER, subject)
+        connected = db.get_linked_sign_in_subject(account_id, PROVIDER)
+        if connected is not None and connected != subject:
+            raise SignInMethodError(DIFFERENT_GOOGLE)
+        try:
+            db.link_sign_in(PROVIDER, subject, account_id, linked_at=linked_at)
+        except sqlite3.IntegrityError:
+            # UNIQUE(provider, subject): a concurrent connect won the race.
+            raise SignInMethodError(LINKED_ELSEWHERE) from None
+    return {"ok": True, "message": "Google account connected."}
+
+
+def unlink_account(db: Any, account_id: str) -> dict[str, Any]:
+    """Disconnects the caller's Google identity, refused unless a password exists.
+
+    The glossary rule (CONTEXT.md, "Linked sign-in"): an account always keeps
+    at least one way to sign in, so a Google-only account must set a password
+    first (:data:`NEEDS_PASSWORD`) and nothing is written before that check
+    passes. An account with no link is an idempotent no-op, and removing a link
+    never bumps the session epoch.
+    """
+    account = db.get_account(account_id)
+    if not db.is_live_account(account) or not account["is_player"]:
+        return {"ok": False, "error": "Trainee ledger not found."}
+    if db.get_linked_sign_in_subject(account_id, PROVIDER) is None:
+        return {"ok": True, "message": "No Google account was connected."}
+    if not auth_service.account_has_password(db, account):
+        raise SignInMethodError(NEEDS_PASSWORD)
+    with db.catalog_transaction():
+        subject = db.get_linked_sign_in_subject(account_id, PROVIDER)
+        if subject is not None:
+            db.remove_linked_sign_in(PROVIDER, subject)
+    return {"ok": True, "message": "Google account disconnected."}
 
 
 def _self_heal(db: Any, subject: str) -> dict[str, Any] | None:

@@ -366,6 +366,8 @@ def test_current_account_reports_capabilities_from_durable_registry(api):
         "trainee_id": "alice",
         "capabilities": {"player": True, "coach": False},
         "coach_ai_enabled": False,
+        "has_password": True,
+        "linked_sign_ins": [],
         "plans": {
             "lifter": {"plan": "free", "status": "active"},
             "coach": None,

@@ -164,6 +164,8 @@ def test_owner_issued_invite_grants_capability_without_reissuing_token(api):
         "trainee_id": "alice",
         "capabilities": {"player": True, "coach": True},
         "coach_ai_enabled": False,
+        "has_password": True,
+        "linked_sign_ins": [],
         "plans": {
             "lifter": {"plan": "free", "status": "active"},
             "coach": {"plan": "free", "status": "active"},
