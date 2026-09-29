@@ -351,7 +351,11 @@ void main() {
       expect(planned.sets.first.reps, 0);
       expect(planned.sets.first.rir, isNull);
       expect(planned.sets.first.ticked, isFalse);
-      expect(planned.targetLabel, isNotNull);
+      // The caption keeps what was actually seeded: the prescription's
+      // effective sets (3) and the frozen projection, not the program's raw
+      // target (2) — #108, #158.
+      expect(planned.targetLabel, '3 sets · 5–8 reps · 60 kg · RIR ≥ 2');
+      expect(planned.effectiveSets, 3);
       expect(planned.prescriptionHint, isNotNull);
       expect(planned.prescriptionHint!.reps, 5); // target_reps_min
       expect(planned.prescriptionHint!.rir, 1.5); // 10 - 8.5
@@ -404,6 +408,118 @@ void main() {
       expect(unplanned.prescriptionHint!.reps, 8);
       expect(unplanned.prescriptionHint!.rir, 2.0);
       expect(unplanned.prescriptionHint!.weightKg, isNull);
+    });
+  });
+
+  group('card lines (#158)', () {
+    ActiveWorkoutExercise exerciseOf({
+      int targetSets = 3,
+      int effectiveSets = 3,
+      int minReps = 6,
+      int maxReps = 8,
+      double targetRpe = 8.0,
+      double? projectedWeightKg = 62.5,
+      List<ActiveWorkoutSet>? sets,
+    }) =>
+        ActiveWorkoutExercise(
+          exercise: <String, dynamic>{
+            'exercise_id': 'hack_squat',
+            'exercise_name': 'Hack Squat',
+            'target_sets': targetSets,
+            'target_reps_min': minReps,
+            'target_reps_max': maxReps,
+            'target_rpe': targetRpe,
+          },
+          sets: sets ??
+              <ActiveWorkoutSet>[
+                for (int i = 0; i < effectiveSets; i++) ActiveWorkoutSet(),
+              ],
+          effectiveSets: effectiveSets,
+          prescriptionHint: PrescriptionHint(
+            weightKg: projectedWeightKg,
+            reps: minReps,
+            rir: rirFromRpe(targetRpe),
+          ),
+        );
+
+    test('the line uses the effective sets and the frozen projection (#108)',
+        () {
+      // Three sets prescribed, four seeded: the card says four.
+      final ActiveWorkoutExercise exercise =
+          exerciseOf(targetSets: 3, effectiveSets: 4);
+      expect(exercise.effectiveSetCount, 4);
+      expect(
+        exercisePrescriptionLine(exercise, restSeconds: 120),
+        '4 sets · 6–8 reps · 62.5 kg · RIR ≥ 2 · Rest 2:00',
+      );
+    });
+
+    test('one set reads "1 set", and Rest Off keeps the chip words', () {
+      final ActiveWorkoutExercise exercise = exerciseOf(
+        effectiveSets: 1,
+        minReps: 8,
+        maxReps: 12,
+        projectedWeightKg: null,
+      );
+      expect(
+        exercisePrescriptionLine(exercise, restSeconds: 180),
+        '1 set · 8–12 reps · RIR ≥ 2 · Rest 3:00',
+      );
+      expect(
+        exercisePrescriptionLine(exercise, restSeconds: 0),
+        '1 set · 8–12 reps · RIR ≥ 2 · Rest Off',
+      );
+    });
+
+    test('a workout stored before effective sets was kept falls back to the '
+        'program target', () {
+      final ActiveWorkoutExercise legacy = ActiveWorkoutExercise(
+        exercise: <String, dynamic>{
+          'exercise_id': 'hack_squat',
+          'exercise_name': 'Hack Squat',
+          'target_sets': 3,
+          'target_reps_min': 6,
+          'target_reps_max': 8,
+          'target_rpe': 8.5,
+        },
+        sets: <ActiveWorkoutSet>[
+          ActiveWorkoutSet(),
+          ActiveWorkoutSet(),
+          ActiveWorkoutSet(),
+        ],
+      );
+      expect(legacy.effectiveSetCount, 3);
+      expect(
+        exercisePrescriptionLine(legacy, restSeconds: 120),
+        '3 sets · 6–8 reps · RIR ≥ 2 · Rest 2:00',
+      );
+    });
+
+    test('the caption helper formats every clause, and only those present',
+        () {
+      expect(
+        prescriptionCaption(
+          setCount: 4,
+          minReps: 6,
+          maxReps: 8,
+          projectedWeightKg: 62.5,
+          rir: 2.0,
+        ),
+        '4 sets · 6–8 reps · 62.5 kg · RIR ≥ 2',
+      );
+      // No projection, no rep window: the bare minimum still reads right.
+      expect(prescriptionCaption(setCount: 1, minReps: 0, maxReps: 0),
+          '1 set');
+    });
+
+    test('the Last: line reads a bodyweight set as BW, never 0kg', () {
+      expect(
+        lastSessionLabel(const <BaselineSet>[
+          BaselineSet(weightKg: 60, reps: 6),
+          BaselineSet(weightKg: 0, reps: 10),
+        ]),
+        'Last: 60kg × 6 · BW × 10',
+      );
     });
   });
 

@@ -886,13 +886,24 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     final PrescriptionTarget? target =
         prescription?.forExercise(exercise.exerciseId);
     final int setCount = target?.effectiveSets ?? exercise.targetSets;
+    final PrescriptionHint? hint = _prescriptionHint(exercise.toJson(), target);
     return ActiveWorkoutExercise(
       exercise: exercise.toJson(),
-      targetLabel: exercise.prescription,
+      // #108: the caption keeps the effective prescription and the frozen
+      // projection — what the rows were actually seeded from — not the raw
+      // program target the card might otherwise contradict.
+      targetLabel: prescriptionCaption(
+        setCount: setCount,
+        minReps: exercise.targetRepsMin,
+        maxReps: exercise.targetRepsMax,
+        projectedWeightKg: hint?.weightKg,
+        rir: hint?.rir,
+      ),
       sets: <ActiveWorkoutSet>[
         for (int i = 0; i < setCount; i++) ActiveWorkoutSet(),
       ],
-      prescriptionHint: _prescriptionHint(exercise.toJson(), target),
+      prescriptionHint: hint,
+      effectiveSets: setCount,
     );
   }
 

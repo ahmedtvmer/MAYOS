@@ -4,7 +4,6 @@ import '../../../core/active_workout.dart';
 import '../../../core/baselines.dart';
 import '../../../core/effort.dart';
 import '../../../core/personal_records.dart';
-import '../../../core/rest_length.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -22,12 +21,15 @@ import 'rest_timer_widgets.dart';
 // header, #160 bottom bar, #161 pictures, #162 card menu) extend this file
 // without touching the logging rules.
 
-/// The leaner table's column shares (#158): SET · KG · REPS · RIR · ✓,
-/// matching the plan's priority order (set number, weight, reps, effort,
-/// completion) with the PREVIOUS column gone. The header and every row read
-/// this one list, so the columns line up, and no column is fixed-width: at
-/// the 360dp minimum the smallest share is still a 48dp tap area (#158).
-const List<int> kLoggerColumnFlex = <int>[4, 6, 5, 5, 4];
+/// The two narrow tap columns of the leaner table — the SET number and the
+/// tick — hold a **fixed 48dp** each, so both stay full-size tap targets
+/// whatever the screen is (#158 review): at the 360dp minimum the row has
+/// about 286dp, and a flex share would have squeezed them under 48.
+const double kLoggerFixedColumnWidth = kMayosMinTapTarget;
+
+/// The value columns KG · REPS · RIR share whatever width the two fixed
+/// columns leave, in the plan's priority order (weight, reps, effort).
+const List<int> kLoggerValueColumnFlex = <int>[4, 3, 3];
 
 /// The spec's tick: a 40dp square inside the row's 48dp tap area (#107).
 const double kLoggerTickSize = 40;
@@ -85,41 +87,9 @@ const double kLoggerTickSize = 40;
   }
 }
 
-/// The card's prescription line (#158): `3 sets · 5–8 reps · RIR ≥ 2 · Rest
-/// 3:00`, read from the exercise's own payload so planned and unplanned
-/// cards say the same thing. The rest clause is the resolved length the
-/// player is using right now (device override included) — the same words the
-/// rest chip shows (#125).
-String exercisePrescriptionLine(
-  ActiveWorkoutExercise exercise, {
-  required int restSeconds,
-}) {
-  final Map<String, dynamic> payload = exercise.exercise;
-  final int sets = (payload['target_sets'] as num?)?.toInt() ?? 0;
-  final int minReps = (payload['target_reps_min'] as num?)?.toInt() ?? 0;
-  final int maxReps = (payload['target_reps_max'] as num?)?.toInt() ?? 0;
-  final double? targetRpe = (payload['target_rpe'] as num?)?.toDouble();
-  return <String>[
-    '$sets sets',
-    if (minReps > 0 && maxReps > 0) '$minReps–$maxReps reps',
-    if (targetRpe != null) 'RIR ${minRirLabel(clampRpe(targetRpe))}',
-    restSeconds <= 0 ? 'Rest Off' : 'Rest ${restMmSs(restSeconds)}',
-  ].join(' · ');
-}
-
-/// The frozen baseline's last session as the card's `Last:` line (#158):
-/// working sets in logged order, `Last: 60kg × 6 · 60kg × 5`. The card
-/// builds this only when there is history — never an empty placeholder.
-String lastSessionLabel(List<BaselineSet> sets) {
-  final String setsLabel = <String>[
-    for (final BaselineSet set in sets)
-      '${formatCellWeight(set.weightKg)}kg × ${set.reps}',
-  ].join(' · ');
-  return 'Last: $setsLabel';
-}
-
 /// The `Last:` line under the prescription, replacing the PREVIOUS column
-/// (#158, plan §7). Not editable, not per set: one line for the exercise.
+/// (#158, plan §7). Not editable, not per set: one line for the exercise,
+/// formatted by [lastSessionLabel] next to the model.
 class PreviousPerformanceSummary extends StatelessWidget {
   const PreviousPerformanceSummary({super.key, required this.sets});
 
@@ -155,9 +125,17 @@ class LoggerTableHeader extends StatelessWidget {
       padding: const EdgeInsets.only(top: MayosSpacing.xs),
       child: Row(
         children: <Widget>[
-          for (int i = 0; i < labels.length; i++)
+          SizedBox(
+            width: kLoggerFixedColumnWidth,
+            child: Text(
+              labels[0],
+              textAlign: TextAlign.center,
+              style: MayosTypography.captionStrong.copyWith(color: c.textMuted),
+            ),
+          ),
+          for (int i = 1; i < labels.length - 1; i++)
             Expanded(
-              flex: kLoggerColumnFlex[i],
+              flex: kLoggerValueColumnFlex[i - 1],
               child: Text(
                 labels[i],
                 textAlign: TextAlign.center,
@@ -165,6 +143,14 @@ class LoggerTableHeader extends StatelessWidget {
                     MayosTypography.captionStrong.copyWith(color: c.textMuted),
               ),
             ),
+          SizedBox(
+            width: kLoggerFixedColumnWidth,
+            child: Text(
+              labels[labels.length - 1],
+              textAlign: TextAlign.center,
+              style: MayosTypography.captionStrong.copyWith(color: c.textMuted),
+            ),
+          ),
         ],
       ),
     );
@@ -371,8 +357,8 @@ class SetLoggingRow extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Expanded(
-                flex: kLoggerColumnFlex[0],
+              SizedBox(
+                width: kLoggerFixedColumnWidth,
                 child: InkWell(
                   key: ValueKey<String>(
                       'logger.setlabel.$exerciseIndex.$setIndex'),
@@ -391,10 +377,10 @@ class SetLoggingRow extends StatelessWidget {
                   ),
                 ),
               ),
-              _cell(context, LoggerField.kg, kLoggerColumnFlex[1]),
-              _cell(context, LoggerField.reps, kLoggerColumnFlex[2]),
+              _cell(context, LoggerField.kg, kLoggerValueColumnFlex[0]),
+              _cell(context, LoggerField.reps, kLoggerValueColumnFlex[1]),
               Expanded(
-                flex: kLoggerColumnFlex[3],
+                flex: kLoggerValueColumnFlex[2],
                 child: RirSelector(
                   cellKey: ValueKey<String>(
                       'logger.cell.$exerciseIndex.$setIndex.rir'),
@@ -406,36 +392,32 @@ class SetLoggingRow extends StatelessWidget {
                   onTap: () => onSelectCell(LoggerField.rir),
                 ),
               ),
-              Expanded(
-                flex: kLoggerColumnFlex[4],
-                // The whole column is the target: a 48dp tap area around the
-                // 40dp tick (#158), clamped by the share so it can never
-                // overflow a narrow phone.
+              SizedBox(
+                // Fixed 48dp for the tick too (#158 review): the tap target
+                // never shrinks with a flex share at any screen width.
+                width: kLoggerFixedColumnWidth,
+                height: kMayosMinTapTarget,
                 child: InkWell(
                   key: ValueKey<String>(
                       'logger.tick.$exerciseIndex.$setIndex'),
                   borderRadius: MayosRadii.smallRadius,
                   onTap: onToggleTick,
-                  child: SizedBox(
-                    height: kMayosMinTapTarget,
-                    width: kMayosMinTapTarget,
-                    child: Center(
-                      child: SizedBox(
-                        width: kLoggerTickSize,
-                        height: kLoggerTickSize,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: set.ticked ? c.accent : null,
-                            border: set.ticked
-                                ? null
-                                : Border.all(color: c.borderStrong),
-                            borderRadius: MayosRadii.smallRadius,
-                          ),
-                          child: Icon(
-                            Icons.check,
-                            size: MayosIconSizes.medium,
-                            color: set.ticked ? c.onAccent : c.textMuted,
-                          ),
+                  child: Center(
+                    child: SizedBox(
+                      width: kLoggerTickSize,
+                      height: kLoggerTickSize,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: set.ticked ? c.accent : null,
+                          border: set.ticked
+                              ? null
+                              : Border.all(color: c.borderStrong),
+                          borderRadius: MayosRadii.smallRadius,
+                        ),
+                        child: Icon(
+                          Icons.check,
+                          size: MayosIconSizes.medium,
+                          color: set.ticked ? c.onAccent : c.textMuted,
                         ),
                       ),
                     ),

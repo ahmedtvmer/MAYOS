@@ -200,6 +200,7 @@ Future<void> _openLogger(
   String startedAt = '2026-09-28T08:00:00.000Z',
   InMemoryDraftStore? drafts,
   List<Map<String, dynamic>>? baselines,
+  ThemeMode themeMode = ThemeMode.light,
 }) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 1.0;
@@ -220,7 +221,8 @@ Future<void> _openLogger(
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
-        themeModeStoreProvider.overrideWithValue(InMemoryThemeModeStore()),
+        themeModeStoreProvider
+            .overrideWithValue(InMemoryThemeModeStore(themeMode)),
         draftStoreProvider.overrideWithValue(drafts ?? InMemoryDraftStore()),
         workoutCacheStoreProvider
             .overrideWithValue(InMemoryWorkoutCacheStore()),
@@ -321,6 +323,44 @@ int _heavyImpacts(List<MethodCall> calls) => calls
         call.arguments == 'HapticFeedbackType.heavyImpact')
     .length;
 
+/// Opens the logger at 360×640 in [mode] and checks what the #158 review
+/// asks of the row: nothing overflows, every control keeps a 48dp target,
+/// and the two fixed columns (SET, ✓) are a full 48dp wide.
+Future<void> _assertNoOverflowAt360(
+  WidgetTester tester, {
+  required ThemeMode mode,
+}) async {
+  await _openLogger(tester, themeMode: mode);
+  tester.view.physicalSize = const Size(360, 640);
+  tester.view.devicePixelRatio = 1.0;
+  await tester.pump(const Duration(milliseconds: 300));
+  expect(tester.takeException(), isNull);
+
+  // The fixed columns: SET number and tick, 48dp each at any width (#158).
+  expect(
+    tester
+        .getSize(find.byKey(const ValueKey<String>('logger.setlabel.0.0')))
+        .width,
+    greaterThanOrEqualTo(48),
+  );
+  expect(
+    tester
+        .getSize(find.byKey(const ValueKey<String>('logger.setlabel.0.0')))
+        .height,
+    kMayosMinTapTarget,
+  );
+  expect(tester.getSize(_tick(0, 0)).width, greaterThanOrEqualTo(48));
+  expect(tester.getSize(_tick(0, 0)).height, kMayosMinTapTarget);
+
+  // The value cells stay 48dp tall wherever their share lands.
+  expect(tester.getSize(_cell(0, 0, 'kg')).height, kMayosMinTapTarget);
+  expect(tester.getSize(_cell(0, 0, 'rir')).height, kMayosMinTapTarget);
+
+  // The row spans the card rather than a fixed cramped width.
+  expect(tester.getSize(_row(0, 0)).width, greaterThan(250));
+  expect(tester.getSize(_row(0, 0)).width, lessThan(360));
+}
+
 void main() {
   testWidgets(
       'the table is SET · KG · REPS · RIR · ✓ and the baseline rides on the '
@@ -382,11 +422,13 @@ void main() {
     );
     // The prescription line the card now carries, rest included (#158).
     expect(
-      find.text('3 sets · 5–8 reps · RIR ≥ 2 · Rest 3:00'),
+      find.text('3 sets · 5–8 reps · 60 kg · RIR ≥ 2 · Rest 3:00'),
       findsOneWidget,
     );
+    // Incline carries no projection in this fixture, so its line has no
+    // weight clause — and one seeded row reads "1 set".
     expect(
-      find.text('1 sets · 8–12 reps · RIR ≥ 2 · Rest 2:00'),
+      find.text('1 set · 8–12 reps · RIR ≥ 2 · Rest 2:00'),
       findsOneWidget,
     );
     // The Unplanned tag only where it applies: none of the planned cards.
@@ -400,7 +442,7 @@ void main() {
     expect(find.textContaining('Last:'), findsNothing);
     // The rest of the card is unchanged: the prescription is always there.
     expect(
-      find.text('3 sets · 5–8 reps · RIR ≥ 2 · Rest 3:00'),
+      find.text('3 sets · 5–8 reps · 60 kg · RIR ≥ 2 · Rest 3:00'),
       findsOneWidget,
     );
     // Without a baseline there is nothing to hint from either: the cells
@@ -736,29 +778,17 @@ void main() {
     expect(find.text('Bench Press · set 2 · Weight (kg)'), findsOneWidget);
   });
 
-  testWidgets('no overflow at 360dp and the row keeps its 48dp targets (#158)',
-      (WidgetTester tester) async {
-    await _openLogger(tester);
-    tester.view.physicalSize = const Size(360, 640);
-    tester.view.devicePixelRatio = 1.0;
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(tester.takeException(), isNull);
+  testWidgets('no overflow at 360dp (light) and the row keeps its 48dp '
+      'targets (#158)', (WidgetTester tester) async {
+    await _assertNoOverflowAt360(tester, mode: ThemeMode.light);
+  });
 
-    expect(tester.getSize(_cell(0, 0, 'kg')).height, kMayosMinTapTarget);
-    expect(tester.getSize(_cell(0, 0, 'rir')).height, kMayosMinTapTarget);
-    expect(tester.getSize(_tick(0, 0)).height, kMayosMinTapTarget);
-    expect(
-      tester
-          .getSize(find.byKey(const ValueKey<String>('logger.setlabel.0.0')))
-          .height,
-      kMayosMinTapTarget,
-    );
-    // The tick is as wide as its column allows (48dp at 360, minus the
-    // card's 1dp border) and never overflows it.
-    expect(tester.getSize(_tick(0, 0)).width, greaterThanOrEqualTo(47));
-    // The row spans the card rather than a fixed cramped width.
-    expect(tester.getSize(_row(0, 0)).width, greaterThan(250));
-    expect(tester.getSize(_row(0, 0)).width, lessThan(360));
+  testWidgets('no overflow at 360dp (dark) and the row keeps its 48dp '
+      'targets (#158)', (WidgetTester tester) async {
+    await _assertNoOverflowAt360(tester, mode: ThemeMode.dark);
+    // The sweep really is dark: the card's title reads the dark token.
+    expect(tester.widget<Text>(find.text('Bench Press')).style!.color,
+        MayosThemeExtension.dark.textPrimary);
   });
 
   testWidgets('swiping a middle set row deletes that row only',

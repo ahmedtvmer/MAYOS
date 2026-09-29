@@ -5,6 +5,7 @@ import 'baselines.dart';
 import 'effort.dart';
 import 'models.dart';
 import 'performed_date_window.dart';
+import 'rest_length.dart';
 import 'secure_store.dart';
 
 int _setSequence = 0;
@@ -148,10 +149,68 @@ String previousLabel(BaselineSet? set) {
   return '${formatCellWeight(set.weightKg)} × ${set.reps}$effort';
 }
 
+/// The card's previous-performance line (#158): the frozen baseline's last
+/// session as `Last: 60kg × 6 · 60kg × 5`, working sets in logged order. A
+/// bodyweight set reads `BW × 10`, never `0kg × 10`.
+String lastSessionLabel(List<BaselineSet> sets) {
+  final String joined = <String>[
+    for (final BaselineSet set in sets)
+      set.weightKg > 0
+          ? '${formatCellWeight(set.weightKg)}kg × ${set.reps}'
+          : 'BW × ${set.reps}',
+  ].join(' · ');
+  return 'Last: $joined';
+}
+
+/// The prescription caption (#108, #158): the effective prescription the rows
+/// were seeded from, projection included — `4 sets · 6–8 reps · 62.5 kg ·
+/// RIR ≥ 2`. One line that wraps: a clause appears only when the workout
+/// carries it, and a single set reads `1 set`.
+String prescriptionCaption({
+  required int setCount,
+  required int minReps,
+  required int maxReps,
+  double? projectedWeightKg,
+  double? rir,
+}) =>
+    <String>[
+      setCount == 1 ? '1 set' : '$setCount sets',
+      if (minReps > 0 && maxReps > 0) '$minReps–$maxReps reps',
+      if (projectedWeightKg != null && projectedWeightKg > 0)
+        '${formatCellWeight(projectedWeightKg)} kg',
+      if (rir != null) 'RIR ${formatMinRir(rir)}',
+    ].join(' · ');
+
+/// The card's prescription line (#158): [prescriptionCaption] over the
+/// effective prescription the rows were seeded from — so it never says
+/// "3 sets" over 4 seeded rows — plus the rest length the player is using
+/// right now (#125), e.g. `4 sets · 6–8 reps · 62.5 kg · RIR ≥ 2 · Rest 2:00`.
+String exercisePrescriptionLine(
+  ActiveWorkoutExercise exercise, {
+  required int restSeconds,
+}) {
+  final Map<String, dynamic> payload = exercise.exercise;
+  final int minReps = (payload['target_reps_min'] as num?)?.toInt() ?? 0;
+  final int maxReps = (payload['target_reps_max'] as num?)?.toInt() ?? 0;
+  final double? targetRpe = (payload['target_rpe'] as num?)?.toDouble();
+  final double? rir = exercise.prescriptionHint?.rir ??
+      (targetRpe == null ? null : rirFromRpe(clampRpe(targetRpe)));
+  final String caption = prescriptionCaption(
+    setCount: exercise.effectiveSetCount,
+    minReps: minReps,
+    maxReps: maxReps,
+    // #108: the projection the prescription froze for this workout.
+    projectedWeightKg: exercise.prescriptionHint?.weightKg,
+    rir: rir,
+  );
+  final String rest =
+      restSeconds <= 0 ? 'Rest Off' : 'Rest ${restMmSs(restSeconds)}';
+  return '$caption · $rest';
+}
+
 /// The **Current set** (CONTEXT.md, #158): the first unticked working set in
-/// workout order — warm-ups skipped, moving across exercises — derived from
-/// the Active workout and never stored. Null when every working set is
-/// ticked.
+/// workout order — warm-ups skipped, moving across exercises. Null when
+/// every working set is ticked.
 ///
 /// "Working" is the row's *role* (not a warm-up), not the server's value
 /// predicate [isWorkingSet]: the next set to do is normally still empty, and
@@ -283,6 +342,7 @@ class ActiveWorkoutExercise {
     this.unplanned = false,
     this.targetLabel,
     this.prescriptionHint,
+    this.effectiveSets,
   });
 
   factory ActiveWorkoutExercise.fromJson(Map<String, dynamic> json) =>
@@ -299,6 +359,7 @@ class ActiveWorkoutExercise {
             ? PrescriptionHint.fromJson(
                 json['prescription_hint'] as Map<String, dynamic>)
             : null,
+        effectiveSets: (json['effective_sets'] as num?)?.toInt(),
       );
 
   /// The exact `ProgramExerciseSchema` payload the Workout draft expects.
@@ -307,17 +368,30 @@ class ActiveWorkoutExercise {
   final bool unplanned;
 
   /// The program day's own caption, kept on the exercise and persisted with
-  /// the Active workout. The card no longer renders it (#158): it builds its
-  /// prescription line from [exercise] instead, so planned and unplanned
-  /// cards read alike.
+  /// the Active workout; the card rebuilds its own line from the same facts
+  /// (#158: [effectiveSetCount] and [prescriptionHint]'s projection), so
+  /// planned and unplanned cards read alike.
   final String? targetLabel;
 
   /// The prescription target shown as the faded hint on cells that have no
   /// previous set to hint from (#107/#108).
   final PrescriptionHint? prescriptionHint;
 
+  /// The effective set count the rows were seeded from (#108, #158): the
+  /// prescription's effective sets when the workout started, so the card
+  /// says what it actually seeded rather than the program's raw target.
+  /// Null only for workouts stored before it was kept.
+  final int? effectiveSets;
+
   String get exerciseId => exercise['exercise_id'] as String;
   String get exerciseName => exercise['exercise_name'] as String;
+
+  /// What the card's prescription line reports as the set count, in order:
+  /// the seeded effective sets, else the program target, else today's rows.
+  int get effectiveSetCount =>
+      effectiveSets ??
+      (exercise['target_sets'] as num?)?.toInt() ??
+      sets.length;
 
   ActiveWorkoutExercise copyWith({List<ActiveWorkoutSet>? sets}) =>
       ActiveWorkoutExercise(
@@ -326,6 +400,7 @@ class ActiveWorkoutExercise {
         unplanned: unplanned,
         targetLabel: targetLabel,
         prescriptionHint: prescriptionHint,
+        effectiveSets: effectiveSets,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -336,6 +411,7 @@ class ActiveWorkoutExercise {
         'unplanned': unplanned,
         'target_label': targetLabel,
         'prescription_hint': prescriptionHint?.toJson(),
+        'effective_sets': effectiveSets,
       };
 }
 
