@@ -629,6 +629,18 @@ def _release_instance(instance: Any) -> None:
         logger.debug("CUDA cache release failed.", exc_info=True)
 
 
+def _parse_extra_body(raw_extra_body: str, env_name: str) -> dict[str, Any]:
+    import json
+
+    try:
+        parsed = json.loads(raw_extra_body)
+    except ValueError as exc:
+        raise ValueError(f"{env_name} must be valid JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError(f"{env_name} must be a JSON object.")
+    return parsed
+
+
 def _build_cloud_llm(model_type: str) -> Any:
     """Builds a ``SafeChatOpenAI`` for ``model_type`` from cloud env config.
 
@@ -636,7 +648,8 @@ def _build_cloud_llm(model_type: str) -> Any:
     ``chat_template_kwargs.enable_thinking = false`` so the tight output budgets
     are never consumed by chain-of-thought; set ``LLM_ENABLE_THINKING=true`` to
     opt back in. Provider-specific quirks can override the whole body via
-    ``LLM_EXTRA_BODY`` (JSON object).
+    ``LLM_EXTRA_BODY`` (JSON object); ``COACH_EXTRA_BODY`` replaces it for the
+    coach model only.
     """
     if SafeChatOpenAI is None:
         raise RuntimeError(
@@ -652,21 +665,17 @@ def _build_cloud_llm(model_type: str) -> Any:
         )
     config = CLOUD_MODEL_REGISTRY[model_type]
     extra_body: dict[str, Any] | None = None
-    raw_extra_body = os.getenv("LLM_EXTRA_BODY", "").strip()
-    if raw_extra_body:
-        import json
-
-        try:
-            parsed = json.loads(raw_extra_body)
-        except ValueError as exc:
-            raise ValueError(f"LLM_EXTRA_BODY must be valid JSON: {exc}") from exc
-        if not isinstance(parsed, dict):
-            raise ValueError("LLM_EXTRA_BODY must be a JSON object.")
-        extra_body = parsed
-    elif not _env_truthy("LLM_ENABLE_THINKING"):
-        # DeepInfra's documented Qwen example nests the toggle under
-        # chat_template_kwargs; other providers can override via LLM_EXTRA_BODY.
-        extra_body = {"chat_template_kwargs": {"enable_thinking": False}}
+    raw_coach_extra_body = os.getenv("COACH_EXTRA_BODY", "").strip() if model_type == "coach" else ""
+    if raw_coach_extra_body:
+        extra_body = _parse_extra_body(raw_coach_extra_body, "COACH_EXTRA_BODY") or None
+    else:
+        raw_extra_body = os.getenv("LLM_EXTRA_BODY", "").strip()
+        if raw_extra_body:
+            extra_body = _parse_extra_body(raw_extra_body, "LLM_EXTRA_BODY")
+        elif not _env_truthy("LLM_ENABLE_THINKING"):
+            # DeepInfra's documented Qwen example nests the toggle under
+            # chat_template_kwargs; other providers can override via LLM_EXTRA_BODY.
+            extra_body = {"chat_template_kwargs": {"enable_thinking": False}}
     model_id = _cloud_model_id(model_type)
     return SafeChatOpenAI(
         model=model_id,

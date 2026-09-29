@@ -29,6 +29,8 @@ primary_region = "fra"
   MAYOS_REQUIRE_PERSISTENT_DATA = "true"
   # Hosted inference: no GGUF/CUDA/llama-cpp in the image.
   LLM_BACKEND = "openai"
+  # Optional JSON object replacing the coach model's extra request body; {} disables it.
+  # COACH_EXTRA_BODY = '{}'
   MODEL_DEVICE = "cpu"
   EMBEDDING_DEVICE = "cpu"
   HF_HOME = "/app/.cache/huggingface"

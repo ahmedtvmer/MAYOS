@@ -150,6 +150,7 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `PRIVACY_CONTACT_EMAIL` | unset (⇒ placeholder + warning) | Owner contact rendered on the public privacy policy at `GET /privacy`; unset still serves the page |
 | `OWNER_ALERT_EMAIL` | unset | Alert recipient (set via `fly secrets set` on Fly); unset logs the warning only and retries delivery each sweep |
 | `MODEL_PATH` / `JUDGE_MODEL_PATH` | registry defaults | Explicit GGUF paths (win over `MODEL_DIR` + registry filename) |
+| `COACH_EXTRA_BODY` | unset | JSON object replacing the cloud request extra body for the coach model only; `{}` sends no extra body |
 | `MODEL_DIR` | `models/` | Download target directory |
 | `MODEL_REVISION` / `MODEL_SHA256` (and `JUDGE_*`) | unset | Optional pin + integrity check for reproducible deployments |
 | `N_GPU_LAYERS` | `-1` (all layers) | Production model offload; `0` = CPU-only |

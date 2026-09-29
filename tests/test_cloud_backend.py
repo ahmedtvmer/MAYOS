@@ -154,6 +154,59 @@ def test_extra_body_non_object_json_raises(monkeypatch):
 
 
 @pytest.mark.skipif(md.SafeChatOpenAI is None, reason="langchain-openai not installed")
+def test_coach_extra_body_overrides_global_body_only_for_coach(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("LLM_EXTRA_BODY", '{"shared": true}')
+    monkeypatch.setenv("COACH_EXTRA_BODY", '{"coach": true}')
+    assert md._build_cloud_llm("coach").extra_body == {"coach": True}
+    assert md._build_cloud_llm("production").extra_body == {"shared": True}
+    assert md._build_cloud_llm("judge").extra_body == {"shared": True}
+
+
+@pytest.mark.skipif(md.SafeChatOpenAI is None, reason="langchain-openai not installed")
+def test_empty_coach_extra_body_disables_extra_body(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("LLM_EXTRA_BODY", '{"shared": true}')
+    monkeypatch.setenv("COACH_EXTRA_BODY", "{}")
+    assert md._build_cloud_llm("coach").extra_body is None
+
+
+@pytest.mark.parametrize(
+    ("coach_body", "llm_body", "thinking", "expected"),
+    [
+        (None, None, None, {"chat_template_kwargs": {"enable_thinking": False}}),
+        ("", '{"shared": true}', None, {"shared": True}),
+        (None, None, "true", None),
+    ],
+)
+@pytest.mark.skipif(md.SafeChatOpenAI is None, reason="langchain-openai not installed")
+def test_unset_or_blank_coach_extra_body_keeps_existing_config(monkeypatch, coach_body, llm_body, thinking, expected):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    for name, env_value in (
+        ("COACH_EXTRA_BODY", coach_body),
+        ("LLM_EXTRA_BODY", llm_body),
+        ("LLM_ENABLE_THINKING", thinking),
+    ):
+        if env_value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, env_value)
+    assert md._build_cloud_llm("coach").extra_body == expected
+
+
+@pytest.mark.parametrize(
+    ("raw_extra_body", "message"),
+    [("not-json", "valid JSON"), ("[]", "JSON object")],
+)
+@pytest.mark.skipif(md.SafeChatOpenAI is None, reason="langchain-openai not installed")
+def test_invalid_coach_extra_body_fails_at_build(monkeypatch, raw_extra_body, message):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("COACH_EXTRA_BODY", raw_extra_body)
+    with pytest.raises(ValueError, match=f"COACH_EXTRA_BODY.*{message}"):
+        md._build_cloud_llm("coach")
+
+
+@pytest.mark.skipif(md.SafeChatOpenAI is None, reason="langchain-openai not installed")
 def test_missing_api_key_fails_fast(monkeypatch):
     """A cloud backend without a key must fail at build, not per-request 401."""
     monkeypatch.setenv("LLM_BACKEND", "openai")
