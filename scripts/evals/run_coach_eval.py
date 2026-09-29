@@ -1,22 +1,21 @@
-"""Coach role for #139: Qwen3-235B-A22B-Instruct-2507 (candidate) vs Qwen3.5-27B (baseline).
+"""Coach model evaluation for #139 across six candidates and three question languages.
 
 All coach calls use the production ``service.coach_ai`` pieces (``SYSTEM_PROMPT``,
 ``render_context``, ``build_messages``, ``extract_answer``) with ONE harness-only
 change: the two leading system messages are merged into one (#148 workaround,
-``_common.merge_system_messages``). Thinking is disabled with
-``chat_template_kwargs.enable_thinking=false`` on every call (the production
-default); Qwen3-2507 Instruct has no thinking mode, and the reasoning channel
-is recorded to prove nothing was generated there.
+``_common.merge_system_messages``). Candidates use the per-model request bodies
+settled in #139. Suite F remains an explicit thinking-control probe.
 
 Suites:
   A. production coach gate (tests/eval coach_assistant_cases.json, 11 cases, production rubric)
-  B. single-player questions on synthetic players (ground truth from synthetic_roster)
-  C. roster briefing at 10/50/100/150 players, full (production per-player blocks) and compact
+  B. single-player questions on synthetic players in English, standard Arabic, or Egyptian Arabic
+  C. roster questions at 10/50/100/150 players, full and compact, in the selected languages
   D. structured output (json_schema strict, json_object, function calling) on roster lists
   E. prompt injection via free-text fields that reach the context
-  F. thinking-control check (one call without the enable_thinking kwarg)
+  F. thinking-control probe across three prompts, with and without the thinking toggle
 
 Usage: python scripts/evals/run_coach_eval.py [--suites ABCDEF]
+       [--models MODEL [MODEL ...]] [--languages en ar eg]
 """
 
 from __future__ import annotations
@@ -25,7 +24,9 @@ import argparse
 import copy
 import json
 import re
+import statistics
 import threading
+from dataclasses import dataclass
 from typing import Any
 
 from _common import (
@@ -42,7 +43,6 @@ from _common import (
 )
 from synthetic_roster import (
     build_players,
-    needle,
     render_roster_compact,
     render_roster_full,
     roster,
@@ -50,19 +50,25 @@ from synthetic_roster import (
     single_truth,
 )
 
-MODELS = ["Qwen/Qwen3-235B-A22B-Instruct-2507", "Qwen/Qwen3.5-27B"]
+MODELS = [
+    "Qwen/Qwen3.5-27B",
+    "Qwen/Qwen3-32B",
+    "Qwen/Qwen2.5-72B-Instruct",
+    "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "deepseek-ai/DeepSeek-V4-Flash",
+    "zai-org/GLM-5.3-Flash",
+]
+LANGUAGES = ("en", "ar", "eg")
 SIZES = [10, 50, 100, 150]
 COACH_MAX_TOKENS = 512  # production COACH_MAX_TOKENS default
 
-#: Thinking control per model. Qwen3.5-27B thinks by default, so the production
-#: kwarg (enable_thinking=false) is required. Qwen3-235B-A22B-Instruct-2507 has
-#: no thinking mode, and sending the same kwarg made it return an EMPTY reply
-#: (1 completion token) on most calls in a probe (suite F quantifies it), so it
-#: gets no extra body. Production cannot express this today: LLM_EXTRA_BODY is
-#: one global setting for all roles.
 MODEL_EXTRA_BODY: dict[str, dict[str, Any]] = {
-    "Qwen/Qwen3-235B-A22B-Instruct-2507": {},
     "Qwen/Qwen3.5-27B": NO_THINKING,
+    "Qwen/Qwen3-32B": NO_THINKING,
+    "Qwen/Qwen2.5-72B-Instruct": {},
+    "Qwen/Qwen3-235B-A22B-Instruct-2507": {},
+    "deepseek-ai/DeepSeek-V4-Flash": {},
+    "zai-org/GLM-5.3-Flash": {},
 }
 
 #: Harness-only roster prompt. No production roster briefing exists yet (ADR 024
@@ -99,6 +105,14 @@ def load_questions() -> dict[str, Any]:
     return json.loads((EVAL_DIR / "arabic_eval_set.json").read_text(encoding="utf-8"))["coach_questions"]
 
 
+def require_reviewed_arabic(suites: str, languages: list[str]) -> None:
+    if not {"B", "C"}.intersection(suites) or not {"ar", "eg"}.intersection(languages):
+        return
+    eval_set = json.loads((EVAL_DIR / "arabic_eval_set.json").read_text(encoding="utf-8"))
+    if eval_set.get("coach_question_translations_status") != "reviewed":
+        raise SystemExit("Arabic runs are blocked until the owner reviews the draft and sets its status to 'reviewed'.")
+
+
 def numbers_in(text: str) -> list[float]:
     text = (text or "").translate(_ARABIC_DIGITS)
     text = re.sub(r"\b\d{4}-\d{2}-\d{2}\b", " ", text)
@@ -109,6 +123,25 @@ def numbers_in(text: str) -> list[float]:
 
 def _has_number(answer: str, value: float) -> bool:
     return any(abs(n - float(value)) <= max(0.05, 0.005 * abs(float(value))) for n in numbers_in(answer))
+
+
+def question_for_language(question: dict[str, Any], language: str) -> str | None:
+    if language == "en":
+        return question["english"] if "english" in question else question["question"]
+    field = {"ar": "question_ar", "eg": "question_eg"}[language]
+    return question.get(field)
+
+
+def empty_or_garbled(answer: str) -> bool:
+    from utils.text_scrubber import EMPTY_RESPONSE_FALLBACK
+
+    normalized = " ".join(answer.split())
+    if (not normalized or "\ufffd" in normalized
+            or normalized.casefold() == EMPTY_RESPONSE_FALLBACK.casefold()):
+        return True
+    words = re.findall(r"\w+", normalized, flags=re.UNICODE)
+    # The earlier run included repeated-token failures such as "The The The".
+    return not words or (len(words) >= 3 and len({word.casefold() for word in words}) == 1)
 
 
 def score(answer: str, answer_type: str, truth: Any, context: str = "", question: str = "") -> dict[str, Any]:
@@ -144,7 +177,10 @@ def score(answer: str, answer_type: str, truth: Any, context: str = "", question
     elif answer_type == "identity_refusal":
         out["correct"] = check_refuses_identity_request(answer, True)["passed"]
     if context:
-        out["no_fabricated_numbers"] = check_no_fabricated_numbers(answer, grounded_numbers(context, question))["passed"]
+        number_check = check_no_fabricated_numbers(
+            (answer or "").translate(_ARABIC_DIGITS), grounded_numbers(context, question))
+        out["no_fabricated_numbers"] = number_check["passed"]
+        out["fabricated_numbers"] = number_check["fabricated"]
     return out
 
 
@@ -162,7 +198,17 @@ def _call_record(result: dict[str, Any]) -> dict[str, Any]:
                                        "total_s", "usd")} | {"reasoning_chars": len(result.get("reasoning") or "")}
 
 
-def single_messages(facts: dict[str, Any], question: str, extra_context: str = "") -> tuple[list[dict[str, str]], str]:
+@dataclass(frozen=True)
+class RosterEvalContext:
+    size: int
+    variant: str
+    prompt: str
+    prompt_tokens: int
+    truth: dict[str, Any]
+
+
+def single_messages(facts: dict[str, Any], question: str,
+                    extra_context: str = "") -> tuple[list[dict[str, str]], str]:
     from service.coach_ai import build_messages, render_context
 
     context = render_context(facts) + (f"\n{extra_context}" if extra_context else "")
@@ -198,45 +244,68 @@ def suite_a(model: str) -> dict[str, Any]:
             "answers": [{"case_id": r["case_id"], "answer": r["answer"]} for r in results], "calls": calls}
 
 
-def suite_b(model: str, questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _single_player_case(model: str, player: dict[str, Any], question: dict[str, Any],
+                        language: str) -> dict[str, Any] | None:
+    text = question_for_language(question, language)
+    if text is None:
+        return None
+    messages, context = single_messages(player["facts"], text)
+    call = ask(model, messages)
+    expected = single_truth(player).get(question["truth_key"]) if question["truth_key"] else None
+    return {"player": player["id"], "qid": question["id"], "language": language,
+            "question": text, "truth": expected, "answer": call["answer"],
+            "answer_arabic_share": round(arabic_share(call["answer"]), 3),
+            "empty_or_garbled": empty_or_garbled(call["answer"]),
+            **score(call["answer"], question["answer_type"], expected, context, text), **_call_record(call)}
+
+
+def suite_b(model: str, questions: list[dict[str, Any]], languages: list[str]) -> list[dict[str, Any]]:
     players = build_players()
     # A steady player, a slipping player and a disengaged one.
     picks = [players[1], next(p for p in players if 0 < p["facts"]["attendance"]["trailing_missed_streak"] < 3),
              next(p for p in players if p["facts"]["attendance"]["trailing_missed_streak"] >= 3)]
     rows = []
-    for player in picks:
-        truth = single_truth(player)
-        for q in questions:
-            messages, context = single_messages(player["facts"], q["question"])
-            result = ask(model, messages)
-            t = truth.get(q["truth_key"]) if q["truth_key"] else None
-            rows.append({"player": player["id"], "qid": q["id"], "question": q["question"],
-                         "lang": q.get("language", "en"), "truth": t, "answer": result["answer"],
-                         "answer_arabic_share": round(arabic_share(result["answer"]), 3),
-                         **score(result["answer"], q["answer_type"], t, context, q["question"]),
-                         **_call_record(result)})
+    for language in languages:
+        for question in questions:
+            for player in picks:
+                case = _single_player_case(model, player, question, language)
+                if case is not None:
+                    rows.append(case)
     return rows
 
 
-def suite_c(model: str, questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _roster_question_case(model: str, question: dict[str, Any], language: str,
+                          briefing: RosterEvalContext) -> dict[str, Any] | None:
+    localized = question_for_language(question, language)
+    if localized is None:
+        return None
+    text = localized.replace("{needle}", briefing.truth["needle_id"])
+    answer_type = "id_one_of" if question["truth_key"] == "lowest_adherence" else question["answer_type"]
+    call = ask(model, roster_messages(briefing.prompt, text))
+    return {"size": briefing.size, "variant": briefing.variant, "context_tokens": briefing.prompt_tokens,
+            "qid": question["id"], "language": language, "question": text, "answer": call["answer"],
+            "answer_arabic_share": round(arabic_share(call["answer"]), 3),
+            "empty_or_garbled": empty_or_garbled(call["answer"]),
+            **score(call["answer"], answer_type, briefing.truth[question["truth_key"]], briefing.prompt, text),
+            **_call_record(call)}
+
+
+def suite_c(model: str, questions: list[dict[str, Any]], languages: list[str]) -> list[dict[str, Any]]:
     rows = []
     for size in SIZES:
         players = roster(size)
         truth = roster_truth(players)
         for variant, render in (("full", render_roster_full), ("compact", render_roster_compact)):
-            context = render(players)
-            context_tokens = qwen_token_count(context)
-            for q in questions:
-                text = q["question"].replace("{needle}", truth["needle_id"])
-                answer_type = "id_one_of" if q["truth_key"] == "lowest_adherence" else q["answer_type"]
-                result = ask(model, roster_messages(context, text))
-                rows.append({"size": size, "variant": variant, "context_tokens": context_tokens, "qid": q["id"],
-                             "lang": q.get("language", "en"), "answer": result["answer"],
-                             "answer_arabic_share": round(arabic_share(result["answer"]), 3),
-                             **score(result["answer"], answer_type, truth[q["truth_key"]]),
-                             **_call_record(result)})
-                print(model.split("/")[-1], size, variant, q["id"], rows[-1].get("correct"),
-                      result["status"], f"{result['total_s']:.1f}s", f"${SPEND.total():.3f}", flush=True)
+            prompt = render(players)
+            briefing = RosterEvalContext(size, variant, prompt, qwen_token_count(prompt), truth)
+            for language in languages:
+                for question in questions:
+                    case = _roster_question_case(model, question, language, briefing)
+                    if case is None:
+                        continue
+                    rows.append(case)
+                    print(model.split("/")[-1], size, variant, language, question["id"], case.get("correct"),
+                          case["status"], f"{case['total_s']:.1f}s", f"${SPEND.total():.3f}", flush=True)
     return rows
 
 
@@ -348,17 +417,17 @@ def suite_f(model: str, reps: int = 4) -> dict[str, Any]:
     return arms
 
 
-def run_model(model: str, suites: str, out: dict[str, Any]) -> None:
+def run_model(model: str, suites: str, languages: list[str], out: dict[str, Any]) -> None:
     q = load_questions()
     res: dict[str, Any] = {}
     if "A" in suites:
         res["A_production_gate"] = suite_a(model)
         print(model, "A", res["A_production_gate"]["passed"], "/", res["A_production_gate"]["total"], flush=True)
     if "B" in suites:
-        res["B_single_player"] = suite_b(model, q["single_player"])
+        res["B_single_player"] = suite_b(model, q["single_player"], languages)
         print(model, "B done", flush=True)
     if "C" in suites:
-        res["C_roster"] = suite_c(model, q["roster"])
+        res["C_roster"] = suite_c(model, q["roster"], languages)
     if "D" in suites:
         res["D_structured"] = suite_d(model, q["roster"])
         print(model, "D done", flush=True)
@@ -370,21 +439,50 @@ def run_model(model: str, suites: str, out: dict[str, Any]) -> None:
     out[model] = res
 
 
-def main() -> None:
+def summarize_languages(results: dict[str, Any], languages: list[str]) -> dict[str, Any]:
+    summary = {}
+    for model, suites in results.items():
+        cases = suites.get("B_single_player", []) + suites.get("C_roster", [])
+        summary[model] = {}
+        for language in languages:
+            selected = [case for case in cases if case["language"] == language]
+            latencies = [case["total_s"] for case in selected if case.get("total_s") is not None]
+            summary[model][language] = {
+                "cases": len(selected), "correct": sum(case.get("correct") is True for case in selected),
+                "fabricated_numbers": sum(len(case.get("fabricated_numbers", [])) for case in selected),
+                "empty_or_garbled": sum(case.get("empty_or_garbled", False) for case in selected),
+                "median_latency_s": round(statistics.median(latencies), 3) if latencies else None,
+                "median_answer_arabic_share": round(statistics.median(
+                    case["answer_arabic_share"] for case in selected), 3) if selected else None,
+                "output_tokens": sum((case.get("usage") or {}).get("completion_tokens", 0) for case in selected),
+            }
+    return summary
+
+
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--suites", default="ABCDEF")
     parser.add_argument("--tag", default="coach")
-    args = parser.parse_args()
+    parser.add_argument("--models", nargs="+", choices=MODELS, default=MODELS)
+    parser.add_argument("--languages", nargs="+", choices=LANGUAGES, default=list(LANGUAGES))
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    require_reviewed_arabic(args.suites, args.languages)
     load_api_key()
     out: dict[str, Any] = {}
     # Light concurrency: one worker per model, each strictly sequential.
-    threads = [threading.Thread(target=run_model, args=(m, args.suites, out)) for m in MODELS]
+    threads = [threading.Thread(target=run_model, args=(m, args.suites, args.languages, out))
+               for m in args.models]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
-    write_json(f"{args.tag}_{args.suites}.json", {"models": MODELS, "roster_prompt": ROSTER_PROMPT, "results": out,
-                                                 "spend": SPEND.rows})
+    write_json(f"{args.tag}_{args.suites}.json", {"models": args.models, "languages": args.languages,
+                                                 "roster_prompt": ROSTER_PROMPT, "summary": summarize_languages(
+                                                     out, args.languages), "results": out, "spend": SPEND.rows})
     SPEND.save(f"{args.tag}_{args.suites}")
     print(f"spend ${SPEND.total():.4f}")
 

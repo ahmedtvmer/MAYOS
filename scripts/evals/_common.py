@@ -23,18 +23,21 @@ EVAL_DIR = Path(__file__).resolve().parent
 RESULTS_DIR = EVAL_DIR / "results"
 API_BASE = "https://api.deepinfra.com/v1/openai"
 
-#: DeepInfra list prices, USD per 1M tokens (in, out), fetched 2026-09-28 from
+#: DeepInfra list prices, USD per 1M tokens (in, out), settled 2026-09-29 for #139.
 #: https://api.deepinfra.com/models/list (standard tier).
 PRICES: dict[str, tuple[float, float]] = {
     "Qwen/Qwen3.5-9B": (0.10, 0.15),
     "Qwen/Qwen3.5-27B": (0.26, 2.60),
+    "Qwen/Qwen3-32B": (0.08, 0.28),
+    "Qwen/Qwen2.5-72B-Instruct": (0.36, 0.40),
     "Qwen/Qwen3-235B-A22B-Instruct-2507": (0.09, 0.55),
+    "deepseek-ai/DeepSeek-V4-Flash": (0.09, 0.18),
+    "zai-org/GLM-5.3-Flash": (0.075, 0.25),
 }
 
-#: Qwen3.5 is a hybrid thinking model: thinking is ON by default and is turned
-#: off per request with this chat-template kwarg (the production default in
-#: ``utils.model_downloader._build_cloud_llm``). Qwen3-235B-A22B-Instruct-2507
-#: is a non-thinking-only release; the kwarg is sent anyway and is harmless.
+#: Qwen3.5 is a hybrid thinking model: the request default disables thinking
+#: with this chat-template kwarg. Callers can pass ``{}`` for models that need
+#: no extra body.
 NO_THINKING = {"chat_template_kwargs": {"enable_thinking": False}}
 
 _KEY_FILE_CANDIDATES = (REPO_ROOT / ".env", Path("/mnt/work/MAYOS/.env"))
