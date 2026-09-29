@@ -287,6 +287,24 @@ String exercisePrescriptionLine(
   );
 }
 
+/// The bottom bar's progress fraction (#160): [workoutProgressOf]'s ticked
+/// sets over its total working sets, clamped to 0..1 — and 0 when the
+/// workout has no working sets, so the bar renders empty rather than
+/// indeterminate. The one place the fraction is worked out, beside the
+/// counts it comes from, so the bar and the line can never disagree.
+double workoutSetsFractionOf(ActiveWorkout workout) {
+  final ({
+    int exercisesCompleted,
+    int exercisesTotal,
+    int setsTicked,
+    int setsTotal
+  }) progress = workoutProgressOf(workout);
+  if (progress.setsTotal <= 0) {
+    return 0;
+  }
+  return (progress.setsTicked / progress.setsTotal).clamp(0.0, 1.0).toDouble();
+}
+
 /// **Workout time** (CONTEXT.md, #159): the wall-clock time since the
 /// workout started, clamped at zero at [now]. It is derived from the stored
 /// start time, so it has no pause, holds no state of its own, and stays

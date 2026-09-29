@@ -314,23 +314,31 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
         color: c.surface,
         border: Border(top: BorderSide(color: c.border)),
       ),
-      padding: const EdgeInsets.fromLTRB(
-          MayosSpacing.xs, MayosSpacing.xs, MayosSpacing.xs, MayosSpacing.xs),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-                MayosSpacing.xs, 0, MayosSpacing.xs, MayosSpacing.xs),
-            child: Text(
-              '${widget.exerciseName} · set ${widget.setNumber} · '
-              '${loggerFieldLabel(widget.field)}',
-              style: MayosTypography.caption.copyWith(color: c.textMuted),
-            ),
+      // The keypad takes its own bottom safe area inside its surface, the
+      // way the bottom bar does, so the keys stay above the system
+      // navigation even though the frame no longer insets the body (#160).
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(MayosSpacing.xs,
+              MayosSpacing.xs, MayosSpacing.xs, MayosSpacing.xs),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    MayosSpacing.xs, 0, MayosSpacing.xs, MayosSpacing.xs),
+                child: Text(
+                  '${widget.exerciseName} · set ${widget.setNumber} · '
+                  '${loggerFieldLabel(widget.field)}',
+                  style: MayosTypography.caption.copyWith(color: c.textMuted),
+                ),
+              ),
+              body,
+            ],
           ),
-          body,
-        ],
+        ),
       ),
     );
   }

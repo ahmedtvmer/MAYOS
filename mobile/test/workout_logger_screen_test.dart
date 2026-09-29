@@ -1586,9 +1586,105 @@ void main() {
     expect(add, findsOneWidget);
     // Finish was the list's last action; Add exercise now ends it (#160).
     expect(find.widgetWithText(FilledButton, 'Finish workout'), findsOneWidget);
+
+    // _row(1, 0) is checked because it is the LAST row of the LAST card —
+    // incline's only row — not merely a row that happens to be first: the
+    // row keys in tree order end there, so nothing follows it in the list.
+    final Finder allRows = find.byWidgetPredicate(
+      (Widget widget) =>
+          widget.key is ValueKey<String> &&
+          (widget.key as ValueKey<String>).value.startsWith('logger.row.'),
+    );
+    expect(
+      allRows
+          .evaluate()
+          .map((Element row) => (row.widget.key! as ValueKey<String>).value)
+          .last,
+      'logger.row.1.0',
+    );
+
+    // That last row must be scrolled INTO the visible list and clear of the
+    // bar: a row scrolled off the top of the viewport would sit above
+    // barTop for free, so being on screen is the part that proves the end of
+    // the list is reachable (#160).
+    final Finder lastRow = _row(1, 0);
+    final Rect listRect = tester.getRect(list);
+    final Rect rowRect = tester.getRect(lastRow);
     final double barTop = tester.getTopLeft(bar).dy;
-    expect(tester.getBottomRight(_row(1, 0)).dy, lessThanOrEqualTo(barTop));
+    expect(rowRect.top, greaterThanOrEqualTo(listRect.top));
+    expect(rowRect.bottom, lessThanOrEqualTo(listRect.bottom));
+    expect(rowRect.bottom, lessThanOrEqualTo(barTop));
     expect(tester.getBottomRight(add).dy, lessThanOrEqualTo(barTop));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the bottom bar takes the system-nav inset inside its surface '
+      'and keeps its content above it (#160)', (WidgetTester tester) async {
+    // A gesture-nav phone: the bottom 48dp of the screen belongs to the
+    // system navigation.
+    tester.view.padding = const FakeViewPadding(bottom: 48);
+    tester.view.viewPadding = const FakeViewPadding(bottom: 48);
+    addTearDown(tester.view.resetPadding);
+    addTearDown(tester.view.resetViewPadding);
+    await _openLogger(tester);
+
+    final Finder bar = find.byKey(const ValueKey<String>('logger.bottomBar'));
+    final Finder finish = find.widgetWithText(FilledButton, 'Finish workout');
+    final Finder counts =
+        find.byKey(const ValueKey<String>('logger.bottomBar.progress'));
+    final double screenBottom =
+        tester.view.physicalSize.height / tester.view.devicePixelRatio;
+
+    // The bar's surface runs to the physical screen bottom — the inset is
+    // inside it, so no page background shows as a seam under the bar…
+    expect(bar, findsOneWidget);
+    expect(
+      tester.getBottomRight(bar).dy,
+      moreOrLessEquals(screenBottom, epsilon: 0.5),
+    );
+    // …while every part of it the player touches or reads sits above the
+    // inset.
+    expect(
+      tester.getBottomRight(finish).dy,
+      lessThanOrEqualTo(screenBottom - 48),
+    );
+    expect(
+      tester.getBottomRight(counts).dy,
+      lessThanOrEqualTo(screenBottom - 48),
+    );
+    expect(tester.getTopLeft(bar).dy, lessThan(screenBottom - 48));
+    expect(tester.takeException(), isNull);
+
+    // It is still the bar: Finish runs from there, above the system nav.
+    await tester.tap(finish);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Log at least one set'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a tick clears the Finish nudge and no other message (#160)',
+      (WidgetTester tester) async {
+    // A workout started outside the entry window: its notice rides in the
+    // same slot above the bar and must survive the tick.
+    final DateTime tenDaysAgo =
+        DateTime.now().subtract(const Duration(days: 10));
+    await _openLogger(tester, startedAt: tenDaysAgo.toUtc().toIso8601String());
+
+    final Finder notice =
+        find.textContaining('outside the allowed entry window');
+    final Finder nudge = find.text('Log at least one set');
+
+    // Finish with nothing ticked raises its own nudge beside the notice…
+    await tester.tap(find.widgetWithText(FilledButton, 'Finish workout'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(nudge, findsOneWidget);
+    expect(notice, findsOneWidget);
+
+    // …and the next tick takes the nudge away — and only that message.
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(nudge, findsNothing);
+    expect(notice, findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

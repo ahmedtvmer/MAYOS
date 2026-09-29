@@ -45,6 +45,17 @@ import 'rest_timer_widgets.dart';
 /// without a bounded width (#123 item 11).
 const double kLoggerDialogWidth = 360;
 
+/// Why Finish refuses while nothing is ticked (#123), and the one message a
+/// tick itself clears (#160): it is the Finish bar's own nudge, shown right
+/// above that bar, so it must not outlive the state it describes. Other
+/// errors (a failed save, an offline refusal) stay until they are fixed.
+const String _kFinishBlockedError = 'Log at least one set';
+
+/// The message slot's cap (#160/#45): at most this share of the screen
+/// height, scrolling inside itself, so a long line at a large text scale
+/// can never push the bottom bar (or the keypad) off the screen.
+const double _kMessageSlotMaxHeightFraction = 1 / 3;
+
 /// The Hevy-style table logger (#107 Variant A), backed entirely by the
 /// Active workout: one scrolling list of compact exercise cards with a
 /// SET · KG · REPS · RIR · ✓ table, the app's own keypad, live
@@ -144,10 +155,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       // ticker's own end is the only alert for this rest (#125).
       unawaited(_controller.dropImminentEndAlarm());
     }
-    if (mounted) {
-      // Recompute the bar from the wall clock: exact in the foreground (#125).
-      setState(() {});
-    }
+    // No setState here: this ticker exists for the end-of-rest alert alone,
+    // so it runs even behind the keypad, while the countdown repaints itself
+    // through RestTimerControls' own ticker (#160). The rest ending changes
+    // the controller's state, which rebuilds the screen anyway.
   }
 
   /// The chip's picker (#125): Off, then 1:00–5:00 in 15-second steps, saved
@@ -508,9 +519,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     if (workout == null) {
       return;
     }
-    if (_error != null) {
-      // "Log at least one set" was the Finish bar's nudge; it now sits right
-      // above that bar, so it goes the moment a set is ticked (#160).
+    if (_error == _kFinishBlockedError) {
+      // The Finish bar's own nudge, sitting right above that bar: a tick
+      // makes it untrue, so it goes. Every other message — a save failure,
+      // an offline refusal — is never dismissed by ticking (#160).
       setState(() => _error = null);
     }
     final ActiveWorkoutExercise exercise = workout.exercises[exerciseIndex];
@@ -618,7 +630,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
         (ActiveWorkoutExercise exercise) => exercise.sets
             .any((ActiveWorkoutSet s) => s.ticked && s.countsAsWorkingSet));
     if (!anyWorking) {
-      setState(() => _error = 'Log at least one set');
+      setState(() => _error = _kFinishBlockedError);
       return;
     }
     final int unticked = _untickedCount(workout);
@@ -835,7 +847,15 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       child: Column(
         children: <Widget>[
           Expanded(
-            child: _summaryStep ? _buildSummary() : _buildActive(workout),
+            child: _summaryStep
+                ? SafeArea(
+                    // The frame no longer insets the logger's body; the bar
+                    // and the keypad take the inset inside their own surface,
+                    // and the summary — which shows neither — takes it too.
+                    top: false,
+                    child: _buildSummary(),
+                  )
+                : _buildActive(workout),
           ),
           if (!_summaryStep) ...<Widget>[
             // Messages sit above the bottom bar, never scrolled away at the
@@ -877,7 +897,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     return <Widget>[
       ConstrainedBox(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height / 3,
+          maxHeight: MediaQuery.sizeOf(context).height *
+              _kMessageSlotMaxHeightFraction,
         ),
         child: SingleChildScrollView(
           padding: const EdgeInsets.only(
@@ -912,20 +933,20 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       key: const ValueKey<String>('logger.bottomBar'),
       setsTicked: progress.setsTicked,
       setsTotal: progress.setsTotal,
+      // The one place the fill is worked out, beside the counts above it.
+      progressValue: workoutSetsFractionOf(workout),
       onFinish: _blockReason != null ? null : _finish,
       restControls: rest == null ? null : _buildRestControls(rest),
     );
   }
 
-  /// #125's rest controls for the bar: −15 / m:ss / +15 / Skip, recomputed
-  /// from the wall clock by the ticker. No new timer state and no "+30s"
-  /// (#125 unchanged, absorbed by the bottom bar in #160).
+  /// #125's rest controls for the bar: −15 / m:ss / +15 / Skip. The row
+  /// carries its own quarter-second ticker and reads the wall clock itself,
+  /// so a running rest never repaints the screen; no new timer state and no
+  /// "+30s" (#125 unchanged, absorbed by the bottom bar in #160).
   Widget _buildRestControls(ActiveRestTimer rest) {
-    final DateTime now = DateTime.now();
     return RestTimerControls(
-      remainingSeconds: rest.remainingSeconds(now),
-      totalSeconds: rest.totalSeconds,
-      exerciseName: rest.exerciseName,
+      rest: rest,
       onMinus: () =>
           unawaited(_controller.adjustRest(const Duration(seconds: -15))),
       onPlus: () =>

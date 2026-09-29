@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../../core/active_workout.dart';
 import '../../../core/rest_length.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
@@ -117,36 +120,69 @@ Future<int?> showRestLengthPicker(
 /// disappears with that bar while the keypad is open. Every action keeps a
 /// full 48dp target (#45).
 ///
-/// [remainingSeconds] is recomputed from the wall clock on every rebuild by
-/// the logger's ticker, so the countdown is exact in the foreground rather
-/// than drifting with timer ticks.
-class RestTimerControls extends StatelessWidget {
+/// The countdown carries its own quarter-second ticker, so only this row
+/// repaints while a rest runs rather than the whole logger screen (#160).
+/// Every tick reads [ActiveRestTimer] against the wall clock, so the count
+/// is exact in the foreground instead of drifting with timer ticks. The
+/// end-of-rest alert stays with the logger's own ticker (#125), which keeps
+/// running even when this row is hidden behind the keypad.
+class RestTimerControls extends StatefulWidget {
   const RestTimerControls({
     super.key,
-    required this.remainingSeconds,
-    required this.totalSeconds,
-    required this.exerciseName,
+    required this.rest,
     required this.onMinus,
     required this.onPlus,
     required this.onSkip,
   });
 
-  /// Whole seconds left (already rounded up, 0 at the end).
-  final int remainingSeconds;
+  /// The running rest: its end time drives the countdown and the draining
+  /// fill's denominator. The logger still owns every change to it.
+  final ActiveRestTimer rest;
 
-  /// The length the rest started with — the draining fill's denominator.
-  final int totalSeconds;
-
-  final String exerciseName;
   final VoidCallback onMinus;
   final VoidCallback onPlus;
   final VoidCallback onSkip;
 
+  @override
+  State<RestTimerControls> createState() => _RestTimerControlsState();
+}
+
+class _RestTimerControlsState extends State<RestTimerControls> {
+  /// The countdown's own quarter-second tick: it wakes this row alone, so a
+  /// running rest costs one small repaint instead of the whole screen
+  /// (#160).
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker =
+        Timer.periodic(const Duration(milliseconds: 250), (_) => _onTick());
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    _ticker = null;
+    super.dispose();
+  }
+
+  void _onTick() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  /// Whole seconds left (already rounded up, 0 at the end), straight from
+  /// the wall clock.
+  int get _remainingSeconds => widget.rest.remainingSeconds(DateTime.now());
+
   double get _fill {
+    final int totalSeconds = widget.rest.totalSeconds;
     if (totalSeconds <= 0) {
       return 0;
     }
-    final double fraction = remainingSeconds / totalSeconds;
+    final double fraction = _remainingSeconds / totalSeconds;
     return fraction.clamp(0.0, 1.0);
   }
 
@@ -196,19 +232,19 @@ class RestTimerControls extends StatelessWidget {
                 horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
             child: Row(
               children: <Widget>[
-                action('−15', onMinus,
+                action('−15', widget.onMinus,
                     key: const ValueKey<String>('rest.minus')),
                 Expanded(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
                       Text(
-                        restMmSs(remainingSeconds),
+                        restMmSs(_remainingSeconds),
                         style: MayosTypography.numericMedium
                             .copyWith(color: c.textPrimary),
                       ),
                       Text(
-                        'Rest · $exerciseName',
+                        'Rest · ${widget.rest.exerciseName}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: MayosTypography.caption
@@ -217,8 +253,9 @@ class RestTimerControls extends StatelessWidget {
                     ],
                   ),
                 ),
-                action('+15', onPlus, key: const ValueKey<String>('rest.plus')),
-                action('Skip', onSkip,
+                action('+15', widget.onPlus,
+                    key: const ValueKey<String>('rest.plus')),
+                action('Skip', widget.onSkip,
                     key: const ValueKey<String>('rest.skip')),
               ],
             ),

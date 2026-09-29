@@ -10,12 +10,16 @@ import '../../../core/ui/mayos_progress.dart';
 /// a progress bar and **Finish**, always in reach, plus #125's rest controls
 /// while a rest runs — one bottom bar for the whole screen.
 ///
-/// Presentation only: it is the last child of the logger's column, so it sits
-/// fixed at the bottom of the screen (the frame's SafeArea keeps it above the
-/// system navigation) and the list above it shrinks to the space that is
-/// left — the last card scrolls clear without the bar ever overlaying
-/// content. The logger swaps it for the keypad while an edit is open, and
-/// hides it behind the workout summary.
+/// Presentation only: it is the last child of the logger's column, so it
+/// sits fixed at the bottom of the screen and the list above it shrinks to
+/// the space that is left — the last card scrolls clear without the bar ever
+/// overlaying content. The logger swaps it for the keypad while an edit is
+/// open, and hides it behind the workout summary.
+///
+/// The bar owns its bottom safe area *inside* its surface: the decorated
+/// container runs to the physical screen bottom while the rows are padded
+/// above the system-navigation inset, so a gesture-nav phone shows no
+/// page-background seam under the bar (#160).
 ///
 /// The rows are stacked rather than squeezed into one line so the counts and
 /// the full-width Finish stay readable at the 2x text scale the design sweep
@@ -25,6 +29,7 @@ class LoggerBottomBar extends StatelessWidget {
     super.key,
     required this.setsTicked,
     required this.setsTotal,
+    required this.progressValue,
     required this.onFinish,
     this.restControls,
   });
@@ -35,6 +40,10 @@ class LoggerBottomBar extends StatelessWidget {
   final int setsTicked;
 
   final int setsTotal;
+
+  /// The progress bar's fill, from `workoutSetsFractionOf` — worked out once
+  /// by the logger beside the counts it comes from (#160).
+  final double progressValue;
 
   /// Finish's flow — the unticked-sets sheet, then the summary
   /// (#123/#124) — or null while Finish is blocked (unknown timezone,
@@ -48,53 +57,54 @@ class LoggerBottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
-    final double value = setsTotal <= 0
-        ? 0
-        : (setsTicked / setsTotal).clamp(0.0, 1.0).toDouble();
     return Container(
       decoration: BoxDecoration(
         color: c.surface,
         border: Border(top: BorderSide(color: c.border)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: MayosSpacing.lg, vertical: MayosSpacing.xs),
-            child: Row(
-              children: <Widget>[
-                // The counts, in the label role; `Flexible` so an enormous
-                // text scale ellipsizes instead of overflowing the row.
-                Flexible(
-                  child: Text(
-                    '$setsTicked/$setsTotal sets',
-                    key: const ValueKey<String>('logger.bottomBar.progress'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: MayosTypography.label
-                        .copyWith(color: c.textSecondary),
+      // The surface keeps going under the inset; the content stops above it.
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: MayosSpacing.lg, vertical: MayosSpacing.xs),
+              child: Row(
+                children: <Widget>[
+                  // The counts, in the label role; `Flexible` so an enormous
+                  // text scale ellipsizes instead of overflowing the row.
+                  Flexible(
+                    child: Text(
+                      '$setsTicked/$setsTotal sets',
+                      key: const ValueKey<String>('logger.bottomBar.progress'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: MayosTypography.label
+                          .copyWith(color: c.textSecondary),
+                    ),
                   ),
-                ),
-                const SizedBox(width: MayosSpacing.sm),
-                Expanded(
-                  child: MayosProgressIndicator(value: value),
-                ),
-              ],
+                  const SizedBox(width: MayosSpacing.sm),
+                  Expanded(
+                    child: MayosProgressIndicator(value: progressValue),
+                  ),
+                ],
+              ),
             ),
-          ),
-          if (restControls != null) restControls!,
-          Padding(
-            padding: const EdgeInsets.fromLTRB(MayosSpacing.lg,
-                MayosSpacing.xxs, MayosSpacing.lg, MayosSpacing.sm),
-            child: MayosButton(
-              label: 'Finish workout',
-              icon: Icons.check,
-              onPressed: onFinish,
+            if (restControls != null) restControls!,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(MayosSpacing.lg,
+                  MayosSpacing.xxs, MayosSpacing.lg, MayosSpacing.sm),
+              child: MayosButton(
+                label: 'Finish workout',
+                icon: Icons.check,
+                onPressed: onFinish,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
