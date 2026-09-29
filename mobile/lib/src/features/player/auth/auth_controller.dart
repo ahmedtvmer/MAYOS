@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/connectivity_message.dart';
 import '../../../core/models.dart';
 import 'auth_repository.dart';
 import 'google_auth_gateway.dart';
@@ -107,6 +108,32 @@ final class GoogleConnectRefused extends ConnectGoogleResult {
 
   final String message;
 }
+
+/// What deleting a Google-only account produced (#116).
+sealed class DeleteWithGoogleResult {
+  const DeleteWithGoogleResult();
+}
+
+/// The account is deleted and the Google SDK's own state was dropped too.
+final class DeleteWithGoogleDone extends DeleteWithGoogleResult {
+  const DeleteWithGoogleDone();
+}
+
+/// The person dismissed the Google sheet; nothing was deleted.
+final class DeleteWithGoogleDismissed extends DeleteWithGoogleResult {
+  const DeleteWithGoogleDismissed();
+}
+
+/// The SDK or the service refused; [message] explains it in the dialog.
+final class DeleteWithGoogleRefused extends DeleteWithGoogleResult {
+  const DeleteWithGoogleRefused(this.message);
+
+  final String message;
+}
+
+/// The deletion dialog's line for a dismissed Google sheet (#116).
+const String kGoogleDeleteCancelledMessage =
+    'Google sign-in was cancelled. Your account was not deleted.';
 
 /// `service/google_sign_in.py::ALREADY_LINKED`, echoed verbatim by
 /// `POST /auth/google/complete` as a 409 (#113). The service sends no machine
@@ -324,12 +351,28 @@ class AuthController extends StateNotifier<AuthState> {
         'Your account was deleted. Create a new account or sign in.');
   }
 
-  /// Deletion of a Google-only account, proved by re-running the Google flow
-  /// for a fresh ID token instead of asking for a password (#114/#116).
-  Future<void> deleteAccountWithGoogle({required String googleIdToken}) async {
-    await _repository.deleteAccountWithGoogle(googleIdToken: googleIdToken);
+  /// Deletion of a Google-only account: re-run the Google flow for a fresh ID
+  /// token, hand it to `DELETE /auth/account`, and drop the SDK's own state —
+  /// the account and its link are gone, so nothing may linger on this device
+  /// (#114/#116). A dismissed sheet deletes nothing.
+  Future<DeleteWithGoogleResult> deleteAccountWithGoogle() async {
+    final GoogleAuthOutcome outcome = await _google.authenticate();
+    if (outcome is GoogleAuthCanceled) {
+      return const DeleteWithGoogleDismissed();
+    }
+    if (outcome is GoogleAuthFailed) {
+      return DeleteWithGoogleRefused(outcome.message);
+    }
+    try {
+      await _repository.deleteAccountWithGoogle(
+          googleIdToken: (outcome as GoogleAuthIdToken).idToken);
+    } on ApiException catch (error) {
+      return DeleteWithGoogleRefused(mutationFailureMessage(error));
+    }
+    await _google.clearSdkState();
     state = const AuthState.unauthenticated(
         'Your account was deleted. Create a new account or sign in.');
+    return const DeleteWithGoogleDone();
   }
 
   /// One "Connect Google" tap in Settings: get an ID token from the SDK, then

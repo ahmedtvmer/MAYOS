@@ -54,6 +54,10 @@ abstract final class MayosMotion {
 /// Minimum interactive size. Material guidance: 48dp touch targets.
 const double kMayosMinTapTarget = 48;
 
+/// Icon-chip box: the square frame around a settings row's leading glyph
+/// (`MayosIconChip`), sized to hold an icon at [MayosIconSizes.medium].
+const double kMayosIconChipSize = 38;
+
 /// Named icon sizes, so screens pick one of these instead of a magic pixel
 /// value (DESIGN.md: sizes are named like every other visual token).
 abstract final class MayosIconSizes {

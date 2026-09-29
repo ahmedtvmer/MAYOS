@@ -454,6 +454,8 @@ void main() {
       expect(fake.lastDeleteGoogleIdToken, 'fresh-delete-token');
       expect(fake.lastDeletePassword, isNull);
       expect(fake.accountDeleted, isTrue);
+      // The SDK signs out with the account, exactly as logout and a 401 do.
+      expect(google.clearSdkStateCalls, 1);
       expect(await drafts.read(_accountAlice), isEmpty);
       expect(await tokens.read(), isNull);
       expect(find.textContaining('account was deleted'), findsOneWidget);
@@ -476,6 +478,7 @@ void main() {
           tester, find.text('Google sign-in was cancelled. Your account was not deleted.'));
 
       expect(google.authenticateCalls, 1);
+      expect(google.clearSdkStateCalls, 0);
       expect(fake.deleteAccountRequests, 0);
       expect(fake.accountDeleted, isFalse);
       expect(find.text('Delete account?'), findsOneWidget);

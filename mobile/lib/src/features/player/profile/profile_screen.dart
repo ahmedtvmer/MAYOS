@@ -10,6 +10,7 @@ import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_card.dart';
+import '../../../core/ui/mayos_icon_chip.dart';
 import '../../../core/ui/mayos_section_header.dart';
 import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
@@ -57,15 +58,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final TextEditingController _timezone = TextEditingController();
   final TextEditingController _deletePassword = TextEditingController();
 
-  /// The password dialogs keep their fields at screen level (like
-  /// [_deletePassword]): the dialog route is still animating out when
-  /// `showDialog` resolves, so disposing a controller there would break the
-  /// rebuilds of that exit animation.
-  final TextEditingController _setPassword = TextEditingController();
-  final TextEditingController _setPasswordConfirm = TextEditingController();
-  final TextEditingController _changeCurrent = TextEditingController();
-  final TextEditingController _changeNew = TextEditingController();
-  final TextEditingController _changeConfirm = TextEditingController();
+  final TextEditingController _currentPassword = TextEditingController();
+  final TextEditingController _newPassword = TextEditingController();
+  final TextEditingController _newPasswordConfirm = TextEditingController();
   final Set<int> _weekdays = <int>{};
   TrainingSchedule _schedule = const TrainingSchedule();
   List<ScheduledPause> _pauses = const <ScheduledPause>[];
@@ -108,11 +103,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void dispose() {
     _timezone.dispose();
     _deletePassword.dispose();
-    _setPassword.dispose();
-    _setPasswordConfirm.dispose();
-    _changeCurrent.dispose();
-    _changeNew.dispose();
-    _changeConfirm.dispose();
+    _currentPassword.dispose();
+    _newPassword.dispose();
+    _newPasswordConfirm.dispose();
     super.dispose();
   }
 
@@ -407,10 +400,64 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   /// The first password for a Google-only account (`POST /auth/set-password`),
   /// worded by the app's shared password rule (#114/#116).
-  Future<void> _promptSetPassword() async {
+  Future<void> _promptSetPassword() => _promptPasswordDialog(
+        title: 'Set a password',
+        intro: 'Choose a password so you can sign in without Google. '
+            'Once it is set you can disconnect Google.',
+        askCurrent: false,
+        confirmLabel: 'Set password',
+        currentKey: null,
+        passwordKey: const Key('set_password_field'),
+        confirmFieldKey: const Key('set_password_confirm_field'),
+        submitKey: const Key('set_password_confirm_button'),
+        successNotice: 'Password set. You can now disconnect Google.',
+        onSubmit: (String current, String password) => ref
+            .read(authControllerProvider.notifier)
+            .setInitialPassword(password),
+      );
+
+  /// Replacing an existing password (`POST /auth/change-password`). The
+  /// service revokes every session, so success ends this one with an
+  /// explanation on the sign-in screen (ADR 006): there is no [successNotice]
+  /// and nothing to re-read.
+  Future<void> _promptChangePassword() => _promptPasswordDialog(
+        title: 'Change password',
+        intro: 'Changing your password signs you out of every device.',
+        askCurrent: true,
+        confirmLabel: 'Change password',
+        currentKey: const Key('change_password_current_field'),
+        passwordKey: const Key('change_password_new_field'),
+        confirmFieldKey: const Key('change_password_confirm_field'),
+        submitKey: const Key('change_password_confirm_button'),
+        successNotice: null,
+        onSubmit: (String current, String password) => ref
+            .read(authControllerProvider.notifier)
+            .changePassword(currentPassword: current, newPassword: password),
+      );
+
+  /// The one password dialog behind both moves above: a Google-only account
+  /// sets its first password, an account with one replaces it. Only the
+  /// wording, the optional "current password" field, and [onSubmit] differ.
+  ///
+  /// The fields live at screen level like [_deletePassword]: the dialog route
+  /// is still animating out when `showDialog` resolves, so disposing a
+  /// controller there would break the rebuilds of that exit animation.
+  Future<void> _promptPasswordDialog({
+    required String title,
+    required String intro,
+    required bool askCurrent,
+    required String confirmLabel,
+    required Key? currentKey,
+    required Key passwordKey,
+    required Key confirmFieldKey,
+    required Key submitKey,
+    required String? successNotice,
+    required Future<void> Function(String current, String password) onSubmit,
+  }) async {
     if (_methodBusy) return;
-    _setPassword.clear();
-    _setPasswordConfirm.clear();
+    _currentPassword.clear();
+    _newPassword.clear();
+    _newPasswordConfirm.clear();
     bool busy = false;
     bool done = false;
     String? error;
@@ -419,26 +466,31 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       builder: (BuildContext dialogContext) => StatefulBuilder(
         builder: (BuildContext context, StateSetter setDialogState) =>
             AlertDialog(
-          title: const Text('Set a password'),
+          title: Text(title),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Text(
-                  'Choose a password so you can sign in without Google. '
-                  'Once it is set you can disconnect Google.',
-                ),
+                Text(intro),
                 const SizedBox(height: MayosSpacing.md),
+                if (askCurrent) ...<Widget>[
+                  AuthPasswordField(
+                    controller: _currentPassword,
+                    fieldKey: currentKey,
+                    label: 'Current password',
+                  ),
+                  const SizedBox(height: MayosSpacing.sm),
+                ],
                 AuthPasswordField(
-                  controller: _setPassword,
-                  fieldKey: const Key('set_password_field'),
+                  controller: _newPassword,
+                  fieldKey: passwordKey,
                   label: 'New password',
                 ),
                 const SizedBox(height: MayosSpacing.sm),
                 AuthPasswordField(
-                  controller: _setPasswordConfirm,
-                  fieldKey: const Key('set_password_confirm_field'),
+                  controller: _newPasswordConfirm,
+                  fieldKey: confirmFieldKey,
                   label: 'Confirm new password',
                 ),
                 if (error != null) ...<Widget>[
@@ -461,15 +513,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   busy ? null : () => Navigator.of(dialogContext).pop(),
             ),
             MayosButton(
-              key: const Key('set_password_confirm_button'),
-              label: 'Set password',
+              key: submitKey,
+              label: confirmLabel,
               expand: false,
               loading: busy,
               onPressed: busy
                   ? null
                   : () async {
+                      if (askCurrent && _currentPassword.text.isEmpty) {
+                        setDialogState(
+                            () => error = 'Enter your current password.');
+                        return;
+                      }
                       final String? invalid = validateNewPassword(
-                          _setPassword.text, _setPasswordConfirm.text);
+                          _newPassword.text, _newPasswordConfirm.text);
                       if (invalid != null) {
                         setDialogState(() => error = invalid);
                         return;
@@ -479,9 +536,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         error = null;
                       });
                       try {
-                        await ref
-                            .read(authControllerProvider.notifier)
-                            .setInitialPassword(_setPassword.text);
+                        await onSubmit(
+                            _currentPassword.text, _newPassword.text);
                         done = true;
                         if (dialogContext.mounted) {
                           Navigator.of(dialogContext).pop();
@@ -498,122 +554,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
       ),
     );
-    if (!done || !mounted) return;
+    if (!done || successNotice == null || !mounted) return;
     setState(() => _methodBusy = true);
-    _setMethodNotice('Password set. You can now disconnect Google.',
-        error: false);
+    _setMethodNotice(successNotice, error: false);
     await _refreshSignInMethods();
     if (mounted) {
       setState(() => _methodBusy = false);
     }
-  }
-
-  /// Replacing an existing password (`POST /auth/change-password`). The
-  /// service revokes every session, so success ends this one with an
-  /// explanation on the sign-in screen (ADR 006).
-  Future<void> _promptChangePassword() async {
-    if (_methodBusy) return;
-    _changeCurrent.clear();
-    _changeNew.clear();
-    _changeConfirm.clear();
-    bool busy = false;
-    String? error;
-    await showDialog<void>(
-      context: context,
-      builder: (BuildContext dialogContext) => StatefulBuilder(
-        builder: (BuildContext context, StateSetter setDialogState) =>
-            AlertDialog(
-          title: const Text('Change password'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                const Text(
-                  'Changing your password signs you out of every device.',
-                ),
-                const SizedBox(height: MayosSpacing.md),
-                AuthPasswordField(
-                  controller: _changeCurrent,
-                  fieldKey: const Key('change_password_current_field'),
-                  label: 'Current password',
-                ),
-                const SizedBox(height: MayosSpacing.sm),
-                AuthPasswordField(
-                  controller: _changeNew,
-                  fieldKey: const Key('change_password_new_field'),
-                  label: 'New password',
-                ),
-                const SizedBox(height: MayosSpacing.sm),
-                AuthPasswordField(
-                  controller: _changeConfirm,
-                  fieldKey: const Key('change_password_confirm_field'),
-                  label: 'Confirm new password',
-                ),
-                if (error != null) ...<Widget>[
-                  const SizedBox(height: MayosSpacing.sm),
-                  Text(
-                    error!,
-                    style: MayosTypography.bodySecondary
-                        .copyWith(color: MayosTheme.of(context).danger),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          actions: <Widget>[
-            MayosButton(
-              label: 'Cancel',
-              variant: MayosButtonVariant.tertiary,
-              expand: false,
-              onPressed:
-                  busy ? null : () => Navigator.of(dialogContext).pop(),
-            ),
-            MayosButton(
-              key: const Key('change_password_confirm_button'),
-              label: 'Change password',
-              expand: false,
-              loading: busy,
-              onPressed: busy
-                  ? null
-                  : () async {
-                      if (_changeCurrent.text.isEmpty) {
-                        setDialogState(() => error =
-                            'Enter your current password.');
-                        return;
-                      }
-                      final String? invalid = validateNewPassword(
-                          _changeNew.text, _changeConfirm.text);
-                      if (invalid != null) {
-                        setDialogState(() => error = invalid);
-                        return;
-                      }
-                      setDialogState(() {
-                        busy = true;
-                        error = null;
-                      });
-                      try {
-                        await ref
-                            .read(authControllerProvider.notifier)
-                            .changePassword(
-                              currentPassword: _changeCurrent.text,
-                              newPassword: _changeNew.text,
-                            );
-                        if (dialogContext.mounted) {
-                          Navigator.of(dialogContext).pop();
-                        }
-                      } on ApiException catch (failure) {
-                        setDialogState(() {
-                          busy = false;
-                          error = mutationFailureMessage(failure);
-                        });
-                      }
-                    },
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   /// Proof-confirmed, irreversible account deletion (ADR 015/039).
@@ -694,30 +641,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       });
                       try {
                         if (googleOnly) {
-                          final GoogleAuthOutcome outcome = await ref
-                              .read(googleAuthGatewayProvider)
-                              .authenticate();
-                          if (outcome is GoogleAuthCanceled) {
-                            setDialogState(() {
-                              busy = false;
-                              error = 'Google sign-in was cancelled. '
-                                  'Your account was not deleted.';
-                            });
-                            return;
-                          }
-                          if (outcome is GoogleAuthFailed) {
-                            setDialogState(() {
-                              busy = false;
-                              error = outcome.message;
-                            });
-                            return;
-                          }
-                          await ref
+                          // The controller owns the Google flow, so the screen
+                          // only renders the outcome (#116).
+                          final DeleteWithGoogleResult result = await ref
                               .read(authControllerProvider.notifier)
-                              .deleteAccountWithGoogle(
-                                googleIdToken:
-                                    (outcome as GoogleAuthIdToken).idToken,
-                              );
+                              .deleteAccountWithGoogle();
+                          if (result case DeleteWithGoogleRefused(
+                              :final message)) {
+                            setDialogState(() {
+                              busy = false;
+                              error = message;
+                            });
+                            return;
+                          }
+                          if (result is DeleteWithGoogleDismissed) {
+                            setDialogState(() {
+                              busy = false;
+                              error = kGoogleDeleteCancelledMessage;
+                            });
+                            return;
+                          }
                         } else {
                           await ref
                               .read(authControllerProvider.notifier)
@@ -755,7 +698,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           _SignInMethodRow(
-            leading: _IconChip(
+            leading: MayosIconChip(
               child: Icon(
                 Icons.lock_outline,
                 size: MayosIconSizes.medium,
@@ -781,7 +724,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           const Divider(height: 1),
           const SizedBox(height: MayosSpacing.xxs),
           _SignInMethodRow(
-            leading: const _IconChip(child: GoogleGLogo(size: 20)),
+            leading:
+                const MayosIconChip(child: GoogleGLogo(size: MayosIconSizes.medium)),
             title: 'Google',
             status: googleLinked ? 'Connected' : 'Not connected',
             hint: googleLinked && !hasPassword ? 'Set a password first' : null,
@@ -1036,28 +980,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           onPressed: _confirmDeleteAccount,
         ),
       ],
-    );
-  }
-}
-
-/// The soft icon chip the settings rows use, sized like `MayosSettingsTile`.
-class _IconChip extends StatelessWidget {
-  const _IconChip({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    return Container(
-      width: 38,
-      height: 38,
-      decoration: BoxDecoration(
-        color: c.surfaceSunken,
-        borderRadius: BorderRadius.circular(11),
-        border: Border.all(color: c.border),
-      ),
-      child: Center(child: child),
     );
   }
 }

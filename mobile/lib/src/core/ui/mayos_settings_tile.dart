@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/mayos_spacing.dart';
 import '../theme/mayos_theme.dart';
+import 'mayos_icon_chip.dart';
 
 /// A settings/list row: a soft icon chip, a title, optional subtitle, and a
 /// trailing affordance. Minimum 56dp tall.
@@ -45,18 +46,13 @@ class MayosSettingsTile extends StatelessWidget {
                 horizontal: MayosSpacing.xs, vertical: MayosSpacing.xs),
             child: Row(
               children: <Widget>[
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: destructive ? c.accentSubtle : c.surfaceSunken,
-                    borderRadius: BorderRadius.circular(11),
-                    border: Border.all(
-                        color: destructive
-                            ? c.danger.withValues(alpha: 0.3)
-                            : c.border),
+                MayosIconChip(
+                  destructive: destructive,
+                  child: Icon(
+                    icon,
+                    size: MayosIconSizes.medium,
+                    color: accentColor,
                   ),
-                  child: Icon(icon, size: 19, color: accentColor),
                 ),
                 const SizedBox(width: MayosSpacing.sm),
                 Expanded(
