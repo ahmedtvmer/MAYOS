@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../core/active_workout.dart';
-import '../../../core/effort.dart';
 import '../../../core/api_client.dart';
 import '../../../core/baselines.dart';
 import '../../../core/device_timezone.dart';
@@ -28,67 +27,15 @@ import '../../../providers.dart';
 import '../../../router.dart';
 import 'active_workout_controller.dart';
 import 'draft_sync_service.dart';
+import 'logger_card_widgets.dart';
 import 'logger_keypad.dart';
-import 'personal_record_badge.dart';
 import 'rest_timer_widgets.dart';
 
-// The frozen previous working set, `100 × 5 @1`-style previous labels and the
-// cell weight format live beside the Active workout
-// (`core/active_workout.dart`): the table and the rest notification's
-// "Next: … · last …" line read the same functions (#125).
-
-/// The one mapping from a field to what its cell shows (#123 item 12): the
-/// typed [value] when there is one, else the faded [hint].
-///
-/// The hint is the previous set first (#107/#123 item 1), falling back to the
-/// prescription target — projected weight, target reps, target RIR — when
-/// there is no previous value to take (#108: prescription `last_perf` stays
-/// for the progression projection alone, so it never appears here).
-({String? value, String? hint}) cellTexts({
-  required ActiveWorkoutSet set,
-  required BaselineSet? previous,
-  required PrescriptionHint? prescriptionHint,
-  required LoggerField field,
-}) {
-  String? fromPrevious;
-  String? fromPrescription;
-  switch (field) {
-    case LoggerField.kg:
-      fromPrevious =
-          previous == null ? null : formatCellWeight(previous.weightKg);
-      final double? projected = prescriptionHint?.weightKg;
-      fromPrescription = projected == null || projected <= 0
-          ? null
-          : formatCellWeight(projected);
-      return (
-        value: set.weightKg > 0 ? formatCellWeight(set.weightKg) : null,
-        hint: fromPrevious ?? fromPrescription,
-      );
-    case LoggerField.reps:
-      fromPrevious = previous == null ? null : '${previous.reps}';
-      final int? targetReps = prescriptionHint?.reps;
-      fromPrescription =
-          targetReps == null || targetReps <= 0 ? null : '$targetReps';
-      return (
-        value: set.reps > 0 ? '${set.reps}' : null,
-        hint: fromPrevious ?? fromPrescription,
-      );
-    case LoggerField.rir:
-      // A recorded RIR reads as itself (5 → 5+); the prescription fallback is
-      // a *target*, so it reads as the equivalent minimum RIR (≥ n) (#111).
-      final double? previousRir = previous?.rir;
-      fromPrevious = previousRir == null ? null : formatRir(previousRir);
-      final double? targetRir = prescriptionHint?.rir;
-      fromPrescription = targetRir == null ? null : formatMinRir(targetRir);
-      return (
-        value: set.rir == null ? null : formatRir(set.rir!),
-        hint: fromPrevious ?? fromPrescription,
-      );
-  }
-}
-
-/// The spec's tick: a 40dp square inside the row's 48dp tap area (#107).
-const double kLoggerTickSize = 40;
+// The frozen previous working set and the cell weight format live beside the
+// Active workout (`core/active_workout.dart`); the cell/hint mapping, the
+// card and the rows live in `logger_card_widgets.dart` (#158) — this screen
+// owns only the decisions: focus, ticks, records, the Current set and
+// persistence (#123/#124/#125).
 
 /// The catalog dialog's content width. It is the app's narrow-phone content
 /// width, kept as one named constant because the dialog measures its content
@@ -97,10 +44,12 @@ const double kLoggerTickSize = 40;
 const double kLoggerDialogWidth = 360;
 
 /// The Hevy-style table logger (#107 Variant A), backed entirely by the
-/// Active workout: one scrolling list of exercise cards with a
-/// SET · PREVIOUS · KG · REPS · RIR · ✓ table, the app's own keypad, live
+/// Active workout: one scrolling list of compact exercise cards with a
+/// SET · KG · REPS · RIR · ✓ table, the app's own keypad, live
 /// Personal-record badges under the rows (#124), and a Finish that opens the
-/// workout summary and writes a Workout draft exactly as before (#123).
+/// workout summary and writes a Workout draft exactly as before (#123). The
+/// redesign (#158) drops the PREVIOUS column for the card's "Last:" line and
+/// highlights the Current set; everything below the pixels is unchanged.
 class WorkoutLoggerScreen extends ConsumerStatefulWidget {
   const WorkoutLoggerScreen({super.key, required this.dayOrder});
 
@@ -902,6 +851,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
 
   Widget _buildActive(ActiveWorkout workout) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    // Derived, never stored: the first unticked working set in workout
+    // order, warm-ups skipped, moving across exercises (#158).
+    final ({int exerciseIndex, int setIndex})? current = currentSetOf(workout);
     return SingleChildScrollView(
       padding: MayosSpacing.screen,
       child: Column(
@@ -917,7 +869,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
           ],
           const SizedBox(height: MayosSpacing.md),
           for (int i = 0; i < workout.exercises.length; i++)
-            _buildExerciseCard(workout, i),
+            _buildExerciseCard(workout, i, current),
           MayosButton(
             key: const ValueKey<String>('logger.addExercise'),
             label: 'Add exercise',
@@ -940,313 +892,73 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     );
   }
 
-  Widget _buildExerciseCard(ActiveWorkout workout, int exerciseIndex) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+  /// One exercise, one compact card (#158): the card and its rows are pure
+  /// presentation — this method only assembles what they show, including the
+  /// Current set's highlight and the records the rows carry.
+  Widget _buildExerciseCard(ActiveWorkout workout, int exerciseIndex,
+      ({int exerciseIndex, int setIndex})? current) {
     final ActiveWorkoutExercise exercise = workout.exercises[exerciseIndex];
     // One computation per exercise per build: the calculator is pure over the
     // persisted rows and the frozen baseline, so the badges are what the
     // Active workout holds — restart included (#124).
     final Map<String, SetRecordBadges> badges = _recordBadges(exerciseIndex);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.md),
-      child: MayosCard(
-        padding: const EdgeInsets.fromLTRB(MayosSpacing.md, MayosSpacing.sm,
-            MayosSpacing.md, MayosSpacing.xxs),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    exercise.exerciseName,
-                    style:
-                        MayosTypography.exerciseTitle.copyWith(color: c.accent),
-                  ),
-                ),
-                if (exercise.unplanned) _unplannedTag(c),
-              ],
-            ),
-            // The prescription caption, shown the way the old logger showed
-            // it (#123 item 4).
-            if (exercise.targetLabel != null)
-              Text(
-                exercise.targetLabel!,
-                style: MayosTypography.caption.copyWith(color: c.textMuted),
-              ),
-            // The rest chip (#125): the resolved length, tap to change it.
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: const EdgeInsets.only(top: MayosSpacing.xxs),
-                child: RestLengthChip(
-                  key: ValueKey<String>('logger.rest.$exerciseIndex'),
-                  seconds: _controller.restLengthFor(exerciseIndex),
-                  onPressed: () => _pickRest(exerciseIndex),
-                ),
-              ),
-            ),
-            _tableHeader(c),
-            for (int setIndex = 0; setIndex < exercise.sets.length; setIndex++)
-              _buildSetRow(workout, exerciseIndex, setIndex, badges),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: MayosButton(
-                key: ValueKey<String>('logger.addSet.$exerciseIndex'),
-                label: 'Add set',
-                icon: Icons.add,
-                variant: MayosButtonVariant.tertiary,
-                expand: false,
-                onPressed: () => _controller.addSet(exerciseIndex),
-              ),
-            ),
-          ],
-        ),
-      ),
+    return ExerciseLoggingCard(
+      exercise: exercise,
+      unplanned: exercise.unplanned,
+      restSeconds: _controller.restLengthFor(exerciseIndex),
+      restChipKey: ValueKey<String>('logger.rest.$exerciseIndex'),
+      // The frozen baseline's last session, in logged order; empty hides the
+      // "Last:" line entirely (#158).
+      lastSession: workout.baselines[exercise.exerciseId]?.lastSession.sets ??
+          const <BaselineSet>[],
+      rows: <Widget>[
+        for (int setIndex = 0; setIndex < exercise.sets.length; setIndex++)
+          _buildSetRow(
+            workout,
+            exerciseIndex,
+            setIndex,
+            badges,
+            isCurrent: current != null &&
+                current.exerciseIndex == exerciseIndex &&
+                current.setIndex == setIndex,
+          ),
+      ],
+      addSetKey: ValueKey<String>('logger.addSet.$exerciseIndex'),
+      onPickRest: () => unawaited(_pickRest(exerciseIndex)),
+      onAddSet: () => _controller.addSet(exerciseIndex),
     );
   }
 
-  Widget _unplannedTag(MayosThemeExtension c) => Container(
-        padding: const EdgeInsets.symmetric(
-            horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
-        decoration: BoxDecoration(
-          color: c.secondarySurface,
-          borderRadius: MayosRadii.pillRadius,
-        ),
-        child: Text('Unplanned', style: MayosTypography.caption),
-      );
-
-  static const List<int> _flex = <int>[2, 5, 3, 3, 2, 2];
-
-  Widget _tableHeader(MayosThemeExtension c) {
-    const List<String> labels = <String>[
-      'SET',
-      'PREVIOUS',
-      'KG',
-      'REPS',
-      'RIR',
-      '✓'
-    ];
-    return Padding(
-      padding: const EdgeInsets.only(top: MayosSpacing.xs),
-      child: Row(
-        children: <Widget>[
-          for (int i = 0; i < labels.length; i++)
-            Expanded(
-              flex: _flex[i],
-              child: Text(labels[i],
-                  textAlign: TextAlign.center,
-                  style: MayosTypography.captionStrong
-                      .copyWith(color: c.textMuted)),
-            ),
-        ],
-      ),
-    );
-  }
-
+  /// One row, assembled here so the screen keeps every decision it makes:
+  /// which previous set it hints from, whether the derived Current set lands
+  /// on it, what the keypad's focus is, and which records it holds (#158).
   Widget _buildSetRow(ActiveWorkout workout, int exerciseIndex, int setIndex,
-      Map<String, SetRecordBadges> badges) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+      Map<String, SetRecordBadges> badges,
+      {required bool isCurrent}) {
     final ActiveWorkoutExercise exercise = workout.exercises[exerciseIndex];
     final ActiveWorkoutSet set = exercise.sets[setIndex];
-    final BaselineSet? prev =
-        previousSetFor(exercise, setIndex, workout.baselines);
-    final bool muted = set.isWarmup;
-    final SetRecordBadges held = badges[set.id] ?? const SetRecordBadges();
-
-    ({String? value, String? hint}) texts(LoggerField field) => cellTexts(
-          set: set,
-          previous: prev,
-          prescriptionHint: exercise.prescriptionHint,
-          field: field,
-        );
-
-    Widget row = Container(
-      margin: const EdgeInsets.symmetric(vertical: MayosSpacing.xxs),
-      decoration: BoxDecoration(
-        color: set.ticked ? c.successTint : null,
-        borderRadius: MayosRadii.smallRadius,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Expanded(
-                flex: _flex[0],
-                child: InkWell(
-                  key: ValueKey<String>(
-                      'logger.setlabel.$exerciseIndex.$setIndex'),
-                  borderRadius: MayosRadii.smallRadius,
-                  onTap: () => unawaited(_updateWithRecordHaptic(
-                    exerciseIndex,
-                    setIndex,
-                    () => _controller.toggleWarmup(exerciseIndex, setIndex),
-                  )),
-                  child: SizedBox(
-                    height: kMayosMinTapTarget,
-                    child: Center(
-                      child: Text(
-                        set.isWarmup ? 'W' : '${setIndex + 1}',
-                        style: MayosTypography.numericSmall.copyWith(
-                          color: muted ? c.textMuted : c.textPrimary,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: _flex[1],
-                child: Text(
-                  previousLabel(prev),
-                  textAlign: TextAlign.center,
-                  style: MayosTypography.caption.copyWith(color: c.textMuted),
-                ),
-              ),
-              for (final LoggerField field in <LoggerField>[
-                LoggerField.kg,
-                LoggerField.reps,
-                LoggerField.rir,
-              ])
-                _buildCell(
-                  exerciseIndex,
-                  setIndex,
-                  field,
-                  value: texts(field).value,
-                  hint: texts(field).hint,
-                  muted: muted,
-                  ticked: set.ticked,
-                ),
-              Expanded(
-                flex: _flex[5],
-                child: SizedBox(
-                  height: kMayosMinTapTarget,
-                  width: kMayosMinTapTarget,
-                  child: Center(
-                    child: InkWell(
-                      key: ValueKey<String>(
-                          'logger.tick.$exerciseIndex.$setIndex'),
-                      borderRadius: MayosRadii.smallRadius,
-                      onTap: () => _toggleTick(exerciseIndex, setIndex),
-                      child: SizedBox(
-                        width: kLoggerTickSize,
-                        height: kLoggerTickSize,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: set.ticked ? c.success : c.surfaceSunken,
-                            borderRadius: MayosRadii.smallRadius,
-                          ),
-                          child: Icon(
-                            Icons.check,
-                            size: 20,
-                            color: set.ticked ? c.onSuccess : c.textMuted,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          // The PR badges sit under the row they belong to (#107/#124).
-          if (!held.isEmpty) _buildBadges(exerciseIndex, setIndex, held),
-        ],
-      ),
-    );
-
-    if (exercise.sets.length > 1) {
-      // Keyed by the row's own stable id, so removing an earlier row never
-      // re-identifies the one being swiped (#123 item 3).
-      row = Dismissible(
-        key: ValueKey<String>(set.id),
-        direction: DismissDirection.endToStart,
-        onDismissed: (_) => _removeSet(exerciseIndex, setIndex),
-        background: Container(
-          color: c.danger,
-          alignment: Alignment.centerRight,
-          padding: const EdgeInsets.only(right: MayosSpacing.md),
-          child: Icon(Icons.delete, color: c.onDanger),
-        ),
-        child: row,
-      );
-    }
-    return row;
-  }
-
-  /// The badges under one set row: the records it still holds solidly first,
-  /// then the ones a later set took over — struck through and muted (#107
-  /// resolution, #124).
-  Widget _buildBadges(int exerciseIndex, int setIndex, SetRecordBadges held) =>
-      Padding(
-        padding: const EdgeInsets.only(bottom: MayosSpacing.xxs),
-        child: Wrap(
-          spacing: MayosSpacing.xs,
-          runSpacing: MayosSpacing.xxs,
-          alignment: WrapAlignment.center,
-          children: <Widget>[
-            for (final PrRecordKind kind in held.current)
-              PersonalRecordBadge(
-                key: ValueKey<String>(
-                    'logger.pr.$exerciseIndex.$setIndex.${kind.name}'),
-                kind: kind,
-              ),
-            for (final PrRecordKind kind in held.beaten)
-              PersonalRecordBadge(
-                key: ValueKey<String>(
-                    'logger.pr.$exerciseIndex.$setIndex.${kind.name}'),
-                kind: kind,
-                beaten: true,
-              ),
-          ],
-        ),
-      );
-
-  Widget _buildCell(
-    int exerciseIndex,
-    int setIndex,
-    LoggerField field, {
-    required String? value,
-    required String? hint,
-    required bool muted,
-    required bool ticked,
-  }) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    final bool focused =
-        _focus == LoggerCellFocus(exerciseIndex, setIndex, field);
-    // A hint (or a warm-up row) reads as disabled ink; a typed value is solid.
-    final Color color = value == null || muted ? c.textDisabled : c.textPrimary;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: MayosSpacing.xxs),
-      child: Material(
-        color: focused
-            ? c.selectedSurface
-            : ticked
-                ? Colors.transparent
-                : c.surfaceSunken,
-        shape: RoundedRectangleBorder(
-          borderRadius: MayosRadii.smallRadius,
-          side: BorderSide(
-              color: focused ? c.selectedBorder : Colors.transparent),
-        ),
-        child: InkWell(
-          key: ValueKey<String>(
-              'logger.cell.$exerciseIndex.$setIndex.${field.name}'),
-          borderRadius: MayosRadii.smallRadius,
-          onTap: () => setState(() =>
-              _changeFocus(LoggerCellFocus(exerciseIndex, setIndex, field))),
-          child: SizedBox(
-            height: kMayosMinTapTarget,
-            child: Center(
-              child: Text(
-                value ?? hint ?? '–',
-                style: MayosTypography.numericSmall.copyWith(color: color),
-              ),
-            ),
-          ),
-        ),
-      ),
+    return SetLoggingRow(
+      exerciseIndex: exerciseIndex,
+      setIndex: setIndex,
+      set: set,
+      previous: previousSetFor(exercise, setIndex, workout.baselines),
+      prescriptionHint: exercise.prescriptionHint,
+      badges: badges[set.id] ?? const SetRecordBadges(),
+      focus: _focus,
+      isCurrent: isCurrent,
+      onSelectCell: (LoggerField field) => setState(() =>
+          _changeFocus(LoggerCellFocus(exerciseIndex, setIndex, field))),
+      onToggleWarmup: () => unawaited(_updateWithRecordHaptic(
+        exerciseIndex,
+        setIndex,
+        () => _controller.toggleWarmup(exerciseIndex, setIndex),
+      )),
+      onToggleTick: () => _toggleTick(exerciseIndex, setIndex),
+      // A row is swiped away only when the exercise keeps at least one row,
+      // exactly as before (#123 item 3).
+      onDismissed: exercise.sets.length > 1
+          ? () => _removeSet(exerciseIndex, setIndex)
+          : null,
     );
   }
 

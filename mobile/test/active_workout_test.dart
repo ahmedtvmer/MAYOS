@@ -407,6 +407,116 @@ void main() {
     });
   });
 
+  group('Current set (#158)', () {
+    /// Two exercises worth of rows, straight into the model: the Current set
+    /// is a pure derivation, so it needs no controller, no store and no API.
+    ActiveWorkout workoutOf(List<List<ActiveWorkoutSet>> exercises) =>
+        ActiveWorkout(
+          id: 'aw-current',
+          accountId: _account,
+          startedAt: '2026-09-28T08:00:00.000Z',
+          dayOrder: 2,
+          dayName: 'Upper A',
+          programVersion: 3,
+          exercises: <ActiveWorkoutExercise>[
+            for (int i = 0; i < exercises.length; i++)
+              ActiveWorkoutExercise(
+                exercise: <String, dynamic>{
+                  'exercise_id': 'exercise_$i',
+                  'exercise_name': 'Exercise $i',
+                },
+                sets: exercises[i],
+              ),
+          ],
+          baselines: const <String, BaselineExercise>{},
+        );
+
+    test('is the first unticked working set of the first exercise', () {
+      final ActiveWorkout workout = workoutOf(<List<ActiveWorkoutSet>>[
+        <ActiveWorkoutSet>[
+          ActiveWorkoutSet(),
+          ActiveWorkoutSet(),
+        ],
+        <ActiveWorkoutSet>[ActiveWorkoutSet()],
+      ]);
+      expect(currentSetOf(workout), (exerciseIndex: 0, setIndex: 0));
+    });
+
+    test('skips warm-ups and keeps counting past them', () {
+      final ActiveWorkout workout = workoutOf(<List<ActiveWorkoutSet>>[
+        <ActiveWorkoutSet>[
+          ActiveWorkoutSet(isWarmup: true),
+          ActiveWorkoutSet(isWarmup: true),
+          ActiveWorkoutSet(),
+          ActiveWorkoutSet(),
+        ],
+      ]);
+      expect(currentSetOf(workout), (exerciseIndex: 0, setIndex: 2));
+
+      // A ticked warm-up changes nothing: warm-ups are never current.
+      final ActiveWorkout ticked = workoutOf(<List<ActiveWorkoutSet>>[
+        <ActiveWorkoutSet>[
+          ActiveWorkoutSet(isWarmup: true, ticked: true),
+          ActiveWorkoutSet(),
+        ],
+      ]);
+      expect(currentSetOf(ticked), (exerciseIndex: 0, setIndex: 1));
+    });
+
+    test('follows the ticks down the exercise and across to the next one',
+        () {
+      final ActiveWorkout workout = workoutOf(<List<ActiveWorkoutSet>>[
+        <ActiveWorkoutSet>[
+          ActiveWorkoutSet(ticked: true),
+          ActiveWorkoutSet(),
+          ActiveWorkoutSet(),
+        ],
+        <ActiveWorkoutSet>[ActiveWorkoutSet()],
+      ]);
+      expect(currentSetOf(workout), (exerciseIndex: 0, setIndex: 1));
+
+      final ActiveWorkout nextExercise = workoutOf(<List<ActiveWorkoutSet>>[
+        <ActiveWorkoutSet>[
+          ActiveWorkoutSet(ticked: true),
+          ActiveWorkoutSet(ticked: true),
+          ActiveWorkoutSet(ticked: true),
+        ],
+        <ActiveWorkoutSet>[
+          ActiveWorkoutSet(isWarmup: true),
+          ActiveWorkoutSet(),
+        ],
+      ]);
+      expect(currentSetOf(nextExercise), (exerciseIndex: 1, setIndex: 1));
+
+      // Ticks are reversible: unticking points the highlight back.
+      final ActiveWorkout unticked = workoutOf(<List<ActiveWorkoutSet>>[
+        <ActiveWorkoutSet>[ActiveWorkoutSet()],
+        <ActiveWorkoutSet>[ActiveWorkoutSet(ticked: true)],
+      ]);
+      expect(currentSetOf(unticked), (exerciseIndex: 0, setIndex: 0));
+    });
+
+    test('is null once every working set is ticked', () {
+      final ActiveWorkout done = workoutOf(<List<ActiveWorkoutSet>>[
+        <ActiveWorkoutSet>[
+          ActiveWorkoutSet(ticked: true),
+          ActiveWorkoutSet(isWarmup: true),
+          ActiveWorkoutSet(ticked: true),
+        ],
+        <ActiveWorkoutSet>[
+          ActiveWorkoutSet(ticked: true),
+        ],
+      ]);
+      expect(currentSetOf(done), isNull);
+    });
+
+    test('an empty workout has no current set at all', () {
+      final ActiveWorkout empty =
+          workoutOf(<List<ActiveWorkoutSet>>[<ActiveWorkoutSet>[]]);
+      expect(currentSetOf(empty), isNull);
+    });
+  });
+
   group('store writes are serialized (#123 item 5)', () {
     test('writes land in state order and the latest state wins', () async {
       final FakeMayosApi fake = _signedInFake();

@@ -24,27 +24,35 @@ class RestLengthChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    // The pill stays compact; the tappable area around it is a full 48dp
+    // (#158), so the chip meets the accessibility guidance without growing
+    // into a fat button.
     return InkWell(
       onTap: onPressed,
       borderRadius: MayosRadii.pillRadius,
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-            horizontal: MayosSpacing.sm, vertical: MayosSpacing.xxs),
-        decoration: BoxDecoration(
-          color: c.selectedSurface,
-          borderRadius: MayosRadii.pillRadius,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(Icons.timer_outlined,
-                size: MayosIconSizes.small, color: c.accent),
-            const SizedBox(width: MayosSpacing.xxs),
-            Text(
-              _label,
-              style: MayosTypography.captionStrong.copyWith(color: c.accent),
+      child: SizedBox(
+        height: kMayosMinTapTarget,
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: MayosSpacing.sm, vertical: MayosSpacing.xxs),
+            decoration: BoxDecoration(
+              color: c.selectedSurface,
+              borderRadius: MayosRadii.pillRadius,
             ),
-          ],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(Icons.timer_outlined,
+                    size: MayosIconSizes.small, color: c.accent),
+                const SizedBox(width: MayosSpacing.xxs),
+                Text(
+                  _label,
+                  style: MayosTypography.captionStrong.copyWith(color: c.accent),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

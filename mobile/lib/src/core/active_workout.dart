@@ -148,6 +148,30 @@ String previousLabel(BaselineSet? set) {
   return '${formatCellWeight(set.weightKg)} × ${set.reps}$effort';
 }
 
+/// The **Current set** (CONTEXT.md, #158): the first unticked working set in
+/// workout order — warm-ups skipped, moving across exercises — derived from
+/// the Active workout and never stored. Null when every working set is
+/// ticked.
+///
+/// "Working" is the row's *role* (not a warm-up), not the server's value
+/// predicate [isWorkingSet]: the next set to do is normally still empty, and
+/// an empty pending row is exactly the set the player logs next.
+({int exerciseIndex, int setIndex})? currentSetOf(ActiveWorkout workout) {
+  for (int exerciseIndex = 0;
+      exerciseIndex < workout.exercises.length;
+      exerciseIndex++) {
+    final List<ActiveWorkoutSet> sets =
+        workout.exercises[exerciseIndex].sets;
+    for (int setIndex = 0; setIndex < sets.length; setIndex++) {
+      final ActiveWorkoutSet set = sets[setIndex];
+      if (!set.isWarmup && !set.ticked) {
+        return (exerciseIndex: exerciseIndex, setIndex: setIndex);
+      }
+    }
+  }
+  return null;
+}
+
 /// The running rest timer, stored inside the Active workout so it survives a
 /// restart (#125): when it ends, plus what the bar and the lock-screen
 /// notification label it with.
@@ -282,7 +306,10 @@ class ActiveWorkoutExercise {
   final List<ActiveWorkoutSet> sets;
   final bool unplanned;
 
-  /// The prescription caption shown on the card, when planned.
+  /// The program day's own caption, kept on the exercise and persisted with
+  /// the Active workout. The card no longer renders it (#158): it builds its
+  /// prescription line from [exercise] instead, so planned and unplanned
+  /// cards read alike.
   final String? targetLabel;
 
   /// The prescription target shown as the faded hint on cells that have no

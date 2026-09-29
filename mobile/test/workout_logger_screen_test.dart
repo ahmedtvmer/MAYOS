@@ -14,6 +14,7 @@ import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/performed_date_window.dart';
 import 'package:mayos_mobile/src/core/personal_records.dart';
+import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
@@ -127,14 +128,15 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
-FakeMayosApi _signedInFake() {
+FakeMayosApi _signedInFake(
+    {List<Map<String, dynamic>>? baselines}) {
   final FakeMayosApi fake = FakeMayosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
   fake.profileExists = true;
   fake.recoveryEmail = 'alice@example.com';
-  fake.baselinesBody = _baselinesBody();
+  fake.baselinesBody = baselines ?? _baselinesBody();
   return fake;
 }
 
@@ -197,13 +199,14 @@ Future<void> _openLogger(
   WidgetTester tester, {
   String startedAt = '2026-09-28T08:00:00.000Z',
   InMemoryDraftStore? drafts,
+  List<Map<String, dynamic>>? baselines,
 }) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
-  final FakeMayosApi fake = _signedInFake();
+  final FakeMayosApi fake = _signedInFake(baselines: baselines);
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
   // Seeding talks to the (fake) API on real timers, so it runs outside the
@@ -254,6 +257,14 @@ Finder _cell(int exercise, int set, String field) =>
 
 Finder _tick(int exercise, int set) =>
     find.byKey(ValueKey<String>('logger.tick.$exercise.$set'));
+
+Finder _row(int exercise, int set) =>
+    find.byKey(ValueKey<String>('logger.row.$exercise.$set'));
+
+/// The row's own background: null while pending, the Current set's blue wash,
+/// or the ticked tint — what the player actually sees (#158).
+Color? _rowColor(WidgetTester tester, Finder row) =>
+    (tester.widget<Container>(row).decoration as BoxDecoration).color;
 
 Color _textColor(WidgetTester tester, Finder finder) => tester
     .widget<Text>(find.descendant(of: finder, matching: find.byType(Text)))
@@ -311,34 +322,114 @@ int _heavyImpacts(List<MethodCall> calls) => calls
     .length;
 
 void main() {
-  testWidgets('PREVIOUS is matched set by set and shows — with none',
-      (WidgetTester tester) async {
+  testWidgets(
+      'the table is SET · KG · REPS · RIR · ✓ and the baseline rides on the '
+      'card as the Last: line (#158)', (WidgetTester tester) async {
     await _openLogger(tester);
+    final MayosThemeExtension c = MayosThemeExtension.light;
 
     expect(find.byType(WorkoutLoggerScreen), findsOneWidget);
-    expect(find.text('100 × 5 @1'), findsOneWidget);
-    expect(find.text('95 × 6 @2'), findsOneWidget);
-    // The third bench set has no previous working set…
-    expect(find.text('—'), findsOneWidget);
-    // …and an unrated previous set drops the `@` part (planned alike).
-    expect(find.text('40 × 10'), findsOneWidget);
-    // Header columns from the #107 resolution.
-    for (final String label in <String>[
-      'SET',
-      'PREVIOUS',
-      'KG',
-      'REPS',
-      'RIR'
-    ]) {
+
+    // Header columns: the PREVIOUS column is gone (#158).
+    for (final String label in <String>['SET', 'KG', 'REPS', 'RIR', '✓']) {
       expect(find.text(label), findsWidgets);
     }
-    // The prescription caption rides on the card, as the old logger showed it.
-    expect(find.text('3 × 5–8 @ RIR ≥ 2'), findsOneWidget);
+    expect(find.text('PREVIOUS'), findsNothing);
+    expect(find.text('100 × 5 @1'), findsNothing);
+
+    // The frozen baseline's last session, working sets in logged order, is
+    // one line per card…
+    expect(find.text('Last: 100kg × 5 · 95kg × 6'), findsOneWidget);
+    expect(find.text('Last: 40kg × 10'), findsOneWidget);
+
+    // …and it is matched set by set as the faded hint in every empty cell:
+    // bench's first working set…
+    expect(_textColor(tester, _cell(0, 0, 'kg')), c.textDisabled);
+    expect(
+      find.descendant(of: _cell(0, 0, 'kg'), matching: find.text('100')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: _cell(0, 0, 'reps'), matching: find.text('5')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: _cell(0, 0, 'rir'), matching: find.text('1')),
+      findsOneWidget,
+    );
+    // …its second…
+    expect(
+      find.descendant(of: _cell(0, 1, 'kg'), matching: find.text('95')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: _cell(0, 1, 'reps'), matching: find.text('6')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: _cell(0, 1, 'rir'), matching: find.text('2')),
+      findsOneWidget,
+    );
+    // …and the third bench set has no previous working set, so its hint is
+    // the prescription target (#107/#108).
+    expect(
+      find.descendant(of: _cell(0, 2, 'kg'), matching: find.text('60')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: _cell(0, 2, 'rir'), matching: find.text('≥ 2')),
+      findsOneWidget,
+    );
+    // The prescription line the card now carries, rest included (#158).
+    expect(
+      find.text('3 sets · 5–8 reps · RIR ≥ 2 · Rest 3:00'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('1 sets · 8–12 reps · RIR ≥ 2 · Rest 2:00'),
+      findsOneWidget,
+    );
     // The Unplanned tag only where it applies: none of the planned cards.
     expect(find.text('Unplanned'), findsNothing);
   });
 
-  testWidgets('a warm-up row shows — and is never filled from a previous set',
+  testWidgets('the Last: line is hidden entirely when there is no history '
+      '(#158)', (WidgetTester tester) async {
+    await _openLogger(tester, baselines: <Map<String, dynamic>>[]);
+
+    expect(find.textContaining('Last:'), findsNothing);
+    // The rest of the card is unchanged: the prescription is always there.
+    expect(
+      find.text('3 sets · 5–8 reps · RIR ≥ 2 · Rest 3:00'),
+      findsOneWidget,
+    );
+    // Without a baseline there is nothing to hint from either: the cells
+    // fall back to the prescription target.
+    expect(
+      find.descendant(of: _cell(0, 0, 'kg'), matching: find.text('60')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the exercise card names the movement in primary colour and '
+      'adds a full-width + Add set (#158)', (WidgetTester tester) async {
+    await _openLogger(tester);
+    final MayosThemeExtension c = MayosThemeExtension.light;
+
+    // Blue is reserved for what the player must act on (#157).
+    expect(tester.widget<Text>(find.text('Bench Press')).style!.color,
+        c.textPrimary);
+    expect(tester.widget<Text>(find.text('Incline Press')).style!.color,
+        c.textPrimary);
+
+    final Finder addSet = find.widgetWithText(OutlinedButton, '+ Add set');
+    expect(addSet, findsNWidgets(2));
+    // Full-width inside the card, not a quiet text link (#158).
+    expect(tester.getSize(addSet.first).width, greaterThan(200));
+  });
+
+  testWidgets(
+      'a warm-up row has no previous to borrow and is never filled from one',
       (WidgetTester tester) async {
     await _openLogger(tester);
     final MayosThemeExtension c = MayosThemeExtension.light;
@@ -349,12 +440,26 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('W'), findsOneWidget);
-    // The warm-up row has no previous working set of its own…
-    expect(find.text('—'), findsOneWidget);
-    // …and the rows below it renumber: working row 2 is now the *second*
-    // working set, so it takes the baseline's second previous working set.
-    expect(find.text('100 × 5 @1'), findsOneWidget);
-    expect(find.text('95 × 6 @2'), findsOneWidget);
+    // The warm-up row falls back to the prescription target…
+    expect(
+      find.descendant(of: _cell(0, 1, 'kg'), matching: find.text('60')),
+      findsOneWidget,
+    );
+    // …and the rows below it renumber: working row 3 is now the *second*
+    // working set, so it takes the baseline's second previous working set,
+    // while row 1 keeps the first.
+    expect(
+      find.descendant(of: _cell(0, 0, 'kg'), matching: find.text('100')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: _cell(0, 2, 'kg'), matching: find.text('95')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: _cell(0, 2, 'rir'), matching: find.text('2')),
+      findsOneWidget,
+    );
 
     // With no previous to borrow, the tick cannot fill the row: it opens the
     // keypad instead, and the prescription target is the faded hint.
@@ -519,6 +624,141 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('W'), findsNothing);
     expect(_textColor(tester, label), MayosThemeExtension.light.textPrimary);
+  });
+
+  testWidgets(
+      'the Current set is the first unticked working set and moves across '
+      'exercises, skipping warm-ups (#158)', (WidgetTester tester) async {
+    await _openLogger(tester);
+    final MayosThemeExtension c = MayosThemeExtension.light;
+
+    // A fresh workout: bench's first working set is next, everyone else
+    // neutral.
+    expect(_rowColor(tester, _row(0, 0)), c.accentSubtle);
+    expect(_rowColor(tester, _row(0, 1)), isNull);
+    expect(_rowColor(tester, _row(0, 2)), isNull);
+    expect(_rowColor(tester, _row(1, 0)), isNull);
+
+    // Ticking it moves the highlight on to the next row…
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_rowColor(tester, _row(0, 0)), c.successTint);
+    expect(_rowColor(tester, _row(0, 1)), c.accentSubtle);
+
+    // …and turning that row into a warm-up makes the highlight skip it,
+    // because warm-ups are never the next working set (#158).
+    await tester.tap(find.byKey(const ValueKey<String>('logger.setlabel.0.1')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_rowColor(tester, _row(0, 1)), isNull);
+    expect(_rowColor(tester, _row(0, 2)), c.accentSubtle);
+
+    // Ticking the third row carries the Current set across to the next
+    // exercise — it is never confined to one card.
+    await _typeCell(tester, 0, 2, 'kg', '80');
+    await _typeCell(tester, 0, 2, 'reps', '6');
+    await tester.tap(_tick(0, 2));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_rowColor(tester, _row(0, 2)), c.successTint);
+    expect(_rowColor(tester, _row(1, 0)), c.accentSubtle);
+
+    // Every working set ticked: there is no Current set left to point at.
+    await tester.tap(_tick(1, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    for (final Finder row in <Finder>[
+      _row(0, 0),
+      _row(0, 1),
+      _row(0, 2),
+      _row(1, 0),
+    ]) {
+      expect(_rowColor(tester, row), isNot(c.accentSubtle));
+    }
+  });
+
+  testWidgets('row states: a pending check is outlined, a ticked row is '
+      'filled, tinted and still editable (#158)', (WidgetTester tester) async {
+    await _openLogger(tester);
+    final MayosThemeExtension c = MayosThemeExtension.light;
+
+    BoxDecoration tickDecoration(WidgetTester tester) => tester
+        .widget<DecoratedBox>(
+            find.descendant(of: _tick(0, 1), matching: find.byType(DecoratedBox)))
+        .decoration as BoxDecoration;
+
+    // Set 2 is pending: neutral row, outlined check.
+    final BoxDecoration pending = tickDecoration(tester);
+    expect(pending.color, isNull);
+    expect(pending.border, isNotNull);
+    expect(_rowColor(tester, _row(0, 1)), isNull);
+
+    await tester.tap(_tick(0, 1));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final BoxDecoration done = tickDecoration(tester);
+    expect(done.color, c.accent);
+    expect(done.border, isNull);
+    expect(_rowColor(tester, _row(0, 1)), c.successTint);
+
+    // Ticked values stay editable: the keypad still opens on them (#158).
+    await tester.tap(_cell(0, 1, 'reps'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Bench Press · set 2 · Reps'), findsOneWidget);
+  });
+
+  testWidgets('RIR in the row is a compact selector that opens the existing '
+      'chips (#158)', (WidgetTester tester) async {
+    await _openLogger(tester);
+
+    // The chevron says it opens…
+    expect(
+      find.descendant(
+          of: _cell(0, 0, 'rir'), matching: find.byIcon(Icons.expand_more)),
+      findsOneWidget,
+    );
+    // …and it opens exactly the keypad's own chips: 0–4, 5+ and Unrated,
+    // with no free numeric field anywhere (#111/#158).
+    await tester.tap(_cell(0, 0, 'rir'));
+    await tester.pump(const Duration(milliseconds: 100));
+    for (final int value in <int>[0, 1, 2, 3, 4, 5]) {
+      expect(
+          find.byKey(ValueKey<String>('logger.rir.$value')), findsOneWidget);
+    }
+    expect(find.byKey(const ValueKey<String>('logger.rir.unrated')),
+        findsOneWidget);
+    expect(find.text('.'), findsNothing);
+
+    // One tap sets the effort and walks on to the next set (#123 item 10).
+    await tester.tap(find.byKey(const ValueKey<String>('logger.rir.3')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      find.descendant(of: _cell(0, 0, 'rir'), matching: find.text('3')),
+      findsOneWidget,
+    );
+    expect(find.text('Bench Press · set 2 · Weight (kg)'), findsOneWidget);
+  });
+
+  testWidgets('no overflow at 360dp and the row keeps its 48dp targets (#158)',
+      (WidgetTester tester) async {
+    await _openLogger(tester);
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+
+    expect(tester.getSize(_cell(0, 0, 'kg')).height, kMayosMinTapTarget);
+    expect(tester.getSize(_cell(0, 0, 'rir')).height, kMayosMinTapTarget);
+    expect(tester.getSize(_tick(0, 0)).height, kMayosMinTapTarget);
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey<String>('logger.setlabel.0.0')))
+          .height,
+      kMayosMinTapTarget,
+    );
+    // The tick is as wide as its column allows (48dp at 360, minus the
+    // card's 1dp border) and never overflows it.
+    expect(tester.getSize(_tick(0, 0)).width, greaterThanOrEqualTo(47));
+    // The row spans the card rather than a fixed cramped width.
+    expect(tester.getSize(_row(0, 0)).width, greaterThan(250));
+    expect(tester.getSize(_row(0, 0)).width, lessThan(360));
   });
 
   testWidgets('swiping a middle set row deletes that row only',
