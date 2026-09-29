@@ -20,6 +20,8 @@ dependencies:
   url_launcher: ^6.3.0
   # The workout logger keeps the screen awake while it is open (#123/#107).
   wakelock_plus: ^1.2.8
+  flutter_local_notifications: ^22.3.1
+  timezone: ^0.11.1
 
 dev_dependencies:
   flutter_test:

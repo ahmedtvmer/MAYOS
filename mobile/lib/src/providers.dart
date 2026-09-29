@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/material.dart' show ThemeMode;
+import 'package:flutter/material.dart'
+    show GlobalKey, ScaffoldMessengerState, SnackBar, Text, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/account_data_eraser.dart';
@@ -11,6 +12,8 @@ import 'core/baselines.dart';
 import 'core/chat_storage.dart';
 import 'core/config.dart';
 import 'core/models.dart';
+import 'core/rest_alerts.dart';
+import 'core/rest_length.dart';
 import 'core/theme/theme_mode_controller.dart';
 import 'core/theme/theme_mode_store.dart';
 import 'core/token_store.dart';
@@ -288,6 +291,33 @@ final Provider<BaselinesService> baselinesServiceProvider =
           drafts: ref.watch(draftStoreProvider),
         ));
 
+/// The root scaffold messenger, so a one-line explanation raised outside any
+/// screen's own messenger — the rest-alarm permission ask (#125) — still has
+/// somewhere to appear.
+final GlobalKey<ScaffoldMessengerState> mayosMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
+/// The one seam to the platform's rest-alert machinery (notification, alarm,
+/// end-of-rest sound/vibration, #125): the real Android implementation on
+/// Android, in-app-only no-op elsewhere (web included).
+final Provider<RestAlerts> restAlertsProvider = Provider<RestAlerts>((ref) {
+  return platformRestAlerts(
+    explain: (String line) =>
+        mayosMessengerKey.currentState?.showSnackBar(
+      SnackBar(content: Text(line)),
+    ),
+  );
+});
+
+/// Device persistence for the player's per-exercise rest overrides, per
+/// account (#125) — the same online/offline gate as the other protected
+/// stores, so web never writes to browser storage (ADR 022).
+final Provider<RestLengthStore> restLengthStoreProvider =
+    Provider<RestLengthStore>((ref) =>
+        ref.watch(offlineWorkoutDraftsEnabledProvider)
+            ? SecureRestLengthStore()
+            : InMemoryRestLengthStore());
+
 /// The signed-in account's Active workout, restored from device storage when
 /// the session resolves and persisted after every change (#123).
 final StateNotifierProvider<ActiveWorkoutController, ActiveWorkoutState>
@@ -306,6 +336,8 @@ final StateNotifierProvider<ActiveWorkoutController, ActiveWorkoutState>
       accountId: accountId,
       dayOrder: dayOrder,
     ),
+    restLengths: ref.watch(restLengthStoreProvider),
+    alerts: ref.watch(restAlertsProvider),
   );
   ref.listen<AuthState>(authControllerProvider,
       (AuthState? previous, AuthState next) {

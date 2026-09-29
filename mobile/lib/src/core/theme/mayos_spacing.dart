@@ -53,3 +53,13 @@ abstract final class MayosMotion {
 
 /// Minimum interactive size. Material guidance: 48dp touch targets.
 const double kMayosMinTapTarget = 48;
+
+/// Named icon sizes, so screens pick one of these instead of a magic pixel
+/// value (DESIGN.md: sizes are named like every other visual token).
+abstract final class MayosIconSizes {
+  /// Small inline icon that sits inside caption-height chrome (a chip/pill).
+  static const double small = 14;
+
+  /// Standard inline icon: trailing chevrons, row actions, sheet checks.
+  static const double medium = 20;
+}

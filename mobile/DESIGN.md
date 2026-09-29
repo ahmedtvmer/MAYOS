@@ -91,7 +91,9 @@ All under `lib/src/core/theme/`.
   MAYOS-only semantics: `canvas`, `surface`, `surfaceElevated`, `surfaceSunken`,
   `secondarySurface`, `border`, `borderStrong`, `textPrimary`, `textSecondary`,
   `textMuted`, `textDisabled`, `accent`, `accentPressed`, `onAccent`,
-  `accentSubtle`, `selectedSurface`, `selectedBorder`, `focusRing`, `success`,
+  `accentSubtle`, `accentWash` (accent as a 14% wash drawn behind accent
+  content, e.g. the rest bar's draining fill), `selectedSurface`,
+  `selectedBorder`, `focusRing`, `success`,
   `successTint` (success as a faint row wash), `warning`, `danger` (+ `on*`),
   `chartPrimary/Secondary/Tertiary`, `pressedOverlay`, `shadows`.
 - `mayos_typography.dart` — named roles: display, page heading, section
@@ -100,7 +102,8 @@ All under `lib/src/core/theme/`.
   `textTheme()` mapping onto Material slots.
 - `mayos_spacing.dart` — `MayosSpacing` (4…40), `MayosRadii` (8/12/16/24/pill),
   `MayosMotion` (150/220/320 ms with standard/emphasized curves),
-  `kMayosMinTapTarget` (48).
+  `MayosIconSizes` (small 14 / medium 20 — named icon sizes, never raw pixel
+  literals), `kMayosMinTapTarget` (48).
 - `mayos_theme.dart` — `MayosTheme.light` / `MayosTheme.dark` / `MayosTheme.of`,
   built from the tokens with component themes overridden for app bars, buttons,
   inputs, cards, navigation, dialogs, sheets, snackbars, chips, list tiles,

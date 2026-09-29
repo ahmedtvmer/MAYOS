@@ -69,6 +69,9 @@ class _MayosAppState extends ConsumerState<MayosApp>
       theme: MayosTheme.light,
       darkTheme: MayosTheme.dark,
       themeMode: themeMode,
+      // Root messenger for permission one-liners raised outside a screen's
+      // own messenger (the rest-alarm ask, #125).
+      scaffoldMessengerKey: mayosMessengerKey,
       routerConfig: router,
       builder: (BuildContext context, Widget? child) {
         final MayosThemeExtension c = _effective(context, themeMode);

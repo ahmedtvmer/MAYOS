@@ -3,6 +3,7 @@
 library;
 
 import 'effort.dart';
+import 'rest_length.dart';
 
 class Capabilities {
   const Capabilities({required this.player, required this.coach});
@@ -1532,7 +1533,7 @@ class ProgramExercise {
     required this.targetRepsMax,
     required this.targetRpe,
     this.warmupSets = 0,
-    this.restSeconds = 180,
+    this.restSeconds,
     this.notes,
   });
 
@@ -1545,7 +1546,9 @@ class ProgramExercise {
         targetRepsMax: (json['target_reps_max'] as num?)?.toInt() ?? 0,
         targetRpe: (json['target_rpe'] as num?)?.toDouble() ?? 8.5,
         warmupSets: (json['warmup_sets'] as num?)?.toInt() ?? 0,
-        restSeconds: (json['rest_seconds'] as num?)?.toInt() ?? 180,
+        // A missing `rest_seconds` is *unset*, not 180: the rest timer then
+        // resolves it to the flat 2:00 instead of a phantom 3:00 (#125).
+        restSeconds: (json['rest_seconds'] as num?)?.toInt(),
         notes: json['notes'] as String?,
       );
 
@@ -1558,8 +1561,15 @@ class ProgramExercise {
 
   /// Ramped warm-up sets prescribed before the working sets (0 when none).
   final int warmupSets;
-  final int restSeconds;
+
+  /// The program's rest, or null when the program carried none (#125): unset
+  /// is distinguishable from a value, and resolves to [kDefaultRestSeconds]
+  /// wherever a length is needed. Display falls back to the same default, so
+  /// a program that omits the field still reads "rest 120s".
+  final int? restSeconds;
   final String? notes;
+
+  int get restSecondsOrDefault => restSeconds ?? kDefaultRestSeconds;
 
   bool get hasNotes => notes != null && notes!.isNotEmpty;
 
@@ -1568,19 +1578,29 @@ class ProgramExercise {
   String get prescription =>
       '$targetSets × $targetRepsMin–$targetRepsMax @ RIR ${minRirLabel(targetRpe)}';
 
-  String get restLabel => 'rest ${restSeconds}s';
+  String get restLabel => 'rest ${restSecondsOrDefault}s';
 
-  Map<String, dynamic> toJson() => <String, dynamic>{
-        'exercise_id': exerciseId,
-        'exercise_name': exerciseName,
-        'target_sets': targetSets,
-        'target_reps_min': targetRepsMin,
-        'target_reps_max': targetRepsMax,
-        'target_rpe': targetRpe,
-        'warmup_sets': warmupSets,
-        'rest_seconds': restSeconds,
-        'notes': notes,
-      };
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> json = <String, dynamic>{
+      'exercise_id': exerciseId,
+      'exercise_name': exerciseName,
+      'target_sets': targetSets,
+      'target_reps_min': targetRepsMin,
+      'target_reps_max': targetRepsMax,
+      'target_rpe': targetRpe,
+      'warmup_sets': warmupSets,
+    };
+    // The key is omitted when unset, so the Active workout (and the draft
+    // built from it) keeps "no rest_seconds" as-is and the timer resolves it
+    // to 2:00 rather than writing a phantom 180 back (#125). Its position in
+    // the map is kept, so the draft's encoded shape is unchanged when the
+    // program did carry a value.
+    if (restSeconds != null) {
+      json['rest_seconds'] = restSeconds;
+    }
+    json['notes'] = notes;
+    return json;
+  }
 }
 
 /// `WarmupExerciseSchema`: a general preparation movement for a training day.

@@ -368,7 +368,7 @@ class _PrescriptionTrio extends StatelessWidget {
         ),
         Expanded(
           child: _PrescriptionStat(
-            value: '${exercise.restSeconds}s',
+            value: '${exercise.restSecondsOrDefault}s',
             label: 'Rest',
           ),
         ),
