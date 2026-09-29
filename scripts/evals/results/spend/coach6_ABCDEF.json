@@ -1,0 +1,41 @@
+{
+  "by_model": {
+    "Qwen/Qwen3.5-27B": {
+      "calls": 234,
+      "prompt_tokens": 5071673,
+      "completion_tokens": 30612,
+      "usd": 1.398226179999999
+    },
+    "deepseek-ai/DeepSeek-V4-Flash": {
+      "calls": 233,
+      "prompt_tokens": 4324137,
+      "completion_tokens": 13898,
+      "usd": 0.3916739700000003
+    },
+    "Qwen/Qwen3-32B": {
+      "calls": 177,
+      "prompt_tokens": 431143,
+      "completion_tokens": 14727,
+      "usd": 0.038614999999999976
+    },
+    "Qwen/Qwen2.5-72B-Instruct": {
+      "calls": 175,
+      "prompt_tokens": 420156,
+      "completion_tokens": 9812,
+      "usd": 0.15518096000000006
+    },
+    "Qwen/Qwen3-235B-A22B-Instruct-2507": {
+      "calls": 234,
+      "prompt_tokens": 5026746,
+      "completion_tokens": 17883,
+      "usd": 0.46224279000000024
+    },
+    "zai-org/GLM-5.3-Flash": {
+      "calls": 227,
+      "prompt_tokens": 3930352,
+      "completion_tokens": 26174,
+      "usd": 0.3013198999999999
+    }
+  },
+  "total_usd": 2.74726
+}
