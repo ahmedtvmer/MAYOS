@@ -83,6 +83,7 @@ __all__ = [
     "ProfileUpdate",
     "ProgramExerciseSchema",
     "ProgramGenerateIn",
+    "ProgramSubstitutionIn",
     "ProgramRequestDeclineIn",
     "ProgramRequestOut",
     "RecoveryEmailOut",
@@ -718,6 +719,15 @@ class ProgramGenerateIn(BaseModel):
     rep_preference_override: str | None = None
     frequency_override: int | None = Field(default=None, ge=1, le=5)
     user_split_override: str | None = None
+
+
+class ProgramSubstitutionIn(BaseModel):
+    """One permanent slot swap in the player's active program."""
+
+    day_name: str = Field(min_length=1, max_length=100)
+    exercise_id: str = Field(min_length=1, max_length=200)
+    replacement_exercise_id: str = Field(min_length=1, max_length=200)
+    all_occurrences: bool = False
 
 
 class PlayerProgramRequestIn(BaseModel):

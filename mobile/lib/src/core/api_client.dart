@@ -1104,6 +1104,31 @@ class ApiClient {
     return TrainingProgram.fromJson(data as Map<String, dynamic>);
   }
 
+  /// Permanently substitutes a program slot and returns the new active version.
+  Future<TrainingProgram> substituteProgramExercise({
+    required String dayName,
+    required String exerciseId,
+    required String replacementExerciseId,
+    bool allOccurrences = false,
+  }) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/programs/active/substitutions',
+        data: <String, dynamic>{
+          'day_name': dayName,
+          'exercise_id': exerciseId,
+          'replacement_exercise_id': replacementExerciseId,
+          'all_occurrences': allOccurrences,
+        },
+      ),
+    );
+    return _parseBody(
+      response.data,
+      TrainingProgram.fromJson,
+      'The service returned invalid program data.',
+    );
+  }
+
   Future<Map<String, double>> volume({int days = 7}) async {
     final response = await _send(
       () => _dio

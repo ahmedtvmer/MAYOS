@@ -116,6 +116,10 @@ class FakeMayosApi {
   int _publishedVersion = 0;
   int? programVersion;
   String? programPublishedByCoachAccountId;
+  bool repeatBenchPressOnOtherDays = false;
+  List<Map<String, dynamic>>? programDaysOverride;
+  final List<Map<String, dynamic>> programSubstitutionRequests =
+      <Map<String, dynamic>>[];
   // When true, `GET /programs/active` fails with a transient 500 (offline
   // simulation for the Program tab's cache fallback, ADR 020/033).
   bool activeProgramFails = false;
@@ -418,6 +422,8 @@ class FakeMayosApi {
         return _completeOnboarding(request);
       case '/programs/active':
         return _activeProgram(request);
+      case '/programs/active/substitutions':
+        return _substituteActiveProgram(request);
       case '/dashboard/volume':
         return _volume(request);
       case '/dashboard/personal-records':
@@ -2368,7 +2374,7 @@ class FakeMayosApi {
         'split_type': 'Upper/Lower',
         'weekly_frequency': 4,
         'instructions': '',
-        'days': <Map<String, dynamic>>[
+        'days': programDaysOverride ?? <Map<String, dynamic>>[
           <String, dynamic>{
             'day_name': 'Upper 1',
             'day_order': 1,
@@ -2430,6 +2436,48 @@ class FakeMayosApi {
             ],
             'cardio': '10 min incline walk',
           },
+          if (repeatBenchPressOnOtherDays)
+            for (int order = 2; order <= 3; order++)
+              <String, dynamic>{
+                'day_name': 'Upper $order',
+                'day_order': order,
+                'warmup_exercises': <Map<String, dynamic>>[],
+                'exercises': <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'exercise_id': 'bench_press',
+                    'exercise_name': 'Bench Press',
+                    'warmup_sets': 2,
+                    'target_sets': 3,
+                    'target_reps_min': 5,
+                    'target_reps_max': 8,
+                    'target_rpe': 8.5,
+                    'rest_seconds': 180,
+                    'notes': 'Pause on the chest.',
+                  },
+                  <String, dynamic>{
+                    'exercise_id': 'barbell_row',
+                    'exercise_name': 'Barbell Row',
+                    'warmup_sets': 1,
+                    'target_sets': 3,
+                    'target_reps_min': 6,
+                    'target_reps_max': 10,
+                    'target_rpe': 8.0,
+                    'rest_seconds': 150,
+                    'notes': null,
+                  },
+                  <String, dynamic>{
+                    'exercise_id': 'lat_pulldown',
+                    'exercise_name': 'Lat Pulldown',
+                    'warmup_sets': 0,
+                    'target_sets': 3,
+                    'target_reps_min': 8,
+                    'target_reps_max': 12,
+                    'target_rpe': 8.0,
+                    'rest_seconds': 120,
+                    'notes': null,
+                  },
+                ],
+              },
         ],
         if (programVersion != null) 'version': programVersion,
         if (programPublishedByCoachAccountId != null)
@@ -2448,6 +2496,49 @@ class FakeMayosApi {
     if (noActiveProgram) {
       return const FakeResponse(200);
     }
+    return FakeResponse(200, _activeProgramBody());
+  }
+
+  FakeResponse _substituteActiveProgram(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    final Map<String, dynamic> payload = Map<String, dynamic>.from(request.body);
+    programSubstitutionRequests.add(payload);
+    final String dayName = '${payload['day_name'] ?? ''}';
+    final String sourceId = '${payload['exercise_id'] ?? ''}';
+    final String replacementId = '${payload['replacement_exercise_id'] ?? ''}';
+    final bool allOccurrences = payload['all_occurrences'] == true;
+    final Map<String, String> names = <String, String>{
+      'bench_press': 'Bench Press',
+      'cable_fly': 'Cable Fly',
+    };
+    final List<Map<String, dynamic>> days = programDaysOverride ??
+        List<Map<String, dynamic>>.from(
+          (_activeProgramBody()['days'] as List<dynamic>).map(
+            (dynamic day) => Map<String, dynamic>.from(
+              jsonDecode(jsonEncode(day)) as Map<String, dynamic>,
+            ),
+          ),
+        );
+    programDaysOverride = days;
+    for (final Map<String, dynamic> day in days) {
+      if (!allOccurrences && day['day_name'] != dayName) continue;
+      for (final dynamic rawExercise in day['exercises'] as List<dynamic>) {
+        final Map<String, dynamic> exercise =
+            rawExercise as Map<String, dynamic>;
+        if (exercise['exercise_id'] != sourceId) continue;
+        exercise['exercise_id'] = replacementId;
+        exercise['exercise_name'] = names[replacementId] ?? replacementId;
+        exercise['notes'] = replacementId == 'cable_fly'
+            ? 'Bring the handles together.'
+            : 'Pause on the chest.';
+        exercise['image_path'] = 'images/$replacementId.jpg';
+        if (!allOccurrences) break;
+      }
+    }
+    programVersion = (programVersion ?? 1) + 1;
     return FakeResponse(200, _activeProgramBody());
   }
 

@@ -16,7 +16,26 @@ import '../../../core/ui/mayos_card.dart';
 import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
+import '../exercise_picker_dialog.dart';
 import '../workout/active_workout_prompt.dart';
+
+enum _SwapDirection { apply, undo }
+
+class _ProgramSwap {
+  const _ProgramSwap({
+    required this.dayName,
+    required this.sourceId,
+    required this.sourceName,
+    required this.replacement,
+    required this.allOccurrences,
+  });
+
+  final String dayName;
+  final String sourceId;
+  final String sourceName;
+  final ExerciseCatalogEntry replacement;
+  final bool allOccurrences;
+}
 
 class ProgramTab extends ConsumerStatefulWidget {
   const ProgramTab({super.key});
@@ -28,6 +47,7 @@ class ProgramTab extends ConsumerStatefulWidget {
 class _ProgramTabState extends ConsumerState<ProgramTab> {
   bool _loading = true;
   bool _generating = false;
+  bool _substituting = false;
   String? _loadError;
   String? _actionError;
   TrainingProgram? _program;
@@ -119,6 +139,186 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         _actionError = mutationFailureMessage(error);
       });
     }
+  }
+
+  Future<void> _onSubstituteExercise(
+    ProgramDay day,
+    ProgramExercise exercise,
+  ) async {
+    if (_substituting) return;
+    try {
+      final ExerciseCatalogEntry? replacement =
+          await _pickProgramReplacement(day, exercise);
+      if (replacement == null || !mounted) return;
+      final String exerciseId = exercise.exerciseId;
+      final int otherDays = _otherDaysWith(day, exerciseId);
+      final bool? allOccurrences = otherDays == 0
+          ? false
+          : await _chooseSubstitutionScope(otherDays);
+      if (allOccurrences == null || !mounted) return;
+      await _performProgramSwap(
+        _ProgramSwap(
+          dayName: day.dayName,
+          sourceId: exerciseId,
+          sourceName: exercise.exerciseName,
+          replacement: replacement,
+          allOccurrences: allOccurrences,
+        ),
+        _SwapDirection.apply,
+      );
+    } on ApiException catch (error) {
+      if (mounted) _showSwapError(error);
+    }
+  }
+
+  Future<ExerciseCatalogEntry?> _pickProgramReplacement(
+    ProgramDay day,
+    ProgramExercise exercise,
+  ) async {
+    final ExerciseCatalogDetail detail = await ref
+        .read(apiClientProvider)
+        .exerciseCatalogDetail(exercise.exerciseId);
+    if (!mounted) return null;
+    final String? targetMuscle =
+        detail.primaryMuscles.isEmpty ? null : detail.primaryMuscles.first;
+    return showDialog<ExerciseCatalogEntry>(
+      context: context,
+      builder: (BuildContext context) => ExercisePickerDialog(
+        title: 'Substitute exercise',
+        targetMuscle: targetMuscle,
+        excludeExerciseIds: <String>{
+          for (final ProgramExercise item in day.exercises) item.exerciseId,
+        },
+        emptyFilteredMessage: 'Every match is already in this day.',
+      ),
+    );
+  }
+
+  int _otherDaysWith(ProgramDay selectedDay, String exerciseId) {
+    return (_program?.days ?? const <ProgramDay>[]).where((ProgramDay day) {
+      return day.dayOrder != selectedDay.dayOrder &&
+          day.exercises.any((ProgramExercise exercise) =>
+              exercise.exerciseId == exerciseId);
+    }).length;
+  }
+
+  Future<bool?> _chooseSubstitutionScope(int otherDayCount) {
+    bool allOccurrences = false;
+    return showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) =>
+            AlertDialog(
+          title: const Text('Substitute exercise?'),
+          content: SizedBox(
+            width: kExercisePickerDialogWidth,
+            child: CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              value: allOccurrences,
+              title: Text('Also replace on $otherDayCount other days'),
+              onChanged: (bool? value) => setDialogState(
+                () => allOccurrences = value ?? false,
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            MayosButton(
+              label: 'Cancel',
+              variant: MayosButtonVariant.tertiary,
+              expand: false,
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            MayosButton(
+              label: 'Substitute',
+              expand: false,
+              onPressed: () => Navigator.of(context).pop(allOccurrences),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _performProgramSwap(
+    _ProgramSwap swap,
+    _SwapDirection direction,
+  ) async {
+    if (!mounted) return;
+    setState(() {
+      _substituting = true;
+      _actionError = null;
+    });
+    try {
+      final TrainingProgram program = await _requestProgramSwap(swap, direction);
+      if (!mounted) return;
+      setState(() {
+        _program = program;
+        _fromCache = false;
+        _substituting = false;
+      });
+      _showSwapResult(swap, direction);
+    } on ApiException catch (error) {
+      if (mounted) _showSwapError(error);
+    }
+  }
+
+  Future<TrainingProgram> _requestProgramSwap(
+    _ProgramSwap swap,
+    _SwapDirection direction,
+  ) async {
+    final bool undo = direction == _SwapDirection.undo;
+    final TrainingProgram program = await ref
+        .read(apiClientProvider)
+        .substituteProgramExercise(
+          dayName: swap.dayName,
+          exerciseId: undo ? swap.replacement.id : swap.sourceId,
+          replacementExerciseId: undo ? swap.sourceId : swap.replacement.id,
+          allOccurrences: swap.allOccurrences,
+        );
+    final String? accountId = _accountId;
+    if (accountId != null) {
+      unawaited(cacheActiveProgram(
+        ref.read(workoutCacheStoreProvider),
+        accountId,
+        program,
+      ));
+    }
+    return program;
+  }
+
+  void _showSwapResult(_ProgramSwap swap, _SwapDirection direction) {
+    final ScaffoldMessengerState messenger =
+        ScaffoldMessenger.of(context)..hideCurrentSnackBar();
+    if (direction == _SwapDirection.undo) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Substitution undone.')),
+      );
+      return;
+    }
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('${swap.sourceName} replaced with ${swap.replacement.name}.'),
+        duration: const Duration(seconds: 10),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => unawaited(
+            _performProgramSwap(swap, _SwapDirection.undo),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showSwapError(ApiException error) {
+    final String message = mutationFailureMessage(error);
+    setState(() {
+      _substituting = false;
+      _actionError = message;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   void _openExercise(ProgramDay day, ProgramExercise exercise) {
@@ -247,6 +447,11 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                       _ExerciseRow(
                         exercise: exercise,
                         onTap: () => _openExercise(day, exercise),
+                        onSubstitute: _substituting
+                            ? null
+                            : () => unawaited(
+                                  _onSubstituteExercise(day, exercise),
+                                ),
                       ),
                     if (day.hasCardio) ...<Widget>[
                       const _SectionLabel('Cardio'),
@@ -347,10 +552,15 @@ class _ProvenanceLabel extends StatelessWidget {
 /// One tappable working-set row: exercise name, prescription, warm-up/rest, and
 /// notes, opening the read-only exercise detail.
 class _ExerciseRow extends StatelessWidget {
-  const _ExerciseRow({required this.exercise, required this.onTap});
+  const _ExerciseRow({
+    required this.exercise,
+    required this.onTap,
+    required this.onSubstitute,
+  });
 
   final ProgramExercise exercise;
   final VoidCallback onTap;
+  final VoidCallback? onSubstitute;
 
   @override
   Widget build(BuildContext context) {
@@ -406,6 +616,21 @@ class _ExerciseRow extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Icon(Icons.chevron_right, size: 20, color: c.textMuted),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'More actions for ${exercise.exerciseName}',
+              enabled: onSubstitute != null,
+              onSelected: (String value) {
+                if (value == 'substitute') onSubstitute?.call();
+              },
+              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                const PopupMenuItem<String>(
+                  value: 'substitute',
+                  height: kMayosMinTapTarget,
+                  child: Text('Substitute exercise'),
+                ),
+              ],
+              icon: Icon(Icons.more_vert, color: c.textMuted),
             ),
           ],
         ),

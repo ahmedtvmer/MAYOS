@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
+import 'package:mayos_mobile/src/core/active_workout.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
+import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
@@ -40,6 +42,7 @@ Future<void> _pumpProgram(
   FakeMayosApi fake, {
   ThemeMode mode = ThemeMode.light,
   Size size = const Size(1080, 2400),
+  ActiveWorkoutStore? activeWorkoutStore,
 }) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 1.0;
@@ -55,6 +58,8 @@ Future<void> _pumpProgram(
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
         themeModeStoreProvider.overrideWithValue(InMemoryThemeModeStore(mode)),
         draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
+        if (activeWorkoutStore != null)
+          activeWorkoutStoreProvider.overrideWithValue(activeWorkoutStore),
         workoutCacheStoreProvider
             .overrideWithValue(InMemoryWorkoutCacheStore()),
         chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
@@ -83,6 +88,33 @@ Future<void> _pumpProgram(
     tester.view.devicePixelRatio = 1.0;
     await tester.pump(const Duration(milliseconds: 100));
   }
+}
+
+Future<void> _openSubstitutePicker(WidgetTester tester) async {
+  await tester.drag(find.byType(ListView).first, const Offset(0, -180));
+  await tester.pumpAndSettle();
+  final Finder moreActions =
+      find.byTooltip('More actions for Bench Press');
+  await tester.ensureVisible(moreActions);
+  await tester.tap(moreActions);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Substitute exercise'));
+  await tester.pumpAndSettle();
+  await _pumpUntilFound(tester, find.text('Cable Fly'));
+  expect(find.text('Muscle: Chest'), findsOneWidget);
+  expect(
+    find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.text('Bench Press'),
+    ),
+    findsNothing,
+  );
+}
+
+Future<void> _chooseCableFly(WidgetTester tester) async {
+  await _openSubstitutePicker(tester);
+  await tester.tap(find.text('Cable Fly'));
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -127,5 +159,116 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets(
+        'substitution picker and other-day option fit 360dp in ${mode.name} theme',
+        (tester) async {
+      final FakeMayosApi fake = _signedInFake()
+        ..repeatBenchPressOnOtherDays = true;
+      await _pumpProgram(
+        tester,
+        fake,
+        mode: mode,
+        size: const Size(360, 640),
+      );
+
+      await _chooseCableFly(tester);
+      expect(find.text('Also replace on 2 other days'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Also replace on 2 other days'));
+      await tester.pump();
+      await tester.tap(find.text('Substitute'));
+      await tester.pumpAndSettle();
+      await _pumpUntilFound(tester, find.text('Undo'));
+      expect(tester.takeException(), isNull);
+    });
   }
+
+  testWidgets('menu picker substitution refreshes program and Undo swaps back',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpProgram(tester, fake);
+
+    await _chooseCableFly(tester);
+    await _pumpUntilFound(tester, find.text('Cable Fly'));
+    expect(fake.programSubstitutionRequests, hasLength(1));
+    expect(fake.programSubstitutionRequests.single, <String, dynamic>{
+      'day_name': 'Upper 1',
+      'exercise_id': 'bench_press',
+      'replacement_exercise_id': 'cable_fly',
+      'all_occurrences': false,
+    });
+    expect(find.text('Undo'), findsOneWidget);
+
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+    await _pumpUntilFound(tester, find.text('Bench Press'));
+    expect(fake.programSubstitutionRequests, hasLength(2));
+    expect(fake.programSubstitutionRequests.last['exercise_id'], 'cable_fly');
+    expect(
+      fake.programSubstitutionRequests.last['replacement_exercise_id'],
+      'bench_press',
+    );
+  });
+
+  testWidgets('program substitution leaves the frozen Active workout intact',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    final InMemoryActiveWorkoutStore activeWorkouts =
+        InMemoryActiveWorkoutStore();
+    await _pumpProgram(tester, fake, activeWorkoutStore: activeWorkouts);
+    final ActiveWorkout frozenWorkout = ActiveWorkout(
+      id: 'active-frozen',
+      accountId: 'account-alice',
+      startedAt: '2026-09-30T08:00:00Z',
+      dayOrder: 1,
+      dayName: 'Upper 1',
+      programVersion: 1,
+      exercises: <ActiveWorkoutExercise>[
+        ActiveWorkoutExercise(
+          exercise: <String, dynamic>{
+            'exercise_id': 'bench_press',
+            'exercise_name': 'Bench Press',
+            'target_sets': 3,
+          },
+          sets: <ActiveWorkoutSet>[ActiveWorkoutSet()],
+        ),
+      ],
+      baselines: const <String, BaselineExercise>{},
+    );
+    await activeWorkouts.write('account-alice', frozenWorkout);
+    final Map<String, dynamic> before = frozenWorkout.toJson();
+
+    await _chooseCableFly(tester);
+    await _pumpUntilFound(tester, find.text('Cable Fly'));
+
+    expect(
+      (await activeWorkouts.read('account-alice'))?.toJson(),
+      before,
+    );
+  });
+
+  testWidgets('other-day choice substitutes all occurrences', (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..repeatBenchPressOnOtherDays = true;
+    await _pumpProgram(tester, fake);
+
+    await _chooseCableFly(tester);
+    expect(find.text('Also replace on 2 other days'), findsOneWidget);
+    await tester.tap(find.text('Also replace on 2 other days'));
+    await tester.pump();
+    await tester.tap(find.text('Substitute'));
+    await tester.pumpAndSettle();
+    await _pumpUntilFound(tester, find.text('Cable Fly'));
+
+    expect(fake.programSubstitutionRequests.single['all_occurrences'], isTrue);
+    expect(
+      (fake.programDaysOverride ?? <Map<String, dynamic>>[])
+          .expand((Map<String, dynamic> day) =>
+              day['exercises'] as List<dynamic>)
+          .where((dynamic row) =>
+              (row as Map<String, dynamic>)['exercise_id'] == 'bench_press'),
+      isEmpty,
+    );
+  });
 }
