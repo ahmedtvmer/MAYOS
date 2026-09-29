@@ -16,12 +16,14 @@ import 'package:mayos_mobile/src/core/performed_date_window.dart';
 import 'package:mayos_mobile/src/core/personal_records.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
+import 'package:mayos_mobile/src/core/theme/mayos_typography.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_settings_tile.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_stat.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/workout/active_workout_controller.dart';
+import 'package:mayos_mobile/src/features/player/workout/logger_top_bar.dart';
 import 'package:mayos_mobile/src/features/player/workout/personal_record_badge.dart';
 import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
@@ -193,19 +195,84 @@ ApiClient _api(FakeMayosApi fake, TokenStore tokens) => ApiClient(
       adapter: fake.adapter,
     );
 
+/// The 1080×2400 phone canvas every logger test opens on.
+void _usePhoneView(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1080, 2400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+/// Everything one app instance is pumped with. The same list over the same
+/// store is exactly what an app restart rebuilds from (#159), so a test can
+/// tear the tree down and open it again against the same storage.
+List<Override> _appOverrides({
+  required FakeMayosApi fake,
+  required InMemoryTokenStore tokens,
+  required InMemoryActiveWorkoutStore store,
+  InMemoryDraftStore? drafts,
+  ThemeMode themeMode = ThemeMode.light,
+  DateTime Function()? clock,
+}) =>
+    <Override>[
+      tokenStoreProvider.overrideWithValue(tokens),
+      appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
+      themeModeStoreProvider
+          .overrideWithValue(InMemoryThemeModeStore(themeMode)),
+      draftStoreProvider.overrideWithValue(drafts ?? InMemoryDraftStore()),
+      workoutCacheStoreProvider
+          .overrideWithValue(InMemoryWorkoutCacheStore()),
+      chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
+      baselineCacheStoreProvider
+          .overrideWithValue(InMemoryBaselineCacheStore()),
+      activeWorkoutStoreProvider.overrideWithValue(store),
+      deviceTimezoneProvider.overrideWithValue(Future<String>.value('UTC')),
+      deviceTimezoneOrNullProvider
+          .overrideWithValue(Future<String?>.value('UTC')),
+      // Workout time and the summary's duration read this clock (#159).
+      if (clock != null) clockProvider.overrideWithValue(clock),
+      apiClientProvider.overrideWith((ref) {
+        final ApiClient client = ApiClient(
+          tokens: ref.watch(tokenStoreProvider),
+          baseUrl: 'http://test.local',
+          adapter: fake.adapter,
+        );
+        client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
+        return client;
+      }),
+    ];
+
+Future<void> _pumpApp(WidgetTester tester,
+    {required List<Override> overrides}) async {
+  await tester.pumpWidget(ProviderScope(
+    overrides: overrides,
+    child: const MayosApp(),
+  ));
+}
+
+/// The app-open Resume prompt, then the logger — the real entry into the
+/// table logger (#123).
+Future<void> _resumeFromPrompt(WidgetTester tester) async {
+  await _pumpUntilFound(tester, find.text('Home'));
+  await tester.pumpAndSettle();
+  expect(find.text('Unfinished workout'), findsOneWidget);
+  await tester.tap(find.text('Resume'));
+  await _pumpUntilFound(tester, find.byType(WorkoutLoggerScreen));
+  await tester.pumpAndSettle();
+}
+
 /// The signed-in app with a stored Active workout, opened through the
 /// app-open Resume prompt — the real entry into the table logger (#123).
-Future<void> _openLogger(
+/// Returns the shared store, so a test can assert what the app did to it.
+Future<InMemoryActiveWorkoutStore> _openLogger(
   WidgetTester tester, {
   String startedAt = '2026-09-28T08:00:00.000Z',
   InMemoryDraftStore? drafts,
   List<Map<String, dynamic>>? baselines,
   ThemeMode themeMode = ThemeMode.light,
+  DateTime Function()? clock,
 }) async {
-  tester.view.physicalSize = const Size(1080, 2400);
-  tester.view.devicePixelRatio = 1.0;
-  addTearDown(tester.view.resetPhysicalSize);
-  addTearDown(tester.view.resetDevicePixelRatio);
+  _usePhoneView(tester);
 
   final FakeMayosApi fake = _signedInFake(baselines: baselines);
   final InMemoryTokenStore tokens = InMemoryTokenStore();
@@ -216,42 +283,19 @@ Future<void> _openLogger(
     () => _seedThroughController(fake: fake, startedAt: startedAt),
   ))!;
 
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: <Override>[
-        tokenStoreProvider.overrideWithValue(tokens),
-        appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
-        themeModeStoreProvider
-            .overrideWithValue(InMemoryThemeModeStore(themeMode)),
-        draftStoreProvider.overrideWithValue(drafts ?? InMemoryDraftStore()),
-        workoutCacheStoreProvider
-            .overrideWithValue(InMemoryWorkoutCacheStore()),
-        chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
-        baselineCacheStoreProvider
-            .overrideWithValue(InMemoryBaselineCacheStore()),
-        activeWorkoutStoreProvider.overrideWithValue(store),
-        deviceTimezoneProvider.overrideWithValue(Future<String>.value('UTC')),
-        deviceTimezoneOrNullProvider
-            .overrideWithValue(Future<String?>.value('UTC')),
-        apiClientProvider.overrideWith((ref) {
-          final ApiClient client = ApiClient(
-            tokens: ref.watch(tokenStoreProvider),
-            baseUrl: 'http://test.local',
-            adapter: fake.adapter,
-          );
-          client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
-          return client;
-        }),
-      ],
-      child: const MayosApp(),
+  await _pumpApp(
+    tester,
+    overrides: _appOverrides(
+      fake: fake,
+      tokens: tokens,
+      store: store,
+      drafts: drafts,
+      themeMode: themeMode,
+      clock: clock,
     ),
   );
-  await _pumpUntilFound(tester, find.text('Home'));
-  await tester.pumpAndSettle();
-  expect(find.text('Unfinished workout'), findsOneWidget);
-  await tester.tap(find.text('Resume'));
-  await _pumpUntilFound(tester, find.byType(WorkoutLoggerScreen));
-  await tester.pumpAndSettle();
+  await _resumeFromPrompt(tester);
+  return store;
 }
 
 Finder _cell(int exercise, int set, String field) =>
@@ -1103,8 +1147,9 @@ void main() {
     expect(find.text('Workout summary'), findsOneWidget);
     expect(find.text('Personal records'), findsNothing);
     expect(find.textContaining('· PR '), findsNothing);
-    // The stats are still there: one exercise done, one working set, 500 kg.
-    expect(find.byType(MayosStat), findsNWidgets(3));
+    // The stats are still there: one exercise done, one working set, 500 kg,
+    // and the duration the summary snapshot holds (#159).
+    expect(find.byType(MayosStat), findsNWidgets(4));
     expect(find.text('Exercises done'), findsOneWidget);
     expect(find.text('Ticked working sets'), findsOneWidget);
     expect(find.widgetWithText(MayosStat, '500'), findsOneWidget);
@@ -1224,5 +1269,191 @@ void main() {
     expect(find.widgetWithText(MayosStat, '1185'), findsOneWidget);
     expect(find.textContaining('PR 200 kg'), findsNothing);
     expect(find.widgetWithText(MayosStat, '2185'), findsNothing);
+  });
+
+  testWidgets('the top bar shows Workout time from the start, ticking every '
+      'second (#159)', (WidgetTester tester) async {
+    DateTime now = DateTime.parse('2026-09-28T08:00:42.000Z');
+    await _openLogger(
+      tester,
+      startedAt: '2026-09-28T08:00:00.000Z',
+      clock: () => now,
+    );
+
+    // `Log workout · mm:ss`, derived from the workout's own start (#159).
+    final Finder label = find.text('Log workout · 00:42');
+    expect(label, findsOneWidget);
+    // Sans: the serif display role belongs to the day heading alone (#157).
+    expect(tester.widget<Text>(label).style!.fontFamily,
+        MayosTypography.uiFamily);
+
+    // The bar redraws once a second off the clock — derived, never counted,
+    // so nothing pauses and nothing has to be stored.
+    now = DateTime.parse('2026-09-28T08:01:07.000Z');
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Log workout · 01:07'), findsOneWidget);
+  });
+
+  testWidgets('Workout time stays correct across a simulated restart (#159)',
+      (WidgetTester tester) async {
+    _usePhoneView(tester);
+    DateTime now = DateTime.parse('2026-09-28T08:01:30.000Z');
+    final FakeMayosApi fake = _signedInFake();
+    final InMemoryTokenStore tokens = InMemoryTokenStore();
+    await tokens.save('token-alice');
+    // Seeding runs outside the test's fake-async zone, like every open.
+    final InMemoryActiveWorkoutStore store = (await tester.runAsync(
+      () => _seedThroughController(
+        fake: fake,
+        startedAt: '2026-09-28T08:00:00.000Z',
+      ),
+    ))!;
+    await _pumpApp(
+      tester,
+      overrides: _appOverrides(
+        fake: fake,
+        tokens: tokens,
+        store: store,
+        clock: () => now,
+      ),
+    );
+    await _resumeFromPrompt(tester);
+    expect(find.text('Log workout · 01:30'), findsOneWidget);
+
+    // Close the app completely, then open it again on the same storage an
+    // hour later: the time is the workout's, not the screen's, so nothing
+    // resets on a restart (#159).
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    now = DateTime.parse('2026-09-28T09:00:00.000Z');
+    await _pumpApp(
+      tester,
+      overrides: _appOverrides(
+        fake: fake,
+        tokens: tokens,
+        store: store,
+        clock: () => now,
+      ),
+    );
+    await _resumeFromPrompt(tester);
+    expect(find.text('Log workout · 1:00:00'), findsOneWidget);
+  });
+
+  testWidgets('the ⋮ menu discards the workout behind the Resume prompt\'s '
+      'confirmation (#159)', (WidgetTester tester) async {
+    final InMemoryActiveWorkoutStore store = await _openLogger(tester);
+
+    await tester.tap(find.byKey(LoggerTopBar.menuKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(LoggerTopBar.discardKey));
+    await tester.pumpAndSettle();
+
+    // The confirmation is the Resume prompt itself, wording and all (#159):
+    // dismissing it keeps the workout, exactly as the prompt's cancel does.
+    expect(find.text('Unfinished workout'), findsOneWidget);
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+    expect(find.byType(WorkoutLoggerScreen), findsOneWidget);
+    expect(await store.read(_account), isNotNull);
+
+    // This time the Discard button: same effect as Discard in the prompt —
+    // the Active workout is gone and the player leaves the logger.
+    await tester.tap(find.byKey(LoggerTopBar.menuKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(LoggerTopBar.discardKey));
+    await tester.pumpAndSettle();
+    expect(find.text('Unfinished workout'), findsOneWidget);
+    await tester.tap(find.text('Discard'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(WorkoutLoggerScreen), findsNothing);
+    expect(await store.read(_account), isNull);
+    expect(find.text('Unfinished workout'), findsNothing);
+  });
+
+  testWidgets('the day heading is the one serif line and the progress line '
+      'counts exercises and sets (#159)', (WidgetTester tester) async {
+    await _openLogger(tester);
+
+    // The training day's name carries the screen's only serif heading.
+    expect(
+      tester.widget<Text>(find.text('Upper A')).style!.fontFamily,
+      MayosTypography.displayFamily,
+    );
+
+    final Finder progress =
+        find.byKey(const ValueKey<String>('logger.progress'));
+    final Text line = tester.widget<Text>(progress);
+    expect(line.style!.fontFamily, MayosTypography.uiFamily);
+    // Two exercises, four working rows, nothing ticked yet.
+    expect(line.data, '0/2 exercises · 0/4 sets');
+
+    // Ticking moves the set count…
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.widget<Text>(progress).data, '0/2 exercises · 1/4 sets');
+    await tester.tap(_tick(0, 1));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.widget<Text>(progress).data, '0/2 exercises · 2/4 sets');
+
+    // …and a warm-up leaves the counts while completing bench, because the
+    // line uses the Current set's working-set rule (#158/#159): bench's two
+    // working rows are now both ticked, and its third row is a warm-up.
+    await tester.tap(find.byKey(const ValueKey<String>('logger.setlabel.0.2')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.widget<Text>(progress).data, '1/2 exercises · 2/3 sets');
+
+    // The last exercise finishes the line off.
+    await tester.tap(_tick(1, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.widget<Text>(progress).data, '2/2 exercises · 3/3 sets');
+  });
+
+  testWidgets('the summary shows the workout\'s total duration, frozen at '
+      'Finish, with no overflow at 360dp (#159)', (WidgetTester tester) async {
+    DateTime now = DateTime.parse('2026-09-28T08:32:10.000Z');
+    await _openLogger(
+      tester,
+      startedAt: '2026-09-28T08:00:00.000Z',
+      clock: () => now,
+    );
+
+    // The narrow phone, light theme: the four stats have to fit (#159).
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+
+    final Finder tick = _tick(0, 0);
+    await tester.ensureVisible(tick);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(tick);
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final Finder finish = find.widgetWithText(FilledButton, 'Finish workout');
+    await tester.ensureVisible(finish);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(finish);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discard unticked sets and finish'));
+    await tester.pumpAndSettle();
+
+    final Finder duration =
+        find.byKey(const ValueKey<String>('logger.summary.duration'));
+    expect(find.descendant(of: duration, matching: find.text('32:10')),
+        findsOneWidget);
+    expect(find.widgetWithText(MayosStat, 'Duration'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // The snapshot never changes: the clock running on moves the top bar's
+    // Workout time, never the duration Finish already captured (#124/#159).
+    now = DateTime.parse('2026-09-28T09:00:00.000Z');
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Log workout · 1:00:00'), findsOneWidget);
+    expect(find.descendant(of: duration, matching: find.text('32:10')),
+        findsOneWidget);
+    expect(find.descendant(of: duration, matching: find.text('1:27:50')),
+        findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }

@@ -570,6 +570,22 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
           total +
           exercise.sets.where((ActiveWorkoutSet s) => !s.ticked).length);
 
+  /// `{completed}/{total} exercises · {ticked}/{total} sets` under the day
+  /// heading (#159): warm-ups excluded from both counts, an exercise done
+  /// only when all its working sets are ticked — all of it derived by
+  /// [workoutProgressOf], so the line and the bottom bar (#160) can never
+  /// disagree.
+  String _progressLine(ActiveWorkout workout) {
+    final ({
+      int exercisesCompleted,
+      int exercisesTotal,
+      int setsTicked,
+      int setsTotal
+    }) progress = workoutProgressOf(workout);
+    return '${progress.exercisesCompleted}/${progress.exercisesTotal} '
+        'exercises · ${progress.setsTicked}/${progress.setsTotal} sets';
+  }
+
   /// Finish opens the workout summary (#124): the unticked-sets sheet first,
   /// then the summary — celebration, stats, performed date, readiness, notes —
   /// with nothing saved until the player taps Save workout there.
@@ -600,7 +616,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       return;
     }
     setState(() {
-      _summary = WorkoutSummary.of(finished);
+      _summary = WorkoutSummary.of(finished, now: ref.read(clockProvider)());
       _summaryStep = true;
       _error = null;
       _recordFocus = null;
@@ -863,6 +879,15 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
             workout.dayName,
             style: MayosTypography.pageHeading.copyWith(color: c.textPrimary),
           ),
+          const SizedBox(height: MayosSpacing.xxs),
+          // The progress line (#159): the same pure counts the bottom bar
+          // will show (#160), under the screen's one serif heading.
+          Text(
+            _progressLine(workout),
+            key: const ValueKey<String>('logger.progress'),
+            style:
+                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          ),
           if (_fromCache) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
             const _OfflineLoggerNotice(),
@@ -999,7 +1024,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
             _buildCelebration(summary.records),
             const SizedBox(height: MayosSpacing.md),
           ],
-          _buildStats(summary.stats),
+          _buildStats(summary),
           const SizedBox(height: MayosSpacing.lg),
           MayosCard(
             padding: EdgeInsets.zero,
@@ -1073,31 +1098,53 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     );
   }
 
-  /// The three stats the summary shows: exercises done, ticked working sets,
-  /// and total volume over those sets (#124).
-  Widget _buildStats(WorkoutSummaryStats stats) => Row(
-        children: <Widget>[
-          Expanded(
-            child: MayosStat(
-              value: '${stats.exercisesDone}',
-              label: 'Exercises done',
+  /// The four stats the summary shows: exercises done, ticked working sets,
+  /// total volume over those sets (#124) and the workout's total duration
+  /// (#159). Two rows of two, so a duration like `1:05:09` still fits the
+  /// 360dp minimum without shrinking the figures.
+  Widget _buildStats(WorkoutSummary summary) {
+    final WorkoutSummaryStats stats = summary.stats;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: MayosStat(
+                value: '${stats.exercisesDone}',
+                label: 'Exercises done',
+              ),
             ),
-          ),
-          Expanded(
-            child: MayosStat(
-              value: '${stats.workingSets}',
-              label: 'Ticked working sets',
+            Expanded(
+              child: MayosStat(
+                value: '${stats.workingSets}',
+                label: 'Ticked working sets',
+              ),
             ),
-          ),
-          Expanded(
-            child: MayosStat(
-              value: stats.volumeLabel,
-              label: 'Total volume',
-              unit: 'kg',
+          ],
+        ),
+        const SizedBox(height: MayosSpacing.md),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: MayosStat(
+                value: stats.volumeLabel,
+                label: 'Total volume',
+                unit: 'kg',
+              ),
             ),
-          ),
-        ],
-      );
+            Expanded(
+              child: MayosStat(
+                key: const ValueKey<String>('logger.summary.duration'),
+                value: formatWorkoutTime(summary.duration),
+                label: 'Duration',
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 }
 
 /// The one message line the logger shows under the list or the workout

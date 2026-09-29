@@ -147,6 +147,12 @@ final StateNotifierProvider<CoachAssistantController, CoachAssistantTranscript?>
 final Provider<bool> offlineWorkoutDraftsEnabledProvider =
     Provider<bool>((ref) => !kIsWeb);
 
+/// The wall clock **Workout time** reads: the top bar's label and the
+/// workout summary's duration snapshot (#159). Injectable so a test can tick
+/// it and pin the snapshot without waiting on the real clock.
+final Provider<DateTime Function()> clockProvider =
+    Provider<DateTime Function()>((ref) => DateTime.now);
+
 /// Protected, account-separated storage for offline workout drafts.
 final Provider<DraftStore> draftStoreProvider = Provider<DraftStore>((ref) =>
     ref.watch(offlineWorkoutDraftsEnabledProvider)

@@ -21,6 +21,7 @@ import 'features/player/plan/plan_screen.dart';
 import 'features/player/profile/profile_screen.dart';
 import 'features/player/setup/player_setup_screen.dart';
 import 'features/player/shell/player_shell.dart';
+import 'features/player/workout/logger_top_bar.dart';
 import 'features/player/workout/workout_drafts_screen.dart';
 import 'features/player/workout/workout_logger_screen.dart';
 import 'features/settings/settings_screen.dart';
@@ -276,8 +277,10 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '$logWorkoutPath/:day',
         builder: (BuildContext context, GoRouterState state) => MayosScaffold(
-          title: 'Log workout',
-          showBack: true,
+          // The logger draws its own compact top bar — Back, live Workout
+          // time and the discard menu (#159) — so the frame supplies no
+          // header of its own.
+          header: const LoggerTopBar(),
           body: WorkoutLoggerScreen(
             dayOrder: int.tryParse(state.pathParameters['day'] ?? '') ?? 1,
           ),

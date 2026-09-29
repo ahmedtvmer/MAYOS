@@ -80,6 +80,23 @@ String _startedLabel(ActiveWorkout activeWorkout) {
   return '${activeWorkout.startedDate} $hh:$mm';
 }
 
+/// The confirmation the logger's top-bar menu raises before it discards the
+/// workout (#159): the Resume prompt's own dialog, so the wording and the
+/// Discard effect are one thing rather than two. Resolves true only for
+/// Discard — the Resume button and any dismissal keep the workout, exactly
+/// as the prompt does (#123 item 13).
+Future<bool> confirmDiscardWorkout(
+  BuildContext context, {
+  required ActiveWorkout activeWorkout,
+}) async {
+  final ActiveWorkoutPromptChoice? choice = await showActiveWorkoutPrompt(
+    context,
+    activeWorkout: activeWorkout,
+    forNewStart: false,
+  );
+  return choice == ActiveWorkoutPromptChoice.discard;
+}
+
 /// The offer shown when the app opens with an Active workout: Resume routes to
 /// its logger, Discard clears it (#123).
 Future<void> offerActiveWorkoutOnOpen(

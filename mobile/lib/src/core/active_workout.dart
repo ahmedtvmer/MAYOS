@@ -231,6 +231,70 @@ String exercisePrescriptionLine(
   return null;
 }
 
+/// The progress line's four counts (#159, reused by the bottom bar in #160).
+///
+/// "Working" is the **Current set's** rule — the row's role, not a warm-up —
+/// so warm-ups are excluded from both set counts, exactly like the highlight
+/// that points past them. An exercise is **completed** only when it has at
+/// least one working set and every one of them is ticked: an exercise whose
+/// rows are all warm-ups has nothing to complete, so it stays in the total
+/// and is never counted as done (turning a row back into a working set puts
+/// it back in play). The workout summary's own "exercises done" keeps its
+/// looser meaning — at least one ticked working set (#124).
+({int exercisesCompleted, int exercisesTotal, int setsTicked, int setsTotal})
+    workoutProgressOf(ActiveWorkout workout) {
+  int exercisesCompleted = 0;
+  int setsTicked = 0;
+  int setsTotal = 0;
+  for (final ActiveWorkoutExercise exercise in workout.exercises) {
+    int working = 0;
+    int ticked = 0;
+    for (final ActiveWorkoutSet set in exercise.sets) {
+      if (set.isWarmup) {
+        continue;
+      }
+      working += 1;
+      if (set.ticked) {
+        ticked += 1;
+      }
+    }
+    setsTotal += working;
+    setsTicked += ticked;
+    if (working > 0 && ticked == working) {
+      exercisesCompleted += 1;
+    }
+  }
+  return (
+    exercisesCompleted: exercisesCompleted,
+    exercisesTotal: workout.exercises.length,
+    setsTicked: setsTicked,
+    setsTotal: setsTotal,
+  );
+}
+
+/// **Workout time** (CONTEXT.md, #159): the wall-clock time since the
+/// workout started, clamped at zero. It is derived from the stored start
+/// time, so it has no pause, holds no state of its own, and stays correct
+/// after an app restart.
+Duration workoutElapsed(ActiveWorkout workout, {DateTime? now}) {
+  final Duration elapsed =
+      (now ?? DateTime.now()).difference(workout.startedAtClock);
+  return elapsed.isNegative ? Duration.zero : elapsed;
+}
+
+/// Workout time as the top bar and the summary show it (#159): `mm:ss`, and
+/// `h:mm:ss` once it passes an hour — `00:05`, `05:09`, `59:30`, `1:02:03`.
+String formatWorkoutTime(Duration elapsed) {
+  final Duration clamped = elapsed.isNegative ? Duration.zero : elapsed;
+  final int seconds = clamped.inSeconds;
+  final String ss = (seconds % 60).toString().padLeft(2, '0');
+  final int minutes = seconds ~/ 60;
+  if (minutes < 60) {
+    return '${minutes.toString().padLeft(2, '0')}:$ss';
+  }
+  return '${minutes ~/ 60}:${(minutes % 60).toString().padLeft(2, '0')}:$ss';
+}
+
 /// The running rest timer, stored inside the Active workout so it survives a
 /// restart (#125): when it ends, plus what the bar and the lock-screen
 /// notification label it with.

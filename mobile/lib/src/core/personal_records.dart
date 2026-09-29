@@ -256,13 +256,24 @@ WorkoutSummaryStats workoutSummaryStats(ActiveWorkout workout) {
 /// (#124 — a summary already shown is never rewritten after a sync).
 @immutable
 class WorkoutSummary {
-  const WorkoutSummary({required this.records, required this.stats});
+  const WorkoutSummary({
+    required this.records,
+    required this.stats,
+    required this.duration,
+  });
 
-  factory WorkoutSummary.of(ActiveWorkout workout) => WorkoutSummary(
+  factory WorkoutSummary.of(ActiveWorkout workout, {DateTime? now}) =>
+      WorkoutSummary(
         records: workoutRecords(workout),
         stats: workoutSummaryStats(workout),
+        duration: workoutElapsed(workout, now: now),
       );
 
   final List<WorkoutRecord> records;
   final WorkoutSummaryStats stats;
+
+  /// The total Workout time, captured when Finish opens the summary (#159).
+  /// It is part of the snapshot: once taken it never changes, whatever the
+  /// rows or the clock do while the summary is open.
+  final Duration duration;
 }

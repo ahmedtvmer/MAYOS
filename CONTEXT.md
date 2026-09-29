@@ -101,6 +101,9 @@ A workout the player is logging right now and has not yet finished. A device hol
 **Current set**:
 The next set of an Active workout the player should log: the first working set that is not yet ticked, in workout order, skipping warm-ups and moving across exercises. There is no Current set once every working set is ticked.
 
+**Workout time**:
+The time a player has spent on the Active workout they are logging: measured from when that workout started to the present, with no pause, shown live in the logger and as the workout's total duration in its summary.
+
 **Workout draft**:
 A workout the player has recorded on their device but has not yet committed to their training history. A draft may be captured without connectivity.
 

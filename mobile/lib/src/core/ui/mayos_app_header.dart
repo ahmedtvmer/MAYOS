@@ -14,6 +14,7 @@ class MayosAppHeader extends StatelessWidget {
   const MayosAppHeader({
     super.key,
     this.title,
+    this.titleWidget,
     this.showLogo = true,
     this.showBack = false,
     this.actions = const <Widget>[],
@@ -24,6 +25,13 @@ class MayosAppHeader extends StatelessWidget {
   static const Key brandKey = Key('mayos.header.brand');
 
   final String? title;
+
+  /// Replaces the [title] string with the caller's own widget, for the few
+  /// bars whose title is more than plain serif text — the logger's
+  /// `Log workout · 32:10` line, which is sans and live (#159). When both are
+  /// given, this wins.
+  final Widget? titleWidget;
+
   final bool showLogo;
   final bool showBack;
   final List<Widget> actions;
@@ -34,7 +42,8 @@ class MayosAppHeader extends StatelessWidget {
     // The default shell header shows the brand alone, centred on the screen so
     // it is independent of how many actions sit on the right. Titled sub-pages
     // keep the left-aligned back button + title row.
-    final bool centredBrand = showLogo && !showBack && title == null;
+    final bool centredBrand =
+        showLogo && !showBack && title == null && titleWidget == null;
     if (centredBrand) {
       // Symmetric horizontal padding keeps the centred brand on the screen's
       // mid-line (the right-aligned actions sit inside the same inset).
@@ -85,7 +94,10 @@ class MayosAppHeader extends StatelessWidget {
             )
           else
             const SizedBox(width: MayosSpacing.xs),
-          if (title != null) ...<Widget>[
+          if (titleWidget != null) ...<Widget>[
+            const SizedBox(width: MayosSpacing.xs),
+            Expanded(child: titleWidget!),
+          ] else if (title != null) ...<Widget>[
             const SizedBox(width: MayosSpacing.xs),
             Expanded(
               child: Text(

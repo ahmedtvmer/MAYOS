@@ -633,6 +633,176 @@ void main() {
     });
   });
 
+  group('Workout progress (#159)', () {
+    /// Straight into the model, like the Current set's group: the counts are
+    /// a pure derivation, so they need no controller, store or API.
+    ActiveWorkout workoutOf(List<List<ActiveWorkoutSet>> exercises) =>
+        ActiveWorkout(
+          id: 'aw-progress',
+          accountId: _account,
+          startedAt: '2026-09-28T08:00:00.000Z',
+          dayOrder: 2,
+          dayName: 'Upper A',
+          programVersion: 3,
+          exercises: <ActiveWorkoutExercise>[
+            for (int i = 0; i < exercises.length; i++)
+              ActiveWorkoutExercise(
+                exercise: <String, dynamic>{
+                  'exercise_id': 'exercise_$i',
+                  'exercise_name': 'Exercise $i',
+                },
+                sets: exercises[i],
+              ),
+          ],
+          baselines: const <String, BaselineExercise>{},
+        );
+
+    test('counts working sets only — warm-ups are excluded on both sides',
+        () {
+      final ActiveWorkout workout = workoutOf(<List<ActiveWorkoutSet>>[
+        <ActiveWorkoutSet>[
+          // A ticked warm-up contributes to neither count.
+          ActiveWorkoutSet(isWarmup: true, ticked: true),
+          ActiveWorkoutSet(),
+          ActiveWorkoutSet(ticked: true),
+        ],
+        <ActiveWorkoutSet>[ActiveWorkoutSet()],
+      ]);
+      expect(
+        workoutProgressOf(workout),
+        (
+          exercisesCompleted: 0,
+          exercisesTotal: 2,
+          setsTicked: 1,
+          setsTotal: 3,
+        ),
+      );
+    });
+
+    test('an exercise completes only when all its working sets are ticked',
+        () {
+      final ActiveWorkout oneOfThree = workoutOf(<List<ActiveWorkoutSet>>[
+        <ActiveWorkoutSet>[
+          ActiveWorkoutSet(ticked: true),
+          ActiveWorkoutSet(),
+          ActiveWorkoutSet(),
+        ],
+        <ActiveWorkoutSet>[ActiveWorkoutSet(ticked: true)],
+      ]);
+      // One of three is not done, but the finished second exercise is.
+      expect(
+        workoutProgressOf(oneOfThree),
+        (
+          exercisesCompleted: 1,
+          exercisesTotal: 2,
+          setsTicked: 2,
+          setsTotal: 4,
+        ),
+      );
+
+      final ActiveWorkout done = workoutOf(<List<ActiveWorkoutSet>>[
+        <ActiveWorkoutSet>[
+          ActiveWorkoutSet(ticked: true),
+          ActiveWorkoutSet(ticked: true),
+          ActiveWorkoutSet(ticked: true),
+        ],
+        <ActiveWorkoutSet>[ActiveWorkoutSet(ticked: true)],
+      ]);
+      expect(workoutProgressOf(done).exercisesCompleted, 2);
+      expect(workoutProgressOf(done).setsTicked, 4);
+    });
+
+    test('an exercise with no working rows stays in the total and is never '
+        'completed', () {
+      final ActiveWorkout workout = workoutOf(<List<ActiveWorkoutSet>>[
+        // Every row warm-up: nothing to complete until a row works again.
+        <ActiveWorkoutSet>[
+          ActiveWorkoutSet(isWarmup: true, ticked: true),
+          ActiveWorkoutSet(isWarmup: true, ticked: true),
+        ],
+        <ActiveWorkoutSet>[ActiveWorkoutSet(ticked: true)],
+      ]);
+      expect(
+        workoutProgressOf(workout),
+        (
+          exercisesCompleted: 1,
+          exercisesTotal: 2,
+          setsTicked: 1,
+          setsTotal: 1,
+        ),
+      );
+    });
+
+    test('a fresh workout starts at zero', () {
+      final ActiveWorkout workout = workoutOf(<List<ActiveWorkoutSet>>[
+        <ActiveWorkoutSet>[ActiveWorkoutSet(), ActiveWorkoutSet()],
+      ]);
+      expect(
+        workoutProgressOf(workout),
+        (
+          exercisesCompleted: 0,
+          exercisesTotal: 1,
+          setsTicked: 0,
+          setsTotal: 2,
+        ),
+      );
+    });
+  });
+
+  group('Workout time (#159)', () {
+    test('formats as mm:ss, and h:mm:ss once it passes an hour', () {
+      expect(formatWorkoutTime(Duration.zero), '00:00');
+      expect(formatWorkoutTime(const Duration(seconds: 5)), '00:05');
+      expect(formatWorkoutTime(const Duration(seconds: 90)), '01:30');
+      expect(formatWorkoutTime(const Duration(minutes: 5)), '05:00');
+      expect(formatWorkoutTime(const Duration(minutes: 59, seconds: 30)),
+          '59:30');
+      expect(formatWorkoutTime(const Duration(hours: 1)), '1:00:00');
+      expect(
+        formatWorkoutTime(const Duration(hours: 1, minutes: 2, seconds: 3)),
+        '1:02:03',
+      );
+      expect(
+        formatWorkoutTime(const Duration(hours: 12, minutes: 4, seconds: 5)),
+        '12:04:05',
+      );
+    });
+
+    test('never reads a negative time', () {
+      expect(formatWorkoutTime(const Duration(seconds: -30)), '00:00');
+    });
+
+    test('is derived from the start time, so a restart reads the same clock',
+        () {
+      final ActiveWorkout workout = ActiveWorkout(
+        id: 'aw-time',
+        accountId: _account,
+        startedAt: '2026-09-28T08:00:00.000Z',
+        dayOrder: 2,
+        dayName: 'Upper A',
+        programVersion: 3,
+        exercises: const <ActiveWorkoutExercise>[],
+        baselines: const <String, BaselineExercise>{},
+      );
+      expect(
+        workoutElapsed(workout,
+            now: DateTime.parse('2026-09-28T08:01:30.000Z')),
+        const Duration(minutes: 1, seconds: 30),
+      );
+      // Nothing resets it: an hour on, the same stored start answers.
+      expect(
+        workoutElapsed(workout, now: DateTime.parse('2026-09-28T09:00:00.000Z')),
+        const Duration(hours: 1),
+      );
+      // A clock behind the start clamps rather than going negative.
+      expect(
+        workoutElapsed(workout,
+            now: DateTime.parse('2026-09-28T07:59:00.000Z')),
+        Duration.zero,
+      );
+    });
+  });
+
   group('store writes are serialized (#123 item 5)', () {
     test('writes land in state order and the latest state wins', () async {
       final FakeMayosApi fake = _signedInFake();
