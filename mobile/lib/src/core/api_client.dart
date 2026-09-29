@@ -1009,10 +1009,20 @@ class ApiClient {
 
   /// Catalog exercises matching [query], for picking a real unplanned
   /// exercise (`GET /workouts/exercises?query=`, ADR 020/033, #34).
-  Future<List<ExerciseCatalogEntry>> searchExercises(String query) async {
+  ///
+  /// [targetMuscle] (#162) narrows the search to one catalog muscle; with it
+  /// set [query] may be empty, which lists that muscle's exercises so the
+  /// Replace search opens pre-filtered before the player types.
+  Future<List<ExerciseCatalogEntry>> searchExercises(
+    String query, {
+    String? targetMuscle,
+  }) async {
     final response = await _send(
       () => _dio.get<dynamic>('/workouts/exercises',
-          queryParameters: <String, dynamic>{'query': query}),
+          queryParameters: <String, dynamic>{
+            'query': query,
+            if (targetMuscle != null) 'target_muscle': targetMuscle,
+          }),
     );
     final dynamic data = response.data;
     if (data is! Map<String, dynamic> || data['exercises'] is! List) {

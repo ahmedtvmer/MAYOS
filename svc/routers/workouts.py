@@ -52,12 +52,28 @@ def _sets_payload(db: Any, ledger: Any, body: SessionCommitIn) -> list[dict[str,
 
 @router.get("/exercises")
 async def search_exercises(
-    query: str,
     player: Annotated[Any, Depends(get_verified_player)],
     db: Annotated[Any, Depends(get_db)],
+    query: str | None = None,
+    target_muscle: str | None = None,
 ):
-    """Catalog exercises matching ``query``, for picking a real unplanned exercise (#34)."""
-    return {"exercises": db.find_exercises_by_name(query, limit=10)}
+    """Catalog exercises matching ``query`` (#34), optionally narrowed to one target muscle (#162).
+
+    ``query`` may be omitted when ``target_muscle`` is given, so the logger's Replace
+    search opens listing that muscle's exercises before the player types. The muscle
+    listing browses a wider page (25) than the name search's 10.
+    """
+    if not (query or target_muscle):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide query, target_muscle, or both.",
+        )
+    limit = 25 if target_muscle else 10
+    return {
+        "exercises": db.find_exercises_by_name(
+            query or "", limit=limit, target_muscle=target_muscle
+        )
+    }
 
 
 @router.get("/exercises/{exercise_id}")

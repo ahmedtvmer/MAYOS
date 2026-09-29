@@ -215,6 +215,21 @@ String exercisePrescriptionLine(
   return '$caption · $rest';
 }
 
+/// Whether the exercise at [exerciseIndex] is a **Replace exercise**'s
+/// replacement (#162): an unplanned exercise sitting directly after the
+/// planned exercise that replace hid. A replace keeps the pair adjacent, so
+/// this holds however many other exercises come and go around them — it is
+/// what the card menu labels **Undo replace** instead of **Remove exercise**.
+bool isReplacementExerciseAt(ActiveWorkout workout, int exerciseIndex) {
+  if (exerciseIndex <= 0 || exerciseIndex >= workout.exercises.length) {
+    return false;
+  }
+  final ActiveWorkoutExercise replacement =
+      workout.exercises[exerciseIndex];
+  final ActiveWorkoutExercise planned = workout.exercises[exerciseIndex - 1];
+  return replacement.unplanned && planned.replaced;
+}
+
 /// The **Current set** (CONTEXT.md, #158): the first unticked working set in
 /// workout order — warm-ups skipped, moving across exercises. Null when
 /// every working set is ticked.

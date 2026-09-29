@@ -395,7 +395,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     if (exercise == null) {
       return;
     }
-    await _replaceExercise(
+    await _updateExerciseAt(
       exerciseIndex,
       exercise.copyWith(sets: <ActiveWorkoutSet>[
         ...exercise.sets,
@@ -416,7 +416,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     }
     final List<ActiveWorkoutSet> sets = List<ActiveWorkoutSet>.of(exercise.sets)
       ..removeAt(setIndex);
-    await _replaceExercise(exerciseIndex, exercise.copyWith(sets: sets));
+    await _updateExerciseAt(exerciseIndex, exercise.copyWith(sets: sets));
   }
 
   /// Edits one cell: whichever of [weightKg] / [reps] / [rir] is non-null is
@@ -581,8 +581,58 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       );
       exercises.insert(exerciseIndex + 1, replacement);
     }
+    // A rest counting down for the exercise being replaced describes a set
+    // that no longer exists, so it stops here with Skip's own effect (#162):
+    // the countdown leaves the bar and the lock screen, and the platform
+    // alarm is cancelled. A rest for any other exercise keeps running.
+    final bool stopRest = current.rest != null &&
+        current.rest!.exerciseId == planned.exerciseId;
+    await _persist(current.copyWith(
+      exercises: exercises,
+      clearRest: stopRest,
+    ));
+    if (stopRest && _alertsLive) {
+      _alertsLive = false;
+      _alertsSuspended = false;
+      await _removeAlerts();
+    }
+  }
+
+  /// **Undo replace** (#162): takes the replacement out of the workout and
+  /// brings its planned exercise back as an ordinary card — unmarked, with
+  /// the rows it was seeded with, all empty, so the program is still
+  /// untouched and the player can log it (or replace it again). Nothing here marks it
+  /// skipped: like any planned exercise it reaches the Workout draft as
+  /// skipped only while no set of it is ticked.
+  ///
+  /// [exerciseIndex] must name a replacement — an unplanned exercise with the
+  /// hidden planned exercise directly before it; anything else is a no-op.
+  Future<void> undoReplace(int exerciseIndex) async {
+    final ActiveWorkout? current = state.workout;
+    final ActiveWorkoutExercise? replacement = _exerciseAt(exerciseIndex);
+    if (current == null ||
+        replacement == null ||
+        !isReplacementExerciseAt(current, exerciseIndex)) {
+      return;
+    }
+    final List<ActiveWorkoutExercise> exercises =
+        List<ActiveWorkoutExercise>.of(current.exercises)
+          ..removeAt(exerciseIndex);
+    final ActiveWorkoutExercise planned = exercises[exerciseIndex - 1];
+    // Back with the rows it was seeded with, all empty (#162 review): the
+    // replace cleared them, so nothing logged survives, and the card is
+    // loggable again straight away.
+    final int rows =
+        planned.effectiveSetCount > 0 ? planned.effectiveSetCount : 1;
+    exercises[exerciseIndex - 1] = planned.copyWith(
+      replaced: false,
+      sets: <ActiveWorkoutSet>[
+        for (int i = 0; i < rows; i++) ActiveWorkoutSet(),
+      ],
+    );
     await _persist(current.copyWith(exercises: exercises));
   }
+
 
   /// The card menu's **Remove exercise** (#162): takes an unplanned exercise
   /// out of the workout. Planned exercises — replaced ones included — are
@@ -936,10 +986,10 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     final List<ActiveWorkoutSet> sets =
         List<ActiveWorkoutSet>.of(exercise.sets);
     sets[setIndex] = fn(sets[setIndex]);
-    await _replaceExercise(exerciseIndex, exercise.copyWith(sets: sets));
+    await _updateExerciseAt(exerciseIndex, exercise.copyWith(sets: sets));
   }
 
-  Future<void> _replaceExercise(
+  Future<void> _updateExerciseAt(
       int exerciseIndex, ActiveWorkoutExercise exercise) async {
     final ActiveWorkout? current = state.workout;
     if (current == null) {

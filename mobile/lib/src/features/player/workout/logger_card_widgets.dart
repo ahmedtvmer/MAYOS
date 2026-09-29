@@ -265,8 +265,9 @@ class ExerciseCatalogThumbnail extends StatelessWidget {
 /// One compact exercise card (#158, plan §2): the name in primary text
 /// colour, the catalog picture (#161), the prescription line, the `Last:`
 /// line when there is history, the leaner table, a full-width "+ Add set"
-/// and the card's ⋮ menu (#162) — **Replace exercise**, **Rest time…** and
-/// **Remove exercise** (unplanned exercises only). The rest length is no
+/// and the card's ⋮ menu (#162) — **Replace exercise**, **Rest time…**, and
+/// **Remove exercise** for a plain unplanned exercise or **Undo replace** for
+/// a replacement. The rest length is no
 /// longer a chip beside the title: it stays visible at the end of the
 /// prescription line, and the picker opens from the menu (#125). Nothing here
 /// decides anything — rows and callbacks arrive from the logger.
@@ -281,11 +282,13 @@ class ExerciseLoggingCard extends StatelessWidget {
     required this.onAddSet,
     required this.onReplace,
     this.onRemove,
+    this.onUndoReplace,
     this.unplanned = false,
     this.menuKey,
     this.replaceKey,
     this.restKey,
     this.removeKey,
+    this.undoReplaceKey,
     this.addSetKey,
   });
 
@@ -308,9 +311,15 @@ class ExerciseLoggingCard extends StatelessWidget {
   /// **Replace exercise** (#162), offered on every card.
   final VoidCallback onReplace;
 
-  /// **Remove exercise** (#162): non-null only for an unplanned exercise, so
-  /// the menu offers it exactly where a player may undo an accidental add.
+  /// **Remove exercise** (#162): non-null only for an unplanned exercise that
+  /// is not a replacement, so the menu offers it exactly where a player may
+  /// undo an accidental add.
   final VoidCallback? onRemove;
+
+  /// **Undo replace** (#162): non-null only on a replacement, where the menu
+  /// says this instead of Remove — taking it out brings the hidden planned
+  /// exercise back rather than leaving the workout short.
+  final VoidCallback? onUndoReplace;
 
   final bool unplanned;
 
@@ -319,6 +328,7 @@ class ExerciseLoggingCard extends StatelessWidget {
   final Key? replaceKey;
   final Key? restKey;
   final Key? removeKey;
+  final Key? undoReplaceKey;
   final Key? addSetKey;
 
   @override
@@ -357,6 +367,8 @@ class ExerciseLoggingCard extends StatelessWidget {
                         onPickRest();
                       case 'remove':
                         onRemove?.call();
+                      case 'undo':
+                        onUndoReplace?.call();
                     }
                   },
                   itemBuilder: (BuildContext context) =>
@@ -374,7 +386,19 @@ class ExerciseLoggingCard extends StatelessWidget {
                       value: 'rest',
                       child: Text('Rest time…', style: MayosTypography.body),
                     ),
-                    if (onRemove != null)
+                    // Exactly one of the two: a replacement is undone (which
+                    // brings its planned exercise back), any other unplanned
+                    // exercise is removed (#162).
+                    if (onUndoReplace != null)
+                      PopupMenuItem<String>(
+                        key: undoReplaceKey,
+                        value: 'undo',
+                        child: Text(
+                          'Undo replace',
+                          style: MayosTypography.body,
+                        ),
+                      )
+                    else if (onRemove != null)
                       PopupMenuItem<String>(
                         key: removeKey,
                         value: 'remove',

@@ -36,7 +36,7 @@ const Map<String, dynamic> _benchJson = <String, dynamic>{
 };
 
 /// A planned exercise whose program carried no `rest_seconds`: the key is
-/// absent, so its chip must read the flat 2:00 (#125).
+/// absent, so its prescription line must read the flat 2:00 (#125).
 const Map<String, dynamic> _rowJson = <String, dynamic>{
   'exercise_id': 'cable_row',
   'exercise_name': 'Cable Row',
@@ -214,8 +214,8 @@ Finder _cardMenu(int exerciseIndex) =>
 Finder _restMenuItem(int exerciseIndex) =>
     find.byKey(ValueKey<String>('logger.cardMenu.$exerciseIndex.rest'));
 
-/// Opens the card's ⋮ menu and picks **Rest time…** — the #125 picker now
-/// lives behind the #162 menu rather than in a chip on the title row.
+/// Opens the card's ⋮ menu and picks **Rest time…** — the #125 picker lives
+/// behind the #162 menu, not on the title row.
 Future<void> _openRestPicker(WidgetTester tester, int exerciseIndex) async {
   await tester.tap(_cardMenu(exerciseIndex));
   await tester.pumpAndSettle();
@@ -237,7 +237,8 @@ Future<void> _pickRestOption(
 }
 
 void main() {
-  testWidgets('the Rest chip shows the program value and 2:00 when unset',
+  testWidgets('the prescription line shows the program rest length and 2:00 '
+      'when unset (#125 via the #162 menu)',
       (WidgetTester tester) async {
     await _openLogger(tester);
 
@@ -298,7 +299,7 @@ void main() {
     expect(harness.restLengths.values[_account]?['cable_row'], isNull);
     expect(find.textContaining('Rest 2:00'), findsOneWidget);
 
-    // Off is a first-class choice: the chip reads it back…
+    // Off is a first-class choice: the picker reads it back…
     await _pickRestOption(tester, 0, 0);
     expect(find.textContaining('Rest Off'), findsOneWidget);
     expect(harness.restLengths.values[_account]?['bench_press'], 0);

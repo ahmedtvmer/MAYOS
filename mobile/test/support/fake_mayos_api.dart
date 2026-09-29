@@ -2300,12 +2300,27 @@ class FakeMayosApi {
         'image_path': 'images/bench_press.jpg',
       },
     ];
+    // Mirrors the real endpoint (#162): a name query, a muscle, or both —
+    // never an unfiltered dump, and the muscle listing needs no query.
+    final String muscle = '${request.query['target_muscle'] ?? ''}'
+        .trim()
+        .toLowerCase();
+    if (query.isEmpty && muscle.isEmpty) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'Provide query, target_muscle, or both.'});
+    }
+    bool matchesMuscle(Map<String, dynamic> entry) => muscle.isEmpty ||
+        '${entry['target_muscle'] ?? ''}'.trim().toLowerCase() == muscle;
     final List<Map<String, dynamic>> matches = query.isEmpty
-        ? const <Map<String, dynamic>>[]
+        ? catalog.where(matchesMuscle).toList(growable: false)
         : catalog
             .where((Map<String, dynamic> entry) =>
-                (entry['name'] as String).toLowerCase().contains(query))
+                (entry['name'] as String).toLowerCase().contains(query) &&
+                matchesMuscle(entry))
             .toList(growable: false);
+    // The real SQL orders the LIKE tier by name length (#162's muscle list).
+    matches.sort((Map<String, dynamic> a, Map<String, dynamic> b) =>
+        (a['name'] as String).length.compareTo((b['name'] as String).length));
     return FakeResponse(200, <String, dynamic>{
       'exercises': List<Map<String, dynamic>>.from(matches)
     });

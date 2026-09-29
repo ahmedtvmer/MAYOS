@@ -42,6 +42,14 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.execute(
         "INSERT INTO exercise_secondary_muscles (exercise_id, muscle) VALUES ('bp', 'triceps'), ('bp', 'shoulders');"
     )
+    # More muscles so the Replace search's pre-filter (#162) can be exercised.
+    cat_conn.execute(
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment, instructions, image_path, gif_path)"
+        " VALUES ('ib', 'Incline Bench Press', 'Chest', 'Chest', 'barbell', '', 'images/ib.jpg', NULL),"
+        " ('sq', 'Back Squat', 'Upper Legs', 'Quads', 'barbell', '', 'images/sq.jpg', NULL),"
+        " ('lp', 'Leg Press', 'Upper Legs', 'Quads', 'machine', '', 'images/lp.jpg', NULL),"
+        " ('op', 'Overhead Press', 'Shoulders', 'Shoulders', 'barbell', '', 'images/op.jpg', NULL);"
+    )
     cat_conn.commit()
     cat_conn.close()
     db = DatabaseManager(
@@ -119,3 +127,66 @@ def test_catalog_search_returns_the_image_path_for_added_exercise_pictures(api):
     assert matches[0]["image_path"] == "images/bp.jpg"
     # The client's own thumbnail URL builder is fed from this field alone.
     assert matches[0]["image_path"].startswith("images/")
+
+
+def test_catalog_search_by_muscle_lists_that_muscle_without_a_name_query(api):
+    """`GET /workouts/exercises?target_muscle=` lists one muscle's exercises
+    (#162): the logger's Replace search opens pre-filtered before the player
+    types, and every row still carries the fields the client renders."""
+    client, _ = api
+    token = _register(client, "muscle")["access_token"]
+
+    resp = client.get(
+        "/workouts/exercises", headers=_authed(token), params={"target_muscle": "Chest"}
+    )
+    assert resp.status_code == 200, resp.text
+    matches = resp.json()["exercises"]
+    assert [m["id"] for m in matches] == ["bp", "ib"]
+    assert matches[0]["target_muscle"] == "Chest"
+    assert matches[0]["image_path"] == "images/bp.jpg"
+
+    # The match is case-insensitive, like the rest of the catalog's text.
+    resp = client.get(
+        "/workouts/exercises", headers=_authed(token), params={"target_muscle": "quads"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert [m["id"] for m in resp.json()["exercises"]] == ["lp", "sq"]
+
+
+def test_catalog_search_combines_a_name_query_with_the_muscle(api):
+    """A name query stays optional and narrows within the muscle: the Replace
+    search's pill keeps the catalog browsable (#162)."""
+    client, _ = api
+    token = _register(client, "narrow")["access_token"]
+
+    resp = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params={"query": "press", "target_muscle": "Shoulders"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert [m["id"] for m in resp.json()["exercises"]] == ["op"]
+
+    # The same query without a muscle still searches the whole catalog.
+    resp = client.get(
+        "/workouts/exercises", headers=_authed(token), params={"query": "press"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert "op" in [m["id"] for m in resp.json()["exercises"]]
+    assert "bp" in [m["id"] for m in resp.json()["exercises"]]
+
+
+def test_catalog_search_requires_a_query_or_a_muscle(api):
+    """Neither parameter is the only refused shape: an unfiltered dump of the
+    shared catalog is not what this endpoint is for."""
+    client, _ = api
+    token = _register(client, "empty")["access_token"]
+
+    resp = client.get("/workouts/exercises", headers=_authed(token))
+    assert resp.status_code == 400, resp.text
+    resp = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params={"query": "", "target_muscle": ""},
+    )
+    assert resp.status_code == 400, resp.text

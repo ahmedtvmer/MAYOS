@@ -14,6 +14,7 @@ import 'package:mayos_mobile/src/features/player/workout/active_workout_controll
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
+import 'support/fake_rest_alerts.dart';
 import 'support/fake_mayos_api.dart';
 
 const String _account = 'account-alice';
@@ -29,6 +30,31 @@ const ProgramDay _day = ProgramDay(
       targetRepsMin: 5,
       targetRepsMax: 8,
       targetRpe: 8.5,
+    ),
+  ],
+);
+
+/// A day with two planned exercises, so an edit to one of them can be told
+/// apart from a rest running on the other (#162).
+const ProgramDay _dayTwo = ProgramDay(
+  dayName: 'Upper B',
+  dayOrder: 3,
+  exercises: <ProgramExercise>[
+    ProgramExercise(
+      exerciseId: 'bench_press',
+      exerciseName: 'Bench Press',
+      targetSets: 2,
+      targetRepsMin: 5,
+      targetRepsMax: 8,
+      targetRpe: 8.5,
+    ),
+    ProgramExercise(
+      exerciseId: 'incline_press',
+      exerciseName: 'Incline Press',
+      targetSets: 2,
+      targetRepsMin: 8,
+      targetRepsMax: 12,
+      targetRpe: 8.0,
     ),
   ],
 );
@@ -75,6 +101,7 @@ ProviderContainer _container({
   required InMemoryBaselineCacheStore cache,
   required InMemoryDraftStore drafts,
   required InMemoryWorkoutCacheStore workoutCache,
+  List<Override> extraOverrides = const <Override>[],
 }) {
   final ProviderContainer container = ProviderContainer(
     overrides: <Override>[
@@ -84,6 +111,7 @@ ProviderContainer _container({
       baselineCacheStoreProvider.overrideWithValue(cache),
       activeWorkoutStoreProvider.overrideWithValue(store),
       apiClientProvider.overrideWith((Ref ref) => _api(fake, tokens)),
+      ...extraOverrides,
     ],
   );
   addTearDown(container.dispose);
@@ -639,6 +667,118 @@ void main() {
       await controller.removeExercise(1);
       expect(controller.workout!.exercises, hasLength(1));
       expect(controller.workout!.exercises.single.replaced, isTrue);
+    });
+
+    test('undo replace brings the planned exercise back as an ordinary card',
+        () async {
+      final ActiveWorkoutController controller =
+          await start(fakeWithBaselines());
+      await controller.replaceExercise(
+        exerciseIndex: 0,
+        exerciseId: 'cable_row',
+        exerciseName: 'Cable Row',
+        imagePath: 'images/cable_row.jpg',
+      );
+      expect(controller.workout!.exercises, hasLength(2));
+      expect(controller.workout!.exercises[1].unplanned, isTrue);
+
+      await controller.undoReplace(1);
+
+      final ActiveWorkout undone = controller.workout!;
+      expect(undone.exercises, hasLength(1));
+      final ActiveWorkoutExercise planned = undone.exercises.single;
+      expect(planned.exerciseId, 'bench_press');
+      expect(planned.replaced, isFalse);
+      expect(planned.unplanned, isFalse);
+      // Its rows are back — the ones it was seeded with, all empty, so
+      // nothing the replace logged survives — and it is a real card again,
+      // so the draft carries it exactly like any untouched planned
+      // exercise: skipped until a set of it is ticked.
+      expect(planned.sets, hasLength(3));
+      expect(
+        planned.sets.every((ActiveWorkoutSet set) =>
+            set.weightKg == 0 && set.reps == 0 && !set.ticked),
+        isTrue,
+      );
+      WorkoutDraft draft() => undone.buildWorkoutDraft(
+            timezone: 'UTC',
+            clientSessionId: '22222222-2222-4222-8222-222222222222',
+            now: DateTime.utc(2026, 9, 28, 9),
+          )!;
+      expect(draft().exercises.single.skipped, isTrue);
+      expect(draft().exercises.single.sets, isEmpty);
+
+      // Logging it makes it performed — no longer skipped (#162 review).
+      await controller.updateCell(0, 0, weightKg: 100, reps: 5);
+      await controller.setTicked(0, 0, true);
+      final WorkoutDraft logged = controller.workout!.buildWorkoutDraft(
+        timezone: 'UTC',
+        clientSessionId: '33333333-3333-4333-8333-333333333333',
+        now: DateTime.utc(2026, 9, 28, 9),
+      )!;
+      expect(logged.exercises.single.skipped, isFalse);
+      expect(logged.exercises.single.sets, hasLength(1));
+
+      // The program row it started from is untouched throughout.
+      expect(controller.workout!.exercises.single.exercise,
+          _day.exercises.single.toJson());
+      expect(controller.workout!.programVersion, 3);
+
+      // Undo is only ever for a replacement: the planned exercise itself is
+      // not one, so nothing changes.
+      await controller.undoReplace(0);
+      expect(controller.workout!.exercises, hasLength(1));
+      expect(controller.workout!.exercises.single.replaced, isFalse);
+    });
+
+    test('a running rest for the replaced exercise stops like Skip, and one '
+        'for another exercise keeps running (#162)', () async {
+      final FakeRestAlerts alerts = FakeRestAlerts();
+      final InMemoryTokenStore tokens = await _tokens();
+      final ProviderContainer container = _container(
+        fake: _signedInFake(),
+        tokens: tokens,
+        store: InMemoryActiveWorkoutStore(),
+        cache: InMemoryBaselineCacheStore(),
+        drafts: InMemoryDraftStore(),
+        workoutCache: InMemoryWorkoutCacheStore(),
+        extraOverrides: <Override>[
+          restAlertsProvider.overrideWithValue(alerts),
+        ],
+      );
+      final ActiveWorkoutController controller =
+          container.read(activeWorkoutControllerProvider.notifier);
+      await controller.startFromDay(
+          accountId: _account, day: _dayTwo, programVersion: 3);
+
+      // A working tick starts the rest for that exercise (#125).
+      await controller.updateCell(0, 0, weightKg: 100, reps: 5);
+      await controller.setTicked(0, 0, true);
+      expect(controller.workout!.rest, isNotNull);
+      expect(controller.workout!.rest!.exerciseId, 'bench_press');
+      expect(alerts.shown, hasLength(1));
+
+      // Replacing the *other* exercise leaves the countdown alone.
+      await controller.replaceExercise(
+        exerciseIndex: 1,
+        exerciseId: 'cable_row',
+        exerciseName: 'Cable Row',
+      );
+      expect(controller.workout!.rest, isNotNull);
+
+      // Replacing the exercise the rest belongs to stops it with Skip's own
+      // effect: the countdown is gone and the platform alerts with it.
+      await controller.replaceExercise(
+        exerciseIndex: 0,
+        exerciseId: 'cable_row',
+        exerciseName: 'Cable Row',
+      );
+      expect(controller.workout!.rest, isNull);
+      expect(alerts.removeCalls, greaterThanOrEqualTo(1));
+      expect(alerts.cancelEndCalls, greaterThanOrEqualTo(1));
+      expect((await container.read(activeWorkoutStoreProvider).read(_account))!
+          .rest,
+          isNull);
     });
 
     test('re-picking the exercise being replaced changes nothing (#162)',

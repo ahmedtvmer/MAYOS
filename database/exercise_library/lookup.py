@@ -68,16 +68,24 @@ class ExerciseLookupMixin:
             "gif_path": entry.get("gif_path"),
         }
 
-    def find_exercises_by_name(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+    def find_exercises_by_name(
+        self, query: str, limit: int = 5, target_muscle: str | None = None
+    ) -> list[dict[str, Any]]:
         """Ranked catalog name matches: exact → punctuation-insensitive → substring → token-AND.
 
         Each tier short-circuits: weaker-tier matches are only returned when every stronger
         tier came up empty. The substitution resolver uses this so an explicitly named
         exercise either resolves by name or refuses — it never falls through to semantic
         (embedding) ranking and installs a lexical sibling.
+
+        ``target_muscle`` (#162) narrows every tier to one catalog muscle
+        (case-insensitive ``target_muscle`` column). With a muscle and no name
+        query it lists that muscle's exercises, so the logger's Replace search
+        can open pre-filtered before the player types.
         """
         clean = query.strip().lower()
-        if not clean or limit <= 0:
+        muscle = (target_muscle or "").strip().lower()
+        if limit <= 0 or (not clean and not muscle):
             return []
 
         columns = "id, name, body_part, target_muscle, equipment, image_path"
@@ -104,9 +112,27 @@ class ExerciseLookupMixin:
                 }
             )
 
+        # The muscle predicate every SQL tier shares (#162).
+        muscle_clause = "LOWER(target_muscle) = ?" if muscle else ""
+        muscle_and = f" AND {muscle_clause}" if muscle else ""
+        muscle_params: list[str] = [muscle] if muscle else []
+
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
-            cursor.execute(f"SELECT {columns} FROM exercises WHERE LOWER(name) = ? LIMIT ?", (clean, limit))
+            if muscle and not clean:
+                cursor.execute(
+                    f"SELECT {columns} FROM exercises WHERE {muscle_clause}"
+                    " ORDER BY LENGTH(name) ASC LIMIT ?",
+                    [*muscle_params, limit],
+                )
+                for row in cursor.fetchall():
+                    _collect(row)
+                return matches
+
+            cursor.execute(
+                f"SELECT {columns} FROM exercises WHERE LOWER(name) = ?{muscle_and} LIMIT ?",
+                [clean, *muscle_params, limit],
+            )
             for row in cursor.fetchall():
                 _collect(row)
             if matches:
@@ -115,16 +141,27 @@ class ExerciseLookupMixin:
             normalized = _normalize_exercise_name(clean)
             if normalized:
                 cursor.execute(f"SELECT {columns} FROM exercises")
-                normalized_rows = [row for row in cursor.fetchall() if _normalize_exercise_name(row[1]) == normalized]
+                normalized_rows = [
+                    row
+                    for row in cursor.fetchall()
+                    if _normalize_exercise_name(row[1]) == normalized
+                    and (not muscle or (row[3] or "").strip().lower() == muscle)
+                ]
                 normalized_rows.sort(key=lambda row: len(row[1] or ""))
                 for row in normalized_rows[:limit]:
                     _collect(row)
                 if matches:
                     return matches
 
+            substring_where = "LOWER(name) LIKE ?"
+            substring_params: list[str] = [f"%{clean}%"]
+            if muscle:
+                substring_where += " AND LOWER(target_muscle) = ?"
+                substring_params.append(muscle)
             cursor.execute(
-                f"SELECT {columns} FROM exercises WHERE LOWER(name) LIKE ? ORDER BY LENGTH(name) ASC LIMIT ?",
-                (f"%{clean}%", limit),
+                f"SELECT {columns} FROM exercises WHERE {substring_where}"
+                " ORDER BY LENGTH(name) ASC LIMIT ?",
+                [*substring_params, limit],
             )
             for row in cursor.fetchall():
                 _collect(row)
@@ -134,10 +171,12 @@ class ExerciseLookupMixin:
             tokens = [t for t in re.split(r"\s+", clean) if len(t) > 2]
             if tokens:
                 where_clauses = ["LOWER(name) LIKE ?" for _ in tokens]
+                if muscle:
+                    where_clauses.append("LOWER(target_muscle) = ?")
                 cursor.execute(
                     f"SELECT {columns} FROM exercises WHERE {' AND '.join(where_clauses)}"
                     " ORDER BY LENGTH(name) ASC LIMIT ?",
-                    [*[f"%{t}%" for t in tokens], limit],
+                    [*[f"%{t}%" for t in tokens], *muscle_params, limit],
                 )
                 for row in cursor.fetchall():
                     _collect(row)

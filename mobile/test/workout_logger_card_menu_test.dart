@@ -14,6 +14,7 @@ import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/workout/active_workout_controller.dart';
+import 'package:mayos_mobile/src/features/player/workout/logger_keypad.dart';
 import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
@@ -64,7 +65,31 @@ List<Map<String, dynamic>> _baselinesBody() => <Map<String, dynamic>>[
           'performed_date': '2026-09-26',
           'sets': <Map<String, dynamic>>[
             <String, dynamic>{'weight_kg': 100.0, 'reps': 5, 'rir': 1.0},
-            <String, dynamic>{'weight_kg': 95.0, 'reps': 6, 'rir': 2.0},
+              <String, dynamic>{'weight_kg': 95.0, 'reps': 6, 'rir': 2.0},
+          ],
+        },
+      },
+      <String, dynamic>{
+        'exercise_id': 'cable_fly',
+        'sessions_logged': 2,
+        'max_weight_kg': 30.0,
+        'best_e1rm_kg': 40.0,
+        'last_session': <String, dynamic>{
+          'performed_date': '2026-09-26',
+          'sets': <Map<String, dynamic>>[
+            <String, dynamic>{'weight_kg': 30.0, 'reps': 10, 'rir': 2.0},
+          ],
+        },
+      },
+      <String, dynamic>{
+        'exercise_id': 'bicep_curl',
+        'sessions_logged': 2,
+        'max_weight_kg': 12.0,
+        'best_e1rm_kg': 16.0,
+        'last_session': <String, dynamic>{
+          'performed_date': '2026-09-26',
+          'sets': <Map<String, dynamic>>[
+            <String, dynamic>{'weight_kg': 12.0, 'reps': 10, 'rir': 2.0},
           ],
         },
       },
@@ -201,8 +226,14 @@ Finder _restItem(int exerciseIndex) =>
 Finder _removeItem(int exerciseIndex) =>
     find.byKey(ValueKey<String>('logger.cardMenu.$exerciseIndex.remove'));
 
+Finder _undoItem(int exerciseIndex) =>
+    find.byKey(ValueKey<String>('logger.cardMenu.$exerciseIndex.undo'));
+
 Finder _row(int exercise, int set) =>
     find.byKey(ValueKey<String>('logger.row.$exercise.$set'));
+
+Finder _cell(int exercise, int set, String field) =>
+    find.byKey(ValueKey<String>('logger.cell.$exercise.$set.$field'));
 
 Finder _tick(int exercise, int set) =>
     find.byKey(ValueKey<String>('logger.tick.$exercise.$set'));
@@ -329,8 +360,10 @@ void main() {
     // first two sets held are gone, and the replacement's rows are empty.
     expect(find.text('100'), findsNothing);
     expect(find.text('95'), findsNothing);
+    // The hints under the empty cells are the *replacement's* own baseline
+    // (Cable Fly, 30 kg), never the replaced exercise's (#162).
     expect(
-      find.descendant(of: _row(1, 0), matching: find.text('–')),
+      find.descendant(of: _row(1, 0), matching: find.text('30')),
       findsOneWidget,
     );
     // Progress counts the replacement only: the replaced exercise has no
@@ -351,51 +384,203 @@ void main() {
   });
 
   testWidgets(
-      'the Replace search opens pre-filtered to the planned exercise\'s '
-      'target muscle, and stays searchable across the catalog (#162)',
+      'the Replace search opens with the target muscle listed before typing, '
+      'and the pill searches the whole catalog (#162)',
       (WidgetTester tester) async {
     await _openLogger(tester);
 
     await _pickMenuItem(tester, 0, _replaceItem(0));
     await _pumpUntilFound(tester, find.text('Search the exercise catalog'));
-    expect(find.text('Replace exercise'), findsOneWidget);
-    // Bench's catalog detail says Chest, and the chip opens *on* — the
-    // pre-filter is applied before the player types anything.
-    expect(find.text('Muscle: Chest'), findsOneWidget);
-    expect(_muscleFilter(), findsOneWidget);
-
-    // 'e' matches all three catalog rows; only Chest exercises are offered.
     Finder dialog() => find.byType(AlertDialog);
     Finder inDialog(String text) =>
         find.descendant(of: dialog(), matching: find.text(text));
 
-    await tester.enterText(find.byType(TextField).last, 'e');
-    await tester.tap(find.text('Search'));
-    await _pumpUntilFound(tester, inDialog('Bench Press'));
-    // 'e' matches every catalog row; only the Chest ones are offered.
+    expect(find.text('Replace exercise'), findsOneWidget);
+    // Bench's catalog detail says Chest, so the server's muscle listing is
+    // on screen before the player types anything (#162: `target_muscle`)…
+    expect(find.text('Muscle: Chest'), findsOneWidget);
+    expect(_muscleFilter(), findsOneWidget);
     expect(inDialog('Cable Fly'), findsOneWidget);
-    expect(inDialog('Bicep Curl'), findsNothing);
+    // …but Bench Press itself is not offered: it is already in this workout.
+    expect(inDialog('Bench Press'), findsNothing);
 
-    // Clearing the filter searches the whole catalog…
+    // The pill turns the pre-filter off. With no query yet, the whole
+    // catalog cannot be searched by name, so the dialog says exactly that.
     await tester.tap(_muscleFilter());
     await tester.pumpAndSettle();
-    expect(inDialog('Bicep Curl'), findsOneWidget);
-    expect(inDialog('Cable Fly'), findsOneWidget);
-    expect(inDialog('Bench Press'), findsOneWidget);
+    expect(find.text('Type an exercise name to search.'), findsOneWidget);
+    expect(inDialog('Cable Fly'), findsNothing);
 
-    // …and turning it back on narrows the same results again.
+    // Turning it back on re-lists the muscle.
     await tester.tap(_muscleFilter());
-    await tester.pumpAndSettle();
-    expect(inDialog('Bicep Curl'), findsNothing);
+    await _pumpUntilFound(tester, inDialog('Cable Fly'));
 
-    // A search no muscle matches says so, and points at the filter.
+    // A query while the filter is on narrows within the muscle…
     await tester.enterText(find.byType(TextField).last, 'curl');
     await tester.tap(find.text('Search'));
-    await _pumpUntilFound(
-      tester,
-      find.textContaining('Tap the muscle filter to search the whole catalog'),
-    );
+    await _pumpUntilFound(tester, find.text('No Chest exercise matched.'));
+
+    // …and with it off, the same kind of query searches the whole catalog.
+    await tester.enterText(find.byType(TextField).last, 'e');
+    await tester.tap(find.text('Search'));
+    await _pumpUntilFound(tester, inDialog('Cable Fly'));
     expect(inDialog('Bicep Curl'), findsNothing);
+    await tester.tap(_muscleFilter());
+    await _pumpUntilFound(tester, inDialog('Bicep Curl'));
+    expect(inDialog('Bench Press'), findsNothing);
+  });
+
+  testWidgets('the Replace search never offers an exercise already in this '
+      'workout, planned or unplanned (#162)', (WidgetTester tester) async {
+    await _openLogger(tester);
+    Finder dialog() => find.byType(AlertDialog);
+    Finder inDialog(String text) =>
+        find.descendant(of: dialog(), matching: find.text(text));
+
+    // Replace the planned Bench Press: 'bench' matches only itself, and
+    // itself is already in the workout.
+    await _pickMenuItem(tester, 0, _replaceItem(0));
+    await _pumpUntilFound(tester, find.text('Search the exercise catalog'));
+    await tester.enterText(find.byType(TextField).last, 'bench');
+    await tester.tap(find.text('Search'));
+    await _pumpUntilFound(
+        tester, find.text('Every match is already in this workout.'));
+    expect(inDialog('Bench Press'), findsNothing);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    // The same holds for an unplanned exercise already added.
+    final Finder add = find.widgetWithText(OutlinedButton, 'Add exercise');
+    await tester.ensureVisible(add);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(add);
+    await _pumpUntilFound(tester, find.text('Search the exercise catalog'));
+    await _searchAndPick(tester, 'curl', 'Bicep Curl');
+    expect(find.text('Bicep Curl'), findsOneWidget);
+
+    await _pickMenuItem(tester, 2, _replaceItem(2));
+    await _pumpUntilFound(
+        tester, find.text('Every match is already in this workout.'));
+    expect(inDialog('Bicep Curl'), findsNothing);
+  });
+
+  testWidgets('Remove exercise asks before discarding logged sets and takes '
+      'an untouched one out at once (#162)', (WidgetTester tester) async {
+    await _openLogger(tester);
+
+    final Finder add = find.widgetWithText(OutlinedButton, 'Add exercise');
+    Future<void> addBicepCurl() async {
+      await tester.ensureVisible(add);
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(add);
+      await _pumpUntilFound(tester, find.text('Search the exercise catalog'));
+      await _searchAndPick(tester, 'curl', 'Bicep Curl');
+      expect(find.text('Bicep Curl'), findsOneWidget);
+    }
+
+    await addBicepCurl();
+    await _tickSet(tester, 2, 0);
+
+    // A ticked set is never discarded silently (#162).
+    await _pickMenuItem(tester, 2, _removeItem(2));
+    expect(find.text('Remove and discard 1 logged set?'), findsOneWidget);
+    await tester.tap(find.text('Keep logging'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bicep Curl'), findsOneWidget);
+
+    await _pickMenuItem(tester, 2, _removeItem(2));
+    expect(find.text('Remove and discard 1 logged set?'), findsOneWidget);
+    await tester.tap(find.text('Remove'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bicep Curl'), findsNothing);
+
+    // Nothing ticked: the same action goes straight through.
+    await addBicepCurl();
+    await _pickMenuItem(tester, 2, _removeItem(2));
+    await tester.pumpAndSettle();
+    expect(find.text('Bicep Curl'), findsNothing);
+    expect(find.text('Remove and discard'), findsNothing);
+  });
+
+  testWidgets('Undo replace brings the planned exercise back, asking first '
+      'over logged sets (#162)', (WidgetTester tester) async {
+    await _openLogger(tester);
+
+    await _pickMenuItem(tester, 0, _replaceItem(0));
+    await _pumpUntilFound(tester, find.text('Search the exercise catalog'));
+    await _searchAndPick(tester, 'fly', 'Cable Fly');
+    expect(find.text('Bench Press'), findsNothing);
+
+    // The replacement's menu says Undo replace, never Remove exercise: taking
+    // it out brings the hidden planned exercise back (#162 review).
+    await _openMenu(tester, 1);
+    expect(find.text('Undo replace'), findsOneWidget);
+    expect(_undoItem(1), findsOneWidget);
+    expect(find.text('Remove exercise'), findsNothing);
+    expect(_removeItem(1), findsNothing);
+    await tester.tap(_undoItem(1));
+    await tester.pumpAndSettle();
+
+    // Nothing ticked, so no confirmation — and the planned card is back with
+    // its rows, empty, ready to log again.
+    expect(find.text('Bench Press'), findsOneWidget);
+    expect(find.text('Cable Fly'), findsNothing);
+    expect(find.text('Unplanned'), findsNothing);
+    expect(_row(0, 0), findsOneWidget);
+    expect(_row(0, 2), findsOneWidget);
+    expect(find.text('0/2 exercises · 0/4 sets'), findsOneWidget);
+
+    // Replace again, log a set on the replacement: now Undo asks first.
+    await _pickMenuItem(tester, 0, _replaceItem(0));
+    await _pumpUntilFound(tester, find.text('Search the exercise catalog'));
+    await _searchAndPick(tester, 'fly', 'Cable Fly');
+    await _tickSet(tester, 1, 0);
+
+    await _pickMenuItem(tester, 1, _undoItem(1));
+    expect(find.text('Remove and discard 1 logged set?'), findsOneWidget);
+    await tester.tap(find.text('Keep logging'));
+    await tester.pumpAndSettle();
+    expect(find.text('Cable Fly'), findsOneWidget);
+
+    await _pickMenuItem(tester, 1, _undoItem(1));
+    expect(find.text('Remove and discard 1 logged set?'), findsOneWidget);
+    await tester.tap(find.text('Undo replace'));
+    await tester.pumpAndSettle();
+    expect(find.text('Cable Fly'), findsNothing);
+    expect(find.text('Bench Press'), findsOneWidget);
+    // The logged set went with the replacement, so nothing of it survives.
+    expect(find.text('30'), findsNothing);
+    expect(find.text('0/2 exercises · 0/4 sets'), findsOneWidget);
+  });
+
+  testWidgets('a keypad focus stays on its own exercise when a card is '
+      'inserted before it (#162)', (WidgetTester tester) async {
+    await _openLogger(tester);
+
+    // Focus the second exercise's cell: the keypad names it.
+    await tester.ensureVisible(_cell(1, 0, 'kg'));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(_cell(1, 0, 'kg'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      tester.widget<LoggerKeypad>(find.byType(LoggerKeypad)).exerciseName,
+      'Incline Press',
+    );
+
+    // Replacing the first exercise inserts a card before it.
+    await _pickMenuItem(tester, 0, _replaceItem(0));
+    await _pumpUntilFound(tester, find.text('Search the exercise catalog'));
+    await _searchAndPick(tester, 'fly', 'Cable Fly');
+    await tester.pumpAndSettle();
+
+    // The keypad still edits the same exercise, which simply moved down one
+    // index (#162): the focus shifted with the card instead of being dropped.
+    expect(find.byType(LoggerKeypad), findsOneWidget);
+    expect(
+      tester.widget<LoggerKeypad>(find.byType(LoggerKeypad)).exerciseName,
+      'Incline Press',
+    );
+    expect(_cell(2, 0, 'kg'), findsOneWidget);
   });
 
   testWidgets('Rest time… in the menu opens the #125 picker and writes the '
