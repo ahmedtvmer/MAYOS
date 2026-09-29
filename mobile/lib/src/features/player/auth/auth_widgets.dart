@@ -35,6 +35,7 @@ class AuthScaffold extends StatelessWidget {
     this.links = const <Widget>[],
     this.message,
     this.wallpaper = false,
+    this.homeScreenInstallHint,
   });
 
   final String title;
@@ -50,6 +51,9 @@ class AuthScaffold extends StatelessWidget {
   /// the wallpaper theme. Only the logged-out sign-in surfaces opt in; the
   /// recovery-email gate stays plain and theme-following.
   final bool wallpaper;
+
+  /// Optional, fixed-height Home Screen hint slot for login and registration.
+  final Widget? homeScreenInstallHint;
 
   @override
   Widget build(BuildContext context) {
@@ -114,6 +118,15 @@ class AuthScaffold extends StatelessWidget {
                                   ),
                                 ),
                               ),
+                              if (homeScreenInstallHint != null)
+                                SizedBox(
+                                  height: keyboardOpen
+                                      ? 0.0
+                                      : kMayosMinTapTarget + MayosSpacing.xs,
+                                  child: keyboardOpen
+                                      ? const SizedBox.shrink()
+                                      : homeScreenInstallHint,
+                                ),
                               AuthHeading(title: title, lead: lead),
                               const SizedBox(height: MayosSpacing.xl),
                               ...children,

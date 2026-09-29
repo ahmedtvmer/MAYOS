@@ -11,6 +11,7 @@ import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'auth_widgets.dart';
+import 'home_screen_install_hint.dart';
 import 'google_sign_in_action.dart';
 import 'google_sign_in_button.dart';
 
@@ -68,6 +69,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       title: 'Log in',
       lead: 'Sign in to keep training and pick up where you left off.',
       wallpaper: true,
+      homeScreenInstallHint: const HomeScreenInstallHintSlot(),
       message: googleError != null
           ? AuthInlineNotice(message: googleError!)
           : (_error == null ? null : AuthInlineNotice(message: _error!)),

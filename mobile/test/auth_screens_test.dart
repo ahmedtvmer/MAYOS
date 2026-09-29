@@ -15,6 +15,7 @@ import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_logo.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_controller.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_widgets.dart';
+import 'package:mayos_mobile/src/features/player/auth/home_screen_install_hint.dart';
 import 'package:mayos_mobile/src/providers.dart';
 import 'package:mayos_mobile/src/router.dart';
 
@@ -47,10 +48,12 @@ Future<void> _setSize(WidgetTester tester, Size size) async {
 }
 
 Future<ProviderContainer> _pumpAuth(WidgetTester tester, FakeMayosApi fake,
-    {Size size = const Size(393, 852)}) async {
+    {Size size = const Size(393, 852),
+    List<Override> extraOverrides = const <Override>[]}) async {
   await _setSize(tester, size);
   final InMemoryTokenStore tokens = InMemoryTokenStore();
-  await tester.pumpWidget(authApp(fake, tokens));
+  await tester
+      .pumpWidget(authApp(fake, tokens, extraOverrides: extraOverrides));
   await _pumpUntilFound(tester, find.text('Log in'));
   return ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
 }
@@ -70,7 +73,178 @@ FakeMayosApi _loginFake() {
   return fake;
 }
 
+class _MemoryHomeScreenInstallHintStore implements HomeScreenInstallHintStore {
+  _MemoryHomeScreenInstallHintStore(this.environment);
+
+  final HomeScreenInstallHintEnvironment environment;
+  bool dismissed = false;
+  bool canPersistDismissal = true;
+
+  @override
+  Future<HomeScreenInstallHintEnvironment> readEnvironment() async =>
+      HomeScreenInstallHintEnvironment(
+        isWeb: environment.isWeb,
+        isIosSafari: environment.isIosSafari,
+        isStandalone: environment.isStandalone,
+        wasDismissed: environment.wasDismissed || dismissed,
+      );
+
+  @override
+  Future<bool> rememberDismissal() async {
+    dismissed = canPersistDismissal;
+    return canPersistDismissal;
+  }
+}
+
 void main() {
+  testWidgets('iPhone Safari sees the hint outside standalone',
+      (WidgetTester tester) async {
+    final _MemoryHomeScreenInstallHintStore store =
+        _MemoryHomeScreenInstallHintStore(
+      const HomeScreenInstallHintEnvironment(
+        isWeb: true,
+        isIosSafari: true,
+        isStandalone: false,
+        wasDismissed: false,
+      ),
+    );
+    await _pumpAuth(tester, _loginFake(), extraOverrides: <Override>[
+      homeScreenInstallHintStoreProvider.overrideWithValue(store),
+    ]);
+
+    expect(find.text(HomeScreenInstallHintSlot.message), findsOneWidget);
+    expect(tester.getSize(find.byTooltip('Dismiss Home Screen hint')).width,
+        greaterThanOrEqualTo(kMayosMinTapTarget));
+  });
+
+  testWidgets('standalone and non-Safari browsers do not see the hint',
+      (WidgetTester tester) async {
+    final List<(String, HomeScreenInstallHintEnvironment)> cases =
+        <(String, HomeScreenInstallHintEnvironment)>[
+      (
+        'standalone Safari',
+        const HomeScreenInstallHintEnvironment(
+          isWeb: true,
+          isIosSafari: true,
+          isStandalone: true,
+          wasDismissed: false,
+        ),
+      ),
+      for (final String browser in <String>[
+        'iOS Chrome',
+        'desktop browser',
+        'Android browser',
+      ])
+        (
+          browser,
+          const HomeScreenInstallHintEnvironment(
+            isWeb: true,
+            isIosSafari: false,
+            isStandalone: false,
+            wasDismissed: false,
+          ),
+        ),
+    ];
+
+    for (final (String browser, HomeScreenInstallHintEnvironment environment)
+        in cases) {
+      final _MemoryHomeScreenInstallHintStore store =
+          _MemoryHomeScreenInstallHintStore(environment);
+      await _pumpAuth(tester, _loginFake(), extraOverrides: <Override>[
+        homeScreenInstallHintStoreProvider.overrideWithValue(store),
+      ]);
+      expect(find.text(HomeScreenInstallHintSlot.message), findsNothing,
+          reason: '$browser must not see the hint');
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets('dismissal persists when the login screen is rebuilt',
+      (WidgetTester tester) async {
+    final _MemoryHomeScreenInstallHintStore store =
+        _MemoryHomeScreenInstallHintStore(
+      const HomeScreenInstallHintEnvironment(
+        isWeb: true,
+        isIosSafari: true,
+        isStandalone: false,
+        wasDismissed: false,
+      ),
+    );
+    final List<Override> overrides = <Override>[
+      homeScreenInstallHintStoreProvider.overrideWithValue(store),
+    ];
+    await _pumpAuth(tester, _loginFake(), extraOverrides: overrides);
+    expect(find.text(HomeScreenInstallHintSlot.message), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Dismiss Home Screen hint'));
+    await tester.pumpAndSettle();
+    expect(store.dismissed, isTrue);
+    expect(find.text(HomeScreenInstallHintSlot.message), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _pumpAuth(tester, _loginFake(), extraOverrides: overrides);
+    expect(find.text(HomeScreenInstallHintSlot.message), findsNothing);
+  });
+
+  testWidgets(
+      'without storage the close button still hides the hint, which returns '
+      'on the next visit', (WidgetTester tester) async {
+    final _MemoryHomeScreenInstallHintStore store =
+        _MemoryHomeScreenInstallHintStore(
+      const HomeScreenInstallHintEnvironment(
+        isWeb: true,
+        isIosSafari: true,
+        isStandalone: false,
+        wasDismissed: false,
+      ),
+    )..canPersistDismissal = false;
+    final List<Override> overrides = <Override>[
+      homeScreenInstallHintStoreProvider.overrideWithValue(store),
+    ];
+    await _pumpAuth(tester, _loginFake(), extraOverrides: overrides);
+
+    await tester.tap(find.byTooltip('Dismiss Home Screen hint'));
+    await tester.pumpAndSettle();
+    expect(find.text(HomeScreenInstallHintSlot.message), findsNothing);
+
+    // Nothing was remembered, so a fresh visit shows it again.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _pumpAuth(tester, _loginFake(), extraOverrides: overrides);
+    expect(find.text(HomeScreenInstallHintSlot.message), findsOneWidget);
+  });
+
+  testWidgets('hint slot preserves the focused field when keyboard opens',
+      (WidgetTester tester) async {
+    final _MemoryHomeScreenInstallHintStore store =
+        _MemoryHomeScreenInstallHintStore(
+      const HomeScreenInstallHintEnvironment(
+        isWeb: true,
+        isIosSafari: true,
+        isStandalone: false,
+        wasDismissed: false,
+      ),
+    );
+    await _pumpAuth(tester, _loginFake(),
+        size: const Size(360, 640),
+        extraOverrides: <Override>[
+          homeScreenInstallHintStoreProvider.overrideWithValue(store),
+        ]);
+    expect(find.text(HomeScreenInstallHintSlot.message), findsOneWidget);
+
+    final Finder editable = find.descendant(
+        of: find.byKey(const Key('login_username')),
+        matching: find.byType(EditableText));
+    await tester.tap(find.byKey(const Key('login_username')));
+    await tester.pump();
+    final State<EditableText> before = tester.state(editable);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(tester.state<State<EditableText>>(editable), same(before));
+    expect(tester.widget<EditableText>(editable).focusNode.hasFocus, isTrue);
+  });
+
   testWidgets('login success authenticates and leaves the form',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _loginFake();
