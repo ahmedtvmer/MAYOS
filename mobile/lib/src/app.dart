@@ -5,8 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/app_mode.dart';
 import 'core/connectivity.dart';
 import 'core/theme/mayos_theme.dart';
+import 'core/ui/mayos_app_mode_scope.dart';
 import 'providers.dart';
 import 'router.dart';
 
@@ -62,6 +64,12 @@ class _MayosAppState extends ConsumerState<MayosApp>
   @override
   Widget build(BuildContext context) {
     final GoRouter router = ref.watch(routerProvider);
+    // The capability caps the mode, as in the router: a lost coach capability
+    // lays out as Player mode whatever is stored.
+    final bool isCoach =
+        ref.watch(authControllerProvider).session?.account.isCoach ?? false;
+    final AppMode appMode =
+        isCoach ? ref.watch(appModeControllerProvider).mode : AppMode.player;
     final ThemeMode themeMode = ref.watch(themeModeControllerProvider);
     // The offline banner is web-only (#127). The connectivity provider is
     // watched only while the flag is on, so Android never creates it and its
@@ -81,20 +89,23 @@ class _MayosAppState extends ConsumerState<MayosApp>
       routerConfig: router,
       builder: (BuildContext context, Widget? child) {
         final MayosThemeExtension c = _effective(context, themeMode);
-        return AnnotatedRegion<SystemUiOverlayStyle>(
-          value: MayosTheme.overlayStyle(c),
-          child: Stack(
-            fit: StackFit.passthrough,
-            children: <Widget>[
-              child ?? const SizedBox.shrink(),
-              if (showOfflineBanner)
-                const Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: OfflineBanner(),
-                ),
-            ],
+        return MayosAppModeScope(
+          mode: appMode,
+          child: AnnotatedRegion<SystemUiOverlayStyle>(
+            value: MayosTheme.overlayStyle(c),
+            child: Stack(
+              fit: StackFit.passthrough,
+              children: <Widget>[
+                child ?? const SizedBox.shrink(),
+                if (showOfflineBanner)
+                  const Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: OfflineBanner(),
+                  ),
+              ],
+            ),
           ),
         );
       },

@@ -68,6 +68,78 @@ class MayosBottomNavigation extends StatelessWidget {
   }
 }
 
+/// Desktop counterpart to [MayosBottomNavigation], using the same items and
+/// badge presentation.
+class MayosNavigationRail extends StatelessWidget {
+  const MayosNavigationRail({
+    super.key,
+    required this.items,
+    required this.index,
+    required this.onSelected,
+  });
+
+  final List<MayosNavItem> items;
+  final int index;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: c.surface,
+        border: Border(right: BorderSide(color: c.border)),
+      ),
+      child: SizedBox(
+        width: MayosSpacing.navigationRailWidth,
+        child: _buildRail(context, c),
+      ),
+    );
+  }
+
+  Widget _buildRail(BuildContext context, MayosThemeExtension c) {
+    final TextTheme text = Theme.of(context).textTheme;
+    return NavigationRail(
+      backgroundColor: c.surface,
+      indicatorColor: c.selectedSurface,
+      selectedIndex: index,
+      onDestinationSelected: onSelected,
+      minWidth: MayosSpacing.navigationRailWidth,
+      labelType: NavigationRailLabelType.all,
+      groupAlignment: -1,
+      selectedIconTheme: IconThemeData(color: c.accent),
+      unselectedIconTheme: IconThemeData(color: c.textMuted),
+      selectedLabelTextStyle: text.labelSmall?.copyWith(
+        color: c.accent,
+        fontWeight: FontWeight.w600,
+      ),
+      unselectedLabelTextStyle: text.labelSmall?.copyWith(
+        color: c.textMuted,
+        fontWeight: FontWeight.w500,
+      ),
+      destinations: _destinations(c),
+    );
+  }
+
+  List<NavigationRailDestination> _destinations(MayosThemeExtension c) =>
+      <NavigationRailDestination>[
+        for (final MayosNavItem item in items)
+          NavigationRailDestination(
+            icon: _NavigationItemIcon(
+              item: item,
+              selected: false,
+              color: c.textMuted,
+            ),
+            selectedIcon: _NavigationItemIcon(
+              item: item,
+              selected: true,
+              color: c.accent,
+            ),
+            label: Text(item.label),
+          ),
+      ];
+}
+
 class _Destination extends StatelessWidget {
   const _Destination({
     required this.item,
@@ -98,20 +170,7 @@ class _Destination extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Badge(
-              isLabelVisible: item.badge > 0,
-              label: Text('${item.badge}'),
-              backgroundColor: c.danger,
-              child: AnimatedSwitcher(
-                duration: MayosMotion.fast,
-                child: Icon(
-                  selected ? item.selectedIcon : item.icon,
-                  key: ValueKey<bool>(selected),
-                  size: 24,
-                  color: color,
-                ),
-              ),
-            ),
+            _NavigationItemIcon(item: item, selected: selected, color: color),
             const SizedBox(height: 3),
             // With three destinations the cells are narrow and large text
             // scales could wrap a label into a second line, overflowing the
@@ -129,6 +188,37 @@ class _Destination extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NavigationItemIcon extends StatelessWidget {
+  const _NavigationItemIcon({
+    required this.item,
+    required this.selected,
+    required this.color,
+  });
+
+  final MayosNavItem item;
+  final bool selected;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Badge(
+      isLabelVisible: item.badge > 0,
+      label: Text('${item.badge}'),
+      backgroundColor: c.danger,
+      child: AnimatedSwitcher(
+        duration: MayosMotion.fast,
+        child: Icon(
+          selected ? item.selectedIcon : item.icon,
+          key: ValueKey<bool>(selected),
+          size: MayosIconSizes.navigation,
+          color: color,
         ),
       ),
     );

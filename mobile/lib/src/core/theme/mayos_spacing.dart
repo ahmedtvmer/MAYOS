@@ -12,6 +12,15 @@ abstract final class MayosSpacing {
   static const double xxl = 32;
   static const double xxxl = 40;
 
+  /// Logical viewport width at which shell tabs move to a side rail.
+  static const double desktopNavigationBreakpoint = 1024;
+
+  /// Maximum desktop width for Player mode page content.
+  static const double playerColumnMaxWidth = 480;
+
+  /// Width reserved for the desktop side navigation rail.
+  static const double navigationRailWidth = 88;
+
   /// Standard horizontal inset for full-width screen content.
   static const EdgeInsets screenHorizontal =
       EdgeInsets.symmetric(horizontal: lg);
@@ -66,6 +75,9 @@ abstract final class MayosIconSizes {
 
   /// Standard inline icon: trailing chevrons, row actions, sheet checks.
   static const double medium = 20;
+
+  /// Standard icon size in shell navigation.
+  static const double navigation = 24;
 
   /// Empty-state glyph inside a large surface (a 180dp media box, #53).
   static const double large = 32;

@@ -52,7 +52,7 @@ Future<void> _pumpApp(
   WidgetTester tester,
   FakeMayosApi fake, {
   required ThemeModeStore store,
-  Size size = const Size(1080, 2400),
+  Size size = const Size(412, 2400),
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;

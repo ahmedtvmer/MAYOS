@@ -154,7 +154,10 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
                 style: MayosTypography.caption.copyWith(color: c.textMuted),
               ),
             const SizedBox(height: MayosSpacing.xs),
-            Row(
+            // Wraps so both actions fit on a narrow phone (390 dp).
+            Wrap(
+              spacing: MayosSpacing.xs,
+              runSpacing: MayosSpacing.xs,
               children: <Widget>[
                 if (alert.isNew)
                   MayosButton(
@@ -193,8 +196,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
     }
     final MayosThemeExtension c = MayosTheme.of(context);
     final List<CoachAlert> visible = _alerts
-        .where((CoachAlert alert) =>
-            _showResolved || !alert.isResolved)
+        .where((CoachAlert alert) => _showResolved || !alert.isResolved)
         .toList(growable: false);
     return ListView(
       padding: MayosSpacing.screen,

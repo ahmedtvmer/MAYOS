@@ -143,7 +143,7 @@ Future<void> _pumpProgress(
 }
 
 Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
-  tester.view.physicalSize = const Size(1080, 2400);
+  tester.view.physicalSize = const Size(412, 2400);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
