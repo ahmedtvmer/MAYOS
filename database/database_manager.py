@@ -84,6 +84,9 @@ class DatabaseManager(
         self.catalog_path = Path(catalog_path) if catalog_path is not None else root / "catalog.db"
         self.ledgers_dir = Path(ledgers_dir) if ledgers_dir is not None else root / "users"
         self.backups_dir = Path(backups_dir) if backups_dir is not None else root / "backups"
+        # The API and operational scripts inject the configured off-site store.
+        # Keeping the default unset preserves hermetic local-only/test stores.
+        self.offsite_backup = None
         env_deletions = os.getenv("MAYOS_DELETIONS_DB", "").strip()
         if deletions_path is not None:
             self.deletions_path = Path(deletions_path)

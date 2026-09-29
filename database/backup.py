@@ -26,7 +26,7 @@ import sqlite3
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from database.migration_manager import restore_atomic_backup
 from utils.logger import MyosLogger
@@ -47,6 +47,20 @@ MAX_BACKUP_RETENTION_DAYS = 30
 #: A ledger id is safe to use as a file name when it is already canonical: the
 #: sanitized value equals the raw value and it is not the reserved ``default``.
 RESERVED_LEDGER_IDS = frozenset({"default"})
+
+
+class OffsiteBackupStore(Protocol):
+    """Storage operations consumed by the daily backup and restore lifecycle."""
+
+    def is_snapshot_complete(self, snapshot_date: str) -> bool: ...
+
+    def upload_snapshot(self, snapshot_dir: Path, snapshot_date: str) -> None: ...
+
+    def remove_ledger(self, ledger_id: str) -> None: ...
+
+    def prune_snapshots(self, *, retention_days: int, now: datetime | None = None) -> list[str]: ...
+
+    def download_snapshot(self, snapshot_date: str, destination: Path) -> Path: ...
 
 
 def daily_backups_root(backups_dir: Path) -> Path:
@@ -167,7 +181,7 @@ def create_daily_backup(
     final_dir = root / day
 
     if _snapshot_is_valid(final_dir):
-        return {
+        summary = {
             "created": False,
             "skipped": True,
             "date": day,
@@ -176,6 +190,8 @@ def create_daily_backup(
             "ledgers": sorted(p.stem for p in (final_dir / LEDGERS_SUBDIR).glob("*.db")),
             "pruned": [],
         }
+        summary["offsite"] = _publish_offsite_snapshot(db, final_dir, day, retention_days, moment)
+        return summary
 
     staging_dir = root / f".staging-{day}-{uuid.uuid4().hex}"
     staging_ledgers = staging_dir / LEDGERS_SUBDIR
@@ -210,7 +226,7 @@ def create_daily_backup(
 
     pruned = prune_daily_backups(daily_backups_root(db.backups_dir), retention_days=retention_days, now=moment)
     logger.info("Daily backup for %s covered catalog + %s ledger(s).", day, len(covered))
-    return {
+    summary = {
         "created": True,
         "skipped": False,
         "date": day,
@@ -219,6 +235,48 @@ def create_daily_backup(
         "ledgers": covered,
         "pruned": pruned,
     }
+    summary["offsite"] = _publish_offsite_snapshot(db, final_dir, day, retention_days, moment)
+    return summary
+
+
+def _publish_offsite_snapshot(
+    db: Any,
+    snapshot_dir: Path,
+    snapshot_date: str,
+    retention_days: int | None,
+    now: datetime,
+) -> dict[str, Any] | None:
+    """Publishes best-effort to R2 after local snapshot success."""
+    store = getattr(db, "offsite_backup", None)
+    if store is None:
+        return None
+    days = _clamp_retention_days(retention_days if retention_days is not None else backup_retention_days())
+    uploaded = False
+    try:
+        already_complete = store.is_snapshot_complete(snapshot_date)
+        if not already_complete:
+            store.upload_snapshot(snapshot_dir, snapshot_date)
+            uploaded = True
+    except Exception as exc:
+        logger.warning("Off-site R2 backup for %s failed (%s); local backups are unaffected.", snapshot_date, type(exc).__name__)
+        return {"complete": False, "uploaded": False, "pruned": _prune_offsite_snapshots(store, days, now) or []}
+    pruned = _prune_offsite_snapshots(store, days, now)
+    if pruned is None:
+        return {"complete": False, "uploaded": uploaded, "pruned": []}
+    logger.info(
+        "Off-site R2 backup for %s complete (%s).",
+        snapshot_date,
+        "uploaded" if uploaded else "already complete",
+    )
+    return {"complete": True, "uploaded": uploaded, "pruned": pruned}
+
+
+def _prune_offsite_snapshots(store: Any, retention_days: int, now: datetime) -> list[str] | None:
+    try:
+        return store.prune_snapshots(retention_days=retention_days, now=now)
+    except Exception as exc:
+        logger.warning("Off-site R2 retention pruning failed (%s); local backups are unaffected.", type(exc).__name__)
+        return None
 
 
 def _snapshot_date(snapshot_dir: Path) -> datetime | None:

@@ -121,6 +121,15 @@ class AccountDeletionMixin:
             )
             self.deletions_conn.commit()
 
+    def _mark_deletion_pending(self, account_id: str) -> None:
+        """Keeps incomplete cleanup eligible for the next incremental replay."""
+        with self._deletions_lock:
+            self.deletions_conn.execute(
+                "UPDATE account_deletions SET applied_at = NULL WHERE account_id = ?",
+                (str(account_id),),
+            )
+            self.deletions_conn.commit()
+
     def delete_account(
         self, account_id: str, now_iso: str | None = None, ledger_id: str | None = None
     ) -> dict[str, Any]:
@@ -145,8 +154,9 @@ class AccountDeletionMixin:
         # (b) catalog: mark deleted, revoke sessions, end relationships.
         self._force_delete_account_catalog(str(account_id), now)
         # (c) live ledger + any user-specific backup copies.
-        self._remove_account_files(resolved_ledger_id)
-        self._mark_deletion_applied(str(account_id))
+        remote_cleanup_complete = self._remove_account_files(resolved_ledger_id)
+        if remote_cleanup_complete:
+            self._mark_deletion_applied(str(account_id))
         # model_usage rows keep the opaque account id for billing reconciliation
         # (documented in ADR 039); they carry no username or contact details.
         return {"ok": True, "account_id": str(account_id), "ledger_id": resolved_ledger_id, "deleted_at": now}
@@ -286,24 +296,25 @@ class AccountDeletionMixin:
             )
             return cursor.fetchone() is not None
 
-    def _remove_account_files(self, ledger_id: str) -> None:
+    def _remove_account_files(self, ledger_id: str) -> bool:
         """Closes this thread's connection, then removes the live ledger and backups.
 
         Fails closed on an empty, non-canonical, or reserved (``default``) ledger
-        id, so a bad record can never delete an unrelated or shared ledger.
+        id, so a bad record can never delete an unrelated or shared ledger. A
+        remote cleanup failure returns ``False`` so replay retries the record.
         """
         raw = "" if ledger_id is None else str(ledger_id)
         if not raw.strip():
             logger.warning("Refusing to remove ledger files for an empty ledger id.")
-            return
+            return True
         sanitized = self._sanitize_username(raw)
         if sanitized != raw or sanitized == "default":
             logger.warning(f"Refusing to remove ledger files for non-canonical ledger id '{raw}'.")
-            return
+            return True
         if self._ledger_owned_by_live_account(sanitized):
             # The username was reused by a new account after the recorded
             # deletion; its ledger is not the deleted account's and must survive.
-            return
+            return True
         # Ledgers live on explicit handles and are closed by their owners before
         # deletion runs (ADR 041); the store holds no connection to unmount here.
         for suffix in ("", "-wal", "-shm"):
@@ -325,6 +336,20 @@ class AccountDeletionMixin:
             remove_ledger_from_daily_backups(self, sanitized)
         except OSError as exc:
             logger.warning(f"Failed to remove daily-backup copies of ledger {sanitized}: {exc}")
+        remote_cleanup_complete = True
+        offsite = getattr(self, "offsite_backup", None)
+        if offsite is not None:
+            try:
+                offsite.remove_ledger(sanitized)
+            except Exception as exc:
+                # The durable deletion record makes this cleanup retryable from
+                # the normal replay path; provider errors never undo deletion.
+                remote_cleanup_complete = False
+                logger.warning(
+                    "Failed to remove off-site snapshot copies for a deleted ledger (%s); deletion replay will retry.",
+                    type(exc).__name__,
+                )
+        return remote_cleanup_complete
 
     def replay_deletions(self, *, full: bool = False) -> int:
         """Replays durable deletion records; returns how many were processed.
@@ -341,7 +366,9 @@ class AccountDeletionMixin:
             if not full and record.get("applied_at") is not None:
                 continue
             self._force_delete_account_catalog(record["account_id"], record["deleted_at"])
-            self._remove_account_files(record["ledger_id"])
+            if not self._remove_account_files(record["ledger_id"]):
+                self._mark_deletion_pending(record["account_id"])
+                continue
             self._mark_deletion_applied(record["account_id"])
             applied += 1
         return applied

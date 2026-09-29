@@ -442,14 +442,69 @@ a ledger over the live catalog.
 * **Online and consistent.** Each file is written with `Connection.backup()` while the service keeps serving; no checkpoint-and-copy step is needed.
 * **Runs in the API Machine.** The job is scheduled in-process in the always-on FastAPI writer, once at startup and every `MAYOS_DAILY_BACKUP_INTERVAL_SECONDS` (default `3600`; `0` disables). It never runs on a detached scheduled Machine, which cannot mount `/data` (see [§10](#10-flyio-closed-trial-api-deployment-fastapi-only)). Force a pass with `scripts/backup_now.py`.
 * **Retriable and idempotent.** A run stages into a hidden temp directory and atomically renames it into place; a failure publishes nothing, and the same day can be retried. A valid snapshot for the current UTC day is left alone, so the hourly default just retries a failed day sooner rather than making extra copies. A deletion landing mid-run is detected under the catalog lock before the rename, so its staged ledger copy is dropped rather than republished.
-* **Bounded retention.** Snapshots older than `MAYOS_BACKUP_RETENTION_DAYS` (default `30`, clamped to `1..30`) are pruned. The 30-day ceiling exists because ADR 015 discloses that a **restricted whole-catalog recovery backup may retain deleted rows for up to 30 days** — a longer window would exceed what users were told.
+* **Bounded retention.** Local snapshots, and R2 snapshots when configured, older than `MAYOS_BACKUP_RETENTION_DAYS` (default `30`, clamped to `1..30`) are pruned. The 30-day ceiling exists because ADR 015 discloses that a **restricted whole-catalog recovery backup may retain deleted rows for up to 30 days** — a longer window would exceed what users were told.
 * **`deletions.db` is never inside a snapshot.** It is the durable record (ADR 015/039) that keeps a restored catalog from resurrecting a deleted account. The daily job deliberately does not copy it; keep it backed up append-only and separately (below).
+
+### 1a. Off-site copy in Cloudflare R2 (issue #164)
+
+The in-process daily job also copies each completed local snapshot to a private
+Cloudflare R2 bucket through its S3-compatible API. In the Cloudflare dashboard,
+create the bucket and leave public access disabled, then create an R2 API token
+with **Object Read & Write** permission scoped to that bucket only. Use the S3
+endpoint shown by Cloudflare for the account (or the jurisdiction-specific
+endpoint for a jurisdictional bucket). MAYOS configures the S3 client with
+region `auto`.
+
+Set these four Fly secrets; the API key and secret are the R2 token's Access Key
+ID and Secret Access Key:
+
+```bash
+fly secrets set \
+  R2_ENDPOINT="https://ACCOUNT_ID.r2.cloudflarestorage.com" \
+  R2_BUCKET="YOUR_BUCKET_NAME" \
+  R2_ACCESS_KEY_ID="YOUR_ACCESS_KEY_ID" \
+  R2_SECRET_ACCESS_KEY="YOUR_SECRET_ACCESS_KEY"
+```
+
+Replace the example values with the bucket name, endpoint, and token credentials
+from Cloudflare before running the command.
+
+The remote layout is `daily/<YYYYMMDD>/catalog.db` plus
+`daily/<YYYYMMDD>/ledgers/<id>.db`. `_COMPLETE.json` is written last; a date
+without it is incomplete and is ignored by restore. Failed remote uploads are
+logged without credentials, do not affect the local snapshot or API, and are
+retried by the next daily-job pass. If any of the four secrets is unset, startup
+logs once that R2 backups are disabled; local daily backups continue normally.
+
+To verify a pass, run `python scripts/backup_now.py` on the API Machine, check
+the completion result in `fly logs`, then open the bucket in the Cloudflare
+dashboard and confirm today's `daily/<YYYYMMDD>/` contains `_COMPLETE.json`,
+`catalog.db`, and the `ledgers/` directory. An existing marker means the date
+is already complete; retrying the command safely finishes a partial date.
+
+To restore a selected R2 date on Fly, download it into `/data/backups` and
+schedule the existing boot-time restore flow:
+
+```bash
+fly ssh console -C "python scripts/restore_backup.py --r2 20260929 --on-next-boot"
+fly machine restart YOUR_MACHINE_ID
+```
+
+Then follow the pending-restore and readiness checks in [§10.7](#107-daily-backups-and-restore-issue-41).
+`--r2 YYYYMMDD` without `--on-next-boot` downloads and restores immediately
+while the API is stopped; the operator needs R2 access for the download. Both
+paths keep the current `deletions.db`, replay its records, and quarantine
+restored ledgers without a live account. The R2 copy of
+each deleted account's ledger is removed from every date; replay retries that
+cleanup. Restricted whole-catalog copies can still contain deleted catalog rows
+for up to the disclosed 30-day recovery window, and the durable deletion record
+must remain separately protected and append-only.
 
 > **Disclosure text (ADR 015).** Restricted whole-catalog recovery backups may
 > retain deleted rows (for example, an account's former catalog row) for up to
 > **30 days** after deletion, as disclosed to users. User-specific copies are
 > removed with the account: the live ledger, its `db/backups/<ledger>/`
-> migration snapshots, **and its copy inside every daily snapshot** are deleted.
+> migration snapshots, **and its copy inside every local and R2 daily snapshot** are deleted.
 > The catalog rows inside whole-catalog snapshots are the documented exception.
 
 ### 2. Durable deletion record (outside every snapshot)
@@ -725,12 +780,15 @@ reset lands on the same catalog/ledger the API uses.
 
 The daily backup job runs **in-process in this API Machine** (once at startup,
 then every `MAYOS_DAILY_BACKUP_INTERVAL_SECONDS`, default `3600`; `0` disables),
-writing consistent SQLite snapshots to `/data/backups/daily/<YYYYMMDD>/`. It must
+writing consistent SQLite snapshots to `/data/backups/daily/<YYYYMMDD>/` and,
+when R2 is configured, uploading a completed copy to the bucket described in
+[§9.1a](#1a-off-site-copy-in-cloudflare-r2-issue-164). It must
 not move to a detached scheduled Machine, which cannot mount `/data`. It creates
 at most one snapshot per UTC day, so the hourly default only retries a failed day
-sooner. Retention is `MAYOS_BACKUP_RETENTION_DAYS` (default `30`, clamped to
-`1..30`); the 30-day ceiling matches ADR 015's disclosed restricted whole-catalog
-recovery window. `/data/deletions.db` is never copied into a snapshot.
+sooner. Retention for local and configured R2 snapshots is
+`MAYOS_BACKUP_RETENTION_DAYS` (default `30`, clamped to `1..30`); the 30-day
+ceiling matches ADR 015's disclosed restricted whole-catalog recovery window.
+`/data/deletions.db` is never copied into a snapshot.
 
 ```bash
 # Force one now (safe if today's snapshot already exists).

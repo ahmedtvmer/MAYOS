@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "bcrypt>=4.1",
+    "boto3>=1.35.0",
     "fastapi>=0.115.0",
     "google-auth[requests]>=2.35.0",
     "python-multipart>=0.0.18",

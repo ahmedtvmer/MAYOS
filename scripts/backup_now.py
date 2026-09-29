@@ -26,6 +26,7 @@ from database.database_manager import (  # noqa: E402
     DEFAULT_LEDGERS_DIR,
     DatabaseManager,
 )
+from database.offsite_backup import configure_r2_backup  # noqa: E402
 from utils.logger import MyosLogger  # noqa: E402
 
 logger = MyosLogger().get_logger(__name__)
@@ -45,6 +46,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     db = DatabaseManager(catalog_path=args.catalog, ledgers_dir=args.ledgers_dir, backups_dir=args.backups_dir)
+    db.offsite_backup = configure_r2_backup(
+        lock_path=Path(args.backups_dir) / ".offsite-r2.lock",
+        log_disabled=True,
+    )
     try:
         summary = create_daily_backup(db, retention_days=args.retention_days)
     finally:

@@ -21,6 +21,7 @@ snapshot's copy, so a pre-deletion snapshot cannot resurrect a deleted identity.
 import argparse
 import os
 import sys
+import uuid
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -37,6 +38,7 @@ from database.database_manager import (  # noqa: E402
     DEFAULT_LEDGERS_DIR,
     DatabaseManager,
 )
+from database.offsite_backup import configure_r2_backup  # noqa: E402
 from utils.logger import MyosLogger  # noqa: E402
 
 logger = MyosLogger().get_logger(__name__)
@@ -58,6 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Restore a daily snapshot, then reapply deletions.")
     parser.add_argument("snapshot", nargs="?", help="Snapshot directory (default: newest with --latest)")
     parser.add_argument("--latest", action="store_true", help="Use the newest valid daily snapshot.")
+    parser.add_argument("--r2", dest="r2_snapshot", metavar="YYYYMMDD", help="Fetch this complete daily snapshot from R2.")
     parser.add_argument(
         "--on-next-boot",
         dest="on_next_boot",
@@ -69,9 +72,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--backups-dir", default=os.getenv("BACKUPS_DIR", str(DEFAULT_BACKUPS_DIR)))
     args = parser.parse_args(argv)
 
-    snapshot = _resolve_snapshot(args, parser)
-    if snapshot is None:
-        return 1
+    if sum((bool(args.snapshot), args.latest, bool(args.r2_snapshot))) != 1:
+        parser.error("provide exactly one local snapshot directory, --latest, or --r2 YYYYMMDD")
+
+    if args.r2_snapshot:
+        store = configure_r2_backup(lock_path=Path(args.backups_dir) / ".offsite-r2.lock")
+        if store is None:
+            logger.error("Cannot restore from R2: off-site backup configuration is incomplete.")
+            return 1
+        snapshot = Path(args.backups_dir) / "r2-restore" / f"{args.r2_snapshot}-{uuid.uuid4().hex}"
+        try:
+            store.download_snapshot(args.r2_snapshot, snapshot)
+        except Exception as exc:
+            logger.error("Could not fetch the complete R2 snapshot %s (%s).", args.r2_snapshot, type(exc).__name__)
+            return 1
+    else:
+        snapshot = _resolve_snapshot(args, parser)
+        if snapshot is None:
+            return 1
     if not snapshot.is_dir():
         print(f"Snapshot not found: {snapshot}")
         return 1
@@ -86,6 +104,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     db = DatabaseManager(catalog_path=args.catalog, ledgers_dir=args.ledgers_dir, backups_dir=args.backups_dir)
+    db.offsite_backup = store if args.r2_snapshot else configure_r2_backup(
+        lock_path=db.backups_dir / ".offsite-r2.lock"
+    )
     try:
         summary = restore_daily_backup(snapshot, db=db)
     finally:

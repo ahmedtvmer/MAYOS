@@ -1,4 +1,5 @@
 bcrypt>=4.1
+boto3>=1.35.0
 pandas>=3.0.5
 sqlite-vec>=0.1.9
 python-dotenv>=1.2.3
@@ -20,6 +21,5 @@ google-auth[requests]>=2.35.0
 httpx>=0.28.0
 slowapi>=0.1.9
 llama-cpp-python>=0.3.35
-
 
 
