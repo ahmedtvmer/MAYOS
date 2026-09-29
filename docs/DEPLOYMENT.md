@@ -129,7 +129,7 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | :--- | :--- | :--- |
 | `JWT_SECRET` | **required** | HS256 token signing/verification; the service refuses to operate without it |
 | `JWT_EXPIRY_HOURS` | `2` | Access-token lifetime |
-| `UI_BASE_URL` | `http://localhost:8501` | CORS origin (not used for reset links) |
+| `UI_BASE_URL` | `http://localhost:8501` | CORS origins: one, or several comma-separated (web app host + local dev). Not used for reset links |
 | `RESET_LINK_BASE_URL` | `http://localhost:8000` | Reset-link / App Link base; must match the App Link host |
 | `ANDROID_APP_PACKAGE` | `com.mayos.mayos_mobile` | App Link `assetlinks.json` package |
 | `ANDROID_APP_SHA256_CERT_FINGERPRINTS` | unset (⇒ 404) | App Link signing-cert SHA-256 fingerprints (case/colons optional; normalised) |
@@ -954,3 +954,52 @@ curl -sI https://<api-host>/account/delete-request      # 200, no-store
 The release build fails with a clear message (not a debug signature) when
 `mobile/android/key.properties` is missing; debug builds and `flutter test` are
 unaffected.
+
+## 11. Web App on Cloudflare Pages (issues #129, #130; ADR 048)
+
+The web client is the Flutter app built for the browser and hosted on Cloudflare
+Pages (`<project>.pages.dev`), separate from the Fly API. One-time account,
+token, project and origin setup: [CLOUDFLARE_PAGES_SETUP.md](CLOUDFLARE_PAGES_SETUP.md).
+
+**Deploy** (from a machine with Flutter and Node; token and account ID from your
+own environment, never the repo):
+
+```bash
+source ~/.config/mayos/cloudflare.env
+GOOGLE_WEB_CLIENT_ID=<web client id> scripts/deploy_web.sh   # add --preview for a preview URL
+```
+
+The script runs `flutter build web --release --no-web-resources-cdn
+--pwa-strategy=none` with `--dart-define=MAYOS_API_BASE_URL=https://mayos-api.fly.dev`
+(and `GOOGLE_WEB_CLIENT_ID` when set), then `wrangler pages deploy build/web`.
+
+| Input | Where | Purpose |
+| :--- | :--- | :--- |
+| `MAYOS_API_BASE_URL` dart-define | build | API origin; release builds require https |
+| `GOOGLE_WEB_CLIENT_ID` dart-define | build | Google sign-in web client (#112, #115) |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | operator env | wrangler auth |
+| `PAGES_PROJECT` | operator env | default `mayos` |
+| `UI_BASE_URL` | Fly `[env]` | must list the Pages origin (CORS) |
+
+**Routing and headers** live in `mobile/web/_redirects` and `mobile/web/_headers`
+and are copied into the build:
+
+* `_redirects`: `/* /index.html 200`, so any path serves the app and a reload works.
+* `_headers`: a strict CSP (self-hosted CanvasKit and assets, `wasm-unsafe-eval`
+  for CanvasKit, the API origin in `connect-src`/`img-src`, Google sign-in script
+  and frames), `Cross-Origin-Opener-Policy: same-origin-allow-popups` (never
+  `same-origin`, it breaks Google sign-in), HSTS, `nosniff`,
+  `Referrer-Policy: strict-origin-when-cross-origin`. Flutter's entry files are
+  not content-hashed, so they are `no-cache`; `assets/` and `canvaskit/` cache for a day.
+* If the API host changes, update both `MAYOS_API_BASE_URL` and the `_headers`
+  CSP (the script refuses to build when they disagree).
+
+**Rollback:** Cloudflare dashboard, Workers & Pages, the project,
+**Deployments**, pick the previous good production deployment, then
+**Rollback to this deployment**. (CLI alternative: check out the earlier commit
+and rerun `scripts/deploy_web.sh`.)
+
+**Verify:** open the Pages origin, confirm the login screen renders with no CSP
+errors in the browser console, open a deep path such as `/anything` and reload
+(must still load), and sign in against the Fly API. The last step needs #113 and
+the Fly `UI_BASE_URL` change.

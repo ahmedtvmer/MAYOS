@@ -37,8 +37,9 @@ primary_region = "fra"
   # (-PappLinkHost, default mayos-api.fly.dev) and where
   # /.well-known/assetlinks.json is served. Read by service/email_sender.py.
   RESET_LINK_BASE_URL = "https://mayos-api.fly.dev"
-  # CORS origin for the (legacy) web client; not used for reset links.
-  # UI_BASE_URL = "https://<web-app-host>"
+  # CORS origin(s) for the web app, comma-separated (Cloudflare Pages origin,
+  # #129; see docs/CLOUDFLARE_PAGES_SETUP.md). Not used for reset links.
+  # UI_BASE_URL = "https://<project>.pages.dev"
   # Hosted-model usage controls (#39, ADR 038). Limits are per immutable account,
   # enforced before any model call or stream starts. The spend alert is deduped
   # once per UTC month; OWNER_ALERT_EMAIL is a `fly secrets set` value, not [env].
