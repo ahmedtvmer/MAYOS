@@ -44,6 +44,12 @@ __pycache__/
 .claude/
 .pytest_cwd/
 UI_app_design/
+.agents/
+.wrangler/
+plans/
+# Only the privacy policy is read at runtime (service/privacy_policy.py).
+docs/*
+!docs/PRIVACY_POLICY.md
 
 # Git & IDE
 .git/
