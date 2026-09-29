@@ -254,6 +254,12 @@ class AuthController extends StateNotifier<AuthState> {
   /// login; any other subject parks a signup ticket for the picker.
   Future<ContinueWithGoogleResult> continueWithGoogle() async {
     final GoogleAuthOutcome outcome = await _google.authenticate();
+    return continueWithGoogleOutcome(outcome);
+  }
+
+  /// Applies a completed web-button event through the same sign-in flow.
+  Future<ContinueWithGoogleResult> continueWithGoogleOutcome(
+      GoogleAuthOutcome outcome) async {
     if (outcome is GoogleAuthCanceled) {
       return const GoogleSignInDismissed();
     }
@@ -261,17 +267,23 @@ class AuthController extends StateNotifier<AuthState> {
       return GoogleSignInRefused(outcome.message);
     }
     final String idToken = (outcome as GoogleAuthIdToken).idToken;
+    return _continueWithGoogleToken(idToken);
+  }
+
+  Future<ContinueWithGoogleResult> _continueWithGoogleToken(
+      String idToken) async {
     try {
-      final GoogleSignInFlowResult result =
+      final GoogleSignInFlowResult flowResult =
           await _repository.signInWithGoogle(idToken: idToken);
-      if (result case GoogleAccountReady(:final session)) {
+      if (flowResult case GoogleAccountReady(:final session)) {
         state = AuthState.authenticated(session);
         return const GoogleSignInDone();
       }
-      final GoogleUsernameRequired required = result as GoogleUsernameRequired;
+      final GoogleUsernameRequired signupPrompt =
+          flowResult as GoogleUsernameRequired;
       _pendingSignup = PendingGoogleSignup(
-        signupTicket: required.signupTicket,
-        suggestedUsername: required.suggestedUsername,
+        signupTicket: signupPrompt.signupTicket,
+        suggestedUsername: signupPrompt.suggestedUsername,
       );
       return const GoogleSignUpPrompt();
     } on ApiException catch (error) {
@@ -357,15 +369,27 @@ class AuthController extends StateNotifier<AuthState> {
   /// (#114/#116). A dismissed sheet deletes nothing.
   Future<DeleteWithGoogleResult> deleteAccountWithGoogle() async {
     final GoogleAuthOutcome outcome = await _google.authenticate();
+    return deleteAccountWithGoogleOutcome(outcome);
+  }
+
+  /// Confirms deletion from Google's rendered web-button event.
+  Future<DeleteWithGoogleResult> deleteAccountWithGoogleOutcome(
+      GoogleAuthOutcome outcome) async {
     if (outcome is GoogleAuthCanceled) {
       return const DeleteWithGoogleDismissed();
     }
     if (outcome is GoogleAuthFailed) {
       return DeleteWithGoogleRefused(outcome.message);
     }
+    return _deleteAccountWithGoogleToken(
+        (outcome as GoogleAuthIdToken).idToken);
+  }
+
+  Future<DeleteWithGoogleResult> _deleteAccountWithGoogleToken(
+      String googleIdToken) async {
     try {
       await _repository.deleteAccountWithGoogle(
-          googleIdToken: (outcome as GoogleAuthIdToken).idToken);
+          googleIdToken: googleIdToken);
     } on ApiException catch (error) {
       return DeleteWithGoogleRefused(mutationFailureMessage(error));
     }
@@ -380,14 +404,24 @@ class AuthController extends StateNotifier<AuthState> {
   /// service conflicts come back as [GoogleConnectRefused] messages.
   Future<ConnectGoogleResult> connectGoogle() async {
     final GoogleAuthOutcome outcome = await _google.authenticate();
+    return connectGoogleOutcome(outcome);
+  }
+
+  /// Connects the Google identity delivered by the rendered web button.
+  Future<ConnectGoogleResult> connectGoogleOutcome(
+      GoogleAuthOutcome outcome) async {
     if (outcome is GoogleAuthCanceled) {
       return const GoogleConnectDismissed();
     }
     if (outcome is GoogleAuthFailed) {
       return GoogleConnectRefused(outcome.message);
     }
+    return _connectGoogleToken((outcome as GoogleAuthIdToken).idToken);
+  }
+
+  Future<ConnectGoogleResult> _connectGoogleToken(String googleIdToken) async {
     try {
-      await _repository.linkGoogle(idToken: (outcome as GoogleAuthIdToken).idToken);
+      await _repository.linkGoogle(idToken: googleIdToken);
       return const GoogleConnectDone();
     } on ApiException catch (error) {
       return GoogleConnectRefused(error.message);

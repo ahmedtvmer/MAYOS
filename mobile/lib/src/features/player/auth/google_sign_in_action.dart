@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'auth_controller.dart';
+import 'google_auth_gateway.dart';
 
 /// The shared "Continue with Google" wiring for the sign-in screens (#115).
 ///
@@ -24,6 +25,19 @@ mixin GoogleSignInAction<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   /// an inline notice for a refusal, nothing for a dismissal or a session that
   /// the router already reacts to.
   Future<void> continueWithGoogle() async {
+    await _runGoogleFlow(() =>
+        ref.read(authControllerProvider.notifier).continueWithGoogle());
+  }
+
+  /// Handles Google's `authenticationEvents` when the web button completes.
+  Future<void> continueWithGoogleOutcome(GoogleAuthOutcome outcome) async {
+    await _runGoogleFlow(() => ref
+        .read(authControllerProvider.notifier)
+        .continueWithGoogleOutcome(outcome));
+  }
+
+  Future<void> _runGoogleFlow(
+      Future<ContinueWithGoogleResult> Function() start) async {
     if (_googleBusy) {
       return;
     }
@@ -32,12 +46,11 @@ mixin GoogleSignInAction<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       _googleError = null;
     });
     try {
-      final ContinueWithGoogleResult result =
-          await ref.read(authControllerProvider.notifier).continueWithGoogle();
+      final ContinueWithGoogleResult flowResult = await start();
       if (!mounted) {
         return;
       }
-      switch (result) {
+      switch (flowResult) {
         case GoogleSignUpPrompt():
           context.go(carryingLocation(context, googleSignupPath));
         case GoogleSignInRefused(:final message):
@@ -52,4 +65,5 @@ mixin GoogleSignInAction<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       }
     }
   }
+
 }

@@ -321,7 +321,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   /// "Connect Google": one SDK attempt, then `POST /auth/google/link`. Both
   /// service conflicts (#114) are shown verbatim, in the section.
-  Future<void> _connectGoogle() async {
+  Future<void> _connectGoogle() => _runConnectGoogle(
+        () => ref.read(authControllerProvider.notifier).connectGoogle(),
+      );
+
+  Future<void> _connectGoogleOutcome(GoogleAuthOutcome outcome) =>
+      _runConnectGoogle(
+        () => ref
+            .read(authControllerProvider.notifier)
+            .connectGoogleOutcome(outcome),
+      );
+
+  Future<void> _runConnectGoogle(
+      Future<ConnectGoogleResult> Function() connect) async {
     if (_methodBusy) return;
     setState(() {
       _methodBusy = true;
@@ -329,10 +341,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       _methodNoticeIsError = false;
     });
     try {
-      final ConnectGoogleResult result =
-          await ref.read(authControllerProvider.notifier).connectGoogle();
+      final ConnectGoogleResult connectResult = await connect();
       if (!mounted) return;
-      switch (result) {
+      switch (connectResult) {
         case GoogleConnectDone():
           _setMethodNotice('Google account connected.', error: false);
           await _refreshSignInMethods();
@@ -573,6 +584,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _confirmDeleteAccount() async {
     _deletePassword.clear();
     final bool googleOnly = !(_account?.hasPassword ?? true);
+    final GoogleAuthGateway google = ref.read(googleAuthGatewayProvider);
+    final bool webGoogle = googleOnly &&
+        google.buttonStyle == GoogleSignInButtonStyle.webRendered;
     bool busy = false;
     String? error;
     await showDialog<void>(
@@ -608,6 +622,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     label: 'Password',
                   ),
                 ],
+                if (webGoogle) ...<Widget>[
+                  const SizedBox(height: MayosSpacing.md),
+                  GoogleWebSignInButton(
+                    key: const Key('delete_account_google_web_button'),
+                    loading: busy,
+                    fixedWidth: (MediaQuery.sizeOf(dialogContext).width - 128)
+                        .clamp(0.0, 400.0),
+                    onOutcome: (GoogleAuthOutcome outcome) =>
+                        _handleGoogleDeleteOutcome(
+                      outcome: outcome,
+                      dialogContext: dialogContext,
+                      updateDialog: (bool nextBusy, String? nextError) =>
+                          setDialogState(() {
+                        busy = nextBusy;
+                        error = nextError;
+                      }),
+                    ),
+                  ),
+                ],
                 if (error != null) ...<Widget>[
                   const SizedBox(height: MayosSpacing.sm),
                   Text(
@@ -626,15 +659,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               expand: false,
               onPressed: busy ? null : () => Navigator.of(dialogContext).pop(),
             ),
-            MayosButton(
-              key: const Key('delete_account_confirm_button'),
-              label: 'Delete account',
-              destructive: true,
-              expand: false,
-              loading: busy,
-              onPressed: busy
-                  ? null
-                  : () async {
+            if (!webGoogle)
+              MayosButton(
+                key: const Key('delete_account_confirm_button'),
+                label: 'Delete account',
+                destructive: true,
+                expand: false,
+                loading: busy,
+                onPressed: busy
+                    ? null
+                    : () async {
                       setDialogState(() {
                         busy = true;
                         error = null;
@@ -643,10 +677,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         if (googleOnly) {
                           // The controller owns the Google flow, so the screen
                           // only renders the outcome (#116).
-                          final DeleteWithGoogleResult result = await ref
+                          final DeleteWithGoogleResult deletionResult = await ref
                               .read(authControllerProvider.notifier)
                               .deleteAccountWithGoogle();
-                          if (result case DeleteWithGoogleRefused(
+                          if (deletionResult case DeleteWithGoogleRefused(
                               :final message)) {
                             setDialogState(() {
                               busy = false;
@@ -654,7 +688,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             });
                             return;
                           }
-                          if (result is DeleteWithGoogleDismissed) {
+                          if (deletionResult is DeleteWithGoogleDismissed) {
                             setDialogState(() {
                               busy = false;
                               error = kGoogleDeleteCancelledMessage;
@@ -676,11 +710,37 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         });
                       }
                     },
-            ),
+              ),
           ],
         ),
       ),
     );
+  }
+
+  Future<DeleteWithGoogleResult> _deleteAccountWithGoogleOutcome(
+      GoogleAuthOutcome outcome) =>
+      ref.read(authControllerProvider.notifier)
+          .deleteAccountWithGoogleOutcome(outcome);
+
+  Future<void> _handleGoogleDeleteOutcome({
+    required GoogleAuthOutcome outcome,
+    required BuildContext dialogContext,
+    required void Function(bool busy, String? error) updateDialog,
+  }) async {
+    updateDialog(true, null);
+    final DeleteWithGoogleResult deletionResult =
+        await _deleteAccountWithGoogleOutcome(outcome);
+    if (deletionResult case DeleteWithGoogleRefused(:final message)) {
+      updateDialog(false, message);
+      return;
+    }
+    if (deletionResult is DeleteWithGoogleDismissed) {
+      updateDialog(false, kGoogleDeleteCancelledMessage);
+      return;
+    }
+    if (dialogContext.mounted) {
+      Navigator.of(dialogContext).pop();
+    }
   }
 
   /// The "Sign-in methods" card, driven entirely by `GET /auth/me` (#116):
@@ -740,13 +800,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   )
                 : google.buttonStyle == GoogleSignInButtonStyle.hidden
                     ? const SizedBox.shrink()
-                    : MayosButton(
-                        key: const Key('connect_google_button'),
-                        label: 'Connect Google',
-                        variant: MayosButtonVariant.secondary,
-                        loading: _methodBusy,
-                        onPressed: _methodBusy ? null : _connectGoogle,
-                      ),
+                    : google.buttonStyle ==
+                            GoogleSignInButtonStyle.webRendered
+                        ? GoogleWebSignInButton(
+                            key: const Key('connect_google_web_button'),
+                            loading: _methodBusy,
+                            onOutcome: _connectGoogleOutcome,
+                          )
+                        : MayosButton(
+                            key: const Key('connect_google_button'),
+                            label: 'Connect Google',
+                            variant: MayosButtonVariant.secondary,
+                            loading: _methodBusy,
+                            onPressed: _methodBusy ? null : _connectGoogle,
+                          ),
           ),
         ],
       ),

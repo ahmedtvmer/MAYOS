@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:mayos_mobile/src/features/player/auth/google_auth_gateway.dart';
 
 /// A scripted stand-in for the Google SDK, so the sign-in flows run without a
@@ -15,8 +18,33 @@ class FakeGoogleAuthGateway implements GoogleAuthGateway {
   /// Set to script a failure instead of a token or a dismissal.
   GoogleAuthOutcome? scriptedOutcome;
 
+  final StreamController<GoogleAuthOutcome> _authenticationEvents =
+      StreamController<GoogleAuthOutcome>.broadcast(sync: true);
+
   int authenticateCalls = 0;
   int clearSdkStateCalls = 0;
+  double? renderedButtonWidth;
+  bool? renderedButtonDarkTheme;
+
+  @override
+  Stream<GoogleAuthOutcome> get authenticationEvents =>
+      _authenticationEvents.stream;
+
+  void emitAuthenticationOutcome(GoogleAuthOutcome outcome) {
+    _authenticationEvents.add(outcome);
+  }
+
+  @override
+  Widget buildWebButton({required bool darkTheme, required double width}) {
+    renderedButtonWidth = width;
+    renderedButtonDarkTheme = darkTheme;
+    return SizedBox(
+        key: const Key('fake_google_web_button'),
+        height: 48,
+        width: width,
+        child: const ColoredBox(color: Colors.transparent),
+      );
+  }
 
   @override
   Future<GoogleAuthOutcome> authenticate() async {

@@ -92,6 +92,73 @@ void main() {
     expect(find.byKey(const Key('login_username')), findsOneWidget);
   });
 
+  testWidgets('a configured web gateway renders its fixed button slot',
+      (WidgetTester tester) async {
+    final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
+        buttonStyle: GoogleSignInButtonStyle.webRendered);
+    await _pumpAuth(tester, FakeMayosApi(), google: google);
+
+    expect(find.byKey(const Key('fake_google_web_button')), findsOneWidget);
+    expect(find.byType(AuthOrDivider), findsOneWidget);
+    expect(google.authenticateCalls, 0);
+  });
+
+  testWidgets('a web ID token signs in and keeps the recovery-email gate',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()..profileExists = true;
+    final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
+        buttonStyle: GoogleSignInButtonStyle.webRendered);
+    final ProviderContainer container = await _pumpAuth(
+      tester,
+      fake,
+      google: google,
+      initialRoute: planPath,
+    );
+
+    google.emitAuthenticationOutcome(
+        GoogleAuthIdToken(fake.googleLinkedIdToken));
+    await _pumpUntilFound(tester, find.byKey(const Key('recovery_email')));
+
+    expect(container.read(authControllerProvider).status,
+        AuthStatus.authenticated);
+    expect(fake.googleSignInRequests, 1);
+    expect(google.authenticateCalls, 0);
+    expect(
+      container
+          .read(routerProvider)
+          .routerDelegate
+          .currentConfiguration
+          .uri
+          .queryParameters['from'],
+      planPath,
+    );
+  });
+
+  testWidgets('a web signup ticket opens the picker with its carried location',
+      (WidgetTester tester) async {
+    final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
+        buttonStyle: GoogleSignInButtonStyle.webRendered);
+    final ProviderContainer container = await _pumpAuth(
+      tester,
+      FakeMayosApi(),
+      google: google,
+      initialRoute: planPath,
+    );
+
+    google.emitAuthenticationOutcome(
+        const GoogleAuthIdToken('unlinked-web-google-token'));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('google_signup_username')));
+
+    final GoRouter router = container.read(routerProvider);
+    expect(router.routerDelegate.currentConfiguration.uri.path, googleSignupPath);
+    expect(
+      router.routerDelegate.currentConfiguration.uri.queryParameters['from'],
+      planPath,
+    );
+    expect(google.authenticateCalls, 0);
+  });
+
   testWidgets('a linked Google subject signs in like password login',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi()

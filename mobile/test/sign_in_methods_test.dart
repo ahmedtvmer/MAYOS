@@ -257,6 +257,26 @@ void main() {
       expect(find.byKey(const Key('connect_google_button')), findsNothing);
     });
 
+    testWidgets('the web rendered button posts its ID token to Google link',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi();
+      final InMemoryTokenStore tokens = InMemoryTokenStore();
+      await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
+      final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
+          buttonStyle: GoogleSignInButtonStyle.webRendered);
+      await _pumpProfile(tester, fake, tokens, google: google);
+
+      await _reveal(tester, find.byKey(const Key('connect_google_web_button')));
+      google.emitAuthenticationOutcome(
+          const GoogleAuthIdToken('web-connect-token'));
+      await _pumpUntilFound(tester, find.text('Google account connected.'));
+
+      expect(fake.linkGoogleRequests, 1);
+      expect(fake.lastLinkGoogleIdToken, 'web-connect-token');
+      expect(fake.linkedSignIns, contains('google'));
+      expect(google.authenticateCalls, 0);
+    });
+
     testWidgets('a subject connected to another account is shown clearly',
         (WidgetTester tester) async {
       final FakeMayosApi fake = FakeMayosApi()
@@ -408,6 +428,37 @@ void main() {
   });
 
   group('delete account', () {
+    testWidgets('a web rendered button confirms Google-only deletion',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi();
+      final InMemoryTokenStore tokens = InMemoryTokenStore();
+      await _seedSignedIn(fake, tokens, hasPassword: false, googleLinked: true);
+      final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
+          buttonStyle: GoogleSignInButtonStyle.webRendered);
+      fake.googleDeleteIdToken = 'web-delete-token';
+      await _pumpProfile(tester, fake, tokens, google: google);
+
+      await _reveal(tester, find.byKey(const Key('delete_account_button')));
+      await tester.tap(find.byKey(const Key('delete_account_button')));
+      await _pumpUntilFound(tester, find.text('Delete account?'));
+      expect(
+          find.byKey(const Key('delete_account_confirm_button')), findsNothing);
+      expect(
+          find.byKey(const Key('delete_account_google_web_button')),
+          findsOneWidget);
+
+      google.emitAuthenticationOutcome(
+          const GoogleAuthIdToken('web-delete-token'));
+      await _pumpUntilFound(tester, find.text('Log in'));
+
+      expect(fake.deleteAccountRequests, 1);
+      expect(fake.lastDeleteGoogleIdToken, 'web-delete-token');
+      expect(fake.lastDeletePassword, isNull);
+      expect(fake.accountDeleted, isTrue);
+      expect(google.authenticateCalls, 0);
+      expect(google.clearSdkStateCalls, 1);
+    });
+
     testWidgets('a Google-only account deletes with a fresh Google ID token',
         (WidgetTester tester) async {
       final FakeMayosApi fake = FakeMayosApi();

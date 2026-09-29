@@ -15,12 +15,15 @@ import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_logo.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_controller.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_widgets.dart';
+import 'package:mayos_mobile/src/features/player/auth/google_auth_gateway.dart';
+import 'package:mayos_mobile/src/features/player/auth/google_sign_in_button.dart';
 import 'package:mayos_mobile/src/features/player/auth/home_screen_install_hint.dart';
 import 'package:mayos_mobile/src/providers.dart';
 import 'package:mayos_mobile/src/router.dart';
 
 import 'support/auth_harness.dart';
 import 'support/fake_api_adapter.dart';
+import 'support/fake_google_auth.dart';
 import 'support/fake_mayos_api.dart';
 
 /// Focused coverage for the restyled authentication and recovery-email screens
@@ -554,10 +557,18 @@ void main() {
   });
 
   testWidgets(
-      'opening the keyboard keeps the focused field alive (Safari flicker)',
+      'opening the keyboard keeps the focused field alive with Google present',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _loginFake();
-    await _pumpAuth(tester, fake, size: const Size(360, 640));
+    await _pumpAuth(
+      tester,
+      fake,
+      size: const Size(360, 640),
+      extraOverrides: <Override>[
+        googleAuthGatewayProvider.overrideWithValue(FakeGoogleAuthGateway(
+            buttonStyle: GoogleSignInButtonStyle.webRendered)),
+      ],
+    );
     final Finder editable = find.descendant(
         of: find.byKey(const Key('login_username')),
         matching: find.byType(EditableText));
@@ -574,6 +585,7 @@ void main() {
     // hero back — an open/close loop on mobile Safari.
     expect(tester.state<State<EditableText>>(editable), same(before));
     expect(tester.widget<EditableText>(editable).focusNode.hasFocus, isTrue);
+    expect(find.byKey(const Key('fake_google_web_button')), findsOneWidget);
   });
 
   testWidgets('on a desktop window the sign-in form keeps a phone-width column',
@@ -586,6 +598,26 @@ void main() {
     const double half = MayosLayout.playerColumnMaxWidth / 2;
     expect(field.left, greaterThanOrEqualTo(640 - half));
     expect(field.right, lessThanOrEqualTo(640 + half));
+  });
+
+  testWidgets('web Google button is centred and capped at 400px on desktop',
+      (WidgetTester tester) async {
+    final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
+        buttonStyle: GoogleSignInButtonStyle.webRendered);
+    await _pumpAuth(
+      tester,
+      _loginFake(),
+      size: const Size(1280, 800),
+      extraOverrides: <Override>[
+        googleAuthGatewayProvider.overrideWithValue(google),
+      ],
+    );
+
+    final Rect button = tester.getRect(find.byKey(const Key('fake_google_web_button')));
+    final Rect slot = tester.getRect(find.byType(GoogleWebSignInButton));
+    expect(google.renderedButtonWidth, 400);
+    expect(button.width, 400);
+    expect(button.center.dx, closeTo(slot.center.dx, 0.5));
   });
 
   testWidgets('remember-me consent is a tappable 48dp row with state',

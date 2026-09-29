@@ -1,15 +1,20 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+
+import 'google_web_button.dart';
 
 /// How a screen offers Google sign-in on this build (#115, #127).
 enum GoogleSignInButtonStyle {
   /// No button: the build carries no `GOOGLE_WEB_CLIENT_ID`, or the platform
-  /// cannot drive `authenticate()` here. Web renders Google's own
-  /// `renderButton()` instead, which lands with #127.
+  /// cannot drive a supported Google sign-in surface.
   hidden,
 
   /// The app's own full-width, Google-branded button (Android).
   appRendered,
+
+  /// Google's own `renderButton()` widget (web).
+  webRendered,
 }
 
 /// What the Google SDK reported for one interactive sign-in attempt (#115).
@@ -47,6 +52,12 @@ abstract class GoogleAuthGateway {
   /// Which button a screen should build for this platform and build config.
   GoogleSignInButtonStyle get buttonStyle;
 
+  /// A fixed-height Google button for the configured web identity.
+  Widget buildWebButton({required bool darkTheme, required double width});
+
+  /// Authentication events emitted by Google's rendered web button.
+  Stream<GoogleAuthOutcome> get authenticationEvents;
+
   /// One interactive sign-in attempt: an ID token, a dismissal, or a failure.
   Future<GoogleAuthOutcome> authenticate();
 
@@ -58,10 +69,8 @@ abstract class GoogleAuthGateway {
 
 /// The real `google_sign_in` v7 adapter.
 ///
-/// One `initialize(serverClientId: GOOGLE_WEB_CLIENT_ID)`, `authenticate()` for
-/// the ID token, and no scopes: MAYOS only ever needs to know who the person
-/// is (#113). What `authenticate()` returns is the only sign-in fact this
-/// class keeps — there is no second, event-derived copy of the SDK state.
+/// One v7 initialization, the platform's supported sign-in surface, and no
+/// scopes: MAYOS only ever needs to know who the person is (#113).
 class GoogleSdkAuthGateway implements GoogleAuthGateway {
   /// The single build-time configuration, supplied as
   /// `--dart-define=GOOGLE_WEB_CLIENT_ID=...`. Never hard-coded: without it
@@ -74,9 +83,35 @@ class GoogleSdkAuthGateway implements GoogleAuthGateway {
   bool get _configured => webClientId.isNotEmpty;
 
   @override
+  Stream<GoogleAuthOutcome> get authenticationEvents async* {
+    if (!_configured || !kIsWeb) {
+      return;
+    }
+    await _initialize();
+    try {
+      await for (final GoogleSignInAuthenticationEvent event
+          in GoogleSignIn.instance.authenticationEvents) {
+        if (event is! GoogleSignInAuthenticationEventSignIn) {
+          continue;
+        }
+        final String? token = event.user.authentication.idToken;
+        yield token == null || token.isEmpty
+            ? const GoogleAuthFailed(
+                'Google did not return a sign-in token. Please try again.')
+            : GoogleAuthIdToken(token);
+      }
+    } on GoogleSignInException catch (error) {
+      yield GoogleAuthFailed(_messageFor(error.code));
+    }
+  }
+
+  @override
   GoogleSignInButtonStyle get buttonStyle {
-    if (!_configured || kIsWeb) {
+    if (!_configured) {
       return GoogleSignInButtonStyle.hidden;
+    }
+    if (kIsWeb) {
+      return GoogleSignInButtonStyle.webRendered;
     }
     return GoogleSignIn.instance.supportsAuthenticate()
         ? GoogleSignInButtonStyle.appRendered
@@ -84,7 +119,19 @@ class GoogleSdkAuthGateway implements GoogleAuthGateway {
   }
 
   @override
+  Widget buildWebButton({required bool darkTheme, required double width}) {
+    if (!_configured || !kIsWeb) {
+      return const SizedBox.shrink();
+    }
+    return renderGoogleWebButton(darkTheme: darkTheme, width: width);
+  }
+
+  @override
   Future<GoogleAuthOutcome> authenticate() async {
+    if (kIsWeb) {
+      return const GoogleAuthFailed(
+          'Use the Google sign-in button to continue.');
+    }
     if (!_configured) {
       return const GoogleAuthFailed(
           'Google sign-in is not set up on this build.');
@@ -128,7 +175,9 @@ class GoogleSdkAuthGateway implements GoogleAuthGateway {
   /// The one `initialize()` call; every later entry reuses it. The SDK is
   /// only touched from a button tap, so this stays lazy.
   Future<void> _initialize() =>
-      _ready ??= GoogleSignIn.instance.initialize(serverClientId: webClientId);
+      _ready ??= kIsWeb
+          ? GoogleSignIn.instance.initialize(clientId: webClientId)
+          : GoogleSignIn.instance.initialize(serverClientId: webClientId);
 
   static String _messageFor(GoogleSignInExceptionCode code) => switch (code) {
         GoogleSignInExceptionCode.clientConfigurationError =>

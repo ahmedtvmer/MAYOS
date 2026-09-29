@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -42,11 +44,15 @@ class GoogleSignInSection extends ConsumerWidget {
   const GoogleSignInSection({
     super.key,
     required this.onPressed,
+    required this.onWebOutcome,
     this.loading = false,
   });
 
   /// Starts "Continue with Google"; null disables the button.
   final Future<void> Function()? onPressed;
+
+  /// Handles authentication events from Google's rendered web button.
+  final Future<void> Function(GoogleAuthOutcome outcome) onWebOutcome;
 
   /// Swaps the label for a spinner while a sign-in is in flight.
   final bool loading;
@@ -57,16 +63,111 @@ class GoogleSignInSection extends ConsumerWidget {
     if (gateway.buttonStyle == GoogleSignInButtonStyle.hidden) {
       return const SizedBox.shrink();
     }
+    final Widget button = gateway.buttonStyle ==
+            GoogleSignInButtonStyle.webRendered
+        ? GoogleWebSignInButton(
+            loading: loading,
+            onOutcome: onWebOutcome,
+          )
+        : GoogleSignInButton(onPressed: onPressed, loading: loading);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        GoogleSignInButton(onPressed: onPressed, loading: loading),
+        button,
         const SizedBox(height: MayosSpacing.md),
         const AuthOrDivider(),
         const SizedBox(height: MayosSpacing.md),
       ],
     );
   }
+}
+
+/// A fixed-height, centred host for Google's web-rendered button.
+class GoogleWebSignInButton extends ConsumerStatefulWidget {
+  const GoogleWebSignInButton({
+    super.key,
+    required this.onOutcome,
+    this.fixedWidth,
+    this.loading = false,
+  });
+
+  final Future<void> Function(GoogleAuthOutcome outcome) onOutcome;
+  final double? fixedWidth;
+  final bool loading;
+
+  @override
+  ConsumerState<GoogleWebSignInButton> createState() =>
+      _GoogleWebSignInButtonState();
+}
+
+class _GoogleWebSignInButtonState extends ConsumerState<GoogleWebSignInButton> {
+  StreamSubscription<GoogleAuthOutcome>? _events;
+
+  @override
+  void initState() {
+    super.initState();
+    final GoogleAuthGateway gateway = ref.read(googleAuthGatewayProvider);
+    if (gateway.buttonStyle == GoogleSignInButtonStyle.webRendered) {
+      _events = gateway.authenticationEvents.listen(
+        (GoogleAuthOutcome outcome) => unawaited(widget.onOutcome(outcome)),
+        onError: (Object error, StackTrace stack) {
+          if (mounted) {
+            unawaited(widget.onOutcome(const GoogleAuthFailed(
+                'Could not reach Google. Check your connection and try again.')));
+          }
+        },
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _events?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final GoogleAuthGateway gateway = ref.watch(googleAuthGatewayProvider);
+    if (gateway.buttonStyle != GoogleSignInButtonStyle.webRendered) {
+      return const SizedBox.shrink();
+    }
+    final bool darkTheme = Theme.of(context).brightness == Brightness.dark;
+    final double? fixedWidth = widget.fixedWidth;
+    if (fixedWidth != null) {
+      return _button(gateway, darkTheme, fixedWidth.clamp(0.0, 400.0));
+    }
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth.clamp(0.0, 400.0)
+            : 400.0;
+        return _button(gateway, darkTheme, width);
+      },
+    );
+  }
+
+  Widget _button(
+    GoogleAuthGateway gateway,
+    bool darkTheme,
+    double width,
+  ) =>
+      SizedBox(
+        height: kMayosMinTapTarget,
+        child: Center(
+          child: SizedBox(
+            width: width,
+            height: kMayosMinTapTarget,
+            child: AbsorbPointer(
+              absorbing: widget.loading,
+              child: gateway.buildWebButton(
+                darkTheme: darkTheme,
+                width: width,
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 /// The full-width "Continue with Google" button (#115), following Google's

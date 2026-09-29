@@ -109,6 +109,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           key: const Key('login_google'),
           loading: googleBusy,
           onPressed: googleBusy ? null : continueWithGoogle,
+          onWebOutcome: continueWithGoogleOutcome,
         ),
         MayosTextField(
           fieldKey: const Key('login_username'),

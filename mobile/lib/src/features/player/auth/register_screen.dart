@@ -96,6 +96,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           key: const Key('register_google'),
           loading: googleBusy,
           onPressed: googleBusy ? null : continueWithGoogle,
+          onWebOutcome: continueWithGoogleOutcome,
         ),
         MayosTextField(
           fieldKey: const Key('register_username'),
