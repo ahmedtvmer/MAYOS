@@ -441,6 +441,18 @@ This document records the architectural, algorithmic, and heuristic decisions im
 
 ---
 
+### ADR 047: The trial web app keeps the bearer JWT in browser storage
+* **Status**: Accepted for the closed trial; revisit before public launch
+* **Decision**: The Flutter web app (ADR 022) authenticates exactly like Android: it sends the same bearer JWT, subject to the same `jti` revocation and `tv` session epoch (ADR 006). In the browser the token lives in origin-scoped browser storage, because no keystore exists there. Web sessions default to the short token lifetime; the long-lived token requires the explicit "Remember me" consent (ADR 010). The web host serves a strict Content-Security-Policy to limit script injection, the only realistic way to read the token. An HttpOnly session cookie was rejected for the trial because it needs a second, cookie-based auth path, CSRF protection, and cross-origin SameSite rules between the web host and the API.
+* **Rationale**: One auth path for both clients keeps revocation, deletion (ADR 015), and rate limits identical and adds no backend work before the trial. The trial is invite-only, so an injected-script token theft is bounded by the short default lifetime and instant revocation. Before public launch, re-evaluate a cookie session once the web app has open signup and payments (ADR 023).
+
+### ADR 048: The closed trial runs on provider subdomains; an owned domain comes before public launch
+* **Status**: Accepted for the closed trial
+* **Decision**: During the closed trial the API stays on `mayos-api.fly.dev` and the web app is served from a free static-host subdomain. No custom domain is bought for the trial. Password-reset links, Android App Links, the Play privacy-policy URL, CORS, and the Google OAuth JavaScript origins all point at these provider hostnames. Before public launch MAYOS moves to an owned domain (`mayos.app` or `mayos.site`, both unregistered on 2026-09-28): the web app, API, reset and App Link hosts, OAuth origins, and Play listing URLs move together, and the Android build accepts both the old and new App Link hosts for one release so trial installs keep working.
+* **Rationale**: The trial is small, free, and invite-only, so trust signals from a branded domain are not worth a recurring cost yet. The price is a planned migration: a new Android build, a Play listing change, and new OAuth origins at launch. That migration must happen before web checkout (ADR 023), because payment pages and receipts should never live on a provider subdomain.
+
+---
+
 ### ADR 049: Coach AI is opt-in behind a recorded privacy + evaluation gate, and sends only reduced telemetry
 
 * **Status**: Accepted
