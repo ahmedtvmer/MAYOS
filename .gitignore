@@ -42,3 +42,6 @@ programs/
 key.properties
 *.jks
 *.keystore
+
+# Cloudflare wrangler local state
+.wrangler/
