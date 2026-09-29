@@ -146,17 +146,18 @@ void main() {
     );
   });
 
-  test('an unauthenticated deep link carries through login', () {
+  test('splash-held deep links carry through login', () {
     expect(
       redirectFor(
           const AuthState.unauthenticated(), splashPath, _mode(AppMode.player),
           from: planPath),
       withCarry(loginPath, planPath),
     );
+    // A plain current route can be a logout and must not become a carry.
     expect(
       redirectFor(
           const AuthState.unauthenticated(), planPath, _mode(AppMode.player)),
-      withCarry(loginPath, planPath),
+      loginPath,
     );
     expect(
         redirectFor(

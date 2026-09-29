@@ -47,7 +47,7 @@ void main() {
     expect(
         redirectFor(
             const AuthState.unauthenticated(), homePath, _mode(AppMode.player)),
-        withCarry(loginPath, homePath));
+        loginPath);
     expect(
         redirectFor(const AuthState.unauthenticated(), loginPath,
             _mode(AppMode.player)),
@@ -56,6 +56,19 @@ void main() {
         redirectFor(const AuthState.unauthenticated(), registerPath,
             _mode(AppMode.player)),
         isNull);
+  });
+
+  test('logging out from a profile does not carry it to the next login', () {
+    final AppModeState mode = _mode(AppMode.player);
+    expect(
+      redirectFor(
+          _authenticated(coach: false, onboarded: true), profilePath, mode),
+      isNull,
+    );
+    expect(
+      redirectFor(const AuthState.unauthenticated(), profilePath, mode),
+      loginPath,
+    );
   });
 
   test('password-recovery pages stay public through startup and login', () {

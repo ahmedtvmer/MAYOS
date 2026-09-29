@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/connectivity.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
@@ -380,7 +381,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     switch (_phase) {
       case _OnboardingPhase.loading:
         return const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
+          body: SafeArea(
+            child: Column(
+              children: <Widget>[
+                OfflineBannerSlot(),
+                Expanded(child: Center(child: CircularProgressIndicator())),
+              ],
+            ),
+          ),
         );
       case _OnboardingPhase.error:
         return _LoadErrorView(
@@ -774,36 +782,43 @@ class _LoadErrorView extends StatelessWidget {
     final MayosThemeExtension c = MayosTheme.of(context);
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(MayosSpacing.xl),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Icon(Icons.cloud_off, size: 40, color: c.textMuted),
-                const SizedBox(height: MayosSpacing.md),
-                Text(
-                  'Could not load your setup',
-                  textAlign: TextAlign.center,
-                  style: MayosTypography.pageHeading
-                      .copyWith(color: c.textPrimary, fontSize: 24),
+        child: Column(
+          children: <Widget>[
+            const OfflineBannerSlot(),
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(MayosSpacing.xl),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(Icons.cloud_off, size: 40, color: c.textMuted),
+                      const SizedBox(height: MayosSpacing.md),
+                      Text(
+                        'Could not load your setup',
+                        textAlign: TextAlign.center,
+                        style: MayosTypography.pageHeading
+                            .copyWith(color: c.textPrimary, fontSize: 24),
+                      ),
+                      const SizedBox(height: MayosSpacing.xs),
+                      Text(
+                        message,
+                        textAlign: TextAlign.center,
+                        style: MayosTypography.bodySecondary
+                            .copyWith(color: c.textSecondary),
+                      ),
+                      const SizedBox(height: MayosSpacing.xl),
+                      MayosButton(
+                        label: 'Retry',
+                        expand: false,
+                        onPressed: onRetry,
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: MayosSpacing.xs),
-                Text(
-                  message,
-                  textAlign: TextAlign.center,
-                  style: MayosTypography.bodySecondary
-                      .copyWith(color: c.textSecondary),
-                ),
-                const SizedBox(height: MayosSpacing.xl),
-                MayosButton(
-                  label: 'Retry',
-                  expand: false,
-                  onPressed: onRetry,
-                ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -820,35 +835,42 @@ class _BuildingProgramView extends StatelessWidget {
     final MayosThemeExtension c = MayosTheme.of(context);
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(MayosSpacing.xl),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                const MayosBrandMark(size: 52),
-                const SizedBox(height: MayosSpacing.xl),
-                Text(
-                  'Building your program',
-                  textAlign: TextAlign.center,
-                  style: MayosTypography.pageHeading
-                      .copyWith(color: c.textPrimary),
+        child: Column(
+          children: <Widget>[
+            const OfflineBannerSlot(),
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(MayosSpacing.xl),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const MayosBrandMark(size: 52),
+                      const SizedBox(height: MayosSpacing.xl),
+                      Text(
+                        'Building your program',
+                        textAlign: TextAlign.center,
+                        style: MayosTypography.pageHeading
+                            .copyWith(color: c.textPrimary),
+                      ),
+                      const SizedBox(height: MayosSpacing.sm),
+                      Text(
+                        'This can take a moment. Your answers are saved.',
+                        textAlign: TextAlign.center,
+                        style: MayosTypography.bodySecondary
+                            .copyWith(color: c.textSecondary),
+                      ),
+                      const SizedBox(height: MayosSpacing.xl),
+                      const SizedBox(
+                        width: 180,
+                        child: MayosProgressIndicator(value: null),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: MayosSpacing.sm),
-                Text(
-                  'This can take a moment. Your answers are saved.',
-                  textAlign: TextAlign.center,
-                  style: MayosTypography.bodySecondary
-                      .copyWith(color: c.textSecondary),
-                ),
-                const SizedBox(height: MayosSpacing.xl),
-                const SizedBox(
-                  width: 180,
-                  child: MayosProgressIndicator(value: null),
-                ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );

@@ -94,10 +94,11 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
       if (atAuthPage) {
         return null;
       }
-      final String? target = path == splashPath
-          ? _carriedTarget(from)
-          : (_isCarryable(path) ? location : null);
-      return target == null ? loginPath : withCarry(loginPath, target);
+      // A cold deep link reaches here from splash with its validated target.
+      // Never remember the current authenticated route on logout: that could
+      // carry one account's page into the next account's sign-in.
+      final String? target = path == splashPath ? _carriedTarget(from) : null;
+      return target == null ? loginPath : _locationWithCarry(loginPath, target);
     case AuthStatus.authenticated:
       // Password recovery is public; it must work even for a signed-in device,
       // and its success clears the session and returns to login.
@@ -125,7 +126,7 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
         }
         return target == null
             ? recoveryEmailPath
-            : withCarry(recoveryEmailPath, target);
+            : _locationWithCarry(recoveryEmailPath, target);
       }
 
       // Hold on splash until this account's stored mode is known, so the app
@@ -235,19 +236,19 @@ bool _isCarryable(String path) =>
 
 /// A validated carried deep link, or null when there is none (#127/#172).
 String? _carriedTarget(String? from) =>
-    from != null && from.startsWith('/') && _isCarryable(_pathOf(from))
-        ? from
-        : null;
-
-/// Reads and validates the `from` target on auth and gate locations.
-String? carryTargetFromUri(Uri uri) =>
-    _carriedTarget(uri.queryParameters['from']);
+    from != null && _isCarryable(_pathOf(from)) ? from : null;
 
 /// Adds a validated carry to a sign-in flow destination.
 String withCarry(String destination, String? target) {
   final String? carry = _carriedTarget(target);
   return carry == null ? destination : _locationWithCarry(destination, carry);
 }
+
+/// Builds an auth-flow destination while retaining its validated `from` value.
+String carryingLocation(BuildContext context, String destination) => withCarry(
+      destination,
+      GoRouterState.of(context).uri.queryParameters['from'],
+    );
 
 /// The splash location carrying [location] across the startup hold (#127):
 /// `'/splash?from=<encoded location>'`, decoded by the router's redirect.

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/connectivity.dart';
 import '../../core/effort.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
@@ -86,8 +87,8 @@ class _CoachPlayerHistoryScreenState
   /// This assignment's open (new or acknowledged) alerts, as the player page
   /// shows them (#120).
   List<CoachAlert> _openAlerts(Iterable<CoachAlert> alerts) => alerts
-      .where((CoachAlert alert) =>
-          alert.assignmentId == widget.entry.assignmentId)
+      .where(
+          (CoachAlert alert) => alert.assignmentId == widget.entry.assignmentId)
       .toList(growable: false);
 
   Future<void> _load() async {
@@ -459,8 +460,8 @@ class _CoachPlayerHistoryScreenState
         if (_programRequests.isEmpty)
           Text(
             'No program requests yet.',
-            style: MayosTypography.bodySecondary
-                .copyWith(color: c.textSecondary),
+            style:
+                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
           )
         else
           for (final ProgramRequest request in _programRequests)
@@ -671,8 +672,9 @@ class _CoachPlayerHistoryScreenState
 
   /// The segment label counts what still needs the coach (#121): the pending
   /// requests, or no number once nothing is waiting.
-  int get _pendingRequests =>
-      _programRequests.where((ProgramRequest request) => request.isPending).length;
+  int get _pendingRequests => _programRequests
+      .where((ProgramRequest request) => request.isPending)
+      .length;
 
   @override
   Widget build(BuildContext context) {
@@ -682,6 +684,7 @@ class _CoachPlayerHistoryScreenState
             false;
     return Scaffold(
       appBar: AppBar(
+        key: const Key('coach_player_history_app_bar'),
         title: Text(entry.playerUsername),
         actions: <Widget>[
           // The header action of the player page (#120): it opens the
@@ -724,7 +727,12 @@ class _CoachPlayerHistoryScreenState
           ),
         ],
       ),
-      body: _buildBody(context),
+      body: Column(
+        children: <Widget>[
+          const OfflineBannerSlot(),
+          Expanded(child: _buildBody(context)),
+        ],
+      ),
     );
   }
 
@@ -758,8 +766,7 @@ class _CoachPlayerHistoryScreenState
                 Expanded(
                   child: Text(
                     alert.description,
-                    style:
-                        MayosTypography.body.copyWith(color: c.textPrimary),
+                    style: MayosTypography.body.copyWith(color: c.textPrimary),
                   ),
                 ),
                 coachAlertStateChip(context, alert),
@@ -856,8 +863,7 @@ class _CoachPlayerHistoryScreenState
               style: MayosTypography.sectionHeading
                   .copyWith(color: c.textPrimary)),
           const SizedBox(height: MayosSpacing.xs),
-          for (final CoachAlert alert in _alerts)
-            _alertCard(context, alert),
+          for (final CoachAlert alert in _alerts) _alertCard(context, alert),
         ],
         const SizedBox(height: MayosSpacing.md),
         MayosSegmentedControl<_PlayerSegment>(
@@ -874,8 +880,7 @@ class _CoachPlayerHistoryScreenState
             ),
           ],
           selected: _segment,
-          onChanged: (_PlayerSegment value) =>
-              setState(() => _segment = value),
+          onChanged: (_PlayerSegment value) => setState(() => _segment = value),
         ),
         const SizedBox(height: MayosSpacing.md),
         if (_segment == _PlayerSegment.history)
@@ -893,8 +898,7 @@ class _CoachPlayerHistoryScreenState
   List<Widget> _historyChildren(BuildContext context) {
     final CoachPlayerSummary summary = _summary!;
     return <Widget>[
-      Text('Since ${summary.startedAt}',
-          style: MayosTypography.bodySecondary),
+      Text('Since ${summary.startedAt}', style: MayosTypography.bodySecondary),
       const SizedBox(height: MayosSpacing.sm),
       _volumeCard(context),
       const SizedBox(height: MayosSpacing.sm),

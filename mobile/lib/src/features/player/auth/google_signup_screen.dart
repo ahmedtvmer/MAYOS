@@ -52,10 +52,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
   _UsernameCheck _check = _UsernameCheck.idle;
   String? _error;
 
-  String _loginLocation() => withCarry(
-        loginPath,
-        carryTargetFromUri(GoRouterState.of(context).uri),
-      );
+  String _loginLocation() => carryingLocation(context, loginPath);
 
   @override
   void initState() {

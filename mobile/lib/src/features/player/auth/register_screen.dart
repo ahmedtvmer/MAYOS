@@ -69,8 +69,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
 
   @override
   Widget build(BuildContext context) {
-    final String? carriedTarget =
-        carryTargetFromUri(GoRouterState.of(context).uri);
     return AuthScaffold(
       title: 'Create account',
       lead: 'Set up your MAYOS account to start training.',
@@ -89,7 +87,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           label: 'I already have an account',
           onPressed: _busy
               ? null
-              : () => context.go(withCarry(loginPath, carriedTarget)),
+              : () => context.go(carryingLocation(context, loginPath)),
         ),
       ],
       children: <Widget>[

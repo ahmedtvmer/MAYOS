@@ -61,10 +61,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
-    final String? carriedTarget =
-        carryTargetFromUri(GoRouterState.of(context).uri);
-    final bool resetJustCompleted =
-        GoRouterState.of(context).uri.queryParameters['reset'] == '1';
+    final Uri uri = GoRouterState.of(context).uri;
+    final bool resetJustCompleted = uri.queryParameters['reset'] == '1';
     final String? notice = ref.watch(authControllerProvider).notice;
     return AuthScaffold(
       title: 'Log in',
@@ -84,7 +82,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           label: 'Create an account',
           onPressed: _busy
               ? null
-              : () => context.go(withCarry(registerPath, carriedTarget)),
+              : () => context.go(carryingLocation(context, registerPath)),
         ),
         AuthLink(
           label: 'Forgot password?',

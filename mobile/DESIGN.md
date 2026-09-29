@@ -138,6 +138,8 @@ page to a centred `playerColumnMaxWidth` column; Coach mode keeps the full
 width. `AuthScaffold` applies the same column. Below the breakpoint nothing
 changes.
 
+The web-only `OfflineBannerSlot` sits below the header in `MayosScaffold` and at the top of `AuthScaffold` content.
+
 Screens consume these and the tokens; there are no hard-coded brand or
 light/dark literal colors outside `core/theme/`.
 

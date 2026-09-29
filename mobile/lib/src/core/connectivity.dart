@@ -107,34 +107,31 @@ class OfflineBanner extends StatelessWidget {
     final MayosThemeExtension c = MayosTheme.of(context);
     return Material(
       color: c.surfaceElevated,
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: MayosSpacing.md,
-            vertical: MayosSpacing.xs,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(Icons.cloud_off,
-                  size: MayosIconSizes.small, color: c.textSecondary),
-              const SizedBox(width: MayosSpacing.xs),
-              Text(
-                message,
-                style: MayosTypography.body.copyWith(color: c.textPrimary),
-              ),
-            ],
-          ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: MayosSpacing.md,
+          vertical: MayosSpacing.xs,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(Icons.cloud_off,
+                size: MayosIconSizes.small, color: c.textSecondary),
+            const SizedBox(width: MayosSpacing.xs),
+            Text(
+              message,
+              style: MayosTypography.body.copyWith(color: c.textPrimary),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-/// Fixed banner slot used by app frames. It remains in the widget tree while
-/// hidden, so changing connectivity cannot shift auth fields out from under
-/// the focused input.
+/// Banner slot kept in the same place in app frames. It collapses when online
+/// and pushes content down when shown; keeping the slot mounted means
+/// connectivity changes do not replace the focused auth field.
 class OfflineBannerSlot extends ConsumerWidget {
   const OfflineBannerSlot({super.key});
 
@@ -145,8 +142,6 @@ class OfflineBannerSlot extends ConsumerWidget {
         enabled ? ref.watch(connectivityControllerProvider) : true;
     return Visibility(
       visible: enabled && !online,
-      maintainState: true,
-      maintainAnimation: true,
       child: const SizedBox(
         width: double.infinity,
         child: OfflineBanner(),

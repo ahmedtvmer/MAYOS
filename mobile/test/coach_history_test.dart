@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
+import 'package:mayos_mobile/src/core/connectivity.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
@@ -24,7 +27,11 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
-Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
+Future<void> _pumpApp(
+  WidgetTester tester,
+  FakeMayosApi fake, {
+  List<Override> extraOverrides = const <Override>[],
+}) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 2.0;
   addTearDown(tester.view.resetPhysicalSize);
@@ -46,12 +53,12 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
           client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
           return client;
         }),
+        ...extraOverrides,
       ],
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(
-      tester, find.text(fake.coach ? 'Roster' : 'Home'));
+  await _pumpUntilFound(tester, find.text(fake.coach ? 'Roster' : 'Home'));
 }
 
 FakeMayosApi _coachFake() {
@@ -107,6 +114,40 @@ void main() {
     await tester.tap(benchTile);
     await _pumpUntilFound(tester, find.textContaining('e1RM 120.0'));
     expect(find.textContaining('e1RM 120.0'), findsOneWidget);
+  });
+
+  testWidgets('the player history offline banner sits below its app bar',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    final StreamController<bool> browserEvents =
+        StreamController<bool>.broadcast();
+    addTearDown(browserEvents.close);
+    await _pumpApp(
+      tester,
+      fake,
+      extraOverrides: <Override>[
+        offlineBannerEnabledProvider.overrideWithValue(true),
+        browserConnectivityEventsProvider.overrideWithValue(
+          browserEvents.stream,
+        ),
+      ],
+    );
+
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    browserEvents.add(false);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text(OfflineBanner.message), findsOneWidget);
+    expect(
+      tester.getRect(find.byType(OfflineBanner)).top,
+      greaterThanOrEqualTo(
+        tester
+            .getRect(find.byKey(const Key('coach_player_history_app_bar')))
+            .bottom,
+      ),
+    );
   });
 
   testWidgets('the drill-down shows skipped and unplanned divergences',
