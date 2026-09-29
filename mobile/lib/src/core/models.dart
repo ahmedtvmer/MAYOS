@@ -70,8 +70,8 @@ class AccountPlans {
   AccountPlans withoutCoach() => AccountPlans(lifter: lifter);
 }
 
-/// Current account identity, capabilities, independent plan states, and the
-/// coach-AI feature state from `GET /auth/me`.
+/// Current account identity, capabilities, independent plan states, the
+/// coach-AI feature state, and the sign-in methods from `GET /auth/me` (#116).
 class Account {
   const Account({
     required this.accountId,
@@ -79,6 +79,8 @@ class Account {
     required this.capabilities,
     this.plans = const AccountPlans(),
     this.coachAiEnabled = false,
+    this.hasPassword = false,
+    this.linkedSignIns = const <String>[],
   });
 
   factory Account.fromJson(Map<String, dynamic> json) {
@@ -89,12 +91,17 @@ class Account {
     if (rawPlans is! Map<String, dynamic>) {
       throw const FormatException('Missing account plan states.');
     }
+    final dynamic rawLinked = json['linked_sign_ins'];
     return Account(
       accountId: json['account_id'] as String,
       traineeId: json['trainee_id'] as String,
       capabilities: capabilities,
       plans: AccountPlans.fromJson(rawPlans),
       coachAiEnabled: json['coach_ai_enabled'] as bool? ?? false,
+      hasPassword: json['has_password'] as bool? ?? false,
+      linkedSignIns: rawLinked is List<dynamic>
+          ? rawLinked.whereType<String>().toList(growable: false)
+          : const <String>[],
     );
   }
 
@@ -110,7 +117,15 @@ class Account {
   /// itself answers 404 so a stale entry fails closed.
   final bool coachAiEnabled;
 
+  /// Whether the account can sign in with a password (`/auth/me`, #114).
+  final bool hasPassword;
+
+  /// The connected providers by name — never a subject (`/auth/me`, #114).
+  final List<String> linkedSignIns;
+
   bool get isCoach => capabilities.coach;
+
+  bool get hasGoogleLink => linkedSignIns.contains('google');
 }
 
 /// `GET`/`PUT /coach/profile`: coach-authored fields keyed by immutable account id.

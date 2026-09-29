@@ -9,9 +9,14 @@ import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_button.dart';
+import '../../../core/ui/mayos_card.dart';
 import '../../../core/ui/mayos_section_header.dart';
 import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
+import '../auth/auth_controller.dart';
+import '../auth/auth_widgets.dart' show AuthPasswordField, validateNewPassword;
+import '../auth/google_auth_gateway.dart';
+import '../auth/google_sign_in_button.dart';
 import '../onboarding/onboarding_widgets.dart' show optionLabel;
 
 /// Mirrors the server's `MAX_PAUSE_DAYS` in `service/schedule.py`; the client
@@ -51,12 +56,31 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   final TextEditingController _timezone = TextEditingController();
   final TextEditingController _deletePassword = TextEditingController();
+
+  /// The password dialogs keep their fields at screen level (like
+  /// [_deletePassword]): the dialog route is still animating out when
+  /// `showDialog` resolves, so disposing a controller there would break the
+  /// rebuilds of that exit animation.
+  final TextEditingController _setPassword = TextEditingController();
+  final TextEditingController _setPasswordConfirm = TextEditingController();
+  final TextEditingController _changeCurrent = TextEditingController();
+  final TextEditingController _changeNew = TextEditingController();
+  final TextEditingController _changeConfirm = TextEditingController();
   final Set<int> _weekdays = <int>{};
   TrainingSchedule _schedule = const TrainingSchedule();
   List<ScheduledPause> _pauses = const <ScheduledPause>[];
   bool _savingSchedule = false;
   String? _scheduleNotice;
   bool _scheduleNoticeIsError = false;
+
+  /// `GET /auth/me`: the sign-in methods the section renders (#116).
+  Account? _account;
+
+  /// One busy flag for every sign-in-method action, so connect, disconnect,
+  /// and the password dialogs can never run over each other.
+  bool _methodBusy = false;
+  String? _methodNotice;
+  bool _methodNoticeIsError = false;
 
   DateTime _pauseStart = _today();
   DateTime _pauseEnd = _today();
@@ -84,6 +108,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void dispose() {
     _timezone.dispose();
     _deletePassword.dispose();
+    _setPassword.dispose();
+    _setPasswordConfirm.dispose();
+    _changeCurrent.dispose();
+    _changeNew.dispose();
+    _changeConfirm.dispose();
     super.dispose();
   }
 
@@ -98,11 +127,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         api.profile(),
         api.trainingSchedule(),
         api.trainingPauses(),
+        api.currentAccount(),
       ]);
       if (!mounted) return;
       final PlayerProfile profile = results[0] as PlayerProfile;
       final TrainingSchedule schedule = results[1] as TrainingSchedule;
       final List<ScheduledPause> pauses = results[2] as List<ScheduledPause>;
+      final Account account = results[3] as Account;
       final String timezone = schedule.current != null
           ? schedule.current!.timezone
           : await ref.read(deviceTimezoneProvider);
@@ -116,6 +147,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             : 'balanced';
         _schedule = schedule;
         _pauses = pauses;
+        _account = account;
         _weekdays
           ..clear()
           ..addAll(_schedule.current?.weekdays ?? const <int>[]);
@@ -271,13 +303,329 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
-  /// Password-confirmed, irreversible account deletion (ADR 015/039).
+  /// Re-reads `GET /auth/me` after a sign-in-method change, so the section
+  /// always shows what the service now reports (#116).
+  Future<void> _refreshSignInMethods() async {
+    try {
+      final Account account = await ref.read(apiClientProvider).currentAccount();
+      if (!mounted) return;
+      setState(() => _account = account);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _methodNotice = mutationFailureMessage(error);
+        _methodNoticeIsError = true;
+      });
+    }
+  }
+
+  void _setMethodNotice(String message, {required bool error}) {
+    setState(() {
+      _methodNotice = message;
+      _methodNoticeIsError = error;
+    });
+  }
+
+  /// "Connect Google": one SDK attempt, then `POST /auth/google/link`. Both
+  /// service conflicts (#114) are shown verbatim, in the section.
+  Future<void> _connectGoogle() async {
+    if (_methodBusy) return;
+    setState(() {
+      _methodBusy = true;
+      _methodNotice = null;
+      _methodNoticeIsError = false;
+    });
+    try {
+      final ConnectGoogleResult result =
+          await ref.read(authControllerProvider.notifier).connectGoogle();
+      if (!mounted) return;
+      switch (result) {
+        case GoogleConnectDone():
+          _setMethodNotice('Google account connected.', error: false);
+          await _refreshSignInMethods();
+        case GoogleConnectDismissed():
+          break;
+        case GoogleConnectRefused(:final message):
+          _setMethodNotice(message, error: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _methodBusy = false);
+      }
+    }
+  }
+
+  /// Disconnecting is confirmation-gated and only offered while the account
+  /// still has a password (#114), so nobody can lock themselves out.
+  Future<void> _confirmDisconnectGoogle() async {
+    if (_methodBusy) return;
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Disconnect Google?'),
+        content: const Text(
+          'You will no longer be able to sign in with Google. Your password '
+          'stays as the other way to sign in.',
+        ),
+        actions: <Widget>[
+          MayosButton(
+            label: 'Cancel',
+            variant: MayosButtonVariant.tertiary,
+            expand: false,
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+          ),
+          MayosButton(
+            key: const Key('disconnect_google_confirm_button'),
+            label: 'Disconnect',
+            destructive: true,
+            expand: false,
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _methodBusy = true;
+      _methodNotice = null;
+      _methodNoticeIsError = false;
+    });
+    try {
+      await ref.read(authControllerProvider.notifier).disconnectGoogle();
+      if (!mounted) return;
+      _setMethodNotice('Google disconnected.', error: false);
+      await _refreshSignInMethods();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      _setMethodNotice(mutationFailureMessage(error), error: true);
+    } finally {
+      if (mounted) {
+        setState(() => _methodBusy = false);
+      }
+    }
+  }
+
+  /// The first password for a Google-only account (`POST /auth/set-password`),
+  /// worded by the app's shared password rule (#114/#116).
+  Future<void> _promptSetPassword() async {
+    if (_methodBusy) return;
+    _setPassword.clear();
+    _setPasswordConfirm.clear();
+    bool busy = false;
+    bool done = false;
+    String? error;
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) =>
+            AlertDialog(
+          title: const Text('Set a password'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                  'Choose a password so you can sign in without Google. '
+                  'Once it is set you can disconnect Google.',
+                ),
+                const SizedBox(height: MayosSpacing.md),
+                AuthPasswordField(
+                  controller: _setPassword,
+                  fieldKey: const Key('set_password_field'),
+                  label: 'New password',
+                ),
+                const SizedBox(height: MayosSpacing.sm),
+                AuthPasswordField(
+                  controller: _setPasswordConfirm,
+                  fieldKey: const Key('set_password_confirm_field'),
+                  label: 'Confirm new password',
+                ),
+                if (error != null) ...<Widget>[
+                  const SizedBox(height: MayosSpacing.sm),
+                  Text(
+                    error!,
+                    style: MayosTypography.bodySecondary
+                        .copyWith(color: MayosTheme.of(context).danger),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            MayosButton(
+              label: 'Cancel',
+              variant: MayosButtonVariant.tertiary,
+              expand: false,
+              onPressed:
+                  busy ? null : () => Navigator.of(dialogContext).pop(),
+            ),
+            MayosButton(
+              key: const Key('set_password_confirm_button'),
+              label: 'Set password',
+              expand: false,
+              loading: busy,
+              onPressed: busy
+                  ? null
+                  : () async {
+                      final String? invalid = validateNewPassword(
+                          _setPassword.text, _setPasswordConfirm.text);
+                      if (invalid != null) {
+                        setDialogState(() => error = invalid);
+                        return;
+                      }
+                      setDialogState(() {
+                        busy = true;
+                        error = null;
+                      });
+                      try {
+                        await ref
+                            .read(authControllerProvider.notifier)
+                            .setInitialPassword(_setPassword.text);
+                        done = true;
+                        if (dialogContext.mounted) {
+                          Navigator.of(dialogContext).pop();
+                        }
+                      } on ApiException catch (failure) {
+                        setDialogState(() {
+                          busy = false;
+                          error = mutationFailureMessage(failure);
+                        });
+                      }
+                    },
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!done || !mounted) return;
+    setState(() => _methodBusy = true);
+    _setMethodNotice('Password set. You can now disconnect Google.',
+        error: false);
+    await _refreshSignInMethods();
+    if (mounted) {
+      setState(() => _methodBusy = false);
+    }
+  }
+
+  /// Replacing an existing password (`POST /auth/change-password`). The
+  /// service revokes every session, so success ends this one with an
+  /// explanation on the sign-in screen (ADR 006).
+  Future<void> _promptChangePassword() async {
+    if (_methodBusy) return;
+    _changeCurrent.clear();
+    _changeNew.clear();
+    _changeConfirm.clear();
+    bool busy = false;
+    String? error;
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) =>
+            AlertDialog(
+          title: const Text('Change password'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                  'Changing your password signs you out of every device.',
+                ),
+                const SizedBox(height: MayosSpacing.md),
+                AuthPasswordField(
+                  controller: _changeCurrent,
+                  fieldKey: const Key('change_password_current_field'),
+                  label: 'Current password',
+                ),
+                const SizedBox(height: MayosSpacing.sm),
+                AuthPasswordField(
+                  controller: _changeNew,
+                  fieldKey: const Key('change_password_new_field'),
+                  label: 'New password',
+                ),
+                const SizedBox(height: MayosSpacing.sm),
+                AuthPasswordField(
+                  controller: _changeConfirm,
+                  fieldKey: const Key('change_password_confirm_field'),
+                  label: 'Confirm new password',
+                ),
+                if (error != null) ...<Widget>[
+                  const SizedBox(height: MayosSpacing.sm),
+                  Text(
+                    error!,
+                    style: MayosTypography.bodySecondary
+                        .copyWith(color: MayosTheme.of(context).danger),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            MayosButton(
+              label: 'Cancel',
+              variant: MayosButtonVariant.tertiary,
+              expand: false,
+              onPressed:
+                  busy ? null : () => Navigator.of(dialogContext).pop(),
+            ),
+            MayosButton(
+              key: const Key('change_password_confirm_button'),
+              label: 'Change password',
+              expand: false,
+              loading: busy,
+              onPressed: busy
+                  ? null
+                  : () async {
+                      if (_changeCurrent.text.isEmpty) {
+                        setDialogState(() => error =
+                            'Enter your current password.');
+                        return;
+                      }
+                      final String? invalid = validateNewPassword(
+                          _changeNew.text, _changeConfirm.text);
+                      if (invalid != null) {
+                        setDialogState(() => error = invalid);
+                        return;
+                      }
+                      setDialogState(() {
+                        busy = true;
+                        error = null;
+                      });
+                      try {
+                        await ref
+                            .read(authControllerProvider.notifier)
+                            .changePassword(
+                              currentPassword: _changeCurrent.text,
+                              newPassword: _changeNew.text,
+                            );
+                        if (dialogContext.mounted) {
+                          Navigator.of(dialogContext).pop();
+                        }
+                      } on ApiException catch (failure) {
+                        setDialogState(() {
+                          busy = false;
+                          error = mutationFailureMessage(failure);
+                        });
+                      }
+                    },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Proof-confirmed, irreversible account deletion (ADR 015/039).
   ///
   /// The player sees exactly what is removed, including unsynced drafts on this
-  /// device, and must confirm with their password. A wrong password or an
-  /// offline attempt changes nothing.
+  /// device. An account with a password confirms with that password; a
+  /// Google-only account has no password to type, so it confirms by re-running
+  /// Google sign-in for a fresh ID token (#114/#116). A wrong proof, a
+  /// dismissed Google sheet, or an offline attempt changes nothing.
   Future<void> _confirmDeleteAccount() async {
     _deletePassword.clear();
+    final bool googleOnly = !(_account?.hasPassword ?? true);
     bool busy = false;
     String? error;
     await showDialog<void>(
@@ -298,13 +646,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   'This cannot be undone.',
                 ),
                 const SizedBox(height: MayosSpacing.md),
-                MayosTextField(
-                  fieldKey: const Key('delete_account_password_field'),
-                  controller: _deletePassword,
-                  obscureText: true,
-                  enabled: !busy,
-                  label: 'Password',
-                ),
+                if (googleOnly)
+                  const Text(
+                    'There is no password on this account, so confirm by '
+                    'signing in with Google: you will be asked to prove the '
+                    'Google account connected to this MAYOS account.',
+                  )
+                else ...<Widget>[
+                  MayosTextField(
+                    fieldKey: const Key('delete_account_password_field'),
+                    controller: _deletePassword,
+                    obscureText: true,
+                    enabled: !busy,
+                    label: 'Password',
+                  ),
+                ],
                 if (error != null) ...<Widget>[
                   const SizedBox(height: MayosSpacing.sm),
                   Text(
@@ -337,9 +693,36 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         error = null;
                       });
                       try {
-                        await ref
-                            .read(authControllerProvider.notifier)
-                            .deleteAccount(_deletePassword.text);
+                        if (googleOnly) {
+                          final GoogleAuthOutcome outcome = await ref
+                              .read(googleAuthGatewayProvider)
+                              .authenticate();
+                          if (outcome is GoogleAuthCanceled) {
+                            setDialogState(() {
+                              busy = false;
+                              error = 'Google sign-in was cancelled. '
+                                  'Your account was not deleted.';
+                            });
+                            return;
+                          }
+                          if (outcome is GoogleAuthFailed) {
+                            setDialogState(() {
+                              busy = false;
+                              error = outcome.message;
+                            });
+                            return;
+                          }
+                          await ref
+                              .read(authControllerProvider.notifier)
+                              .deleteAccountWithGoogle(
+                                googleIdToken:
+                                    (outcome as GoogleAuthIdToken).idToken,
+                              );
+                        } else {
+                          await ref
+                              .read(authControllerProvider.notifier)
+                              .deleteAccount(_deletePassword.text);
+                        }
                         if (dialogContext.mounted) {
                           Navigator.of(dialogContext).pop();
                         }
@@ -353,6 +736,75 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// The "Sign-in methods" card, driven entirely by `GET /auth/me` (#116):
+  /// Password (set or change) and Google (connect or disconnect), where
+  /// disconnecting is only offered while a password exists.
+  Widget _buildSignInMethods(MayosThemeExtension c) {
+    final Account account = _account!;
+    final GoogleAuthGateway google = ref.watch(googleAuthGatewayProvider);
+    final bool hasPassword = account.hasPassword;
+    final bool googleLinked = account.hasGoogleLink;
+    return MayosCard(
+      padding: const EdgeInsets.symmetric(
+          horizontal: MayosSpacing.sm, vertical: MayosSpacing.xxs),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          _SignInMethodRow(
+            leading: _IconChip(
+              child: Icon(
+                Icons.lock_outline,
+                size: MayosIconSizes.medium,
+                color: c.accent,
+              ),
+            ),
+            title: 'Password',
+            status: hasPassword ? 'Password set' : 'No password yet',
+            action: MayosButton(
+              key: Key(hasPassword
+                  ? 'change_password_button'
+                  : 'set_password_button'),
+              label: hasPassword ? 'Change password' : 'Set password',
+              variant: MayosButtonVariant.secondary,
+              onPressed: _methodBusy
+                  ? null
+                  : hasPassword
+                      ? _promptChangePassword
+                      : _promptSetPassword,
+            ),
+          ),
+          const SizedBox(height: MayosSpacing.xxs),
+          const Divider(height: 1),
+          const SizedBox(height: MayosSpacing.xxs),
+          _SignInMethodRow(
+            leading: const _IconChip(child: GoogleGLogo(size: 20)),
+            title: 'Google',
+            status: googleLinked ? 'Connected' : 'Not connected',
+            hint: googleLinked && !hasPassword ? 'Set a password first' : null,
+            action: googleLinked
+                ? MayosButton(
+                    key: const Key('disconnect_google_button'),
+                    label: 'Disconnect Google',
+                    variant: MayosButtonVariant.secondary,
+                    onPressed: _methodBusy || !hasPassword
+                        ? null
+                        : _confirmDisconnectGoogle,
+                  )
+                : google.buttonStyle == GoogleSignInButtonStyle.hidden
+                    ? const SizedBox.shrink()
+                    : MayosButton(
+                        key: const Key('connect_google_button'),
+                        label: 'Connect Google',
+                        variant: MayosButtonVariant.secondary,
+                        loading: _methodBusy,
+                        onPressed: _methodBusy ? null : _connectGoogle,
+                      ),
+          ),
+        ],
       ),
     );
   }
@@ -386,6 +838,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return ListView(
       padding: MayosSpacing.screen,
       children: <Widget>[
+        const MayosSectionHeader(
+          title: 'Sign-in methods',
+          padding: EdgeInsets.only(bottom: MayosSpacing.xxs),
+        ),
+        const SizedBox(height: MayosSpacing.xxs),
+        if (_account != null) _buildSignInMethods(c),
+        if (_methodNotice != null) ...<Widget>[
+          const SizedBox(height: MayosSpacing.sm),
+          Text(
+            _methodNotice!,
+            style: _methodNoticeIsError
+                ? MayosTypography.bodySecondary.copyWith(color: c.danger)
+                : MayosTypography.body,
+          ),
+        ],
+        const SizedBox(height: MayosSpacing.lg),
         const MayosSectionHeader(
           title: 'Training profile',
           subtitle: 'Saving changes can rebuild your program.',
@@ -548,7 +1016,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               'Pause: ${pause.startsOn} → ${pause.endsOn}',
               style: MayosTypography.body.copyWith(color: c.textPrimary),
             ),
-        const SizedBox(height: MayosSpacing.xxl),
+        const SizedBox(height: MayosSpacing.xl),
         const Divider(),
         const SizedBox(height: MayosSpacing.sm),
         const MayosSectionHeader(
@@ -567,6 +1035,91 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           expand: false,
           onPressed: _confirmDeleteAccount,
         ),
+      ],
+    );
+  }
+}
+
+/// The soft icon chip the settings rows use, sized like `MayosSettingsTile`.
+class _IconChip extends StatelessWidget {
+  const _IconChip({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: c.surfaceSunken,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: c.border),
+      ),
+      child: Center(child: child),
+    );
+  }
+}
+
+/// One row of the "Sign-in methods" card: an icon chip beside the method's
+/// name and live state (plus an optional hint), then its full-width action —
+/// stacked so nothing is squeezed at 360dp (#116).
+class _SignInMethodRow extends StatelessWidget {
+  const _SignInMethodRow({
+    required this.leading,
+    required this.title,
+    required this.status,
+    required this.action,
+    this.hint,
+  });
+
+  final Widget leading;
+  final String title;
+  final String status;
+  final String? hint;
+  final Widget action;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final TextTheme text = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            leading,
+            const SizedBox(width: MayosSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    title,
+                    style: text.titleSmall?.copyWith(color: c.textPrimary),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    status,
+                    style: text.bodySmall?.copyWith(color: c.textMuted),
+                  ),
+                  if (hint != null) ...<Widget>[
+                    const SizedBox(height: 2),
+                    Text(
+                      hint!,
+                      style: text.bodySmall?.copyWith(color: c.warning),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: MayosSpacing.xs),
+        action,
       ],
     );
   }

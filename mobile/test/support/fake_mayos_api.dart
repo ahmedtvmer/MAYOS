@@ -67,6 +67,30 @@ class FakeMayosApi {
   int googleCompleteRequests = 0;
   final List<String> googleCompletedUsernames = <String>[];
 
+  // Sign-in methods in Settings (#114/#116): what `GET /auth/me` reports and
+  // what the connect/disconnect/set-password/change-password routes do.
+  /// Mirrors `auth_service.account_has_password` for the signed-in account.
+  bool hasPassword = true;
+
+  /// Provider names on `linked_sign_ins` (never a subject).
+  final Set<String> linkedSignIns = <String>{};
+  int linkGoogleRequests = 0;
+  int unlinkGoogleRequests = 0;
+  int setPasswordRequests = 0;
+  int changePasswordRequests = 0;
+  String? lastLinkGoogleIdToken;
+  String? lastSetPassword;
+  String? lastChangePasswordNew;
+
+  /// Scripts the two `POST /auth/google/link` 409 conflicts (#114).
+  bool googleLinkConflictElsewhere = false;
+  bool googleLinkConflictDifferent = false;
+
+  /// The Google ID token `DELETE /auth/account` accepts as proof; any other
+  /// answer is the same generic 400 a wrong password gets.
+  String googleDeleteIdToken = 'fake-google-id-token';
+  String? lastDeleteGoogleIdToken;
+
   // Assignment lifecycle (#24).
   String? pendingAssignmentToken;
   String pendingCoachDisplayName = 'Coach Alice';
@@ -316,6 +340,12 @@ class FakeMayosApi {
         return _googleSignIn(request);
       case '/auth/google/complete':
         return _googleComplete(request);
+      case '/auth/google/link':
+        return _googleLink(request);
+      case '/auth/set-password':
+        return _setPassword(request);
+      case '/auth/change-password':
+        return _changePassword(request);
       case '/auth/username-available':
         return _usernameAvailable(request);
       case '/auth/login':
@@ -457,8 +487,111 @@ class FakeMayosApi {
           409, <String, dynamic>{'detail': 'That username is taken.'});
     }
     googleCompletedUsernames.add(username);
+    // A fresh Google sign-up creates a Google-only account (#113).
+    hasPassword = false;
+    linkedSignIns
+      ..clear()
+      ..add('google');
     _beginSession(username, fresh: true);
     return FakeResponse(200, _tokenBody(username));
+  }
+
+  /// `POST`/`DELETE /auth/google/link` (#114): connect is idempotent for the
+  /// same subject and refuses both conflicts with 409; disconnect is refused
+  /// with 409 while the account has no password.
+  FakeResponse _googleLink(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (request.method == 'DELETE') {
+      unlinkGoogleRequests++;
+      if (!linkedSignIns.contains('google')) {
+        return const FakeResponse(
+            200, <String, dynamic>{'message': 'No Google account was connected.'});
+      }
+      if (!hasPassword) {
+        return const FakeResponse(409, <String, dynamic>{
+          'detail':
+              'Set a password before disconnecting Google, so you can still sign in.'
+        });
+      }
+      linkedSignIns.remove('google');
+      return const FakeResponse(
+          200, <String, dynamic>{'message': 'Google account disconnected.'});
+    }
+    linkGoogleRequests++;
+    final String? idToken = request.body['id_token'] as String?;
+    lastLinkGoogleIdToken = idToken;
+    if (idToken == null || idToken.isEmpty || idToken == 'google-invalid-id-token') {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Invalid Google credentials.'});
+    }
+    if (googleLinkConflictElsewhere) {
+      return const FakeResponse(409, <String, dynamic>{
+        'detail':
+            'This Google account is already connected to another MAYOS account'
+      });
+    }
+    if (googleLinkConflictDifferent) {
+      return const FakeResponse(409, <String, dynamic>{
+        'detail':
+            'This account already has a different Google account connected. Disconnect it first.'
+      });
+    }
+    linkedSignIns.add('google');
+    return const FakeResponse(
+        200, <String, dynamic>{'message': 'Google account connected.'});
+  }
+
+  /// `POST /auth/set-password`: first password only, never an epoch bump (#114).
+  FakeResponse _setPassword(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    setPasswordRequests++;
+    final String? password = request.body['new_password'] as String?;
+    lastSetPassword = password;
+    if (hasPassword) {
+      return const FakeResponse(409, <String, dynamic>{
+        'detail': 'A password is already set. Use change-password to change it.'
+      });
+    }
+    if (password == null || password.length < 8) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'Password is too short.'});
+    }
+    hasPassword = true;
+    passwords[currentUsername ?? ''] = password;
+    return const FakeResponse(
+        200, <String, dynamic>{'message': 'Password set.'});
+  }
+
+  /// `POST /auth/change-password`: replaces an existing password and revokes
+  /// every session, so the fake invalidates the token it just used.
+  FakeResponse _changePassword(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    changePasswordRequests++;
+    final String? current = request.body['current_password'] as String?;
+    final String? password = request.body['new_password'] as String?;
+    lastChangePasswordNew = password;
+    if (!hasPassword || passwords[currentUsername] != current) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'Invalid credentials.'});
+    }
+    if (password == null || password.length < 8) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'Password is too short.'});
+    }
+    passwords[currentUsername ?? ''] = password;
+    tokenValid = false;
+    issuedToken = null;
+    return const FakeResponse(
+        200, <String, dynamic>{'message': 'Password updated.'});
   }
 
   FakeResponse _register(FakeRequest request) {
@@ -469,6 +602,8 @@ class FakeMayosApi {
           400, <String, dynamic>{'detail': 'Password is too short.'});
     }
     passwords[username] = password;
+    hasPassword = true;
+    linkedSignIns.clear();
     _beginSession(username, fresh: true);
     return FakeResponse(201, _tokenBody(username));
   }
@@ -512,6 +647,8 @@ class FakeMayosApi {
       'capabilities': <String, dynamic>{'player': true, 'coach': coach},
       'plans': _plansBody(),
       'coach_ai_enabled': coachAiEnabled,
+      'has_password': hasPassword,
+      'linked_sign_ins': linkedSignIns.toList(growable: false),
     });
   }
 
@@ -571,11 +708,17 @@ class FakeMayosApi {
   FakeResponse _deleteAccount(FakeRequest request) {
     deleteAccountRequests++;
     lastDeletePassword = request.body['password'] as String?;
+    lastDeleteGoogleIdToken = request.body['google_id_token'] as String?;
     if (!_authorized(request)) {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
     }
-    if (passwords[currentUsername] != lastDeletePassword) {
+    // Exactly one proof (#114): a password, or a fresh Google ID token. Every
+    // refusal is the same generic 400.
+    final String? googleIdToken = lastDeleteGoogleIdToken;
+    if (googleIdToken != null
+        ? googleIdToken != googleDeleteIdToken
+        : passwords[currentUsername] != lastDeletePassword) {
       return const FakeResponse(
           400, <String, dynamic>{'detail': 'Invalid credentials.'});
     }

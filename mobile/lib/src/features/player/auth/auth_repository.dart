@@ -140,6 +140,42 @@ class AuthRepository {
     await _tokens.clear();
   }
 
+  /// The Google-proof deletion a Google-only account uses (#114): the same
+  /// erase path, only the proof differs. A refusal changes nothing locally.
+  Future<void> deleteAccountWithGoogle({required String googleIdToken}) async {
+    final String? accountId = await _localAccountId();
+    await _api.deleteAccountWithGoogle(googleIdToken: googleIdToken);
+    await eraseAllLocalData(accountId);
+    await _tokens.clear();
+  }
+
+  /// Connects the Google subject verified from [idToken] to this account.
+  Future<void> linkGoogle({required String idToken}) =>
+      _api.linkGoogle(idToken: idToken);
+
+  /// Disconnects Google; the service refuses with 409 while the account has
+  /// no password (#114).
+  Future<void> unlinkGoogle() => _api.unlinkGoogle();
+
+  /// Gives a passwordless account its first password (#114). The session
+  /// epoch is untouched, so this device stays signed in.
+  Future<void> setInitialPassword({required String newPassword}) =>
+      _api.setInitialPassword(newPassword: newPassword);
+
+  /// Replaces an existing password. The service revokes every session, so the
+  /// local token is dropped too and the person signs in again (ADR 006).
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final String? accountId = await _localAccountId();
+    await _api.changePassword(
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+    );
+    await clearSession(accountId: accountId);
+  }
+
   /// Handles a request that reported `account_deleted`: erase the account's
   /// protected local data and clear the local session (ADR 039).
   Future<void> handleAccountDeleted() async {

@@ -834,6 +834,64 @@ class ApiClient {
     );
   }
 
+  /// Deletion proved by a fresh Google ID token instead of a password (#114):
+  /// the only proof a Google-only account has. Every failure — stale, wrong
+  /// subject, unverifiable — is the same generic 400 as a wrong password.
+  Future<void> deleteAccountWithGoogle({required String googleIdToken}) async {
+    await _send(
+      () => _dio.delete<dynamic>(
+        '/auth/account',
+        data: <String, dynamic>{'google_id_token': googleIdToken},
+      ),
+    );
+  }
+
+  /// `POST /auth/google/link`: connects the verified Google subject to the
+  /// signed-in account (#114). Both conflicts answer 409 with a message that
+  /// never says which other account holds the subject.
+  Future<void> linkGoogle({required String idToken}) async {
+    await _send(
+      () => _dio.post<dynamic>(
+        '/auth/google/link',
+        data: <String, dynamic>{'id_token': idToken},
+      ),
+    );
+  }
+
+  /// `DELETE /auth/google/link`: disconnects Google, refused with 409 while
+  /// the account has no password (#114). Idempotent when nothing is linked.
+  Future<void> unlinkGoogle() async {
+    await _send(() => _dio.delete<dynamic>('/auth/google/link'));
+  }
+
+  /// `POST /auth/set-password`: the first password for a Google-only account
+  /// (#114). Refused with 409 when a password already exists; sessions survive.
+  Future<void> setInitialPassword({required String newPassword}) async {
+    await _send(
+      () => _dio.post<dynamic>(
+        '/auth/set-password',
+        data: <String, dynamic>{'new_password': newPassword},
+      ),
+    );
+  }
+
+  /// `POST /auth/change-password`: replaces an existing password. The service
+  /// revokes every session, so the caller must sign in again afterwards.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _send(
+      () => _dio.post<dynamic>(
+        '/auth/change-password',
+        data: <String, dynamic>{
+          'current_password': currentPassword,
+          'new_password': newPassword,
+        },
+      ),
+    );
+  }
+
   /// The account's recovery email, or null when none is set (ADR 007).
   Future<String?> recoveryEmail() async {
     final response = await _send(() => _dio.get<dynamic>('/auth/email'));

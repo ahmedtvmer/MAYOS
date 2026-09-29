@@ -85,6 +85,29 @@ final class GoogleAccountAlreadyLinked extends CompleteGoogleSignupResult {
 const String kGoogleSignupExpiredMessage =
     'Your Google sign-up expired. Please try again.';
 
+/// What `POST /auth/google/link` produced for the Settings section (#116).
+sealed class ConnectGoogleResult {
+  const ConnectGoogleResult();
+}
+
+/// The subject is connected to this account now.
+final class GoogleConnectDone extends ConnectGoogleResult {
+  const GoogleConnectDone();
+}
+
+/// The person dismissed the Google sheet; nothing happened.
+final class GoogleConnectDismissed extends ConnectGoogleResult {
+  const GoogleConnectDismissed();
+}
+
+/// The SDK or the service refused; [message] explains it in the section. Both
+/// connect conflicts (409) arrive here verbatim (#114).
+final class GoogleConnectRefused extends ConnectGoogleResult {
+  const GoogleConnectRefused(this.message);
+
+  final String message;
+}
+
 /// `service/google_sign_in.py::ALREADY_LINKED`, echoed verbatim by
 /// `POST /auth/google/complete` as a 409 (#113). The service sends no machine
 /// code with it, so the detail is what distinguishes this from a taken
@@ -301,6 +324,56 @@ class AuthController extends StateNotifier<AuthState> {
         'Your account was deleted. Create a new account or sign in.');
   }
 
+  /// Deletion of a Google-only account, proved by re-running the Google flow
+  /// for a fresh ID token instead of asking for a password (#114/#116).
+  Future<void> deleteAccountWithGoogle({required String googleIdToken}) async {
+    await _repository.deleteAccountWithGoogle(googleIdToken: googleIdToken);
+    state = const AuthState.unauthenticated(
+        'Your account was deleted. Create a new account or sign in.');
+  }
+
+  /// One "Connect Google" tap in Settings: get an ID token from the SDK, then
+  /// hand it to `POST /auth/google/link`. Cancellation is not an error; both
+  /// service conflicts come back as [GoogleConnectRefused] messages.
+  Future<ConnectGoogleResult> connectGoogle() async {
+    final GoogleAuthOutcome outcome = await _google.authenticate();
+    if (outcome is GoogleAuthCanceled) {
+      return const GoogleConnectDismissed();
+    }
+    if (outcome is GoogleAuthFailed) {
+      return GoogleConnectRefused(outcome.message);
+    }
+    try {
+      await _repository.linkGoogle(idToken: (outcome as GoogleAuthIdToken).idToken);
+      return const GoogleConnectDone();
+    } on ApiException catch (error) {
+      return GoogleConnectRefused(error.message);
+    }
+  }
+
+  /// Disconnects Google from Settings; the service refuses while the account
+  /// has no password (#114), which the section already prevents.
+  Future<void> disconnectGoogle() => _repository.unlinkGoogle();
+
+  /// Gives a Google-only account its first password (#114). No session ends,
+  /// so this device stays signed in and the section just re-reads `/auth/me`.
+  Future<void> setInitialPassword(String newPassword) =>
+      _repository.setInitialPassword(newPassword: newPassword);
+
+  /// Replaces an existing password. The service revokes every session
+  /// (ADR 006), so the local session ends here with an explanation.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _repository.changePassword(
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+    );
+    state = const AuthState.unauthenticated(
+        'Password changed. Please sign in again.');
+  }
+
   /// Requests a reset link and returns the service's constant confirmation.
   Future<String> requestPasswordReset(String email) =>
       _repository.forgotPassword(email);
@@ -390,6 +463,8 @@ class AuthController extends StateNotifier<AuthState> {
           ),
           plans: account.plans.withoutCoach(),
           coachAiEnabled: account.coachAiEnabled,
+          hasPassword: account.hasPassword,
+          linkedSignIns: account.linkedSignIns,
         ),
         onboarded: current.onboarded,
         hasRecoveryEmail: current.hasRecoveryEmail,
