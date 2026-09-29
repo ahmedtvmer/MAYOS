@@ -50,6 +50,29 @@ class LedgerAuthMixin:
         )
         self.conn.commit()
 
+    def set_password_hash_if_absent(self, password_hash: str) -> bool:
+        """Writes the hash only when the ledger has none yet; True when it landed.
+
+        The "no password yet" check and the write are **one** statement
+        (``ON CONFLICT ... WHERE`` with the rowcount as the verdict), so two
+        concurrent first-set requests (#114) cannot both succeed: exactly one
+        caller sees True and the loser reports the same "password already set"
+        refusal as an account that already had one. An existing row keeps its
+        ``token_version``, so the first password never bumps the session epoch.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO auth_credentials (id, password_hash, updated_at) VALUES (1, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                password_hash = excluded.password_hash, updated_at = excluded.updated_at
+            WHERE auth_credentials.password_hash IS NULL OR auth_credentials.password_hash = ''
+            """,
+            (password_hash, datetime.now(UTC).isoformat()),
+        )
+        self.conn.commit()
+        return cursor.rowcount == 1
+
     def get_token_version(self) -> int:
         """Session epoch for the bound ledger. Bumped on every password change/reset."""
         cursor = self.conn.cursor()

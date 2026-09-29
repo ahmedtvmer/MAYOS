@@ -155,12 +155,25 @@ def account_has_password(db: Any, account: dict[str, Any] | None) -> bool:
         return ledger.get_password_hash() is not None
 
 
+def _password_already_set() -> dict[str, Any]:
+    return {
+        "ok": False,
+        "error": "A password is already set. Use change-password to change it.",
+        "code": "password_exists",
+    }
+
+
 def set_initial_password(db: Any, account_id: str, new_password: Any) -> dict[str, Any]:
     """Authenticated: gives a passwordless account its first password (#114).
 
     Only an account that has **no** password may use it; one that already has a
     password is pointed at ``change-password`` instead. Validation is
     :func:`validate_password`, the same rule registration and claim use.
+
+    The first password is written with :meth:`set_password_hash_if_absent`, so
+    the "no password yet" check and the write are one conditional statement:
+    two concurrent first-set requests cannot both succeed — the loser gets the
+    same ``password_exists`` refusal as an account that already had one.
 
     Deliberately does **not** bump the session epoch: adding a sign-in method
     must not sign anyone out (connect, disconnect, and the first password all
@@ -171,16 +184,14 @@ def set_initial_password(db: Any, account_id: str, new_password: Any) -> dict[st
         return {"ok": False, "error": "Trainee ledger not found."}
     with db.open_ledger(account["ledger_id"]) as ledger:
         if ledger.get_password_hash() is not None:
-            return {
-                "ok": False,
-                "error": "A password is already set. Use change-password to change it.",
-                "code": "password_exists",
-            }
+            return _password_already_set()
         try:
             clean = validate_password(new_password)
         except ValueError as exc:
             return {"ok": False, "error": str(exc), "code": "weak_new"}
-        ledger.set_password_hash(hash_password(clean))
+        if not ledger.set_password_hash_if_absent(hash_password(clean)):
+            # Another first-set landed between our read and the write.
+            return _password_already_set()
     return {"ok": True, "trainee_id": account["ledger_id"], "account_id": account_id}
 
 

@@ -529,13 +529,15 @@ class SchemaMixin:
                 -- subject is the provider's immutable subject (Google's ``sub``).
                 -- Never matched by email; no email, name or picture from the
                 -- provider is stored. ``provider`` is data, so another provider
-                -- needs no schema change (issue #113).
+                -- needs no schema change (issue #113). An account holds at most
+                -- one link per provider: UNIQUE(account_id, provider) (#114).
                 CREATE TABLE IF NOT EXISTS linked_sign_ins (
                     provider TEXT NOT NULL,
                     subject TEXT NOT NULL,
                     account_id TEXT NOT NULL,
                     linked_at TEXT NOT NULL,
-                    UNIQUE(provider, subject)
+                    UNIQUE(provider, subject),
+                    UNIQUE(account_id, provider)
                 );
                 CREATE INDEX IF NOT EXISTS idx_linked_sign_ins_account
                     ON linked_sign_ins(account_id);
@@ -545,6 +547,7 @@ class SchemaMixin:
             self._ensure_roster_attendance_last_workout_on()
             self._ensure_roster_attendance_program_name()
             self._ensure_model_spend_alert_columns()
+            self._ensure_linked_sign_in_account_provider()
             self._commit_catalog()
             self._account_schema_ready = True
 
@@ -701,3 +704,31 @@ class SchemaMixin:
             cursor.execute("ALTER TABLE model_spend_alerts ADD COLUMN fired_at TEXT")
         if columns and "notified_at" not in columns:
             cursor.execute("ALTER TABLE model_spend_alerts ADD COLUMN notified_at TEXT")
+
+    def _ensure_linked_sign_in_account_provider(self) -> None:
+        """``UNIQUE(account_id, provider)``: an account holds one link per provider (#114).
+
+        Additive migration for catalogs created before the constraint existed
+        (when only ``(provider, subject)`` was unique, two concurrent connects
+        could leave an account with two identities for one provider). Such a
+        duplicate keeps its earliest row and loses the rest, so the migration
+        never fails on legacy data; a catalog that already enforces the rule —
+        fresh ones through the table constraint — does no work here.
+        """
+        cursor = self.catalog_conn.cursor()
+        indexes = cursor.execute("PRAGMA index_list(linked_sign_ins)").fetchall()
+        for index in indexes:
+            name, is_unique = str(index[1]), bool(index[2])
+            if not is_unique:
+                continue
+            columns = [str(row[2]) for row in cursor.execute(f"PRAGMA index_info({name})").fetchall()]
+            if len(columns) == 2 and set(columns) == {"account_id", "provider"}:
+                return
+        cursor.execute(
+            "DELETE FROM linked_sign_ins WHERE rowid NOT IN ("
+            " SELECT MIN(rowid) FROM linked_sign_ins GROUP BY account_id, provider)"
+        )
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_linked_sign_in_account_provider"
+            " ON linked_sign_ins(account_id, provider)"
+        )

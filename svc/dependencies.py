@@ -298,9 +298,12 @@ def _verify_google_id_token(raw_id_token: str) -> GoogleIdentity:
     """
     audience = google_web_client_id()
     if not audience:
-        # The routes never reach this: google_sign_in_enabled is the single
-        # place that answers 503 for an unconfigured audience. Fail closed if
-        # this seam is called directly, rather than verifying with no audience.
+        # ``google_sign_in_enabled`` is the single place that answers 503 for an
+        # unconfigured audience, and the /auth/google* routes gate on it — but
+        # DELETE /auth/account deliberately does not (its password proof must
+        # keep working unconfigured), so that route does reach here. Fail closed
+        # with a generic identity error there — the same refusal as any other
+        # rejected token — rather than verifying with no audience.
         raise GoogleIdentityError("Google sign-in is not configured.")
     from google.auth import exceptions as google_auth_exceptions
     from google.oauth2 import id_token as google_id_token

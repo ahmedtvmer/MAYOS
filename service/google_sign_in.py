@@ -193,9 +193,24 @@ def link_account(db: Any, account_id: str, subject: str) -> dict[str, Any]:
         try:
             db.link_sign_in(PROVIDER, subject, account_id, linked_at=linked_at)
         except sqlite3.IntegrityError:
-            # UNIQUE(provider, subject): a concurrent connect won the race.
-            raise SignInMethodError(LINKED_ELSEWHERE) from None
+            raise _link_conflict(db, account_id, subject) from None
     return {"ok": True, "message": "Google account connected."}
+
+
+def _link_conflict(db: Any, account_id: str, subject: str) -> SignInMethodError:
+    """Names which unique constraint refused the insert, without leaking who.
+
+    ``UNIQUE(provider, subject)`` means the identity is connected to another
+    account (:data:`LINKED_ELSEWHERE`); ``UNIQUE(account_id, provider)`` — an
+    account holds at most one link per provider (#114) — means this account
+    already connected a *different* identity, so the caller must disconnect it
+    first (:data:`DIFFERENT_GOOGLE`). Both answers stay generic: neither says
+    which other account is involved.
+    """
+    holder = db.get_linked_sign_in_account_id(PROVIDER, subject)
+    if holder is not None and holder != account_id:
+        return SignInMethodError(LINKED_ELSEWHERE)
+    return SignInMethodError(DIFFERENT_GOOGLE)
 
 
 def unlink_account(db: Any, account_id: str) -> dict[str, Any]:

@@ -224,6 +224,120 @@ def test_link_requires_a_session_a_valid_token_and_configuration(api, monkeypatc
     assert client.delete("/auth/google/link", headers=_authed(token)).status_code == 503
 
 
+def test_constraint_violation_on_connect_maps_to_its_own_conflict(api, monkeypatch):
+    """Both unique constraints name their own 409, and neither leaks who holds what."""
+    client, db, _verifier = api
+
+    # UNIQUE(account_id, provider): Alice already connected one identity, and
+    # the pre-check is blinded so only the constraint can refuse the second.
+    alice_token = _password_account(client, "alice")
+    alice_id = _subject(alice_token)
+    assert client.post(
+        "/auth/google/link", json={"id_token": "first-token:F"}, headers=_authed(alice_token)
+    ).status_code == 200
+
+    real_subject = DatabaseManager.get_linked_sign_in_subject
+    blind = {"armed": True}
+
+    def hidden_from_the_pre_check(self, account_id, provider):
+        if blind["armed"]:
+            blind["armed"] = False
+            return None
+        return real_subject(self, account_id, provider)
+
+    monkeypatch.setattr(DatabaseManager, "get_linked_sign_in_subject", hidden_from_the_pre_check)
+    own_slot = client.post(
+        "/auth/google/link", json={"id_token": "second-token:S"}, headers=_authed(alice_token)
+    )
+    assert own_slot.status_code == 409, own_slot.text
+    assert "Disconnect it first" in own_slot.json()["detail"]
+    # Alice's first link is untouched.
+    assert ("google", "sub-first-token", alice_id) in _link_rows(db)
+
+    # UNIQUE(provider, subject): Bob holds the identity, hidden from the
+    # pre-check so only the constraint can refuse Carol — and the answer must
+    # still be the "another MAYOS account" message, never Bob's.
+    bob_token = _password_account(client, "bob")
+    assert client.post(
+        "/auth/google/link", json={"id_token": "shared-token:S"}, headers=_authed(bob_token)
+    ).status_code == 200
+    bob_id = [row[2] for row in _link_rows(db) if row[1] == "sub-shared-token"][0]
+    carol_token = _password_account(client, "carol")
+
+    real_holder = DatabaseManager.get_linked_sign_in_account_id
+    seen = {"calls": 0}
+
+    def hidden_holder(self, provider, subject):
+        seen["calls"] += 1
+        if seen["calls"] == 1:
+            return None
+        return real_holder(self, provider, subject)
+
+    monkeypatch.setattr(DatabaseManager, "get_linked_sign_in_account_id", hidden_holder)
+    foreign = client.post(
+        "/auth/google/link", json={"id_token": "shared-token:S"}, headers=_authed(carol_token)
+    )
+    assert foreign.status_code == 409, foreign.text
+    assert foreign.json()["detail"] == LINKED_ELSEWHERE
+    assert "bob" not in foreign.json()["detail"]
+    assert bob_id not in foreign.json()["detail"]
+    assert _me(client, carol_token)["linked_sign_ins"] == []
+
+
+def test_link_schema_enforces_one_link_per_provider_and_migrates_duplicates(api):
+    client, db, _verifier = api
+    db.ensure_account_schema()
+
+    # A fresh catalog refuses a second identity for one provider in the schema.
+    with db.catalog_locked() as conn:
+        unique_coverings = set()
+        for index in conn.execute("PRAGMA index_list(linked_sign_ins)").fetchall():
+            if not bool(index[2]):
+                continue
+            columns = {str(row[2]) for row in conn.execute(f'PRAGMA index_info("{index[1]}")').fetchall()}
+            unique_coverings.add(frozenset(columns))
+        assert frozenset({"account_id", "provider"}) in unique_coverings
+        conn.execute(
+            "INSERT INTO linked_sign_ins (provider, subject, account_id, linked_at)"
+            " VALUES ('google', 'sub-1', 'acct-1', 't0')"
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO linked_sign_ins (provider, subject, account_id, linked_at)"
+                " VALUES ('google', 'sub-2', 'acct-1', 't1')"
+            )
+        conn.rollback()
+        assert conn.execute("SELECT COUNT(*) FROM linked_sign_ins").fetchone()[0] == 0
+
+    # A catalog from before the constraint, holding a duplicate: the additive
+    # migration keeps the earliest link, drops the rest, and enforces the rule.
+    with db.catalog_transaction():
+        conn = db.catalog_conn
+        conn.execute("DROP TABLE linked_sign_ins")
+        conn.execute(
+            "CREATE TABLE linked_sign_ins (provider TEXT NOT NULL, subject TEXT NOT NULL,"
+            " account_id TEXT NOT NULL, linked_at TEXT NOT NULL, UNIQUE(provider, subject))"
+        )
+        conn.execute("INSERT INTO linked_sign_ins VALUES ('google', 'sub-a', 'acct-1', 't0')")
+        conn.execute("INSERT INTO linked_sign_ins VALUES ('google', 'sub-b', 'acct-1', 't1')")
+        conn.execute("INSERT INTO linked_sign_ins VALUES ('google', 'sub-c', 'acct-2', 't2')")
+
+    db._account_schema_ready = False
+    db.ensure_account_schema()
+
+    with db.catalog_locked() as conn:
+        rows = conn.execute(
+            "SELECT subject, account_id FROM linked_sign_ins ORDER BY account_id, linked_at"
+        ).fetchall()
+        assert rows == [("sub-a", "acct-1"), ("sub-c", "acct-2")]
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO linked_sign_ins (provider, subject, account_id, linked_at)"
+                " VALUES ('google', 'sub-d', 'acct-2', 't3')"
+            )
+        conn.rollback()
+
+
 # --------------------------------------------------------------------------
 # DELETE /auth/google/link
 
@@ -313,6 +427,39 @@ def test_set_password_uses_the_existing_password_validation(api):
     }
     assert _me(client, token)["has_password"] is False
     assert client.post("/auth/set-password", json={"new_password": "correct-horse-1"}).status_code == 401
+
+
+def test_set_password_race_loses_to_the_hash_that_got_there_first(api, monkeypatch):
+    """Two concurrent first-sets: one winner, and the loser's refusal is the usual 409."""
+    from database.ledger.handle import TrainingLedger
+
+    client, _db, _verifier = api
+    token, _ = _google_account(client, "ana-token:Ana", "ana")
+
+    real_get = TrainingLedger.get_password_hash
+    real_set = TrainingLedger.set_password_hash
+    raced = {"armed": True}
+
+    def racing_get(self):
+        if raced["armed"]:
+            raced["armed"] = False
+            # Another first-set request commits right between our "no password
+            # yet" read and our write; it returns the pre-race answer all the
+            # same, exactly as two requests racing through the old check would.
+            real_set(self, auth_service.hash_password("racing-horse-99"))
+            return None
+        return real_get(self)
+
+    monkeypatch.setattr(TrainingLedger, "get_password_hash", racing_get)
+
+    lost = client.post("/auth/set-password", json={"new_password": "correct-horse-1"}, headers=_authed(token))
+    assert lost.status_code == 409, lost.text
+    assert "change-password" in lost.json()["detail"]
+    assert _me(client, token)["has_password"] is True
+
+    # The first password stands; the loser wrote nothing over it.
+    assert client.post("/auth/login", json={"trainee_id": "ana", "password": "racing-horse-99"}).status_code == 200
+    assert client.post("/auth/login", json={"trainee_id": "ana", "password": "correct-horse-1"}).status_code == 401
 
 
 def test_connect_disconnect_and_first_password_do_not_bump_the_epoch_but_change_does(api):
