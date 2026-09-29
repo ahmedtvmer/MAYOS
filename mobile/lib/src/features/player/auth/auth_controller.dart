@@ -75,6 +75,22 @@ final class GoogleSignupRefused extends CompleteGoogleSignupResult {
   final String message;
 }
 
+/// The subject turned out to be linked after all: the ticket is dead and the
+/// person belongs on sign-in, not on the picker.
+final class GoogleAccountAlreadyLinked extends CompleteGoogleSignupResult {
+  const GoogleAccountAlreadyLinked();
+}
+
+/// One short line for every "the signup ticket aged out" exit (#115).
+const String kGoogleSignupExpiredMessage =
+    'Your Google sign-up expired. Please try again.';
+
+/// `service/google_sign_in.py::ALREADY_LINKED`, echoed verbatim by
+/// `POST /auth/google/complete` as a 409 (#113). The service sends no machine
+/// code with it, so the detail is what distinguishes this from a taken
+/// username.
+const String kGoogleAlreadyLinkedMessage =
+    'This Google account is already linked to a MAYOS account.';
 
 @immutable
 class AuthState {
@@ -178,6 +194,8 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> logout() async {
     final String? accountId = state.session?.account.accountId;
     await _repository.logout(accountId: accountId);
+    // The MAYOS session is over, so the Google SDK's own is too (#115).
+    await _google.clearSdkState();
     state = const AuthState.unauthenticated();
   }
 
@@ -200,8 +218,7 @@ class AuthController extends StateNotifier<AuthState> {
         state = AuthState.authenticated(session);
         return const GoogleSignInDone();
       }
-      final GoogleUsernameRequired required =
-          result as GoogleUsernameRequired;
+      final GoogleUsernameRequired required = result as GoogleUsernameRequired;
       _pendingSignup = PendingGoogleSignup(
         signupTicket: required.signupTicket,
         suggestedUsername: required.suggestedUsername,
@@ -216,7 +233,8 @@ class AuthController extends StateNotifier<AuthState> {
   Future<bool> googleUsernameAvailable(String username) {
     final PendingGoogleSignup? pending = _pendingSignup;
     if (pending == null) {
-      throw const ApiException('Your Google sign-up expired. Please try again.');
+      throw const ApiException(
+          'Your Google sign-up expired. Please try again.');
     }
     return _repository.googleUsernameAvailable(
       signupTicket: pending.signupTicket,
@@ -245,30 +263,34 @@ class AuthController extends StateNotifier<AuthState> {
         return const GoogleSignupTicketExpired();
       }
       if (error.statusCode == 409) {
+        // Same status for both conflicts; only the detail tells them apart.
+        if (error.message == kGoogleAlreadyLinkedMessage) {
+          await abandonGoogleSignup(notice: kGoogleAlreadyLinkedMessage);
+          return const GoogleAccountAlreadyLinked();
+        }
         return const GoogleUsernameTaken();
       }
       return GoogleSignupRefused(error.message);
     }
   }
 
-  /// Leaves the picker without submitting: no account was created, and the
-  /// Google SDK's own sign-in state is dropped (#115).
-  Future<void> abandonGoogleSignup() async {
-    if (_pendingSignup == null) {
+  /// Drops the pending ticket, signs the Google SDK out, and optionally hands
+  /// [notice] to the sign-in screen (#115). No account is ever created here.
+  Future<void> abandonGoogleSignup({String? notice}) async {
+    if (_pendingSignup == null && notice == null) {
       return;
     }
     _pendingSignup = null;
     await _google.clearSdkState();
+    if (notice != null) {
+      state = AuthState.unauthenticated(notice);
+    }
   }
 
   /// The ticket aged out: drop it and send the person back to sign-in with a
   /// short explanation (#115).
-  Future<void> _expireGoogleSignup() async {
-    _pendingSignup = null;
-    await _google.clearSdkState();
-    state = const AuthState.unauthenticated(
-        'Your Google sign-up expired. Please try again.');
-  }
+  Future<void> _expireGoogleSignup() =>
+      abandonGoogleSignup(notice: kGoogleSignupExpiredMessage);
 
   /// Password-confirmed account deletion: on success the server has ended every
   /// session and removed the ledger, and the repository erased this device's
@@ -413,6 +435,7 @@ class AuthController extends StateNotifier<AuthState> {
     // Fire-and-forget: the in-memory state already reflects the logout. The
     // token is already invalid, so only the local state is dropped here.
     unawaited(_repository.clearSession(accountId: accountId));
+    unawaited(_google.clearSdkState());
   }
 
   /// A 401 carrying `account_deleted`: erase the account's protected local data
@@ -421,6 +444,7 @@ class AuthController extends StateNotifier<AuthState> {
     state = const AuthState.unauthenticated(
         'This account was deleted. Its data was removed from this device.');
     unawaited(_repository.handleAccountDeleted());
+    unawaited(_google.clearSdkState());
   }
 
   @override

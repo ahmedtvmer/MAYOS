@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
+import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
+import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_controller.dart';
@@ -10,6 +14,7 @@ import 'package:mayos_mobile/src/features/player/auth/google_sign_in_button.dart
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/auth_harness.dart';
+import 'support/fake_api_adapter.dart';
 import 'support/fake_google_auth.dart';
 import 'support/fake_mayos_api.dart';
 
@@ -42,8 +47,7 @@ Future<ProviderContainer> _pumpAuth(
     fake,
     InMemoryTokenStore(),
     extraOverrides: <Override>[
-      if (google != null)
-        googleAuthGatewayProvider.overrideWithValue(google),
+      if (google != null) googleAuthGatewayProvider.overrideWithValue(google),
     ],
   ));
   await _pumpUntilFound(tester, find.text('Log in'));
@@ -60,6 +64,13 @@ Future<void> _openPicker(WidgetTester tester) async {
 /// Waits for the debounced availability probe to land.
 Future<void> _awaitAvailability(WidgetTester tester) async {
   await _pumpUntilFound(tester, find.text('This username is free.'));
+}
+
+/// Lets a route transition finish so the screen being left is unmounted.
+Future<void> _settleRoute(WidgetTester tester) async {
+  for (int i = 0; i < 12; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
 }
 
 void main() {
@@ -96,7 +107,8 @@ void main() {
     expect(google.authenticateCalls, 1);
   });
 
-  testWidgets('a first Google sign-in opens the picker prefilled with the suggestion',
+  testWidgets(
+      'a first Google sign-in opens the picker prefilled with the suggestion',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi();
     await _pumpAuth(tester, fake, google: FakeGoogleAuthGateway());
@@ -116,8 +128,7 @@ void main() {
 
   testWidgets('a taken username shows a live error and blocks the submit',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = FakeMayosApi()
-      ..googleTakenUsernames.add('alice');
+    final FakeMayosApi fake = FakeMayosApi()..googleTakenUsernames.add('alice');
     await _pumpAuth(tester, fake, google: FakeGoogleAuthGateway());
 
     await _openPicker(tester);
@@ -185,7 +196,8 @@ void main() {
     expect(fake.googleCompleteRequests, 0);
   });
 
-  testWidgets('submitting the picked username signs in and keeps the ADR 007 gate',
+  testWidgets(
+      'submitting the picked username signs in and keeps the ADR 007 gate',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi();
     final ProviderContainer container =
@@ -203,7 +215,8 @@ void main() {
     expect(find.byKey(const Key('recovery_email')), findsOneWidget);
   });
 
-  testWidgets('leaving the picker creates nothing and clears the Google SDK state',
+  testWidgets(
+      'leaving the picker creates nothing and clears the Google SDK state',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi();
     final FakeGoogleAuthGateway google = FakeGoogleAuthGateway();
@@ -247,5 +260,165 @@ void main() {
 
     expect(fake.googleSignInRequests, 0);
     expect(find.byKey(const Key('login_username')), findsOneWidget);
+  });
+
+  testWidgets('a slow answer about an older username never relabels the field',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()..googleTakenUsernames.add('alice');
+    final Completer<void> gate = Completer<void>();
+    fake.adapter.beforeRespond = (FakeRequest request) async {
+      if (request.path == '/auth/username-available') {
+        await gate.future;
+      }
+    };
+    await _pumpAuth(tester, fake, google: FakeGoogleAuthGateway());
+
+    await _openPicker(tester);
+    // Let the prefilled "alice" probe go out and stall on the gate.
+    await tester.pump(const Duration(milliseconds: 450));
+    expect(find.text('Checking availability…'), findsOneWidget);
+
+    // Move on before it answers; "bob" is free, "alice" is not.
+    await tester.enterText(
+        find.byKey(const Key('google_signup_username')), 'bob');
+    await tester.pump(const Duration(milliseconds: 450));
+    expect(find.text('Checking availability…'), findsOneWidget);
+
+    gate.complete();
+    await _pumpUntilFound(tester, find.text('This username is free.'));
+
+    expect(fake.usernameAvailableRequests, 2);
+    expect(find.text('This username is free.'), findsOneWidget);
+    expect(find.text('That username is taken.'), findsNothing);
+  });
+
+  testWidgets('logout signs the Google SDK out', (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..recoveryEmail = 'alice@example.com'
+      ..profileExists = true;
+    final FakeGoogleAuthGateway google = FakeGoogleAuthGateway()
+      ..idToken = 'google-linked-id-token';
+    final ProviderContainer container =
+        await _pumpAuth(tester, fake, google: google);
+
+    await tester.tap(find.text('Continue with Google'));
+    await _pumpUntilFound(tester, find.text('Home'));
+    expect(google.clearSdkStateCalls, 0);
+
+    // The request chain runs on the test's fake clock, so drive frames while
+    // the logout is in flight.
+    final Future<void> logout =
+        container.read(authControllerProvider.notifier).logout();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await logout;
+
+    expect(google.clearSdkStateCalls, 1);
+    expect(container.read(authControllerProvider).status,
+        AuthStatus.unauthenticated);
+  });
+
+  testWidgets(
+      'a username taken between the check and the submit is an inline error',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi();
+    await _pumpAuth(tester, fake, google: FakeGoogleAuthGateway());
+
+    await _openPicker(tester);
+    await _awaitAvailability(tester);
+    fake.googleTakenUsernames.add('alice');
+
+    await tester.tap(find.byKey(const Key('google_signup_submit')));
+    await _pumpUntilFound(tester, find.text('That username is taken.'));
+
+    expect(find.byKey(const Key('google_signup_username')), findsOneWidget);
+    expect(fake.googleCompletedUsernames, isEmpty);
+    expect(
+      tester
+          .widget<MayosButton>(find.byKey(const Key('google_signup_submit')))
+          .onPressed,
+      isNull,
+    );
+  });
+
+  testWidgets('a 409 for an already-linked Google account goes back to sign-in',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..googleCompleteAlreadyLinked = true;
+    await _pumpAuth(tester, fake, google: FakeGoogleAuthGateway());
+
+    await _openPicker(tester);
+    await _awaitAvailability(tester);
+
+    await tester.tap(find.byKey(const Key('google_signup_submit')));
+    await _pumpUntilFound(tester, find.text(kGoogleAlreadyLinkedMessage));
+
+    expect(find.byKey(const Key('login_username')), findsOneWidget);
+    expect(find.byKey(const Key('google_signup_username')), findsNothing);
+    expect(fake.googleCompletedUsernames, isEmpty);
+  });
+
+  testWidgets('a 401 on the availability check exits like an expired ticket',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()..googleTicketExpired = true;
+    final FakeGoogleAuthGateway google = FakeGoogleAuthGateway();
+    await _pumpAuth(tester, fake, google: google);
+
+    await _openPicker(tester);
+    await _pumpUntilFound(tester, find.text(kGoogleSignupExpiredMessage));
+    await _settleRoute(tester);
+
+    expect(find.byKey(const Key('login_username')), findsOneWidget);
+    expect(find.byKey(const Key('google_signup_username')), findsNothing);
+    expect(fake.googleCompleteRequests, 0);
+    expect(google.clearSdkStateCalls, 1);
+  });
+
+  testWidgets('the register screen offers Continue with Google above the form',
+      (WidgetTester tester) async {
+    await _pumpAuth(tester, FakeMayosApi(), google: FakeGoogleAuthGateway());
+
+    await tester.tap(find.text('Create an account'));
+    await _pumpUntilFound(tester, find.byKey(const Key('register_username')));
+    await _settleRoute(tester);
+
+    expect(find.text('Continue with Google'), findsOneWidget);
+    expect(find.byKey(const Key('register_google')), findsOneWidget);
+    expect(find.byType(AuthOrDivider), findsOneWidget);
+    expect(find.byKey(const Key('login_username')), findsNothing);
+    final Offset section =
+        tester.getTopLeft(find.byKey(const Key('register_google')));
+    final Offset field =
+        tester.getTopLeft(find.byKey(const Key('register_username')));
+    expect(section.dy, lessThan(field.dy));
+  });
+
+  testWidgets('the Google button takes Google\u2019s dark theme in a dark app',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: MayosTheme.dark,
+      home: Scaffold(
+        body: GoogleSignInButton(onPressed: () async {}),
+      ),
+    ));
+
+    final Material material = tester.widget<Material>(find.descendant(
+      of: find.byType(GoogleSignInButton),
+      matching: find.byType(Material),
+    ));
+    expect(material.color, GoogleBrand.darkFill);
+    expect(
+      (material.shape! as RoundedRectangleBorder).side.color,
+      GoogleBrand.darkStroke,
+    );
+    expect(find.text('Continue with Google'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.text('Continue with Google')).style!.color,
+      GoogleBrand.darkLabel,
+    );
+    expect(
+      tester.getSize(find.byType(GoogleSignInButton)).height,
+      kMayosMinTapTarget,
+    );
   });
 }

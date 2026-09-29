@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -52,8 +50,9 @@ abstract class GoogleAuthGateway {
   /// One interactive sign-in attempt: an ID token, a dismissal, or a failure.
   Future<GoogleAuthOutcome> authenticate();
 
-  /// Drops the SDK's own sign-in state, so leaving a half-finished sign-up
-  /// leaves nothing behind on the device.
+  /// Drops the SDK's own sign-in state. Called whenever the MAYOS session
+  /// ends — logout, a rejected token, account deletion — and whenever a
+  /// half-finished sign-up is abandoned, so nothing lingers on the device.
   Future<void> clearSdkState();
 }
 
@@ -61,7 +60,8 @@ abstract class GoogleAuthGateway {
 ///
 /// One `initialize(serverClientId: GOOGLE_WEB_CLIENT_ID)`, `authenticate()` for
 /// the ID token, and no scopes: MAYOS only ever needs to know who the person
-/// is (#113).
+/// is (#113). What `authenticate()` returns is the only sign-in fact this
+/// class keeps — there is no second, event-derived copy of the SDK state.
 class GoogleSdkAuthGateway implements GoogleAuthGateway {
   /// The single build-time configuration, supplied as
   /// `--dart-define=GOOGLE_WEB_CLIENT_ID=...`. Never hard-coded: without it
@@ -70,13 +70,8 @@ class GoogleSdkAuthGateway implements GoogleAuthGateway {
       String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
 
   Future<void>? _ready;
-  GoogleSignInAccount? _account;
 
   bool get _configured => webClientId.isNotEmpty;
-
-  /// Whether the SDK currently holds a signed-in account, as reported by
-  /// `authenticationEvents` — the v7 source of truth for SDK sign-in state.
-  bool get hasSdkAccount => _account != null;
 
   @override
   GoogleSignInButtonStyle get buttonStyle {
@@ -98,7 +93,6 @@ class GoogleSdkAuthGateway implements GoogleAuthGateway {
       await _initialize();
       final GoogleSignInAccount account =
           await GoogleSignIn.instance.authenticate();
-      _account = account;
       final String? idToken = account.authentication.idToken;
       if (idToken == null || idToken.isEmpty) {
         return const GoogleAuthFailed(
@@ -126,31 +120,15 @@ class GoogleSdkAuthGateway implements GoogleAuthGateway {
     try {
       await ready;
       await GoogleSignIn.instance.signOut();
-      _account = null;
     } on Object {
       // Best effort: a failed SDK sign-out must never block leaving the picker.
     }
   }
 
-  Future<void> _initialize() => _ready ??= _start();
-
-  Future<void> _start() async {
-    await GoogleSignIn.instance.initialize(serverClientId: webClientId);
-    // `authenticationEvents` is the source of truth for the SDK's sign-in
-    // state: on the platforms that expose no event stream of their own the
-    // package synthesizes these events from `authenticate()`/`signOut()`. The
-    // gateway is an app-lifetime singleton, so the listener outlives it.
-    GoogleSignIn.instance.authenticationEvents.listen(
-      (GoogleSignInAuthenticationEvent event) {
-        if (event is GoogleSignInAuthenticationEventSignIn) {
-          _account = event.user;
-        } else if (event is GoogleSignInAuthenticationEventSignOut) {
-          _account = null;
-        }
-      },
-      onError: (Object _) {},
-    );
-  }
+  /// The one `initialize()` call; every later entry reuses it. The SDK is
+  /// only touched from a button tap, so this stays lazy.
+  Future<void> _initialize() =>
+      _ready ??= GoogleSignIn.instance.initialize(serverClientId: webClientId);
 
   static String _messageFor(GoogleSignInExceptionCode code) => switch (code) {
         GoogleSignInExceptionCode.clientConfigurationError =>

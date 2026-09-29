@@ -71,7 +71,8 @@ class AuthRepository {
   /// Exchanges a Google ID token for either a session or a signup ticket
   /// (#113/#115). A session is applied through the same path password login
   /// uses, so a Google sign-in lands exactly like a password one.
-  Future<GoogleSignInFlowResult> signInWithGoogle({required String idToken}) async {
+  Future<GoogleSignInFlowResult> signInWithGoogle(
+      {required String idToken}) async {
     final GoogleAuthStart start = await _api.googleSignIn(idToken: idToken);
     if (start case GoogleAuthSession(:final tokens)) {
       return GoogleAccountReady(await _establishSession(() async => tokens));
@@ -100,8 +101,8 @@ class AuthRepository {
   }) =>
       _api.usernameAvailable(username, ticket: signupTicket);
 
-  /// Restores a persisted session, or returns null when there is no live one.  ///
-  /// A 401 clears the stale token; any other failure (for example, no network)
+  /// Restores a persisted session, or returns null when there is no live one.
+  ///  /// A 401 clears the stale token; any other failure (for example, no network)
   /// propagates so the caller can keep the token for a later retry. A 401 that
   /// carries `account_deleted` erases that account's protected local data before
   /// clearing the session (ADR 039).

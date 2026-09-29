@@ -34,10 +34,10 @@ class GoogleSignupScreen extends ConsumerStatefulWidget {
 final RegExp googleUsernamePattern = RegExp(r'^[a-z0-9_-]{3,30}$');
 
 /// Null when [value] is a pickable username, else the visible format error.
-String? googleUsernameFormatError(String value) => googleUsernamePattern
-        .hasMatch(value)
-    ? null
-    : 'Use 3–30 characters from a–z, 0–9, _ and - (lowercase).';
+String? googleUsernameFormatError(String value) =>
+    googleUsernamePattern.hasMatch(value)
+        ? null
+        : 'Use 3–30 characters from a–z, 0–9, _ and - (lowercase).';
 
 const String _kTakenMessage = 'That username is taken.';
 
@@ -99,18 +99,30 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
     }
     try {
       final bool available = await _auth.googleUsernameAvailable(username);
-      if (!mounted) {
+      // The field may have moved on while the probe was in flight; an answer
+      // about an older value must never label the current one (#115).
+      if (!mounted || _username.text.trim() != username) {
         return;
       }
       setState(() {
         _check = available ? _UsernameCheck.available : _UsernameCheck.taken;
       });
-    } on ApiException {
-      // A failed probe must not block the picker: the service re-checks on
-      // submit, where a taken name answers 409.
-      if (mounted) {
-        setState(() => _check = _UsernameCheck.unverified);
+    } on ApiException catch (error) {
+      if (!mounted) {
+        return;
       }
+      // A dead ticket is the same exit as a dead ticket on submit: back to
+      // sign-in with the short explanation (#115).
+      if (error.statusCode == 401) {
+        await _auth.abandonGoogleSignup(notice: kGoogleSignupExpiredMessage);
+        if (mounted) {
+          context.go(loginPath);
+        }
+        return;
+      }
+      // Any other failure must not block the picker: the service re-checks on
+      // submit, where a taken name answers 409.
+      setState(() => _check = _UsernameCheck.unverified);
     }
   }
 
@@ -158,8 +170,8 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
       _error = null;
     });
     try {
-      final CompleteGoogleSignupResult result = await _auth
-          .completeGoogleSignup(username: _username.text.trim());
+      final CompleteGoogleSignupResult result =
+          await _auth.completeGoogleSignup(username: _username.text.trim());
       if (!mounted) {
         return;
       }
@@ -168,6 +180,8 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
           TextInput.finishAutofillContext();
         case GoogleUsernameTaken():
           setState(() => _check = _UsernameCheck.taken);
+        case GoogleAccountAlreadyLinked():
+          context.go(loginPath);
         case GoogleSignupTicketExpired():
           context.go(loginPath);
         case GoogleSignupRefused(:final message):
@@ -245,8 +259,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
     return AuthScaffold(
       title: 'Choose your username',
       wallpaper: true,
-      message: const AuthInlineNotice(
-          message: 'Your Google sign-up expired. Please try again.'),
+      message: const AuthInlineNotice(message: kGoogleSignupExpiredMessage),
       primary: MayosButton(
         key: const Key('google_signup_submit'),
         label: 'Back to sign in',

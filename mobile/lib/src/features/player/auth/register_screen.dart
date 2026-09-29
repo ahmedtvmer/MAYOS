@@ -10,8 +10,8 @@ import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
-import 'auth_controller.dart';
 import 'auth_widgets.dart';
+import 'google_sign_in_action.dart';
 import 'google_sign_in_button.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
@@ -21,7 +21,8 @@ class RegisterScreen extends ConsumerStatefulWidget {
   ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends ConsumerState<RegisterScreen> {
+class _RegisterScreenState extends ConsumerState<RegisterScreen>
+    with GoogleSignInAction<RegisterScreen> {
   final TextEditingController _username = TextEditingController();
   final TextEditingController _password = TextEditingController();
   final TextEditingController _confirm = TextEditingController();
@@ -66,42 +67,15 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
   }
 
-  /// "Continue with Google": a linked subject signs in here, any other
-  /// subject continues into the username picker (#115).
-  Future<void> _continueWithGoogle() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final ContinueWithGoogleResult result =
-          await ref.read(authControllerProvider.notifier).continueWithGoogle();
-      if (!mounted) {
-        return;
-      }
-      switch (result) {
-        case GoogleSignUpPrompt():
-          context.go(googleSignupPath);
-        case GoogleSignInRefused(:final message):
-          setState(() => _error = message);
-        case GoogleSignInDone():
-        case GoogleSignInDismissed():
-          break;
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return AuthScaffold(
       title: 'Create account',
       lead: 'Set up your MAYOS account to start training.',
       wallpaper: true,
-      message: _error == null ? null : AuthInlineNotice(message: _error!),
+      message: googleError != null
+          ? AuthInlineNotice(message: googleError!)
+          : (_error == null ? null : AuthInlineNotice(message: _error!)),
       primary: MayosButton(
         key: const Key('register_submit'),
         label: 'Create account',
@@ -117,8 +91,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       children: <Widget>[
         GoogleSignInSection(
           key: const Key('register_google'),
-          loading: _busy,
-          onPressed: _busy ? null : _continueWithGoogle,
+          loading: googleBusy,
+          onPressed: googleBusy ? null : continueWithGoogle,
         ),
         MayosTextField(
           fieldKey: const Key('register_username'),

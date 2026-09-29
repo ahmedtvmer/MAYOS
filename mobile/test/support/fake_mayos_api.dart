@@ -51,11 +51,16 @@ class FakeMayosApi {
   // Google sign-in and the username picker (#115).
   /// The ID token that answers with a session instead of a signup ticket.
   String googleLinkedIdToken = 'google-linked-id-token';
+
   /// The account a linked Google subject resolves to.
   String googleLinkedUsername = 'alice';
   String googleSuggestedUsername = 'alice';
   String googleSignupTicket = 'signup-ticket-1';
   bool googleTicketExpired = false;
+
+  /// Answers `POST /auth/google/complete` with the service's other 409 — the
+  /// subject was linked while the ticket was open (#113).
+  bool googleCompleteAlreadyLinked = false;
   final Set<String> googleTakenUsernames = <String>{};
   int googleSignInRequests = 0;
   int usernameAvailableRequests = 0;
@@ -393,7 +398,9 @@ class FakeMayosApi {
   FakeResponse _googleSignIn(FakeRequest request) {
     googleSignInRequests++;
     final String? idToken = request.body['id_token'] as String?;
-    if (idToken == null || idToken.isEmpty || idToken == 'google-invalid-id-token') {
+    if (idToken == null ||
+        idToken.isEmpty ||
+        idToken == 'google-invalid-id-token') {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Invalid Google credentials.'});
     }
@@ -413,8 +420,8 @@ class FakeMayosApi {
     usernameAvailableRequests++;
     final dynamic authorization = request.headers['Authorization'];
     if (googleTicketExpired || authorization != 'Bearer $googleSignupTicket') {
-      return const FakeResponse(
-          401, <String, dynamic>{'detail': 'Invalid or expired signup ticket.'});
+      return const FakeResponse(401,
+          <String, dynamic>{'detail': 'Invalid or expired signup ticket.'});
     }
     final String? username = request.query['username'] as String?;
     if (username == null || !googleUsernamePattern.hasMatch(username)) {
@@ -433,12 +440,17 @@ class FakeMayosApi {
     final String? ticket = request.body['signup_ticket'] as String?;
     final String? username = request.body['username'] as String?;
     if (googleTicketExpired || ticket != googleSignupTicket) {
-      return const FakeResponse(
-          401, <String, dynamic>{'detail': 'Invalid or expired signup ticket.'});
+      return const FakeResponse(401,
+          <String, dynamic>{'detail': 'Invalid or expired signup ticket.'});
     }
     if (username == null || !googleUsernamePattern.hasMatch(username)) {
       return const FakeResponse(
           400, <String, dynamic>{'detail': _invalidUsername});
+    }
+    if (googleCompleteAlreadyLinked) {
+      return const FakeResponse(409, <String, dynamic>{
+        'detail': 'This Google account is already linked to a MAYOS account.',
+      });
     }
     if (googleTakenUsernames.contains(username)) {
       return const FakeResponse(
@@ -2385,14 +2397,15 @@ class FakeMayosApi {
     ];
     // Mirrors the real endpoint (#162): a name query, a muscle, or both —
     // never an unfiltered dump, and the muscle listing needs no query.
-    final String muscle = '${request.query['target_muscle'] ?? ''}'
-        .trim()
-        .toLowerCase();
+    final String muscle =
+        '${request.query['target_muscle'] ?? ''}'.trim().toLowerCase();
     if (query.isEmpty && muscle.isEmpty) {
-      return const FakeResponse(
-          400, <String, dynamic>{'detail': 'Provide query, target_muscle, or both.'});
+      return const FakeResponse(400, <String, dynamic>{
+        'detail': 'Provide query, target_muscle, or both.'
+      });
     }
-    bool matchesMuscle(Map<String, dynamic> entry) => muscle.isEmpty ||
+    bool matchesMuscle(Map<String, dynamic> entry) =>
+        muscle.isEmpty ||
         '${entry['target_muscle'] ?? ''}'.trim().toLowerCase() == muscle;
     final List<Map<String, dynamic>> matches = query.isEmpty
         ? catalog.where(matchesMuscle).toList(growable: false)

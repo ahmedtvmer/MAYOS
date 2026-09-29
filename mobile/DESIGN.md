@@ -87,6 +87,10 @@ small transparent pad, never edit pixels inside the mark or wordmark.
 All under `lib/src/core/theme/`.
 
 - `mayos_colors.dart` — `MayosPalette`: the only literal hex colors in the app.
+  The one documented exception is third-party branding: Google's four "G"
+  hues and its button light/dark theme colours live in the single commented
+  `GoogleBrand` block in `features/player/auth/google_sign_in_button.dart`
+  (#115), because a partner mark must render exactly as published.
 - `mayos_theme_extension.dart` — `MayosThemeExtension` (a `ThemeExtension`) with
   MAYOS-only semantics: `canvas`, `surface`, `surfaceElevated`, `surfaceSunken`,
   `secondarySurface`, `border`, `borderStrong`, `textPrimary`, `textSecondary`,
