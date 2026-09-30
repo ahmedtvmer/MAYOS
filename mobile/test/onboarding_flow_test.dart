@@ -12,6 +12,7 @@ import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_player_column.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_choice_card.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/onboarding/onboarding_screen.dart';
@@ -140,7 +141,7 @@ Future<void> _mountOnboarding(
 
 void _expectDesktopPlayerColumn(WidgetTester tester) {
   final Rect column = tester.getRect(
-    find.byKey(const ValueKey<String>('onboarding.playerColumn')),
+    find.byKey(MayosPlayerColumn.contentKey),
   );
   expect(column.width, 480);
   expect(column.center.dx, 640);

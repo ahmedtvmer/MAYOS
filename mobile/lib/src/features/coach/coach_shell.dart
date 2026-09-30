@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/ui/is_desktop_layout.dart';
 import '../../core/ui/mayos_app_header.dart';
 import '../../core/ui/mayos_bottom_navigation.dart';
 import '../../core/ui/mayos_scaffold.dart';

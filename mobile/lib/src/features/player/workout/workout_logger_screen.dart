@@ -15,6 +15,7 @@ import '../../../core/device_timezone.dart';
 import '../../../core/models.dart';
 import '../../../core/performed_date_window.dart';
 import '../../../core/personal_records.dart';
+import '../../../core/rest_alerts.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -148,6 +149,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   _SummaryAction _summaryAction = _SummaryAction.save;
   LoggerCellFocus? _focus;
   final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
+  late final bool _webPageVisibilityEnabled;
   bool _pageVisible = true;
 
   /// The foreground countdown ticker (#125): while a rest runs it wakes the
@@ -159,6 +161,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   @override
   void initState() {
     super.initState();
+    _webPageVisibilityEnabled = ref.read(webPageVisibilityEnabledProvider);
     WidgetsBinding.instance.addObserver(this);
     unawaited(_keepAwake(true));
     Future<void>.microtask(_load);
@@ -177,7 +180,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (!ref.read(webPageVisibilityEnabledProvider)) {
+    if (!_webPageVisibilityEnabled) {
       return;
     }
     if (state == AppLifecycleState.resumed) {
@@ -186,7 +189,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       if (returnedFromHidden) {
         // Re-read the stored end time immediately. If rest ended while this
         // page was away, clear it without a background alert on return.
-        _onRestResume();
+        _catchUpRestAfterHidden();
         if (mounted) {
           setState(() {});
         }
@@ -214,7 +217,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   }
 
   void _onRestTick() {
-    if (ref.read(webPageVisibilityEnabledProvider) && !_pageVisible) {
+    if (!_pageVisible) {
       return;
     }
     final ActiveRestTimer? rest = _workout?.rest;
@@ -237,7 +240,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     // the controller's state, which rebuilds the screen anyway.
   }
 
-  void _onRestResume() {
+  void _catchUpRestAfterHidden() {
     final ActiveRestTimer? rest = _workout?.rest;
     if (rest == null) {
       return;
@@ -493,15 +496,34 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     final String setId =
         workout.exercises[focus.exerciseIndex].sets[focus.setIndex].id;
     final BuildContext? rowContext = _rowKeys[setId]?.currentContext;
-    if (rowContext != null) {
-      unawaited(
-        Scrollable.ensureVisible(
-          rowContext,
-          alignment: 0.5,
-          duration: MayosMotion.fast,
-        ),
-      );
+    if (rowContext == null) {
+      return;
     }
+    final RenderObject? rowObject = rowContext.findRenderObject();
+    final RenderObject? viewportObject =
+        Scrollable.of(rowContext).context.findRenderObject();
+    if (rowObject is! RenderBox || viewportObject is! RenderBox) {
+      return;
+    }
+    final Rect rowRect =
+        rowObject.localToGlobal(Offset.zero) & rowObject.size;
+    final Rect viewportRect =
+        viewportObject.localToGlobal(Offset.zero) & viewportObject.size;
+    final ScrollPositionAlignmentPolicy policy;
+    if (rowRect.bottom > viewportRect.bottom) {
+      policy = ScrollPositionAlignmentPolicy.keepVisibleAtEnd;
+    } else if (rowRect.top < viewportRect.top) {
+      policy = ScrollPositionAlignmentPolicy.keepVisibleAtStart;
+    } else {
+      return;
+    }
+    unawaited(
+      Scrollable.ensureVisible(
+        rowContext,
+        alignmentPolicy: policy,
+        duration: MayosMotion.fast,
+      ),
+    );
   }
 
   /// Settles the focused cell's edit: the heavy haptic fires only if its row
@@ -717,6 +739,13 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         ),
       );
       return;
+    }
+    if (_webPageVisibilityEnabled &&
+        !set.isWarmup &&
+        _controller.restLengthFor(exerciseIndex) > 0) {
+      // Invoke resume synchronously while this tick callback is still a user
+      // gesture, before the row and rest are persisted.
+      unlockWebRestAudio();
     }
     if (changed) {
       await _controller.updateCell(
@@ -1257,6 +1286,13 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   }
 
   Widget _buildActive(ActiveWorkout workout) {
+    final Set<String> currentSetIds = <String>{
+      for (final ActiveWorkoutExercise exercise in workout.exercises)
+        for (final ActiveWorkoutSet set in exercise.sets) set.id,
+    };
+    _rowKeys.removeWhere(
+      (String setId, GlobalKey key) => !currentSetIds.contains(setId),
+    );
     final MayosThemeExtension c = MayosTheme.of(context);
     // Derived, never stored: the first unticked working set in workout
     // order, warm-ups skipped, moving across exercises (#158).

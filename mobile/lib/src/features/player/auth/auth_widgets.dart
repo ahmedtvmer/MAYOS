@@ -6,6 +6,7 @@ import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_logo.dart';
+import '../../../core/ui/mayos_player_column.dart';
 import '../../../core/ui/mayos_text_field.dart';
 import '../../../core/ui/mayos_wallpaper.dart';
 import 'home_screen_install_hint.dart';
@@ -70,12 +71,8 @@ class AuthScaffold extends StatelessWidget {
       body: SafeArea(
         // A phone-width column on desktop (#133); a no-op on phones. Applied at
         // every width so the fields' widget tree never changes shape.
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-                maxWidth: MayosLayout.playerColumnMaxWidth),
-            child: AutofillGroup(
+        child: MayosPlayerColumn(
+          child: AutofillGroup(
               child: Column(
                 children: <Widget>[
                   const OfflineBannerSlot(),
@@ -152,7 +149,6 @@ class AuthScaffold extends StatelessWidget {
               ),
             ),
           ),
-        ),
       ),
     );
     if (!wallpaper) {

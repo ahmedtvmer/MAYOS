@@ -21,6 +21,7 @@ import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_settings_tile.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_stat.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_player_column.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_progress.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/workout/active_workout_controller.dart';
@@ -320,6 +321,13 @@ Color _textColor(WidgetTester tester, Finder finder) => tester
 
 Finder _badge(int exercise, int set, PrRecordKind kind) =>
     find.byKey(ValueKey<String>('logger.pr.$exercise.$set.${kind.name}'));
+
+void _expectWithinColumn(Rect item, Rect column) {
+  expect(item.left, greaterThanOrEqualTo(column.left));
+  expect(item.right, lessThanOrEqualTo(column.right));
+  expect(item.top, greaterThanOrEqualTo(column.top));
+  expect(item.bottom, lessThanOrEqualTo(column.bottom));
+}
 
 /// Whether the badge under a row is struck through (beaten by a later set).
 TextDecoration? _badgeDecoration(WidgetTester tester, Finder badge) => tester
@@ -1147,6 +1155,21 @@ void main() {
 
       expect(_badge(0, 0, PrRecordKind.weight), findsOneWidget);
       expect(_badge(0, 0, PrRecordKind.e1rm), findsOneWidget);
+      final Rect? playerColumn = size.width >= 1024
+          ? tester.getRect(find.byKey(MayosPlayerColumn.contentKey))
+          : null;
+      if (playerColumn != null) {
+        expect(playerColumn.width, MayosLayout.playerColumnMaxWidth);
+        expect(playerColumn.center.dx, size.width / 2);
+        _expectWithinColumn(
+          tester.getRect(_badge(0, 0, PrRecordKind.weight)),
+          playerColumn,
+        );
+        _expectWithinColumn(
+          tester.getRect(_badge(0, 0, PrRecordKind.e1rm)),
+          playerColumn,
+        );
+      }
       await tester.tap(find.widgetWithText(FilledButton, 'Finish workout'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Discard unticked sets and finish'));
@@ -1154,6 +1177,16 @@ void main() {
       expect(find.text('Workout summary'), findsOneWidget);
       expect(find.text('Bench Press · PR 105 kg'), findsOneWidget);
       expect(find.text('Bench Press · PR e1RM 126 kg'), findsOneWidget);
+      if (playerColumn != null) {
+        for (final Finder content in <Finder>[
+          find.text('Workout summary'),
+          find.text('Personal records'),
+          find.text('Bench Press · PR 105 kg'),
+          find.text('Bench Press · PR e1RM 126 kg'),
+        ]) {
+          _expectWithinColumn(tester.getRect(content), playerColumn);
+        }
+      }
       expect(tester.takeException(), isNull);
 
       await tester.pumpWidget(const SizedBox.shrink());

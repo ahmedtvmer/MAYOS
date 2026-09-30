@@ -6,7 +6,7 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import 'rest_alerts_web_stub.dart'
-    if (dart.library.js_interop) 'rest_alerts_web.dart' as web_alerts;
+    if (dart.library.js_interop) 'rest_alerts_web.dart' as platform;
 import 'rest_length.dart';
 import 'secure_store.dart';
 
@@ -44,8 +44,8 @@ class RestAlertInfo {
 /// The ONE seam between the rest timer and the platform's alert machinery —
 /// notification, exact/inexact alarm, and the end-of-rest vibration + sound
 /// (#125). The app side only ever talks to this; Android gets a real
-/// implementation, tests get a fake, and web/other platforms get a no-op that
-/// keeps the timer in-app only.
+/// implementation, web gets foreground-only sound/vibration, and tests get a
+/// fake.
 ///
 /// Every method resolves promptly: the platform work is best-effort and
 /// never awaited by the workout (a test host answers no platform channel at
@@ -75,9 +75,7 @@ abstract class RestAlerts {
   Future<void> playEnd(RestAlertInfo info);
 }
 
-/// Web and other non-Android targets: no notifications, no alarms — the timer
-/// stays in-app only (the issue's Web criteria are out of scope; this must
-/// simply not crash, #125).
+/// The no-op implementation for non-Android targets without foreground alerts.
 class NoopRestAlerts implements RestAlerts {
   const NoopRestAlerts();
 
@@ -102,12 +100,31 @@ class NoopRestAlerts implements RestAlerts {
 
 /// Web has no scheduled notification or background alarm. The foreground
 /// logger calls [playEnd] only while its page is visible (#180).
-class WebRestAlerts extends NoopRestAlerts {
+class WebRestAlerts implements RestAlerts {
   @override
-  Future<void> ensureReady() => web_alerts.prepareWebRestAudio();
+  Future<void> ensureReady() => platform.prepareWebRestAudio();
 
   @override
-  Future<void> playEnd(RestAlertInfo info) => web_alerts.playWebRestEnd();
+  Future<void> showRest(RestAlertInfo info) async {}
+
+  @override
+  Future<void> removeRest() async {}
+
+  @override
+  Future<void> scheduleEnd(RestAlertInfo info) async {}
+
+  @override
+  Future<void> cancelEnd() async {}
+
+  @override
+  Future<void> playEnd(RestAlertInfo info) => platform.playWebRestEnd();
+}
+
+/// Unlocks web audio synchronously from the user gesture that starts a rest.
+void unlockWebRestAudio() {
+  if (kIsWeb) {
+    platform.unlockWebRestAudio();
+  }
 }
 
 /// The real Android implementation (#125): an ongoing, system-drawn countdown
@@ -406,8 +423,8 @@ class AndroidRestAlerts implements RestAlerts {
   }
 }
 
-/// The alert layer for this build: the real Android implementation on Android,
-/// an in-app-only no-op everywhere else (web included, #125).
+/// The alert layer for this build: Android notifications, in-page web alerts,
+/// and a no-op on other targets.
 RestAlerts platformRestAlerts({
   void Function(String line)? explain,
   DateTime Function()? now,

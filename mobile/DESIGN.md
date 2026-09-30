@@ -119,6 +119,7 @@ All under `lib/src/core/theme/`.
   (48), and `MayosLayout` (#133: `desktopNavigationBreakpoint` 1024,
   `playerColumnMaxWidth` 480, `navigationRailWidth` 88,
   `coachListPaneWidth` 360,
+  `coachOverlayMaxWidth` 640,
   `googleButtonMaxWidth` 400 for Google's rendered web button).
 - `mayos_theme.dart` — `MayosTheme.light` / `MayosTheme.dark` / `MayosTheme.of`,
   built from the tokens with component themes overridden for app bars, buttons,
@@ -134,6 +135,7 @@ warm off-white canvas (`#F6F5F2`) with white elevated surfaces and navy text.
 `lib/src/core/ui/`:
 
 `MayosAppHeader`, `MayosScaffold`, `MayosBrandLockup`, `MayosBrandMark`,
+`MayosPlayerColumn`,
 `MayosButton` (primary/secondary/tertiary; pressed/disabled/loading),
 `MayosCard`, `MayosTextField`, `MayosSectionHeader`, `MayosChoiceCard`,
 `MayosStat`, `MayosProgressIndicator`, `MayosBottomNavigation`,
@@ -149,7 +151,8 @@ width. `AuthScaffold` applies the same column. Below the breakpoint nothing
 changes. In Coach mode at ≥ 1024 px, roster and request selections use a
 `coachListPaneWidth` list beside the selected detail; on phones the player page
 is pushed over the mounted shell, and request taps keep the resolve bottom
-sheet.
+sheet. At ≥ 1024 px, modal bottom sheets and SnackBars are capped to the Player
+column width in Player mode and 640 px in Coach mode.
 
 The web-only `OfflineBannerSlot` sits below the header in `MayosScaffold` and
 at the top of `AuthScaffold` content. `AuthScaffold` keeps a fixed Home Screen

@@ -9,10 +9,6 @@ import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
 import 'coach_request_sheet.dart';
 
-bool isDesktopLayout(BuildContext context) =>
-    MediaQuery.sizeOf(context).width >=
-    MayosLayout.desktopNavigationBreakpoint;
-
 class CoachListDetail extends StatelessWidget {
   const CoachListDetail({
     super.key,

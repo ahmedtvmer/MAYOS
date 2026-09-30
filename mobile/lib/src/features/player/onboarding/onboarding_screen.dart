@@ -12,6 +12,7 @@ import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_card.dart';
 import '../../../core/ui/mayos_logo.dart';
+import '../../../core/ui/mayos_player_column.dart';
 import '../../../core/ui/mayos_progress.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
@@ -376,25 +377,20 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     if (_submitting) {
-      return const _BuildingProgramView();
+      return const _OnboardingStatusLayout(child: _BuildingProgramContent());
     }
     switch (_phase) {
       case _OnboardingPhase.loading:
-        return const Scaffold(
-          body: SafeArea(
-            child: _PlayerOnboardingColumn(
-              child: Column(
-                children: <Widget>[
-                  OfflineBannerSlot(),
-                  Expanded(child: Center(child: CircularProgressIndicator())),
-                ],
-              ),
-            ),
-          ),
+        return const _OnboardingStatusLayout(
+          child: CircularProgressIndicator(),
         );
       case _OnboardingPhase.error:
-        return _LoadErrorView(
-            message: _error ?? 'Something went wrong.', onRetry: _load);
+        return _OnboardingStatusLayout(
+          child: _LoadErrorContent(
+            message: _error ?? 'Something went wrong.',
+            onRetry: _load,
+          ),
+        );
       case _OnboardingPhase.disclosure:
         return _buildDisclosure();
       case _OnboardingPhase.answering:
@@ -773,28 +769,36 @@ class _HostedProcessingDisclosure extends StatelessWidget {
   }
 }
 
-class _PlayerOnboardingColumn extends StatelessWidget {
-  const _PlayerOnboardingColumn({required this.child});
+class _OnboardingStatusLayout extends StatelessWidget {
+  const _OnboardingStatusLayout({required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: MayosLayout.playerColumnMaxWidth,
-          ),
-          child: SizedBox.expand(
-            key: const ValueKey<String>('onboarding.playerColumn'),
-            child: child,
+  Widget build(BuildContext context) => Scaffold(
+        body: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              const OfflineBannerSlot(),
+              Expanded(
+                child: MayosPlayerColumn(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(MayosSpacing.xl),
+                      child: child,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       );
 }
 
-class _LoadErrorView extends StatelessWidget {
-  const _LoadErrorView({required this.message, required this.onRetry});
+class _LoadErrorContent extends StatelessWidget {
+  const _LoadErrorContent({required this.message, required this.onRetry});
 
   final String message;
   final VoidCallback onRetry;
@@ -802,103 +806,65 @@ class _LoadErrorView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
-    return Scaffold(
-      body: SafeArea(
-        child: _PlayerOnboardingColumn(
-          child: Column(
-            children: <Widget>[
-              const OfflineBannerSlot(),
-              Expanded(
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(MayosSpacing.xl),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Icon(Icons.cloud_off, size: 40, color: c.textMuted),
-                        const SizedBox(height: MayosSpacing.md),
-                        Text(
-                          'Could not load your setup',
-                          textAlign: TextAlign.center,
-                          style: MayosTypography.pageHeading
-                              .copyWith(color: c.textPrimary, fontSize: 24),
-                        ),
-                        const SizedBox(height: MayosSpacing.xs),
-                        Text(
-                          message,
-                          textAlign: TextAlign.center,
-                          style: MayosTypography.bodySecondary
-                              .copyWith(color: c.textSecondary),
-                        ),
-                        const SizedBox(height: MayosSpacing.xl),
-                        MayosButton(
-                          label: 'Retry',
-                          expand: false,
-                          onPressed: onRetry,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Icon(Icons.cloud_off, size: 40, color: c.textMuted),
+        const SizedBox(height: MayosSpacing.md),
+        Text(
+          'Could not load your setup',
+          textAlign: TextAlign.center,
+          style: MayosTypography.pageHeading
+              .copyWith(color: c.textPrimary, fontSize: 24),
         ),
-      ),
+        const SizedBox(height: MayosSpacing.xs),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: MayosTypography.bodySecondary
+              .copyWith(color: c.textSecondary),
+        ),
+        const SizedBox(height: MayosSpacing.xl),
+        MayosButton(
+          label: 'Retry',
+          expand: false,
+          onPressed: onRetry,
+        ),
+      ],
     );
   }
 }
 
-/// The deliberate loading state shown while the first program is generated.
-/// No program exists until the player confirms on the review screen.
-class _BuildingProgramView extends StatelessWidget {
-  const _BuildingProgramView();
+class _BuildingProgramContent extends StatelessWidget {
+  const _BuildingProgramContent();
 
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
-    return Scaffold(
-      body: SafeArea(
-        child: _PlayerOnboardingColumn(
-          child: Column(
-            children: <Widget>[
-              const OfflineBannerSlot(),
-              Expanded(
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(MayosSpacing.xl),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        const MayosBrandMark(size: 52),
-                        const SizedBox(height: MayosSpacing.xl),
-                        Text(
-                          'Building your program',
-                          textAlign: TextAlign.center,
-                          style: MayosTypography.pageHeading
-                              .copyWith(color: c.textPrimary),
-                        ),
-                        const SizedBox(height: MayosSpacing.sm),
-                        Text(
-                          'This can take a moment. Your answers are saved.',
-                          textAlign: TextAlign.center,
-                          style: MayosTypography.bodySecondary
-                              .copyWith(color: c.textSecondary),
-                        ),
-                        const SizedBox(height: MayosSpacing.xl),
-                        const SizedBox(
-                          width: 180,
-                          child: MayosProgressIndicator(value: null),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        const MayosBrandMark(size: 52),
+        const SizedBox(height: MayosSpacing.xl),
+        Text(
+          'Building your program',
+          textAlign: TextAlign.center,
+          style: MayosTypography.pageHeading.copyWith(color: c.textPrimary),
+        ),
+        const SizedBox(height: MayosSpacing.sm),
+        Text(
+          'This can take a moment. Your answers are saved.',
+          textAlign: TextAlign.center,
+          style: MayosTypography.bodySecondary.copyWith(
+            color: c.textSecondary,
           ),
         ),
-      ),
+        const SizedBox(height: MayosSpacing.xl),
+        const SizedBox(
+          width: 180,
+          child: MayosProgressIndicator(value: null),
+        ),
+      ],
     );
   }
 }

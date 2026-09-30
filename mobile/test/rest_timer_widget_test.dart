@@ -524,6 +524,30 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('tapping a visible row does not recenter the list', (
+    WidgetTester tester,
+  ) async {
+    await _openLogger(tester);
+    tester.view.physicalSize = const Size(390, 844);
+    await tester.pump();
+
+    final BuildContext cellContext = tester.element(_cell(0, 0, 'kg'));
+    final ScrollPosition position = Scrollable.of(cellContext).position;
+    final double initialOffset = position.pixels;
+    final Rect row = tester.getRect(
+      find.byKey(const ValueKey<String>('logger.row.0.0')),
+    );
+    final Rect list = tester.getRect(
+      find.byKey(const ValueKey<String>('logger.list')),
+    );
+    expect(row.top, greaterThanOrEqualTo(0));
+    expect(row.bottom, lessThanOrEqualTo(list.bottom));
+    await tester.tap(_cell(0, 0, 'kg'));
+    await tester.pumpAndSettle();
+
+    expect(position.pixels, initialOffset);
+  });
+
   testWidgets('a warm-up tick never starts the rest timer', (
     WidgetTester tester,
   ) async {

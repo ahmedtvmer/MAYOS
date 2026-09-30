@@ -138,7 +138,9 @@ void _resize(WidgetTester tester, Size size) {
 
 Future<void> _checkOverlayWidths(
   WidgetTester tester, {
-  required double expectedWidth,
+  required double expectedSheetWidth,
+  double? expectedSnackBarWidth,
+  double? minimumSnackBarWidth,
   required double expectedCenter,
 }) async {
   final BuildContext context =
@@ -155,7 +157,7 @@ Future<void> _checkOverlayWidths(
   final Rect sheetRect = tester.getRect(
     find.byKey(const ValueKey<String>('overlay.sheet')),
   );
-  expect(sheetRect.width, expectedWidth);
+  expect(sheetRect.width, expectedSheetWidth);
   expect(sheetRect.center.dx, expectedCenter);
   Navigator.of(context).pop();
   await tester.pumpAndSettle();
@@ -171,7 +173,12 @@ Future<void> _checkOverlayWidths(
       matching: find.byType(Material),
     ),
   );
-  expect(snackRect.width, expectedWidth);
+  if (expectedSnackBarWidth != null) {
+    expect(snackRect.width, expectedSnackBarWidth);
+  }
+  if (minimumSnackBarWidth != null) {
+    expect(snackRect.width, greaterThan(minimumSnackBarWidth));
+  }
   expect(snackRect.center.dx, expectedCenter);
   ScaffoldMessenger.of(context).hideCurrentSnackBar();
   await tester.pumpAndSettle();
@@ -255,7 +262,8 @@ void main() {
       expect(pushedBody.center.dx, 640);
       await _checkOverlayWidths(
         tester,
-        expectedWidth: MayosLayout.playerColumnMaxWidth,
+        expectedSheetWidth: MayosLayout.playerColumnMaxWidth,
+        expectedSnackBarWidth: MayosLayout.playerColumnMaxWidth,
         expectedCenter: 640,
       );
     },
@@ -350,8 +358,18 @@ void main() {
       );
       await _checkOverlayWidths(
         tester,
-        expectedWidth: MayosLayout.coachOverlayMaxWidth,
+        expectedSheetWidth: MayosLayout.coachOverlayMaxWidth,
+        expectedSnackBarWidth: MayosLayout.coachOverlayMaxWidth,
         expectedCenter: 640,
+      );
+
+      _resize(tester, const Size(800, 800));
+      await tester.pump();
+      await _checkOverlayWidths(
+        tester,
+        expectedSheetWidth: 800,
+        minimumSnackBarWidth: MayosLayout.coachOverlayMaxWidth,
+        expectedCenter: 400,
       );
     },
   );

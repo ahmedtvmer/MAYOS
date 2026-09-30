@@ -9,6 +9,7 @@ import 'core/app_mode.dart';
 import 'core/connectivity.dart';
 import 'core/theme/mayos_spacing.dart';
 import 'core/theme/mayos_theme.dart';
+import 'core/ui/is_desktop_layout.dart';
 import 'core/ui/mayos_app_mode_scope.dart';
 import 'providers.dart';
 import 'router.dart';
@@ -91,7 +92,7 @@ class _MayosAppState extends ConsumerState<MayosApp>
         return MayosAppModeScope(
           mode: appMode,
           child: Theme(
-            data: _responsiveOverlayTheme(context, appMode),
+            data: _responsiveOverlayTheme(context, appMode, themeMode),
             child: ScaffoldMessenger(
               // Own the app's screen snackbars under the responsive theme.
               // The same messenger also receives permission prompts via its
@@ -108,13 +109,28 @@ class _MayosAppState extends ConsumerState<MayosApp>
     );
   }
 
-  ThemeData _responsiveOverlayTheme(BuildContext context, AppMode mode) {
-    final bool desktop = MediaQuery.sizeOf(context).width >=
-        MayosLayout.desktopNavigationBreakpoint;
-    final double overlayMaxWidth = mode == AppMode.player
-        ? MayosLayout.playerColumnMaxWidth
-        : MayosLayout.coachOverlayMaxWidth;
-    final ThemeData theme = Theme.of(context);
+  ThemeData _responsiveOverlayTheme(
+    BuildContext context,
+    AppMode mode,
+    ThemeMode themeMode,
+  ) {
+    final bool desktop = isDesktopLayout(context);
+    final double overlayMaxWidth;
+    if (!desktop) {
+      overlayMaxWidth = MediaQuery.sizeOf(context).width;
+    } else if (mode == AppMode.player) {
+      overlayMaxWidth = MayosLayout.playerColumnMaxWidth;
+    } else {
+      overlayMaxWidth = MayosLayout.coachOverlayMaxWidth;
+    }
+    final ThemeData theme = switch (themeMode) {
+      ThemeMode.light => MayosTheme.light,
+      ThemeMode.dark => MayosTheme.dark,
+      ThemeMode.system =>
+        MediaQuery.platformBrightnessOf(context) == Brightness.dark
+            ? MayosTheme.dark
+            : MayosTheme.light,
+    };
     return theme.copyWith(
       bottomSheetTheme: theme.bottomSheetTheme.copyWith(
         constraints: BoxConstraints(maxWidth: overlayMaxWidth),

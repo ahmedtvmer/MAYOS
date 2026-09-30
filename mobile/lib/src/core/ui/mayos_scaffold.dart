@@ -4,9 +4,11 @@ import '../app_mode.dart';
 import '../connectivity.dart';
 import '../theme/mayos_spacing.dart';
 import '../theme/mayos_theme.dart';
+import 'is_desktop_layout.dart';
 import 'mayos_app_header.dart';
 import 'mayos_app_mode_scope.dart';
 import 'mayos_bottom_navigation.dart';
+import 'mayos_player_column.dart';
 
 /// The shared MAYOS screen frame: a themed canvas with an optional
 /// [MayosAppHeader] (logo and actions, or a titled sub-page header) and an
@@ -48,8 +50,7 @@ class MayosScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
-    final bool desktop = MediaQuery.sizeOf(context).width >=
-        MayosLayout.desktopNavigationBreakpoint;
+    final bool desktop = isDesktopLayout(context);
     final Widget? rail = desktop ? _rail() : null;
     // Player mode reads as a phone-width column on desktop; Coach mode uses
     // the full width (#133).
@@ -69,19 +70,9 @@ class MayosScaffold extends StatelessWidget {
               child: rail,
             ),
             Expanded(
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: playerColumn
-                        ? MayosLayout.playerColumnMaxWidth
-                        : double.infinity,
-                  ),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: _buildContentColumn(),
-                  ),
-                ),
+              child: MayosPlayerColumn(
+                constrained: playerColumn,
+                child: _buildContentColumn(),
               ),
             ),
           ],
