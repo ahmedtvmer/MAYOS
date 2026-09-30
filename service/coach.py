@@ -67,15 +67,23 @@ def issue_coach_invite(
     if ttl_minutes is None:
         ttl = coach_invite_ttl()
     elif isinstance(ttl_minutes, bool) or not isinstance(ttl_minutes, int) or ttl_minutes <= 0:
-        return {"ok": False, "error": "Invite lifetime must be a positive number of minutes."}
+        return {
+            "ok": False,
+            "code": "invalid_ttl",
+            "error": "Invite lifetime must be a positive number of minutes.",
+        }
     else:
         ttl = timedelta(minutes=_bounded_ttl_minutes(ttl_minutes))
     with db.catalog_transaction():
         account = _coach_invite_account(db, clean_id, account_id)
         if account is None:
-            return {"ok": False, "error": f"Unknown account '{username}'."}
+            return {"ok": False, "code": "not_found", "error": f"Unknown account '{username}'."}
         if account["is_coach"]:
-            return {"ok": False, "error": "Account already has coach capability."}
+            return {
+                "ok": False,
+                "code": "already_coach",
+                "error": "Account already has coach capability.",
+            }
         raw_token = token_factory() if token_factory else secrets.token_urlsafe(32)
         expires_at = (datetime.now(UTC) + ttl).isoformat()
         db.create_coach_invite(hash_token(raw_token), account["account_id"], expires_at)

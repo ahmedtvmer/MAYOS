@@ -2072,11 +2072,16 @@ def test_admin_coach_invite_is_shown_once_and_redeems(admin_api, caplog):
 
     assert issued.status_code == 200
     assert issued.headers["cache-control"] == "no-store"
+    assert 'id="issued_coach_code" type="text" readonly' in issued.text
+    assert "<title>Coach invite issued</title>" in issued.text
+    assert 'class="nav-link" href="/admin/invites" aria-current="page">Invites</a>' in issued.text
     token = html.unescape(re.search(r'id="issued_coach_code"[^>]+value="([^"]+)"', issued.text).group(1))
     assert f"Your MAYOS coach code: {token}." in html.unescape(issued.text)
     assert "Redeem it in the app: Settings → Become a coach." in html.unescape(issued.text)
     assert 'href="https://wa.me/?text=' in issued.text
     assert 'target="_blank" rel="noopener noreferrer"' in issued.text
+    assert f'href="/admin/accounts/{account["account_id"]}">Back to account: coachinviteowner</a>' in issued.text
+    assert 'href="/admin/invites">Back to Invites</a>' in issued.text
     assert token not in str(issued.request.url)
     account_page = client.get(f"/admin/accounts/{account['account_id']}")
     assert "Revoke" in account_page.text and token not in account_page.text
@@ -2089,6 +2094,108 @@ def test_admin_coach_invite_is_shown_once_and_redeems(admin_api, caplog):
     assert redeemed.json()["capabilities"]["coach"] is True
     live_page = client.get("/admin/invites")
     assert token not in live_page.text and "Used" in live_page.text
+
+
+def test_admin_invites_issues_coach_invite_and_redeems(admin_api, caplog):
+    client, db, now, _ = admin_api
+    account, auth_headers = _register_account(client, db, "invitefrompage")
+    assert _login(client, now[0]).status_code == 303
+    page = client.get("/admin/invites")
+
+    assert page.status_code == 200
+    assert page.text.index('action="/admin/invites"') < page.text.index("Live invites")
+    assert 'name="username"' in page.text
+    assert '<option value="1440" selected>24 hours</option>' in page.text
+    issued = client.post(
+        "/admin/invites",
+        data={
+            "csrf_token": _csrf(page.text),
+            "username": " InviteFromPage ",
+            "ttl_minutes": "4320",
+        },
+    )
+
+    assert issued.status_code == 200
+    assert issued.headers["cache-control"] == "no-store"
+    assert 'id="issued_coach_code" type="text" readonly' in issued.text
+    assert "<title>Coach invite issued</title>" in issued.text
+    assert 'class="nav-link" href="/admin/invites" aria-current="page">Invites</a>' in issued.text
+    token = html.unescape(re.search(r'id="issued_coach_code"[^>]+value="([^"]+)"', issued.text).group(1))
+    assert f"Your MAYOS coach code: {token}." in html.unescape(issued.text)
+    assert "Redeem it in the app: Settings → Become a coach." in html.unescape(issued.text)
+    assert 'href="https://wa.me/?text=' in issued.text
+    assert f'href="/admin/accounts/{account["account_id"]}">Back to account: invitefrompage</a>' in issued.text
+    assert 'href="/admin/invites">Back to Invites</a>' in issued.text
+    assert token not in str(issued.request.url)
+    audit = client.get(f"/admin/audit?action=coach_invite_issued&account_id={account['account_id']}")
+    assert "coach_invite_issued" in audit.text
+    assert token not in audit.text + caplog.text
+    redeemed = client.post("/coach/invite/redeem", headers=auth_headers, json={"token": token})
+    assert redeemed.status_code == 200, redeemed.text
+    assert redeemed.json()["capabilities"]["coach"] is True
+    assert token not in client.get("/admin/invites").text
+
+
+@pytest.mark.parametrize(
+    ("scenario", "username", "message", "status_code"),
+    [
+        ("unknown", "missing<&>user", "No live account with that username", 409),
+        ("deleted", "DELETED<&>USER", "No live account with that username", 409),
+        ("already_coach", "ALREADYCOACH", "Already a coach", 409),
+        ("invalid_lifetime", "keep<this>&name", "Invalid invite lifetime.", 400),
+    ],
+)
+def test_admin_invites_issue_errors_retain_username_and_write_nothing(
+    admin_api, scenario, username, message, status_code
+):
+    from service import coach as coach_service
+
+    client, db, now, _ = admin_api
+    account = None
+    if scenario in {"deleted", "already_coach"}:
+        registered_username = "deleteduser" if scenario == "deleted" else "alreadycoach"
+        account, _ = _register_account(client, db, registered_username)
+        if scenario == "deleted":
+            with db.catalog_locked() as conn:
+                conn.execute(
+                    "UPDATE accounts SET status = 'deleted', deleted_at = ? WHERE account_id = ?",
+                    (datetime.now(UTC).isoformat(), account["account_id"]),
+                )
+                conn.commit()
+        else:
+            existing = coach_service.issue_coach_invite(db, registered_username, actor="cli")
+            assert existing["ok"]
+            redeemed = coach_service.redeem_coach_invite(db, account["account_id"], existing["token"])
+            assert redeemed["ok"]
+
+    assert _login(client, now[0]).status_code == 303
+    before_invites = coach_service.list_coach_invites(db)
+    before_audit = client.get("/admin/audit?action=coach_invite_issued")
+    before_issued_rows = before_audit.text.count("<strong>Action:</strong> coach_invite_issued")
+    page = client.get("/admin/invites")
+    response = client.post(
+        "/admin/invites",
+        data={
+            "csrf_token": _csrf(page.text),
+            "username": username,
+            "ttl_minutes": "5" if scenario == "invalid_lifetime" else "1440",
+        },
+    )
+
+    assert response.status_code == status_code
+    assert message in response.text
+    assert f'value="{html.escape(username, quote=True)}"' in response.text
+    assert len(coach_service.list_coach_invites(db)) == len(before_invites)
+    after_audit = client.get("/admin/audit?action=coach_invite_issued")
+    assert after_audit.text.count("<strong>Action:</strong> coach_invite_issued") == before_issued_rows
+
+
+def test_admin_invites_issue_requires_login_and_csrf(admin_api):
+    client, _, now, _ = admin_api
+    fields = {"username": "invitecsrf", "ttl_minutes": "1440"}
+    assert client.post("/admin/invites", data={**fields, "csrf_token": "bad"}).status_code == 404
+    assert _login(client, now[0]).status_code == 303
+    assert client.post("/admin/invites", data={**fields, "csrf_token": "bad"}).status_code == 403
 
 
 def test_admin_coach_invite_posts_require_login_and_csrf(admin_api):

@@ -371,6 +371,22 @@ def test_invite_for_deleted_account_is_refused(api):
         db.catalog_conn.commit()
     result = coach_service.issue_coach_invite(db, "alice", actor="cli")
     assert result["ok"] is False
+    assert result["code"] == "not_found"
+    assert result["error"] == "Unknown account 'alice'."
+
+
+def test_invite_for_already_coach_account_is_refused_with_stable_code(api):
+    client, db, _ = api
+    registered = _register(client, "alice")
+    account_id = _subject(registered["access_token"])
+    first = _issue(db, "alice", actor="cli")
+    assert coach_service.redeem_coach_invite(db, account_id, first["token"])["ok"]
+
+    result = coach_service.issue_coach_invite(db, "alice", actor="cli")
+
+    assert result["ok"] is False
+    assert result["code"] == "already_coach"
+    assert result["error"] == "Account already has coach capability."
 
 
 def test_invite_ttl_rejects_nonpositive_values(api):
@@ -379,6 +395,7 @@ def test_invite_ttl_rejects_nonpositive_values(api):
     for bad in (0, -1, -1440):
         result = coach_service.issue_coach_invite(db, "alice", ttl_minutes=bad, actor="cli")
         assert result["ok"] is False, bad
+        assert result["code"] == "invalid_ttl"
         assert "positive" in result["error"]
 
 

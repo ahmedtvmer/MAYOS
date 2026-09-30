@@ -39,6 +39,15 @@ class _AccountsPageView:
     deletion_flash: str = ""
 
 
+@dataclass(frozen=True)
+class _InvitesPageView:
+    csrf_token: str
+    login_alert_failed: bool
+    username: str = ""
+    error_message: str = ""
+    status_code: int = 200
+
+
 SESSION_COOKIE = "mayos_admin_session"
 LOGIN_CSRF_COOKIE = "mayos_admin_login_csrf"
 LOGIN_FAILURE_MESSAGE = "Invalid username, password, or verification code."
@@ -211,10 +220,93 @@ async def admin_invites_page(request: Request, db: Annotated[Any, Depends(get_db
     session = security.get_session(request.cookies.get(SESSION_COOKIE))
     if session is None:
         return not_found_response()
-    invites = await asyncio.to_thread(coach_service.list_coach_invites, db)
-    body = _admin_nav(session.csrf_token, security.login_alert_failed, "invites")
-    body += _invites_page(invites, session.csrf_token)
-    return _document("Coach invites", body)
+    return await _invites_page_response(
+        db,
+        _InvitesPageView(session.csrf_token, security.login_alert_failed),
+    )
+
+
+@router.post("/invites", include_in_schema=False)
+async def admin_issue_coach_invite_from_invites(request: Request, db: Annotated[Any, Depends(get_db)]):
+    security = request.app.state.admin_security
+    session_token = request.cookies.get(SESSION_COOKIE)
+    session = security.get_session(session_token)
+    if session is None:
+        return not_found_response()
+    form = await request.form()
+    if not security.validate_session_csrf(session_token, _form_text(form, "csrf_token")):
+        return HTMLResponse("Forbidden", status_code=403)
+
+    username = _form_text(form, "username")
+    ttl_minutes = _coach_invite_ttl_minutes(form)
+    if ttl_minutes is None:
+        return await _invites_page_response(
+            db,
+            _InvitesPageView(
+                session.csrf_token,
+                security.login_alert_failed,
+                username,
+                "Invalid invite lifetime.",
+                400,
+            ),
+        )
+
+    clean_username = db._sanitize_username(username)
+    account = await asyncio.to_thread(db.get_active_account_by_username, clean_username)
+    if account is None:
+        return await _invites_page_response(
+            db,
+            _InvitesPageView(
+                session.csrf_token,
+                security.login_alert_failed,
+                username,
+                "No live account with that username",
+                409,
+            ),
+        )
+    if account["is_coach"]:
+        return await _invites_page_response(
+            db,
+            _InvitesPageView(
+                session.csrf_token,
+                security.login_alert_failed,
+                username,
+                "Already a coach",
+                409,
+            ),
+        )
+
+    issued = await asyncio.to_thread(
+        coach_service.issue_coach_invite,
+        db,
+        clean_username,
+        ttl_minutes=ttl_minutes,
+        actor=_owner_actor(security),
+        source_ip=_source_ip(request),
+        account_id=account["account_id"],
+    )
+    if not issued["ok"]:
+        if issued["code"] == "already_coach":
+            error_message, status_code = "Already a coach", 409
+        elif issued["code"] == "not_found":
+            error_message, status_code = "No live account with that username", 409
+        elif issued["code"] == "invalid_ttl":
+            error_message, status_code = "Invalid invite lifetime.", 400
+        else:
+            error_message, status_code = "Unable to issue coach invite.", 409
+        return await _invites_page_response(
+            db,
+            _InvitesPageView(
+                session.csrf_token,
+                security.login_alert_failed,
+                username,
+                error_message,
+                status_code,
+            ),
+        )
+    return _coach_invite_result_response(
+        account, issued, session.csrf_token, security.login_alert_failed
+    )
 
 
 @router.post("/accounts/email", include_in_schema=False)
@@ -396,11 +488,8 @@ async def admin_issue_coach_invite(request: Request, account_id: str, db: Annota
     if isinstance(access, Response):
         return access
     session, account = access
-    try:
-        ttl_minutes = int(_form_text(form, "ttl_minutes"))
-    except ValueError:
-        return HTMLResponse("Invalid invite lifetime.", status_code=400)
-    if ttl_minutes not in {60, 1440, 4320, 10080}:
+    ttl_minutes = _coach_invite_ttl_minutes(form)
+    if ttl_minutes is None:
         return HTMLResponse("Invalid invite lifetime.", status_code=400)
     issued = await asyncio.to_thread(
         coach_service.issue_coach_invite,
@@ -412,16 +501,18 @@ async def admin_issue_coach_invite(request: Request, account_id: str, db: Annota
         account_id=account_id,
     )
     if not issued["ok"]:
-        return HTMLResponse(html.escape(issued["error"]), status_code=409)
-    metadata = await asyncio.to_thread(admin_accounts_service.account_metadata, db, account)
-    coach_invites = await asyncio.to_thread(_live_coach_invites, db, account_id)
-    body = _admin_nav(session.csrf_token, security.login_alert_failed, "accounts")
-    body += _account_detail_page(
-        account, metadata, session.csrf_token, {"outcome": ""}, coach_invites, issued
+        if issued["code"] == "not_found":
+            status_code = 409
+        elif issued["code"] == "already_coach":
+            status_code = 409
+        elif issued["code"] == "invalid_ttl":
+            status_code = 400
+        else:
+            status_code = 409
+        return HTMLResponse(html.escape(issued["error"]), status_code=status_code)
+    return _coach_invite_result_response(
+        account, issued, session.csrf_token, security.login_alert_failed
     )
-    response = _document(f"Account · {account['username']}", body)
-    response.headers["Cache-Control"] = "no-store"
-    return response
 
 
 @router.post("/invites/{invite_id}/revoke", include_in_schema=False)
@@ -654,10 +745,10 @@ def _admin_home_sections() -> str:
     return f'<section class="dashboard-grid" aria-label="Owner dashboard sections">{cards}</section>'
 
 
-def _invites_page(invites: list[dict[str, Any]], csrf_token: str) -> str:
+def _invites_page(invites: list[dict[str, Any]], view: _InvitesPageView) -> str:
     live = [invite for invite in invites if invite["status"] == "live"]
     recent = [invite for invite in invites if invite["status"] != "live"]
-    live_rows = "".join(_invite_live_row(invite, csrf_token) for invite in live)
+    live_rows = "".join(_invite_live_row(invite, view.csrf_token) for invite in live)
     recent_rows = "".join(_invite_recent_row(invite) for invite in recent)
     live_table = _invite_table(("Account", "Mode", "Expiry", "Action"), live_rows, "No live invites.")
     recent_table = _invite_table(
@@ -666,10 +757,61 @@ def _invites_page(invites: list[dict[str, Any]], csrf_token: str) -> str:
         "No used, expired, or revoked invites in the last 30 days.",
     )
     return (
-        '<main><h1>Coach invites</h1><section class="health-panel">'
+        '<main><h1>Coach invites</h1>'
+        + _coach_invite_request_form(view)
+        + '<section class="health-panel">'
         "<h2>Live invites</h2>" + live_table + "</section>"
         '<section class="health-panel"><h2>Recent invites</h2>' + recent_table + "</section></main>"
     )
+
+
+async def _invites_page_response(db: Any, view: _InvitesPageView) -> HTMLResponse:
+    invites = await asyncio.to_thread(coach_service.list_coach_invites, db)
+    body = _admin_nav(view.csrf_token, view.login_alert_failed, "invites")
+    body += _invites_page(invites, view)
+    response = _document("Coach invites", body)
+    response.status_code = view.status_code
+    return response
+
+
+def _coach_invite_request_form(view: _InvitesPageView) -> str:
+    error = (
+        f'<p class="alert" role="alert">{html.escape(view.error_message)}</p>'
+        if view.error_message
+        else ""
+    )
+    return (
+        '<section class="health-panel"><h2>Issue coach invite</h2>'
+        + error
+        + '<form method="post" action="/admin/invites">'
+        f'<input type="hidden" name="csrf_token" value="{html.escape(view.csrf_token, quote=True)}">'
+        '<label for="coach_invite_username">Username</label>'
+        f'<input id="coach_invite_username" name="username" autocomplete="off" required '
+        f'value="{html.escape(view.username, quote=True)}">'
+        '<label for="coach_invite_lifetime">Invite lifetime</label>'
+        f'<select id="coach_invite_lifetime" name="ttl_minutes">{_coach_invite_lifetime_options()}</select>'
+        '<button type="submit">Issue coach invite</button></form></section>'
+    )
+
+
+def _coach_invite_result_response(
+    account: dict[str, Any],
+    issued: dict[str, Any],
+    csrf_token: str,
+    login_alert_failed: bool,
+) -> HTMLResponse:
+    account_id = html.escape(account["account_id"], quote=True)
+    username = html.escape(account["username"])
+    body = _admin_nav(csrf_token, login_alert_failed, "invites") + (
+        '<main><h1>Coach invite issued</h1><section class="health-panel">'
+        + _issued_coach_invite(issued)
+        + f'<p><a href="/admin/accounts/{account_id}">Back to account: {username}</a></p>'
+        '<p><a href="/admin/invites">Back to Invites</a></p>'
+        "</section></main>"
+    )
+    response = _document("Coach invite issued", body)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 def _invite_table(headers: tuple[str, ...], rows: str, empty: str) -> str:
@@ -1304,19 +1446,30 @@ def _coach_access_card(
 
 
 def _coach_invite_form(account_id: str, csrf_token: str) -> str:
-    options = (
+    return (
+        f'<form method="post" action="/admin/accounts/{account_id}/coach-invites">'
+        f'<input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}">'
+        '<label for="coach_invite_lifetime">Invite lifetime</label>'
+        f'<select id="coach_invite_lifetime" name="ttl_minutes">{_coach_invite_lifetime_options()}</select>'
+        '<button type="submit">Issue coach invite</button></form>'
+    )
+
+
+def _coach_invite_lifetime_options() -> str:
+    return (
         '<option value="60">1 hour</option>'
         '<option value="1440" selected>24 hours</option>'
         '<option value="4320">3 days</option>'
         '<option value="10080">7 days</option>'
     )
-    return (
-        f'<form method="post" action="/admin/accounts/{account_id}/coach-invites">'
-        f'<input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}">'
-        '<label for="coach_invite_lifetime">Invite lifetime</label>'
-        f'<select id="coach_invite_lifetime" name="ttl_minutes">{options}</select>'
-        '<button type="submit">Issue coach invite</button></form>'
-    )
+
+
+def _coach_invite_ttl_minutes(form: Any) -> int | None:
+    try:
+        ttl_minutes = int(_form_text(form, "ttl_minutes"))
+    except ValueError:
+        return None
+    return ttl_minutes if ttl_minutes in {60, 1440, 4320, 10080} else None
 
 
 def _issued_coach_invite(issued: dict[str, Any]) -> str:
