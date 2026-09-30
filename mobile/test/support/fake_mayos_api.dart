@@ -63,6 +63,7 @@ class FakeMayosApi {
   String googleLinkedUsername = 'alice';
   String googleSuggestedUsername = 'alice';
   String googleSignupTicket = 'signup-ticket-1';
+  bool googleExistingAccountHint = false;
   bool googleTicketExpired = false;
 
   /// Answers `POST /auth/google/complete` with the service's other 409 — the
@@ -490,6 +491,7 @@ class FakeMayosApi {
     return FakeResponse(200, <String, dynamic>{
       'signup_ticket': googleSignupTicket,
       'suggested_username': googleSuggestedUsername,
+      'existing_account_hint': googleExistingAccountHint,
     });
   }
 

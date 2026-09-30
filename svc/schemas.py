@@ -148,15 +148,18 @@ class GoogleSignInIn(BaseModel):
 
 
 class GoogleSignUpOut(BaseModel):
-    """First Google sign-in: no account exists yet, so only a ticket and a guess.
+    """First Google sign-in: a ticket, a guess, and a non-identifying nudge.
 
     The ticket is the 15-minute proof that this ``sub`` was just verified; the
     suggestion is derived from the token's given name, checked for
-    availability, and stored only if the person keeps it.
+    availability, and stored only if the person keeps it. The hint is true
+    only when Google's verified email matches a live recovery email; no email
+    or matched account identity is included.
     """
 
     signup_ticket: str
     suggested_username: str
+    existing_account_hint: bool = False
 
 
 class GoogleCompleteIn(BaseModel):

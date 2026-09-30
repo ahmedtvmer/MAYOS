@@ -325,6 +325,98 @@ void main() {
     expect(fake.googleCompleteRequests, 0);
   });
 
+  testWidgets('a recovery-email hint offers a login route',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..googleExistingAccountHint = true;
+    final FakeGoogleAuthGateway google = FakeGoogleAuthGateway();
+    await _pumpAuth(tester, fake, google: google);
+
+    await tester.tap(find.text('Continue with Google'));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('google_existing_account_login')));
+
+    expect(
+      find.text('You already have a MAYOS account for this email.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Log in with your password, then connect Google in Settings.'),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<MayosButton>(
+              find.byKey(const Key('google_existing_account_login')))
+          .variant,
+      MayosButtonVariant.primary,
+    );
+    expect(find.byKey(const Key('google_signup_username')), findsNothing);
+    expect(fake.googleCompleteRequests, 0);
+
+    await tester.tap(find.byKey(const Key('google_existing_account_login')));
+    await _pumpUntilFound(tester, find.byKey(const Key('login_username')));
+    await _settleRoute(tester);
+
+    expect(google.clearSdkStateCalls, 1);
+    expect(fake.googleCompleteRequests, 0);
+  });
+
+  testWidgets(
+      'system back from the recovery-email hint creates nothing and clears Google state',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..googleExistingAccountHint = true;
+    final FakeGoogleAuthGateway google = FakeGoogleAuthGateway();
+    await _pumpAuth(tester, fake, google: google);
+
+    await tester.tap(find.text('Continue with Google'));
+    await _pumpUntilFound(tester,
+        find.byKey(const Key('google_existing_account_login')));
+    await tester.binding.handlePopRoute();
+    await _settleRoute(tester);
+
+    expect(find.byKey(const Key('login_username')), findsOneWidget);
+    expect(find.byKey(const Key('google_signup_username')), findsNothing);
+    expect(fake.googleCompleteRequests, 0);
+    expect(google.clearSdkStateCalls, 1);
+  });
+
+  testWidgets('the recovery-email hint can continue to the picker and leave empty',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..googleExistingAccountHint = true;
+    final FakeGoogleAuthGateway google = FakeGoogleAuthGateway();
+    await _pumpAuth(tester, fake, google: google);
+
+    await tester.tap(find.text('Continue with Google'));
+    await _pumpUntilFound(tester,
+        find.byKey(const Key('google_existing_account_create_separate')));
+    expect(
+      tester
+          .widget<MayosButton>(find.byKey(
+              const Key('google_existing_account_create_separate')))
+          .variant,
+      MayosButtonVariant.secondary,
+    );
+    await tester.tap(
+        find.byKey(const Key('google_existing_account_create_separate')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('google_signup_username')));
+    await _awaitAvailability(tester);
+
+    expect(find.text('Create account'), findsOneWidget);
+    expect(fake.usernameAvailableRequests, greaterThan(0));
+    expect(fake.googleCompleteRequests, 0);
+
+    await tester.tap(find.byKey(const Key('google_signup_cancel')));
+    await _pumpUntilFound(tester, find.byKey(const Key('login_username')));
+    await _settleRoute(tester);
+
+    expect(google.clearSdkStateCalls, 1);
+    expect(fake.googleCompleteRequests, 0);
+  });
+
   testWidgets('a taken username shows a live error and blocks the submit',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi()..googleTakenUsernames.add('alice');

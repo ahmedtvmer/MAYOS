@@ -11,15 +11,17 @@ import 'google_auth_gateway.dart';
 
 enum AuthStatus { loading, unauthenticated, authenticated }
 
-/// The first Google sign-up that is waiting for a username (#115).
+/// The first Google sign-up waiting for its nudge or username choice (#174).
 class PendingGoogleSignup {
   const PendingGoogleSignup({
     required this.signupTicket,
     required this.suggestedUsername,
+    this.existingAccountHint = false,
   });
 
   final String signupTicket;
   final String suggestedUsername;
+  final bool existingAccountHint;
 }
 
 /// What one "Continue with Google" tap produced (#115).
@@ -282,6 +284,7 @@ class AuthController extends StateNotifier<AuthState> {
       _pendingSignup = PendingGoogleSignup(
         signupTicket: required.signupTicket,
         suggestedUsername: required.suggestedUsername,
+        existingAccountHint: required.existingAccountHint,
       );
       return const GoogleSignUpPrompt();
     } on ApiException catch (error) {

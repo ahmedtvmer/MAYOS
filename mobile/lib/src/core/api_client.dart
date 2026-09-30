@@ -36,7 +36,7 @@ class WorkoutCommitResult {
   bool get created => statusCode == 201;
 }
 
-/// What `POST /auth/google` answered for one ID token (#113).
+/// What `POST /auth/google` answered for one ID token (#113/#174).
 sealed class GoogleAuthStart {
   const GoogleAuthStart();
 }
@@ -49,15 +49,19 @@ final class GoogleAuthSession extends GoogleAuthStart {
 }
 
 /// First sign-in: no account exists yet, so the service hands back a short-lived
-/// ticket and a username guess for the picker.
+/// ticket, a username guess, and an optional recovery-email nudge.
 final class GoogleAuthSignupTicket extends GoogleAuthStart {
   const GoogleAuthSignupTicket({
     required this.signupTicket,
     required this.suggestedUsername,
+    this.existingAccountHint = false,
   });
 
   final String signupTicket;
   final String suggestedUsername;
+
+  /// True when a verified Google email matched a live recovery email (#174).
+  final bool existingAccountHint;
 }
 
 /// Thin typed wrapper over the FastAPI service.
@@ -276,6 +280,7 @@ class ApiClient {
         suggestedUsername: data['suggested_username'] is String
             ? data['suggested_username'] as String
             : '',
+        existingAccountHint: data['existing_account_hint'] == true,
       );
     }
     return GoogleAuthSession(AuthTokens.fromJson(data));

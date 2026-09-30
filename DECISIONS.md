@@ -542,3 +542,13 @@ This document records the architectural, algorithmic, and heuristic decisions im
 
   Workout history export as CSV/JSON stays in the backend without an app screen, for data portability requests. Proportions stay onboarding-only because they do not change.
 * **Rationale**: Every one of these serves no user. The claim was an unauthenticated route that set a password. Post-onboarding profile editing replaces profile reset, and account deletion already exists for starting over.
+
+---
+
+### ADR 057: Verified Google email matches nudge signup (amends issue #104)
+
+* **Status**: Accepted and implemented in #174 (2026-09-30)
+* **Decision**: Keep the #104 rule that a Linked sign-in is identified and matched for sign-in or linking only by its provider and subject. Do not automatically match, link, or merge accounts by email, and never store or log Google's email. For an unlinked Google subject only, when the verified ID token has `email` and `email_verified` is exactly `true`, normalize the email with the ADR 007 recovery-email rule and compare it in memory with the catalog recovery-email store. If it matches a live account, return only `existing_account_hint: true` beside the signup ticket and username suggestion. Ignore deleted accounts. Create no account or link until the person explicitly chooses a separate account and submits a username.
+* **Context**: A person with an existing MAYOS account can choose Continue with Google on a new device. Since Linked sign-ins are keyed by Google's `sub`, that correctly does not sign in by email, but previously it went directly to the username picker and could lead to a second empty account.
+* **Rationale**: A boolean nudge gives the person a chance to use their existing password and connect Google in Settings while keeping account identity, linking, and creation under the existing explicit flows. It does not disclose the matched username or put Google's email in a ticket, response, or persistent store.
+* **Code References**: `service/google_sign_in.py` (`GoogleIdentity`, `sign_in`, `_has_live_recovery_email`), `svc/dependencies.py` (`_verify_google_id_token`), `svc/routers/auth.py` (`POST /auth/google`), `svc/schemas.py` (`GoogleSignUpOut`), `mobile/lib/src/core/api_client.dart` (`GoogleAuthSignupTicket`), `mobile/lib/src/features/player/auth/google_signup_screen.dart`, `docs/AUTHENTICATION.md` §13, `tests/test_google_sign_in.py`, `mobile/test/google_sign_in_test.dart`.

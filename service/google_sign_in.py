@@ -1,10 +1,11 @@
 """Google sign-in: username picker, first-sign-in account creation, and link management (#113/#114).
 
-A Verified Google identity is a ``sub`` (plus the token's ``iat``) — never an
-email address, and no name from the token is persisted: ``given_name`` is read
-once to seed a *suggestion* that the person may change before anything is
-written. No account exists until a username is picked, so abandoning the flow
-leaves nothing behind.
+A Verified Google identity is matched for sign-in by ``sub`` only. No name from
+the token is persisted: ``given_name`` seeds a *suggestion* that the person
+may change before anything is written. A verified email is used only for the
+signup nudge against the recovery-email store; it is never stored or logged.
+No account exists until a username is picked, so abandoning the flow leaves
+nothing behind.
 
 Once an account exists, the same identity can be connected or disconnected
 (:func:`link_account` / :func:`unlink_account`): connect is idempotent and
@@ -21,9 +22,20 @@ own sanitising behaviour; see the issue #113 report).
 import re
 import sqlite3
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NamedTuple
 
-from service import auth as auth_service
+from service import admin_accounts, auth as auth_service
+
+
+class GoogleIdentity(NamedTuple):
+    """Verified Google claims; email remains transient for the signup nudge."""
+
+    sub: str
+    iat: int | None = None
+    given_name: str | None = None
+    email: str | None = None
+    email_verified: bool = False
+
 
 PROVIDER = "google"
 MIN_USERNAME_LENGTH = 3
@@ -89,17 +101,19 @@ def suggest_username(db: Any, given_name: Any) -> str:
     return candidate
 
 
-def sign_in(db: Any, subject: str, given_name: Any = None) -> dict[str, Any]:
+def sign_in(db: Any, identity: GoogleIdentity) -> dict[str, Any]:
     """Resolves a verified Google identity to a session or a signup suggestion.
 
     The link is keyed on ``(google, subject)`` and matched to a **live**
     account only; a link to a deleted account is treated as no link, so the
     person simply picks a username again and the link is re-pointed in the
-    completion transaction. A live account whose ledger never materialised
-    (an interrupted completion) is repaired here before the session is
-    issued, so nobody is stranded behind the registry's ledger gate.
+    completion transaction. For an unlinked subject, a verified email that
+    matches a live account's recovery email adds a nudge to the signup answer;
+    it never links or creates an account. A live account whose ledger never
+    materialised (an interrupted completion) is repaired here before the
+    session is issued, so nobody is stranded behind the registry's ledger gate.
     """
-    account_id = db.get_linked_sign_in_account_id(PROVIDER, subject)
+    account_id = db.get_linked_sign_in_account_id(PROVIDER, identity.sub)
     account = db.get_account(account_id) if account_id else None
     if db.is_live_account(account):
         return {
@@ -108,7 +122,22 @@ def sign_in(db: Any, subject: str, given_name: Any = None) -> dict[str, Any]:
             "trainee_id": _materialise_ledger(db, account),
             "session_epoch": account["session_epoch"],
         }
-    return {"kind": "signup", "suggested_username": suggest_username(db, given_name)}
+    return {
+        "kind": "signup",
+        "suggested_username": suggest_username(db, identity.given_name),
+        "existing_account_hint": identity.email_verified and _has_live_recovery_email(
+            db, identity.email
+        ),
+    }
+
+
+def _has_live_recovery_email(db: Any, email: str | None) -> bool:
+    """Compares a verified Google email with the catalog's normalized recovery keys.
+
+    The email stays in memory for this lookup. Only a live account's boolean
+    match is returned; no email or matching account identity leaves this helper.
+    """
+    return admin_accounts.find_by_recovery_email(db, email) is not None
 
 
 def complete_signup(db: Any, subject: str, username: Any) -> dict[str, Any]:

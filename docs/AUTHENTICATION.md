@@ -8,7 +8,7 @@ This document specifies the Myos identity layer: credential storage, JWT session
 
 Myos is a **local-first, single-replica** engine. The identity layer is designed around three realities:
 
-* **No cloud identity provider for account identity.** Account identity is an immutable id in the shared catalog registry (`accounts`); each account maps to a per-user SQLite ledger (`db/users/<ledger_id>.db`). Google is an optional **Linked sign-in** (Section 13): it proves an external subject, it never becomes the account identity and is never matched by email. Email delivery is an optional, self-hosted SMTP backend (Section 9).
+* **No cloud identity provider for account identity.** Account identity is an immutable id in the shared catalog registry (`accounts`); each account maps to a per-user SQLite ledger (`db/users/<ledger_id>.db`). Google is an optional **Linked sign-in** (Section 13): it proves an external subject, it never becomes the account identity and sign-in or linking never matches by email. Section 13 documents the separate verified-email signup nudge. Email delivery is an optional, self-hosted SMTP backend (Section 9).
 * **No account enumeration.** Unknown users and wrong passwords are indistinguishable, and password-recovery requests answer identically whether or not an email is linked.
 * **Authentication is separate from inference.** Password hashing and JWT verification do not require a model to be loaded.
 
@@ -246,7 +246,7 @@ Delivery failures are logged and swallowed; the client response stays generic. T
 | :--- | :--- | :--- | :--- |
 | `POST /auth/register` | — | 5/min | 409 if ID taken; 201 + JWT |
 | `POST /auth/login` | — | 5/min | 401 generic; 403 claim required |
-| `POST /auth/google` | — | 5/min | Verifies a Google ID token: linked subject ⇒ `TokenOut` (remember-me lifetime), otherwise `{signup_ticket, suggested_username}`; 503 when `GOOGLE_WEB_CLIENT_ID` is unset |
+| `POST /auth/google` | — | 5/min | Verifies a Google ID token: linked subject ⇒ `TokenOut` (remember-me lifetime), otherwise `{signup_ticket, suggested_username, existing_account_hint}`; the hint is true only for a verified-email match to a live recovery email; 503 when `GOOGLE_WEB_CLIENT_ID` is unset |
 | `GET /auth/username-available` | signup ticket (Bearer) | 30/min | `{available, reason?}`; clear 400 for a username that breaks the rule; 401 for a missing/expired ticket |
 | `POST /auth/google/complete` | — | 5/min | One catalog transaction: account + link; 400 invalid username, 409 taken or already linked |
 | `POST /auth/google/link` | Bearer | 10/min | Connects a verified Google identity to the caller; idempotent; 409 conflicts (never which other account); 503 when `GOOGLE_WEB_CLIENT_ID` is unset |
@@ -338,7 +338,7 @@ Key properties:
 
 ## 13. Google Linked Sign-in (issues #113 / #114)
 
-A **Linked sign-in** ([`CONTEXT.md`](../CONTEXT.md)) attaches an external identity to exactly one account. The link is keyed on `(provider, subject)` — `('google', <Google sub>)` — and stored in the shared catalog table `linked_sign_ins (provider, subject, account_id, linked_at)` with `UNIQUE(provider, subject)`, `UNIQUE(account_id, provider)` (an account holds at most one link per provider; added as an index by `SchemaMixin._ensure_linked_sign_in_account_provider` on catalogs created before it), and an index on `account_id`. It lives in the catalog, never in a player's ledger, because the flow runs logged out. It is **never matched by email**; no email, name, or picture from Google is stored anywhere, and `provider` is data, so another provider needs no schema change.
+A **Linked sign-in** ([`CONTEXT.md`](../CONTEXT.md)) attaches an external identity to exactly one account. The link is keyed on `(provider, subject)` — `('google', <Google sub>)` — and stored in the shared catalog table `linked_sign_ins (provider, subject, account_id, linked_at)` with `UNIQUE(provider, subject)`, `UNIQUE(account_id, provider)` (an account holds at most one link per provider; added as an index by `SchemaMixin._ensure_linked_sign_in_account_provider` on catalogs created before it), and an index on `account_id`. It lives in the catalog, never in a player's ledger, because the flow runs logged out. Sign-in and linking are **never matched by email**. As a signup nudge only (#174), an unlinked subject's email is compared with the catalog recovery-email store when Google's token says `email_verified: true`; a match to a live account sets a boolean hint. This does not link or merge accounts, reveal a username, or store or log the Google email. Google names and pictures are not stored either, and `provider` is data, so another provider needs no schema change.
 
 **Configuration.** `GOOGLE_WEB_CLIENT_ID` is read **by name only** — never hard-coded, never logged — and is the single audience for verification. Android obtains its ID token for the web client ID passed as `serverClientId`, and the web client uses the same ID, so one web client ID covers both clients and no Android-specific audience is needed. While the variable is unset, every `/auth/google*` endpoint — sign-in, the picker, completion, connect, and disconnect — answers `503` and nothing else in the service changes (`svc/dependencies.py::google_sign_in_enabled` is the single place that decides this).
 
@@ -348,14 +348,21 @@ sequenceDiagram
     participant App as Flutter app
     participant API as FastAPI /auth/google*
     participant G as Google ID-token verifier
-    participant DB as Catalog (accounts, linked_sign_ins)
+    participant DB as Catalog (accounts, linked_sign_ins, trainee_emails)
 
     App->>API: POST /auth/google {id_token}
     API->>G: verify_oauth2_token(token, requests.Request(), audience=GOOGLE_WEB_CLIENT_ID)
     alt (google, sub) linked to a live account
         API-->>App: TokenOut (always the remember-me lifetime)
     else new subject
-        API-->>App: {signup_ticket (15 min), suggested_username}
+        opt email is present and email_verified is true
+            API->>DB: Compare normalized email with recovery-email store
+            DB-->>API: Live account match or no match
+        end
+        API-->>App: {signup_ticket (15 min), suggested_username, existing_account_hint}
+        opt existing_account_hint is true
+            App-->>App: Show login nudge; offer separate-account picker
+        end
         Note over App: Nothing is written; abandoning here leaves nothing behind.
         App->>API: GET /auth/username-available?username=… (Bearer: signup ticket)
         API-->>App: {available, reason?}
@@ -365,9 +372,9 @@ sequenceDiagram
     end
 ```
 
-**Verifier seam.** Production verification is `google.oauth2.id_token.verify_oauth2_token(token, request, audience=GOOGLE_WEB_CLIENT_ID, clock_skew_in_seconds=10)` (`google-auth`), which checks the signature, the audience, `exp`/`iat` (with a small clock skew so a few seconds of drift do not refuse a fresh token), and the issuer; our own issuer/`sub` checks repeat those contracts explicitly. Verification runs on **one cached google-auth `Request` built over a module-level `requests.Session`**, so every sign-in shares a single pooled transport instead of building a new one (cachecontrol is not a dependency of this project, so no HTTP-level response cache sits on top). Every rejection — wrong audience or issuer included — collapses into one generic `401 Invalid Google credentials.` The seam (`svc/dependencies.py::get_google_verifier`) returns only `sub` and `iat`, plus `given_name` read once to seed the username *suggestion*, and is injected like the other app-owned dependencies, so tests substitute a fake and never reach the network. `svc/dependencies.py::google_sign_in_enabled` is the **single** place that answers `503` for an unconfigured `GOOGLE_WEB_CLIENT_ID`; the seam itself fails closed rather than raising a second, competing 503.
+**Verifier seam.** Production verification is `google.oauth2.id_token.verify_oauth2_token(token, request, audience=GOOGLE_WEB_CLIENT_ID, clock_skew_in_seconds=10)` (`google-auth`), which checks the signature, the audience, `exp`/`iat` (with a small clock skew so a few seconds of drift do not refuse a fresh token), and the issuer; our own issuer/`sub` checks repeat those contracts explicitly. Verification runs on **one cached google-auth `Request` built over a module-level `requests.Session`**, so every sign-in shares a single pooled transport instead of building a new one (cachecontrol is not a dependency of this project, so no HTTP-level response cache sits on top). Every rejection — wrong audience or issuer included — collapses into one generic `401 Invalid Google credentials.` The seam (`svc/dependencies.py::get_google_verifier`) returns `sub` and `iat`, plus `given_name` to seed the username *suggestion*. For the unlinked-signup nudge only, it also carries `email` and the exact boolean `email_verified` in memory; the service normalizes and compares those only when verified, and never stores or logs the email. These fields are injected like the other app-owned dependencies, so tests substitute a fake and never reach the network. `svc/dependencies.py::google_sign_in_enabled` is the **single** place that answers `503` for an unconfigured `GOOGLE_WEB_CLIENT_ID`; the seam itself fails closed rather than raising a second, competing 503.
 
-**First sign-in.** An unknown subject gets `{signup_ticket, suggested_username}`; no account, link, or profile row exists yet, so abandoning the flow leaves nothing behind.
+**First sign-in.** An unknown subject gets `{signup_ticket, suggested_username, existing_account_hint}`; no account, link, or profile row exists yet, so abandoning the flow leaves nothing behind. The hint is true only when the token contains a valid email with `email_verified: true` and its normalized value matches a recovery email in `trainee_emails` for a live account. Missing, unverified, malformed, unmatched, or deleted-account emails produce `false`. This is a presentation hint only: the ticket still carries `sub` only, and the response never identifies the matched account. The Flutter app replaces the picker with “You already have a MAYOS account for this email. Log in with your password, then connect Google in Settings.” **Log in** clears Google SDK state and returns to login. **Create a separate account anyway** continues to the same username picker; leaving it still creates nothing and clears Google SDK state.
 
 * The **signup ticket** is a 15-minute HS256 JWT signed with `JWT_SECRET` but carrying `type=google_signup` and `aud=mayos:google-signup`, with **`sub` only** — never an email or name. Decoding **requires** `exp`, `aud` and `sub` (`options={"require": [...]}`), so a ticket with its lifetime stripped never validates. It is refused as a session token in both directions: `token_claims` rejects any token carrying `type`/`aud` (and PyJWT rejects an `aud` claim when no audience is expected) and a session token fails the ticket's audience/`type` check, so a ticket can never be replayed as a bearer token. For `GET /auth/username-available` the ticket travels in the `Authorization: Bearer` header — never in the query string — so it cannot land in access logs.
 * `suggested_username` comes from the token's given name: lowercased, characters outside `a–z 0–9 _ -` dropped, 3–30 characters, a numeric suffix when the base is taken (a missing or unusable given name falls back to `player`). It is checked for availability and **never stored** — only the username the person keeps becomes the account's.

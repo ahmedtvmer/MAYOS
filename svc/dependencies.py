@@ -12,6 +12,7 @@ import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from service.google_sign_in import GoogleIdentity
 from svc.auth import signup_ticket_subject, token_claims, token_version_of
 
 _bearer = HTTPBearer(auto_error=False)
@@ -236,19 +237,6 @@ class GoogleIdentityError(Exception):
     """A Google ID token failed verification: signature, audience, issuer, or expiry."""
 
 
-class GoogleIdentity(NamedTuple):
-    """What the verifier seam hands back: Google's subject, nothing identifying.
-
-    ``iat`` is the token's issue time. ``given_name`` is only a seed for the
-    username picker's *suggestion*: it is read once, never stored, and never
-    written to the catalog or to any token (issue #113).
-    """
-
-    sub: str
-    iat: int | None = None
-    given_name: str | None = None
-
-
 #: The seam's shape: a raw ID token in, the verified identity out.
 GoogleVerifier = Callable[[str], GoogleIdentity]
 
@@ -322,7 +310,7 @@ def _google_transport() -> Any:
 
 
 def _verify_google_id_token(raw_id_token: str) -> GoogleIdentity:
-    """``verify_oauth2_token`` against ``GOOGLE_WEB_CLIENT_ID``, narrowed to sub/iat.
+    """Verify against ``GOOGLE_WEB_CLIENT_ID`` and return only needed claims.
 
     google-auth checks the signature, the audience, ``exp``/``iat`` (with a
     small clock skew), and the issuer; every rejection — wrong audience or
@@ -364,8 +352,11 @@ def _verify_google_id_token(raw_id_token: str) -> GoogleIdentity:
         raise GoogleIdentityError("Google ID token has no subject.")
     iat = info.get("iat")
     given_name = info.get("given_name")
+    email = info.get("email")
     return GoogleIdentity(
         sub=sub,
         iat=iat if isinstance(iat, int) else None,
         given_name=given_name if isinstance(given_name, str) else None,
+        email=email if isinstance(email, str) else None,
+        email_verified=info.get("email_verified") is True,
     )

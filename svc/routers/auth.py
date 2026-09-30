@@ -113,9 +113,10 @@ async def google_sign_in(
 
     The token is verified against ``GOOGLE_WEB_CLIENT_ID`` (503 while that is
     unset). A subject already linked to a live account gets a session with the
-    remember-me lifetime; any other subject gets a 15-minute signup ticket plus
-    a username suggestion. No account, link, or profile data is written here,
-    so abandoning the flow leaves nothing behind (#113).
+    remember-me lifetime; any other subject gets a 15-minute signup ticket, a
+    username suggestion, and a verified-recovery-email hint when applicable.
+    No account or link is written here, so abandoning the flow leaves nothing
+    behind (#113/#174).
     """
     try:
         identity = await asyncio.to_thread(verifier, body.id_token)
@@ -123,7 +124,7 @@ async def google_sign_in(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google credentials.") from None
 
     def _run():
-        return google_service.sign_in(db, identity.sub, identity.given_name)
+        return google_service.sign_in(db, identity)
 
     result = await asyncio.to_thread(_run)
     if result["kind"] == "session":
@@ -138,6 +139,7 @@ async def google_sign_in(
     return GoogleSignUpOut(
         signup_ticket=create_signup_ticket(identity.sub),
         suggested_username=result["suggested_username"],
+        existing_account_hint=result["existing_account_hint"],
     )
 
 

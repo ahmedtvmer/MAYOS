@@ -16,7 +16,7 @@ import '../../../router.dart';
 import 'auth_controller.dart';
 import 'auth_widgets.dart';
 
-/// The picker a first Google sign-in lands on (#115).
+/// The nudge or username picker for a first Google sign-in (#115/#174).
 ///
 /// It opens prefilled with the service's suggestion, validates the username
 /// rule live, checks availability on a debounce, and only then creates the
@@ -48,6 +48,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
   late final AuthController _auth;
   Timer? _debounce;
   bool _touched = false;
+  bool _showPicker = false;
   bool _busy = false;
   _UsernameCheck _check = _UsernameCheck.idle;
   String? _error;
@@ -59,12 +60,19 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
     super.initState();
     _auth = ref.read(authControllerProvider.notifier);
     final PendingGoogleSignup? pending = _auth.pendingSignup;
-    final String suggestion = pending?.suggestedUsername ?? '';
-    if (googleUsernameFormatError(suggestion) == null) {
-      _username.text = suggestion;
+    if (pending?.existingAccountHint != true && _prefillSuggestion()) {
       _check = _UsernameCheck.checking;
       _scheduleCheck();
     }
+  }
+
+  bool _prefillSuggestion() {
+    final String suggestion = _auth.pendingSignup?.suggestedUsername ?? '';
+    if (googleUsernameFormatError(suggestion) != null) {
+      return false;
+    }
+    _username.text = suggestion;
+    return true;
   }
 
   @override
@@ -203,11 +211,29 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
     }
   }
 
+  void _createSeparateAccount() {
+    if (!_prefillSuggestion()) {
+      return;
+    }
+    setState(() {
+      _showPicker = true;
+      _check = _UsernameCheck.checking;
+    });
+    _scheduleCheck();
+  }
+
   @override
   Widget build(BuildContext context) {
+    return _withBackNavigation(_signupContent());
+  }
+
+  Widget _signupContent() {
     final PendingGoogleSignup? pending = _auth.pendingSignup;
     if (pending == null) {
       return _expiredView();
+    }
+    if (pending.existingAccountHint && !_showPicker) {
+      return _existingAccountHintView();
     }
     return AuthScaffold(
       title: 'Choose your username',
@@ -249,6 +275,39 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
           label:
               'Already have a MAYOS account? Log in with your password, then connect Google in Settings',
           onPressed: _busy ? null : _leaveToLogin,
+        ),
+      ],
+    );
+  }
+
+  Widget _withBackNavigation(Widget child) {
+    return PopScope<Object?>(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? _) {
+        if (!didPop) {
+          unawaited(_leaveToLogin());
+        }
+      },
+      child: child,
+    );
+  }
+
+  Widget _existingAccountHintView() {
+    return AuthScaffold(
+      title: 'You already have a MAYOS account for this email.',
+      lead: 'Log in with your password, then connect Google in Settings.',
+      wallpaper: true,
+      primary: MayosButton(
+        key: const Key('google_existing_account_login'),
+        label: 'Log in',
+        onPressed: _leaveToLogin,
+      ),
+      children: <Widget>[
+        MayosButton(
+          key: const Key('google_existing_account_create_separate'),
+          label: 'Create a separate account anyway',
+          variant: MayosButtonVariant.secondary,
+          onPressed: _createSeparateAccount,
         ),
       ],
     );

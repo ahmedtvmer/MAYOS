@@ -21,9 +21,8 @@ mixin GoogleSignInAction<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   /// The last Google failure this screen should show, if any.
   String? get googleError => _googleError;
 
-  /// Runs the flow and routes each outcome: the picker for a first sign-in,
-  /// an inline notice for a refusal, nothing for a dismissal or a session that
-  /// the router already reacts to.
+  /// Routes first sign-in to its nudge or picker, a refusal to an inline
+  /// notice, and ignores a dismissal or a session the router already handles.
   Future<void> continueWithGoogle() async {
     await _runGoogleFlow(() =>
         ref.read(authControllerProvider.notifier).continueWithGoogle());

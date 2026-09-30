@@ -30,11 +30,14 @@ class FakeVerifier:
 
     def __init__(self):
         self.seen: list[str] = []
+        self.identities: dict[str, GoogleIdentity] = {}
 
     def __call__(self, id_token: str) -> GoogleIdentity:
         self.seen.append(id_token)
         if id_token.startswith("bad"):
             raise GoogleIdentityError("Google rejected the ID token.")
+        if id_token in self.identities:
+            return self.identities[id_token]
         token, _, given_name = id_token.partition(":")
         return GoogleIdentity(sub=f"sub-{token}", iat=1_700_000_000, given_name=given_name or None)
 
@@ -97,8 +100,38 @@ def _sign_in_for_ticket(client, id_token: str = "alice-token:Alfred") -> dict:
     response = client.post("/auth/google", json={"id_token": id_token})
     assert response.status_code == 200, response.text
     body = response.json()
-    assert set(body) == {"signup_ticket", "suggested_username"}
+    assert set(body) == {"signup_ticket", "suggested_username", "existing_account_hint"}
     return body
+
+
+def _create_account_with_recovery_email(client, db, username: str, email: str):
+    registered = client.post(
+        "/auth/register",
+        json={"trainee_id": username, "password": "StrongPass123"},
+    )
+    assert registered.status_code == 201, registered.text
+    updated = client.post(
+        "/auth/email",
+        json={"email": email},
+        headers=_headers(registered.json()["access_token"]),
+    )
+    assert updated.status_code == 200, updated.text
+    return db.get_active_account_by_username(username)
+
+
+def _recovery_state(db):
+    with db.catalog_locked() as conn:
+        return (
+            conn.execute(
+                "SELECT account_id, username, ledger_id FROM accounts ORDER BY account_id"
+            ).fetchall(),
+            conn.execute(
+                "SELECT provider, subject, account_id FROM linked_sign_ins ORDER BY subject"
+            ).fetchall(),
+            conn.execute(
+                "SELECT trainee_id, email FROM trainee_emails ORDER BY trainee_id"
+            ).fetchall(),
+        )
 
 
 def test_first_sign_in_creates_account_only_after_the_username_is_picked(api):
@@ -168,6 +201,113 @@ def test_returning_google_sign_in_goes_straight_in_with_remember_me(api):
     # Two sign-ins, one account, one link.
     assert len(_link_rows(db)) == 1
     assert len(_accounts(client)) == 1
+
+
+def test_verified_recovery_email_match_returns_only_a_nudge_and_writes_nothing(api, caplog):
+    client, db, verifier = api
+    existing = _create_account_with_recovery_email(
+        client, db, "existing-owner", "You@Gmail.com"
+    )
+    verifier.identities["verified-match"] = GoogleIdentity(
+        sub="unlinked-google-sub",
+        iat=1_700_000_000,
+        given_name="New Person",
+        email="  YOU@gmail.com ",
+        email_verified=True,
+    )
+    before = _recovery_state(db)
+
+    response = client.post("/auth/google", json={"id_token": "verified-match"})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["existing_account_hint"] is True
+    assert body["suggested_username"] == "newperson"
+    assert "existing-owner" not in response.text
+    assert "YOU@gmail.com" not in response.text
+    payload = pyjwt.decode(
+        body["signup_ticket"],
+        TEST_JWT_SECRET,
+        algorithms=["HS256"],
+        audience=SIGNUP_TICKET_AUDIENCE,
+    )
+    assert set(payload) == {"sub", "type", "aud", "iat", "nbf", "exp"}
+    assert _recovery_state(db) == before
+    assert db.get_account_email(existing["account_id"]) == "you@gmail.com"
+    # The verified Google email must not cross the logging boundary either.
+    assert "YOU@gmail.com" not in caplog.text
+
+
+def test_verified_recovery_email_match_hints_for_a_coach_only_account(api):
+    client, db, verifier = api
+    existing = _create_account_with_recovery_email(
+        client, db, "coach-owner", "coach@gmail.com"
+    )
+    with db.catalog_locked() as conn:
+        conn.execute(
+            "UPDATE accounts SET is_player = 0, is_coach = 1 WHERE account_id = ?",
+            (existing["account_id"],),
+        )
+        conn.commit()
+    before = _recovery_state(db)
+    verifier.identities["coach-match"] = GoogleIdentity(
+        sub="unlinked-coach-sub",
+        iat=1_700_000_000,
+        email="COACH@gmail.com",
+        email_verified=True,
+    )
+
+    response = client.post("/auth/google", json={"id_token": "coach-match"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["existing_account_hint"] is True
+    assert "coach-owner" not in response.text
+    assert _recovery_state(db) == before
+
+
+@pytest.mark.parametrize(
+    ("verified", "google_email"),
+    [(False, "owner@gmail.com"), (True, "another@gmail.com"), (True, None)],
+)
+def test_unverified_missing_or_unmatched_email_does_not_return_hint(api, verified, google_email):
+    client, db, verifier = api
+    _create_account_with_recovery_email(client, db, "email-owner", "owner@gmail.com")
+    verifier.identities["no-hint"] = GoogleIdentity(
+        sub="unlinked-no-hint",
+        iat=1_700_000_000,
+        given_name="New Person",
+        email=google_email,
+        email_verified=verified,
+    )
+
+    response = client.post("/auth/google", json={"id_token": "no-hint"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["existing_account_hint"] is False
+
+
+def test_deleted_recovery_account_does_not_return_hint(api):
+    client, db, verifier = api
+    existing = _create_account_with_recovery_email(
+        client, db, "deleted-owner", "deleted@gmail.com"
+    )
+    with db.catalog_locked() as conn:
+        conn.execute(
+            "UPDATE accounts SET status = 'deleted', deleted_at = ? WHERE account_id = ?",
+            (datetime.now(UTC).isoformat(), existing["account_id"]),
+        )
+        conn.commit()
+    verifier.identities["deleted-match"] = GoogleIdentity(
+        sub="unlinked-deleted-match",
+        iat=1_700_000_000,
+        email="deleted@gmail.com",
+        email_verified=True,
+    )
+
+    response = client.post("/auth/google", json={"id_token": "deleted-match"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["existing_account_hint"] is False
 
 
 def test_signup_ticket_carries_only_the_subject_and_fifteen_minutes(api):
@@ -582,13 +722,22 @@ def test_production_verifier_uses_configured_audience_and_rejects_bad_issuer(mon
         seen["audience"] = audience
         seen["clock_skew"] = clock_skew_in_seconds
         transports.append(request)
-        return {"iss": "https://accounts.google.com", "sub": "sub-123", "iat": 1_700_000_000, "given_name": "Ada"}
+        return {
+            "iss": "https://accounts.google.com",
+            "sub": "sub-123",
+            "iat": 1_700_000_000,
+            "given_name": "Ada",
+            "email": "ada@example.com",
+            "email_verified": True,
+        }
 
     monkeypatch.setattr(google_id_token, "verify_oauth2_token", fake_verify)
     identity = _verify_google_id_token("raw-google-token")
     assert identity.sub == "sub-123"
     assert identity.iat == 1_700_000_000
     assert identity.given_name == "Ada"
+    assert identity.email == "ada@example.com"
+    assert identity.email_verified is True
     assert seen["token"] == "raw-google-token"
     assert seen["audience"] == TEST_WEB_CLIENT_ID
     # A little clock skew is allowed so drift does not refuse a fresh token.
@@ -597,6 +746,19 @@ def test_production_verifier_uses_configured_audience_and_rejects_bad_issuer(mon
     # One cached transport over a shared session: never a fresh one per sign-in.
     _verify_google_id_token("raw-google-token-2")
     assert transports[1] is transports[0]
+
+    def unverified_email(*args, **kwargs):
+        return {
+            "iss": "https://accounts.google.com",
+            "sub": "sub-123",
+            "email": "ada@example.com",
+            "email_verified": "true",
+        }
+
+    monkeypatch.setattr(google_id_token, "verify_oauth2_token", unverified_email)
+    identity = _verify_google_id_token("raw-google-token")
+    assert identity.email == "ada@example.com"
+    assert identity.email_verified is False
 
     def wrong_issuer(*args, **kwargs):
         return {"iss": "https://accounts.example.com", "sub": "sub-123", "iat": 1_700_000_000}

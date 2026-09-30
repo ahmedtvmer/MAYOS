@@ -6,7 +6,7 @@ import '../../../core/chat_storage.dart';
 import '../../../core/models.dart';
 import '../../../core/token_store.dart';
 
-/// What the first Google sign-in needs from the screens (#115).
+/// What the first Google sign-in needs from the screens (#115/#174).
 sealed class GoogleSignInFlowResult {
   const GoogleSignInFlowResult();
 }
@@ -18,15 +18,17 @@ final class GoogleAccountReady extends GoogleSignInFlowResult {
   final AccountSession session;
 }
 
-/// No account yet: the username picker must open with this ticket and guess.
+/// No account yet: show the optional nudge before the picker for this ticket.
 final class GoogleUsernameRequired extends GoogleSignInFlowResult {
   const GoogleUsernameRequired({
     required this.signupTicket,
     required this.suggestedUsername,
+    this.existingAccountHint = false,
   });
 
   final String signupTicket;
   final String suggestedUsername;
+  final bool existingAccountHint;
 }
 
 /// Coordinates the API and the persisted token for the auth lifecycle.
@@ -81,6 +83,7 @@ class AuthRepository {
     return GoogleUsernameRequired(
       signupTicket: ticket.signupTicket,
       suggestedUsername: ticket.suggestedUsername,
+      existingAccountHint: ticket.existingAccountHint,
     );
   }
 
