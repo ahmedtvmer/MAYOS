@@ -138,7 +138,7 @@ This document records the architectural, algorithmic, and heuristic decisions im
 ---
 
 ### ADR 017: Flutter is the product client
-* **Status**: Superseded in part by ADR 022 for closed-trial client scope
+* **Status**: Superseded in part by ADR 022 for closed-trial client scope; deletion timing amended by ADR 056
 * **Decision**: MAYOS is migrating to a mobile application, beginning with Android only for the closed trial. The Flutter app is the product client, backed by the FastAPI service; the Streamlit interface is legacy migration reference and serves no users. Delete it after the four-week trial passes its exit gates and opted-in real-user imports finish, before public launch. The local GGUF backend remains available for development and evaluation. This concentrates delivery and design work on one user experience while retaining useful engine test paths.
 
 ---
@@ -150,7 +150,7 @@ This document records the architectural, algorithmic, and heuristic decisions im
 ---
 
 ### ADR 019: Opt-in import of existing training history
-* **Status**: Accepted
+* **Status**: Superseded by ADR 056 (imports are not a real flow; the claim path is removed)
 * **Decision**: The mobile service does not bulk-import every local ledger. Existing real users may explicitly opt into an audited import of their histories, receive new immutable account IDs, and complete a secure account-claim path. Local ledgers include development and test data, mixed schema versions, and mostly lack password credentials, so automatic import would risk creating unwanted or insecure cloud accounts. The import uses consistent SQLite snapshots and verifies record counts before cutover.
 
 ---
@@ -514,3 +514,27 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Decision**: Each movement slot carries an **ordered list of Staple exercises** drawn from the patterns elite coaches share. Generation prescribes the first staple the player's **Equipment access** allows, and the following staples become that exercise's suggested substitutes. The weighted random pick from the top three SQL candidates is removed; variety comes from the day templates alternating slots, never from chance. A Commercial gym player is never prescribed or suggested band or bodyweight working sets (pull-ups and dips included); they may still choose one themselves through search. Day templates follow the coach ordering (priority or small muscles may open a day, pre-exhaust is allowed) instead of always leading with compounds, and prescriptions follow the coach consensus: 1–2 working sets per exercise, every muscle 2–3 times a week, reps in reserve 1–2 on compounds and 0–1 on isolations for beginners and 0–1 for everyone else, rest 3–4 min on compounds, 2–3 on isolations, 1.5–2 on calves and abs. Every player starts at 4–6 weekly sets per muscle, which a Volume review may later adjust.
 * **Context**: The ranked top-three pool always offered "machine front pulldown" and "wide grip pull-up" for vertical pulls, so no cable lat pulldown could ever be selected, and slots with few gym candidates surfaced band leg extensions and band hip thrusts to gym players.
 * **Rationale**: Coaches choose a staple deliberately and list one or two substitutes; a deterministic list makes every prescription explainable, testable against a coach-derived rubric, and identical for identical players. The rest of ADR 011 (movement slots as the generation unit, deterministic split routing, English-only output) still holds.
+
+---
+
+### ADR 055: A deload is suggested, not applied, when a coach is assigned; the player can undo or apply it for one workout (amends ADR 004 and ADR 032)
+
+* **Status**: Accepted design (2026-09-30); not yet implemented
+* **Decision**: The ADR 004 fatigue triggers are unchanged, but what they do now depends on the assignment. A player **without** an active coach assignment gets the Deload applied to their prescription automatically, as before. A player **with** one gets it only as a suggestion: the prescription is unchanged, the coach receives the ADR 032 deload alert, and the coach decides by publishing a program. This includes a readiness report of 1/5, which becomes a strong suggestion rather than a forced cut. In either case the player sees a deload banner explaining the fatigue signal, and the banner links to the assistant. Through the assistant, and only with a connection (ADR 031), the player can **undo** an applied deload or **apply** a suggested one. The choice covers the next workout only: if the signal still fires afterwards, the default returns and the banner shows again. For a coached player, the choice is recorded as a note on the open deload alert episode, not as a new alert kind.
+* **Context**: The prescription cut sets and capped RPE silently, and the app never showed the reason. It also cut coach-controlled programs, overriding the coach who owns them.
+* **Rationale**: The coach owns a coached player's program (ADR 018/025), so an engine-made cut must not override them. Letting the player apply or undo keeps a tired or fresh player from being stuck. Limiting the choice to one workout means a single "undo" can never quietly override a whole run of genuine fatigue, and routing it through the assistant means the player hears what the signal was before overriding it.
+
+---
+
+### ADR 056: Remove the Streamlit client, account claim, Excel export and profile reset (amends ADR 017, supersedes ADR 019)
+
+* **Status**: Accepted design (2026-09-30); not yet implemented
+* **Decision**: Imported accounts are not a real flow, so ADR 017's "after opted-in imports finish" condition no longer holds. Once Assistant style and post-onboarding profile editing exist in the Flutter app, the following are deleted:
+  * the Streamlit client (`app.py`, `ui/`)
+  * the account claim (`POST /auth/claim`, `scripts/import_player.py`, `scripts/issue_claim_code.py`, and its docs)
+  * the program Excel export (`GET /programs/active.xlsx`, `utils/exporter.py`, openpyxl)
+  * profile reset (`DELETE /profile`)
+  * the unbound `save_user_profile` tool
+
+  Workout history export as CSV/JSON stays in the backend without an app screen, for data portability requests. Proportions stay onboarding-only because they do not change.
+* **Rationale**: Every one of these serves no user. The claim was an unauthenticated route that set a password. Post-onboarding profile editing replaces profile reset, and account deletion already exists for starting over.

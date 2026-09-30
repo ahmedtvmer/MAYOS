@@ -32,6 +32,10 @@ A coach who joined during the closed trial and therefore qualifies for the found
 **AI allowance**:
 The number of assistant requests available to an account for a given period. An account with both player and coach capabilities has separate Lifter and Coach allowances.
 
+**Assistant style**:
+How the player's assistant talks to that player: a chosen tone and optional instructions in the player's own words. It shapes the wording of assistant chat, debriefs and Checkpoint reviews, never their facts, numbers, program changes, safety rules or reply language. It does not apply to what a coach reads.
+_Avoid_: Persona, coach tone
+
 **Active account**:
 An account that completed a workout or recorded a coaching action in the previous 30 days. A login alone does not make an account active.
 
@@ -181,6 +185,9 @@ _Avoid_: AI rating, performance score
 
 **Coach alert**:
 A catalog-side notification of a coaching fact about an assigned player, such as a missed-day streak of at least two days or a due follow-up. It has new, acknowledged, and resolved states, and deduplicates on a kind-specific key so retries never duplicate it.
+
+**Deload**:
+A temporary cut to a player's prescribed sets and effort, recommended when recorded readiness and effort show fatigue. Without an assigned coach it is applied to the player's workouts automatically; with one it is only suggested, and the coach decides. Either way the player can, through the assistant, undo an applied deload or apply a suggested one for their next workout only, and an assigned coach sees that choice on the deload alert.
 
 **Signal episode**:
 A run of consecutive committing sessions over which a progression signal (a recommended deload, or a regression on one exercise) keeps firing. It opens when the signal first fires and closes on the first later commit where it does not, producing one durable coach alert per episode rather than one per session.
