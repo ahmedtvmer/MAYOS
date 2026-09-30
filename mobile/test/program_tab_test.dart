@@ -141,7 +141,7 @@ void main() {
 
     expect(find.text('Upper/Lower 4x'), findsOneWidget);
     expect(find.text('Upper/Lower · 4 days/week'), findsOneWidget);
-    expect(find.text('Version 6'), findsOneWidget);
+    expect(find.text('Version 6'), findsNothing);
     expect(find.text('Former coach'), findsOneWidget);
 
     // The expanded first day sections warm-up, working sets, and cardio.
@@ -149,7 +149,30 @@ void main() {
     expect(find.text('Working sets'), findsOneWidget);
     expect(find.text('Bench Press'), findsOneWidget);
     expect(find.textContaining('3 × 5–8'), findsOneWidget);
+    expect(find.textContaining('2 warm-up sets · rest 180s'), findsOneWidget);
+    expect(find.text('Band Pull-Apart'), findsOneWidget);
+    expect(find.text('2 × 15 · rest 45s'), findsOneWidget);
+    expect(find.text('Pause on the chest.'), findsNothing);
+    expect(find.text('Squeeze at the top.'), findsNothing);
     expect(find.text('Cardio'), findsOneWidget);
+  });
+
+  testWidgets('exercise detail keeps notes and technique available',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpProgram(tester, fake);
+
+    expect(find.text('Pause on the chest.'), findsNothing);
+    await tester.tap(find.text('Bench Press'));
+    await _pumpUntilFound(tester, find.text('Pause on the chest.'));
+
+    expect(find.text('Notes'), findsOneWidget);
+    expect(find.text('Pause on the chest.'), findsOneWidget);
+    expect(find.text('Technique'), findsOneWidget);
+
+    await tester.tap(find.text('Technique'));
+    await _pumpUntilFound(tester, find.textContaining('Lie on a flat bench'));
+    expect(find.textContaining('Lie on a flat bench'), findsOneWidget);
   });
 
   for (final ThemeMode mode in <ThemeMode>[ThemeMode.light, ThemeMode.dark]) {

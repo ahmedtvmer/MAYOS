@@ -634,13 +634,6 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
             style:
                 MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
           ),
-          if (program.version != null) ...<Widget>[
-            const SizedBox(height: MayosSpacing.xs),
-            Text(
-              'Version ${program.version}',
-              style: MayosTypography.caption.copyWith(color: c.textMuted),
-            ),
-          ],
           if (program.isCoachPublished) ...<Widget>[
             const SizedBox(height: MayosSpacing.xs),
             _ProvenanceLabel(
@@ -813,8 +806,8 @@ class _ProvenanceLabel extends StatelessWidget {
   }
 }
 
-/// One tappable working-set row: exercise name, prescription, warm-up/rest, and
-/// notes, opening the read-only exercise detail.
+/// One tappable working-set row: exercise name, prescription, and warm-up/rest,
+/// opening the read-only exercise detail.
 class _ExerciseRow extends StatelessWidget {
   const _ExerciseRow({
     required this.exercise,
@@ -864,15 +857,6 @@ class _ExerciseRow extends StatelessWidget {
                     ].join(' · '),
                     style: MayosTypography.caption.copyWith(color: c.textMuted),
                   ),
-                  if (exercise.hasNotes) ...<Widget>[
-                    const SizedBox(height: 2),
-                    Text(
-                      exercise.notes!,
-                      style: MayosTypography.caption.copyWith(
-                        color: c.textSecondary,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -930,13 +914,6 @@ class _WarmupRow extends StatelessWidget {
               warmup.prescription,
               style: MayosTypography.caption.copyWith(color: c.textMuted),
             ),
-            if (warmup.hasNotes) ...<Widget>[
-              const SizedBox(height: 2),
-              Text(
-                warmup.notes!,
-                style: MayosTypography.caption.copyWith(color: c.textSecondary),
-              ),
-            ],
           ],
         ),
       ),

@@ -144,7 +144,7 @@ void main() {
     expect(fake.repPreference, 'high');
   });
 
-  testWidgets('player program shows the version and coach provenance',
+  testWidgets('player program hides the version and keeps coach provenance',
       (tester) async {
     final FakeMayosApi fake = _playerFake();
     fake.programVersion = 6;
@@ -152,9 +152,9 @@ void main() {
     await _pumpApp(tester, fake);
 
     await tester.tap(find.text('Program'));
-    await _pumpUntilFound(tester, find.text('Version 6'));
+    await _pumpUntilFound(tester, find.text('Former coach'));
 
-    expect(find.text('Version 6'), findsOneWidget);
+    expect(find.text('Version 6'), findsNothing);
     expect(find.text('Former coach'), findsOneWidget);
   });
 
