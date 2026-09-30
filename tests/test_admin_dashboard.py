@@ -950,6 +950,277 @@ def test_account_page_shows_metadata_usage_limits_and_never_training_content(adm
     assert "Not set" in missing_email.text
 
 
+def test_owner_reset_email_sends_standard_link_and_revokes_sessions(admin_api, caplog):
+    from urllib.parse import parse_qs, urlsplit
+
+    client, db, now, sent_emails = admin_api
+    account, auth_headers = _register_account(client, db, "emailresetowner")
+    db.set_account_email(account["account_id"], "alice@example.com")
+    page = client.get(f"/admin/accounts/{account['account_id']}")
+    assert page.status_code == 404
+    assert client.post(f"/admin/accounts/{account['account_id']}/reset-email").status_code == 404
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{account['account_id']}")
+    assert "Send reset email" in page.text
+    assert "Create reset link" not in page.text
+    csrf = _csrf(page.text)
+    bad_csrf = client.post(
+        f"/admin/accounts/{account['account_id']}/reset-email",
+        data={"csrf_token": "wrong-token"},
+    )
+    assert bad_csrf.status_code == 403
+
+    response = client.post(
+        f"/admin/accounts/{account['account_id']}/reset-email",
+        data={"csrf_token": csrf},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/admin/accounts/{account['account_id']}?reset=sent"
+    assert "alice@example.com" not in response.headers["location"]
+    notice = client.get(response.headers["location"])
+    assert "Reset email sent to a***@example.com" in notice.text
+    reset_email = next(email for email in sent_emails if email[1] == "Mayos Engine password reset")
+    assert reset_email[0] == "alice@example.com"
+    reset_link = re.search(r"https?://[^\s]+/reset-password\?token=[^\s]+", reset_email[2]).group(0)
+    raw_token = parse_qs(urlsplit(reset_link).query)["token"][0]
+
+    reset = client.post(
+        "/auth/reset-password",
+        json={"token": raw_token, "new_password": "owner-reset-horse-3"},
+    )
+    assert reset.status_code == 200, reset.text
+    assert client.get("/dashboard/exercises", headers=auth_headers).status_code == 401
+    assert client.post(
+        "/auth/reset-password",
+        json={"token": raw_token, "new_password": "owner-reset-horse-4"},
+    ).status_code == 400
+
+    audit = client.get(f"/admin/audit?action=reset_email_sent&account_id={account['account_id']}")
+    assert audit.status_code == 200
+    assert "reset_email_sent" in audit.text
+    assert "alice@example.com" not in audit.text
+    assert reset_link not in audit.text and raw_token not in audit.text and raw_token not in caplog.text
+
+
+def test_owner_reset_email_failure_is_audited_and_shown_without_email(admin_api, monkeypatch):
+    from service import email_sender
+
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "emailfailowner")
+    db.set_account_email(account["account_id"], "failed@example.com")
+    monkeypatch.setattr(
+        email_sender,
+        "_deliver",
+        lambda _to, subject, _body: False if subject == "Mayos Engine password reset" else True,
+    )
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{account['account_id']}")
+    response = client.post(
+        f"/admin/accounts/{account['account_id']}/reset-email",
+        data={"csrf_token": _csrf(page.text)},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("?reset=send_failed")
+    failed = client.get(response.headers["location"])
+    assert "Couldn't send the email; try again or create a link" in failed.text
+    assert "failed@example.com" not in response.headers["location"] + failed.text
+    audit = client.get(f"/admin/audit?action=reset_email_failed&account_id={account['account_id']}")
+    assert audit.status_code == 200 and "reset_email_failed" in audit.text
+    assert "failed@example.com" not in audit.text
+
+
+def test_owner_reset_email_store_failure_is_audited_and_shown(admin_api, monkeypatch):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "storefailowner")
+    db.set_account_email(account["account_id"], "store-failed@example.com")
+
+    def fail_store(_token_hash, _account_id, _expires_at):
+        raise sqlite3.OperationalError("test token storage failure")
+
+    monkeypatch.setattr(db, "store_reset_token", fail_store)
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{account['account_id']}")
+    response = client.post(
+        f"/admin/accounts/{account['account_id']}/reset-email",
+        data={"csrf_token": _csrf(page.text)},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    failed = client.get(response.headers["location"])
+    assert "Couldn't send the email; try again or create a link" in failed.text
+    audit = client.get(f"/admin/audit?action=reset_email_failed&account_id={account['account_id']}")
+    assert audit.status_code == 200
+    assert "reset_email_failed" in audit.text
+
+
+@pytest.mark.parametrize(
+    ("configured_minutes", "expected_minutes"),
+    [("not-a-number", 1440), ("2", 5), ("20000", 10080)],
+)
+def test_admin_reset_link_ttl_fallback_and_bounds(monkeypatch, configured_minutes, expected_minutes):
+    from service.password_reset import admin_reset_link_ttl
+
+    monkeypatch.setenv("ADMIN_RESET_LINK_TTL_MINUTES", configured_minutes)
+    assert admin_reset_link_ttl() == timedelta(minutes=expected_minutes)
+
+
+def test_owner_reset_link_is_single_use_reissued_with_own_ttl_and_revokes_sessions(admin_api, monkeypatch, caplog):
+    from urllib.parse import parse_qs, urlsplit
+
+    from service._tokens import hash_token
+
+    monkeypatch.setenv("RESET_TOKEN_TTL_MINUTES", "30")
+    monkeypatch.setenv("ADMIN_RESET_LINK_TTL_MINUTES", "12")
+    client, db, now, _ = admin_api
+    account, auth_headers = _register_account(client, db, "linkresetowner")
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{account['account_id']}")
+    assert "Create reset link" in page.text
+    assert "Send reset email" not in page.text
+    csrf = _csrf(page.text)
+
+    first = client.post(f"/admin/accounts/{account['account_id']}/reset-link", data={"csrf_token": csrf})
+    assert first.status_code == 200
+    assert first.headers["cache-control"] == "no-store"
+    assert 'id="issued_reset_link"' in first.text and 'readonly' in first.text
+    assert 'id="reset_message"' in first.text and "Your MAYOS password reset link:" in first.text
+    assert "It works once and expires " in first.text
+    assert 'href="https://wa.me/?text=' in first.text
+    assert 'target="_blank" rel="noopener noreferrer"' in first.text
+    first_link = html.unescape(re.search(r'id="issued_reset_link"[^>]+value="([^"]+)"', first.text).group(1))
+    first_token = parse_qs(urlsplit(first_link).query)["token"][0]
+    with db.catalog_locked() as conn:
+        assert conn.execute(
+            "SELECT token_hash FROM password_reset_tokens WHERE token_hash = ?", (hash_token(first_token),)
+        ).fetchone() == (hash_token(first_token),)
+        assert conn.execute(
+            "SELECT token_hash FROM password_reset_tokens WHERE token_hash = ?", (first_token,)
+        ).fetchone() is None
+    with db.catalog_locked() as conn:
+        first_expiry = conn.execute(
+            "SELECT expires_at FROM password_reset_tokens WHERE token_hash = ?", (hash_token(first_token),)
+        ).fetchone()[0]
+    ttl = datetime.fromisoformat(first_expiry) - datetime.now(UTC)
+    assert 11.9 * 60 <= ttl.total_seconds() <= 12.1 * 60
+
+    csrf = _csrf(first.text)
+    second = client.post(f"/admin/accounts/{account['account_id']}/reset-link", data={"csrf_token": csrf})
+    assert second.status_code == 200
+    second_link = html.unescape(re.search(r'id="issued_reset_link"[^>]+value="([^"]+)"', second.text).group(1))
+    second_token = parse_qs(urlsplit(second_link).query)["token"][0]
+    refreshed = client.get(f"/admin/accounts/{account['account_id']}")
+    assert first_link not in refreshed.text and second_link not in refreshed.text
+    rejected = client.post(
+        "/auth/reset-password",
+        json={"token": first_token, "new_password": "owner-link-reset-5"},
+    )
+    assert rejected.status_code == 400
+
+    reset = client.post(
+        "/auth/reset-password",
+        json={"token": second_token, "new_password": "owner-link-reset-5"},
+    )
+    assert reset.status_code == 200, reset.text
+    assert client.get("/dashboard/exercises", headers=auth_headers).status_code == 401
+    assert client.post(
+        "/auth/reset-password",
+        json={"token": second_token, "new_password": "owner-link-reset-6"},
+    ).status_code == 400
+    audit = client.get(f"/admin/audit?action=reset_link_issued&account_id={account['account_id']}")
+    assert audit.status_code == 200
+    assert audit.text.count("<strong>Action:</strong> reset_link_issued") == 2
+    assert first_link not in audit.text and second_link not in audit.text
+    assert first_token not in audit.text and second_token not in audit.text
+    assert first_token not in caplog.text and second_token not in caplog.text
+
+
+def test_owner_reset_link_rejects_expiry_using_its_configured_ttl(admin_api, monkeypatch):
+    from urllib.parse import parse_qs, urlsplit
+
+    from service._tokens import hash_token
+
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "linkexpiryowner")
+    monkeypatch.setenv("RESET_TOKEN_TTL_MINUTES", "30")
+    monkeypatch.setenv("ADMIN_RESET_LINK_TTL_MINUTES", "5")
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{account['account_id']}")
+    csrf = _csrf(page.text)
+    issued = client.post(f"/admin/accounts/{account['account_id']}/reset-link", data={"csrf_token": csrf})
+    link = html.unescape(re.search(r'id="issued_reset_link"[^>]+value="([^"]+)"', issued.text).group(1))
+    token = parse_qs(urlsplit(link).query)["token"][0]
+    token_hash = hash_token(token)
+    with db.catalog_locked() as conn:
+        expires_at = conn.execute(
+            "SELECT expires_at FROM password_reset_tokens WHERE token_hash = ?", (token_hash,)
+        ).fetchone()[0]
+    ttl = datetime.fromisoformat(expires_at) - datetime.now(UTC)
+    assert 4.9 * 60 <= ttl.total_seconds() <= 5.1 * 60
+    with db.catalog_locked() as conn:
+        conn.execute(
+            "UPDATE password_reset_tokens SET expires_at = ? WHERE token_hash = ?",
+            ("2000-01-01T00:00:00+00:00", token_hash),
+        )
+        conn.commit()
+    expired = client.post(
+        "/auth/reset-password",
+        json={"token": token, "new_password": "owner-expired-reset-7"},
+    )
+    assert expired.status_code == 400
+
+
+def test_owner_reset_posts_require_login_and_csrf_and_deleted_accounts_have_no_actions(admin_api):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "deletedresetowner")
+    assert client.get(f"/admin/accounts/{account['account_id']}").status_code == 404
+    for action in ("reset-email", "reset-link"):
+        assert client.post(f"/admin/accounts/{account['account_id']}/{action}").status_code == 404
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{account['account_id']}")
+    csrf = _csrf(page.text)
+    for action in ("reset-email", "reset-link"):
+        denied = client.post(f"/admin/accounts/{account['account_id']}/{action}", data={"csrf_token": "wrong"})
+        assert denied.status_code == 403
+
+    with db.catalog_locked() as conn:
+        conn.execute(
+            "UPDATE accounts SET status = 'deleted', deleted_at = ? WHERE account_id = ?",
+            ("2026-09-01T00:00:00+00:00", account["account_id"]),
+        )
+        conn.commit()
+    deleted_page = client.get(f"/admin/accounts/{account['account_id']}")
+    assert deleted_page.status_code == 200
+    assert "reset-email" not in deleted_page.text and "reset-link" not in deleted_page.text
+    for action in ("reset-email", "reset-link"):
+        denied = client.post(
+            f"/admin/accounts/{account['account_id']}/{action}",
+            data={"csrf_token": csrf},
+        )
+        assert denied.status_code == 404
+
+
+def test_cli_owner_password_set_appears_in_admin_audit_viewer(admin_api):
+    from scripts import reset_password as reset_password_script
+
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "cliresetowner")
+    assert _login(client, now[0]).status_code == 303
+    ledger_id = "cliresetowner-custom"
+    with db.open_ledger(ledger_id):
+        pass
+    with db.catalog_locked() as conn:
+        conn.execute("UPDATE accounts SET ledger_id = ? WHERE account_id = ?", (ledger_id, account["account_id"]))
+        conn.commit()
+    reset_password_script.reset_password(db, ledger_id, "cli-owner-reset-8")
+    assert db.get_account(account["account_id"])["session_epoch"] == 2
+    viewer = client.get(f"/admin/audit?action=password_set_by_owner&account_id={account['account_id']}")
+    assert viewer.status_code == 200
+    assert "password_set_by_owner" in viewer.text
+    assert "<strong>Actor:</strong> cli" in viewer.text
+
+
 def test_accounts_pages_paginate_at_fifty_rows(admin_api):
     client, db, now, _ = admin_api
     accounts = [db.create_account(f"pageuser{number:02d}") for number in range(51)]

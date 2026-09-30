@@ -29,6 +29,10 @@
       "kind": "method",
       "signature": "(self, token_hash: str, now_iso: str) -> str | None"
     },
+    "invalidate_unused_reset_tokens": {
+      "kind": "method",
+      "signature": "(self, account_id: str, now_iso: str) -> int"
+    },
     "count_active_assignments_for_coach": {
       "kind": "method",
       "signature": "(self, coach_account_id: str) -> int"
@@ -100,6 +104,10 @@
     "get_active_account_by_username": {
       "kind": "method",
       "signature": "(self, username: str) -> dict[str, typing.Any] | None"
+    },
+    "get_account_by_ledger_id": {
+      "kind": "method",
+      "signature": "(self, ledger_id: str) -> dict[str, typing.Any] | None"
     },
     "get_active_assignment_for_coach": {
       "kind": "method",

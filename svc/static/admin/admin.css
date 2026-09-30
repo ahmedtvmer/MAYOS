@@ -253,6 +253,7 @@ label {
 }
 
 input,
+textarea,
 button {
   width: 100%;
   min-height: 48px;
@@ -262,9 +263,14 @@ button {
   font: inherit;
 }
 
-input {
+input,
+textarea {
   background: var(--color-surface);
   color: var(--color-text);
+}
+
+textarea {
+  resize: vertical;
 }
 
 input::placeholder {

@@ -199,9 +199,11 @@ Defensive details:
 
 ---
 
-## 8. Operator Admin Reset (No-Email Backstop)
+## 8. Owner-Initiated Resets
 
-When no recovery email exists (or its delivery fails), the operator resets the password directly against the ledger:
+The owner dashboard can send the standard reset email when a recovery email is linked. Without one, it can issue a single-use reset link with a separate `ADMIN_RESET_LINK_TTL_MINUTES` lifetime (default **1440**, clamped 5–10080 minutes); the raw link is shown once. Redeeming either reset changes the password through the existing reset flow and advances the account session epoch, ending every session.
+
+For a direct password set, the operator uses the CLI against the ledger:
 
 ```bash
 # Interactive (password never touches shell history)
@@ -215,7 +217,7 @@ python scripts/reset_password.py <trainee_id> \
   --catalog db/catalog.db --users-dir db/users --backups-dir db/backups
 ```
 
-The CLI validates the password policy, writes a fresh bcrypt hash, and bumps the ledger `token_version`. When the ledger is **enrolled** in the registry it then mandatorily advances the account's registry session epoch — failing loudly rather than reporting success if that cannot be done — so every registry-verified API session is revoked, and it reports the real registry epoch. A bare local ledger with no registry account keeps the legacy behavior and reports its ledger `token_version`. It prunes the revocation ledger and never prints or logs the hash.
+The CLI validates the password policy, writes a fresh bcrypt hash, and bumps the ledger `token_version`. When the ledger is **enrolled** in the registry it then mandatorily advances the account's registry session epoch — failing loudly rather than reporting success if that cannot be done — so every registry-verified API session is revoked, and it reports the real registry epoch. A supplied ledger id that belongs to a live account resolves that account and revokes its sessions too. A bare local ledger with no registry account keeps the legacy behavior and reports its ledger `token_version`. It prunes the revocation ledger and never prints or logs the hash. Each owner-initiated email, reset-link, or CLI password-set operation is recorded in the shared audit log; entries omit email addresses, links, tokens, and passwords.
 
 ---
 

@@ -53,7 +53,19 @@ class RegistryRecoveryMixin:
                 " VALUES (?, ?, ?, NULL, ?)",
                 (token_hash, account_id, expires_at, now),
             )
-            self.catalog_conn.commit()
+            self._commit_catalog()
+
+    def invalidate_unused_reset_tokens(self, account_id: str, now_iso: str) -> int:
+        """Marks every outstanding reset token for an account as used."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "UPDATE password_reset_tokens SET used_at = ? WHERE trainee_id = ? AND used_at IS NULL",
+                (now_iso, account_id),
+            )
+            self._commit_catalog()
+            return cursor.rowcount
 
     def consume_reset_token(self, token_hash: str, now_iso: str) -> str | None:
         """Atomically marks a valid (unused, unexpired) token used. Returns account_id or None."""

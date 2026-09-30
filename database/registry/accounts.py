@@ -188,6 +188,21 @@ class RegistryAccountsMixin:
             )
             return self._account_from_row(cursor.fetchone())
 
+    def get_account_by_ledger_id(self, ledger_id: str) -> dict[str, Any] | None:
+        """Reads the live account owning ``ledger_id``."""
+        clean_id = self._sanitize_username(ledger_id)
+        if not clean_id:
+            return None
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                f"SELECT {self._ACCOUNT_COLUMNS} FROM accounts"
+                " WHERE ledger_id = ? AND status = 'active' AND deleted_at IS NULL",
+                (clean_id,),
+            )
+            return self._account_from_row(cursor.fetchone())
+
     def bump_account_session_epoch(self, account_id: str) -> int | None:
         """Advances the registry session epoch, invalidating every prior token. Returns the new epoch."""
         if not account_id:

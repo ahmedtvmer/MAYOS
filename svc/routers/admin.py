@@ -19,7 +19,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from service import admin_accounts as admin_accounts_service
 from service import model_metering as model_metering_service
-from service import admin_auth, audit_log, email_sender, periodic_status
+from service import admin_auth, audit_log, email_sender, password_reset as password_reset_service, periodic_status
 from svc.dependencies import get_db
 from svc.html import self_contained_html
 from svc.rate_limit import LOGIN_LIMIT, client_ip, limiter
@@ -220,7 +220,11 @@ async def admin_account_detail(
         body += _deleted_account_page(account)
         return _document("Deleted account", body)
     metadata = await asyncio.to_thread(admin_accounts_service.account_metadata, db, account)
-    body += _account_detail_page(account, metadata)
+    outcome = request.query_params.get("reset", "")
+    if outcome not in {"sent", "send_failed", "no_recovery_email"}:
+        outcome = ""
+    reset_result = {"outcome": outcome}
+    body += _account_detail_page(account, metadata, session.csrf_token, reset_result)
     return _document(f"Account · {account['username']}", body)
 
 
@@ -231,6 +235,67 @@ def _load_admin_account(db: Any, account_id: str) -> dict[str, Any] | None:
     if account is None or (account["deleted_at"] is None and not db.is_live_account(account)):
         return None
     return account
+
+
+@router.post("/accounts/{account_id}/reset-email", include_in_schema=False)
+async def admin_account_reset_email(request: Request, account_id: str, db: Annotated[Any, Depends(get_db)]):
+    security = request.app.state.admin_security
+    access = await _admin_account_reset_access(request, account_id, db)
+    if isinstance(access, Response):
+        return access
+    outcome = await asyncio.to_thread(
+        password_reset_service.owner_send_reset_email,
+        db,
+        account_id,
+        _owner_actor(security),
+        _source_ip(request),
+    )
+    if outcome["outcome"] == "not_found":
+        return not_found_response()
+    return RedirectResponse(f"/admin/accounts/{account_id}?reset={outcome['outcome']}", status_code=303)
+
+
+@router.post("/accounts/{account_id}/reset-link", include_in_schema=False)
+async def admin_account_reset_link(request: Request, account_id: str, db: Annotated[Any, Depends(get_db)]):
+    security = request.app.state.admin_security
+    access = await _admin_account_reset_access(request, account_id, db)
+    if isinstance(access, Response):
+        return access
+    session, account = access
+    outcome = await asyncio.to_thread(
+        password_reset_service.owner_issue_reset_link,
+        db,
+        account_id,
+        _owner_actor(security),
+        _source_ip(request),
+    )
+    if outcome["outcome"] == "not_found":
+        return not_found_response()
+    metadata = await asyncio.to_thread(admin_accounts_service.account_metadata, db, account)
+    body = _admin_nav(session.csrf_token, security.login_alert_failed, "accounts")
+    body += _account_detail_page(account, metadata, session.csrf_token, outcome)
+    response = _document(f"Account · {account['username']}", body)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+async def _admin_account_reset_access(
+    request: Request,
+    account_id: str,
+    db: Any,
+) -> tuple[admin_auth.AdminSession, dict[str, Any]] | Response:
+    security = request.app.state.admin_security
+    session_token = request.cookies.get(SESSION_COOKIE)
+    session = security.get_session(session_token)
+    if session is None:
+        return not_found_response()
+    form = await request.form()
+    if not security.validate_session_csrf(session_token, _form_text(form, "csrf_token")):
+        return HTMLResponse("Forbidden", status_code=403)
+    account = await asyncio.to_thread(_load_admin_account, db, account_id)
+    if account is None or account["deleted_at"] is not None:
+        return not_found_response()
+    return session, account
 
 
 async def _email_lookup_response(
@@ -877,7 +942,12 @@ def _deleted_account_page(account: dict[str, Any]) -> str:
     )
 
 
-def _account_detail_page(account: dict[str, Any], metadata: dict[str, Any]) -> str:
+def _account_detail_page(
+    account: dict[str, Any],
+    metadata: dict[str, Any],
+    csrf_token: str,
+    reset_result: dict[str, str],
+) -> str:
     return (
         "<main><h1>Account</h1><dl>"
         + _account_metadata_fields(account, metadata)
@@ -886,7 +956,67 @@ def _account_detail_page(account: dict[str, Any], metadata: dict[str, Any]) -> s
         + _usage_summary("All time", metadata["usage_all_time"])
         + "<h2>Limit hits this UTC month</h2><ul>"
         + _limit_hit_summary(metadata["limit_hits_month"])
-        + "</ul></main>"
+        + "</ul>"
+        + _password_card(account, metadata, csrf_token, reset_result)
+        + "</main>"
+    )
+
+
+def _password_card(
+    account: dict[str, Any],
+    metadata: dict[str, Any],
+    csrf_token: str,
+    reset_result: dict[str, str],
+) -> str:
+    account_id = html.escape(account["account_id"], quote=True)
+    masked_email = metadata["recovery_email"]
+    if not account["is_player"]:
+        return '<section class="health-panel"><h2>Password</h2><p>Password reset is unavailable.</p></section>'
+    action, label = ("reset-link", "Create reset link") if masked_email == "Not set" else ("reset-email", "Send reset email")
+    outcome = reset_result.get("outcome", "")
+    return (
+        '<section class="health-panel" aria-labelledby="password-title">'
+        '<h2 id="password-title">Password</h2>'
+        + _password_reset_notice(outcome, masked_email)
+        + (_issued_reset_link(reset_result) if outcome == "issued" else "")
+        + _password_form(account_id, action, label, csrf_token)
+        + "</section>"
+    )
+
+
+def _password_form(account_id: str, action: str, label: str, csrf_token: str) -> str:
+    return (
+        f'<form method="post" action="/admin/accounts/{account_id}/{action}">'
+        f'<input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}">'
+        f'<button type="submit">{label}</button></form>'
+    )
+
+
+def _password_reset_notice(outcome: str, masked_email: str) -> str:
+    messages = {
+        "sent": f"Reset email sent to {masked_email}",
+        "send_failed": "Couldn't send the email; try again or create a link",
+        "no_recovery_email": "No recovery email is linked; create a reset link instead.",
+    }
+    message = messages.get(outcome)
+    if message is None:
+        return ""
+    return f'<p class="note" role="status">{html.escape(message, quote=False)}</p>'
+
+
+def _issued_reset_link(reset_result: dict[str, str]) -> str:
+    link = reset_result["link"]
+    expires_at = datetime.fromisoformat(reset_result["expires_at"]).astimezone(UTC)
+    expires_display = expires_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+    message = f"Your MAYOS password reset link: {link} It works once and expires {expires_display}."
+    share_url = f"https://wa.me/?{urlencode({'text': message})}"
+    return (
+        '<label for="issued_reset_link">Reset link</label>'
+        f'<input id="issued_reset_link" type="text" readonly value="{html.escape(link, quote=True)}">'
+        '<label for="reset_message">Ready-to-send message</label>'
+        f'<textarea id="reset_message" rows="4" readonly>{html.escape(message)}</textarea>'
+        f'<p><a href="{html.escape(share_url, quote=True)}" target="_blank" rel="noopener noreferrer">'
+        "Share on WhatsApp</a></p>"
     )
 
 

@@ -16,7 +16,6 @@ import argparse
 import getpass
 import os
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -28,7 +27,7 @@ from database.database_manager import (  # noqa: E402
     DEFAULT_LEDGERS_DIR,
     DatabaseManager,
 )
-from service import auth as auth_service  # noqa: E402
+from service import password_reset as password_reset_service  # noqa: E402
 from utils.logger import MyosLogger  # noqa: E402
 
 logger = MyosLogger().get_logger(__name__)
@@ -43,33 +42,7 @@ def reset_password(db: DatabaseManager, ledger_id: str, new_password: str) -> tu
     ledger with no registry account, ``epoch`` is the ledger ``token_version``
     and ``enrolled`` is ``False`` (legacy behavior preserved).
     """
-    clean_id = db._sanitize_username(ledger_id)
-    if not clean_id:
-        raise SystemExit(f"error: unknown trainee ledger '{ledger_id}'.")
-    account = db.get_active_account_by_username(clean_id)
-    # An enrolled account may have a ledger id distinct from its (reused)
-    # username; resolve the path through the account, never the username
-    # (ADR 015/039). A bare local ledger has no account and uses its username.
-    ledger_id = account["ledger_id"] if account is not None else clean_id
-    if not db.ledger_exists(ledger_id):
-        raise SystemExit(f"error: unknown trainee ledger '{ledger_id}'.")
-    try:
-        auth_service.validate_password(new_password)
-    except ValueError as exc:
-        raise SystemExit(f"error: {exc}")
-    with db.open_ledger(ledger_id) as ledger:
-        ledger.set_password_hash(auth_service.hash_password(new_password))
-        ledger_epoch = ledger.bump_token_version()
-        if account is not None:
-            epoch = db.bump_account_session_epoch(account["account_id"])
-            if epoch is None:
-                raise SystemExit(
-                    "error: could not advance the account registry epoch; sessions were NOT revoked."
-                )
-        else:
-            epoch = ledger_epoch
-        ledger.prune_revoked_tokens(datetime.now(UTC).isoformat())
-    return ledger_id, epoch, account is not None
+    return password_reset_service.owner_set_password(db, ledger_id, new_password, actor="cli")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -91,7 +64,11 @@ def main(argv: list[str] | None = None) -> int:
     # A fresh store is built per run, so custom dirs apply even in long-lived shells.
     db = DatabaseManager(catalog_path=args.catalog, ledgers_dir=args.ledgers_dir, backups_dir=args.backups_dir)
     try:
-        clean_id, epoch, enrolled = reset_password(db, args.ledger_id, new_password)
+        try:
+            clean_id, epoch, enrolled = reset_password(db, args.ledger_id, new_password)
+        except password_reset_service.OwnerPasswordError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
     finally:
         db.catalog_conn.close()
     if enrolled:
