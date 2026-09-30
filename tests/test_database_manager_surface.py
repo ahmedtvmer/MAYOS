@@ -8,17 +8,34 @@ scripts, agent graphs) stay protected.
 import importlib
 import inspect
 import json
+import os
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from database.database_manager import DatabaseManager
 
-SNAPSHOT = "tests/data/database_manager_public_surface.json"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SNAPSHOT = REPO_ROOT / "tests" / "data" / "database_manager_public_surface.json"
 
 
 def _load_snapshot():
-    with open(SNAPSHOT) as f:
+    with SNAPSHOT.open() as f:
         return json.load(f)
+
+
+def _normalize_path_default(value):
+    if isinstance(value, (str, Path)):
+        path = Path(value)
+        if path.is_absolute():
+            try:
+                relative = Path(os.path.abspath(path)).relative_to(REPO_ROOT)
+            except ValueError:
+                pass
+            else:
+                return f"<repo>/{relative.as_posix()}"
+    return value
 
 
 def _current_surface(cls):
@@ -38,7 +55,12 @@ def _current_surface(cls):
             else:
                 kind = "method"
             try:
-                signature = str(inspect.signature(getattr(cls, name)))
+                signature = inspect.signature(getattr(cls, name))
+                parameters = [
+                    parameter.replace(default=_normalize_path_default(parameter.default))
+                    for parameter in signature.parameters.values()
+                ]
+                signature = str(signature.replace(parameters=parameters))
             except (TypeError, ValueError):
                 signature = ""
             methods[name] = {"kind": kind, "signature": signature}
@@ -47,12 +69,7 @@ def _current_surface(cls):
     return methods, attributes
 
 
-def test_public_methods_unchanged_since_snapshot():
-    snapshot = _load_snapshot()
-    mod = importlib.import_module("database.database_manager")
-    methods, _ = _current_surface(mod.DatabaseManager)
-
-    expected = snapshot["methods"]
+def _assert_methods_match_snapshot(expected, methods):
     missing = sorted(set(expected) - set(methods))
     extra = sorted(set(methods) - set(expected))
     changed = sorted(k for k in expected if k in methods and methods[k] != expected[k])
@@ -60,6 +77,42 @@ def test_public_methods_unchanged_since_snapshot():
     assert not missing, f"public methods disappeared: {missing}"
     assert not extra, f"new public methods appeared: {extra}"
     assert not changed, f"public method signatures changed: {changed}"
+
+
+def test_public_methods_unchanged_since_snapshot():
+    snapshot = _load_snapshot()
+    mod = importlib.import_module("database.database_manager")
+    methods, _ = _current_surface(mod.DatabaseManager)
+
+    _assert_methods_match_snapshot(snapshot["methods"], methods)
+
+
+def _with_added_method(methods):
+    return {**methods, "new_public_method": {"kind": "method", "signature": "(self) -> None"}}
+
+
+def _without_seed_method(methods):
+    return {name: entry for name, entry in methods.items() if name != "initialize_and_seed"}
+
+
+def _with_changed_seed_signature(methods):
+    changed = {**methods["initialize_and_seed"], "signature": "(self, csv_path=None) -> None"}
+    return {**methods, "initialize_and_seed": changed}
+
+
+@pytest.mark.parametrize(
+    ("alter", "message"),
+    [
+        (_with_added_method, "new public methods appeared"),
+        (_without_seed_method, "public methods disappeared"),
+        (_with_changed_seed_signature, "public method signatures changed"),
+    ],
+)
+def test_public_surface_comparison_detects_method_changes(alter, message):
+    expected = _load_snapshot()["methods"]
+
+    with pytest.raises(AssertionError, match=message):
+        _assert_methods_match_snapshot(expected, alter(expected))
 
 
 def test_public_attributes_unchanged_since_snapshot():

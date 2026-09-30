@@ -175,7 +175,7 @@
     },
     "initialize_and_seed": {
       "kind": "method",
-      "signature": "(self, csv_path=PosixPath('/mnt/work/MAYOS/data/processed_exercises.csv')) -> None"
+      "signature": "(self, csv_path='<repo>/data/processed_exercises.csv') -> None"
     },
     "insert_coach_alert": {
       "kind": "method",
