@@ -1,5 +1,6 @@
 import random
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from dotenv import load_dotenv
@@ -7,18 +8,24 @@ from dotenv import load_dotenv
 from core.effort import min_rir_from_rpe
 from agent.program_blueprints import (
     FAT_LOSS_CARDIO_NOTE,
+    ExperienceLevel,
     MAX_RECOVERY_CUTS_PER_DAY,
     SLOT_FALLBACKS,
     SLOT_SPECS,
+    SlotSpec,
     WARMUP_FAMILIES,
     WARMUP_REPS,
     WARMUP_REST_SECONDS,
     WARMUP_SETS,
+    experience_level_for_training_age,
     is_escalated_isolation,
     is_fat_loss_goal,
     is_poor_recovery,
+    rest_seconds_for_exercise_class,
     resolve_sets_family,
     slot_working_sets,
+    target_rpe_for_experience,
+    warmup_sets_for_load_class,
 )
 from agent.program_rules import (
     apply_rep_preference,
@@ -43,20 +50,33 @@ MECHANIC_CUES = {
     "compound_press": "Control the 2-3s eccentric, pause briefly at full stretch, drive without locking out aggressively.",
     "compound_pull": "Initiate with scapular depression, pull elbows toward hips, pause 1s at peak contraction.",
     "compound_lower": "Brace core into belt/pad, control descent into active depth, drive through mid-foot.",
-    "isolation": "Eliminate momentum, control the eccentric portion, push to genuine concentric failure (0-1 RIR).",
-}
-
-RPE_BY_ARCHETYPE = {
-    "heavy_compound": 8.5,
-    "medium_compound": 9.0,
-    "isolation": 9.5,
+    "isolation_beginner": "Eliminate momentum, control the eccentric, and stop 0–1 reps short of failure.",
+    "isolation_technical_failure": "Eliminate momentum, control the eccentric, and continue to technical failure: the last full-range rep that looks like the first.",
 }
 
 MIN_EXERCISES_PER_DAY = 3
 POOL_WEIGHTS = (4, 2, 1)
 
 
-def get_biomechanical_cue(name: str, mechanic: str) -> str:
+@dataclass(frozen=True)
+class DayGenerationContext:
+    equipment_access: str
+    limitations: str
+    rep_preference: str
+    recovery_cut: bool
+    experience_level: ExperienceLevel
+
+
+@dataclass(frozen=True)
+class ExercisePrescription:
+    movement_slot: str
+    spec: SlotSpec
+    working_sets: int
+    rep_preference: str
+    experience_level: ExperienceLevel
+
+
+def get_biomechanical_cue(name: str, mechanic: str, experience_level: ExperienceLevel) -> str:
     name_lower = name.lower()
     if mechanic == "compound":
         if any(w in name_lower for w in ["press", "push", "dip"]):
@@ -64,7 +84,29 @@ def get_biomechanical_cue(name: str, mechanic: str) -> str:
         if any(w in name_lower for w in ["row", "pull", "chin"]):
             return MECHANIC_CUES["compound_pull"]
         return MECHANIC_CUES["compound_lower"]
-    return MECHANIC_CUES["isolation"]
+    cue_key = "isolation_beginner" if experience_level == "beginner" else "isolation_technical_failure"
+    return MECHANIC_CUES[cue_key]
+
+
+def _build_program_exercise(
+    candidate: dict[str, Any], prescription: ExercisePrescription
+) -> ProgramExerciseSchema:
+    spec = prescription.spec
+    rep_min, rep_max = apply_rep_preference(spec.reps, prescription.rep_preference)
+    return ProgramExerciseSchema(
+        exercise_id=str(candidate["id"]),
+        exercise_name=candidate["name"],
+        slot_key=prescription.movement_slot,
+        warmup_sets=warmup_sets_for_load_class(spec),
+        target_sets=prescription.working_sets,
+        target_reps_min=rep_min,
+        target_reps_max=rep_max,
+        target_rpe=target_rpe_for_experience(spec, prescription.experience_level),
+        rest_seconds=rest_seconds_for_exercise_class(spec),
+        notes=candidate.get("instructions") or None,
+        image_path=candidate.get("image_path"),
+        gif_path=candidate.get("gif_path"),
+    )
 
 
 def format_rest(seconds: int) -> str:
@@ -116,11 +158,8 @@ def _pick_candidate(candidates: list[dict], excluded_ids: set[str]) -> dict | No
 
 def assemble_deterministic_day(
     day: CustomDayPlan,
-    equipment_access: str,
-    limitations: str,
-    rep_preference: str,
+    context: DayGenerationContext,
     excluded_ids: set[str],
-    recovery_cut: bool = False,
     *,
     ledger: Any,
 ) -> ProgramDaySchema:
@@ -135,7 +174,7 @@ def assemble_deterministic_day(
         if spec is None:
             logger.warning(f"Unknown slot '{slot_key}' in day '{day.day_name}' was skipped.")
             continue
-        candidates = fetch_slot_candidates(slot_key, equipment_access, limitations, limit=8, ledger=ledger)
+        candidates = fetch_slot_candidates(slot_key, context.equipment_access, context.limitations, limit=8, ledger=ledger)
         chosen = _pick_candidate(candidates, excluded_ids)
         if chosen is None:
             # A limitation filter can empty the whole pool (back rule vs hinges):
@@ -144,7 +183,7 @@ def assemble_deterministic_day(
                 fallback_spec = SLOT_SPECS.get(fallback_key)
                 if fallback_spec is None:
                     continue
-                fallback_candidates = fetch_slot_candidates(fallback_key, equipment_access, limitations, limit=8, ledger=ledger)
+                fallback_candidates = fetch_slot_candidates(fallback_key, context.equipment_access, context.limitations, limit=8, ledger=ledger)
                 fallback_chosen = _pick_candidate(fallback_candidates, excluded_ids)
                 if fallback_chosen is not None:
                     logger.info(f"Substituted '{fallback_key}' for limited slot '{slot_key}' (day '{day.day_name}').")
@@ -156,27 +195,26 @@ def assemble_deterministic_day(
 
         candidate_id = str(chosen["id"])
         excluded_ids.add(candidate_id)
-        rep_min, rep_max = apply_rep_preference(spec.reps, rep_preference)
         apply_cut = (
-            recovery_cut and cuts_used < MAX_RECOVERY_CUTS_PER_DAY and is_escalated_isolation(slot_key, sets_family)
+            context.recovery_cut
+            and cuts_used < MAX_RECOVERY_CUTS_PER_DAY
+            and is_escalated_isolation(slot_key, sets_family)
         )
         if apply_cut:
             cuts_used += 1
 
         selected_exercises.append(
-            ProgramExerciseSchema(
-                exercise_id=candidate_id,
-                exercise_name=chosen["name"],
-                slot_key=slot_key,
-                warmup_sets=spec.warmup_sets,
-                target_sets=slot_working_sets(slot_key, spec.archetype, sets_family, double_slots, recovery_cut=apply_cut),
-                target_reps_min=rep_min,
-                target_reps_max=rep_max,
-                target_rpe=RPE_BY_ARCHETYPE.get(spec.archetype, 9.0),
-                rest_seconds=spec.rest_seconds,
-                notes=chosen.get("instructions") or None,
-                image_path=chosen.get("image_path"),
-                gif_path=chosen.get("gif_path"),
+            _build_program_exercise(
+                chosen,
+                ExercisePrescription(
+                    movement_slot=slot_key,
+                    spec=spec,
+                    working_sets=slot_working_sets(
+                        slot_key, spec.archetype, sets_family, double_slots, recovery_cut=apply_cut
+                    ),
+                    rep_preference=context.rep_preference,
+                    experience_level=context.experience_level,
+                ),
             )
         )
 
@@ -187,25 +225,20 @@ def assemble_deterministic_day(
             spec = SLOT_SPECS.get(slot_key)
             if spec is None:
                 continue
-            for candidate in fetch_slot_candidates(slot_key, equipment_access, limitations, limit=6, ledger=ledger):
+            for candidate in fetch_slot_candidates(slot_key, context.equipment_access, context.limitations, limit=6, ledger=ledger):
                 candidate_id = str(candidate["id"])
                 if any(ex.exercise_id == candidate_id for ex in selected_exercises):
                     continue
-                rep_min, rep_max = apply_rep_preference(spec.reps, rep_preference)
                 selected_exercises.append(
-                    ProgramExerciseSchema(
-                        exercise_id=candidate_id,
-                        exercise_name=candidate["name"],
-                        slot_key=slot_key,
-                        warmup_sets=spec.warmup_sets,
-                        target_sets=slot_working_sets(slot_key, spec.archetype, sets_family, double_slots),
-                        target_reps_min=rep_min,
-                        target_reps_max=rep_max,
-                        target_rpe=RPE_BY_ARCHETYPE.get(spec.archetype, 9.0),
-                        rest_seconds=spec.rest_seconds,
-                        notes=candidate.get("instructions") or None,
-                        image_path=candidate.get("image_path"),
-                        gif_path=candidate.get("gif_path"),
+                    _build_program_exercise(
+                        candidate,
+                        ExercisePrescription(
+                            movement_slot=slot_key,
+                            spec=spec,
+                            working_sets=slot_working_sets(slot_key, spec.archetype, sets_family, double_slots),
+                            rep_preference=context.rep_preference,
+                            experience_level=context.experience_level,
+                        ),
                     )
                 )
                 break
@@ -213,7 +246,7 @@ def assemble_deterministic_day(
     return ProgramDaySchema(
         day_order=day.day_order,
         day_name=day.day_name,
-        warmup_exercises=build_warmup_block(day.warmup_family, equipment_access, limitations, ledger=ledger),
+        warmup_exercises=build_warmup_block(day.warmup_family, context.equipment_access, context.limitations, ledger=ledger),
         exercises=selected_exercises,
         cardio=day.cardio,
     )
@@ -346,15 +379,19 @@ def generate_program_pipeline(
 
     generated_days: list[ProgramDaySchema] = []
     recovery_cut = is_poor_recovery(profile.get("stress_and_sleep"))
+    context = DayGenerationContext(
+        equipment_access=profile.get("equipment_access", "commercial gym"),
+        limitations=profile.get("injuries_or_limitations", "None"),
+        rep_preference=rep_pref,
+        recovery_cut=recovery_cut,
+        experience_level=experience_level_for_training_age(profile.get("training_age_years", 0.0)),
+    )
 
     for day in split_plan.days:
         day_plan = assemble_deterministic_day(
             day=day,
-            equipment_access=profile.get("equipment_access", "commercial gym"),
-            limitations=profile.get("injuries_or_limitations", "None"),
-            rep_preference=rep_pref,
+            context=context,
             excluded_ids=set(),
-            recovery_cut=recovery_cut,
             ledger=ledger,
         )
         generated_days.append(day_plan)

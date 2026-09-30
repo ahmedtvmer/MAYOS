@@ -21,6 +21,60 @@ from dataclasses import dataclass
 from typing import Literal
 
 Archetype = Literal["heavy_compound", "medium_compound", "isolation"]
+ExperienceLevel = Literal["beginner", "intermediate", "advanced"]
+PrescriptionClass = Literal["calf_abs", "isolation", "medium_compound", "heavy_compound"]
+
+BEGINNER_MAX_TRAINING_AGE_YEARS = 2.0
+INTERMEDIATE_MAX_TRAINING_AGE_YEARS = 5.0
+CALF_ABS_SLOT_KEYS = frozenset({"calf", "abs"})
+CALF_WORKING_SET_COUNT = 2
+
+COMPOUND_REST_SECONDS_RANGE = (180, 240)
+ISOLATION_REST_SECONDS_RANGE = (120, 180)
+CALF_ABS_REST_SECONDS_RANGE = (90, 120)
+LIGHT_WARMUP_SET_RANGE = (0, 0)
+MEDIUM_WARMUP_SET_RANGE = (1, 2)
+HEAVY_WARMUP_SET_RANGE = (2, 4)
+
+BEGINNER_HEAVY_COMPOUND_RIR = 1.5
+BEGINNER_MEDIUM_COMPOUND_RIR = 1.5
+BEGINNER_ISOLATION_RIR = 0.5
+BEGINNER_CALF_ABS_RIR = 0.5
+INTERMEDIATE_HEAVY_COMPOUND_RIR = 0.5
+INTERMEDIATE_MEDIUM_COMPOUND_RIR = 0.5
+INTERMEDIATE_ISOLATION_RIR = 0.0
+INTERMEDIATE_CALF_ABS_RIR = 0.0
+ADVANCED_HEAVY_COMPOUND_RIR = 0.5
+ADVANCED_MEDIUM_COMPOUND_RIR = 0.5
+ADVANCED_ISOLATION_RIR = 0.0
+ADVANCED_CALF_ABS_RIR = 0.0
+
+REST_SECONDS_RANGES_BY_CLASS = {
+    "calf_abs": CALF_ABS_REST_SECONDS_RANGE,
+    "isolation": ISOLATION_REST_SECONDS_RANGE,
+    "medium_compound": COMPOUND_REST_SECONDS_RANGE,
+    "heavy_compound": COMPOUND_REST_SECONDS_RANGE,
+}
+WARMUP_SET_RANGES_BY_CLASS = {
+    "calf_abs": LIGHT_WARMUP_SET_RANGE,
+    "isolation": LIGHT_WARMUP_SET_RANGE,
+    "medium_compound": MEDIUM_WARMUP_SET_RANGE,
+    "heavy_compound": HEAVY_WARMUP_SET_RANGE,
+}
+TARGET_RIR_BY_EXPERIENCE_AND_CLASS = {
+    ("beginner", "heavy_compound"): BEGINNER_HEAVY_COMPOUND_RIR,
+    ("beginner", "medium_compound"): BEGINNER_MEDIUM_COMPOUND_RIR,
+    ("beginner", "isolation"): BEGINNER_ISOLATION_RIR,
+    ("beginner", "calf_abs"): BEGINNER_CALF_ABS_RIR,
+    ("intermediate", "heavy_compound"): INTERMEDIATE_HEAVY_COMPOUND_RIR,
+    ("intermediate", "medium_compound"): INTERMEDIATE_MEDIUM_COMPOUND_RIR,
+    ("intermediate", "isolation"): INTERMEDIATE_ISOLATION_RIR,
+    ("intermediate", "calf_abs"): INTERMEDIATE_CALF_ABS_RIR,
+    ("advanced", "heavy_compound"): ADVANCED_HEAVY_COMPOUND_RIR,
+    ("advanced", "medium_compound"): ADVANCED_MEDIUM_COMPOUND_RIR,
+    ("advanced", "isolation"): ADVANCED_ISOLATION_RIR,
+    ("advanced", "calf_abs"): ADVANCED_CALF_ABS_RIR,
+}
 
 
 @dataclass(frozen=True)
@@ -60,6 +114,39 @@ def _slot(
         exclude_sql=exclude_sql,
         name_rank=name_rank,
     )
+
+
+def experience_level_for_training_age(training_age_years: float) -> ExperienceLevel:
+    if training_age_years < BEGINNER_MAX_TRAINING_AGE_YEARS:
+        return "beginner"
+    if training_age_years < INTERMEDIATE_MAX_TRAINING_AGE_YEARS:
+        return "intermediate"
+    return "advanced"
+
+
+def prescription_class(spec: SlotSpec) -> PrescriptionClass:
+    if spec.key in CALF_ABS_SLOT_KEYS:
+        return "calf_abs"
+    return spec.archetype
+
+
+def target_rpe_for_experience(spec: SlotSpec, experience_level: ExperienceLevel) -> float:
+    target_rir = TARGET_RIR_BY_EXPERIENCE_AND_CLASS[(experience_level, prescription_class(spec))]
+    return 10.0 - target_rir
+
+
+def warmup_sets_for_load_class(spec: SlotSpec) -> int:
+    minimum, maximum = WARMUP_SET_RANGES_BY_CLASS[prescription_class(spec)]
+    if not minimum <= spec.warmup_sets <= maximum:
+        raise ValueError(f"Invalid warm-up set count for {spec.key}: {spec.warmup_sets}")
+    return spec.warmup_sets
+
+
+def rest_seconds_for_exercise_class(spec: SlotSpec) -> int:
+    minimum, maximum = REST_SECONDS_RANGES_BY_CLASS[prescription_class(spec)]
+    if not minimum <= spec.rest_seconds <= maximum:
+        raise ValueError(f"Invalid rest time for {spec.key}: {spec.rest_seconds}")
+    return spec.rest_seconds
 
 
 SLOT_SPECS: dict[str, SlotSpec] = {
@@ -164,7 +251,7 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         ("smith machine", "leverage machine", "dumbbell", "barbell", "cable", "kettlebell"),
         reps=(5, 8),
         rest_seconds=240,
-        warmup_sets=1,
+        warmup_sets=2,
     ),
     "side_delts": _slot(
         "side_delts",
@@ -285,8 +372,7 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         "isolation",
         ("leverage machine", "cable", "dumbbell", "body weight"),
         reps=(6, 10),
-        rest_seconds=240,
-        warmup_sets=1,
+        rest_seconds=180,
         name_rank=("seated", "lying", "leaning"),
     ),
     "ham_hinge": _slot(
@@ -339,8 +425,7 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         "isolation",
         ("smith machine", "sled machine", "leverage machine", "barbell", "dumbbell", "body weight", "band"),
         reps=(5, 9),
-        rest_seconds=240,
-        warmup_sets=1,
+        rest_seconds=120,
         exclude_sql="LOWER(name) NOT LIKE '%stretch%' AND LOWER(name) NOT LIKE '%tibialis%'",
         name_rank=("calf raise", "calf press", "seated calf", "standing calf"),
     ),
@@ -352,7 +437,7 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         "isolation",
         ("cable", "leverage machine", "body weight", "dumbbell", "stability ball"),
         reps=(8, 12),
-        rest_seconds=150,
+        rest_seconds=120,
         exclude_sql="LOWER(name) NOT LIKE '%stretch%' AND LOWER(name) NOT LIKE '%twist%'",
         name_rank=("cable", "kneeling", "seated", "machine"),
     ),
@@ -476,7 +561,7 @@ def slot_working_sets(
     theirs — exercise selection, order and frequency never change.
     """
     if slot_key == "calf":
-        return 2
+        return CALF_WORKING_SET_COUNT
     if sets_family == "full" and double_slots:
         return 2 if slot_key in double_slots else 1
     if archetype in COMPOUND_ARCHETYPES:

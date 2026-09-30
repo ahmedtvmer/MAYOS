@@ -36,6 +36,7 @@ from agent.program_generator import (
     generate_program_pipeline,
     get_biomechanical_cue,
 )
+from agent.program_blueprints import experience_level_for_training_age
 from agent.program_rules import COMPOUND_KEYWORDS
 from agent.prompts import (
     ARABIC_CLINICAL_SAFEGUARD_RESPONSE,
@@ -1072,6 +1073,8 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     if not active_program:
         msg = "No active routine found in your ledger. Generate a baseline routine first."
         return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
+    player_profile = ledger.get_player_profile() or {}
+    experience_level = experience_level_for_training_age(player_profile.get("training_age_years", 0.0))
 
     requested_day_name = _requested_substitution_day(active_program, query)
 
@@ -1160,7 +1163,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         lines = [f"**Biomechanical Alternatives for {matched_ex.exercise_name.title()}** (`{target_muscle.title()}` | `{target_day.day_name}`):"]
         for i, c in enumerate(valid_candidates, start=1):
             is_comp = any(kw in c["name"].lower() for kw in COMPOUND_KEYWORDS) and "calf" not in c["name"].lower()
-            cue = get_biomechanical_cue(c["name"], "compound" if is_comp else "isolation")
+            cue = get_biomechanical_cue(c["name"], "compound" if is_comp else "isolation", experience_level)
             lines.append(f"{i}. **{c['name'].title()}** (`{c['equipment']}`)\n   *Cue:* {cue}")
         lines.append(f"\n*To commit a swap, reply:* `swap {matched_ex.exercise_name} for [Choice]`")
         return {"program_updated": False, "response_content": "\n".join(lines), "messages": [AIMessage(content="\n".join(lines))]}
@@ -1293,7 +1296,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         replacement = substitution["replacement"]
         is_compound = any(kw in replacement["name"].lower() for kw in COMPOUND_KEYWORDS) and "calf" not in replacement["name"].lower()
         new_notes = replacement.get("instructions") or get_biomechanical_cue(
-            replacement["name"], "compound" if is_compound else "isolation"
+            replacement["name"], "compound" if is_compound else "isolation", experience_level
         )
         note_suffix = ""
         alt_variant = next(

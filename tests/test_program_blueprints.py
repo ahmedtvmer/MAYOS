@@ -9,6 +9,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 from agent import program_generator
+from core.effort import rir_from_rpe
 from agent.program_blueprints import (
     ANTERIOR_POSTERIOR_DAYS,
     ARNOLD_DAYS,
@@ -23,9 +24,11 @@ from agent.program_blueprints import (
     UL_DAYS,
     WARMUP_FAMILIES,
     WARMUP_SPECS,
+    experience_level_for_training_age,
     is_fat_loss_goal,
     is_poor_recovery,
     match_split_keyword,
+    prescription_class,
 )
 from agent.program_rules import fetch_slot_candidates, fetch_warmup_candidates, get_split_plan, resolve_split
 from utils.exporter import export_program_to_excel
@@ -42,6 +45,28 @@ def _bind_store(fresh_store):
 
 
 ALL_BLUEPRINTS = FB_DAYS + FEMALE_FB_DAYS + UL_DAYS + ARNOLD_DAYS + ARNOLD_X_UL_DAYS + ANTERIOR_POSTERIOR_DAYS + PPL_DAYS
+
+EXPECTED_PRESCRIPTION_RANGES = {
+    "calf_abs": {"rest_seconds": (90, 120), "warmup_sets": (0, 0)},
+    "isolation": {"rest_seconds": (120, 180), "warmup_sets": (0, 0)},
+    "medium_compound": {"rest_seconds": (180, 240), "warmup_sets": (1, 2)},
+    "heavy_compound": {"rest_seconds": (180, 240), "warmup_sets": (2, 4)},
+}
+
+EXPECTED_RIR_RANGES = {
+    ("beginner", "calf_abs"): (0, 1),
+    ("beginner", "isolation"): (0, 1),
+    ("beginner", "medium_compound"): (1, 2),
+    ("beginner", "heavy_compound"): (1, 2),
+    ("intermediate", "calf_abs"): (0, 0),
+    ("intermediate", "isolation"): (0, 0),
+    ("intermediate", "medium_compound"): (0, 1),
+    ("intermediate", "heavy_compound"): (0, 1),
+    ("advanced", "calf_abs"): (0, 0),
+    ("advanced", "isolation"): (0, 0),
+    ("advanced", "medium_compound"): (0, 1),
+    ("advanced", "heavy_compound"): (0, 1),
+}
 
 
 @pytest.mark.parametrize("blueprint", ALL_BLUEPRINTS, ids=lambda b: b.name)
@@ -78,6 +103,7 @@ def _generate(
     long_term_goal="progressive overload",
     recovery="normal",
     limitations="None",
+    training_age_years=3.0,
 ):
     suffix = (preference or "default").replace(" ", "_").replace("/", "_")
     tags = "".join(
@@ -98,7 +124,7 @@ def _generate(
             "current_goal": goal,
             "long_term_goal": long_term_goal,
             "weekly_frequency": frequency,
-            "training_age_years": 3.0,
+            "training_age_years": training_age_years,
             "equipment_access": "commercial gym",
             "injuries_or_limitations": limitations,
             "stress_and_sleep": recovery,
@@ -161,14 +187,53 @@ def test_prescriptions_follow_reference_scheme():
     for day in program.days:
         for exercise in day.exercises:
             assert 0 <= exercise.warmup_sets <= 4
-            assert 1 <= exercise.target_sets <= 4
+            assert 1 <= exercise.target_sets <= 2
             assert exercise.target_reps_min >= 4
             assert exercise.target_reps_max <= 30
-            assert exercise.rest_seconds >= 120
-            if exercise.slot_key in {"quad_compound", "ham_hinge", "horizontal_row"}:
-                assert exercise.rest_seconds >= 240, "Heavy compounds need 4+ minute rests"
-            if exercise.slot_key in {"quad_compound", "ham_hinge", "horizontal_row", "incline_press", "flat_press"}:
-                assert exercise.warmup_sets >= 1, "Heavy compounds need a ramp-up set"
+            spec = SLOT_SPECS[exercise.slot_key]
+            assert exercise.rest_seconds == spec.rest_seconds
+            assert exercise.warmup_sets == spec.warmup_sets
+
+
+def test_every_slot_spec_matches_its_class_prescription_ranges():
+    assert {prescription_class(SLOT_SPECS[key]) for key in ("calf", "abs")} == {"calf_abs"}
+    for spec in SLOT_SPECS.values():
+        ranges = EXPECTED_PRESCRIPTION_RANGES[prescription_class(spec)]
+        rest_min, rest_max = ranges["rest_seconds"]
+        warmup_min, warmup_max = ranges["warmup_sets"]
+        assert rest_min <= spec.rest_seconds <= rest_max, spec.key
+        assert warmup_min <= spec.warmup_sets <= warmup_max, spec.key
+
+
+@pytest.mark.parametrize(
+    "training_age_years,expected_experience",
+    [(0.5, "beginner"), (2.0, "intermediate"), (5.0, "advanced")],
+    ids=["beginner", "intermediate", "advanced"],
+)
+def test_generation_prescribes_effort_by_experience(training_age_years, expected_experience):
+    assert experience_level_for_training_age(training_age_years) == expected_experience
+    program = _generate("male", 4, training_age_years=training_age_years)
+    for day in program.days:
+        for exercise in day.exercises:
+            exercise_class = prescription_class(SLOT_SPECS[exercise.slot_key])
+            minimum_rir, maximum_rir = EXPECTED_RIR_RANGES[(expected_experience, exercise_class)]
+            actual_rir = rir_from_rpe(exercise.target_rpe)
+            assert minimum_rir <= actual_rir <= maximum_rir, (day.day_name, exercise.slot_key)
+
+
+@pytest.mark.parametrize(
+    "training_age_years,expected_phrase",
+    [
+        (0.5, "stop 0–1 reps short of failure"),
+        (2.0, "technical failure: the last full-range rep that looks like the first"),
+        (5.0, "technical failure: the last full-range rep that looks like the first"),
+    ],
+    ids=["beginner", "intermediate", "advanced"],
+)
+def test_isolation_cue_matches_player_experience(training_age_years, expected_phrase):
+    experience = experience_level_for_training_age(training_age_years)
+    cue = program_generator.get_biomechanical_cue("lateral raise", "isolation", experience)
+    assert expected_phrase in cue
 
 
 def test_day_working_set_totals_match_reference_profiles():

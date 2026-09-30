@@ -91,6 +91,10 @@ An exercise that elite coaches repeatedly choose for a movement, such as the Wid
 Where a player trains, as one of Commercial gym, Home gym, or Bodyweight only. A Commercial gym player is never prescribed or suggested band or bodyweight working sets, though they may still choose one themselves.
 _Avoid_: Gym type, location
 
+**Experience level**:
+How long a player has trained, as one of beginner (under 2 training years), intermediate (2 to under 5) or advanced (5 or more), derived from their training years. It sets working-set effort in reps in reserve and, later, Volume review ceilings.
+_Avoid_: Training level, skill level
+
 **Training ledger**:
 An account's private record of its own training: program, workouts, schedule, onboarding answers, and assistant chat. It is separate from the shared coaching data (accounts, assignments, alerts, check-ins), and a coach reaches it only through an active assignment.
 _Avoid_: User database, user DB
