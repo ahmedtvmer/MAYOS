@@ -11,7 +11,6 @@ import '../../../core/active_program.dart';
 import '../../../core/api_client.dart';
 import '../../../core/baselines.dart';
 import '../../../core/client_session_id.dart';
-import '../../../core/connectivity.dart';
 import '../../../core/device_timezone.dart';
 import '../../../core/models.dart';
 import '../../../core/performed_date_window.dart';
@@ -29,9 +28,10 @@ import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import '../exercise_picker_dialog.dart';
-import '../assignment/program_request_dialog.dart';
 import 'active_workout_controller.dart';
 import 'draft_sync_service.dart';
+import 'logger_program_substitution.dart';
+import 'logger_replace_confirmation.dart';
 import 'logger_bottom_bar.dart';
 import 'logger_card_widgets.dart';
 import 'logger_keypad.dart';
@@ -58,31 +58,38 @@ const double _kMessageSlotMaxHeightFraction = 1 / 3;
 
 enum _SummaryAction { save, retry, discardWorkout, done }
 
-typedef _WorkoutExerciseAtIndex = ({
-  ActiveWorkout workout,
-  ActiveWorkoutExercise exercise,
-});
+class _WorkoutExerciseAtIndex {
+  const _WorkoutExerciseAtIndex(this.workout, this.exercise);
 
-typedef _LoggerProgramLoad = ({
-  TrainingProgram? program,
-  bool fromCache,
-  bool fetchedOnline,
-});
+  final ActiveWorkout workout;
+  final ActiveWorkoutExercise exercise;
+}
 
-typedef _LoggerReplacementPick = ({
-  ActiveWorkout workout,
-  int exerciseIndex,
-  ActiveWorkoutExercise exercise,
-  ExerciseCatalogEntry replacement,
-});
+class _LoggerProgramLoad {
+  const _LoggerProgramLoad({
+    required this.program,
+    required this.fromCache,
+    required this.fetchedOnline,
+  });
 
-typedef _LoggerProgramSwap = ({
-  ActiveWorkout workout,
-  ActiveWorkoutExercise oldExercise,
-  ExerciseCatalogEntry replacement,
-  TrainingProgram program,
-  bool authorityRefreshed,
-});
+  final TrainingProgram? program;
+  final bool fromCache;
+  final bool fetchedOnline;
+}
+
+class _LoggerReplacementPick {
+  const _LoggerReplacementPick({
+    required this.workout,
+    required this.exerciseIndex,
+    required this.exercise,
+    required this.replacement,
+  });
+
+  final ActiveWorkout workout;
+  final int exerciseIndex;
+  final ActiveWorkoutExercise exercise;
+  final ExerciseCatalogEntry replacement;
+}
 
 /// The Hevy-style table logger (#107 Variant A), backed entirely by the
 /// Active workout: one scrolling list of compact exercise cards with a
@@ -107,6 +114,7 @@ class WorkoutLoggerScreen extends ConsumerStatefulWidget {
 
 class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   final TextEditingController _notes = TextEditingController();
+  final TextEditingController _refreshedCoachReason = TextEditingController();
 
   bool _loading = true;
   String? _loadError;
@@ -117,6 +125,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   bool _fromCache = false;
   TrainingProgram? _loggerProgram;
   bool _loggerProgramOnline = false;
+  _LoggerReplacementPick? _pendingCoachRequest;
+  bool _pendingCoachReasonRequired = false;
+  bool _pendingCoachRequestSubmitting = false;
 
   /// Null only when it could not be determined at all (never guessed as
   /// `'UTC'`) — Finish stays blocked until it is known (ADR 020/033).
@@ -155,6 +166,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     _restTicker = null;
     unawaited(_keepAwake(false));
     _notes.dispose();
+    _refreshedCoachReason.dispose();
     super.dispose();
   }
 
@@ -295,22 +307,23 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   }
 
   Future<_LoggerProgramLoad> _loadLoggerProgram(String accountId) async {
-    // Start the shared watcher before fetching authority so transport failures
-    // mark this logger offline and hide program mutations.
-    ref.read(connectivityControllerProvider);
     try {
       final ActiveProgram active = await loadActiveProgram(
         api: ref.read(apiClientProvider),
         cache: ref.read(workoutCacheStoreProvider),
         accountId: accountId,
       );
-      return (
+      return _LoggerProgramLoad(
         program: active.program,
         fromCache: active.fromCache,
         fetchedOnline: !active.fromCache && active.program != null,
       );
     } on ApiException {
-      return (program: null, fromCache: true, fetchedOnline: false);
+      return const _LoggerProgramLoad(
+        program: null,
+        fromCache: true,
+        fetchedOnline: false,
+      );
     }
   }
 
@@ -990,9 +1003,6 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Keep transport/browser connectivity in sync while the logger is open so
-    // the permanent-swap option disappears as soon as the app goes offline.
-    ref.watch(connectivityControllerProvider);
     final ActiveWorkoutState active = ref.watch(
       activeWorkoutControllerProvider,
     );
@@ -1071,6 +1081,14 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     }
     if (_notice != null) {
       lines.add(_MessageLine(_notice!, danger: false));
+    }
+    if (_pendingCoachRequest != null) {
+      lines.add(LoggerCoachRequestReasonPrompt(
+        controller: _refreshedCoachReason,
+        reasonRequired: _pendingCoachReasonRequired,
+        submitting: _pendingCoachRequestSubmitting,
+        onSubmit: () => unawaited(_submitPendingCoachRequest()),
+      ));
     }
     if (lines.isEmpty) {
       return const <Widget>[];
@@ -1277,29 +1295,37 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   /// **Replace exercise** (#162/#171): pick a catalog entry, persist the
   /// workout change, then optionally apply the same swap to its program slot.
   Future<void> _onReplaceExercise(int exerciseIndex) async {
-    final _LoggerReplacementPick? pick =
-        await _pickLoggerReplacement(exerciseIndex);
-    if (pick == null || !mounted) return;
-    final bool? keepInProgram = await _chooseProgramPersistence(pick);
-    if (keepInProgram == null || !mounted) return;
-    await _replaceInActiveWorkout(pick);
-    if (keepInProgram && mounted) await _keepSwapInProgram(pick);
-  }
-
-  Future<_LoggerReplacementPick?> _pickLoggerReplacement(
-    int exerciseIndex,
-  ) async {
     final _WorkoutExerciseAtIndex? current = _workoutExerciseAt(exerciseIndex);
-    if (current == null ||
-        !await _confirmReplaceBeforePicking(current.exercise) ||
-        !mounted) {
-      return null;
-    }
-    final ExerciseCatalogEntry? replacement = await _pickReplacementFromCatalog(
+    if (current == null) return;
+    final bool programActionAvailable = _canOfferProgramSwap(
+      current.workout,
       current.exercise,
     );
-    if (replacement == null) return null;
-    return _replacementPickAtIndex(exerciseIndex, replacement);
+    final int ticked = current.exercise.sets
+        .where((ActiveWorkoutSet set) => set.ticked)
+        .length;
+    LoggerReplaceConfirmation confirmation = const LoggerReplaceConfirmation(
+      confirmed: true,
+    );
+    if (ticked > 0 || programActionAvailable) {
+      final LoggerReplaceConfirmation? answer =
+          await _confirmReplaceBeforePicking(
+        current.exercise,
+        programActionAvailable: programActionAvailable,
+      );
+      if (answer == null || !answer.confirmed || !mounted) return;
+      confirmation = answer;
+    }
+    final ExerciseCatalogEntry? replacement =
+        await _pickReplacementFromCatalog(current.exercise);
+    if (replacement == null || !mounted) return;
+    final _LoggerReplacementPick? pick =
+        _replacementPickAtIndex(exerciseIndex, replacement);
+    if (pick == null) return;
+    await _replaceInActiveWorkout(pick);
+    if (confirmation.keepInProgram && mounted) {
+      await _keepSwapInProgram(pick, reason: confirmation.reason);
+    }
   }
 
   _WorkoutExerciseAtIndex? _workoutExerciseAt(int exerciseIndex) {
@@ -1309,15 +1335,24 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
         exerciseIndex >= latest.exercises.length) {
       return null;
     }
-    return (workout: latest, exercise: latest.exercises[exerciseIndex]);
+    return _WorkoutExerciseAtIndex(latest, latest.exercises[exerciseIndex]);
   }
 
-  Future<bool> _confirmReplaceBeforePicking(
-    ActiveWorkoutExercise exercise,
-  ) {
+  Future<LoggerReplaceConfirmation?> _confirmReplaceBeforePicking(
+    ActiveWorkoutExercise exercise, {
+    required bool programActionAvailable,
+  }) {
     final int ticked =
         exercise.sets.where((ActiveWorkoutSet set) => set.ticked).length;
-    return ticked == 0 ? Future<bool>.value(true) : _confirmReplace(ticked);
+    final bool coachControlled = _loggerProgram?.playerControlsProgram != true;
+    return showDialog<LoggerReplaceConfirmation>(
+      context: context,
+      builder: (BuildContext context) => LoggerReplaceConfirmationDialog(
+        tickedSetCount: ticked,
+        programActionAvailable: programActionAvailable,
+        coachControlled: coachControlled,
+      ),
+    );
   }
 
   _LoggerReplacementPick? _replacementPickAtIndex(
@@ -1326,7 +1361,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   ) {
     final _WorkoutExerciseAtIndex? latest = _workoutExerciseAt(exerciseIndex);
     if (latest == null) return null;
-    return (
+    return _LoggerReplacementPick(
       workout: latest.workout,
       exerciseIndex: exerciseIndex,
       exercise: latest.exercise,
@@ -1354,16 +1389,6 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     );
   }
 
-  Future<bool?> _chooseProgramPersistence(_LoggerReplacementPick pick) async {
-    final bool canKeepInProgram = _canOfferProgramSwap(
-      pick.workout,
-      pick.exercise,
-      ref.read(connectivityControllerProvider),
-    );
-    if (!canKeepInProgram) return false;
-    return _confirmProgramSwap();
-  }
-
   Future<void> _replaceInActiveWorkout(_LoggerReplacementPick pick) async {
     // The planned card keeps its slot (marked and hidden) while the
     // replacement is inserted after it, so a keypad focus on a later card
@@ -1381,12 +1406,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   bool _canOfferProgramSwap(
     ActiveWorkout workout,
     ActiveWorkoutExercise exercise,
-    bool online,
   ) {
-    if (!online ||
-        !_loggerProgramOnline ||
-        exercise.unplanned ||
-        exercise.replaced) {
+    if (!_loggerProgramOnline || exercise.unplanned || exercise.replaced) {
       return false;
     }
     final TrainingProgram? program = _loggerProgram;
@@ -1407,206 +1428,95 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     return null;
   }
 
-  Future<bool?> _confirmProgramSwap() async {
-    final String label = (_loggerProgram?.playerControlsProgram ?? false)
-        ? 'Keep this swap in my program'
-        : 'Ask my coach to make this permanent';
-    return showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) => _KeepProgramSwapDialog(label: label),
-    );
-  }
-
-  Future<void> _keepSwapInProgram(_LoggerReplacementPick pick) async {
+  Future<void> _keepSwapInProgram(
+    _LoggerReplacementPick pick, {
+    required String? reason,
+  }) async {
     final TrainingProgram? program = _loggerProgram;
     if (program == null) {
       _showProgramSwapError('The active program could not be loaded.');
       return;
     }
-    await _applyLoggerProgramSwap((
-      program: program,
-      workout: pick.workout,
-      oldExercise: pick.exercise,
-      replacement: pick.replacement,
-      authorityRefreshed: false,
-    ));
-  }
-
-  Future<void> _applyLoggerProgramSwap(_LoggerProgramSwap swap) async {
-    final ProgramDay? day = _programDayForWorkout(swap.program, swap.workout);
-    if (day == null || !_programContains(day, swap.oldExercise.exerciseId)) {
+    final ProgramDay? day = _programDayForWorkout(program, pick.workout);
+    if (day == null || !_programContains(day, pick.exercise.exerciseId)) {
       _showProgramSwapError(
-        '${swap.oldExercise.exerciseName} is no longer in this program day.',
+        '${pick.exercise.exerciseName} is no longer in this program day.',
       );
       return;
     }
-    if (swap.program.playerControlsProgram) {
-      await _substituteLoggerProgramSlot(swap, day);
-    } else {
-      await _requestCoachSubstitution(swap, day);
+    final LoggerProgramSubstitutionResult result =
+        await LoggerProgramSubstitutionController(
+      api: ref.read(apiClientProvider),
+      cache: ref.read(workoutCacheStoreProvider),
+      accountId: ref.read(authControllerProvider).session?.account.accountId,
+    ).apply(LoggerProgramSwap(
+      workout: pick.workout,
+      program: program,
+      day: day,
+      oldExercise: pick.exercise,
+      replacement: pick.replacement,
+      reason: reason,
+    ));
+    if (result.program != null && mounted) {
+      setState(() {
+        _loggerProgram = result.program;
+        _loggerProgramOnline = true;
+      });
     }
+    if (result.coachReasonRequired) {
+      setState(() {
+        _pendingCoachRequest = pick;
+        _pendingCoachReasonRequired = false;
+        _pendingCoachRequestSubmitting = false;
+        _refreshedCoachReason.clear();
+        _notice = result.message;
+        _error = null;
+      });
+      return;
+    }
+    if (result.error) {
+      _showProgramSwapError(
+        result.message,
+        workoutVersionMessage:
+            result.message == loggerProgramVersionChangedMessage,
+      );
+    } else {
+      setState(() {
+        _pendingCoachRequest = null;
+        _pendingCoachReasonRequired = false;
+        _pendingCoachRequestSubmitting = false;
+        _refreshedCoachReason.clear();
+      });
+      _showProgramSwapNotice(result.message);
+    }
+  }
+
+  Future<void> _submitPendingCoachRequest() async {
+    final _LoggerReplacementPick? pick = _pendingCoachRequest;
+    if (pick == null || _pendingCoachRequestSubmitting) return;
+    final String reason = _refreshedCoachReason.text.trim();
+    if (reason.isEmpty) {
+      setState(() => _pendingCoachReasonRequired = true);
+      return;
+    }
+    setState(() => _pendingCoachRequestSubmitting = true);
+    await _keepSwapInProgram(pick, reason: reason);
+    if (mounted) setState(() => _pendingCoachRequestSubmitting = false);
   }
 
   bool _programContains(ProgramDay day, String exerciseId) => day.exercises.any(
         (ProgramExercise exercise) => exercise.exerciseId == exerciseId,
       );
 
-  Future<void> _substituteLoggerProgramSlot(
-    _LoggerProgramSwap swap,
-    ProgramDay day,
-  ) async {
-    try {
-      final ProgramSubstitutionResult substitutionResult =
-          await ref.read(apiClientProvider).substituteProgramExercise(
-                dayName: day.dayName,
-                exerciseId: swap.oldExercise.exerciseId,
-                replacementExerciseId: swap.replacement.id,
-                expectedActiveVersion:
-                    swap.program.version ?? swap.workout.programVersion,
-              );
-      await _cacheLoggerProgram(substitutionResult.program);
-      _showProgramSwapNotice('The swap was saved to your program.');
-    } on ApiException catch (error) {
-      await _handleLoggerProgramSwapFailure(error, swap);
-    }
-  }
-
-  Future<void> _requestCoachSubstitution(
-    _LoggerProgramSwap swap,
-    ProgramDay day,
-  ) async {
-    try {
-      await _collectAndSendCoachSubstitution(swap, day);
-    } on ApiException catch (error) {
-      await _handleLoggerProgramSwapFailure(error, swap);
-    }
-  }
-
-  Future<void> _collectAndSendCoachSubstitution(
-    _LoggerProgramSwap swap,
-    ProgramDay day,
-  ) async {
-    final ProgramRequestDraft? draft = await _loggerSubstitutionRequest(
-      day,
-      swap.oldExercise,
-      swap.replacement,
-    );
-    if (!mounted) return;
-    if (draft == null) {
-      _showProgramSwapNotice(
-        'The workout swap is saved. No coach request was sent.',
-      );
-      return;
-    }
-    await ref.read(apiClientProvider).createPlayerProgramRequest(
-          kind: draft.kind,
-          dayName: draft.dayName,
-          exerciseId: draft.exerciseId,
-          replacementExerciseId: draft.replacementExerciseId,
-          reason: draft.reason,
-        );
-    _showProgramSwapNotice('Your coach was asked to make this swap permanent.');
-  }
-
-  Future<void> _handleLoggerProgramSwapFailure(
-    ApiException error,
-    _LoggerProgramSwap swap,
-  ) async {
-    if (_isLoggerAuthorityMismatch(error) && !swap.authorityRefreshed) {
-      await _refreshAndRetryLoggerProgramSwap(error, swap);
-      return;
-    }
-    _showProgramSwapError(_readableProgramSwapError(error));
-  }
-
-  String _readableProgramSwapError(ApiException error) =>
-      error.statusCode == null
-          ? 'Check your connection and try again.'
-          : error.message;
-
-  Future<void> _refreshAndRetryLoggerProgramSwap(
-    ApiException error,
-    _LoggerProgramSwap swap,
-  ) async {
-    try {
-      final TrainingProgram? refreshed =
-          await ref.read(apiClientProvider).activeProgram();
-      if (refreshed == null) {
-        _showProgramSwapError('The active program could not be refreshed.');
-        return;
-      }
-      await _cacheLoggerProgram(refreshed);
-      await _retryWithRefreshedAuthority(refreshed, error, swap);
-    } on ApiException catch (refreshError) {
-      _showProgramSwapError(_readableProgramSwapError(refreshError));
-    }
-  }
-
-  Future<void> _retryWithRefreshedAuthority(
-    TrainingProgram refreshed,
-    ApiException error,
-    _LoggerProgramSwap swap,
-  ) async {
-    if (!mounted) return;
-    if (refreshed.playerControlsProgram == swap.program.playerControlsProgram) {
-      _showProgramSwapError(error.message);
-      return;
-    }
-    await _applyLoggerProgramSwap((
-      program: refreshed,
-      workout: swap.workout,
-      oldExercise: swap.oldExercise,
-      replacement: swap.replacement,
-      authorityRefreshed: true,
-    ));
-  }
-
-  Future<ProgramRequestDraft?> _loggerSubstitutionRequest(
-    ProgramDay day,
-    ActiveWorkoutExercise oldExercise,
-    ExerciseCatalogEntry replacement,
-  ) {
-    return showDialog<ProgramRequestDraft>(
-      context: context,
-      builder: (BuildContext context) => ProgramRequestDialog.forSubstitution(
-        substitution: ProgramSubstitutionRequestPrefill(
-          dayName: day.dayName,
-          exerciseId: oldExercise.exerciseId,
-          exerciseName: oldExercise.exerciseName,
-          replacementExerciseId: replacement.id,
-          replacementName: replacement.name,
-        ),
-      ),
-    );
-  }
-
-  bool _isLoggerAuthorityMismatch(ApiException error) =>
-      error.errorCode == 'coach_controlled' ||
-      error.errorCode == 'player_controls_program';
-
-  Future<void> _cacheLoggerProgram(TrainingProgram program) async {
-    final String? accountId =
-        ref.read(authControllerProvider).session?.account.accountId;
-    if (accountId != null) {
-      await cacheActiveProgram(
-        ref.read(workoutCacheStoreProvider),
-        accountId,
-        program,
-      );
-    }
-    if (mounted) {
-      setState(() {
-        _loggerProgram = program;
-        _loggerProgramOnline = true;
-      });
-    }
-  }
-
-  void _showProgramSwapError(String detail) {
+  void _showProgramSwapError(
+    String detail, {
+    bool workoutVersionMessage = false,
+  }) {
     if (!mounted) return;
     setState(() {
-      _error =
-          'The workout swap is saved, but the program was not changed. $detail';
+      _error = workoutVersionMessage
+          ? detail
+          : 'The workout swap is saved, but the program was not changed. $detail';
       _notice = null;
     });
   }
@@ -1617,42 +1527,6 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       _notice = message;
       _error = null;
     });
-  }
-
-  /// "Replace and discard N logged sets?" (#162): the confirmation that comes
-  /// before a replace can touch rows the player has already ticked. Resolves
-  /// true only for Replace; "Keep logging" and any dismissal change nothing.
-  Future<bool> _confirmReplace(int ticked) async {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    final bool? replace = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: Text(
-          ticked == 1
-              ? 'Replace and discard 1 logged set?'
-              : 'Replace and discard $ticked logged sets?',
-        ),
-        content: Text(
-          "The sets you've logged on this exercise will be cleared.",
-          style: MayosTypography.bodySecondary.copyWith(color: c.textPrimary),
-        ),
-        actions: <Widget>[
-          MayosButton(
-            label: 'Keep logging',
-            variant: MayosButtonVariant.secondary,
-            expand: false,
-            onPressed: () => Navigator.of(context).pop(false),
-          ),
-          MayosButton(
-            label: 'Replace',
-            destructive: true,
-            expand: false,
-            onPressed: () => Navigator.of(context).pop(true),
-          ),
-        ],
-      ),
-    );
-    return replace ?? false;
   }
 
   /// The exercise's target muscle, read from the catalog detail the app
@@ -2069,54 +1943,4 @@ class _OfflineLoggerNotice extends StatelessWidget {
       ),
     );
   }
-}
-
-class _KeepProgramSwapDialog extends StatefulWidget {
-  const _KeepProgramSwapDialog({required this.label});
-
-  final String label;
-
-  @override
-  State<_KeepProgramSwapDialog> createState() => _KeepProgramSwapDialogState();
-}
-
-class _KeepProgramSwapDialogState extends State<_KeepProgramSwapDialog> {
-  bool _keepInProgram = false;
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-        key: const ValueKey<String>('logger.keepSwapDialog'),
-        title: const Text('Replace exercise'),
-        content: _buildKeepOption(context),
-        actions: _buildActions(),
-      );
-
-  Widget _buildKeepOption(BuildContext context) => CheckboxListTile(
-        key: const ValueKey<String>('logger.keepSwapCheckbox'),
-        contentPadding: EdgeInsets.zero,
-        controlAffinity: ListTileControlAffinity.leading,
-        value: _keepInProgram,
-        onChanged: (bool? checked) =>
-            setState(() => _keepInProgram = checked ?? false),
-        title: Text(
-          widget.label,
-          style: MayosTypography.body.copyWith(
-            color: MayosTheme.of(context).textPrimary,
-          ),
-        ),
-      );
-
-  List<Widget> _buildActions() => <Widget>[
-        MayosButton(
-          label: 'Cancel',
-          variant: MayosButtonVariant.tertiary,
-          expand: false,
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        MayosButton(
-          label: 'Replace',
-          expand: false,
-          onPressed: () => Navigator.of(context).pop(_keepInProgram),
-        ),
-      ];
 }

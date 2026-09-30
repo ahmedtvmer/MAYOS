@@ -19,6 +19,7 @@ import '../../../router.dart';
 import '../assignment/program_request_dialog.dart';
 import '../exercise_picker_dialog.dart';
 import '../workout/active_workout_prompt.dart';
+import 'program_authority_recovery.dart';
 
 enum _SwapDirection { apply, undo }
 
@@ -40,12 +41,19 @@ class _ProgramSwap {
   final String? authorityNotice;
 }
 
-typedef _SubstitutionRecovery = ({
-  ProgramDay selectedDay,
-  ProgramExercise selectedExercise,
-  ExerciseCatalogEntry replacement,
-  bool requestWasRefused,
-});
+class _SubstitutionRecovery {
+  const _SubstitutionRecovery({
+    required this.selectedDay,
+    required this.selectedExercise,
+    required this.replacement,
+    required this.previousPlayerControlsProgram,
+  });
+
+  final ProgramDay selectedDay;
+  final ProgramExercise selectedExercise;
+  final ExerciseCatalogEntry replacement;
+  final bool previousPlayerControlsProgram;
+}
 
 class ProgramTab extends ConsumerStatefulWidget {
   const ProgramTab({super.key});
@@ -168,7 +176,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         await _requestSubstitution(day, exercise, replacement);
       }
     } on ApiException catch (error) {
-      if (_isAuthorityMismatch(error) && replacement != null) {
+      if (ProgramAuthorityRecovery.isRefusal(error) && replacement != null) {
         await _refreshAndRouteSubstitution(day, exercise, replacement, error);
       } else if (mounted) {
         _showSwapError(error);
@@ -201,27 +209,39 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     );
   }
 
-  bool _isAuthorityMismatch(ApiException error) =>
-      error.errorCode == 'player_controls_program' ||
-      error.errorCode == 'coach_controlled';
-
   Future<void> _refreshAndRouteSubstitution(
     ProgramDay selectedDay,
     ProgramExercise selectedExercise,
     ExerciseCatalogEntry replacement,
     ApiException error,
   ) async {
-    final _SubstitutionRecovery recovery = (
+    final _SubstitutionRecovery recovery = _SubstitutionRecovery(
       selectedDay: selectedDay,
       selectedExercise: selectedExercise,
       replacement: replacement,
-      requestWasRefused: error.errorCode == 'player_controls_program',
+      previousPlayerControlsProgram: _program?.playerControlsProgram ?? false,
     );
     if (mounted) setState(() => _substituting = false);
     try {
-      final TrainingProgram? refreshedProgram = await _refreshActiveProgram();
+      final ProgramAuthorityRefresh result = await ProgramAuthorityRecovery(
+        api: ref.read(apiClientProvider),
+        cache: ref.read(workoutCacheStoreProvider),
+        accountId: _accountId,
+      ).refreshAfterRefusal(error);
+      final TrainingProgram? refreshedProgram = result.program;
+      if (mounted) {
+        setState(() {
+          _program = refreshedProgram;
+          _fromCache = false;
+        });
+      }
       if (!mounted) return;
-      await _continueAfterAuthorityRefresh(refreshedProgram, recovery);
+      final ProgramAuthorityRoute route =
+          ProgramAuthorityRecovery.routeAfterRefusal(
+        result,
+        previousPlayerControlsProgram: recovery.previousPlayerControlsProgram,
+      );
+      await _continueAfterAuthorityRefresh(refreshedProgram, recovery, route);
     } on ApiException catch (refreshError) {
       if (mounted) _showSwapError(refreshError);
     }
@@ -230,13 +250,15 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   Future<void> _continueAfterAuthorityRefresh(
     TrainingProgram? program,
     _SubstitutionRecovery recovery,
+    ProgramAuthorityRoute route,
   ) async {
-    if (program == null) {
+    if (program == null || route == ProgramAuthorityRoute.unavailable) {
       _showAuthorityMessage(
           'Your program changed. Refresh before substituting.');
       return;
     }
-    if (program.playerControlsProgram != recovery.requestWasRefused) {
+    if (route == ProgramAuthorityRoute.inconsistent ||
+        route == ProgramAuthorityRoute.unchanged) {
       _showAuthorityMessage('Program authority changed again. Try once more.');
       return;
     }
@@ -298,25 +320,6 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     _showAuthorityMessage(
         'Program authority changed. Opening a request for your coach.');
     await _requestSubstitution(day, exercise, replacement);
-  }
-
-  Future<TrainingProgram?> _refreshActiveProgram() async {
-    final TrainingProgram? refreshedProgram =
-        await ref.read(apiClientProvider).activeProgram();
-    if (!mounted) return null;
-    final String? accountId = _accountId;
-    if (refreshedProgram != null && accountId != null) {
-      unawaited(cacheActiveProgram(
-        ref.read(workoutCacheStoreProvider),
-        accountId,
-        refreshedProgram,
-      ));
-    }
-    setState(() {
-      _program = refreshedProgram;
-      _fromCache = false;
-    });
-    return refreshedProgram;
   }
 
   ProgramDay? _findDay(TrainingProgram program, String dayName) {

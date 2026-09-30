@@ -52,8 +52,8 @@ bool _isTransportFailure(DioException error) => isNetworkFailure(ApiException(
     ));
 
 /// The app's connectivity flag, fed by browser events and interceptors on the
-/// shared [ApiClient]. The web shell watches it for the offline banner; the
-/// logger also watches it before offering program-changing actions.
+/// shared [ApiClient]. Created only when web banner display is enabled, so
+/// Android adds no behavior at all.
 final StateNotifierProvider<ConnectivityController, bool>
     connectivityControllerProvider =
     StateNotifierProvider<ConnectivityController, bool>((ref) {

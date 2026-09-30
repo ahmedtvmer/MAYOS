@@ -128,6 +128,7 @@ class FakeMayosApi {
   // simulation for the Program tab's cache fallback, ADR 020/033).
   bool activeProgramFails = false;
   bool coachControlsProgram = false;
+  bool substitutionVersionConflict = false;
   // When true `GET /programs/active` returns an empty body (no active program).
   bool noActiveProgram = false;
 
@@ -2525,6 +2526,12 @@ class FakeMayosApi {
         'detail':
             'Your assigned coach controls your program. Ask your coach for changes.',
         'code': 'coach_controlled',
+      });
+    }
+    if (substitutionVersionConflict) {
+      return const FakeResponse(409, <String, dynamic>{
+        'detail': 'The active program version changed.',
+        'code': 'program_version_conflict',
       });
     }
     final Map<String, dynamic> payload =
