@@ -328,7 +328,8 @@ def _dump_tables(conn) -> dict[str, list[tuple]]:
     ).fetchall()
     dump: dict[str, list[tuple]] = {}
     for (name,) in rows:
-        dump[name] = [tuple(row) for row in conn.execute(f'SELECT * FROM "{name}" ORDER BY rowid')]
+        # Sorted in Python: some catalog tables are WITHOUT ROWID (#225).
+        dump[name] = sorted((tuple(row) for row in conn.execute(f'SELECT * FROM "{name}"')), key=repr)
     return dump
 
 
