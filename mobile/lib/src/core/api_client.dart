@@ -995,16 +995,18 @@ class ApiClient {
     return _parseBody(response.data, PlayerProfile.fromJson, _invalidProfile);
   }
 
-  /// Updates the player's profile. A profile-triggered rebuild is a player
-  /// write path, so the response reports when a coach-controlled program left
-  /// it unchanged instead of refusing the profile update itself.
+  /// Updates the player's profile. Changes to training days or rep preference
+  /// can trigger a rebuild, so a coach-controlled program may leave it unchanged
+  /// while still applying the profile update.
   Future<ProfileUpdateResult> updateProfile({
     int? weeklyFrequency,
     String? repPreference,
+    String? equipmentAccess,
   }) async {
     final Map<String, dynamic> body = <String, dynamic>{
       if (weeklyFrequency != null) 'weekly_frequency': weeklyFrequency,
       if (repPreference != null) 'rep_preference': repPreference,
+      if (equipmentAccess != null) 'equipment_access': equipmentAccess,
     };
     final response = await _send(
       () => _dio.put<dynamic>('/profile', data: body),

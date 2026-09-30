@@ -645,7 +645,7 @@ const Map<String, Object> _throughLongTerm = <String, Object>{
 const Map<String, Object> _allRequired = <String, Object>{
   ..._throughLongTerm,
   'weekly_frequency': 4,
-  'equipment_access': 'commercial gym',
+  'equipment_access': 'Commercial gym',
   'injuries_or_limitations': 'None',
   'stress_and_sleep': 'moderate stress, 7 hours sleep',
 };

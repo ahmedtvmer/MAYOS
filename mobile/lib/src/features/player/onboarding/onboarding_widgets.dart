@@ -145,7 +145,10 @@ bool isFieldAnswerValid(IntakeField field, Object? value) {
   }
   switch (field.type) {
     case 'enum':
-      return value is String && field.allowedValues.contains(value);
+      final List<String> allowed = field.name == 'equipment_access'
+          ? equipmentAccessValues
+          : field.allowedValues;
+      return value is String && allowed.contains(value);
     case 'int':
     case 'float':
       final num? number = value is num ? value : num.tryParse('$value');

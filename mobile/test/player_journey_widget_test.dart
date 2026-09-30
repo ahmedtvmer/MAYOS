@@ -97,7 +97,7 @@ void main() {
       'current_goal': 'build glutes and legs',
       'long_term_goal': 'stronger and more muscular',
       'weekly_frequency': 4,
-      'equipment_access': 'commercial gym',
+      'equipment_access': 'Commercial gym',
       'injuries_or_limitations': 'None',
       'stress_and_sleep': 'moderate stress, 7 hours sleep',
     });

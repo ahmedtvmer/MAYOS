@@ -24,9 +24,9 @@ import '../onboarding/onboarding_widgets.dart' show optionLabel;
 /// check is only a courtesy, the service stays authoritative.
 const int maxPauseDays = 14;
 
-/// Player training-profile editor. Saving can trigger a program rebuild, which
-/// is a player write path: when the assigned coach owns the active program the
-/// service leaves it unchanged and explains that a coach request is needed.
+/// Player training-profile editor. Changing training days or rep preference can
+/// trigger a program rebuild. When an assigned coach owns the active program,
+/// the service leaves it unchanged and explains that a coach request is needed.
 ///
 /// Below the profile card, the player separately owns an expected training
 /// schedule (weekdays + timezone) and prospective pauses. Setting either never
@@ -45,9 +45,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     'balanced',
     'high',
   ];
-
   int _weeklyFrequency = 4;
   String _repPreference = 'balanced';
+  String _equipmentAccess = equipmentAccessCommercialGym;
+  String _savedEquipmentAccess = equipmentAccessCommercialGym;
 
   bool _loading = true;
   bool _saving = false;
@@ -133,6 +134,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _weeklyFrequency = profile.weeklyFrequency;
+        _equipmentAccess =
+            equipmentAccessValues.contains(profile.equipmentAccess)
+                ? profile.equipmentAccess
+                : equipmentAccessCommercialGym;
+        _savedEquipmentAccess = _equipmentAccess;
         // A value this screen once offered by mistake (`strength`,
         // `hypertrophy`) is shown as the generator reads it: balanced.
         _repPreference = _repPreferences.contains(profile.repPreference)
@@ -167,10 +173,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           await ref.read(apiClientProvider).updateProfile(
                 weeklyFrequency: _weeklyFrequency,
                 repPreference: _repPreference,
+                equipmentAccess: _equipmentAccess == _savedEquipmentAccess
+                    ? null
+                    : _equipmentAccess,
               );
       if (!mounted) return;
       setState(() {
         _saving = false;
+        _savedEquipmentAccess = _equipmentAccess;
         _notice = result.programBlocked
             ? result.programMessage
             : result.programRebuilt
@@ -860,7 +870,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         const SizedBox(height: MayosSpacing.lg),
         const MayosSectionHeader(
           title: 'Training profile',
-          subtitle: 'Saving changes can rebuild your program.',
+          subtitle:
+              'Changes to training days or rep preference can rebuild your program.',
         ),
         const SizedBox(height: MayosSpacing.md),
         DropdownButtonFormField<int>(
@@ -898,6 +909,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ? null
               : (String? value) =>
                   setState(() => _repPreference = value ?? _repPreference),
+        ),
+        const SizedBox(height: MayosSpacing.sm),
+        DropdownButtonFormField<String>(
+          key: const Key('equipment_access_dropdown'),
+          initialValue: _equipmentAccess,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            labelText: 'Equipment access',
+            border: OutlineInputBorder(),
+          ),
+          items: <DropdownMenuItem<String>>[
+            for (final String access in equipmentAccessValues)
+              DropdownMenuItem<String>(value: access, child: Text(access)),
+          ],
+          onChanged: _saving
+              ? null
+              : (String? selectedAccess) => setState(() {
+                    _equipmentAccess = selectedAccess ?? _equipmentAccess;
+                  }),
         ),
         if (_notice != null) ...<Widget>[
           const SizedBox(height: MayosSpacing.sm),

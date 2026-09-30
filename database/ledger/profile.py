@@ -5,6 +5,7 @@ Extracted from DatabaseManager; behaviour is unchanged.
 
 from datetime import UTC, datetime
 from typing import Any
+from utils.equipment_access import map_equipment_access
 
 
 class LedgerProfileMixin:
@@ -49,7 +50,7 @@ class LedgerProfileMixin:
             "long_term_goal": str(profile_data.get("long_term_goal", "progressive overload")),
             "weekly_frequency": min(max(int(profile_data.get("weekly_frequency", 4)), 1), 5),
             "training_age_years": float(profile_data.get("training_age_years", 1.0)),
-            "equipment_access": str(profile_data.get("equipment_access", "commercial gym")),
+            "equipment_access": map_equipment_access(profile_data.get("equipment_access")),
             "injuries_or_limitations": str(profile_data.get("injuries_or_limitations", "None")),
             "stress_and_sleep": str(profile_data.get("stress_and_sleep", "normal")),
             "created_at": now,

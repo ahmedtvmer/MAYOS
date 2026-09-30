@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:mayos_mobile/src/core/models.dart';
+
 import 'fake_api_adapter.dart';
 
 /// In-memory stand-in for the FastAPI service, mimicking the real route
@@ -41,6 +43,9 @@ class FakeMayosApi {
   // Player profile fields written through `PUT /profile` (#27).
   String repPreference = 'balanced';
   int weeklyFrequency = 4;
+  String equipmentAccess = equipmentAccessCommercialGym;
+  final List<Map<String, dynamic>> profileUpdateBodies = <Map<String, dynamic>>[];
+  int profileRebuildCalls = 0;
   // Forces a coach-controlled profile-update response even with no publication.
   bool profileBlocked = false;
   String coachDisplayName = '';
@@ -1888,16 +1893,20 @@ class FakeMayosApi {
   Map<String, dynamic> _profileBody() => <String, dynamic>{
         'rep_preference': repPreference,
         'weekly_frequency': weeklyFrequency,
+        'equipment_access': equipmentAccess,
       };
 
   FakeResponse _updateProfile(FakeRequest request) {
+    profileUpdateBodies.add(Map<String, dynamic>.from(request.body));
     final int? frequency = (request.body['weekly_frequency'] as num?)?.toInt();
     final String? preference = request.body['rep_preference'] as String?;
+    final String? access = request.body['equipment_access'] as String?;
     final bool rebuildWarranted =
         (frequency != null && frequency != weeklyFrequency) ||
             (preference != null && preference != repPreference);
     if (frequency != null) weeklyFrequency = frequency;
     if (preference != null) repPreference = preference;
+    if (access != null) equipmentAccess = access;
 
     if (rebuildWarranted && (coachControlsProgram || profileBlocked)) {
       return FakeResponse(200, <String, dynamic>{
@@ -1909,6 +1918,7 @@ class FakeMayosApi {
             'Your assigned coach controls your program. Ask your coach for changes.',
       });
     }
+    if (rebuildWarranted) profileRebuildCalls++;
     return FakeResponse(200, <String, dynamic>{
       'profile': _profileBody(),
       'program_rebuilt': rebuildWarranted,
@@ -2189,11 +2199,21 @@ class FakeMayosApi {
     },
     <String, dynamic>{
       'name': 'equipment_access',
-      'type': 'text',
+      'type': 'enum',
       'required': true,
       'profile_field': 'equipment_access',
-      'hint': 'What equipment can you train with?',
-      'examples': <String>['commercial gym', 'home gym', 'bodyweight only'],
+      'allowed_values': <String>[
+        equipmentAccessCommercialGym,
+        equipmentAccessHomeGym,
+        equipmentAccessBodyweightOnly,
+      ],
+      'option_descriptions': <String, String>{
+        equipmentAccessCommercialGym: 'A fully equipped commercial gym.',
+        equipmentAccessHomeGym:
+            'Equipment you keep at home, such as weights or machines.',
+        equipmentAccessBodyweightOnly:
+            'No gym equipment; train with your bodyweight.',
+      },
     },
     <String, dynamic>{
       'name': 'injuries_or_limitations',
@@ -2286,7 +2306,12 @@ class FakeMayosApi {
     if (type == 'enum') {
       final List<String> allowed =
           (spec['allowed_values'] as List<String>?) ?? const <String>[];
-      if (value is! String || !allowed.contains(value.toLowerCase())) {
+      final bool allowedValue = value is String &&
+          (field == 'equipment_access'
+              ? allowed.any((String option) =>
+                  option.toLowerCase() == value.toLowerCase())
+              : allowed.contains(value.toLowerCase()));
+      if (!allowedValue) {
         return "Invalid value for '$field': must be one of ${allowed.join(', ')}.";
       }
     } else if (type == 'int' || type == 'float') {

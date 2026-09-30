@@ -144,6 +144,34 @@ void main() {
     expect(fake.repPreference, 'high');
   });
 
+  testWidgets('profile sends changed Equipment access without rebuilding',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake();
+    fake.equipmentAccess = 'Home gym';
+    await _pumpApp(tester, fake);
+
+    await _openSettings(tester);
+    await tester.tap(find.text('Profile'));
+    await _pumpUntilFound(tester, find.text('Equipment access'));
+
+    expect(find.text('Home gym'), findsOneWidget);
+    await tester.tap(find.text('Save profile'));
+    await _pumpUntilFound(tester, find.text('Profile saved.'));
+    expect(fake.profileUpdateBodies.last, isNot(contains('equipment_access')));
+
+    await tester.tap(find.byKey(const Key('equipment_access_dropdown')));
+    await _pumpUntilFound(tester, find.text('Bodyweight only'));
+    await tester.tap(find.text('Bodyweight only').last);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Save profile'));
+    await _pumpUntilFound(tester, find.text('Profile saved.'));
+
+    expect(fake.equipmentAccess, 'Bodyweight only');
+    expect(fake.profileUpdateBodies.last['equipment_access'], 'Bodyweight only');
+    expect(fake.profileRebuildCalls, 0);
+    expect(find.text('Program rebuilt.'), findsNothing);
+  });
+
   testWidgets('player program hides the version and keeps coach provenance',
       (tester) async {
     final FakeMayosApi fake = _playerFake();

@@ -6,6 +6,15 @@ import 'config.dart';
 import 'effort.dart';
 import 'rest_length.dart';
 
+const String equipmentAccessCommercialGym = 'Commercial gym';
+const String equipmentAccessHomeGym = 'Home gym';
+const String equipmentAccessBodyweightOnly = 'Bodyweight only';
+const List<String> equipmentAccessValues = <String>[
+  equipmentAccessCommercialGym,
+  equipmentAccessHomeGym,
+  equipmentAccessBodyweightOnly,
+];
+
 class Capabilities {
   const Capabilities({required this.player, required this.coach});
 
@@ -1386,15 +1395,19 @@ class PlayerProfile {
   const PlayerProfile({
     this.repPreference = 'balanced',
     this.weeklyFrequency = 4,
+    this.equipmentAccess = equipmentAccessCommercialGym,
   });
 
   factory PlayerProfile.fromJson(Map<String, dynamic> json) => PlayerProfile(
         repPreference: json['rep_preference'] as String? ?? 'balanced',
         weeklyFrequency: (json['weekly_frequency'] as num?)?.toInt() ?? 4,
+        equipmentAccess:
+            json['equipment_access'] as String? ?? equipmentAccessCommercialGym,
       );
 
   final String repPreference;
   final int weeklyFrequency;
+  final String equipmentAccess;
 }
 
 /// `PUT /profile` response body.

@@ -1,4 +1,5 @@
 # database/migration_manager.py
+import json
 import sqlite3
 import uuid
 from collections.abc import Callable
@@ -6,11 +7,30 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from utils.logger import MyosLogger
+from utils.equipment_access import (
+    EQUIPMENT_ACCESS_VALUES,
+    map_equipment_access,
+)
 
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 16
+CURRENT_LEDGER_SCHEMA_VERSION: int = 17
+
+_EQUIPMENT_ACCESS_NOT_IN = "NEW.equipment_access NOT IN (" + ", ".join(
+    "'" + value.replace("'", "''") + "'" for value in EQUIPMENT_ACCESS_VALUES
+) + ")"
+
+EQUIPMENT_ACCESS_DDL: tuple[str, ...] = (
+    "CREATE TRIGGER IF NOT EXISTS user_profile_equipment_access_insert"
+    " BEFORE INSERT ON user_profile"
+    f" WHEN {_EQUIPMENT_ACCESS_NOT_IN}"
+    " BEGIN SELECT RAISE(ABORT, 'Invalid Equipment access'); END",
+    "CREATE TRIGGER IF NOT EXISTS user_profile_equipment_access_update"
+    " BEFORE UPDATE OF equipment_access ON user_profile"
+    f" WHEN {_EQUIPMENT_ACCESS_NOT_IN}"
+    " BEGIN SELECT RAISE(ABORT, 'Invalid Equipment access'); END",
+)
 
 #: Performed-date correction DDL (ADR 035). Kept in one place so the
 #: fresh-create path (``DatabaseManager.create_ledger_schema``) and the v10->v11
@@ -420,6 +440,57 @@ def _migrate_v15_to_v16(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE checkpoint_reviews ADD COLUMN last_attempt_at TEXT")
 
 
+def _ledger_table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone() is not None
+
+
+def _user_profile_has_equipment_access(conn: sqlite3.Connection) -> bool:
+    if not _ledger_table_exists(conn, "user_profile"):
+        return False
+    return any(
+        column[1] == "equipment_access"
+        for column in conn.execute("PRAGMA table_info(user_profile)")
+    )
+
+
+def _migrate_profile_equipment_access(conn: sqlite3.Connection) -> None:
+    if not _user_profile_has_equipment_access(conn):
+        return
+    profile_rows = conn.execute("SELECT id, equipment_access FROM user_profile").fetchall()
+    conn.executemany(
+        "UPDATE user_profile SET equipment_access = ? WHERE id = ?",
+        [(map_equipment_access(access_text), profile_id) for profile_id, access_text in profile_rows],
+    )
+
+
+def _migrate_intake_equipment_access(conn: sqlite3.Connection) -> None:
+    if not _ledger_table_exists(conn, "intake_answers"):
+        return
+    for (encoded_answer,) in conn.execute(
+        "SELECT value FROM intake_answers WHERE field = 'equipment_access'"
+    ).fetchall():
+        try:
+            intake_answer = json.loads(encoded_answer)
+        except (TypeError, json.JSONDecodeError):
+            intake_answer = encoded_answer
+        conn.execute(
+            "UPDATE intake_answers SET value = ? WHERE field = 'equipment_access'",
+            (json.dumps(map_equipment_access(intake_answer)),),
+        )
+
+
+def _migrate_v16_to_v17(conn: sqlite3.Connection) -> None:
+    """Apply #228 so old profiles and new writes share one Equipment access contract."""
+    _migrate_profile_equipment_access(conn)
+    _migrate_intake_equipment_access(conn)
+    if _user_profile_has_equipment_access(conn):
+        for statement in EQUIPMENT_ACCESS_DDL:
+            conn.execute(statement)
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -521,6 +592,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     13: _migrate_v13_to_v14,
     14: _migrate_v14_to_v15,
     15: _migrate_v15_to_v16,
+    16: _migrate_v16_to_v17,
 }
 
 

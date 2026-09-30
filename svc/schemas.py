@@ -5,6 +5,9 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from agent.ProgramState import GeneratedProgramSchema, ProgramExerciseSchema
+from utils.equipment_access import EQUIPMENT_ACCESS_VALUES
+
+EquipmentAccessLiteral = Literal.__getitem__(EQUIPMENT_ACCESS_VALUES)
 
 __all__ = [
     "ActiveProgramOut",
@@ -714,7 +717,7 @@ class ProfileUpdate(BaseModel):
     rep_preference: Literal["low", "balanced", "high"] | None = None
     current_goal: str | None = None
     weekly_frequency: int | None = Field(default=None, ge=1, le=5)
-    equipment_access: str | None = None
+    equipment_access: EquipmentAccessLiteral | None = None
     injuries_or_limitations: str | None = None
     weight_kg: float | None = Field(default=None, ge=30.0, le=250.0)
 

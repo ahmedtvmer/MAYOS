@@ -31,7 +31,7 @@ const Map<String, Object> _requiredAnswers = <String, Object>{
   'current_goal': 'build glutes and legs',
   'long_term_goal': 'stronger and more muscular',
   'weekly_frequency': 4,
-  'equipment_access': 'commercial gym',
+  'equipment_access': 'Commercial gym',
   'injuries_or_limitations': 'None',
   'stress_and_sleep': 'moderate stress, 7 hours sleep',
 };
@@ -197,8 +197,10 @@ Future<void> _answerAll(WidgetTester tester,
   await _tapAndFind(tester, find.byKey(const Key('weekly_frequency_option_4')),
       find.byKey(const Key('onboarding_continue')));
   await _tapAndFind(tester, find.byKey(const Key('onboarding_continue')),
-      find.byKey(const Key('equipment_access_input')));
-  await _tapAndFind(tester, find.byKey(const Key('equipment_access_example_0')),
+      find.byKey(const Key('equipment_access_option_Commercial gym')));
+  await _tapAndFind(
+      tester,
+      find.byKey(const Key('equipment_access_option_Commercial gym')),
       find.byKey(const Key('onboarding_continue')));
   await _tapAndFind(tester, find.byKey(const Key('onboarding_continue')),
       find.byKey(const Key('injuries_or_limitations_input')));

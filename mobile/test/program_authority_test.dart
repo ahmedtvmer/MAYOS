@@ -9,6 +9,7 @@ import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/features/player/onboarding/onboarding_screen.dart';
+import 'package:mayos_mobile/src/features/player/profile/profile_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
@@ -214,6 +215,15 @@ void main() {
     await _openProfile(tester);
     await _pumpUntilFound(tester, find.text('Training pause'));
 
+    final Finder profileScrollables = find.descendant(
+      of: find.byType(ProfileScreen),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      find.text('Pause: 2026-09-24 → 2026-10-01'),
+      250,
+      scrollable: profileScrollables.first,
+    );
     expect(find.text('Pause: 2026-09-24 → 2026-10-01'), findsOneWidget);
 
     await tester.ensureVisible(find.byKey(const Key('schedule_pause_button')));
@@ -268,7 +278,7 @@ void main() {
       'current_goal': 'build glutes and legs',
       'long_term_goal': 'stronger and more muscular',
       'weekly_frequency': 4,
-      'equipment_access': 'commercial gym',
+      'equipment_access': 'Commercial gym',
       'injuries_or_limitations': 'None',
       'stress_and_sleep': 'moderate stress, 7 hours sleep',
     });

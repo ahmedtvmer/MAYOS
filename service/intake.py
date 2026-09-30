@@ -28,6 +28,13 @@ from typing import Any
 
 from service import onboarding as onboarding_service
 from service._base import ledger_scope
+from utils.equipment_access import (
+    BODYWEIGHT_ONLY,
+    COMMERCIAL_GYM,
+    EQUIPMENT_ACCESS_VALUES,
+    HOME_GYM,
+    map_equipment_access,
+)
 
 STATUS_IN_PROGRESS = "in_progress"
 STATUS_CONFIRMING = "confirming"
@@ -156,9 +163,13 @@ INTAKE_FIELDS: tuple[IntakeField, ...] = (
     ),
     IntakeField("weekly_frequency", "int", True, "weekly_frequency", minimum=1, maximum=5),
     IntakeField(
-        "equipment_access", "text", True, "equipment_access",
-        hint="What equipment can you train with?",
-        examples=("commercial gym", "home gym", "bodyweight only"),
+        "equipment_access", "enum", True, "equipment_access",
+        allowed=EQUIPMENT_ACCESS_VALUES,
+        option_descriptions={
+            COMMERCIAL_GYM: "A fully equipped commercial gym.",
+            HOME_GYM: "Equipment you keep at home, such as weights or machines.",
+            BODYWEIGHT_ONLY: "No gym equipment; train with your bodyweight.",
+        },
     ),
     IntakeField(
         "injuries_or_limitations", "text", True, "injuries_or_limitations",
@@ -193,12 +204,19 @@ def _range_message(spec: IntakeField) -> str:
     return f"<= {spec.maximum:g}"
 
 
-def _validate_enum(spec: IntakeField, raw: Any) -> str:
+def _validate_enum(spec: IntakeField, raw: Any, *, case_insensitive: bool = False) -> str:
     if not isinstance(raw, str):
         raise IntakeValidationError(
             f"Invalid value for '{spec.name}': must be one of {', '.join(spec.allowed)}."
         )
-    value = raw.strip().lower()
+    value = raw.strip()
+    if case_insensitive:
+        value = next(
+            (option for option in spec.allowed if option.casefold() == value.casefold()),
+            value,
+        )
+    else:
+        value = value.lower()
     if value not in spec.allowed:
         raise IntakeValidationError(
             f"Invalid value for '{spec.name}': must be one of {', '.join(spec.allowed)}."
@@ -252,8 +270,14 @@ def validate_answer(field_name: str, raw: Any) -> Any:
     spec = FIELD_BY_NAME.get(field_name)
     if spec is None:
         raise IntakeValidationError(f"Unknown onboarding field '{field_name}'.")
+    case_insensitive_enum = False
+    if field_name == "equipment_access":
+        if not isinstance(raw, str):
+            raise IntakeValidationError("Invalid value for 'equipment_access': must be text.")
+        raw = map_equipment_access(raw)
+        case_insensitive_enum = True
     if spec.kind == "enum":
-        return _validate_enum(spec, raw)
+        return _validate_enum(spec, raw, case_insensitive=case_insensitive_enum)
     if spec.kind == "int":
         return _validate_number(spec, raw, integer=True)
     if spec.kind == "float":

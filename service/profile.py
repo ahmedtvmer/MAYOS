@@ -5,6 +5,7 @@ from typing import Any
 from agent.program_generator import generate_program_pipeline
 from service._base import ledger_scope
 from service.programs import COACH_CONTROLLED_ERROR, player_controls_program
+from utils.equipment_access import map_equipment_access
 
 
 def get_profile(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, Any] | None:
@@ -27,6 +28,8 @@ def update_profile(
     """
     with ledger_scope(db, ledger, ledger_id) as ledger:
         profile = ledger.get_player_profile() or {}
+        if "equipment_access" in payload:
+            payload = {**payload, "equipment_access": map_equipment_access(payload["equipment_access"])}
         freq_changed = int(payload.get("weekly_frequency", profile.get("weekly_frequency", 4))) != int(
             profile.get("weekly_frequency", 4)
         )

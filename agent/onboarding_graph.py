@@ -10,6 +10,7 @@ from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field, ValidationError
 
 from agent.program_generator import extract_frequency_from_text, validate_frequency
+from utils.equipment_access import map_equipment_access
 from utils.logger import MyosLogger
 from utils.model_downloader import llm
 
@@ -31,7 +32,7 @@ STEP_PROMPTS: dict[int, str] = {
     ),
     3: (
         "Last section: logistics and recovery.\n\n"
-        "7. What equipment do you have access to?\n"
+        "7. Where do you train: commercial gym, home gym, or bodyweight only?\n"
         "8. Do you have any injuries or joint issues?\n"
         "9. How is your job/daily stress and average sleep quality?"
     ),
@@ -431,7 +432,7 @@ def intake_node(state: OnboardingGraphState, config: RunnableConfig | None = Non
             prompt = (
                 f"Extract Step 3 logistics from user input:\n\"{raw_input}\"\n\n"
                 f"RULES:\n"
-                f"- equipment_access: gym or equipment details.\n"
+                f"- equipment_access: where the player trains; map to commercial gym, home gym, or bodyweight only.\n"
                 f"- injuries_or_limitations: injuries or issues. If user EXPLICITLY states none/healthy, set 'None'. "
                 f"If injuries are NOT mentioned at all, you MUST leave this null.\n"
                 f"- stress_and_sleep: job stress and sleep hours.\n"
@@ -481,9 +482,11 @@ def intake_node(state: OnboardingGraphState, config: RunnableConfig | None = Non
         if missing:
             return _reject(step, f"Incomplete logistics: Please provide {', '.join(missing)}.", profile)
 
+        equipment = map_equipment_access(equipment)
+
         profile.update(
             {
-                "equipment_access": equipment.strip(),
+                "equipment_access": equipment,
                 "injuries_or_limitations": injuries.strip(),
                 "stress_and_sleep": recovery.strip(),
             }
