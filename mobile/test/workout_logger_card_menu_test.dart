@@ -7,6 +7,7 @@ import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
+import 'package:mayos_mobile/src/core/connectivity.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/rest_length.dart';
@@ -65,7 +66,7 @@ List<Map<String, dynamic>> _baselinesBody() => <Map<String, dynamic>>[
           'performed_date': '2026-09-26',
           'sets': <Map<String, dynamic>>[
             <String, dynamic>{'weight_kg': 100.0, 'reps': 5, 'rir': 1.0},
-              <String, dynamic>{'weight_kg': 95.0, 'reps': 6, 'rir': 2.0},
+            <String, dynamic>{'weight_kg': 95.0, 'reps': 6, 'rir': 2.0},
           ],
         },
       },
@@ -103,7 +104,28 @@ FakeMayosApi _signedInFake() {
   fake.profileExists = true;
   fake.recoveryEmail = 'alice@example.com';
   fake.baselinesBody = _baselinesBody();
+  fake.programVersion = 3;
+  fake.programDaysOverride = <Map<String, dynamic>>[
+    <String, dynamic>{
+      'day_name': _day.dayName,
+      'day_order': _day.dayOrder,
+      'warmup_exercises': <Map<String, dynamic>>[],
+      'exercises': <Map<String, dynamic>>[
+        for (final ProgramExercise exercise in _day.exercises)
+          exercise.toJson(),
+      ],
+    },
+  ];
   return fake;
+}
+
+class _ForcedOfflineConnectivity extends ConnectivityController {
+  _ForcedOfflineConnectivity() {
+    markOffline();
+  }
+
+  @override
+  void markOnline() {}
 }
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
@@ -159,13 +181,20 @@ Future<
       FakeMayosApi fake,
       InMemoryActiveWorkoutStore store,
       InMemoryRestLengthStore restLengths,
-    })> _openLogger(WidgetTester tester) async {
-  tester.view.physicalSize = const Size(1080, 2400);
+    })> _openLogger(
+  WidgetTester tester, {
+  bool coachControlled = false,
+  bool forceOffline = false,
+  ThemeMode mode = ThemeMode.light,
+  Size size = const Size(1080, 2400),
+}) async {
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
   final FakeMayosApi fake = _signedInFake();
+  fake.coachControlsProgram = coachControlled;
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
   // Seeding talks to the (fake) API on real timers, so it runs outside the
@@ -180,7 +209,7 @@ Future<
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
-        themeModeStoreProvider.overrideWithValue(InMemoryThemeModeStore()),
+        themeModeStoreProvider.overrideWithValue(InMemoryThemeModeStore(mode)),
         draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
         workoutCacheStoreProvider
             .overrideWithValue(InMemoryWorkoutCacheStore()),
@@ -201,6 +230,10 @@ Future<
           client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
           return client;
         }),
+        if (forceOffline)
+          connectivityControllerProvider.overrideWith(
+            (ref) => _ForcedOfflineConnectivity(),
+          ),
       ],
       child: const MayosApp(),
     ),
@@ -266,13 +299,25 @@ Future<void> _tickSet(WidgetTester tester, int exercise, int set) async {
 }
 
 /// Drives the catalog search dialog and picks a result.
-Future<void> _searchAndPick(WidgetTester tester, String query,
-    String result) async {
+Future<void> _searchAndPick(
+  WidgetTester tester,
+  String query,
+  String result, {
+  bool confirmProgramSwap = true,
+}) async {
   await tester.enterText(find.byType(TextField).last, query);
   await tester.tap(find.text('Search'));
   await _pumpUntilFound(tester, find.text(result));
   await tester.tap(find.text(result));
   await tester.pumpAndSettle();
+  if (confirmProgramSwap &&
+      find
+          .byKey(const ValueKey<String>('logger.keepSwapDialog'))
+          .evaluate()
+          .isNotEmpty) {
+    await tester.tap(find.text('Replace').last);
+    await tester.pumpAndSettle();
+  }
 }
 
 void main() {
@@ -316,9 +361,11 @@ void main() {
   testWidgets(
       'replacing with ticked sets asks first, then clears the rows and swaps '
       'the card (#162)', (WidgetTester tester) async {
-    final ({FakeMayosApi fake, InMemoryActiveWorkoutStore store,
-        InMemoryRestLengthStore restLengths}) harness =
-        await _openLogger(tester);
+    final ({
+      FakeMayosApi fake,
+      InMemoryActiveWorkoutStore store,
+      InMemoryRestLengthStore restLengths
+    }) harness = await _openLogger(tester);
 
     // Two ticked sets on Bench: the confirmation gate.
     await _tickSet(tester, 0, 0);
@@ -384,6 +431,270 @@ void main() {
   });
 
   testWidgets(
+      'self-service can keep the logger swap in one program slot without '
+      'changing the Active workout version (#171)',
+      (WidgetTester tester) async {
+    final harness = await _openLogger(
+      tester,
+      size: const Size(360, 800),
+      mode: ThemeMode.light,
+    );
+    await _pickMenuItem(tester, 0, _replaceItem(0));
+    await _searchAndPick(
+      tester,
+      'fly',
+      'Cable Fly',
+      confirmProgramSwap: false,
+    );
+
+    expect(find.text('Keep this swap in my program'), findsOneWidget);
+    final Finder checkbox =
+        find.byKey(const ValueKey<String>('logger.keepSwapCheckbox'));
+    expect(tester.getSize(checkbox).height, greaterThanOrEqualTo(48));
+    await tester.tap(checkbox);
+    await tester.tap(find.text('Replace').last);
+    await _pumpUntilFound(
+      tester,
+      find.text('The swap was saved to your program.'),
+    );
+    expect(find.text('The swap was saved to your program.'), findsOneWidget);
+
+    expect(harness.fake.programSubstitutionRequests, hasLength(1));
+    expect(
+        harness.fake.programSubstitutionRequests.single,
+        containsPair(
+          'day_name',
+          'Upper A',
+        ));
+    expect(
+        harness.fake.programSubstitutionRequests.single,
+        containsPair(
+          'exercise_id',
+          'bench_press',
+        ));
+    expect(
+        harness.fake.programSubstitutionRequests.single,
+        containsPair(
+          'replacement_exercise_id',
+          'cable_fly',
+        ));
+    expect(
+        harness.fake.programSubstitutionRequests.single,
+        containsPair(
+          'all_occurrences',
+          false,
+        ));
+    final ActiveWorkout stored = (await harness.store.read(_account))!;
+    expect(stored.programVersion, 3);
+    expect(stored.exercises.first.replaced, isTrue);
+    expect(stored.exercises[1].exerciseId, 'cable_fly');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'coach-controlled logger swap opens the prefilled request dialog and '
+      'requires a reason (#171)', (WidgetTester tester) async {
+    final harness = await _openLogger(
+      tester,
+      coachControlled: true,
+      size: const Size(360, 800),
+      mode: ThemeMode.dark,
+    );
+    await _pickMenuItem(tester, 0, _replaceItem(0));
+    await _searchAndPick(
+      tester,
+      'fly',
+      'Cable Fly',
+      confirmProgramSwap: false,
+    );
+
+    expect(find.text('Ask my coach to make this permanent'), findsOneWidget);
+    await tester
+        .tap(find.byKey(const ValueKey<String>('logger.keepSwapCheckbox')));
+    await tester.tap(find.text('Replace').last);
+    await _pumpUntilFound(tester, find.text('Request a program change'));
+    expect(find.text('Request a program change'), findsOneWidget);
+    expect(find.text('Upper A'), findsWidgets);
+    expect(find.text('Bench Press'), findsOneWidget);
+    expect(find.text('Cable Fly'), findsWidgets);
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('program_request_reason_field')),
+      'This movement feels better on my shoulder.',
+    );
+    await tester.tap(
+        find.byKey(const ValueKey<String>('program_request_submit_button')));
+    await _pumpUntilFound(
+      tester,
+      find.text('Your coach was asked to make this swap permanent.'),
+    );
+    expect(
+      find.text('Your coach was asked to make this swap permanent.'),
+      findsOneWidget,
+    );
+
+    expect(
+        harness.fake.programRequests.single,
+        containsPair(
+          'kind',
+          'exercise_substitution',
+        ));
+    expect(
+        harness.fake.programRequests.single,
+        containsPair(
+          'day_name',
+          'Upper A',
+        ));
+    expect(
+        harness.fake.programRequests.single,
+        containsPair(
+          'replacement_exercise_id',
+          'cable_fly',
+        ));
+    expect(
+        harness.fake.programRequests.single,
+        containsPair(
+          'reason',
+          'This movement feels better on my shoulder.',
+        ));
+    expect(harness.fake.programSubstitutionRequests, isEmpty);
+    final ActiveWorkout stored = (await harness.store.read(_account))!;
+    expect(stored.programVersion, 3);
+    expect(stored.exercises.first.replaced, isTrue);
+    expect(stored.exercises[1].exerciseId, 'cable_fly');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'a server authority change refreshes self-service into the coach request '
+      'path (#170/#171)', (WidgetTester tester) async {
+    final harness = await _openLogger(tester);
+    await _pickMenuItem(tester, 0, _replaceItem(0));
+    await _searchAndPick(
+      tester,
+      'fly',
+      'Cable Fly',
+      confirmProgramSwap: false,
+    );
+    harness.fake.coachControlsProgram = true;
+    await tester
+        .tap(find.byKey(const ValueKey<String>('logger.keepSwapCheckbox')));
+    await tester.tap(find.text('Replace').last);
+    await _pumpUntilFound(tester, find.text('Request a program change'));
+    expect(find.text('Request a program change'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('program_request_reason_field')),
+      'My coach controls this plan.',
+    );
+    await tester.tap(
+        find.byKey(const ValueKey<String>('program_request_submit_button')));
+    await _pumpUntilFound(
+      tester,
+      find.text('Your coach was asked to make this swap permanent.'),
+    );
+    expect(harness.fake.programRequests, hasLength(1));
+    expect(harness.fake.programSubstitutionRequests, isEmpty);
+  });
+
+  testWidgets(
+      'a server authority change refreshes coach requests into self-service '
+      'substitution (#170/#171)', (WidgetTester tester) async {
+    final harness = await _openLogger(tester, coachControlled: true);
+    await _pickMenuItem(tester, 0, _replaceItem(0));
+    await _searchAndPick(
+      tester,
+      'fly',
+      'Cable Fly',
+      confirmProgramSwap: false,
+    );
+    await tester
+        .tap(find.byKey(const ValueKey<String>('logger.keepSwapCheckbox')));
+    await tester.tap(find.text('Replace').last);
+    await _pumpUntilFound(tester, find.text('Request a program change'));
+    harness.fake.coachControlsProgram = false;
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('program_request_reason_field')),
+      'I now control my program.',
+    );
+    await tester.tap(
+        find.byKey(const ValueKey<String>('program_request_submit_button')));
+    await _pumpUntilFound(
+      tester,
+      find.text('The swap was saved to your program.'),
+    );
+    expect(find.text('The swap was saved to your program.'), findsOneWidget);
+    expect(harness.fake.programRequests, isEmpty);
+    expect(harness.fake.programSubstitutionRequests, hasLength(1));
+  });
+
+  testWidgets('permanent-swap option is hidden offline and Replace still works',
+      (WidgetTester tester) async {
+    final harness = await _openLogger(tester, forceOffline: true);
+    await _pickMenuItem(tester, 0, _replaceItem(0));
+    await _searchAndPick(tester, 'fly', 'Cable Fly');
+
+    expect(find.byKey(const ValueKey<String>('logger.keepSwapDialog')),
+        findsNothing);
+    expect(find.text('Cable Fly'), findsOneWidget);
+    expect(harness.fake.programSubstitutionRequests, isEmpty);
+    final ActiveWorkout stored = (await harness.store.read(_account))!;
+    expect(stored.exercises.first.replaced, isTrue);
+    expect(stored.exercises[1].exerciseId, 'cable_fly');
+  });
+
+  testWidgets('replacing an unplanned exercise never offers program changes',
+      (WidgetTester tester) async {
+    final harness = await _openLogger(tester);
+    final Finder addExercise =
+        find.widgetWithText(OutlinedButton, 'Add exercise');
+    await tester.ensureVisible(addExercise);
+    await tester.tap(addExercise);
+    await _pumpUntilFound(tester, find.text('Search the exercise catalog'));
+    expect(find.text('Search the exercise catalog'), findsOneWidget);
+    await _searchAndPick(tester, 'curl', 'Bicep Curl');
+
+    await _pickMenuItem(tester, 2, _replaceItem(2));
+    await _pumpUntilFound(tester, find.text('Search the exercise catalog'));
+    await tester.tap(_muscleFilter());
+    await _searchAndPick(tester, 'fly', 'Cable Fly');
+
+    expect(find.byKey(const ValueKey<String>('logger.keepSwapDialog')),
+        findsNothing);
+    expect(harness.fake.programSubstitutionRequests, isEmpty);
+    expect(find.text('Cable Fly'), findsOneWidget);
+  });
+
+  testWidgets('program-call failure leaves the logger replacement in place',
+      (WidgetTester tester) async {
+    final harness = await _openLogger(tester);
+    harness.fake.failOffline('POST', '/programs/active/substitutions');
+    await _pickMenuItem(tester, 0, _replaceItem(0));
+    await _searchAndPick(
+      tester,
+      'fly',
+      'Cable Fly',
+      confirmProgramSwap: false,
+    );
+    await tester
+        .tap(find.byKey(const ValueKey<String>('logger.keepSwapCheckbox')));
+    await tester.tap(find.text('Replace').last);
+    await _pumpUntilFound(
+      tester,
+      find.textContaining(
+          'The workout swap is saved, but the program was not changed.'),
+    );
+    expect(
+      find.textContaining(
+          'The workout swap is saved, but the program was not changed.'),
+      findsOneWidget,
+    );
+
+    final ActiveWorkout stored = (await harness.store.read(_account))!;
+    expect(stored.exercises.first.replaced, isTrue);
+    expect(stored.exercises[1].exerciseId, 'cable_fly');
+    expect(harness.fake.programSubstitutionRequests, isEmpty);
+  });
+
+  testWidgets(
       'the Replace search opens with the target muscle listed before typing, '
       'and the pill searches the whole catalog (#162)',
       (WidgetTester tester) async {
@@ -430,7 +741,8 @@ void main() {
     expect(inDialog('Bench Press'), findsNothing);
   });
 
-  testWidgets('the Replace search never offers an exercise already in this '
+  testWidgets(
+      'the Replace search never offers an exercise already in this '
       'workout, planned or unplanned (#162)', (WidgetTester tester) async {
     await _openLogger(tester);
     Finder dialog() => find.byType(AlertDialog);
@@ -464,7 +776,8 @@ void main() {
     expect(inDialog('Bicep Curl'), findsNothing);
   });
 
-  testWidgets('Remove exercise asks before discarding logged sets and takes '
+  testWidgets(
+      'Remove exercise asks before discarding logged sets and takes '
       'an untouched one out at once (#162)', (WidgetTester tester) async {
     await _openLogger(tester);
 
@@ -502,7 +815,8 @@ void main() {
     expect(find.text('Remove and discard'), findsNothing);
   });
 
-  testWidgets('Undo replace brings the planned exercise back, asking first '
+  testWidgets(
+      'Undo replace brings the planned exercise back, asking first '
       'over logged sets (#162)', (WidgetTester tester) async {
     await _openLogger(tester);
 
@@ -553,7 +867,8 @@ void main() {
     expect(find.text('0/2 exercises · 0/4 sets'), findsOneWidget);
   });
 
-  testWidgets('a keypad focus stays on its own exercise when a card is '
+  testWidgets(
+      'a keypad focus stays on its own exercise when a card is '
       'inserted before it (#162)', (WidgetTester tester) async {
     await _openLogger(tester);
 
@@ -583,11 +898,14 @@ void main() {
     expect(_cell(2, 0, 'kg'), findsOneWidget);
   });
 
-  testWidgets('Rest time… in the menu opens the #125 picker and writes the '
+  testWidgets(
+      'Rest time… in the menu opens the #125 picker and writes the '
       'device override (#162)', (WidgetTester tester) async {
-    final ({FakeMayosApi fake, InMemoryActiveWorkoutStore store,
-        InMemoryRestLengthStore restLengths}) harness =
-        await _openLogger(tester);
+    final ({
+      FakeMayosApi fake,
+      InMemoryActiveWorkoutStore store,
+      InMemoryRestLengthStore restLengths
+    }) harness = await _openLogger(tester);
 
     await _pickMenuItem(tester, 0, _restItem(0));
     expect(find.text('Off'), findsOneWidget);
@@ -606,11 +924,14 @@ void main() {
     expect(find.text('Rest 2:15'), findsNothing);
   });
 
-  testWidgets('Remove exercise takes an unplanned exercise out of the '
+  testWidgets(
+      'Remove exercise takes an unplanned exercise out of the '
       'workout (#162)', (WidgetTester tester) async {
-    final ({FakeMayosApi fake, InMemoryActiveWorkoutStore store,
-        InMemoryRestLengthStore restLengths}) harness =
-        await _openLogger(tester);
+    final ({
+      FakeMayosApi fake,
+      InMemoryActiveWorkoutStore store,
+      InMemoryRestLengthStore restLengths
+    }) harness = await _openLogger(tester);
 
     final Finder add = find.widgetWithText(OutlinedButton, 'Add exercise');
     await tester.ensureVisible(add);
