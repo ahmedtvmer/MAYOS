@@ -83,7 +83,7 @@ def _plans(client, headers):
 def _make_coach(client, db, username):
     registered = _register(client, username)
     headers = _authed(registered["access_token"])
-    issued = coach_service.issue_coach_invite(db, username)
+    issued = coach_service.issue_coach_invite(db, username, actor="cli")
     assert issued["ok"], issued
     resp = client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]})
     assert resp.status_code == 200, resp.text

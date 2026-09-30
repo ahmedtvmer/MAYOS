@@ -137,7 +137,8 @@ main a {
 
 a:focus-visible,
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+select:focus-visible {
   outline: 3px solid var(--color-focus);
   outline-offset: 2px;
 }
@@ -254,6 +255,7 @@ label {
 
 input,
 textarea,
+select,
 button {
   width: 100%;
   min-height: 48px;
@@ -264,7 +266,8 @@ button {
 }
 
 input,
-textarea {
+textarea,
+select {
   background: var(--color-surface);
   color: var(--color-text);
 }

@@ -8,6 +8,10 @@ scripts, agent graphs) stay protected.
 import importlib
 import inspect
 import json
+import sqlite3
+from pathlib import Path
+
+from database.database_manager import DatabaseManager
 
 SNAPSHOT = "tests/data/database_manager_public_surface.json"
 
@@ -75,3 +79,35 @@ def test_module_level_names_still_importable():
     mod = importlib.import_module("database.database_manager")
     for name in snapshot["module_names"]:
         assert hasattr(mod, name), f"module-level name no longer importable: {name}"
+
+
+def test_existing_coach_invite_catalog_adds_revocation_column(tmp_path: Path):
+    catalog_path = tmp_path / "catalog.db"
+    legacy = sqlite3.connect(catalog_path)
+    legacy.execute(
+        "CREATE TABLE coach_invites (token_hash TEXT PRIMARY KEY, account_id TEXT NOT NULL,"
+        " expires_at TEXT NOT NULL, used_at TEXT, created_at TEXT NOT NULL)"
+    )
+    legacy.execute(
+        "INSERT INTO coach_invites VALUES (?, ?, ?, NULL, ?)",
+        ("a" * 64, "account-id", "2030-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+    )
+    legacy.commit()
+    legacy.close()
+
+    db = DatabaseManager(
+        catalog_path=catalog_path,
+        ledgers_dir=tmp_path / "users",
+        backups_dir=tmp_path / "backups",
+    )
+    try:
+        with db.catalog_locked() as conn:
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(coach_invites)")}
+            invite = conn.execute(
+                "SELECT token_hash, revoked_at FROM coach_invites WHERE account_id = ?",
+                ("account-id",),
+            ).fetchone()
+        assert "revoked_at" in columns
+        assert invite == ("a" * 64, None)
+    finally:
+        db.catalog_conn.close()

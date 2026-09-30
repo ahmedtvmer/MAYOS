@@ -178,7 +178,7 @@ def _make_coach(client, db, username, capacity=5):
     """Registers a player, grants the coach capability, and sets roster capacity."""
     registered = _register(client, username)
     headers = _authed(registered["access_token"])
-    issued = coach_service.issue_coach_invite(db, username)
+    issued = coach_service.issue_coach_invite(db, username, actor="cli")
     assert issued["ok"], issued
     assert (
         client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]}).status_code

@@ -13,10 +13,12 @@ is returned once to the operator. The client body can never set ``is_coach``.
 """
 
 import os
+import re
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
+from service import audit_log
 from service._tokens import hash_token
 
 DEFAULT_CAPACITY = 10
@@ -50,6 +52,10 @@ def issue_coach_invite(
     username: str,
     token_factory: Callable[[], str] | None = None,
     ttl_minutes: int | None = None,
+    source_ip: str | None = None,
+    account_id: str | None = None,
+    *,
+    actor: str,
 ) -> dict[str, Any]:
     """Owner-only issuance: mint a single-use coach invite bound to a live account.
 
@@ -58,18 +64,30 @@ def issue_coach_invite(
     account so a code can never target a ghost or a non-player.
     """
     clean_id = db._sanitize_username(username)
-    account = db.get_active_account_by_username(clean_id) if clean_id else None
-    if account is None or not db.ledger_exists(account["ledger_id"]):
-        return {"ok": False, "error": f"Unknown account '{username}'."}
     if ttl_minutes is None:
         ttl = coach_invite_ttl()
     elif isinstance(ttl_minutes, bool) or not isinstance(ttl_minutes, int) or ttl_minutes <= 0:
         return {"ok": False, "error": "Invite lifetime must be a positive number of minutes."}
     else:
         ttl = timedelta(minutes=_bounded_ttl_minutes(ttl_minutes))
-    raw_token = token_factory() if token_factory else secrets.token_urlsafe(32)
-    expires_at = (datetime.now(UTC) + ttl).isoformat()
-    db.create_coach_invite(hash_token(raw_token), account["account_id"], expires_at)
+    with db.catalog_transaction():
+        account = _coach_invite_account(db, clean_id, account_id)
+        if account is None:
+            return {"ok": False, "error": f"Unknown account '{username}'."}
+        if account["is_coach"]:
+            return {"ok": False, "error": "Account already has coach capability."}
+        raw_token = token_factory() if token_factory else secrets.token_urlsafe(32)
+        expires_at = (datetime.now(UTC) + ttl).isoformat()
+        db.create_coach_invite(hash_token(raw_token), account["account_id"], expires_at)
+        audit_log.write_audit_entry(
+            db,
+            audit_log.AuditEvent(
+                actor=actor,
+                action="coach_invite_issued",
+                target_account_id=account["account_id"],
+                source_ip=source_ip,
+            ),
+        )
     return {
         "ok": True,
         "token": raw_token,
@@ -77,6 +95,62 @@ def issue_coach_invite(
         "username": account["username"],
         "expires_at": expires_at,
     }
+
+
+def _coach_invite_account(db: Any, clean_id: str, account_id: str | None) -> dict[str, Any] | None:
+    account = db.get_account(account_id) if account_id else db.get_active_account_by_username(clean_id) if clean_id else None
+    if (
+        account is None
+        or not db.is_live_account(account)
+        or not account["is_player"]
+        or account["username"] != clean_id
+        or not db.ledger_exists(account["ledger_id"])
+    ):
+        return None
+    return account
+
+
+def revoke_coach_invite(
+    db: Any, invite_id: str, actor: str, source_ip: str | None = None
+) -> dict[str, Any]:
+    """Revokes a live invite by its stored SHA-256 token hash."""
+    if not isinstance(invite_id, str) or re.fullmatch(r"[0-9a-f]{64}", invite_id) is None:
+        return {"ok": False, "error": "Invite can't be revoked."}
+    now_iso = datetime.now(UTC).isoformat()
+    with db.catalog_transaction():
+        invite = db.revoke_coach_invite(invite_id, now_iso)
+        if invite is None:
+            return {"ok": False, "error": "Invite can't be revoked."}
+        audit_log.write_audit_entry(
+            db,
+            audit_log.AuditEvent(
+                actor=actor,
+                action="coach_invite_revoked",
+                target_account_id=invite["account_id"],
+                source_ip=source_ip,
+            ),
+        )
+    return {"ok": True, "account_id": invite["account_id"]}
+
+
+def list_coach_invites(db: Any, account_id: str | None = None) -> list[dict[str, Any]]:
+    """Returns live invites and used, expired, or revoked invites from 30 days."""
+    moment = datetime.now(UTC)
+    now_iso = moment.isoformat()
+    recent_since_iso = (moment - timedelta(days=30)).isoformat()
+    rows = db.list_coach_invites(now_iso, recent_since_iso, account_id)
+    invites = []
+    for row in rows:
+        if row["used_at"] is not None:
+            status, status_at = "used", row["used_at"]
+        elif row["revoked_at"] is not None:
+            status, status_at = "revoked", row["revoked_at"]
+        elif row["expires_at"] <= now_iso:
+            status, status_at = "expired", row["expires_at"]
+        else:
+            status, status_at = "live", None
+        invites.append({**row, "mode": "Account-bound", "status": status, "status_at": status_at})
+    return invites
 
 
 def redeem_coach_invite(db: Any, account_id: str, token: str) -> dict[str, Any]:

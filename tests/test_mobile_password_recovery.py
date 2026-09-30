@@ -250,7 +250,7 @@ def test_coach_account_completes_forgot_reset_login(api, monkeypatch):
     client, db = api
     token = _register(client, "coachlet")
     _set_recovery_email(client, token, "coachlet@example.com")
-    issued = coach_service.issue_coach_invite(db, "coachlet")
+    issued = coach_service.issue_coach_invite(db, "coachlet", actor="cli")
     assert issued["ok"], issued
     redeemed = client.post("/coach/invite/redeem", headers=_authed(token), json={"token": issued["token"]})
     assert redeemed.status_code == 200, redeemed.text

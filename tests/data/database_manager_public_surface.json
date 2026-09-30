@@ -241,6 +241,10 @@
       "kind": "method",
       "signature": "(self, coach_account_id: str) -> dict[str, dict[str, typing.Any]]"
     },
+    "list_coach_invites": {
+      "kind": "method",
+      "signature": "(self, now_iso: str, recent_since_iso: str, account_id: str | None = None) -> list[dict[str, typing.Any]]"
+    },
     "mark_assignment_notices_read": {
       "kind": "method",
       "signature": "(self, account_id: str, now_iso: str) -> int"
@@ -300,6 +304,10 @@
     "resolve_coach_alert": {
       "kind": "method",
       "signature": "(self, alert_id: str, coach_account_id: str, now_iso: str, resolved_by: str) -> dict[str, typing.Any] | None"
+    },
+    "revoke_coach_invite": {
+      "kind": "method",
+      "signature": "(self, token_hash: str, now_iso: str) -> dict[str, typing.Any] | None"
     },
     "resolve_open_coach_alerts_for_assignment": {
       "kind": "method",

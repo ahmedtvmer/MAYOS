@@ -1,10 +1,10 @@
-"""Owner issuance of a single-use coach invitation (closed-trial only).
+"""Owner issuance of a single-use coach invitation.
 
 The owner runs this from the ops console to enable the coach capability for a
 specific, already-registered account. The printed code is account-bound,
 single-use, and expiring; hand it to the invited person out of band. Only the
 token's SHA-256 hash is stored, so re-running this script is the only way to see
-a fresh code. There is deliberately no public HTTP issuance endpoint.
+a fresh code. The owner dashboard uses the same service operation.
 
 Usage:
     python scripts/issue_coach_invite.py <username> [--ttl-minutes 1440]
@@ -51,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
     # A fresh store is built per run, so custom dirs apply even in long-lived shells.
     db = DatabaseManager(catalog_path=args.catalog, ledgers_dir=args.ledgers_dir, backups_dir=args.backups_dir)
     try:
-        result = coach_service.issue_coach_invite(db, args.username, ttl_minutes=args.ttl_minutes)
+        result = coach_service.issue_coach_invite(db, args.username, ttl_minutes=args.ttl_minutes, actor="cli")
     finally:
         db.catalog_conn.close()
 

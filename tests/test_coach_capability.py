@@ -69,8 +69,8 @@ def _subject(token):
     return pyjwt.decode(token, TEST_JWT_SECRET, algorithms=["HS256"])["sub"]
 
 
-def _issue(db, username, **kwargs):
-    result = coach_service.issue_coach_invite(db, username, **kwargs)
+def _issue(db, username, *, actor, **kwargs):
+    result = coach_service.issue_coach_invite(db, username, actor=actor, **kwargs)
     assert result["ok"], result
     return result
 
@@ -78,7 +78,7 @@ def _issue(db, username, **kwargs):
 def test_redeem_requires_authentication(api):
     client, db, _ = api
     _register(client, "alice")
-    issued = _issue(db, "alice")
+    issued = _issue(db, "alice", actor="cli")
     assert client.post("/coach/invite/redeem", json={"token": issued["token"]}).status_code == 401
 
 
@@ -127,7 +127,7 @@ def test_coach_gate_checks_registry_before_mounting_ledger(api, monkeypatch):
     assert client.get("/coach/profile", headers=headers).status_code == 403
     assert mounted == []
 
-    issued = _issue(db, "alice")
+    issued = _issue(db, "alice", actor="cli")
     assert client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]}).status_code == 200
     mounted.clear()
     assert client.get("/coach/profile", headers=headers).status_code == 200
@@ -139,7 +139,7 @@ def test_coach_route_still_rejects_a_revoked_token(api):
     client, db, _ = api
     registered = _register(client, "alice")
     headers = _authed(registered["access_token"])
-    issued = _issue(db, "alice")
+    issued = _issue(db, "alice", actor="cli")
     assert client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]}).status_code == 200
     assert client.get("/coach/profile", headers=headers).status_code == 200
 
@@ -154,7 +154,7 @@ def test_owner_issued_invite_grants_capability_without_reissuing_token(api):
     headers = _authed(token)
     account_id = _subject(token)
 
-    issued = _issue(db, "alice")
+    issued = _issue(db, "alice", actor="cli")
     assert issued["account_id"] == account_id
 
     redeemed = client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]})
@@ -181,7 +181,7 @@ def test_invite_is_bound_to_the_invited_account(api):
     client, db, _ = api
     _register(client, "alice")
     bob = _register(client, "bob")
-    issued = _issue(db, "alice")
+    issued = _issue(db, "alice", actor="cli")
 
     # Bob's valid session cannot redeem Alice's code, and the attempt must not
     # burn it: Alice can still redeem.
@@ -221,7 +221,7 @@ def test_used_invite_cannot_be_replayed(api):
     client, db, _ = api
     registered = _register(client, "alice")
     headers = _authed(registered["access_token"])
-    issued = _issue(db, "alice")
+    issued = _issue(db, "alice", actor="cli")
 
     assert client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]}).status_code == 200
     replay = client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]})
@@ -233,7 +233,7 @@ def test_redeem_is_atomic_under_concurrency(api):
     _, db, _ = api
     _register_for(db, "alice")
     account = db.get_active_account_by_username("alice")
-    issued = _issue(db, "alice")
+    issued = _issue(db, "alice", actor="cli")
     token_hash = hashlib.sha256(issued["token"].encode()).hexdigest()
     now = datetime.now(UTC).isoformat()
 
@@ -269,7 +269,7 @@ def test_player_data_is_retained_when_coach_capability_is_added(api):
     assert client.put("/profile", json={"current_goal": "Strength"}, headers=headers).status_code == 200
     ledger_before = (ledgers_dir / "alice.db").read_bytes()
 
-    issued = _issue(db, "alice")
+    issued = _issue(db, "alice", actor="cli")
     assert client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]}).status_code == 200
 
     # Same immutable account, still a player, and the ledger is untouched.
@@ -283,7 +283,7 @@ def test_coach_profile_defaults_and_roundtrip(api):
     client, db, _ = api
     registered = _register(client, "alice")
     headers = _authed(registered["access_token"])
-    issued = _issue(db, "alice")
+    issued = _issue(db, "alice", actor="cli")
     client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]})
 
     profile = client.get("/coach/profile", headers=headers)
@@ -316,7 +316,7 @@ def test_coach_profile_validation_bounds(api):
     client, db, _ = api
     registered = _register(client, "alice")
     headers = _authed(registered["access_token"])
-    issued = _issue(db, "alice")
+    issued = _issue(db, "alice", actor="cli")
     client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]})
 
     def put(**overrides):
@@ -337,7 +337,7 @@ def test_coach_profile_revocation_fails_closed(api):
     registered = _register(client, "alice")
     headers = _authed(registered["access_token"])
     account_id = _subject(registered["access_token"])
-    issued = _issue(db, "alice")
+    issued = _issue(db, "alice", actor="cli")
     client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]})
     assert client.get("/coach/profile", headers=headers).status_code == 200
 
@@ -350,7 +350,7 @@ def test_coach_profile_revocation_fails_closed(api):
 def test_invite_store_keeps_only_a_hash(api):
     client, db, _ = api
     _register(client, "alice")
-    issued = _issue(db, "alice")
+    issued = _issue(db, "alice", actor="cli")
 
     with db._catalog_lock:
         rows = db.catalog_conn.execute("SELECT token_hash FROM coach_invites").fetchall()
@@ -369,7 +369,7 @@ def test_invite_for_deleted_account_is_refused(api):
             (datetime.now(UTC).isoformat(), account_id),
         )
         db.catalog_conn.commit()
-    result = coach_service.issue_coach_invite(db, "alice")
+    result = coach_service.issue_coach_invite(db, "alice", actor="cli")
     assert result["ok"] is False
 
 
@@ -377,7 +377,7 @@ def test_invite_ttl_rejects_nonpositive_values(api):
     _, db, _ = api
     _register_for(db, "alice")
     for bad in (0, -1, -1440):
-        result = coach_service.issue_coach_invite(db, "alice", ttl_minutes=bad)
+        result = coach_service.issue_coach_invite(db, "alice", ttl_minutes=bad, actor="cli")
         assert result["ok"] is False, bad
         assert "positive" in result["error"]
 
@@ -386,8 +386,8 @@ def test_invite_ttl_is_clamped_to_documented_bounds(api):
     _, db, _ = api
     _register_for(db, "alice")
     now = datetime.now(UTC)
-    low = coach_service.issue_coach_invite(db, "alice", ttl_minutes=1)
-    high = coach_service.issue_coach_invite(db, "alice", ttl_minutes=10**9)
+    low = coach_service.issue_coach_invite(db, "alice", ttl_minutes=1, actor="cli")
+    high = coach_service.issue_coach_invite(db, "alice", ttl_minutes=10**9, actor="cli")
     assert low["ok"] and high["ok"]
     assert datetime.fromisoformat(low["expires_at"]) >= now + timedelta(
         minutes=coach_service.MIN_INVITE_TTL_MINUTES - 1
@@ -395,6 +395,30 @@ def test_invite_ttl_is_clamped_to_documented_bounds(api):
     assert datetime.fromisoformat(high["expires_at"]) <= now + timedelta(
         minutes=coach_service.MAX_INVITE_TTL_MINUTES + 1
     )
+
+
+def test_used_invite_is_listed_until_pruned_after_30_days(api):
+    client, db, _ = api
+    registered = _register(client, "alice")
+    issued = _issue(db, "alice", actor="cli")
+    redeemed = client.post(
+        "/coach/invite/redeem",
+        headers=_authed(registered["access_token"]),
+        json={"token": issued["token"]},
+    )
+    assert redeemed.status_code == 200
+
+    token_hash = hashlib.sha256(issued["token"].encode()).hexdigest()
+    recent = coach_service.list_coach_invites(db)
+    assert any(invite["token_hash"] == token_hash and invite["status"] == "used" for invite in recent)
+
+    future = datetime.now(UTC) + timedelta(days=31)
+    assert db.prune_coach_invites(future.isoformat()) == 1
+    with db._catalog_lock:
+        row = db.catalog_conn.execute(
+            "SELECT token_hash FROM coach_invites WHERE token_hash = ?", (token_hash,)
+        ).fetchone()
+    assert row is None
 
 
 @pytest.mark.parametrize("value", ["0", "-5"])

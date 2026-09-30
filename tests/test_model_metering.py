@@ -170,7 +170,7 @@ def _post_chat(client, token: str):
 def _make_coach(client, db, username: str, capacity: int = 5) -> dict[str, str]:
     token = _register(client, username)
     headers = _authed(token)
-    issued = coach_service.issue_coach_invite(db, username)
+    issued = coach_service.issue_coach_invite(db, username, actor="cli")
     assert issued["ok"], issued
     assert client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]}).status_code == 200
     assert (

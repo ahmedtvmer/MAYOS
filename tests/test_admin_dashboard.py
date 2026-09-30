@@ -267,7 +267,7 @@ def test_admin_pages_reference_brand_assets_with_strict_self_only_csp(admin_api)
     assert home.headers["content-security-policy"] == expected_csp
     assert 'class="brand-link" href="/admin" aria-label="MAYOS owner dashboard" aria-current="page"' in home.text
     assert "The owner dashboard is ready" not in home.text
-    assert home.text.count('class="dashboard-card"') == 3
+    assert home.text.count('class="dashboard-card"') == 4
     assert "Review accounts, plans, and activity." in home.text
     assert "Review model usage, limits, and spend." in home.text
     assert "Review owner actions and sign-ins." in home.text
@@ -1640,3 +1640,241 @@ def test_usage_page_reports_periods_accounts_limits_alert_and_cli_totals(admin_a
     assert not re.search(r'href="[^"]+\.csv', page.text)
     assert "style=" not in page.text and "<script" not in page.text
     _assert_cli_usage_parity(db, page.text, capsys, monkeypatch, moment)
+
+
+def test_admin_coach_invite_is_shown_once_and_redeems(admin_api, caplog):
+    client, db, now, _ = admin_api
+    account, auth_headers = _register_account(client, db, "coachinviteowner")
+    assert client.get("/admin/invites").status_code == 404
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{account['account_id']}")
+    assert "Issue coach invite" in page.text and "24 hours" in page.text
+    csrf = _csrf(page.text)
+    issued = client.post(
+        f"/admin/accounts/{account['account_id']}/coach-invites",
+        data={"csrf_token": csrf, "ttl_minutes": "60"},
+    )
+
+    assert issued.status_code == 200
+    assert issued.headers["cache-control"] == "no-store"
+    token = html.unescape(re.search(r'id="issued_coach_code"[^>]+value="([^"]+)"', issued.text).group(1))
+    assert f"Your MAYOS coach code: {token}." in html.unescape(issued.text)
+    assert "Redeem it in the app: Settings → Become a coach." in html.unescape(issued.text)
+    assert 'href="https://wa.me/?text=' in issued.text
+    assert 'target="_blank" rel="noopener noreferrer"' in issued.text
+    assert token not in str(issued.request.url)
+    account_page = client.get(f"/admin/accounts/{account['account_id']}")
+    assert "Revoke" in account_page.text and token not in account_page.text
+    assert token not in client.get(f"/admin/accounts/{account['account_id']}").text
+    audit = client.get(f"/admin/audit?action=coach_invite_issued&account_id={account['account_id']}")
+    assert audit.status_code == 200 and "coach_invite_issued" in audit.text
+    assert token not in audit.text + caplog.text
+    redeemed = client.post("/coach/invite/redeem", headers=auth_headers, json={"token": token})
+    assert redeemed.status_code == 200, redeemed.text
+    assert redeemed.json()["capabilities"]["coach"] is True
+    live_page = client.get("/admin/invites")
+    assert token not in live_page.text and "Used" in live_page.text
+
+
+def test_admin_coach_invite_posts_require_login_and_csrf(admin_api):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "coachinvitecsrf")
+    assert client.post(
+        f"/admin/accounts/{account['account_id']}/coach-invites",
+        data={"csrf_token": "bad", "ttl_minutes": "1440"},
+    ).status_code == 404
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{account['account_id']}")
+    issue_path = f"/admin/accounts/{account['account_id']}/coach-invites"
+    assert client.post(issue_path, data={"csrf_token": "bad", "ttl_minutes": "1440"}).status_code == 403
+    assert client.post(issue_path, data={"csrf_token": _csrf(page.text), "ttl_minutes": "5"}).status_code == 400
+    issued = client.post(
+        issue_path,
+        data={"csrf_token": _csrf(page.text), "ttl_minutes": "1440"},
+    )
+    assert issued.status_code == 200
+    live_page = client.get("/admin/invites")
+    invite_id = re.search(r'action="/admin/invites/([0-9a-f]{64})/revoke"', live_page.text).group(1)
+    assert client.post(f"/admin/invites/{invite_id}/revoke", data={"csrf_token": "bad"}).status_code == 403
+
+
+@pytest.mark.parametrize("invite_id", ["short", "g" * 64, "A" * 64])
+def test_malformed_coach_invite_ids_cannot_be_revoked(admin_api, invite_id):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "coachinvitemalformed")
+    assert _login(client, now[0]).status_code == 303
+    page = client.get("/admin/invites")
+    response = client.post(
+        f"/admin/invites/{invite_id}/revoke",
+        data={"csrf_token": _csrf(page.text)},
+    )
+    assert response.status_code == 409
+    assert html.unescape(response.text) == "Invite can't be revoked."
+    audit = client.get(
+        f"/admin/audit?action=coach_invite_revoked&account_id={account['account_id']}"
+    )
+    assert "<strong>Action:</strong> coach_invite_revoked" not in audit.text
+
+
+def test_revoked_and_used_coach_invites_follow_transition_rules(admin_api):
+    client, db, now, _ = admin_api
+    account, auth_headers = _register_account(client, db, "coachinvitecsrf")
+    assert _login(client, now[0]).status_code == 303
+    issue_path = f"/admin/accounts/{account['account_id']}/coach-invites"
+    page = client.get(f"/admin/accounts/{account['account_id']}")
+    revoked_issue = client.post(
+        issue_path,
+        data={"csrf_token": _csrf(page.text), "ttl_minutes": "1440"},
+    )
+    revoked_token = html.unescape(
+        re.search(r'id="issued_coach_code"[^>]+value="([^"]+)"', revoked_issue.text).group(1)
+    )
+    live_page = client.get("/admin/invites")
+    invite_id = hashlib.sha256(revoked_token.encode()).hexdigest()
+    revoked = client.post(
+        f"/admin/invites/{invite_id}/revoke",
+        data={"csrf_token": _csrf(live_page.text)},
+        follow_redirects=False,
+    )
+    assert revoked.status_code == 303
+    revoked_code = client.post("/coach/invite/redeem", headers=auth_headers, json={"token": revoked_token})
+    assert revoked_code.status_code == 400
+    assert revoked_code.json()["detail"] == "Invalid or expired invite code."
+    page_after = client.get(f"/admin/accounts/{account['account_id']}")
+    used_issue = client.post(
+        issue_path,
+        data={"csrf_token": _csrf(page_after.text), "ttl_minutes": "1440"},
+    )
+    used_token = html.unescape(
+        re.search(r'id="issued_coach_code"[^>]+value="([^"]+)"', used_issue.text).group(1)
+    )
+    redeemed = client.post(
+        "/coach/invite/redeem",
+        headers=auth_headers,
+        json={"token": used_token},
+    )
+    assert redeemed.status_code == 200
+    used_id = hashlib.sha256(used_token.encode()).hexdigest()
+    recent_page = client.get("/admin/invites")
+    assert client.post(
+        f"/admin/invites/{used_id}/revoke",
+        data={"csrf_token": _csrf(recent_page.text)},
+    ).status_code == 409
+    revoke_audit = client.get(
+        f"/admin/audit?action=coach_invite_revoked&account_id={account['account_id']}"
+    )
+    assert revoke_audit.text.count("<strong>Action:</strong> coach_invite_revoked") == 1
+    coach_page = client.get(f"/admin/accounts/{account['account_id']}")
+    assert "Coach</p>" in coach_page.text and "Issue coach invite" not in coach_page.text
+    refused = client.post(
+        issue_path,
+        data={"csrf_token": _csrf(coach_page.text), "ttl_minutes": "1440"},
+    )
+    assert refused.status_code == 409
+
+
+def test_deleted_accounts_have_no_coach_invite_action(admin_api):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "coachinvitedeleted")
+    assert _login(client, now[0]).status_code == 303
+    with db.catalog_locked() as conn:
+        conn.execute(
+            "UPDATE accounts SET status = 'deleted', deleted_at = ? WHERE account_id = ?",
+            (datetime.now(UTC).isoformat(), account["account_id"]),
+        )
+        conn.commit()
+    deleted_page = client.get(f"/admin/accounts/{account['account_id']}")
+    assert "Issue coach invite" not in deleted_page.text
+    assert client.post(
+        f"/admin/accounts/{account['account_id']}/coach-invites",
+        data={"csrf_token": _csrf(deleted_page.text), "ttl_minutes": "1440"},
+    ).status_code == 404
+
+
+def test_admin_invites_list_live_and_last_30_days(admin_api):
+    from service import coach as coach_service
+
+    client, db, now, _ = admin_api
+    account, auth_headers = _register_account(client, db, "coachinvitelist")
+    assert _login(client, now[0]).status_code == 303
+    issued = [coach_service.issue_coach_invite(db, "coachinvitelist", actor="cli") for _ in range(5)]
+    assert all(invite["ok"] for invite in issued)
+    with db.catalog_locked() as conn:
+        conn.execute(
+            "UPDATE coach_invites SET expires_at = ? WHERE token_hash = ?",
+            ((datetime.now(UTC) - timedelta(days=1)).isoformat(), hashlib.sha256(issued[1]["token"].encode()).hexdigest()),
+        )
+        conn.execute(
+            "UPDATE coach_invites SET expires_at = ? WHERE token_hash = ?",
+            ((datetime.now(UTC) - timedelta(days=31)).isoformat(), hashlib.sha256(issued[4]["token"].encode()).hexdigest()),
+        )
+        conn.commit()
+    assert not coach_service.revoke_coach_invite(
+        db, hashlib.sha256(issued[1]["token"].encode()).hexdigest(), actor="cli"
+    )["ok"]
+    coach_service.revoke_coach_invite(
+        db, hashlib.sha256(issued[2]["token"].encode()).hexdigest(), actor="owner"
+    )
+    redeemed = client.post("/coach/invite/redeem", headers=auth_headers, json={"token": issued[0]["token"]})
+    assert redeemed.status_code == 200
+
+    page = client.get("/admin/invites")
+    assert page.status_code == 200
+    assert 'class="nav-link" href="/admin/invites" aria-current="page">Invites</a>' in page.text
+    assert 'class="dashboard-card" href="/admin/invites"' in client.get("/admin").text
+    assert f'href="/admin/accounts/{account["account_id"]}">coachinvitelist</a>' in page.text
+    assert "Account-bound" in page.text and "Live" in page.text and "· in " in page.text
+    for status in ("Used", "Expired", "Revoked"):
+        assert status in page.text
+    assert page.text.count("<td>Expired</td>") == 1
+    for invite in issued:
+        assert invite["token"] not in page.text
+    revoke_audit = client.get(
+        f"/admin/audit?action=coach_invite_revoked&account_id={account['account_id']}"
+    )
+    assert revoke_audit.text.count("<strong>Action:</strong> coach_invite_revoked") == 1
+
+
+def test_coach_invite_service_cli_actors_are_visible_in_admin_audit(admin_api):
+    from service import coach as coach_service
+
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "coachinvitecli")
+    assert _login(client, now[0]).status_code == 303
+    issued = coach_service.issue_coach_invite(db, account["username"], actor="cli")
+    assert issued["ok"]
+    revoked = coach_service.revoke_coach_invite(
+        db, hashlib.sha256(issued["token"].encode()).hexdigest(), actor="cli"
+    )
+    assert revoked["ok"]
+    for action in ("coach_invite_issued", "coach_invite_revoked"):
+        audit = client.get(f"/admin/audit?action={action}&account_id={account['account_id']}")
+        assert audit.status_code == 200 and "<strong>Actor:</strong> cli" in audit.text
+        assert issued["token"] not in audit.text
+
+
+def test_coach_invite_cli_records_issuance_in_admin_audit(admin_api, capsys, caplog):
+    from scripts.issue_coach_invite import main
+
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "coachinvitecli_main")
+    assert _login(client, now[0]).status_code == 303
+    assert main(
+        [
+            account["username"],
+            "--catalog",
+            str(db.catalog_path),
+            "--users-dir",
+            str(db.ledgers_dir),
+            "--backups-dir",
+            str(db.backups_dir),
+        ]
+    ) == 0
+    code = capsys.readouterr().out.strip().splitlines()[-1]
+
+    audit = client.get(
+        f"/admin/audit?action=coach_invite_issued&account_id={account['account_id']}"
+    )
+    assert audit.status_code == 200
+    assert "<strong>Actor:</strong> cli" in audit.text
+    assert code not in audit.text + caplog.text

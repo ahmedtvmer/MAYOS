@@ -335,6 +335,7 @@ class SchemaMixin:
                     account_id TEXT NOT NULL,
                     expires_at TEXT NOT NULL,
                     used_at TEXT,
+                    revoked_at TEXT,
                     created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_coach_invites_account ON coach_invites(account_id);
@@ -589,6 +590,7 @@ class SchemaMixin:
             self._ensure_roster_attendance_program_name()
             self._ensure_model_spend_alert_columns()
             self._ensure_linked_sign_in_account_provider()
+            self._ensure_coach_invites_revoked_at()
             self._commit_catalog()
             self._account_schema_ready = True
 
@@ -752,6 +754,13 @@ class SchemaMixin:
         columns = self._table_columns(cursor, "accounts")
         if columns and "last_seen_at" not in columns:
             cursor.execute("ALTER TABLE accounts ADD COLUMN last_seen_at TEXT")
+
+    def _ensure_coach_invites_revoked_at(self) -> None:
+        """Add revocation state to existing coach invite catalogs (#210)."""
+        cursor = self.catalog_conn.cursor()
+        columns = self._table_columns(cursor, "coach_invites")
+        if columns and "revoked_at" not in columns:
+            cursor.execute("ALTER TABLE coach_invites ADD COLUMN revoked_at TEXT")
 
     def _ensure_linked_sign_in_account_provider(self) -> None:
         """``UNIQUE(account_id, provider)``: an account holds one link per provider (#114).

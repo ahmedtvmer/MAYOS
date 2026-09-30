@@ -309,7 +309,7 @@ def test_substitution_refuses_a_coach_controlled_program(api):
     client, db = api
     coach = _register(client, "coach")
     coach_headers = _headers(coach["access_token"])
-    issued = coach_service.issue_coach_invite(db, "coach")
+    issued = coach_service.issue_coach_invite(db, "coach", actor="cli")
     assert issued["ok"]
     assert (
         client.post("/coach/invite/redeem", headers=coach_headers, json={"token": issued["token"]}).status_code == 200
@@ -360,7 +360,7 @@ def test_issue_170_authority_flag_tracks_current_assigned_publisher(api):
     def create_coach(username):
         registered = _register(client, username)
         headers = _headers(registered["access_token"])
-        issued = coach_service.issue_coach_invite(db, username)
+        issued = coach_service.issue_coach_invite(db, username, actor="cli")
         assert issued["ok"]
         redeemed = client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]})
         assert redeemed.status_code == 200, redeemed.text
