@@ -33,7 +33,7 @@ A coach who joined during the closed trial and therefore qualifies for the found
 The number of assistant requests available to an account for a given period. An account with both player and coach capabilities has separate Lifter and Coach allowances.
 
 **Assistant style**:
-How the player's assistant talks to that player: a chosen tone and optional instructions in the player's own words. It shapes the wording of assistant chat, debriefs and Checkpoint reviews, never their facts, numbers, program changes, safety rules or reply language. It does not apply to what a coach reads.
+How the player's assistant talks to that player: a chosen tone and optional instructions in the player's own words. It shapes the wording of assistant chat and Checkpoint reviews, never their facts, numbers, program changes, safety rules or reply language. It does not apply to what a coach reads.
 _Avoid_: Persona, coach tone
 
 **Active account**:
