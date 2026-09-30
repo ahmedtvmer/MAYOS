@@ -45,6 +45,9 @@ A coach's list of players on active assignments. It opens most urgent first, by 
 The fixed, inspectable order of a roster by need for attention. Players are ranked first by new coach alerts plus pending program requests, then by longest missed-day streak, then by the most overdue follow-up, then by the oldest last workout. Username breaks any remaining tie. It uses no weights and no model scores. Acknowledged alerts do not count.
 _Avoid_: priority score
 
+**Volume review**:
+A per-muscle assessment of a player's weekly working sets, made once at least four weeks of the current program have enough training behind them. Each muscle is judged progressing, stalled, or under-recovered from its primary exercises, which leads to keeping, adding, or removing sets. It is distinct from Stalling, which concerns the whole player.
+
 **Roster briefing**:
 An on-demand coach view that summarizes which assigned players need attention across the roster. It is distinct from a conversation about one selected player.
 
@@ -70,6 +73,19 @@ _Avoid_: Activity feed
 **Exercise library**:
 The shared reference set of exercises that programs, substitutions, and search draw from. It is the same for every account and holds no personal data.
 _Avoid_: Exercise catalog
+
+**Exercise display name**:
+The gym-standard name a player sees for an exercise in the Exercise library, such as "Wide-Grip Lat Pulldown". The library's source name stays underneath and is never shown when a display name exists.
+
+**Exercise alias**:
+An alternative name a player may search by that resolves to one exercise in the Exercise library, such as "frontal lat pulldown" or "lat pull-down".
+
+**Staple exercise**:
+An exercise that elite coaches repeatedly choose for a movement, such as the Wide-Grip Lat Pulldown for a vertical pull. Each movement has an ordered list of staples; the first one the player's Equipment access allows is prescribed and the next ones are its suggested substitutes.
+
+**Equipment access**:
+Where a player trains, as one of Commercial gym, Home gym, or Bodyweight only. A Commercial gym player is never prescribed or suggested band or bodyweight working sets, though they may still choose one themselves.
+_Avoid_: Gym type, location
 
 **Training ledger**:
 An account's private record of its own training: program, workouts, schedule, onboarding answers, and assistant chat. It is separate from the shared coaching data (accounts, assignments, alerts, check-ins), and a coach reaches it only through an active assignment.
