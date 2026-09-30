@@ -155,6 +155,11 @@ class FakeMayosApi {
   Map<String, dynamic>? latestSessionBody;
   bool latestSessionFails = false;
 
+  /// Weekly streak and Checkpoint response for issue #220.
+  Map<String, dynamic>? trainingStatusBody;
+  bool trainingStatusFails = false;
+  int trainingStatusRequests = 0;
+
   // Exercise baselines (`GET /workouts/baselines`, #122/#123): the rows the
   // device freezes into its Active workout. `baselinesRequests` counts every
   // authorized hit so prefetch vs start fetches are assertable; `baselinesFails`
@@ -280,6 +285,9 @@ class FakeMayosApi {
     if (accountDeleted && request.headers['Authorization'] is String) {
       return const FakeResponse(
           401, <String, dynamic>{'error': 'account_deleted'});
+    }
+    if (path == '/dashboard/training-status') {
+      return _trainingStatus(request);
     }
     if (path == '/chat/history') {
       return _chatHistoryResponse(request);
@@ -2997,7 +3005,21 @@ class FakeMayosApi {
       'program_version': requested,
       'active_program_version_at_sync': active,
       'is_historical_program': requested > 0 && requested < active,
+      if (trainingStatusBody != null) 'training_status': trainingStatusBody,
     };
+  }
+
+  FakeResponse _trainingStatus(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    trainingStatusRequests++;
+    if (trainingStatusFails || trainingStatusBody == null) {
+      return const FakeResponse(
+          503, <String, dynamic>{'detail': 'The service is unavailable.'});
+    }
+    return FakeResponse(200, trainingStatusBody!);
   }
 
   /// `GET /workouts/sessions/latest` (#53): the most recent committed session,

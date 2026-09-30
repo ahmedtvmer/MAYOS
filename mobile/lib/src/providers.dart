@@ -18,6 +18,7 @@ import 'core/rest_alerts.dart';
 import 'core/rest_length.dart';
 import 'core/theme/theme_mode_controller.dart';
 import 'core/theme/theme_mode_store.dart';
+import 'core/training_status_controller.dart';
 import 'core/token_store.dart';
 import 'core/web_active_workout_store.dart';
 import 'core/workout_start_notice_store.dart';
@@ -211,6 +212,27 @@ final Provider<WorkoutCacheStore> workoutCacheStoreProvider =
           : InMemoryWorkoutCacheStore(),
     );
 
+/// Last-known server training status, loaded at app start and persisted with
+/// the Android workout cache for the Finish summary (#220).
+final StateNotifierProvider<TrainingStatusController, TrainingStatus?>
+    trainingStatusProvider =
+    StateNotifierProvider<TrainingStatusController, TrainingStatus?>((ref) {
+  final TrainingStatusController controller = TrainingStatusController(
+    api: ref.watch(apiClientProvider),
+    cache: ref.watch(workoutCacheStoreProvider),
+  );
+  ref.listen<AuthState>(
+    authControllerProvider,
+    (AuthState? previous, AuthState next) {
+      controller.syncAccount(
+        next.isAuthenticated ? next.session?.account.accountId : null,
+      );
+    },
+    fireImmediately: true,
+  );
+  return controller;
+});
+
 /// Protected, account-separated disclosure acceptance and chat-history cache
 /// for read-only offline viewing (#37, ADR 016/036).
 final Provider<ChatCacheStore> chatCacheStoreProvider =
@@ -370,6 +392,9 @@ final ChangeNotifierProvider<DraftSyncService> draftSyncServiceProvider =
       final DraftSyncService service = DraftSyncService(
         api: ref.watch(apiClientProvider),
         store: ref.watch(draftStoreProvider),
+        onCommit: (String accountId, Map<String, dynamic> response) => ref
+            .read(trainingStatusProvider.notifier)
+            .acceptCommit(accountId, response),
       );
       ref.listen<AuthState>(authControllerProvider, (
         AuthState? previous,
@@ -487,5 +512,8 @@ final Provider<WebWorkoutCommitter> webWorkoutCommitterProvider =
       (ref) => WebWorkoutCommitter(
         api: ref.watch(apiClientProvider),
         controller: ref.watch(activeWorkoutControllerProvider.notifier),
+        onCommit: (String accountId, Map<String, dynamic> response) => ref
+            .read(trainingStatusProvider.notifier)
+            .acceptCommit(accountId, response),
       ),
     );

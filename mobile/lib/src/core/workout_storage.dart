@@ -81,9 +81,12 @@ class SecureDraftStore implements DraftStore {
 
   @override
   Future<void> write(String accountId, List<WorkoutDraft> drafts) async {
-    await _store.writeJson(key: _key(accountId), value: <Map<String, dynamic>>[
-      for (final WorkoutDraft draft in drafts) draft.toJson(),
-    ]);
+    await _store.writeJson(
+      key: _key(accountId),
+      value: <Map<String, dynamic>>[
+        for (final WorkoutDraft draft in drafts) draft.toJson(),
+      ],
+    );
     _quarantined.remove(accountId);
   }
 
@@ -164,6 +167,10 @@ abstract class WorkoutCacheStore {
 
   Future<void> writeLatestSession(String accountId, LatestSession session);
 
+  Future<TrainingStatus?> readTrainingStatus(String accountId);
+
+  Future<void> writeTrainingStatus(String accountId, TrainingStatus status);
+
   /// Erases the cached active program, every cached prescription, and the
   /// cached latest session for one account (ADR 020/039).
   Future<void> deleteForAccount(String accountId);
@@ -241,12 +248,36 @@ class SecureWorkoutCacheStore implements WorkoutCacheStore {
       );
 
   @override
+  Future<TrainingStatus?> readTrainingStatus(String accountId) async {
+    final dynamic decoded = await _store.readJson('training_status.$accountId');
+    if (decoded is! Map<String, dynamic>) {
+      return null;
+    }
+    try {
+      return TrainingStatus.fromJson(decoded);
+    } on FormatException {
+      return null;
+    } on TypeError {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> writeTrainingStatus(String accountId, TrainingStatus status) =>
+      _store.writeJson(
+        key: 'training_status.$accountId',
+        value: status.toJson(),
+      );
+
+  @override
   Future<void> deleteForAccount(String accountId) async {
     await _store.deleteExactOrPrefixed(
         'program.$accountId', 'program.$accountId.');
     await _store.deleteByPrefix('prescription.$accountId.');
     await _store.deleteExactOrPrefixed(
         'latest_session.$accountId', 'latest_session.$accountId.');
+    await _store.deleteExactOrPrefixed(
+        'training_status.$accountId', 'training_status.$accountId.');
   }
 }
 
@@ -254,6 +285,8 @@ class InMemoryWorkoutCacheStore implements WorkoutCacheStore {
   final Map<String, TrainingProgram> _programs = <String, TrainingProgram>{};
   final Map<String, Prescription> _prescriptions = <String, Prescription>{};
   final Map<String, LatestSession> _latestSessions = <String, LatestSession>{};
+  final Map<String, TrainingStatus> _trainingStatuses =
+      <String, TrainingStatus>{};
 
   @override
   Future<TrainingProgram?> readProgram(String accountId) async =>
@@ -286,9 +319,20 @@ class InMemoryWorkoutCacheStore implements WorkoutCacheStore {
   }
 
   @override
+  Future<TrainingStatus?> readTrainingStatus(String accountId) async =>
+      _trainingStatuses[accountId];
+
+  @override
+  Future<void> writeTrainingStatus(
+      String accountId, TrainingStatus status) async {
+    _trainingStatuses[accountId] = status;
+  }
+
+  @override
   Future<void> deleteForAccount(String accountId) async {
     _programs.remove(accountId);
     _latestSessions.remove(accountId);
+    _trainingStatuses.remove(accountId);
     _prescriptions
         .removeWhere((String key, _) => key.startsWith('$accountId.'));
   }

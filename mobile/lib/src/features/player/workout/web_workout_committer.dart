@@ -23,11 +23,14 @@ class WebWorkoutCommitter {
   const WebWorkoutCommitter({
     required ApiClient api,
     required ActiveWorkoutController controller,
+    this.onCommit,
   })  : _api = api,
         _controller = controller;
 
   final ApiClient _api;
   final ActiveWorkoutController _controller;
+  final Future<void> Function(String accountId, Map<String, dynamic> response)?
+      onCommit;
 
   Future<WebWorkoutCommitResult> save({
     required ActiveWorkout workout,
@@ -63,6 +66,7 @@ class WebWorkoutCommitter {
         final Map<String, dynamic>? existing =
             await _api.sessionByClientId(current.clientSessionId!);
         if (existing != null) {
+          await onCommit?.call(workout.accountId, existing);
           await _removeCommittedWorkout(current);
           return const WebWorkoutCommitResult(WebWorkoutCommitStatus.committed);
         }
@@ -73,7 +77,8 @@ class WebWorkoutCommitter {
         );
       }
 
-      await _api.commitWorkoutSession(body);
+      final WorkoutCommitResult result = await _api.commitWorkoutSession(body);
+      await onCommit?.call(workout.accountId, result.body);
       await _removeCommittedWorkout(current);
       return const WebWorkoutCommitResult(WebWorkoutCommitStatus.committed);
     } on ApiException catch (error) {

@@ -6,9 +6,37 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends
 
 from service import dashboard as dashboard_service
-from svc.dependencies import get_db, get_ledger, get_verified_player
+from service import training_status as training_status_service
+from svc.dependencies import (
+    account_id_of,
+    get_db,
+    get_ledger,
+    get_verified_player,
+)
+from svc.schemas import TrainingStatusOut
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+
+
+@router.get("/training-status", response_model=TrainingStatusOut)
+async def read_training_status(
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    account_id = account_id_of(player)
+    imported_workouts = await asyncio.to_thread(
+        training_status_service.imported_workout_count, db, account_id
+    )
+    result = await asyncio.to_thread(
+        training_status_service.get_training_status,
+        db,
+        str(player),
+        account_id=account_id,
+        ledger=ledger,
+        imported_workouts=imported_workouts,
+    )
+    return result.as_dict()
 
 
 @router.get("/volume")

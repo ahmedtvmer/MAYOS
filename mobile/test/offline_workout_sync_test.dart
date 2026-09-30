@@ -13,6 +13,7 @@ import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/performed_date_window.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/core/training_status_projection.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/workout/draft_sync_service.dart';
 import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
@@ -99,11 +100,14 @@ DraftSyncService _service({
   required FakeMayosApi fake,
   required TokenStore tokens,
   required DraftStore store,
+  Future<void> Function(String accountId, Map<String, dynamic> response)?
+      onCommit,
   DateTime Function()? now,
 }) =>
     DraftSyncService(
       api: _client(fake, tokens),
       store: store,
+      onCommit: onCommit,
       retryInterval: null,
       now: now ?? (() => _fixedNow),
     );
@@ -290,6 +294,53 @@ void main() {
           ],
         },
       ]);
+    });
+
+    test('marks a committed draft synced before applying its status', () async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      fake.trainingStatusBody = <String, dynamic>{
+        'weekly_streak': 0,
+        'week_start': '2026-09-26',
+        'week_done': 2,
+        'week_target': 3,
+        'mayos_workouts': 24,
+        'next_checkpoint': 25,
+        'workouts_to_next': 1,
+      };
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      List<String>? summaryLines;
+      final DraftSyncService service = _service(
+        fake: fake,
+        tokens: tokens,
+        store: store,
+        onCommit: (String accountId, Map<String, dynamic> response) async {
+          final dynamic rawStatus = response['training_status'];
+          expect(rawStatus, isA<Map<String, dynamic>>());
+          summaryLines = projectTrainingStatusSummary(
+            status: TrainingStatus.fromJson(
+              rawStatus as Map<String, dynamic>,
+            ),
+            drafts: await store.read(accountId),
+            now: _fixedNow,
+          );
+        },
+      );
+      await store.write(_accountA, <WorkoutDraft>[
+        _draft(accountId: _accountA),
+      ]);
+      service.startFor(_accountA, syncImmediately: false);
+
+      await service.syncNow();
+
+      expect(
+        summaryLines,
+        containsAll(<String>[
+          'This week: 3 of 3 done',
+          'Your 25th workout!',
+        ]),
+      );
+      expect((await store.read(_accountA)).single.isSynced, isTrue);
     });
 
     test(

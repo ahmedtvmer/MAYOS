@@ -37,6 +37,9 @@ class _MayosAppState extends ConsumerState<MayosApp>
     // before any screen reads it, so a stored session starts syncing at app
     // start rather than only once the home screen mounts (ADR 020/033).
     ref.read(draftSyncServiceProvider);
+    // Training status is restored from the protected cache and refreshed as
+    // soon as the stored session is known (#220).
+    ref.read(trainingStatusProvider.notifier);
     // Resolve any persisted session once, off the first frame.
     Future<void>.microtask(
       () => ref.read(authControllerProvider.notifier).initialize(),

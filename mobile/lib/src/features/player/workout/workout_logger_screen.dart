@@ -16,6 +16,7 @@ import '../../../core/models.dart';
 import '../../../core/performed_date_window.dart';
 import '../../../core/personal_records.dart';
 import '../../../core/rest_alerts.dart';
+import '../../../core/training_status_projection.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -853,8 +854,32 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     if (finished == null || !mounted) {
       return;
     }
+    final DateTime now = ref.read(clockProvider)();
+    List<WorkoutDraft> drafts = const <WorkoutDraft>[];
+    try {
+      drafts = await ref.read(draftStoreProvider).read(finished.accountId);
+    } on PlatformException {
+      // The current workout still projects if protected storage is unavailable.
+    } on MissingPluginException {
+      // The current workout still projects if pending drafts cannot be read.
+    }
+    final TrainingStatus? trainingStatus = await ref
+        .read(trainingStatusProvider.notifier)
+        .statusForSummary(finished.accountId);
+    if (!mounted || _workout?.id != finished.id) {
+      return;
+    }
+    final List<String> trainingLines = projectTrainingStatusSummary(
+      status: trainingStatus,
+      drafts: drafts,
+      now: now,
+    );
     setState(() {
-      _summary = WorkoutSummary.of(finished, now: ref.read(clockProvider)());
+      _summary = WorkoutSummary.of(
+        finished,
+        now: now,
+        trainingLines: trainingLines,
+      );
       _summaryStep = true;
       _error = null;
       _recordFocus = null;
@@ -1929,6 +1954,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
             const SizedBox(height: MayosSpacing.md),
           ],
           _buildStats(summary),
+          if (summary.trainingLines.isNotEmpty) ...<Widget>[
+            const SizedBox(height: MayosSpacing.md),
+            _buildTrainingStatus(summary.trainingLines),
+          ],
           const SizedBox(height: MayosSpacing.lg),
           MayosCard(
             padding: EdgeInsets.zero,
@@ -2066,6 +2095,30 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
           ),
         ],
       ],
+    );
+  }
+
+  Widget _buildTrainingStatus(List<String> lines) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return MayosCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          for (int index = 0; index < lines.length; index++)
+            Padding(
+              padding: EdgeInsets.only(
+                bottom: index == lines.length - 1 ? 0 : MayosSpacing.xs,
+              ),
+              child: Text(
+                lines[index],
+                key: ValueKey<String>('logger.summary.training.$index'),
+                style: MayosTypography.bodySecondary.copyWith(
+                  color: c.textPrimary,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

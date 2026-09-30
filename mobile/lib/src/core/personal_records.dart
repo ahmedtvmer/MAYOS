@@ -267,19 +267,28 @@ class WorkoutSummary {
     required this.records,
     required this.stats,
     required this.duration,
+    this.trainingLines = const <String>[],
   });
 
   /// [now] is the caller's clock, read where Finish runs: the duration is a
   /// snapshot of one instant, never a hidden `DateTime.now()` of its own.
-  factory WorkoutSummary.of(ActiveWorkout workout, {required DateTime now}) =>
+  factory WorkoutSummary.of(
+    ActiveWorkout workout, {
+    required DateTime now,
+    List<String> trainingLines = const <String>[],
+  }) =>
       WorkoutSummary(
         records: workoutRecords(workout),
         stats: workoutSummaryStats(workout),
         duration: workoutElapsed(workout, now: now),
+        trainingLines: List<String>.unmodifiable(trainingLines),
       );
 
   final List<WorkoutRecord> records;
   final WorkoutSummaryStats stats;
+
+  /// Weekly streak and Checkpoint lines captured with this summary at Finish.
+  final List<String> trainingLines;
 
   /// The total Workout time, captured when Finish opens the summary (#159).
   /// It is part of the snapshot: once taken it never changes, whatever the

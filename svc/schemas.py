@@ -101,6 +101,7 @@ __all__ = [
     "TrainingPauseCreateOut",
     "TrainingPauseIn",
     "TrainingPauseListOut",
+    "TrainingStatusOut",
     "TrainingScheduleOut",
     "TrainingScheduleSetOut",
     "TrainingScheduleUpdateIn",
@@ -722,6 +723,18 @@ class TrainingScheduleOut(BaseModel):
     current: TrainingScheduleVersionOut | None = None
     versions: list[TrainingScheduleVersionOut] = []
     pauses: list[ScheduledPauseOut] = []
+
+
+class TrainingStatusOut(BaseModel):
+    """The player's Weekly streak and Checkpoint progress."""
+
+    weekly_streak: int
+    week_start: str
+    week_done: int
+    week_target: int
+    mayos_workouts: int
+    next_checkpoint: int
+    workouts_to_next: int
 
 
 class TrainingScheduleUpdateIn(BaseModel):

@@ -34,6 +34,7 @@ class DraftSyncService extends ChangeNotifier {
   DraftSyncService({
     required ApiClient api,
     required DraftStore store,
+    this.onCommit,
     this.retryInterval = const Duration(seconds: 60),
     DateTime Function()? now,
   })  : _api = api,
@@ -42,6 +43,8 @@ class DraftSyncService extends ChangeNotifier {
 
   final ApiClient _api;
   final DraftStore _store;
+  final Future<void> Function(String accountId, Map<String, dynamic> response)?
+      onCommit;
   final Duration? retryInterval;
   final DateTime Function() _now;
 
@@ -353,6 +356,12 @@ class DraftSyncService extends ChangeNotifier {
         return;
       }
       await _applyResult(accountId, resolved);
+      if (resolved.isSynced) {
+        final Map<String, dynamic>? response = resolved.serverResponse;
+        if (response != null) {
+          await onCommit?.call(accountId, response);
+        }
+      }
     }
   }
 
@@ -472,18 +481,22 @@ class DraftSyncService extends ChangeNotifier {
   /// A committed draft: keeps the server response, clears all retry state, and
   /// adopts the server's current performed date so a corrected session is not
   /// shown with a stale date on reconcile (ADR 035).
-  WorkoutDraft _synced(WorkoutDraft draft, Map<String, dynamic> response) =>
-      draft.copyWith(
-        performedDate:
-            (response['session_date'] as String?) ?? draft.performedDate,
-        status: DraftStatus.synced,
-        serverResponse: response,
-        lastError: null,
-        clearLastError: true,
-        attempt: 0,
-        clearNextAttempt: true,
-        updatedAt: _iso(),
-      );
+  WorkoutDraft _synced(
+    WorkoutDraft draft,
+    Map<String, dynamic> response,
+  ) {
+    return draft.copyWith(
+      performedDate: (response['session_date'] as String?) ??
+          draft.performedDate,
+      status: DraftStatus.synced,
+      serverResponse: response,
+      lastError: null,
+      clearLastError: true,
+      attempt: 0,
+      clearNextAttempt: true,
+      updatedAt: _iso(),
+    );
+  }
 
   WorkoutDraft _backedOff(WorkoutDraft draft, String error) {
     final int attempt = draft.attempt + 1;

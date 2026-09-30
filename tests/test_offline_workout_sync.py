@@ -24,6 +24,7 @@ from database.database_manager import DatabaseManager
 from service import coach as coach_service
 from service import coach_history as coach_history_service
 from service import workouts as workouts_service
+from service import training_status as training_status_service
 from svc.app import create_app
 from svc.dependencies import get_db
 
@@ -221,6 +222,28 @@ def _sync_body(*, client_session_id=CLIENT_ID, version, day_order=1, performed_d
     }
 
 
+def _freeze_training_status_now(monkeypatch, instant):
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return instant if tz is None else instant.astimezone(tz)
+
+    monkeypatch.setattr(training_status_service, "datetime", FixedDateTime)
+
+
+def _seed_status_workouts(db, username, performed_dates):
+    db.switch_user(username)
+    for index, performed_date in enumerate(performed_dates):
+        started_at = f"{performed_date}T12:00:00+00:00"
+        db.ledger.log_workout_session(
+            session_id=f"status-{username}-{index}",
+            session_date=performed_date,
+            split_name="Full A",
+            started_at=started_at,
+            completed_at=started_at,
+        )
+
+
 def test_first_commit_returns_201_and_records_sync_fields(api):
     client, db = api
     headers, version = _prepare_player(client, db)
@@ -249,6 +272,207 @@ def test_first_commit_returns_201_and_records_sync_fields(api):
     assert row["active_program_version_at_sync"] == version
     assert row["captured_at"] == "2026-09-26T11:30:00+00:00"
     assert row["uploaded_at"] == FIXED_NOW.isoformat()
+
+
+def test_commit_status_is_stored_and_replayed_at_commit_time(api, monkeypatch):
+    client, db = api
+    _freeze_training_status_now(monkeypatch, FIXED_NOW)
+    headers, version = _prepare_player(client, db)
+    payload = _sync_body(version=version)
+
+    first = client.post("/workouts/sessions", headers=headers, json=payload)
+    assert first.status_code == 201, first.text
+    stored_status = first.json()["training_status"]
+    assert stored_status == {
+        "weekly_streak": 0,
+        "week_start": "2026-09-26",
+        "week_done": 1,
+        "week_target": 3,
+        "mayos_workouts": 1,
+        "next_checkpoint": 10,
+        "workouts_to_next": 9,
+    }
+
+    db.switch_user("p1")
+    db.ledger.conn.execute("UPDATE training_programs SET weekly_frequency = 1 WHERE is_active = 1")
+    db.ledger.conn.commit()
+
+    replay = client.post("/workouts/sessions", headers=headers, json=payload)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["training_status"] == stored_status
+    current_status = client.get("/dashboard/training-status", headers=headers).json()
+    assert current_status["weekly_streak"] == 1
+    assert current_status["week_done"] == 1
+    assert current_status["week_target"] == 1
+
+
+@pytest.mark.parametrize(
+    "legacy", [False, True], ids=["offline-sync", "online"]
+)
+def test_commit_reads_import_count_before_ledger_transaction(
+    api, monkeypatch, legacy
+):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    read_imported_workouts = training_status_service.imported_workout_count
+    reads = []
+
+    def read_before_transaction(database, account_id):
+        assert database.ledger is not None
+        assert not database.ledger.conn.in_transaction
+        reads.append(account_id)
+        return read_imported_workouts(database, account_id)
+
+    monkeypatch.setattr(
+        training_status_service, "imported_workout_count", read_before_transaction
+    )
+    payload = _sync_body(version=version)
+    if legacy:
+        for field in (
+            "client_session_id",
+            "performed_date",
+            "performed_timezone",
+            "program_version",
+            "captured_at",
+        ):
+            payload.pop(field)
+
+    response = client.post("/workouts/sessions", headers=headers, json=payload)
+
+    assert response.status_code == 201, response.text
+    assert len(reads) == 1
+    assert response.json()["training_status"]["mayos_workouts"] == 1
+
+
+def test_training_status_endpoint_uses_player_timezone_at_saturday_boundary(api, monkeypatch):
+    client, db = api
+    boundary = datetime(2026, 9, 25, 21, 30, tzinfo=UTC)
+    _freeze_training_status_now(monkeypatch, boundary)
+    moscow_headers, moscow_version = _prepare_player(client, db, "moscow")
+    db.switch_user("moscow")
+    db.ledger.append_training_schedule(
+        "moscow", [6], "Europe/Moscow", "2026-09-01", "2026-09-01T00:00:00+00:00"
+    )
+    moscow_commit = client.post(
+        "/workouts/sessions",
+        headers=moscow_headers,
+        json=_sync_body(
+            client_session_id="22222222-2222-4222-8222-222222222222",
+            version=moscow_version,
+            performed_date="2026-09-26",
+            performed_timezone="Europe/Moscow",
+        ),
+    )
+    assert moscow_commit.status_code == 201, moscow_commit.text
+    moscow_status = client.get("/dashboard/training-status", headers=moscow_headers).json()
+    assert moscow_status["week_start"] == "2026-09-26"
+    assert moscow_status["week_done"] == 1
+    assert moscow_status["week_target"] == 1
+
+    utc_headers, utc_version = _prepare_player(client, db, "utcplayer")
+    utc_commit = client.post(
+        "/workouts/sessions",
+        headers=utc_headers,
+        json=_sync_body(
+            client_session_id="33333333-3333-4333-8333-333333333333",
+            version=utc_version,
+            performed_date="2026-09-26",
+        ),
+    )
+    assert utc_commit.status_code == 201, utc_commit.text
+    utc_status = client.get("/dashboard/training-status", headers=utc_headers).json()
+    assert utc_status["week_start"] == "2026-09-19"
+    assert utc_status["week_done"] == 0
+
+
+def test_training_status_endpoint_applies_full_and_partial_pauses(api, monkeypatch):
+    client, db = api
+    _freeze_training_status_now(monkeypatch, FIXED_NOW)
+    weekdays = [1, 2, 3, 4, 5, 6, 7]
+    full_headers, _ = _prepare_player(client, db, "fullpause")
+    db.switch_user("fullpause")
+    db.ledger.append_training_schedule(
+        "fullpause", weekdays, "UTC", "2026-09-01", "2026-09-01T00:00:00+00:00"
+    )
+    db.ledger.schedule_training_pause(
+        "fullpause", "2026-09-26", "2026-10-02", "2026-09-26T00:00:00+00:00"
+    )
+    full = client.get("/dashboard/training-status", headers=full_headers)
+    assert full.status_code == 200, full.text
+    assert full.json()["week_target"] == 0
+
+    partial_headers, _ = _prepare_player(client, db, "partialpause")
+    db.switch_user("partialpause")
+    db.ledger.append_training_schedule(
+        "partialpause", weekdays, "UTC", "2026-09-01", "2026-09-01T00:00:00+00:00"
+    )
+    db.ledger.schedule_training_pause(
+        "partialpause", "2026-09-26", "2026-09-26", "2026-09-26T00:00:00+00:00"
+    )
+    partial = client.get("/dashboard/training-status", headers=partial_headers)
+    assert partial.status_code == 200, partial.text
+    assert partial.json()["week_target"] == 6
+    assert client.get("/dashboard/training-status").status_code == 401
+
+
+def test_training_status_endpoint_keeps_in_progress_week_and_breaks_on_missed_past_week(api, monkeypatch):
+    client, db = api
+    _freeze_training_status_now(monkeypatch, datetime(2026, 9, 30, 12, tzinfo=UTC))
+    current_headers, _ = _prepare_player(client, db, "inprogress")
+    db.switch_user("inprogress")
+    db.ledger.conn.execute("UPDATE training_programs SET weekly_frequency = 2 WHERE is_active = 1")
+    db.ledger.conn.commit()
+    _seed_status_workouts(db, "inprogress", ["2026-09-19", "2026-09-22", "2026-09-26"])
+    current = client.get("/dashboard/training-status", headers=current_headers)
+    assert current.status_code == 200, current.text
+    assert current.json()["week_start"] == "2026-09-26"
+    assert current.json()["week_done"] == 1
+    assert current.json()["week_target"] == 2
+    assert current.json()["weekly_streak"] == 1
+
+    broken_headers, _ = _prepare_player(client, db, "brokenstreak")
+    db.switch_user("brokenstreak")
+    db.ledger.conn.execute("UPDATE training_programs SET weekly_frequency = 2 WHERE is_active = 1")
+    db.ledger.conn.commit()
+    _seed_status_workouts(db, "brokenstreak", ["2026-09-05", "2026-09-08", "2026-09-26"])
+    broken = client.get("/dashboard/training-status", headers=broken_headers)
+    assert broken.status_code == 200, broken.text
+    assert broken.json()["weekly_streak"] == 0
+
+
+def test_training_status_excludes_imported_workout_history(api, monkeypatch):
+    client, db = api
+    _freeze_training_status_now(monkeypatch, FIXED_NOW)
+    headers, version = _prepare_player(client, db)
+    account_id = db.get_active_account_by_username("p1")["account_id"]
+    db.catalog_conn.execute(
+        "INSERT INTO account_imports"
+        " (import_id, account_id, source_fingerprint, source_name, counts_json, opt_in_reference, imported_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("import-p1", account_id, "fingerprint", "snapshot.db", '{"workout_sessions": 12}', "test", "2026-01-01"),
+    )
+    db.catalog_conn.commit()
+
+    committed = client.post("/workouts/sessions", headers=headers, json=_sync_body(version=version))
+    assert committed.status_code == 201, committed.text
+    assert committed.json()["training_status"]["mayos_workouts"] == 0
+    status = client.get("/dashboard/training-status", headers=headers)
+    assert status.status_code == 200, status.text
+    assert status.json()["mayos_workouts"] == 0
+    assert status.json()["next_checkpoint"] == 10
+
+
+def test_legacy_online_commit_includes_training_status(api, monkeypatch):
+    client, db = api
+    _freeze_training_status_now(monkeypatch, FIXED_NOW)
+    headers, _ = _prepare_player(client, db)
+    body = _sync_body(version=1)
+    for field in ("client_session_id", "performed_date", "performed_timezone", "program_version", "captured_at"):
+        body.pop(field)
+
+    committed = client.post("/workouts/sessions", headers=headers, json=body)
+    assert committed.status_code == 201, committed.text
+    assert committed.json()["training_status"]["mayos_workouts"] == 1
 
 
 def test_warmup_movements_are_stored_without_working_set_effects_and_replay(api):

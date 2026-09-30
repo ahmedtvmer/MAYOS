@@ -109,6 +109,8 @@ class ApiClient {
   static const String _invalidChat = 'The service returned invalid chat data.';
   static const String _invalidBaselines =
       'The service returned invalid baseline data.';
+  static const String _invalidTrainingStatus =
+      'The service returned invalid training status data.';
 
   final TokenStore _tokens;
   late final Dio _dio;
@@ -986,6 +988,18 @@ class ApiClient {
     final response = await _send(() => _dio.get<dynamic>('/profile/schedule'));
     return _parseBody(
         response.data, TrainingSchedule.fromJson, _invalidSchedule);
+  }
+
+  /// The player's current Weekly streak and Checkpoint progress (#220).
+  Future<TrainingStatus> trainingStatus() async {
+    final response = await _send(
+      () => _dio.get<dynamic>('/dashboard/training-status'),
+    );
+    return _parseBody(
+      response.data,
+      TrainingStatus.fromJson,
+      _invalidTrainingStatus,
+    );
   }
 
   /// Appends a new effective-dated schedule version; the program is never touched.

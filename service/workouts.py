@@ -20,6 +20,7 @@ from agent.progression_engine import (
 from core.effort import min_rir_label, rir_from_rpe
 from core.warmup import calculate_warmup_sets
 from service._base import ledger_scope
+from service import training_status as training_status_service
 from service.schedule import latest_schedule_timezone, local_date_in, local_today, parse_iso_date
 from utils.plate_calculator import calculate_barbell_plates
 
@@ -755,6 +756,9 @@ def commit_session(
         session_id = session_id or str(uuid.uuid4())
         now_iso = now_iso or _now().isoformat()
         today_date = today_date or local_today(db, ledger_id, ledger=ledger).isoformat()
+        imported_workouts = training_status_service.imported_workout_count(
+            db, account_id
+        )
 
         with ledger.ledger_transaction():
             body = _persist_session(
@@ -771,6 +775,15 @@ def commit_session(
                 ledger=ledger,
                 warmup_movements=warmup_movements,
                 cardio=cardio,
+            )
+            body["training_status"] = (
+                training_status_service.get_training_status(
+                    db,
+                    ledger_id,
+                    account_id=account_id,
+                    ledger=ledger,
+                    imported_workouts=imported_workouts,
+                ).as_dict()
             )
 
     _run_post_commit_hooks(
@@ -817,6 +830,9 @@ def commit_logged_session(
 
         now_iso = now_iso or _now().isoformat()
         session_id = str(uuid.uuid4())
+        imported_workouts = training_status_service.imported_workout_count(
+            db, account_id
+        )
         try:
             with ledger.ledger_transaction():
                 replayed = committed_session(ledger, client_session_id)
@@ -845,6 +861,15 @@ def commit_logged_session(
                     warmup_movements=warmup_movements,
                     cardio=cardio,
                     active_program_version_at_sync=active_version,
+                )
+                body["training_status"] = (
+                    training_status_service.get_training_status(
+                        db,
+                        ledger_id,
+                        account_id=account_id,
+                        ledger=ledger,
+                        imported_workouts=imported_workouts,
+                    ).as_dict()
                 )
                 ledger.record_session_commit(client_session_id, session_id, json.dumps(body), now_iso)
                 outcome = CommitOutcome(body, created=True)

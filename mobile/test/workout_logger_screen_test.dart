@@ -260,6 +260,7 @@ List<Override> _appOverrides({
   required InMemoryTokenStore tokens,
   required InMemoryActiveWorkoutStore store,
   InMemoryDraftStore? drafts,
+  InMemoryWorkoutCacheStore? workoutCache,
   ThemeMode themeMode = ThemeMode.light,
   DateTime Function()? clock,
 }) =>
@@ -270,7 +271,7 @@ List<Override> _appOverrides({
           .overrideWithValue(InMemoryThemeModeStore(themeMode)),
       draftStoreProvider.overrideWithValue(drafts ?? InMemoryDraftStore()),
       workoutCacheStoreProvider
-          .overrideWithValue(InMemoryWorkoutCacheStore()),
+          .overrideWithValue(workoutCache ?? InMemoryWorkoutCacheStore()),
       chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
       baselineCacheStoreProvider
           .overrideWithValue(InMemoryBaselineCacheStore()),
@@ -317,6 +318,7 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
   WidgetTester tester, {
   String startedAt = '2026-09-28T08:00:00.000Z',
   InMemoryDraftStore? drafts,
+  InMemoryWorkoutCacheStore? workoutCache,
   List<Map<String, dynamic>>? baselines,
   ThemeMode themeMode = ThemeMode.light,
   DateTime Function()? clock,
@@ -341,6 +343,7 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
       tokens: tokens,
       store: store,
       drafts: drafts,
+      workoutCache: workoutCache,
       themeMode: themeMode,
       clock: clock,
     ),
@@ -348,6 +351,30 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
   await _resumeFromPrompt(tester);
   return store;
 }
+
+Future<void> _finishAndOpenSummary(WidgetTester tester) async {
+  await tester.tap(find.widgetWithText(FilledButton, 'Finish workout'));
+  await tester.pumpAndSettle();
+  final Finder discard = find.text('Discard unticked sets and finish');
+  if (discard.evaluate().isNotEmpty) {
+    await tester.tap(discard);
+  }
+  await tester.pumpAndSettle();
+}
+
+WorkoutDraft _summaryDraft(String id, String performedDate) => WorkoutDraft(
+      clientSessionId: id,
+      accountId: _account,
+      performedDate: performedDate,
+      performedTimezone: 'UTC',
+      programVersion: 3,
+      dayOrder: 2,
+      dayName: 'Upper A',
+      capturedAt: '${performedDate}T12:00:00Z',
+      exercises: const <DraftExercise>[],
+      readiness: 4,
+      updatedAt: '${performedDate}T12:00:00Z',
+    );
 
 Finder _cell(int exercise, int set, String field) =>
     find.byKey(ValueKey<String>('logger.cell.$exercise.$set.$field'));
@@ -1354,6 +1381,128 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Workout summary'), findsNothing);
     expect(_badge(0, 0, PrRecordKind.weight), findsOneWidget);
+  });
+
+  testWidgets('the online summary freezes projected Weekly streak and Checkpoint',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..trainingStatusBody = <String, dynamic>{
+        'weekly_streak': 2,
+        'week_start': '2026-09-26',
+        'week_done': 1,
+        'week_target': 2,
+        'mayos_workouts': 8,
+        'next_checkpoint': 10,
+        'workouts_to_next': 2,
+      };
+    await _openLogger(
+      tester,
+      fakeApi: fake,
+      clock: () => DateTime(2026, 9, 30, 12),
+    );
+    expect(fake.trainingStatusRequests, greaterThan(0));
+
+    await _typeCell(tester, 0, 0, 'kg', '105');
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    await _finishAndOpenSummary(tester);
+
+    expect(find.text('Weekly streak: 3 weeks'), findsOneWidget);
+    expect(find.text('This week: 2 of 2 done'), findsOneWidget);
+    expect(find.text('1 workout to your 10th'), findsOneWidget);
+
+    final BuildContext context = tester.element(find.byType(WorkoutLoggerScreen));
+    final controller = ProviderScope.containerOf(context)
+        .read(trainingStatusProvider.notifier);
+    await controller.acceptCommit(_account, <String, dynamic>{
+      'training_status': <String, dynamic>{
+        'weekly_streak': 99,
+        'week_start': '2026-10-03',
+        'week_done': 0,
+        'week_target': 4,
+        'mayos_workouts': 9,
+        'next_checkpoint': 10,
+        'workouts_to_next': 1,
+      },
+    });
+    await tester.pump();
+    expect(find.text('Weekly streak: 3 weeks'), findsOneWidget);
+    expect(find.text('This week: 2 of 2 done'), findsOneWidget);
+    expect(find.text('1 workout to your 10th'), findsOneWidget);
+  });
+
+  testWidgets('an offline summary projects pending drafts from its cached status',
+      (WidgetTester tester) async {
+    final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
+    await cache.writeTrainingStatus(
+      _account,
+      const TrainingStatus(
+        weeklyStreak: 2,
+        weekStart: '2026-09-26',
+        weekDone: 1,
+        weekTarget: 3,
+        mayosWorkouts: 7,
+        nextCheckpoint: 10,
+        workoutsToNext: 3,
+      ),
+    );
+    final InMemoryDraftStore drafts = InMemoryDraftStore();
+    await drafts.write(_account, <WorkoutDraft>[
+      _summaryDraft('pending-this-week', '2026-09-29'),
+      _summaryDraft('pending-last-week', '2026-09-20'),
+    ]);
+    final FakeMayosApi fake = _signedInFake()
+      ..trainingStatusFails = true
+      ..commitFails = true;
+    await _openLogger(
+      tester,
+      fakeApi: fake,
+      drafts: drafts,
+      workoutCache: cache,
+      clock: () => DateTime(2026, 9, 30, 12),
+    );
+
+    await _typeCell(tester, 0, 0, 'kg', '105');
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    await _finishAndOpenSummary(tester);
+
+    expect(find.text('Weekly streak: 3 weeks'), findsOneWidget);
+    expect(find.text('This week: 3 of 3 done'), findsOneWidget);
+    expect(find.text('Your 10th workout!'), findsOneWidget);
+  });
+
+  testWidgets('a stale cached week hides streak lines but keeps Checkpoint progress',
+      (WidgetTester tester) async {
+    final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
+    await cache.writeTrainingStatus(
+      _account,
+      const TrainingStatus(
+        weeklyStreak: 4,
+        weekStart: '2026-09-19',
+        weekDone: 3,
+        weekTarget: 3,
+        mayosWorkouts: 9,
+        nextCheckpoint: 10,
+        workoutsToNext: 1,
+      ),
+    );
+    final FakeMayosApi fake = _signedInFake()..trainingStatusFails = true;
+    await _openLogger(
+      tester,
+      fakeApi: fake,
+      workoutCache: cache,
+      clock: () => DateTime(2026, 9, 30, 12),
+    );
+
+    await _typeCell(tester, 0, 0, 'kg', '105');
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    await _finishAndOpenSummary(tester);
+
+    expect(find.textContaining('Weekly streak:'), findsNothing);
+    expect(find.textContaining('This week:'), findsNothing);
+    expect(find.text('Your 10th workout!'), findsOneWidget);
   });
 
   testWidgets('records and workout summary fit phone and desktop columns', (

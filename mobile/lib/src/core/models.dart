@@ -1526,6 +1526,61 @@ class TrainingSchedule {
   final List<ScheduledPause> pauses;
 }
 
+/// `GET /dashboard/training-status` and the status carried by a workout commit.
+class TrainingStatus {
+  const TrainingStatus({
+    required this.weeklyStreak,
+    required this.weekStart,
+    required this.weekDone,
+    required this.weekTarget,
+    required this.mayosWorkouts,
+    required this.nextCheckpoint,
+    required this.workoutsToNext,
+  });
+
+  factory TrainingStatus.fromJson(Map<String, dynamic> json) {
+    final dynamic weekStart = json['week_start'];
+    if (weekStart is! String || DateTime.tryParse(weekStart) == null) {
+      throw const FormatException('Invalid training status week start.');
+    }
+    return TrainingStatus(
+      weeklyStreak: _requiredInt(json, 'weekly_streak'),
+      weekStart: weekStart,
+      weekDone: _requiredInt(json, 'week_done'),
+      weekTarget: _requiredInt(json, 'week_target'),
+      mayosWorkouts: _requiredInt(json, 'mayos_workouts'),
+      nextCheckpoint: _requiredInt(json, 'next_checkpoint'),
+      workoutsToNext: _requiredInt(json, 'workouts_to_next'),
+    );
+  }
+
+  final int weeklyStreak;
+  final String weekStart;
+  final int weekDone;
+  final int weekTarget;
+  final int mayosWorkouts;
+  final int nextCheckpoint;
+  final int workoutsToNext;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'weekly_streak': weeklyStreak,
+        'week_start': weekStart,
+        'week_done': weekDone,
+        'week_target': weekTarget,
+        'mayos_workouts': mayosWorkouts,
+        'next_checkpoint': nextCheckpoint,
+        'workouts_to_next': workoutsToNext,
+      };
+
+  static int _requiredInt(Map<String, dynamic> json, String key) {
+    final dynamic value = json[key];
+    if (value is! num) {
+      throw FormatException('Invalid training status field: $key.');
+    }
+    return value.toInt();
+  }
+}
+
 /// `PUT /profile/schedule` response: the appended version and the current schedule.
 class TrainingScheduleSetResult {
   const TrainingScheduleSetResult({required this.version, this.current});

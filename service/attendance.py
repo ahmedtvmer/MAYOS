@@ -29,7 +29,13 @@ from typing import Any
 
 from service.schedule import local_date_in, timezone_for_versions
 
-__all__ = ["AttendanceEvaluation", "evaluate_attendance", "version_effective_on"]
+__all__ = [
+    "AttendanceEvaluation",
+    "evaluate_attendance",
+    "is_expected_day",
+    "pause_covers",
+    "version_effective_on",
+]
 
 
 @dataclass(frozen=True)
@@ -74,11 +80,24 @@ def version_effective_on(versions: list[dict[str, Any]], on_date: date) -> dict[
     return chosen
 
 
-def _pause_covers(pauses: list[dict[str, Any]], day: date) -> bool:
+def pause_covers(pauses: list[dict[str, Any]], day: date) -> bool:
+    """Whether any Schedule pause covers ``day``."""
     for pause in pauses:
         if _as_date(pause["starts_on"]) <= day <= _as_date(pause["ends_on"]):
             return True
     return False
+
+
+def is_expected_day(
+    versions: list[dict[str, Any]], pauses: list[dict[str, Any]], day: date
+) -> bool:
+    """Whether ``day`` is expected under its effective schedule and pauses."""
+    version = version_effective_on(versions, day)
+    return (
+        version is not None
+        and day.isoweekday() in set(version["weekdays"])
+        and not pause_covers(pauses, day)
+    )
 
 
 def evaluate_attendance(
@@ -103,12 +122,7 @@ def evaluate_attendance(
     expected: list[date] = []
     day = window_start
     while day <= local_today:
-        version = version_effective_on(versions, day)
-        if (
-            version is not None
-            and day.isoweekday() in set(version["weekdays"])
-            and not _pause_covers(pauses, day)
-        ):
+        if is_expected_day(versions, pauses, day):
             expected.append(day)
         day += timedelta(days=1)
 

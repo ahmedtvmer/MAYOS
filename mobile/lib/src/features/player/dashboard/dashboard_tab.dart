@@ -72,6 +72,11 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     final String? accountId =
         ref.read(authControllerProvider).session?.account.accountId;
     final cache = ref.read(workoutCacheStoreProvider);
+    if (accountId != null) {
+      unawaited(
+        ref.read(trainingStatusProvider.notifier).refresh(accountId),
+      );
+    }
     if (accountId != null && ref.read(offlineWorkoutDraftsEnabledProvider)) {
       // Fire-and-forget baselines prefetch: cached on success, never awaited,
       // so Home cannot be delayed or failed by it (#123).
