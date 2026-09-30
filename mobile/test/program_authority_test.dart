@@ -245,6 +245,9 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('pause_start_button')));
     await tester.tap(find.byKey(const Key('pause_start_button')));
     await tester.pump(const Duration(milliseconds: 300));
+    // Day 1 of the previous month is always in the past, even on the 1st.
+    await tester.tap(find.byTooltip('Previous month'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('1'));
     await tester.pump();
     await tester.tap(find.text('OK'));
