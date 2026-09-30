@@ -29,6 +29,8 @@ WorkoutDraft _draft({
   int programVersion = 1,
   String? clientSessionId,
   String capturedAt = '2026-09-26T11:00:00.000Z',
+  List<WarmupMovementDraft> warmupMovements =
+      const <WarmupMovementDraft>[],
 }) =>
     WorkoutDraft(
       clientSessionId: clientSessionId ?? newClientSessionId(),
@@ -56,6 +58,7 @@ WorkoutDraft _draft({
           ],
         ),
       ],
+      warmupMovements: warmupMovements,
       readiness: 4,
       updatedAt: '2026-09-26T11:00:00.000Z',
     );
@@ -144,7 +147,18 @@ void main() {
 
       final DraftSyncService first =
           _service(fake: fake, tokens: tokens, store: store);
-      final WorkoutDraft draft = _draft(accountId: _accountA);
+      final WorkoutDraft draft = _draft(
+        accountId: _accountA,
+        warmupMovements: <WarmupMovementDraft>[
+          WarmupMovementDraft(
+            exerciseName: 'Cat-Cow',
+            sets: const <WarmupSetDraft>[
+              WarmupSetDraft(reps: 10, ticked: true),
+              WarmupSetDraft(reps: 10),
+            ],
+          ),
+        ],
+      );
       first.startFor(_accountA, syncImmediately: false);
       await first.saveDraft(draft);
 
@@ -156,6 +170,8 @@ void main() {
       expect(reloaded, hasLength(1));
       expect(reloaded.single.clientSessionId, draft.clientSessionId);
       expect(reloaded.single.status, DraftStatus.pending);
+      expect(reloaded.single.warmupMovements.single.sets[0].ticked, isTrue);
+      expect(reloaded.single.warmupMovements.single.sets[1].ticked, isFalse);
     });
 
     test('survives logout and is never visible to another account', () async {
@@ -200,7 +216,19 @@ void main() {
           _service(fake: fake, tokens: tokens, store: store);
       service.startFor(_accountA, syncImmediately: false);
 
-      final WorkoutDraft draft = _draft(accountId: _accountA);
+      final WorkoutDraft draft = _draft(
+        accountId: _accountA,
+        warmupMovements: <WarmupMovementDraft>[
+          WarmupMovementDraft(
+            exerciseId: 'cat_cow',
+            exerciseName: 'Cat-Cow',
+            sets: const <WarmupSetDraft>[
+              WarmupSetDraft(reps: 10, ticked: true),
+              WarmupSetDraft(reps: 10),
+            ],
+          ),
+        ],
+      );
       await service.saveDraft(draft);
       expect((await store.read(_accountA)).single.status, DraftStatus.pending);
       expect(fake.committedSessions, isEmpty);
@@ -221,6 +249,15 @@ void main() {
           .toList(growable: false);
       expect(commits, isNotEmpty);
       expect(commits.last.body['client_session_id'], draft.clientSessionId);
+      expect(commits.last.body['warmup_movements'], <Map<String, dynamic>>[
+        <String, dynamic>{
+          'exercise_id': 'cat_cow',
+          'exercise_name': 'Cat-Cow',
+          'sets': <Map<String, dynamic>>[
+            <String, dynamic>{'weight_kg': null, 'reps': 10},
+          ],
+        },
+      ]);
     });
 
     test(

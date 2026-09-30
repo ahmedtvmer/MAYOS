@@ -8,6 +8,7 @@ from typing import Any
 from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION
 from database.migration_manager import INTAKE_DDL
 from database.migration_manager import PERFORMED_DATE_CORRECTIONS_DDL
+from database.migration_manager import SESSION_WARMUP_SETS_DDL
 from database.migration_manager import get_ledger_schema_version
 from database.migration_manager import set_ledger_schema_version
 
@@ -232,7 +233,7 @@ class SchemaMixin:
                 expires_at TEXT NOT NULL,
                 revoked_at TEXT NOT NULL
             );
-        """ + "\n".join(f"{statement};" for statement in (*PERFORMED_DATE_CORRECTIONS_DDL, *INTAKE_DDL)))
+        """ + "\n".join(f"{statement};" for statement in (*PERFORMED_DATE_CORRECTIONS_DDL, *INTAKE_DDL, *SESSION_WARMUP_SETS_DDL)))
         if get_ledger_schema_version(conn) < CURRENT_LEDGER_SCHEMA_VERSION:
             set_ledger_schema_version(conn, CURRENT_LEDGER_SCHEMA_VERSION)
         conn.commit()

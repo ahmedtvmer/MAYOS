@@ -830,6 +830,7 @@ class CoachPlayerLatestSession {
     this.corrections = const <PerformedDateCorrection>[],
     this.exercises = const <CoachPlayerSessionExercise>[],
     this.divergences = const <CoachPlayerDivergence>[],
+    this.warmupMovements = const <WarmupMovementLog>[],
   });
 
   factory CoachPlayerLatestSession.fromJson(Map<String, dynamic> json) =>
@@ -855,6 +856,10 @@ class CoachPlayerLatestSession {
             .map((dynamic d) =>
                 CoachPlayerDivergence.fromJson(d as Map<String, dynamic>))
             .toList(growable: false),
+        warmupMovements: (json['warmup_movements'] as List<dynamic>? ?? const [])
+            .map((dynamic movement) => WarmupMovementLog.fromJson(
+                movement as Map<String, dynamic>))
+            .toList(growable: false),
       );
 
   final String? sessionId;
@@ -871,6 +876,7 @@ class CoachPlayerLatestSession {
   final double totalVolumeKg;
   final List<CoachPlayerSessionExercise> exercises;
   final List<CoachPlayerDivergence> divergences;
+  final List<WarmupMovementLog> warmupMovements;
 }
 
 /// A compact entry in the assigned player's recent session history.
@@ -889,6 +895,7 @@ class CoachPlayerRecentSession {
     this.editedAt,
     this.corrections = const <PerformedDateCorrection>[],
     this.divergences = const <CoachPlayerDivergence>[],
+    this.warmupMovements = const <WarmupMovementLog>[],
   });
 
   factory CoachPlayerRecentSession.fromJson(Map<String, dynamic> json) =>
@@ -910,6 +917,10 @@ class CoachPlayerRecentSession {
             .map((dynamic d) =>
                 CoachPlayerDivergence.fromJson(d as Map<String, dynamic>))
             .toList(growable: false),
+        warmupMovements: (json['warmup_movements'] as List<dynamic>? ?? const [])
+            .map((dynamic movement) => WarmupMovementLog.fromJson(
+                movement as Map<String, dynamic>))
+            .toList(growable: false),
       );
 
   final String sessionId;
@@ -925,6 +936,7 @@ class CoachPlayerRecentSession {
   final int setsCount;
   final double totalVolumeKg;
   final List<CoachPlayerDivergence> divergences;
+  final List<WarmupMovementLog> warmupMovements;
 }
 
 /// "Logged against program vN (current vM)" for a session captured against an
@@ -1922,6 +1934,122 @@ class DraftExercise {
       };
 }
 
+/// One Warm-up movement recorded outside the working exercises.
+class WarmupMovementLog {
+  const WarmupMovementLog({
+    required this.exerciseName,
+    required this.sets,
+    this.exerciseId,
+  });
+
+  factory WarmupMovementLog.fromJson(Map<String, dynamic> json) =>
+      WarmupMovementLog(
+        exerciseId: json['exercise_id'] as String?,
+        exerciseName: json['exercise_name'] as String,
+        sets: (json['sets'] as List<dynamic>? ?? const <dynamic>[])
+            .map((dynamic set) =>
+                WarmupSetLog.fromJson(set as Map<String, dynamic>))
+            .toList(growable: false),
+      );
+
+  final String? exerciseId;
+  final String exerciseName;
+  final List<WarmupSetLog> sets;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'exercise_id': exerciseId,
+        'exercise_name': exerciseName,
+        'sets': <Map<String, dynamic>>[
+          for (final WarmupSetLog set in sets) set.toJson(),
+        ],
+      };
+}
+
+/// One Warm-up set; null weight represents bodyweight or a band.
+class WarmupSetLog {
+  const WarmupSetLog({required this.reps, this.weightKg});
+
+  factory WarmupSetLog.fromJson(Map<String, dynamic> json) => WarmupSetLog(
+        weightKg: (json['weight_kg'] as num?)?.toDouble(),
+        reps: (json['reps'] as num).toInt(),
+      );
+
+  final double? weightKg;
+  final int reps;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'weight_kg': weightKg,
+        'reps': reps,
+      };
+}
+
+/// One Warm-up movement as retained by an Android Workout draft.
+class WarmupMovementDraft {
+  const WarmupMovementDraft({
+    required this.exerciseName,
+    required this.sets,
+    this.exerciseId,
+  });
+
+  factory WarmupMovementDraft.fromJson(Map<String, dynamic> json) =>
+      WarmupMovementDraft(
+        exerciseId: json['exercise_id'] as String?,
+        exerciseName: json['exercise_name'] as String,
+        sets: (json['sets'] as List<dynamic>? ?? const <dynamic>[])
+            .map((dynamic set) =>
+                WarmupSetDraft.fromJson(set as Map<String, dynamic>))
+            .toList(growable: false),
+      );
+
+  final String? exerciseId;
+  final String exerciseName;
+  final List<WarmupSetDraft> sets;
+
+  bool get hasTickedSets => sets.any((WarmupSetDraft set) => set.ticked);
+
+  WarmupMovementLog toCommitLog() => WarmupMovementLog(
+        exerciseId: exerciseId,
+        exerciseName: exerciseName,
+        sets: <WarmupSetLog>[
+          for (final WarmupSetDraft set in sets)
+            if (set.ticked) WarmupSetLog(weightKg: set.weightKg, reps: set.reps),
+        ],
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'exercise_id': exerciseId,
+        'exercise_name': exerciseName,
+        'sets': <Map<String, dynamic>>[
+          for (final WarmupSetDraft set in sets) set.toJson(),
+        ],
+      };
+}
+
+/// A Warm-up set and its tick state retained until the draft syncs.
+class WarmupSetDraft {
+  const WarmupSetDraft({
+    required this.reps,
+    this.weightKg,
+    this.ticked = false,
+  });
+
+  factory WarmupSetDraft.fromJson(Map<String, dynamic> json) => WarmupSetDraft(
+        weightKg: (json['weight_kg'] as num?)?.toDouble(),
+        reps: (json['reps'] as num).toInt(),
+        ticked: json['ticked'] as bool? ?? false,
+      );
+
+  final double? weightKg;
+  final int reps;
+  final bool ticked;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'weight_kg': weightKg,
+        'reps': reps,
+        'ticked': ticked,
+      };
+}
+
 /// Draft sync states (ADR 020/033). Wire strings match the storage contract.
 abstract final class DraftStatus {
   static const String pending = 'pending';
@@ -1946,6 +2074,7 @@ class WorkoutDraft {
     required this.dayName,
     required this.capturedAt,
     required this.exercises,
+    this.warmupMovements = const <WarmupMovementDraft>[],
     required this.readiness,
     this.notes = '',
     this.status = DraftStatus.pending,
@@ -1969,6 +2098,11 @@ class WorkoutDraft {
             .map((dynamic e) =>
                 DraftExercise.fromJson(e as Map<String, dynamic>))
             .toList(growable: false),
+        warmupMovements:
+            (json['warmup_movements'] as List<dynamic>? ?? const <dynamic>[])
+                .map((dynamic movement) => WarmupMovementDraft.fromJson(
+                    movement as Map<String, dynamic>))
+                .toList(growable: false),
         readiness: (json['readiness'] as num?)?.toInt() ?? 4,
         notes: json['notes'] as String? ?? '',
         status: json['status'] as String? ?? DraftStatus.pending,
@@ -1988,6 +2122,7 @@ class WorkoutDraft {
   final String dayName;
   final String capturedAt;
   final List<DraftExercise> exercises;
+  final List<WarmupMovementDraft> warmupMovements;
   final int readiness;
   final String notes;
   final String status;
@@ -2067,6 +2202,7 @@ class WorkoutDraft {
         dayName: dayName,
         capturedAt: capturedAt,
         exercises: exercises,
+        warmupMovements: warmupMovements,
         readiness: readiness,
         notes: notes,
         status: status ?? this.status,
@@ -2093,6 +2229,12 @@ class WorkoutDraft {
                 ],
               },
         ],
+        if (warmupMovements.any((WarmupMovementDraft movement) =>
+            movement.hasTickedSets))
+          'warmup_movements': <Map<String, dynamic>>[
+            for (final WarmupMovementDraft movement in warmupMovements)
+              if (movement.hasTickedSets) movement.toCommitLog().toJson(),
+          ],
         'client_session_id': clientSessionId,
         'performed_date': performedDate,
         'performed_timezone': performedTimezone,
@@ -2112,6 +2254,11 @@ class WorkoutDraft {
         'exercises': <Map<String, dynamic>>[
           for (final DraftExercise exercise in exercises) exercise.toJson(),
         ],
+        if (warmupMovements.isNotEmpty)
+          'warmup_movements': <Map<String, dynamic>>[
+            for (final WarmupMovementDraft movement in warmupMovements)
+              movement.toJson(),
+          ],
         'readiness': readiness,
         'notes': notes,
         'status': status,
@@ -2395,6 +2542,7 @@ class LatestSession {
     required this.splitName,
     this.dayOrder,
     this.programVersion,
+    this.warmupMovements = const <WarmupMovementLog>[],
   });
 
   factory LatestSession.fromJson(Map<String, dynamic> json) => LatestSession(
@@ -2403,6 +2551,10 @@ class LatestSession {
         splitName: json['split_name'] as String? ?? '',
         dayOrder: (json['day_order'] as num?)?.toInt(),
         programVersion: (json['program_version'] as num?)?.toInt(),
+        warmupMovements: (json['warmup_movements'] as List<dynamic>? ?? const [])
+            .map((dynamic movement) => WarmupMovementLog.fromJson(
+                movement as Map<String, dynamic>))
+            .toList(growable: false),
       );
 
   final String sessionId;
@@ -2410,6 +2562,7 @@ class LatestSession {
   final String splitName;
   final int? dayOrder;
   final int? programVersion;
+  final List<WarmupMovementLog> warmupMovements;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'session_id': sessionId,
@@ -2417,5 +2570,9 @@ class LatestSession {
         'split_name': splitName,
         'day_order': dayOrder,
         'program_version': programVersion,
+        'warmup_movements': <Map<String, dynamic>>[
+          for (final WarmupMovementLog movement in warmupMovements)
+            movement.toJson(),
+        ],
       };
 }

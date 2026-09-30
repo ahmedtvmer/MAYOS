@@ -205,12 +205,77 @@ void main() {
       () async {
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
     final WebActiveWorkoutStore first = WebActiveWorkoutStore(storage: browser);
-    await first.write(_account, _workout());
+    await first.write(
+      _account,
+      _workout().copyWith(
+        warmupMovements: <ActiveWarmupMovement>[
+          ActiveWarmupMovement(
+            exerciseName: 'Cat-Cow',
+            sets: const <ActiveWarmupSet>[
+              ActiveWarmupSet(reps: 10, ticked: true),
+              ActiveWarmupSet(reps: 10),
+            ],
+          ),
+        ],
+      ),
+    );
 
     final WebActiveWorkoutStore afterReload =
         WebActiveWorkoutStore(storage: browser);
-    expect((await afterReload.read(_account))?.clientSessionId, _sessionId);
+    final ActiveWorkout? restored = await afterReload.read(_account);
+    expect(restored?.clientSessionId, _sessionId);
+    expect(restored!.warmupMovements.single.sets.first.ticked, isTrue);
+    expect(restored.warmupMovements.single.sets[1].ticked, isFalse);
     expect(await afterReload.read('account-bob'), isNull);
+  });
+
+  testWidgets('web commit sends only ticked Warm-up movement rows',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _fake();
+    final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
+    final WebActiveWorkoutStore store = WebActiveWorkoutStore(storage: browser);
+    final ActiveWorkout workout = _workout().copyWith(
+      warmupMovements: <ActiveWarmupMovement>[
+        ActiveWarmupMovement(
+          exerciseId: 'arm_circles',
+          exerciseName: 'Arm Circles',
+          sets: const <ActiveWarmupSet>[
+            ActiveWarmupSet(reps: 10),
+            ActiveWarmupSet(reps: 10),
+          ],
+        ),
+      ],
+    );
+    await _pumpWebApp(
+      tester,
+      fake: fake,
+      browser: browser,
+      store: store,
+      initialWorkout: workout,
+    );
+    await _resumeLogger(tester);
+    expect(find.text('Arm Circles'), findsOneWidget);
+
+    await tester.tap(
+        find.byKey(const ValueKey<String>('logger.warmup.0.0.tick')));
+    await tester.pumpAndSettle();
+    await _finishToSummary(tester);
+    await tester.tap(find.text('Save workout'));
+    await _pumpUntil(tester, find.text('Workout saved to your training history.'));
+
+    final Map<String, dynamic> sent = fake.adapter.requests
+        .firstWhere((request) =>
+            request.method == 'POST' && request.path == '/workouts/sessions')
+        .body;
+    expect(sent['warmup_movements'], <Map<String, dynamic>>[
+      <String, dynamic>{
+        'exercise_id': 'arm_circles',
+        'exercise_name': 'Arm Circles',
+        'sets': <Map<String, dynamic>>[
+          <String, dynamic>{'weight_kg': null, 'reps': 10},
+        ],
+      },
+    ]);
   });
 
   test('storage denial falls back to in-memory logging for this tab', () async {

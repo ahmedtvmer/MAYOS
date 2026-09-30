@@ -512,6 +512,160 @@ class ExerciseLoggingCard extends StatelessWidget {
   }
 }
 
+/// A prescribed preparation movement with independently tickable set rows.
+class WarmupMovementLoggingCard extends StatelessWidget {
+  const WarmupMovementLoggingCard({
+    super.key,
+    required this.movement,
+    required this.movementIndex,
+    required this.onSetChanged,
+    this.onOpenDetail,
+  });
+
+  final ActiveWarmupMovement movement;
+  final int movementIndex;
+  final ValueChanged<(int, ActiveWarmupSet)> onSetChanged;
+  final VoidCallback? onOpenDetail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: MayosSpacing.md),
+      child: MayosCard(
+        padding: const EdgeInsets.all(MayosSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            _heading(context),
+            const SizedBox(height: MayosSpacing.xs),
+            _columnHeadings(),
+            for (int setIndex = 0; setIndex < movement.sets.length; setIndex++)
+              _warmupSetRow(context, setIndex, movement.sets[setIndex]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _warmupSetRow(
+    BuildContext context,
+    int setIndex,
+    ActiveWarmupSet set,
+  ) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Row(
+      children: <Widget>[
+        SizedBox(
+          width: 40,
+          child: Text('${setIndex + 1}', textAlign: TextAlign.center),
+        ),
+        _weightField(setIndex, set),
+        const SizedBox(width: MayosSpacing.xs),
+        _repsField(setIndex, set),
+        _tickButton(setIndex, set, c),
+      ],
+    );
+  }
+
+  Widget _heading(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: LoggerExerciseName(
+            name: movement.exerciseName,
+            onTap: onOpenDetail,
+            style: MayosTypography.exerciseTitle.copyWith(color: c.textPrimary),
+          ),
+        ),
+        const _WarmupTag(),
+      ],
+    );
+  }
+
+  Widget _columnHeadings() => Row(
+        children: <Widget>[
+          const SizedBox(width: 40, child: Text('SET')),
+          const Expanded(child: Center(child: Text('KG'))),
+          const Expanded(child: Center(child: Text('REPS'))),
+          const SizedBox(width: kLoggerFixedColumnWidth),
+        ],
+      );
+
+  Widget _weightField(int setIndex, ActiveWarmupSet set) {
+    final String initialValue = set.weightKg == null
+        ? ''
+        : formatCellWeight(set.weightKg!);
+    return Expanded(
+      child: TextFormField(
+        key: ValueKey<String>('logger.warmup.$movementIndex.$setIndex.kg'),
+        initialValue: initialValue,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        textAlign: TextAlign.center,
+        decoration: const InputDecoration(hintText: '—', isDense: true),
+        onChanged: (String text) {
+          final double? weightKg = double.tryParse(text);
+          onSetChanged((setIndex, set.copyWith(
+            weightKg: weightKg,
+            clearWeight: weightKg == null,
+          )));
+        },
+      ),
+    );
+  }
+
+  Widget _repsField(int setIndex, ActiveWarmupSet set) => Expanded(
+        child: TextFormField(
+          key: ValueKey<String>('logger.warmup.$movementIndex.$setIndex.reps'),
+          initialValue: '${set.reps}',
+          keyboardType: TextInputType.number,
+          textAlign: TextAlign.center,
+          decoration: const InputDecoration(isDense: true),
+          onChanged: (String text) {
+            final int? reps = int.tryParse(text);
+            if (reps != null) {
+              onSetChanged((setIndex, set.copyWith(reps: reps)));
+            }
+          },
+        ),
+      );
+
+  Widget _tickButton(int setIndex, ActiveWarmupSet set, MayosThemeExtension c) =>
+      SizedBox(
+        width: kLoggerFixedColumnWidth,
+        child: IconButton(
+          key: ValueKey<String>('logger.warmup.$movementIndex.$setIndex.tick'),
+          tooltip: set.ticked ? 'Mark set not done' : 'Mark set done',
+          onPressed: () =>
+              onSetChanged((setIndex, set.copyWith(ticked: !set.ticked))),
+          icon: Icon(
+            set.ticked ? Icons.check_box : Icons.check_box_outline_blank,
+            color: set.ticked ? c.accent : c.textMuted,
+          ),
+        ),
+      );
+}
+
+class _WarmupTag extends StatelessWidget {
+  const _WarmupTag();
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: MayosSpacing.xs,
+        vertical: MayosSpacing.xxs,
+      ),
+      decoration: BoxDecoration(
+        color: c.secondarySurface,
+        borderRadius: MayosRadii.pillRadius,
+      ),
+      child: Text('Warm-up', style: MayosTypography.caption),
+    );
+  }
+}
+
 /// The Unplanned pill, only where it applies (#123).
 class _UnplannedTag extends StatelessWidget {
   const _UnplannedTag();

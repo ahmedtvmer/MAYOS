@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from database.backup import snapshot_sqlite_file
+from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION
 from service import auth as auth_service
 from service import imports as import_service
 
@@ -263,7 +264,7 @@ def test_import_of_an_old_schema_source_matches_raw_counts(fresh_store):
         version = ledger.conn.execute("PRAGMA user_version").fetchone()[0]
     assert counts["user_profile"] == 1
     assert result["counts"]["user_profile"] == 1
-    assert version == 12
+    assert version == CURRENT_LEDGER_SCHEMA_VERSION
 
 
 def test_migration_that_drops_a_row_fails_verification_and_rolls_back(fresh_store, monkeypatch):

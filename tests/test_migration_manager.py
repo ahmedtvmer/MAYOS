@@ -51,7 +51,7 @@ def temp_db_env(tmp_path: Path, monkeypatch):
 def test_schema_version_stamping(temp_db_env):
     db, ledgers_dir, _ = temp_db_env
     version = get_ledger_schema_version(db.conn)
-    assert version == CURRENT_LEDGER_SCHEMA_VERSION == 12
+    assert version == CURRENT_LEDGER_SCHEMA_VERSION
 
 
 def test_atomic_backup_and_restore(temp_db_env):
@@ -255,6 +255,7 @@ def test_latest_session_summary_uses_real_working_sets(temp_db_env):
             {"name": "Row", "sets": 1, "reps": 12, "volume_kg": 600.0},
         ],
         "divergences": [],
+        "warmup_movements": [],
     }
     assert db.ledger.get_latest_session_summary() == expected
     db.switch_user("bob")
@@ -285,6 +286,7 @@ def test_latest_session_summary_empty_and_warmup_only(temp_db_env):
         "total_volume_kg": 0.0,
         "exercises": [],
         "divergences": [],
+        "warmup_movements": [],
     }
     assert db.ledger.get_latest_session_summary() == expected
     db.ledger.log_workout_set("warmup", "empty", "bench", 1, 20, 10, 5, 1)
@@ -491,7 +493,6 @@ def test_v1_to_v2_adds_password_hash_preserving_data(temp_db_env):
 
     from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION, get_ledger_schema_version
 
-    assert CURRENT_LEDGER_SCHEMA_VERSION == 12
     db, ledgers_dir, _ = temp_db_env
     # Craft a legacy v1 ledger: no password_hash column, stamped v1.
     legacy_path = ledgers_dir / "legacy.db"
@@ -524,7 +525,6 @@ def test_v2_to_v3_adds_token_version_preserving_hash(temp_db_env):
 
     from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION, get_ledger_schema_version
 
-    assert CURRENT_LEDGER_SCHEMA_VERSION == 12
     db, ledgers_dir, _ = temp_db_env
     # Craft a v2 ledger: auth_credentials without token_version, stamped v2.
     legacy_path = ledgers_dir / "v2user.db"
@@ -561,7 +561,6 @@ def test_v3_to_v4_backfills_personal_records(temp_db_env):
 
     from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION, get_ledger_schema_version
 
-    assert CURRENT_LEDGER_SCHEMA_VERSION == 12
     db, ledgers_dir, _ = temp_db_env
     legacy_path = ledgers_dir / "v3lifter.db"
     conn = sqlite3.connect(legacy_path)
@@ -695,7 +694,7 @@ def test_v5_to_v6_backfills_stable_program_versions(temp_db_env):
         catalog_path=db.catalog_path, ledgers_dir=ledgers_dir, backups_dir=db.backups_dir, default_ledger_id="v5lifter"
     )
     try:
-        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 12
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION
         program_cols = {r[1] for r in migrated.conn.execute("PRAGMA table_info(training_programs)")}
         assert {"version", "published_by_coach_account_id"}.issubset(program_cols)
         rows = migrated.conn.execute(
@@ -736,7 +735,7 @@ def test_v6_to_v7_adds_session_divergences(temp_db_env):
         catalog_path=db.catalog_path, ledgers_dir=ledgers_dir, backups_dir=db.backups_dir, default_ledger_id="v6lifter"
     )
     try:
-        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 12
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION
         tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         assert "session_divergences" in tables
         migrated.ledger.record_session_divergences(
@@ -783,7 +782,7 @@ def test_v7_to_v8_adds_training_schedules_and_pauses(temp_db_env):
         catalog_path=db.catalog_path, ledgers_dir=ledgers_dir, backups_dir=db.backups_dir, default_ledger_id="v7lifter"
     )
     try:
-        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 12
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION
         tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         assert {"training_schedules", "training_pauses"} <= tables
         migrated.ledger.append_training_schedule("v7lifter", [1, 3], "UTC", "2026-01-01", "2026-01-01T00:00:00+00:00")
@@ -826,7 +825,7 @@ def test_v8_to_v9_adds_offline_sync_columns_and_session_commits(temp_db_env):
         catalog_path=db.catalog_path, ledgers_dir=ledgers_dir, backups_dir=db.backups_dir, default_ledger_id="v8lifter"
     )
     try:
-        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 12
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION
         columns = {r[1] for r in migrated.conn.execute("PRAGMA table_info(workout_sessions)")}
         assert {"client_session_id", "performed_timezone", "program_version", "captured_at", "uploaded_at"} <= columns
         tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
@@ -874,7 +873,7 @@ def test_v9_to_v10_adds_active_program_version_at_sync(temp_db_env):
         catalog_path=db.catalog_path, ledgers_dir=ledgers_dir, backups_dir=db.backups_dir, default_ledger_id="v9lifter"
     )
     try:
-        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 12
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION
         columns = {r[1] for r in migrated.conn.execute("PRAGMA table_info(workout_sessions)")}
         assert "active_program_version_at_sync" in columns
         # Existing rows keep a NULL active version, so they are never read as historical.
@@ -923,7 +922,7 @@ def test_v10_to_v11_adds_edited_at_and_performed_date_corrections(temp_db_env):
         catalog_path=db.catalog_path, ledgers_dir=ledgers_dir, backups_dir=db.backups_dir, default_ledger_id="v10lifter"
     )
     try:
-        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 12
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION
         columns = {r[1] for r in migrated.conn.execute("PRAGMA table_info(workout_sessions)")}
         assert "edited_at" in columns
         tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
@@ -960,7 +959,6 @@ def test_v10_to_v11_adds_edited_at_and_performed_date_corrections(temp_db_env):
 def test_v11_to_v12_adds_structured_intake_tables(temp_db_env):
     from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION, get_ledger_schema_version
 
-    assert CURRENT_LEDGER_SCHEMA_VERSION == 12
     db, ledgers_dir, _ = temp_db_env
     legacy_path = ledgers_dir / "v11lifter.db"
     conn = sqlite3.connect(legacy_path)
@@ -979,7 +977,7 @@ def test_v11_to_v12_adds_structured_intake_tables(temp_db_env):
         catalog_path=db.catalog_path, ledgers_dir=ledgers_dir, backups_dir=db.backups_dir, default_ledger_id="v11lifter"
     )
     try:
-        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 12
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION
         tables = {row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         assert {"intake_answers", "intake_state"} <= tables
         # The new ledger helpers round-trip through the migrated tables.
@@ -994,6 +992,64 @@ def test_v11_to_v12_adds_structured_intake_tables(temp_db_env):
         assert "intake_answers" in {
             row[0] for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
+    finally:
+        if migrated.ledger_conn is not None:
+            migrated.ledger_conn.close()
+        migrated.catalog_conn.close()
+
+
+def test_v12_to_v13_adds_session_warmup_sets(temp_db_env):
+    from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION, get_ledger_schema_version
+
+    db, ledgers_dir, _ = temp_db_env
+    legacy_path = ledgers_dir / "v12lifter.db"
+    conn = sqlite3.connect(legacy_path)
+    conn.executescript(
+        """
+        CREATE TABLE user_profile (id INTEGER PRIMARY KEY, gender TEXT, updated_at TEXT NOT NULL);
+        INSERT INTO user_profile VALUES (1, 'male', '2026-01-01T00:00:00+00:00');
+        CREATE TABLE workout_sessions (
+            id TEXT PRIMARY KEY, session_date TEXT NOT NULL, split_name TEXT NOT NULL,
+            started_at TEXT NOT NULL, client_session_id TEXT
+        );
+        INSERT INTO workout_sessions VALUES (
+            'session-1', '2026-01-01', 'Upper', '2026-01-01T10:00:00+00:00', NULL
+        );
+        """
+    )
+    conn.execute("PRAGMA user_version = 12")
+    conn.commit()
+    conn.close()
+
+    migrated = DatabaseManager(
+        catalog_path=db.catalog_path,
+        ledgers_dir=ledgers_dir,
+        backups_dir=db.backups_dir,
+        default_ledger_id="v12lifter",
+    )
+    try:
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION
+        migrated.ledger.log_session_warmup_movements(
+            "session-1",
+            [
+                {
+                    "exercise_id": None,
+                    "exercise_name": "Cat-Cow",
+                    "sets": [{"weight_kg": None, "reps": 10}],
+                }
+            ],
+            "2026-01-02T00:00:00+00:00",
+        )
+        assert migrated.ledger.list_session_warmup_movements("session-1") == [
+            {
+                "exercise_id": None,
+                "exercise_name": "Cat-Cow",
+                "sets": [{"weight_kg": None, "reps": 10}],
+            }
+        ]
+        migrated.conn.execute("DELETE FROM workout_sessions WHERE id = 'session-1'")
+        migrated.conn.commit()
+        assert migrated.ledger.list_session_warmup_movements("session-1") == []
     finally:
         if migrated.ledger_conn is not None:
             migrated.ledger_conn.close()

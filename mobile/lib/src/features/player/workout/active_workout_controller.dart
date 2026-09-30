@@ -363,6 +363,10 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       startedAt: _now().toUtc().toIso8601String(),
       dayOrder: day.dayOrder,
       dayName: day.dayName,
+      warmupMovements: <ActiveWarmupMovement>[
+        for (final WarmupExercise movement in day.warmupExercises)
+          ActiveWarmupMovement.fromPrescription(movement),
+      ],
       programVersion: programVersion,
       exercises: <ActiveWorkoutExercise>[
         for (final ProgramExercise exercise in day.exercises)
@@ -493,6 +497,12 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       clearRir: unrated,
     ),
   );
+
+  Future<void> updateWarmupMovementSet(
+    int movementIndex,
+    int setIndex,
+    ActiveWarmupSet updatedSet,
+  ) => _updateWarmupSet(movementIndex, setIndex, updatedSet);
 
   /// Toggles a set row between working and warm-up (`N ↔ W`); warm-ups never
   /// count as working sets.
@@ -1055,6 +1065,27 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     );
     sets[setIndex] = fn(sets[setIndex]);
     await _updateExerciseAt(exerciseIndex, exercise.copyWith(sets: sets));
+  }
+
+  Future<void> _updateWarmupSet(
+    int movementIndex,
+    int setIndex,
+    ActiveWarmupSet updatedSet,
+  ) async {
+    final ActiveWorkout? current = state.workout;
+    if (current == null ||
+        movementIndex < 0 ||
+        movementIndex >= current.warmupMovements.length) {
+      return;
+    }
+    final List<ActiveWarmupMovement> movements =
+        List<ActiveWarmupMovement>.of(current.warmupMovements);
+    final ActiveWarmupMovement movement = movements[movementIndex];
+    if (setIndex < 0 || setIndex >= movement.sets.length) return;
+    final List<ActiveWarmupSet> sets = List<ActiveWarmupSet>.of(movement.sets);
+    sets[setIndex] = updatedSet;
+    movements[movementIndex] = movement.copyWith(sets: sets);
+    await _persist(current.copyWith(warmupMovements: movements));
   }
 
   Future<void> _updateExerciseAt(

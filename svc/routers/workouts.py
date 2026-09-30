@@ -50,6 +50,16 @@ def _sets_payload(db: Any, ledger: Any, body: SessionCommitIn) -> list[dict[str,
     return payload
 
 
+def _warmup_movements_payload(db: Any, body: SessionCommitIn) -> list[dict[str, Any]]:
+    movements = []
+    for movement in body.warmup_movements:
+        payload = movement.model_dump()
+        if movement.exercise_id and db.get_exercise_library_entry(movement.exercise_id) is None:
+            payload["exercise_id"] = None
+        movements.append(payload)
+    return movements
+
+
 @router.get("/exercises")
 async def search_exercises(
     player: Annotated[Any, Depends(get_verified_player)],
@@ -138,6 +148,7 @@ async def commit_session(
             return workouts_service.commit_session(
                 db, str(player), day_plan, body.readiness, body.session_notes,
                 _sets_payload(db, ledger, body),
+                warmup_movements=_warmup_movements_payload(db, body),
                 account_id=account_id_of(player), ledger=ledger,
             )
 
@@ -173,6 +184,7 @@ async def commit_session(
             body.session_notes,
             _sets_payload(db, ledger, body),
             sync=sync,
+            warmup_movements=_warmup_movements_payload(db, body),
             account_id=account_id_of(player),
             ledger=ledger,
         )

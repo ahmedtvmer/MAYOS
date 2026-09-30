@@ -10,6 +10,7 @@ active coach see the version difference (ADR 034). A captured version that is
 newer than the active one or absent from the ledger is refused with 409.
 """
 
+import copy
 import sqlite3
 import threading
 from datetime import UTC, datetime, timedelta
@@ -231,6 +232,7 @@ def test_first_commit_returns_201_and_records_sync_fields(api):
     assert body["program_version"] == version
     assert body["active_program_version_at_sync"] == version
     assert body["is_historical_program"] is False
+    assert "warmup_movements" not in body
 
     db.switch_user("p1")
     row = db.conn.execute(
@@ -246,6 +248,140 @@ def test_first_commit_returns_201_and_records_sync_fields(api):
     assert row["active_program_version_at_sync"] == version
     assert row["captured_at"] == "2026-09-26T11:30:00+00:00"
     assert row["uploaded_at"] == FIXED_NOW.isoformat()
+
+
+def test_warmup_movements_are_stored_without_working_set_effects_and_replay(api):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    control_headers, control_version = _prepare_player(client, db, username="p2")
+    warmup_body = _sync_body(version=version)
+    warmup_body["sets"] = warmup_body["sets"][:1]
+    warmup_body["warmup_movements"] = [
+        {
+            "exercise_id": "ohp",
+            "exercise_name": "Overhead mobility",
+            "sets": [
+                {"weight_kg": None, "reps": 10},
+                {"weight_kg": 2.5, "reps": 8},
+            ],
+        }
+    ]
+    control_body = _sync_body(
+        client_session_id="22222222-2222-4222-8222-222222222222",
+        version=control_version,
+    )
+    control_body["sets"] = control_body["sets"][:1]
+
+    committed = client.post("/workouts/sessions", headers=headers, json=warmup_body)
+    control = client.post("/workouts/sessions", headers=control_headers, json=control_body)
+    assert committed.status_code == control.status_code == 201
+    body = committed.json()
+    assert body["warmup_movements"] == warmup_body["warmup_movements"]
+    assert body["divergences"] == control.json()["divergences"]
+    assert body["total_working_sets"] == control.json()["total_working_sets"] == 1
+    assert body["total_tonnage_kg"] == control.json()["total_tonnage_kg"]
+    assert body["new_prs"] == control.json()["new_prs"]
+    assert body["exercise_summaries"] == control.json()["exercise_summaries"]
+    assert body["fatigue_post"] == control.json()["fatigue_post"]
+
+    db.switch_user("p1")
+    session_id = body["session_id"]
+    assert db.conn.execute(
+        "SELECT COUNT(*) FROM workout_sets WHERE session_id = ?", (session_id,)
+    ).fetchone()[0] == 1
+    warmup_rows = db.conn.execute(
+        "SELECT movement_index, exercise_id, exercise_name, set_index, weight_kg, reps"
+        " FROM session_warmup_sets WHERE session_id = ? ORDER BY set_index",
+        (session_id,),
+    ).fetchall()
+    assert [tuple(row) for row in warmup_rows] == [
+        (0, "ohp", "Overhead mobility", 1, None, 10),
+        (0, "ohp", "Overhead mobility", 2, 2.5, 8),
+    ]
+    assert db.conn.execute(
+        "SELECT COUNT(*) FROM session_divergences WHERE session_id = ? AND exercise_id = 'ohp'",
+        (session_id,),
+    ).fetchone()[0] == 0
+    assert db.conn.execute("SELECT COUNT(*) FROM personal_records").fetchone()[0] == 0
+    assert db.ledger.get_last_performance("ohp") == []
+    assert "ohp" not in {
+        baseline["exercise_id"]
+        for baseline in workouts_service.baselines(db, "p1", ledger=db.ledger)["baselines"]
+    }
+    latest = db.ledger.get_latest_session_summary()
+    assert latest["sets_count"] == 1
+    assert latest["total_volume_kg"] == 500.0
+    assert latest["warmup_movements"] == body["warmup_movements"]
+    assert client.get("/workouts/sessions/latest", headers=headers).json()[
+        "warmup_movements"
+    ] == body["warmup_movements"]
+    assert coach_history_service.recent_sessions(db.ledger, 5)[0][
+        "warmup_movements"
+    ] == body["warmup_movements"]
+
+    replay_body = copy.deepcopy(warmup_body)
+    replay_body["warmup_movements"] = [
+        {"exercise_id": "missing", "exercise_name": "Changed", "sets": [{"reps": 1}]}
+    ]
+    replay = client.post("/workouts/sessions", headers=headers, json=replay_body)
+    assert replay.status_code == 200
+    assert replay.json() == body
+    assert db.conn.execute(
+        "SELECT COUNT(*) FROM session_warmup_sets WHERE session_id = ?", (session_id,)
+    ).fetchone()[0] == 2
+
+
+def test_unknown_warmup_library_id_is_saved_by_name(api):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    body = _sync_body(version=version)
+    body["warmup_movements"] = [
+        {
+            "exercise_id": "removed_mobility_exercise",
+            "exercise_name": "My mobility drill",
+            "sets": [{"weight_kg": None, "reps": 8}],
+        }
+    ]
+
+    response = client.post("/workouts/sessions", headers=headers, json=body)
+
+    assert response.status_code == 201, response.text
+    expected = [
+        {
+            "exercise_id": None,
+            "exercise_name": "My mobility drill",
+            "sets": [{"weight_kg": None, "reps": 8}],
+        }
+    ]
+    assert response.json()["warmup_movements"] == expected
+    db.switch_user("p1")
+    assert db.ledger.list_session_warmup_movements(response.json()["session_id"]) == expected
+
+
+def test_warmup_movement_bounds_are_rejected(api):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    invalid_sets = [
+        [{"weight_kg": -0.1, "reps": 10}],
+        [{"weight_kg": 500.1, "reps": 10}],
+        [{"weight_kg": None, "reps": 0}],
+        [{"weight_kg": None, "reps": 51}],
+        [{"weight_kg": None, "reps": 10}] * 11,
+    ]
+    for sets in invalid_sets:
+        body = _sync_body(version=version)
+        body["warmup_movements"] = [
+            {"exercise_name": "Mobility", "sets": sets}
+        ]
+        response = client.post("/workouts/sessions", headers=headers, json=body)
+        assert response.status_code == 422, response.text
+
+    body = _sync_body(version=version)
+    body["warmup_movements"] = [
+        {"exercise_name": "x" * 121, "sets": [{"reps": 10}]}
+    ]
+    response = client.post("/workouts/sessions", headers=headers, json=body)
+    assert response.status_code == 422, response.text
 
 
 def test_identical_retry_returns_200_same_body_and_one_session(api):

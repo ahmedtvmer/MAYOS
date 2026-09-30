@@ -21,6 +21,87 @@ String newActiveWorkoutSetId() {
   return 'set-${DateTime.now().microsecondsSinceEpoch}-$_setSequence';
 }
 
+@immutable
+class ActiveWarmupSet {
+  const ActiveWarmupSet({this.weightKg, required this.reps, this.ticked = false});
+
+  factory ActiveWarmupSet.fromJson(Map<String, dynamic> json) =>
+      ActiveWarmupSet(
+        weightKg: (json['weight_kg'] as num?)?.toDouble(),
+        reps: (json['reps'] as num?)?.toInt() ?? 0,
+        ticked: json['ticked'] as bool? ?? false,
+      );
+
+  final double? weightKg;
+  final int reps;
+  final bool ticked;
+
+  ActiveWarmupSet copyWith({
+    double? weightKg,
+    int? reps,
+    bool? ticked,
+    bool clearWeight = false,
+  }) => ActiveWarmupSet(
+    weightKg: clearWeight ? null : (weightKg ?? this.weightKg),
+    reps: reps ?? this.reps,
+    ticked: ticked ?? this.ticked,
+  );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'weight_kg': weightKg,
+    'reps': reps,
+    'ticked': ticked,
+  };
+}
+
+@immutable
+class ActiveWarmupMovement {
+  const ActiveWarmupMovement({
+    required this.exerciseName,
+    required this.sets,
+    this.exerciseId,
+  });
+
+  factory ActiveWarmupMovement.fromJson(Map<String, dynamic> json) =>
+      ActiveWarmupMovement(
+        exerciseId: json['exercise_id'] as String?,
+        exerciseName: json['exercise_name'] as String,
+        sets: (json['sets'] as List<dynamic>? ?? const <dynamic>[])
+            .map((dynamic set) =>
+                ActiveWarmupSet.fromJson(set as Map<String, dynamic>))
+            .toList(growable: false),
+      );
+
+  factory ActiveWarmupMovement.fromPrescription(WarmupExercise movement) =>
+      ActiveWarmupMovement(
+        exerciseId: movement.exerciseId,
+        exerciseName: movement.exerciseName,
+        sets: <ActiveWarmupSet>[
+          for (int i = 0; i < movement.sets; i++)
+            ActiveWarmupSet(reps: movement.reps),
+        ],
+      );
+
+  final String? exerciseId;
+  final String exerciseName;
+  final List<ActiveWarmupSet> sets;
+
+  ActiveWarmupMovement copyWith({List<ActiveWarmupSet>? sets}) =>
+      ActiveWarmupMovement(
+        exerciseId: exerciseId,
+        exerciseName: exerciseName,
+        sets: sets ?? this.sets,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'exercise_id': exerciseId,
+    'exercise_name': exerciseName,
+    'sets': <Map<String, dynamic>>[
+      for (final ActiveWarmupSet set in sets) set.toJson(),
+    ],
+  };
+}
+
 /// One set row of the Active workout (CONTEXT.md): weight, reps, effort as
 /// RIR (null = unrated), the warm-up flag, and whether the player ticked it.
 ///
@@ -567,6 +648,7 @@ class ActiveWorkout {
     required this.dayOrder,
     required this.dayName,
     required this.exercises,
+    this.warmupMovements = const <ActiveWarmupMovement>[],
     required this.baselines,
     this.programVersion,
     this.rest,
@@ -587,6 +669,11 @@ class ActiveWorkout {
               ActiveWorkoutExercise.fromJson(e as Map<String, dynamic>),
         )
         .toList(growable: false),
+    warmupMovements:
+        (json['warmup_movements'] as List<dynamic>? ?? const <dynamic>[])
+            .map((dynamic movement) => ActiveWarmupMovement.fromJson(
+                movement as Map<String, dynamic>))
+            .toList(growable: false),
     baselines: _baselinesFromJson(json['baselines']),
     rest: json['rest'] is Map<String, dynamic>
         ? ActiveRestTimer.fromJson(json['rest'] as Map<String, dynamic>)
@@ -629,6 +716,8 @@ class ActiveWorkout {
 
   final List<ActiveWorkoutExercise> exercises;
 
+  final List<ActiveWarmupMovement> warmupMovements;
+
   /// The baselines frozen at start, keyed by exercise id.
   final Map<String, BaselineExercise> baselines;
 
@@ -644,6 +733,7 @@ class ActiveWorkout {
 
   ActiveWorkout copyWith({
     List<ActiveWorkoutExercise>? exercises,
+    List<ActiveWarmupMovement>? warmupMovements,
     Map<String, BaselineExercise>? baselines,
     String? clientSessionId,
     bool? commitAttempted,
@@ -660,6 +750,7 @@ class ActiveWorkout {
     dayName: dayName,
     programVersion: programVersion ?? this.programVersion,
     exercises: exercises ?? this.exercises,
+    warmupMovements: warmupMovements ?? this.warmupMovements,
     baselines: baselines ?? this.baselines,
     rest: clearRest ? null : (rest ?? this.rest),
   );
@@ -676,6 +767,11 @@ class ActiveWorkout {
     'exercises': <Map<String, dynamic>>[
       for (final ActiveWorkoutExercise exercise in exercises) exercise.toJson(),
     ],
+    if (warmupMovements.isNotEmpty)
+      'warmup_movements': <Map<String, dynamic>>[
+        for (final ActiveWarmupMovement movement in warmupMovements)
+          movement.toJson(),
+      ],
     'baselines': <String, dynamic>{
       for (final MapEntry<String, BaselineExercise> entry in baselines.entries)
         entry.key: entry.value.toJson(),
@@ -708,11 +804,18 @@ class ActiveWorkout {
         });
       }
     }
+    final List<WarmupMovementLog> loggedWarmupMovements =
+        _loggedWarmupMovements(warmupMovements);
     return <String, dynamic>{
       'day_order': dayOrder,
       'readiness': readiness,
       'session_notes': notes,
       'sets': loggedExercises,
+      if (loggedWarmupMovements.isNotEmpty)
+        'warmup_movements': <Map<String, dynamic>>[
+          for (final WarmupMovementLog movement in loggedWarmupMovements)
+            movement.toJson(),
+        ],
       'client_session_id': sessionId,
       'performed_date': performedDate ?? startedDate,
       'performed_timezone': timezone,
@@ -767,6 +870,7 @@ class ActiveWorkout {
         for (final ActiveWorkoutExercise exercise in exercises)
           _draftExercise(exercise),
       ],
+      warmupMovements: _draftWarmupMovements(warmupMovements),
       readiness: readiness,
       notes: notes,
       status: DraftStatus.pending,
@@ -782,6 +886,40 @@ class ActiveWorkout {
       skipped: ticked.isEmpty,
     );
   }
+
+  static List<WarmupMovementLog> _loggedWarmupMovements(
+    List<ActiveWarmupMovement> movements,
+  ) => <WarmupMovementLog>[
+    for (final ActiveWarmupMovement movement in movements)
+      if (movement.sets.any((ActiveWarmupSet set) => set.ticked))
+        WarmupMovementLog(
+          exerciseId: movement.exerciseId,
+          exerciseName: movement.exerciseName,
+          sets: <WarmupSetLog>[
+            for (final ActiveWarmupSet set in movement.sets)
+              if (set.ticked)
+                WarmupSetLog(weightKg: set.weightKg, reps: set.reps),
+          ],
+        ),
+  ];
+
+  static List<WarmupMovementDraft> _draftWarmupMovements(
+    List<ActiveWarmupMovement> movements,
+  ) => <WarmupMovementDraft>[
+    for (final ActiveWarmupMovement movement in movements)
+      WarmupMovementDraft(
+        exerciseId: movement.exerciseId,
+        exerciseName: movement.exerciseName,
+        sets: <WarmupSetDraft>[
+          for (final ActiveWarmupSet set in movement.sets)
+            WarmupSetDraft(
+              weightKg: set.weightKg,
+              reps: set.reps,
+              ticked: set.ticked,
+            ),
+        ],
+      ),
+  ];
 }
 
 /// Device persistence for the single Active workout, keyed by account id

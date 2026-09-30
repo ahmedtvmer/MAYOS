@@ -104,6 +104,8 @@ __all__ = [
     "TrainingScheduleVersionOut",
     "TokenOut",
     "UsernameAvailableOut",
+    "WarmupMovementOut",
+    "WarmupMovementSetOut",
     "WorkoutSetIn",
 ]
 
@@ -452,6 +454,17 @@ class CoachPlayerSessionExerciseOut(BaseModel):
     volume_kg: float
 
 
+class WarmupMovementSetOut(BaseModel):
+    weight_kg: float | None
+    reps: int
+
+
+class WarmupMovementOut(BaseModel):
+    exercise_id: str | None = None
+    exercise_name: str
+    sets: list[WarmupMovementSetOut]
+
+
 class CoachPlayerDivergenceOut(BaseModel):
     """A factual skipped or unplanned exercise in the player's workout history."""
 
@@ -485,6 +498,7 @@ class CoachPlayerLatestSessionOut(BaseModel):
     corrections: list[PerformedDateCorrectionOut] = []
     exercises: list[CoachPlayerSessionExerciseOut] = []
     divergences: list[CoachPlayerDivergenceOut] = []
+    warmup_movements: list[WarmupMovementOut] = []
 
 
 class CoachPlayerRecentSessionOut(BaseModel):
@@ -503,6 +517,7 @@ class CoachPlayerRecentSessionOut(BaseModel):
     edited_at: str | None = None
     corrections: list[PerformedDateCorrectionOut] = []
     divergences: list[CoachPlayerDivergenceOut] = []
+    warmup_movements: list[WarmupMovementOut] = []
 
 
 class CoachPlayerScheduleOut(BaseModel):
@@ -821,11 +836,25 @@ class ExerciseSetsIn(BaseModel):
     sets: list[WorkoutSetIn] = Field(min_length=1)
 
 
+class WarmupMovementSetIn(BaseModel):
+    weight_kg: float | None = Field(
+        default=None, ge=0.0, le=500.0, allow_inf_nan=False
+    )
+    reps: int = Field(ge=1, le=50)
+
+
+class WarmupMovementIn(BaseModel):
+    exercise_id: str | None = Field(default=None, min_length=1, max_length=64)
+    exercise_name: str = Field(min_length=1, max_length=120)
+    sets: list[WarmupMovementSetIn] = Field(min_length=1, max_length=10)
+
+
 class SessionCommitIn(BaseModel):
     day_order: int = Field(ge=1, le=5)
     readiness: int = Field(ge=1, le=5)
     session_notes: str = Field(default="", max_length=2000)
     sets: list[ExerciseSetsIn] = Field(min_length=1)
+    warmup_movements: list[WarmupMovementIn] = Field(default_factory=list)
 
     # Offline-sync contract (ADR 020/033). When ``client_session_id`` is absent
     # the request keeps the legacy online-only behaviour; when present the

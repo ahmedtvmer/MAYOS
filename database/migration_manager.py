@@ -10,7 +10,7 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 12
+CURRENT_LEDGER_SCHEMA_VERSION: int = 13
 
 #: Performed-date correction DDL (ADR 035). Kept in one place so the
 #: fresh-create path (``DatabaseManager.create_ledger_schema``) and the v10->v11
@@ -52,6 +52,24 @@ INTAKE_DDL: tuple[str, ...] = (
     " program_message TEXT,"
     " updated_at TEXT NOT NULL"
     ")",
+)
+
+#: Warm-up movements live outside working-set history and progression queries.
+SESSION_WARMUP_SETS_DDL: tuple[str, ...] = (
+    "CREATE TABLE IF NOT EXISTS session_warmup_sets ("
+    " session_id TEXT NOT NULL,"
+    " movement_index INTEGER NOT NULL CHECK (movement_index >= 0),"
+    " exercise_id TEXT,"
+    " exercise_name TEXT NOT NULL,"
+    " set_index INTEGER NOT NULL CHECK (set_index BETWEEN 1 AND 10),"
+    " weight_kg REAL CHECK (weight_kg IS NULL OR weight_kg BETWEEN 0 AND 500),"
+    " reps INTEGER NOT NULL CHECK (reps BETWEEN 1 AND 50),"
+    " logged_at TEXT NOT NULL,"
+    " PRIMARY KEY (session_id, movement_index, set_index),"
+    " FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE"
+    ")",
+    "CREATE INDEX IF NOT EXISTS idx_session_warmup_sets_session"
+    " ON session_warmup_sets(session_id, movement_index, set_index)",
 )
 
 
@@ -349,6 +367,12 @@ def _migrate_v11_to_v12(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _migrate_v12_to_v13(conn: sqlite3.Connection) -> None:
+    """Adds separate history storage for Warm-up movements (#218)."""
+    for statement in SESSION_WARMUP_SETS_DDL:
+        conn.execute(statement)
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -446,6 +470,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     9: _migrate_v9_to_v10,
     10: _migrate_v10_to_v11,
     11: _migrate_v11_to_v12,
+    12: _migrate_v12_to_v13,
 }
 
 

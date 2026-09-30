@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -26,10 +27,12 @@ import 'package:mayos_mobile/src/core/ui/mayos_progress.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/workout/active_workout_controller.dart';
 import 'package:mayos_mobile/src/features/player/workout/logger_top_bar.dart';
+import 'package:mayos_mobile/src/features/player/workout/logger_card_widgets.dart';
 import 'package:mayos_mobile/src/features/player/workout/personal_record_badge.dart';
 import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
+import 'support/fake_api_adapter.dart';
 import 'support/fake_mayos_api.dart';
 
 const String _account = 'account-alice';
@@ -40,6 +43,40 @@ const String _account = 'account-alice';
 const ProgramDay _day = ProgramDay(
   dayName: 'Upper A',
   dayOrder: 2,
+  exercises: <ProgramExercise>[
+    ProgramExercise(
+      exerciseId: 'bench_press',
+      exerciseName: 'Bench Press',
+      targetSets: 3,
+      targetRepsMin: 5,
+      targetRepsMax: 8,
+      targetRpe: 8.5,
+      restSeconds: 180,
+    ),
+    ProgramExercise(
+      exerciseId: 'incline_press',
+      exerciseName: 'Incline Press',
+      targetSets: 1,
+      targetRepsMin: 8,
+      targetRepsMax: 12,
+      targetRpe: 8.0,
+      restSeconds: 120,
+    ),
+  ],
+);
+
+const ProgramDay _warmupDay = ProgramDay(
+  dayName: 'Upper A',
+  dayOrder: 2,
+  warmupExercises: <WarmupExercise>[
+    WarmupExercise(exerciseName: 'Cat-Cow', sets: 2, reps: 10),
+    WarmupExercise(
+      exerciseId: 'band_pull_apart',
+      exerciseName: 'Band Pull-Apart',
+      sets: 1,
+      reps: 12,
+    ),
+  ],
   exercises: <ProgramExercise>[
     ProgramExercise(
       exerciseId: 'bench_press',
@@ -150,6 +187,7 @@ FakeMayosApi _signedInFake(
 Future<InMemoryActiveWorkoutStore> _seedThroughController({
   required FakeMayosApi fake,
   required String startedAt,
+  ProgramDay day = _day,
 }) async {
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
@@ -170,7 +208,7 @@ Future<InMemoryActiveWorkoutStore> _seedThroughController({
       container.read(activeWorkoutControllerProvider.notifier);
   final StartWorkoutOutcome outcome = await controller.startFromDay(
     accountId: _account,
-    day: _day,
+    day: day,
     programVersion: 3,
   );
   expect(outcome, StartWorkoutOutcome.started);
@@ -183,6 +221,7 @@ Future<InMemoryActiveWorkoutStore> _seedThroughController({
     startedAt: startedAt,
     dayOrder: seeded.dayOrder,
     dayName: seeded.dayName,
+    warmupMovements: seeded.warmupMovements,
     programVersion: seeded.programVersion,
     exercises: seeded.exercises,
     baselines: seeded.baselines,
@@ -273,16 +312,18 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
   List<Map<String, dynamic>>? baselines,
   ThemeMode themeMode = ThemeMode.light,
   DateTime Function()? clock,
+  ProgramDay day = _day,
+  FakeMayosApi? fakeApi,
 }) async {
   _usePhoneView(tester);
 
-  final FakeMayosApi fake = _signedInFake(baselines: baselines);
+  final FakeMayosApi fake = fakeApi ?? _signedInFake(baselines: baselines);
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
   // Seeding talks to the (fake) API on real timers, so it runs outside the
   // test's fake-async zone.
   final InMemoryActiveWorkoutStore store = (await tester.runAsync(
-    () => _seedThroughController(fake: fake, startedAt: startedAt),
+    () => _seedThroughController(fake: fake, startedAt: startedAt, day: day),
   ))!;
 
   await _pumpApp(
@@ -415,6 +456,108 @@ Future<void> _assertNoOverflowAt360(
 }
 
 void main() {
+  testWidgets('warm-up movements show prescribed rows and stay outside work progress',
+      (WidgetTester tester) async {
+    final InMemoryActiveWorkoutStore store =
+        await _openLogger(tester, day: _warmupDay);
+
+    expect(find.byKey(const ValueKey<String>('logger.warmup.section')),
+        findsOneWidget);
+    expect(find.byType(WarmupMovementLoggingCard), findsNWidgets(2));
+    expect(
+      tester.widget<TextFormField>(find.byKey(
+          const ValueKey<String>('logger.warmup.0.0.kg'))).initialValue,
+      isEmpty,
+    );
+    expect(
+      tester.widget<TextFormField>(find.byKey(
+          const ValueKey<String>('logger.warmup.0.0.reps'))).initialValue,
+      '10',
+    );
+    expect(
+      tester.widget<TextFormField>(find.byKey(
+          const ValueKey<String>('logger.warmup.1.0.reps'))).initialValue,
+      '12',
+    );
+
+    await tester.tap(
+        find.byKey(const ValueKey<String>('logger.warmup.0.0.tick')));
+    await tester.pumpAndSettle();
+    final ActiveWorkout persisted = (await store.read(_account))!;
+    expect(persisted.warmupMovements[0].sets[0].ticked, isTrue);
+    expect(persisted.warmupMovements[0].sets[0].weightKg, isNull);
+    expect(persisted.warmupMovements[0].sets[1].ticked, isFalse);
+    expect(currentSetOf(persisted), (exerciseIndex: 0, setIndex: 0));
+    expect(workoutProgressOf(persisted).setsTotal, 4);
+    expect(workoutProgressOf(persisted).setsTicked, 0);
+
+    await tester.tap(find.text('Finish workout'));
+    await tester.pumpAndSettle();
+    expect(find.text('Workout summary'), findsNothing);
+    expect(find.text('Log at least one set'), findsOneWidget);
+  });
+
+  testWidgets('a day without warm-up movements has no warm-up section',
+      (WidgetTester tester) async {
+    await _openLogger(tester);
+
+    expect(find.byKey(const ValueKey<String>('logger.warmup.section')),
+        findsNothing);
+    expect(find.byType(WarmupMovementLoggingCard), findsNothing);
+  });
+
+  testWidgets('a linked warm-up name opens library detail without prescription',
+      (WidgetTester tester) async {
+    await _openLogger(tester, day: _warmupDay);
+
+    final SemanticsNode exerciseName =
+        tester.getSemantics(find.text('Band Pull-Apart'));
+    expect(exerciseName.flagsCollection.isButton, isTrue);
+    await tester.tap(find.text('Band Pull-Apart'));
+    await _pumpUntilFound(tester, find.text('Overview'));
+
+    expect(find.text('Band Pull-Apart'), findsOneWidget);
+    expect(find.text('Sets × reps'), findsNothing);
+  });
+
+  testWidgets('clearing a warm-up weight commits null',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _openLogger(tester, day: _warmupDay, fakeApi: fake);
+
+    final Finder weight =
+        find.byKey(const ValueKey<String>('logger.warmup.0.0.kg'));
+    await tester.enterText(weight, '25');
+    await tester.pumpAndSettle();
+    await tester.enterText(weight, '');
+    await tester.pumpAndSettle();
+    await tester.tap(
+        find.byKey(const ValueKey<String>('logger.warmup.0.0.tick')));
+    await tester.tap(_tick(0, 0));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Finish workout'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discard unticked sets and finish'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save workout'));
+    await _pumpUntilFound(tester, find.text('Workouts'));
+
+    final FakeRequest commit = fake.adapter.requests.lastWhere(
+      (FakeRequest request) =>
+          request.method == 'POST' && request.path == '/workouts/sessions',
+    );
+    expect(commit.body['warmup_movements'], <Map<String, dynamic>>[
+      <String, dynamic>{
+        'exercise_id': null,
+        'exercise_name': 'Cat-Cow',
+        'sets': <Map<String, dynamic>>[
+          <String, dynamic>{'weight_kg': null, 'reps': 10},
+        ],
+      },
+    ]);
+  });
+
   testWidgets(
       'the table is SET · KG · REPS · RIR · ✓ and the baseline rides on the '
       'card as the Last: line (#158)', (WidgetTester tester) async {

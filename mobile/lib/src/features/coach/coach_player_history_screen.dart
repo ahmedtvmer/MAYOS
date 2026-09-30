@@ -582,6 +582,8 @@ class _CoachPlayerHistoryScreenState
       Text('${latest.splitName} · ${latest.sessionDate}'),
       Text(
           '${latest.setsCount} sets · ${latest.totalVolumeKg.toStringAsFixed(1)} kg'),
+      if (latest.warmupMovements.isNotEmpty)
+        Text('Warm-up: ${latest.warmupMovements.length} movements'),
       if (latest.readinessScore != null)
         Text('Readiness ${latest.readinessScore}/5'),
       if (versionNote != null) Text(versionNote),
@@ -631,6 +633,8 @@ class _CoachPlayerHistoryScreenState
         children: <Widget>[
           Text(
               '${session.setsCount} sets · ${session.totalVolumeKg.toStringAsFixed(1)} kg'),
+          if (session.warmupMovements.isNotEmpty)
+            Text('Warm-up: ${session.warmupMovements.length} movements'),
           if (versionNote != null) Text(versionNote),
           for (final PerformedDateCorrection correction in session.corrections)
             Text(correction.label),

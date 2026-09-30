@@ -93,6 +93,7 @@ TRAINING_TABLES = (
     "session_commits",
     "workout_sets",
     "session_divergences",
+    "session_warmup_sets",
     "personal_records",
     "performed_date_corrections",
     "chat_history",

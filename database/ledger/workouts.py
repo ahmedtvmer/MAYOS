@@ -250,6 +250,79 @@ class LedgerWorkoutsMixin:
         )
         self._commit_ledger()
 
+    def log_session_warmup_movements(
+        self, session_id: str, movements: list[dict[str, Any]], logged_at: str
+    ) -> None:
+        rows = self._warmup_set_rows(session_id, movements, logged_at)
+        if not rows:
+            return
+        self.conn.executemany(
+            "INSERT INTO session_warmup_sets ("
+            "session_id, movement_index, exercise_id, exercise_name, set_index,"
+            " weight_kg, reps, logged_at)"
+            " VALUES (:session_id, :movement_index, :exercise_id, :exercise_name,"
+            " :set_index, :weight_kg, :reps, :logged_at)",
+            rows,
+        )
+        self._commit_ledger()
+
+    @staticmethod
+    def _warmup_set_rows(
+        session_id: str, movements: list[dict[str, Any]], logged_at: str
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "session_id": session_id,
+                "movement_index": movement_index,
+                "exercise_id": movement.get("exercise_id"),
+                "exercise_name": movement["exercise_name"],
+                "set_index": set_index,
+                "weight_kg": set_row["weight_kg"],
+                "reps": set_row["reps"],
+                "logged_at": logged_at,
+            }
+            for movement_index, movement in enumerate(movements)
+            for set_index, set_row in enumerate(movement["sets"], start=1)
+        ]
+
+    @staticmethod
+    def _group_warmup_set_rows(rows: list[Any]) -> dict[str, list[dict[str, Any]]]:
+        grouped: dict[str, dict[int, dict[str, Any]]] = {}
+        for row in rows:
+            session_movements = grouped.setdefault(row["session_id"], {})
+            movement = session_movements.setdefault(
+                row["movement_index"],
+                {
+                    "exercise_id": row["exercise_id"],
+                    "exercise_name": row["exercise_name"],
+                    "sets": [],
+                },
+            )
+            movement["sets"].append(
+                {"weight_kg": row["weight_kg"], "reps": row["reps"]}
+            )
+        return {
+            session_id: [movements[index] for index in sorted(movements)]
+            for session_id, movements in grouped.items()
+        }
+
+    def list_session_warmup_movements(self, session_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT session_id, movement_index, exercise_id, exercise_name,"
+            " set_index, weight_kg, reps FROM session_warmup_sets"
+            " WHERE session_id = ? ORDER BY movement_index, set_index",
+            (session_id,),
+        ).fetchall()
+        return self._group_warmup_set_rows(rows).get(session_id, [])
+
+    def list_warmup_movements_by_session(self) -> dict[str, list[dict[str, Any]]]:
+        rows = self.conn.execute(
+            "SELECT session_id, movement_index, exercise_id, exercise_name,"
+            " set_index, weight_kg, reps FROM session_warmup_sets"
+            " ORDER BY session_id, movement_index, set_index"
+        ).fetchall()
+        return self._group_warmup_set_rows(rows)
+
     def get_latest_committed_session(self) -> dict[str, Any] | None:
         """The player's most recent committed session, for Home's next day (#53).
 
@@ -274,6 +347,7 @@ class LedgerWorkoutsMixin:
             "split_name": row[2],
             "day_order": None,
             "program_version": row[3],
+            "warmup_movements": self.list_session_warmup_movements(row[0]),
         }
 
     def get_latest_session_summary(self) -> dict[str, Any] | None:
@@ -314,6 +388,7 @@ class LedgerWorkoutsMixin:
             "uploaded_at": session["uploaded_at"],
             "edited_at": session["edited_at"],
             "corrections": self.list_performed_date_corrections(session["id"]),
+            "warmup_movements": self.list_session_warmup_movements(session["id"]),
             "sets_count": sum(exercise["sets"] for exercise in exercises),
             "total_volume_kg": sum((exercise["volume_kg"] for exercise in exercises), 0.0),
             "exercises": exercises,

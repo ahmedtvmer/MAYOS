@@ -8,6 +8,7 @@ import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/baseline_service.dart';
 import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/models.dart';
+import 'package:mayos_mobile/src/core/personal_records.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/workout/active_workout_controller.dart';
@@ -22,6 +23,24 @@ const String _account = 'account-alice';
 const ProgramDay _day = ProgramDay(
   dayName: 'Upper A',
   dayOrder: 2,
+  exercises: <ProgramExercise>[
+    ProgramExercise(
+      exerciseId: 'bench_press',
+      exerciseName: 'Bench Press',
+      targetSets: 2,
+      targetRepsMin: 5,
+      targetRepsMax: 8,
+      targetRpe: 8.5,
+    ),
+  ],
+);
+
+const ProgramDay _dayWithWarmup = ProgramDay(
+  dayName: 'Upper A',
+  dayOrder: 2,
+  warmupExercises: <WarmupExercise>[
+    WarmupExercise(exerciseName: 'Cat-Cow', sets: 2, reps: 10),
+  ],
   exercises: <ProgramExercise>[
     ProgramExercise(
       exerciseId: 'bench_press',
@@ -218,6 +237,53 @@ class _LatencyStore implements ActiveWorkoutStore {
 
 void main() {
   group('Active workout lifecycle', () {
+    test('warm-up movements seed from the day and survive an app restart',
+        () async {
+      final FakeMayosApi fake = _signedInFake();
+      final InMemoryTokenStore tokens = await _tokens();
+      final InMemoryActiveWorkoutStore store = InMemoryActiveWorkoutStore();
+      final InMemoryBaselineCacheStore cache = InMemoryBaselineCacheStore();
+      final InMemoryDraftStore drafts = InMemoryDraftStore();
+      final InMemoryWorkoutCacheStore workoutCache =
+          InMemoryWorkoutCacheStore();
+      final ProviderContainer first = _container(
+        fake: fake,
+        tokens: tokens,
+        store: store,
+        cache: cache,
+        drafts: drafts,
+        workoutCache: workoutCache,
+      );
+      final ActiveWorkoutController controller =
+          first.read(activeWorkoutControllerProvider.notifier);
+      await controller.startFromDay(
+        accountId: _account,
+        day: _dayWithWarmup,
+        programVersion: 3,
+      );
+      expect(controller.workout!.warmupMovements.single.sets, hasLength(2));
+      expect(controller.workout!.warmupMovements.single.sets.first.reps, 10);
+      await controller.updateWarmupMovementSet(
+        0,
+        0,
+        const ActiveWarmupSet(reps: 10, ticked: true),
+      );
+
+      final ProviderContainer second = _container(
+        fake: fake,
+        tokens: tokens,
+        store: store,
+        cache: cache,
+        drafts: drafts,
+        workoutCache: workoutCache,
+      );
+      final ActiveWorkoutController restored =
+          second.read(activeWorkoutControllerProvider.notifier);
+      await restored.syncAccount(_account);
+      expect(restored.workout!.warmupMovements.single.sets.first.ticked, isTrue);
+      expect(restored.workout!.warmupMovements.single.sets[1].ticked, isFalse);
+    });
+
     test('is created, persisted after changes, and restored on restart',
         () async {
       final FakeMayosApi fake = _signedInFake();
@@ -1522,6 +1588,8 @@ void main() {
     ActiveWorkout workoutWith(
       List<ActiveWorkoutExercise> exercises, {
       int? programVersion = 3,
+      List<ActiveWarmupMovement> warmupMovements =
+          const <ActiveWarmupMovement>[],
     }) =>
         ActiveWorkout(
           id: 'aw-1',
@@ -1531,8 +1599,73 @@ void main() {
           dayName: 'Upper A',
           programVersion: programVersion,
           exercises: exercises,
+          warmupMovements: warmupMovements,
           baselines: const <String, BaselineExercise>{},
         );
+
+    test('commits only ticked Warm-up sets separately in direct and draft bodies',
+        () {
+      final ActiveWorkout workout = workoutWith(
+        <ActiveWorkoutExercise>[
+          ActiveWorkoutExercise(
+            exercise: _plannedExerciseJson,
+            sets: <ActiveWorkoutSet>[
+              ActiveWorkoutSet(weightKg: 100, reps: 5, ticked: true),
+              ActiveWorkoutSet(),
+            ],
+          ),
+        ],
+        warmupMovements: <ActiveWarmupMovement>[
+          ActiveWarmupMovement(
+            exerciseName: 'Cat-Cow',
+            sets: const <ActiveWarmupSet>[
+              ActiveWarmupSet(reps: 10, ticked: true),
+              ActiveWarmupSet(reps: 10),
+            ],
+          ),
+          ActiveWarmupMovement(
+            exerciseId: 'band_pull_apart',
+            exerciseName: 'Band Pull-Apart',
+            sets: const <ActiveWarmupSet>[ActiveWarmupSet(reps: 12)],
+          ),
+        ],
+      );
+      final Map<String, dynamic> direct = workout.copyWith(
+        clientSessionId: 'fixed-session',
+      ).buildCommitBody(
+        timezone: 'UTC',
+        now: now,
+      )!;
+      expect(direct['sets'], hasLength(1));
+      expect(currentSetOf(workout), (exerciseIndex: 0, setIndex: 1));
+      expect(workoutProgressOf(workout).setsTotal, 2);
+      expect(workoutProgressOf(workout).setsTicked, 1);
+      expect(workoutSummaryStats(workout).workingSets, 1);
+      expect(workoutSummaryStats(workout).totalVolumeKg, 500);
+      expect(direct['warmup_movements'], <Map<String, dynamic>>[
+        <String, dynamic>{
+          'exercise_id': null,
+          'exercise_name': 'Cat-Cow',
+          'sets': <Map<String, dynamic>>[
+            <String, dynamic>{'weight_kg': null, 'reps': 10},
+          ],
+        },
+      ]);
+
+      final WorkoutDraft draft = workout.buildWorkoutDraft(
+        timezone: 'UTC',
+        clientSessionId: 'fixed-session',
+        now: now,
+      )!;
+      expect(draft.toCommitBody()['warmup_movements'], direct['warmup_movements']);
+      final WorkoutDraft restored = WorkoutDraft.fromJson(draft.toJson());
+      expect(restored.warmupMovements, hasLength(2));
+      expect(restored.warmupMovements.first.sets.first.ticked, isTrue);
+      expect(restored.warmupMovements.first.sets[1].ticked, isFalse);
+      expect(restored.warmupMovements[1].sets.single.ticked, isFalse);
+      expect(restored.toCommitBody()['warmup_movements'],
+          direct['warmup_movements']);
+    });
 
     test('is identical to what the logger builds for the same input', () {
       // Every set ticked: the same input the current logger would send with

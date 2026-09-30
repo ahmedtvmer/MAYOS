@@ -449,6 +449,7 @@ def _persist_session(
     today_date: str,
     sync: SyncMetadata,
     ledger: Any,
+    warmup_movements: list[dict[str, Any]] | None = None,
     active_program_version_at_sync: int | None = None,
 ) -> dict[str, Any]:
     """Writes one session and all of its derived records; the caller owns the transaction.
@@ -593,6 +594,8 @@ def _persist_session(
         )
 
     ledger.log_workout_sets_batch(all_sets_to_batch)
+    warmup_movements = warmup_movements or []
+    ledger.log_session_warmup_movements(session_id, warmup_movements, now_iso)
 
     prescribed_ids = {str(ex.exercise_id) for ex in day_plan.exercises}
     divergences: list[dict[str, str]] = [
@@ -667,6 +670,7 @@ def _persist_session(
         "fatigue_post": fatigue_post,
         "new_prs": pr_events,
         "divergences": divergences,
+        **({"warmup_movements": warmup_movements} if warmup_movements else {}),
         # Version visibility (ADR 034): what the draft was logged against vs.
         # the program active when the commit landed. ``is_historical_program``
         # is the explicit flag both the player and assigned coach render.
@@ -730,6 +734,7 @@ def commit_session(
     account_id: str | None = None,
     sync: SyncMetadata | None = None,
     ledger: Any | None = None,
+    warmup_movements: list[dict[str, Any]] | None = None,
 ) -> CommitOutcome:
     """Persists a logged session and returns totals, per-movement analytics, debrief, and pointer.
 
@@ -760,6 +765,7 @@ def commit_session(
                 today_date=today_date,
                 sync=sync,
                 ledger=ledger,
+                warmup_movements=warmup_movements,
             )
 
     _run_post_commit_hooks(
@@ -780,6 +786,7 @@ def commit_logged_session(
     account_id: str | None = None,
     now_iso: str | None = None,
     ledger: Any | None = None,
+    warmup_movements: list[dict[str, Any]] | None = None,
 ) -> CommitOutcome:
     """Idempotently commits one offline-captured workout (ADR 020/033/034).
 
@@ -829,6 +836,7 @@ def commit_logged_session(
                     today_date=sync.performed_date,
                     sync=sync,
                     ledger=ledger,
+                    warmup_movements=warmup_movements,
                     active_program_version_at_sync=active_version,
                 )
                 ledger.record_session_commit(client_session_id, session_id, json.dumps(body), now_iso)

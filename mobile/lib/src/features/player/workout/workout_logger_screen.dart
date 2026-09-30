@@ -1338,6 +1338,33 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
             const _OfflineLoggerNotice(),
           ],
           const SizedBox(height: MayosSpacing.md),
+          if (workout.warmupMovements.isNotEmpty) ...<Widget>[
+            const MayosSectionHeader(
+              key: ValueKey<String>('logger.warmup.section'),
+              title: 'Warm-up',
+              padding: EdgeInsets.zero,
+            ),
+            const SizedBox(height: MayosSpacing.xs),
+            for (int i = 0; i < workout.warmupMovements.length; i++)
+              WarmupMovementLoggingCard(
+                movement: workout.warmupMovements[i],
+                movementIndex: i,
+                onSetChanged: (edit) =>
+                    unawaited(_controller.updateWarmupMovementSet(
+                  i,
+                  edit.$1,
+                  edit.$2,
+                )),
+                onOpenDetail: workout.warmupMovements[i].exerciseId == null ||
+                        workout.warmupMovements[i].exerciseId!.isEmpty
+                    ? null
+                    : () => openLoggerExerciseDetail(
+                          context,
+                          exerciseId:
+                              workout.warmupMovements[i].exerciseId!,
+                        ),
+              ),
+          ],
           for (int i = 0; i < workout.exercises.length; i++)
             // A replaced planned exercise (#162) keeps its place in the
             // workout for the draft but is never a card: it has no rows and

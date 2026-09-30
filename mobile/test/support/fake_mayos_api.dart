@@ -2993,6 +2993,7 @@ class FakeMayosApi {
       'fatigue_post': <String, dynamic>{'deload_recommended': false},
       'new_prs': <dynamic>[],
       'divergences': <dynamic>[],
+      'warmup_movements': body['warmup_movements'] ?? <dynamic>[],
       'program_version': requested,
       'active_program_version_at_sync': active,
       'is_historical_program': requested > 0 && requested < active,
