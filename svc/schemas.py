@@ -22,6 +22,8 @@ __all__ = [
     "AssignmentRedeemOut",
     "ChatMessageIn",
     "ChatMessageOut",
+    "CardioIn",
+    "CardioOut",
     "CheckInIn",
     "CheckInOut",
     "ClaimIn",
@@ -78,6 +80,7 @@ __all__ = [
     "PersonaUpdate",
     "PlanStateOut",
     "PlayerCheckInListOut",
+    "PlayerLatestSessionOut",
     "PlayerNoticeListOut",
     "PlayerProgramRequestIn",
     "PlayerProgramRequestListOut",
@@ -465,6 +468,25 @@ class WarmupMovementOut(BaseModel):
     sets: list[WarmupMovementSetOut]
 
 
+class CardioOut(BaseModel):
+    """The cardio prescription and minutes recorded for one session."""
+
+    prescription: str
+    minutes: int
+
+
+class PlayerLatestSessionOut(BaseModel):
+    """The player's latest session identity and separately recorded warm-ups/cardio."""
+
+    session_id: str
+    session_date: str
+    split_name: str
+    day_order: int | None = None
+    program_version: int | None = None
+    warmup_movements: list[WarmupMovementOut] = []
+    cardio: CardioOut | None = None
+
+
 class CoachPlayerDivergenceOut(BaseModel):
     """A factual skipped or unplanned exercise in the player's workout history."""
 
@@ -499,6 +521,7 @@ class CoachPlayerLatestSessionOut(BaseModel):
     exercises: list[CoachPlayerSessionExerciseOut] = []
     divergences: list[CoachPlayerDivergenceOut] = []
     warmup_movements: list[WarmupMovementOut] = []
+    cardio: CardioOut | None = None
 
 
 class CoachPlayerRecentSessionOut(BaseModel):
@@ -518,6 +541,7 @@ class CoachPlayerRecentSessionOut(BaseModel):
     corrections: list[PerformedDateCorrectionOut] = []
     divergences: list[CoachPlayerDivergenceOut] = []
     warmup_movements: list[WarmupMovementOut] = []
+    cardio: CardioOut | None = None
 
 
 class CoachPlayerScheduleOut(BaseModel):
@@ -849,12 +873,18 @@ class WarmupMovementIn(BaseModel):
     sets: list[WarmupMovementSetIn] = Field(min_length=1, max_length=10)
 
 
+class CardioIn(BaseModel):
+    prescription: str = Field(min_length=1, max_length=500)
+    minutes: int = Field(ge=1, le=600)
+
+
 class SessionCommitIn(BaseModel):
     day_order: int = Field(ge=1, le=5)
     readiness: int = Field(ge=1, le=5)
     session_notes: str = Field(default="", max_length=2000)
     sets: list[ExerciseSetsIn] = Field(min_length=1)
     warmup_movements: list[WarmupMovementIn] = Field(default_factory=list)
+    cardio: CardioIn | None = None
 
     # Offline-sync contract (ADR 020/033). When ``client_session_id`` is absent
     # the request keeps the legacy online-only behaviour; when present the

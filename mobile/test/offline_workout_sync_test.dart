@@ -31,6 +31,7 @@ WorkoutDraft _draft({
   String capturedAt = '2026-09-26T11:00:00.000Z',
   List<WarmupMovementDraft> warmupMovements =
       const <WarmupMovementDraft>[],
+  WorkoutCardio? cardio,
 }) =>
     WorkoutDraft(
       clientSessionId: clientSessionId ?? newClientSessionId(),
@@ -59,6 +60,7 @@ WorkoutDraft _draft({
         ),
       ],
       warmupMovements: warmupMovements,
+      cardio: cardio,
       readiness: 4,
       updatedAt: '2026-09-26T11:00:00.000Z',
     );
@@ -139,6 +141,36 @@ Map<String, dynamic> _benchBaseline() => <String, dynamic>{
 
 void main() {
   group('draft storage', () {
+    test('Cardio state persists and only ticked Cardio reaches commit', () {
+      final WorkoutDraft unticked = _draft(
+        accountId: _accountA,
+        cardio: const WorkoutCardio(
+          prescription: 'Steady bike after lifting',
+          minutes: 25,
+        ),
+      );
+      final WorkoutDraft restored = WorkoutDraft.fromJson(unticked.toJson());
+      expect(restored.cardio!.minutes, 25);
+      expect(restored.cardio!.ticked, isFalse);
+      expect(restored.toCommitBody().containsKey('cardio'), isFalse);
+      final Map<String, dynamic> earlierDraftJson =
+          Map<String, dynamic>.of(unticked.toJson())..remove('cardio');
+      expect(WorkoutDraft.fromJson(earlierDraftJson).cardio, isNull);
+
+      final WorkoutDraft ticked = _draft(
+        accountId: _accountA,
+        cardio: const WorkoutCardio(
+          prescription: 'Steady bike after lifting',
+          minutes: 25,
+          ticked: true,
+        ),
+      );
+      expect(ticked.toCommitBody()['cardio'], <String, dynamic>{
+        'prescription': 'Steady bike after lifting',
+        'minutes': 25,
+      });
+    });
+
     test('persists across a simulated restart (new service, same storage)',
         () async {
       final FakeMayosApi fake = FakeMayosApi()..commitFails = true;

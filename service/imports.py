@@ -94,6 +94,7 @@ TRAINING_TABLES = (
     "workout_sets",
     "session_divergences",
     "session_warmup_sets",
+    "session_cardio",
     "personal_records",
     "performed_date_corrections",
     "chat_history",

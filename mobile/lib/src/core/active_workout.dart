@@ -649,6 +649,7 @@ class ActiveWorkout {
     required this.dayName,
     required this.exercises,
     this.warmupMovements = const <ActiveWarmupMovement>[],
+    this.cardio,
     required this.baselines,
     this.programVersion,
     this.rest,
@@ -674,6 +675,9 @@ class ActiveWorkout {
             .map((dynamic movement) => ActiveWarmupMovement.fromJson(
                 movement as Map<String, dynamic>))
             .toList(growable: false),
+    cardio: json['cardio'] is Map<String, dynamic>
+        ? WorkoutCardio.fromJson(json['cardio'] as Map<String, dynamic>)
+        : null,
     baselines: _baselinesFromJson(json['baselines']),
     rest: json['rest'] is Map<String, dynamic>
         ? ActiveRestTimer.fromJson(json['rest'] as Map<String, dynamic>)
@@ -718,6 +722,9 @@ class ActiveWorkout {
 
   final List<ActiveWarmupMovement> warmupMovements;
 
+  /// The prescribed Cardio item and its logged minutes, independent of sets.
+  final WorkoutCardio? cardio;
+
   /// The baselines frozen at start, keyed by exercise id.
   final Map<String, BaselineExercise> baselines;
 
@@ -734,6 +741,7 @@ class ActiveWorkout {
   ActiveWorkout copyWith({
     List<ActiveWorkoutExercise>? exercises,
     List<ActiveWarmupMovement>? warmupMovements,
+    WorkoutCardio? cardio,
     Map<String, BaselineExercise>? baselines,
     String? clientSessionId,
     bool? commitAttempted,
@@ -751,6 +759,7 @@ class ActiveWorkout {
     programVersion: programVersion ?? this.programVersion,
     exercises: exercises ?? this.exercises,
     warmupMovements: warmupMovements ?? this.warmupMovements,
+    cardio: cardio ?? this.cardio,
     baselines: baselines ?? this.baselines,
     rest: clearRest ? null : (rest ?? this.rest),
   );
@@ -772,6 +781,7 @@ class ActiveWorkout {
         for (final ActiveWarmupMovement movement in warmupMovements)
           movement.toJson(),
       ],
+    if (cardio != null) 'cardio': cardio!.toJson(),
     'baselines': <String, dynamic>{
       for (final MapEntry<String, BaselineExercise> entry in baselines.entries)
         entry.key: entry.value.toJson(),
@@ -816,6 +826,7 @@ class ActiveWorkout {
           for (final WarmupMovementLog movement in loggedWarmupMovements)
             movement.toJson(),
         ],
+      if (cardio?.isCommitted == true) 'cardio': cardio!.toCommitJson(),
       'client_session_id': sessionId,
       'performed_date': performedDate ?? startedDate,
       'performed_timezone': timezone,
@@ -871,6 +882,7 @@ class ActiveWorkout {
           _draftExercise(exercise),
       ],
       warmupMovements: _draftWarmupMovements(warmupMovements),
+      cardio: cardio,
       readiness: readiness,
       notes: notes,
       status: DraftStatus.pending,

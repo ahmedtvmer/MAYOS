@@ -202,14 +202,15 @@ List<WorkoutRecord> workoutRecords(ActiveWorkout workout) {
   return records;
 }
 
-/// The three numbers the workout summary shows, computed once on the device
-/// from the ticked rows (#124).
+/// The workout summary's set totals, volume, and optional Cardio minutes,
+/// computed once on the device from the finished workout (#124).
 @immutable
 class WorkoutSummaryStats {
   const WorkoutSummaryStats({
     required this.exercisesDone,
     required this.workingSets,
     required this.totalVolumeKg,
+    this.cardioMinutes,
   });
 
   /// Exercises with at least one ticked working set — the ones this workout
@@ -222,6 +223,9 @@ class WorkoutSummaryStats {
 
   /// Σ kg × reps over the ticked working sets.
   final double totalVolumeKg;
+
+  /// Logged Cardio minutes, absent when the player left the item unticked.
+  final int? cardioMinutes;
 
   String get volumeLabel => formatRecordKg(totalVolumeKg);
 }
@@ -248,6 +252,9 @@ WorkoutSummaryStats workoutSummaryStats(ActiveWorkout workout) {
     exercisesDone: exercisesDone,
     workingSets: workingSets,
     totalVolumeKg: round2(volume),
+    cardioMinutes: workout.cardio?.isCommitted == true
+        ? workout.cardio!.minutes
+        : null,
   );
 }
 

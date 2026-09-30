@@ -40,6 +40,7 @@ def recent_sessions(ledger: Any, limit: int) -> list[dict[str, Any]]:
     """Newest-first working-set summaries grouped from the ledger session log."""
     divergences_by_session = ledger.list_divergences_by_session()
     warmup_movements_by_session = ledger.list_warmup_movements_by_session()
+    cardio_by_session = ledger.list_session_cardio_by_session()
     version_by_session = ledger.get_session_program_versions()
     audit_by_session = ledger.get_session_audit_metadata()
     sessions: dict[str, dict[str, Any]] = {}
@@ -66,6 +67,7 @@ def recent_sessions(ledger: Any, limit: int) -> list[dict[str, Any]]:
                 "total_volume_kg": 0.0,
                 "divergences": divergences_by_session.get(row["session_id"], []),
                 "warmup_movements": warmup_movements_by_session.get(row["session_id"], []),
+                "cardio": cardio_by_session.get(row["session_id"]),
             }
             sessions[row["session_id"]] = summary
         if not row["is_warmup"]:

@@ -99,6 +99,13 @@ const ProgramDay _warmupDay = ProgramDay(
   ],
 );
 
+final ProgramDay _cardioDay = ProgramDay(
+  dayName: 'Upper A',
+  dayOrder: 2,
+  cardio: 'Steady bike after lifting',
+  exercises: _day.exercises,
+);
+
 /// Exactly what `ProgramExercise.toJson` writes, which is what the Workout
 /// draft carries (#123 item 2: the payload shape is today's).
 const Map<String, dynamic> _benchJson = <String, dynamic>{
@@ -222,6 +229,7 @@ Future<InMemoryActiveWorkoutStore> _seedThroughController({
     dayOrder: seeded.dayOrder,
     dayName: seeded.dayName,
     warmupMovements: seeded.warmupMovements,
+    cardio: seeded.cardio,
     programVersion: seeded.programVersion,
     exercises: seeded.exercises,
     baselines: seeded.baselines,
@@ -504,6 +512,74 @@ void main() {
     expect(find.byKey(const ValueKey<String>('logger.warmup.section')),
         findsNothing);
     expect(find.byType(WarmupMovementLoggingCard), findsNothing);
+    expect(find.byType(CardioLoggingCard), findsNothing);
+  });
+
+  testWidgets('prescribed Cardio needs valid minutes and stays outside set progress',
+      (WidgetTester tester) async {
+    final InMemoryDraftStore drafts = InMemoryDraftStore();
+    final InMemoryActiveWorkoutStore store =
+        await _openLogger(tester, day: _cardioDay, drafts: drafts);
+
+    expect(find.byType(CardioLoggingCard), findsOneWidget);
+    expect(find.text('Steady bike after lifting'), findsOneWidget);
+    expect(
+      tester.widget<IconButton>(find.byKey(
+        const ValueKey<String>('logger.cardio.tick'),
+      )).onPressed,
+      isNull,
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('logger.cardio.minutes')),
+      '601',
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<IconButton>(find.byKey(
+        const ValueKey<String>('logger.cardio.tick'),
+      )).onPressed,
+      isNull,
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('logger.cardio.minutes')),
+      '25',
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<IconButton>(find.byKey(
+        const ValueKey<String>('logger.cardio.tick'),
+      )).onPressed,
+      isNotNull,
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('logger.cardio.tick')));
+    await tester.pumpAndSettle();
+
+    final ActiveWorkout afterCardio = (await store.read(_account))!;
+    expect(afterCardio.cardio!.ticked, isTrue);
+    expect(afterCardio.cardio!.minutes, 25);
+    expect(workoutProgressOf(afterCardio).setsTicked, 0);
+    expect(workoutProgressOf(afterCardio).setsTotal, 4);
+    expect(currentSetOf(afterCardio), (exerciseIndex: 0, setIndex: 0));
+
+    await tester.tap(_tick(0, 0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Finish workout'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discard unticked sets and finish'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey<String>('logger.summary.cardio')),
+        findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Save workout'));
+    await _pumpUntilFound(tester, find.text('Workouts'));
+    final WorkoutDraft draft = (await drafts.read(_account)).single;
+    expect(draft.cardio!.prescription, 'Steady bike after lifting');
+    expect(draft.cardio!.minutes, 25);
+    expect(draft.cardio!.ticked, isTrue);
+    expect(draft.toCommitBody()['cardio'], <String, dynamic>{
+      'prescription': 'Steady bike after lifting',
+      'minutes': 25,
+    });
   });
 
   testWidgets('a linked warm-up name opens library detail without prescription',

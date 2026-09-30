@@ -367,6 +367,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
         for (final WarmupExercise movement in day.warmupExercises)
           ActiveWarmupMovement.fromPrescription(movement),
       ],
+      cardio: day.hasCardio ? WorkoutCardio(prescription: day.cardio!) : null,
       programVersion: programVersion,
       exercises: <ActiveWorkoutExercise>[
         for (final ProgramExercise exercise in day.exercises)
@@ -503,6 +504,14 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     int setIndex,
     ActiveWarmupSet updatedSet,
   ) => _updateWarmupSet(movementIndex, setIndex, updatedSet);
+
+  Future<void> updateCardio(WorkoutCardio updatedCardio) async {
+    final ActiveWorkout? current = state.workout;
+    if (current == null || current.cardio == null) {
+      return;
+    }
+    await _persist(current.copyWith(cardio: updatedCardio));
+  }
 
   /// Toggles a set row between working and warm-up (`N ↔ W`); warm-ups never
   /// count as working sets.

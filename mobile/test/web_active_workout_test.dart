@@ -9,6 +9,7 @@ import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/browser_key_value_store.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
+import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/web_active_workout_store.dart';
@@ -217,6 +218,10 @@ void main() {
             ],
           ),
         ],
+        cardio: const WorkoutCardio(
+          prescription: 'Steady bike after lifting',
+          minutes: 25,
+        ),
       ),
     );
 
@@ -226,10 +231,13 @@ void main() {
     expect(restored?.clientSessionId, _sessionId);
     expect(restored!.warmupMovements.single.sets.first.ticked, isTrue);
     expect(restored.warmupMovements.single.sets[1].ticked, isFalse);
+    expect(restored.cardio!.prescription, 'Steady bike after lifting');
+    expect(restored.cardio!.minutes, 25);
+    expect(restored.cardio!.ticked, isFalse);
     expect(await afterReload.read('account-bob'), isNull);
   });
 
-  testWidgets('web commit sends only ticked Warm-up movement rows',
+  testWidgets('web commit sends ticked Warm-up movement rows and Cardio',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _fake();
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
@@ -245,6 +253,7 @@ void main() {
           ],
         ),
       ],
+      cardio: const WorkoutCardio(prescription: 'Bike intervals'),
     );
     await _pumpWebApp(
       tester,
@@ -258,6 +267,13 @@ void main() {
 
     await tester.tap(
         find.byKey(const ValueKey<String>('logger.warmup.0.0.tick')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('logger.cardio.minutes')),
+      '30',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('logger.cardio.tick')));
     await tester.pumpAndSettle();
     await _finishToSummary(tester);
     await tester.tap(find.text('Save workout'));
@@ -276,6 +292,10 @@ void main() {
         ],
       },
     ]);
+    expect(sent['cardio'], <String, dynamic>{
+      'prescription': 'Bike intervals',
+      'minutes': 30,
+    });
   });
 
   test('storage denial falls back to in-memory logging for this tab', () async {

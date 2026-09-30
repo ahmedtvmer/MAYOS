@@ -266,6 +266,40 @@ class LedgerWorkoutsMixin:
         )
         self._commit_ledger()
 
+    def log_session_cardio(
+        self, session_id: str, cardio: dict[str, Any] | None, logged_at: str
+    ) -> None:
+        """Stores the committed Cardio item outside working-set history."""
+        if cardio is None:
+            return
+        self.conn.execute(
+            "INSERT INTO session_cardio (session_id, prescription, minutes, logged_at)"
+            " VALUES (?, ?, ?, ?)",
+            (session_id, cardio["prescription"], int(cardio["minutes"]), logged_at),
+        )
+        self._commit_ledger()
+
+    def get_session_cardio(self, session_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT prescription, minutes FROM session_cardio WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {"prescription": row["prescription"], "minutes": row["minutes"]}
+
+    def list_session_cardio_by_session(self) -> dict[str, dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT session_id, prescription, minutes FROM session_cardio"
+        ).fetchall()
+        return {
+            row["session_id"]: {
+                "prescription": row["prescription"],
+                "minutes": row["minutes"],
+            }
+            for row in rows
+        }
+
     @staticmethod
     def _warmup_set_rows(
         session_id: str, movements: list[dict[str, Any]], logged_at: str
@@ -348,6 +382,7 @@ class LedgerWorkoutsMixin:
             "day_order": None,
             "program_version": row[3],
             "warmup_movements": self.list_session_warmup_movements(row[0]),
+            "cardio": self.get_session_cardio(row[0]),
         }
 
     def get_latest_session_summary(self) -> dict[str, Any] | None:
@@ -389,6 +424,7 @@ class LedgerWorkoutsMixin:
             "edited_at": session["edited_at"],
             "corrections": self.list_performed_date_corrections(session["id"]),
             "warmup_movements": self.list_session_warmup_movements(session["id"]),
+            "cardio": self.get_session_cardio(session["id"]),
             "sets_count": sum(exercise["sets"] for exercise in exercises),
             "total_volume_kg": sum((exercise["volume_kg"] for exercise in exercises), 0.0),
             "exercises": exercises,

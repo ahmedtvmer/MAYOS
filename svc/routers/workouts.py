@@ -14,6 +14,7 @@ from service import workouts as workouts_service
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
 from svc.schemas import (
     BaselinesOut,
+    PlayerLatestSessionOut,
     SessionCommitIn,
     SessionPerformedDateCorrectIn,
     SessionPerformedDateCorrectOut,
@@ -149,6 +150,7 @@ async def commit_session(
                 db, str(player), day_plan, body.readiness, body.session_notes,
                 _sets_payload(db, ledger, body),
                 warmup_movements=_warmup_movements_payload(db, body),
+                cardio=body.cardio.model_dump() if body.cardio is not None else None,
                 account_id=account_id_of(player), ledger=ledger,
             )
 
@@ -185,6 +187,7 @@ async def commit_session(
             _sets_payload(db, ledger, body),
             sync=sync,
             warmup_movements=_warmup_movements_payload(db, body),
+            cardio=body.cardio.model_dump() if body.cardio is not None else None,
             account_id=account_id_of(player),
             ledger=ledger,
         )
@@ -206,7 +209,7 @@ async def commit_session(
     return result.body
 
 
-@router.get("/sessions/latest")
+@router.get("/sessions/latest", response_model=PlayerLatestSessionOut)
 async def read_latest_session(
     player: Annotated[Any, Depends(get_verified_player)],
     ledger: Annotated[Any, Depends(get_ledger)],

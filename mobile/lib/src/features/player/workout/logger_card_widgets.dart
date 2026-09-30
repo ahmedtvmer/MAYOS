@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/active_workout.dart';
 import '../../../core/baselines.dart';
 import '../../../core/config.dart';
 import '../../../core/effort.dart';
+import '../../../core/models.dart';
 import '../../../core/personal_records.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
@@ -644,6 +646,100 @@ class WarmupMovementLoggingCard extends StatelessWidget {
           ),
         ),
       );
+}
+
+/// The day's prescribed Cardio, kept outside set progress and exercise detail.
+class CardioLoggingCard extends StatelessWidget {
+  const CardioLoggingCard({
+    super.key,
+    required this.cardio,
+    required this.onChanged,
+  });
+
+  final WorkoutCardio cardio;
+  final ValueChanged<WorkoutCardio> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension colors = MayosTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: MayosSpacing.md),
+      child: MayosCard(
+        padding: const EdgeInsets.all(MayosSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(
+              'Cardio',
+              style: MayosTypography.exerciseTitle.copyWith(
+                color: colors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: MayosSpacing.xs),
+            Text(
+              cardio.prescription,
+              style: MayosTypography.bodySecondary.copyWith(
+                color: colors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: MayosSpacing.sm),
+            Row(
+              children: <Widget>[
+                Expanded(child: _minutesField()),
+                _tickButton(colors),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _minutesField() => TextFormField(
+        key: const ValueKey<String>('logger.cardio.minutes'),
+        initialValue: cardio.minutes?.toString() ?? '',
+        keyboardType: TextInputType.number,
+        inputFormatters: <TextInputFormatter>[
+          FilteringTextInputFormatter.digitsOnly,
+          LengthLimitingTextInputFormatter(3),
+          _CardioMinutesInputFormatter(),
+        ],
+        decoration: const InputDecoration(labelText: 'Minutes', isDense: true),
+        onChanged: _minutesChanged,
+      );
+
+  void _minutesChanged(String text) {
+    final int? minutes = int.tryParse(text);
+    final bool valid = minutes != null && minutes >= 1 && minutes <= 600;
+    onChanged(
+      cardio.withMinutes(minutes, ticked: valid ? cardio.ticked : false),
+    );
+  }
+
+  Widget _tickButton(MayosThemeExtension colors) => IconButton(
+        key: const ValueKey<String>('logger.cardio.tick'),
+        tooltip: cardio.ticked ? 'Mark Cardio not done' : 'Mark Cardio done',
+        onPressed: cardio.hasValidMinutes
+            ? () => onChanged(cardio.copyWith(ticked: !cardio.ticked))
+            : null,
+        icon: Icon(
+          cardio.ticked ? Icons.check_box : Icons.check_box_outline_blank,
+          color: cardio.ticked ? colors.accent : colors.textMuted,
+        ),
+      );
+}
+
+class _CardioMinutesInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final int? minutes = int.tryParse(newValue.text);
+    return newValue.text.isEmpty || (minutes != null && minutes <= 600)
+        ? newValue
+        : oldValue;
+  }
 }
 
 class _WarmupTag extends StatelessWidget {

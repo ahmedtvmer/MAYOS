@@ -256,6 +256,7 @@ def test_latest_session_summary_uses_real_working_sets(temp_db_env):
         ],
         "divergences": [],
         "warmup_movements": [],
+        "cardio": None,
     }
     assert db.ledger.get_latest_session_summary() == expected
     db.switch_user("bob")
@@ -287,6 +288,7 @@ def test_latest_session_summary_empty_and_warmup_only(temp_db_env):
         "exercises": [],
         "divergences": [],
         "warmup_movements": [],
+        "cardio": None,
     }
     assert db.ledger.get_latest_session_summary() == expected
     db.ledger.log_workout_set("warmup", "empty", "bench", 1, 20, 10, 5, 1)
@@ -1050,6 +1052,51 @@ def test_v12_to_v13_adds_session_warmup_sets(temp_db_env):
         migrated.conn.execute("DELETE FROM workout_sessions WHERE id = 'session-1'")
         migrated.conn.commit()
         assert migrated.ledger.list_session_warmup_movements("session-1") == []
+    finally:
+        if migrated.ledger_conn is not None:
+            migrated.ledger_conn.close()
+        migrated.catalog_conn.close()
+
+
+def test_v13_to_v14_adds_session_cardio(temp_db_env):
+    from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION, get_ledger_schema_version
+
+    db, ledgers_dir, _ = temp_db_env
+    legacy_path = ledgers_dir / "v13lifter.db"
+    conn = sqlite3.connect(legacy_path)
+    conn.executescript(
+        """
+        CREATE TABLE user_profile (id INTEGER PRIMARY KEY, gender TEXT, updated_at TEXT NOT NULL);
+        INSERT INTO user_profile VALUES (1, 'male', '2026-01-01T00:00:00+00:00');
+        CREATE TABLE workout_sessions (
+            id TEXT PRIMARY KEY, session_date TEXT NOT NULL, split_name TEXT NOT NULL,
+            started_at TEXT NOT NULL, client_session_id TEXT
+        );
+        INSERT INTO workout_sessions VALUES (
+            'session-1', '2026-01-01', 'Upper', '2026-01-01T10:00:00+00:00', NULL
+        );
+        """
+    )
+    conn.execute(f"PRAGMA user_version = {CURRENT_LEDGER_SCHEMA_VERSION - 1}")
+    conn.commit()
+    conn.close()
+
+    migrated = DatabaseManager(
+        catalog_path=db.catalog_path,
+        ledgers_dir=ledgers_dir,
+        backups_dir=db.backups_dir,
+        default_ledger_id="v13lifter",
+    )
+    try:
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION
+        cardio = {"prescription": "Steady bike", "minutes": 25}
+        migrated.ledger.log_session_cardio(
+            "session-1", cardio, "2026-01-02T00:00:00+00:00"
+        )
+        assert migrated.ledger.get_session_cardio("session-1") == cardio
+        migrated.conn.execute("DELETE FROM workout_sessions WHERE id = 'session-1'")
+        migrated.conn.commit()
+        assert migrated.ledger.get_session_cardio("session-1") is None
     finally:
         if migrated.ledger_conn is not None:
             migrated.ledger_conn.close()

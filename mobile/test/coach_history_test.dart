@@ -86,6 +86,27 @@ Future<void> _openRosterEntry(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('the active assigned player\'s session shows Cardio minutes',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    (fake.coachPlayerSummary['latest_session'] as Map<String, dynamic>)[
+        'cardio'] = <String, dynamic>{
+      'prescription': 'Steady bike',
+      'minutes': 25,
+    };
+    (fake.coachPlayerSummary['recent_sessions'] as List<Map<String, dynamic>>)
+        .first['cardio'] = <String, dynamic>{
+      'prescription': 'Steady bike',
+      'minutes': 25,
+    };
+    await _pumpApp(tester, fake);
+
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+
+    expect(find.text('Cardio: 25 min'), findsNWidgets(2));
+  });
+
   testWidgets('roster tap opens the assigned player history drill-down',
       (tester) async {
     final FakeMayosApi fake = _coachFake();

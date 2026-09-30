@@ -10,7 +10,7 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 13
+CURRENT_LEDGER_SCHEMA_VERSION: int = 14
 
 #: Performed-date correction DDL (ADR 035). Kept in one place so the
 #: fresh-create path (``DatabaseManager.create_ledger_schema``) and the v10->v11
@@ -70,6 +70,17 @@ SESSION_WARMUP_SETS_DDL: tuple[str, ...] = (
     ")",
     "CREATE INDEX IF NOT EXISTS idx_session_warmup_sets_session"
     " ON session_warmup_sets(session_id, movement_index, set_index)",
+)
+
+#: Cardio is a session fact outside working-set history and progression.
+SESSION_CARDIO_DDL: tuple[str, ...] = (
+    "CREATE TABLE IF NOT EXISTS session_cardio ("
+    " session_id TEXT PRIMARY KEY,"
+    " prescription TEXT NOT NULL CHECK (length(prescription) BETWEEN 1 AND 500),"
+    " minutes INTEGER NOT NULL CHECK (minutes BETWEEN 1 AND 600),"
+    " logged_at TEXT NOT NULL,"
+    " FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE"
+    ")",
 )
 
 
@@ -373,6 +384,12 @@ def _migrate_v12_to_v13(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _migrate_v13_to_v14(conn: sqlite3.Connection) -> None:
+    """Adds separate history storage for Cardio (#219)."""
+    for statement in SESSION_CARDIO_DDL:
+        conn.execute(statement)
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -471,6 +488,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     10: _migrate_v10_to_v11,
     11: _migrate_v11_to_v12,
     12: _migrate_v12_to_v13,
+    13: _migrate_v13_to_v14,
 }
 
 

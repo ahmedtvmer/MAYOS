@@ -233,6 +233,7 @@ def test_first_commit_returns_201_and_records_sync_fields(api):
     assert body["active_program_version_at_sync"] == version
     assert body["is_historical_program"] is False
     assert "warmup_movements" not in body
+    assert "cardio" not in body
 
     db.switch_user("p1")
     row = db.conn.execute(
@@ -329,6 +330,94 @@ def test_warmup_movements_are_stored_without_working_set_effects_and_replay(api)
     assert db.conn.execute(
         "SELECT COUNT(*) FROM session_warmup_sets WHERE session_id = ?", (session_id,)
     ).fetchone()[0] == 2
+
+
+def test_cardio_is_stored_and_returned_in_player_and_coach_history_without_set_effects(api):
+    client, db = api
+    player_headers, version = _prepare_player(client, db)
+    control_headers, control_version = _prepare_player(client, db, username="p2")
+    coach_headers = _make_coach(client, db, "coach")
+    assignment_id = _assign(client, coach_headers, player_headers)
+
+    cardio_body = _sync_body(version=version)
+    cardio_body["cardio"] = {"prescription": "Steady bike after lifting", "minutes": 25}
+    control_body = _sync_body(
+        client_session_id="22222222-2222-4222-8222-222222222222",
+        version=control_version,
+    )
+    cardio_commit = client.post("/workouts/sessions", headers=player_headers, json=cardio_body)
+    control_commit = client.post("/workouts/sessions", headers=control_headers, json=control_body)
+    assert cardio_commit.status_code == control_commit.status_code == 201
+    body = cardio_commit.json()
+    expected_cardio = {"prescription": "Steady bike after lifting", "minutes": 25}
+    assert body["cardio"] == expected_cardio
+    for key in ("divergences", "total_working_sets", "total_tonnage_kg", "new_prs", "exercise_summaries", "fatigue_post"):
+        assert body[key] == control_commit.json()[key]
+
+    db.switch_user("p1")
+    session_id = body["session_id"]
+    row = db.conn.execute(
+        "SELECT prescription, minutes FROM session_cardio WHERE session_id = ?",
+        (session_id,),
+    ).fetchone()
+    assert tuple(row) == (expected_cardio["prescription"], expected_cardio["minutes"])
+    assert db.ledger.get_latest_session_summary()["cardio"] == expected_cardio
+    assert client.get("/workouts/sessions/latest", headers=player_headers).json()["cardio"] == expected_cardio
+
+    coach_history = client.get(
+        f"/coach/assignments/{assignment_id}/player/summary", headers=coach_headers
+    )
+    assert coach_history.status_code == 200, coach_history.text
+    history_body = coach_history.json()
+    assert history_body["latest_session"]["cardio"] == expected_cardio
+    assert history_body["recent_sessions"][0]["cardio"] == expected_cardio
+    assert history_body["latest_session"]["sets_count"] == body["total_working_sets"]
+    assert history_body["latest_session"]["total_volume_kg"] == body["total_tonnage_kg"]
+
+    player_baselines = workouts_service.baselines(db, "p1", ledger=db.ledger)["baselines"]
+    db.switch_user("p2")
+    control_baselines = workouts_service.baselines(db, "p2", ledger=db.ledger)["baselines"]
+    assert player_baselines == control_baselines
+
+    db.switch_user("p1")
+    replay_payload = copy.deepcopy(cardio_body)
+    replay_payload["cardio"] = {"prescription": "Changed on retry", "minutes": 40}
+    replay = client.post("/workouts/sessions", headers=player_headers, json=replay_payload)
+    assert replay.status_code == 200
+    assert replay.json() == body
+    assert db.conn.execute(
+        "SELECT COUNT(*) FROM session_cardio WHERE session_id = ?", (session_id,)
+    ).fetchone()[0] == 1
+
+
+def test_cardio_bounds_are_rejected(api):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    invalid_cardio = [
+        {"prescription": "", "minutes": 1},
+        {"prescription": "x" * 501, "minutes": 1},
+        {"prescription": "Bike", "minutes": 0},
+        {"prescription": "Bike", "minutes": 601},
+    ]
+    for cardio in invalid_cardio:
+        body = _sync_body(version=version)
+        body["cardio"] = cardio
+        response = client.post("/workouts/sessions", headers=headers, json=body)
+        assert response.status_code == 422, response.text
+
+
+def test_cardio_minute_bounds_are_inclusive(api):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    for index, minutes in enumerate((1, 600), start=3):
+        body = _sync_body(
+            client_session_id=f"33333333-3333-4333-8333-33333333333{index}",
+            version=version,
+        )
+        body["cardio"] = {"prescription": "Bike", "minutes": minutes}
+        response = client.post("/workouts/sessions", headers=headers, json=body)
+        assert response.status_code == 201, response.text
+        assert response.json()["cardio"]["minutes"] == minutes
 
 
 def test_unknown_warmup_library_id_is_saved_by_name(api):

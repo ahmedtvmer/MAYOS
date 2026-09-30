@@ -1371,6 +1371,13 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
             // is nothing left to do.
             if (!workout.exercises[i].replaced)
               _buildExerciseCard(workout, i, current),
+          if (workout.cardio != null) ...<Widget>[
+            CardioLoggingCard(
+              cardio: workout.cardio!,
+              onChanged: (WorkoutCardio updated) =>
+                  unawaited(_controller.updateCardio(updated)),
+            ),
+          ],
           // Add exercise stays the list's last action; Finish lives in the
           // fixed bottom bar (#160), so it never needs scrolling to.
           MayosButton(
@@ -1998,7 +2005,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     );
   }
 
-  /// The four stats the summary shows: exercises done, ticked working sets,
+  /// The core stats the summary shows: exercises done, ticked working sets,
   /// total volume over those sets (#124) and the workout's total duration
   /// (#159). Two rows of two, so a duration like `1:05:09` still fits the
   /// 360dp minimum without shrinking the figures.
@@ -2042,6 +2049,22 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
             ),
           ],
         ),
+        if (stats.cardioMinutes != null) ...<Widget>[
+          const SizedBox(height: MayosSpacing.md),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: MayosStat(
+                  key: const ValueKey<String>('logger.summary.cardio'),
+                  value: '${stats.cardioMinutes}',
+                  label: 'Cardio',
+                  unit: 'min',
+                ),
+              ),
+              const Expanded(child: SizedBox.shrink()),
+            ],
+          ),
+        ],
       ],
     );
   }

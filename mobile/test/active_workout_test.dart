@@ -41,6 +41,7 @@ const ProgramDay _dayWithWarmup = ProgramDay(
   warmupExercises: <WarmupExercise>[
     WarmupExercise(exerciseName: 'Cat-Cow', sets: 2, reps: 10),
   ],
+  cardio: 'Steady bike after lifting',
   exercises: <ProgramExercise>[
     ProgramExercise(
       exerciseId: 'bench_press',
@@ -237,7 +238,7 @@ class _LatencyStore implements ActiveWorkoutStore {
 
 void main() {
   group('Active workout lifecycle', () {
-    test('warm-up movements seed from the day and survive an app restart',
+    test('Warm-up movements and Cardio survive an app restart',
         () async {
       final FakeMayosApi fake = _signedInFake();
       final InMemoryTokenStore tokens = await _tokens();
@@ -263,10 +264,23 @@ void main() {
       );
       expect(controller.workout!.warmupMovements.single.sets, hasLength(2));
       expect(controller.workout!.warmupMovements.single.sets.first.reps, 10);
+      expect(controller.workout!.cardio!.prescription,
+          'Steady bike after lifting');
+      final Map<String, dynamic> earlierActiveJson =
+          Map<String, dynamic>.of(controller.workout!.toJson())
+            ..remove('cardio');
+      expect(ActiveWorkout.fromJson(earlierActiveJson).cardio, isNull);
       await controller.updateWarmupMovementSet(
         0,
         0,
         const ActiveWarmupSet(reps: 10, ticked: true),
+      );
+      await controller.updateCardio(
+        const WorkoutCardio(
+          prescription: 'Steady bike after lifting',
+          minutes: 25,
+          ticked: true,
+        ),
       );
 
       final ProviderContainer second = _container(
@@ -282,6 +296,8 @@ void main() {
       await restored.syncAccount(_account);
       expect(restored.workout!.warmupMovements.single.sets.first.ticked, isTrue);
       expect(restored.workout!.warmupMovements.single.sets[1].ticked, isFalse);
+      expect(restored.workout!.cardio!.minutes, 25);
+      expect(restored.workout!.cardio!.ticked, isTrue);
     });
 
     test('is created, persisted after changes, and restored on restart',
