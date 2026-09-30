@@ -23,7 +23,12 @@ from typing import Any, Callable
 from service import missed_day_alerts
 from service._tokens import hash_token
 from service.check_ins import next_follow_up_on
-from service.email_sender import send_assignment_redemption_email
+from service.email_sender import (
+    PURPOSE_ASSIGNMENT_NOTICE,
+    DeliveryContext,
+    log_email_preparation_failure,
+    send_assignment_redemption_email,
+)
 from service.roster_order import roster_urgency_key
 
 logger = logging.getLogger(__name__)
@@ -183,9 +188,16 @@ def _send_redemption_email(
     if not to_email:
         return False
     try:
-        return send_assignment_redemption_email(to_email, coach_display_name, player_username)
-    except Exception:
-        logger.exception("Assignment notice email raised unexpectedly")
+        return send_assignment_redemption_email(
+            to_email,
+            coach_display_name,
+            player_username,
+            account_id=coach_account["account_id"],
+        )
+    except Exception as exc:
+        log_email_preparation_failure(
+            DeliveryContext(PURPOSE_ASSIGNMENT_NOTICE, coach_account["account_id"]), exc
+        )
         return False
 
 
@@ -226,8 +238,14 @@ def redeem_assignment_invite(db: Any, token: Any, player_account_id: str, consen
         email_sent = _send_redemption_email(
             db, coach_account, identity["display_name"], result["player_username"]
         )
-    except Exception:
-        logger.exception("Post-commit assignment notice email raised unexpectedly")
+    except Exception as exc:
+        log_email_preparation_failure(
+            DeliveryContext(
+                PURPOSE_ASSIGNMENT_NOTICE,
+                coach_account["account_id"] if coach_account else None,
+            ),
+            exc,
+        )
     return {
         "ok": True,
         "assignment": {

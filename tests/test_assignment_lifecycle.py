@@ -324,7 +324,7 @@ def test_redeem_binds_immediately_and_creates_coach_notice(api, monkeypatch):
 
     calls = []
 
-    def _record(to_email, coach_display_name, player_username):
+    def _record(to_email, coach_display_name, player_username, *, account_id=None):
         calls.append((to_email, coach_display_name, player_username))
         return True
 
@@ -413,7 +413,7 @@ def test_identity_fault_degrades_username_and_email_still_sent(api, monkeypatch)
 
     calls = []
 
-    def _record(to_email, coach_display_name, player_username):
+    def _record(to_email, coach_display_name, player_username, *, account_id=None):
         calls.append((to_email, coach_display_name, player_username))
         return True
 
@@ -443,7 +443,7 @@ def test_redemption_email_looks_up_by_account_id_not_ledger_id(api, monkeypatch)
 
     calls = []
 
-    def _record(to_email, coach_display_name, player_username):
+    def _record(to_email, coach_display_name, player_username, *, account_id=None):
         calls.append((to_email, coach_display_name, player_username))
         return True
 

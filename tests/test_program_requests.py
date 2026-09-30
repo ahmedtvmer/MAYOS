@@ -197,7 +197,7 @@ def _substitution(**overrides):
 def _capture_email(monkeypatch):
     sent: list[tuple[str, str, str]] = []
 
-    def fake(to_email, subject, body):
+    def fake(to_email, subject, body, *, delivery):
         sent.append((to_email, subject, body))
         return True
 
@@ -273,7 +273,7 @@ def test_program_request_email_looks_up_by_account_id_not_ledger_id(api, monkeyp
 
     calls = []
 
-    def _record(to_email, coach_display_name, player_username):
+    def _record(to_email, coach_display_name, player_username, *, account_id=None):
         calls.append((to_email, coach_display_name, player_username))
         return True
 

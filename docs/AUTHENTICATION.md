@@ -236,7 +236,7 @@ Deletion is immediate and final. The service captures the recovery email, writes
 | `SMTP_HOST` **unset** | **Console-dev backend**: the reset link is written to the service log — safe for local dev, never for shared hosting |
 | `SMTP_HOST` set | STARTTLS (default) or implicit TLS (`SMTP_USE_TLS=false`), optional `SMTP_USER`/`SMTP_PASSWORD` auth, 10s timeout |
 
-Delivery failures are logged and swallowed; the client response stays generic. The admin CLI is the guaranteed fallback.
+Delivery failures are logged and swallowed; the client response stays generic. Transport failure logs contain the delivery purpose, SMTP error class/code, and either the immutable account id or a keyed recipient reference; they omit the address and exception text. Preparation failures log the purpose, account id when known, and exception traceback without the address. Recipient references use a key derived from `JWT_SECRET`, so rotating that secret changes the references. Without `JWT_SECRET` (development only), references are keyed per process. The console backend redacts the email address while keeping the reset link printable. The admin CLI is the guaranteed fallback.
 
 ---
 

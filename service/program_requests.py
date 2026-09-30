@@ -18,7 +18,12 @@ from typing import Any
 from agent.program_generator import generate_program_pipeline
 from service._base import ledger_scope
 from service.assignments import authorized_player_ledger, coach_identity
-from service.email_sender import send_program_request_email
+from service.email_sender import (
+    PURPOSE_PROGRAM_REQUEST_NOTICE,
+    DeliveryContext,
+    log_email_preparation_failure,
+    send_program_request_email,
+)
 from service.programs import player_controls_program
 from service.program_substitution import (
     ProgramSubstitution,
@@ -184,16 +189,28 @@ def _notify_coach(db: Any, coach_account_id: str, assignment_id: str, player_use
     except Exception:
         logger.exception("Coach program-request notice raised unexpectedly")
     email_sent = False
+    coach_account = None
     try:
         coach_account = db.get_account(coach_account_id)
         if coach_account:
             to_email = db.get_account_email(coach_account["account_id"])
             if to_email:
                 display_name = coach_identity(db, coach_account_id, coach_account)["display_name"]
-                send_program_request_email(to_email, display_name, player_username)
+                send_program_request_email(
+                    to_email,
+                    display_name,
+                    player_username,
+                    account_id=coach_account["account_id"],
+                )
                 email_sent = True
-    except Exception:
-        logger.exception("Coach program-request email raised unexpectedly")
+    except Exception as exc:
+        log_email_preparation_failure(
+            DeliveryContext(
+                PURPOSE_PROGRAM_REQUEST_NOTICE,
+                coach_account["account_id"] if coach_account else coach_account_id,
+            ),
+            exc,
+        )
     return email_sent
 
 

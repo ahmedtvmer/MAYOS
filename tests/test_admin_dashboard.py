@@ -54,7 +54,11 @@ def admin_api(tmp_path: Path, monkeypatch):
     from service import email_sender
 
     sent_emails = []
-    monkeypatch.setattr(email_sender, "_deliver", lambda *fields: sent_emails.append(fields) or True)
+    monkeypatch.setattr(
+        email_sender,
+        "_deliver",
+        lambda *fields, delivery: sent_emails.append(fields) or True,
+    )
     catalog_path = tmp_path / "catalog.db"
     sqlite3.connect(catalog_path).close()
     db = DatabaseManager(
@@ -587,7 +591,11 @@ def test_login_alert_email_and_failed_delivery_banner_clear_on_later_success(adm
 
     client, _, now, sent = admin_api
     responses = iter((False, True))
-    monkeypatch.setattr(email_sender, "_deliver", lambda *fields: sent.append(fields) or next(responses))
+    monkeypatch.setattr(
+        email_sender,
+        "_deliver",
+        lambda *fields, delivery: sent.append(fields) or next(responses),
+    )
     first = _login(client, now[0])
     assert first.status_code == 303
     assert len(sent) == 1
@@ -1026,7 +1034,9 @@ def test_owner_reset_email_failure_is_audited_and_shown_without_email(admin_api,
     monkeypatch.setattr(
         email_sender,
         "_deliver",
-        lambda _to, subject, _body: False if subject == "Mayos Engine password reset" else True,
+        lambda _to, subject, _body, delivery: False
+        if subject == "Mayos Engine password reset"
+        else True,
     )
     assert _login(client, now[0]).status_code == 303
     page = client.get(f"/admin/accounts/{account['account_id']}")
@@ -1215,7 +1225,7 @@ def test_owner_delete_reuses_durable_path_notifies_before_erasure_and_releases_u
 
     deliveries = []
 
-    def check_notice(to_email, subject, body):
+    def check_notice(to_email, subject, body, *, delivery):
         deliveries.append(
             (
                 to_email,
@@ -1420,7 +1430,7 @@ def test_owner_delete_failed_notice_does_not_block_deletion_and_is_audited(admin
     monkeypatch.setattr(
         email_sender,
         "_deliver",
-        lambda _to, subject, _body: False
+        lambda _to, subject, _body, *, delivery: False
         if subject == "Your MAYOS account was deleted at your request"
         else True,
     )

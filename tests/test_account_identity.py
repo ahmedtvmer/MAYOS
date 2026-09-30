@@ -187,7 +187,7 @@ def test_password_reset_bumps_registry_epoch(api):
     account_id = _subject(registered["access_token"])
     client.post("/auth/email", json={"email": "alice@example.com"}, headers=_authed(registered["access_token"]))
     reset_service.request_password_reset(
-        db, "alice@example.com", mailer=lambda to, link: True, token_factory=lambda: "reset-token-abcdef1234"
+        db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "reset-token-abcdef1234"
     )
 
     done = client.post("/auth/reset-password", json={"token": "reset-token-abcdef1234", "new_password": "reset-horse-33"})
@@ -264,7 +264,7 @@ def test_deleted_account_recovery_cannot_reset_reused_username(api, monkeypatch)
     assert client.post("/auth/email", json={"email": "alice@example.com"}, headers=first_headers).status_code == 200
 
     reset_service.request_password_reset(
-        db, "alice@example.com", mailer=lambda to, link: True, token_factory=lambda: "old-reset-token-abcdef12"
+        db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "old-reset-token-abcdef12"
     )
     # Live recovery rows are keyed by the immutable account id, not the username.
     with db._catalog_lock:

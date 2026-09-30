@@ -726,6 +726,15 @@ filesystem. Unset in local development, so the repo `./db` layout is unchanged.
 
 ### 10.3 One-time setup
 
+**Closed-trial email delivery.** The trial sends email through a Gmail account
+using an App Password: set `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, and
+`SMTP_USE_TLS=true`; set `SMTP_USER` and `SMTP_FROM` to the same Gmail address.
+Gmail's sending limit is about 500 emails a day. Before public launch, move to a
+provider with a verified sending domain, using Resend with the domain planned
+in issue #132. Resend's testing mode rejects recipients other than the account
+owner with SMTP `550 You can only send testing emails to your own email address`
+(observed on 2026-09-29), so it cannot deliver trial mail to invited players.
+
 ```bash
 # Run this block from the repository root (the directory containing fly.toml
 # and data/).
@@ -752,8 +761,9 @@ unset JWT_SECRET
 # it as a redirection; prefer `fly secrets import` from a private file when
 # shell history matters. Never commit these values.
 fly secrets set LLM_API_KEY="<hosted-provider-key>"
-fly secrets set SMTP_HOST="<smtp-host>" SMTP_USER="<smtp-user>" \
-  SMTP_PASSWORD="<smtp-password>" SMTP_FROM="<from-address>"
+fly secrets set SMTP_HOST="smtp.gmail.com" SMTP_PORT="587" SMTP_USE_TLS="true" \
+  SMTP_USER="<trial-gmail-address>" SMTP_PASSWORD="<gmail-app-password>" \
+  SMTP_FROM="<trial-gmail-address>"
 
 # Google sign-in audience (issue #113). Unset leaves Google sign-in off (the
 # /auth/google* endpoints answer 503) while password auth keeps working.

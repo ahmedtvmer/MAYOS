@@ -613,7 +613,7 @@ def test_password_reset_gives_a_google_only_account_a_password(api):
     reset_service.request_password_reset(
         db,
         "ana@example.com",
-        mailer=lambda to, link: True,
+        mailer=lambda to, link, *, account_id=None: True,
         token_factory=lambda: "recovery-token-abcdef123",
     )
     reset = client.post(

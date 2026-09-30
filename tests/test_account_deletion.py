@@ -198,7 +198,7 @@ def test_deletion_invalidates_all_sessions_and_removes_ledger(api):
     # Recovery email + a pending reset token.
     assert client.post("/auth/email", headers=_authed(token), json={"email": "alice@example.com"}).status_code == 200
     reset_service.request_password_reset(
-        db, "alice@example.com", mailer=lambda to, link: True, token_factory=lambda: "reset-token-abcdef1234"
+        db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "reset-token-abcdef1234"
     )
     assert _scalar(db, "SELECT COUNT(*) FROM password_reset_tokens WHERE trainee_id = ?", (account_id,)) == 1
 

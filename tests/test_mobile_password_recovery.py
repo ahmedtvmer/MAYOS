@@ -70,7 +70,7 @@ def _capture_reset_link(monkeypatch) -> dict[str, str]:
     """Patch the lowest-level mailer so the real composed email body is captured."""
     captured: dict[str, str] = {}
 
-    def fake_deliver(to_email: str, subject: str, body: str) -> bool:
+    def fake_deliver(to_email: str, subject: str, body: str, *, delivery) -> bool:
         captured["to"] = to_email
         captured["subject"] = subject
         captured["body"] = body
@@ -233,7 +233,7 @@ def test_remember_me_session_is_rejected_after_reset(api):
     assert client.get("/dashboard/exercises", headers=_authed(remembered)).status_code == 200
 
     reset_service.request_password_reset(
-        db, "alice@example.com", mailer=lambda to, link: True, token_factory=lambda: "remember-token-abcdef1234"
+        db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "remember-token-abcdef1234"
     )
     _reset_limiter()
     reset = client.post(
@@ -292,7 +292,7 @@ def test_reset_token_failures_are_generic_and_change_nothing(api):
 
     # Reused token: redeem once, then replay the same token.
     reset_service.request_password_reset(
-        db, "alice@example.com", mailer=lambda to, link: True, token_factory=lambda: "one-time-token-abcdef1234"
+        db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "one-time-token-abcdef1234"
     )
     _reset_limiter()
     first = client.post(
@@ -308,7 +308,7 @@ def test_reset_token_failures_are_generic_and_change_nothing(api):
 
     # Expired token: backdate the stored expiry, then redeem.
     reset_service.request_password_reset(
-        db, "alice@example.com", mailer=lambda to, link: True, token_factory=lambda: "stale-token-abcdef1234"
+        db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "stale-token-abcdef1234"
     )
     account_id = db.get_active_account_by_username("alice")["account_id"]
     with db._catalog_lock:

@@ -147,7 +147,7 @@ def test_forgot_password_is_generic_and_reset_roundtrip(api):
     # Issue a deterministic token through the service (mailer captured, nothing sent).
     sent = []
     reset_service.request_password_reset(
-        db, "alice@example.com", mailer=lambda to, link: sent.append((to, link)) or True, token_factory=lambda: "fixed-reset-token-1234567890"
+        db, "alice@example.com", mailer=lambda to, link, *, account_id=None: sent.append((to, link)) or True, token_factory=lambda: "fixed-reset-token-1234567890"
     )
     assert sent and sent[0][0] == "alice@example.com" and "fixed-reset-token-1234567890" in sent[0][1]
 
@@ -165,7 +165,7 @@ def test_reset_token_single_use_expiry_and_generic_errors(api):
     alice_token = client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}).json()["access_token"]
     client.post("/auth/email", json={"email": "alice@example.com"}, headers=_authed(alice_token))
 
-    reset_service.request_password_reset(db, "alice@example.com", mailer=lambda to, link: True, token_factory=lambda: "one-time-token-abcdef1234")
+    reset_service.request_password_reset(db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "one-time-token-abcdef1234")
     assert client.post("/auth/reset-password", json={"token": "one-time-token-abcdef1234", "new_password": "first-reset-11"}).status_code == 200
     reuse = client.post("/auth/reset-password", json={"token": "one-time-token-abcdef1234", "new_password": "second-reset-22"})
     assert reuse.status_code == 400
@@ -176,7 +176,7 @@ def test_reset_token_single_use_expiry_and_generic_errors(api):
     assert garbage.json() == reuse.json()
 
     # Expired token: backdate the stored expiry, then redeem. Tokens are keyed by account id.
-    reset_service.request_password_reset(db, "alice@example.com", mailer=lambda to, link: True, token_factory=lambda: "stale-token-abcdef1234")
+    reset_service.request_password_reset(db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "stale-token-abcdef1234")
     account_id = db.get_active_account_by_username("alice")["account_id"]
     with db._catalog_lock:
         db.catalog_conn.execute(
@@ -199,7 +199,7 @@ def test_reset_weak_password_does_not_consume_token(api):
     _register(client, "alice")
     login_token = client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}).json()["access_token"]
     client.post("/auth/email", json={"email": "alice@example.com"}, headers=_authed(login_token))
-    reset_service.request_password_reset(db, "alice@example.com", mailer=lambda to, link: True, token_factory=lambda: "patient-token-abcdef1234")
+    reset_service.request_password_reset(db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "patient-token-abcdef1234")
 
     weak = client.post("/auth/reset-password", json={"token": "patient-token-abcdef1234", "new_password": "short"})
     assert weak.status_code in {400, 422}

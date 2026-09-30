@@ -15,7 +15,13 @@ from typing import Any, Callable
 
 from service import audit_log, auth as auth_service
 from service._tokens import hash_token
-from service.email_sender import build_reset_link, send_password_reset_email
+from service.email_sender import (
+    PURPOSE_PASSWORD_RESET,
+    DeliveryContext,
+    build_reset_link,
+    log_email_preparation_failure,
+    send_password_reset_email,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,11 +81,15 @@ def _write_owner_reset_audit(db: Any, event: audit_log.AuditEvent) -> None:
         logger.error("Owner password-reset audit write failed")
 
 
-def _deliver_owner_reset_email(email: str, raw_token: str) -> bool:
+def _deliver_owner_reset_email(email: str, raw_token: str, account_id: str) -> bool:
     try:
-        return send_password_reset_email(email, build_reset_link(raw_token))
-    except Exception:
-        logger.exception("Owner password-reset email delivery failed")
+        return send_password_reset_email(
+            email, build_reset_link(raw_token), account_id=account_id
+        )
+    except Exception as exc:
+        log_email_preparation_failure(
+            DeliveryContext(PURPOSE_PASSWORD_RESET, account_id), exc
+        )
         return False
 
 
@@ -106,7 +116,7 @@ def owner_send_reset_email(db: Any, account_id: str, actor: str, source_ip: str 
         )
         return {"outcome": "send_failed"}
     db.prune_reset_tokens(datetime.now(UTC).isoformat())
-    delivered = _deliver_owner_reset_email(email, raw_token)
+    delivered = _deliver_owner_reset_email(email, raw_token, account_id)
     action = "reset_email_sent" if delivered else "reset_email_failed"
     _write_owner_reset_audit(
         db,
@@ -242,7 +252,7 @@ def set_recovery_email(db: Any, account_id: str, email: str) -> dict[str, Any]:
 def request_password_reset(
     db: Any,
     email: str,
-    mailer: Callable[[str, str], bool] | None = None,
+    mailer: Callable[..., bool] | None = None,
     token_factory: Callable[[], str] | None = None,
 ) -> dict[str, Any]:
     """Logged-out: issue a single-use reset token. Always returns the generic message."""
@@ -261,11 +271,13 @@ def request_password_reset(
     except Exception:
         logger.exception("Failed to store password-reset token for %s", account["account_id"])
         return {"ok": True, "message": GENERIC_REQUEST_MESSAGE}
-    sender = mailer or send_password_reset_email
     try:
-        sender(normalized or "", build_reset_link(raw_token))
-    except Exception:
-        logger.exception("Password-reset mailer failed for %s", account["account_id"])
+        sender = mailer or send_password_reset_email
+        sender(normalized, build_reset_link(raw_token), account_id=account["account_id"])
+    except Exception as exc:
+        log_email_preparation_failure(
+            DeliveryContext(PURPOSE_PASSWORD_RESET, account["account_id"]), exc
+        )
     db.prune_reset_tokens(datetime.now(UTC).isoformat())
     return {"ok": True, "message": GENERIC_REQUEST_MESSAGE}
 
