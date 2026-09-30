@@ -1,13 +1,9 @@
-"""Shared construction of the service's self-contained HTML responses.
+"""Shared construction of server-rendered HTML responses and their CSP.
 
-Every public page (the hosted reset fallback, the privacy policy, the external
-deletion form) is one self-contained document: no external assets, no cookies,
-``Referrer-Policy: no-referrer``, ``X-Content-Type-Options: nosniff``, and a
-Content-Security-Policy whose inline ``<style>`` is scoped by exactly one
-source — a per-response ``nonce`` for pages that must not be cached, or a
-``sha256-`` style hash for the publicly cacheable policy page, where a fresh
-nonce per response would be pointless (the cached copy would carry a nonce the
-later response never repeats).
+The hosted reset, privacy, and deletion pages use inline styles scoped by a
+per-response nonce or a style hash and make no external asset requests. The
+admin surface opts into a same-origin stylesheet, fonts, and images; optional
+CSP sources let it allow those assets without widening the public-page policies.
 """
 
 from fastapi.responses import HTMLResponse
@@ -21,15 +17,21 @@ def self_contained_html(
     script_src: str | None = None,
     connect_src: str | None = None,
     form_action: str | None = None,
+    img_src: str | None = None,
+    font_src: str | None = None,
 ) -> HTMLResponse:
     """Wraps one rendered page in the shared security headers and CSP.
 
-    ``style_src`` / ``script_src`` are bare CSP sources (``nonce-…`` or
-    ``sha256-…``); the helper quotes them. ``connect_src`` and ``form_action``
-    are omitted entirely when ``None``, so each caller keeps the exact policy it
-    had before the helper existed.
+    CSP source arguments are bare values such as ``self``, ``nonce-…``, or
+    ``sha256-…``; the helper adds the directive quoting.
+    Optional directives are omitted when their source is ``None``, preserving
+    existing policies unless a caller opts into that resource type.
     """
     directives = ["default-src 'none'", f"style-src '{style_src}'"]
+    if img_src is not None:
+        directives.append(f"img-src '{img_src}'")
+    if font_src is not None:
+        directives.append(f"font-src '{font_src}'")
     if script_src is not None:
         directives.append(f"script-src '{script_src}'")
     if connect_src is not None:

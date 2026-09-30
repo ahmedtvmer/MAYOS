@@ -283,10 +283,13 @@ def create_app() -> FastAPI:
             return await call_next(request)
         security = request.app.state.admin_security
         login_route = path == "/admin/login" and request.method in {"GET", "POST"}
+        asset_route = path.startswith("/admin/assets/") and request.method in {"GET", "HEAD"}
         if path == "/admin/login" and not login_route:
             response = admin.not_found_response()
         elif not security.config.enabled:
             response = admin.not_found_response()
+        elif asset_route:
+            response = await call_next(request)
         elif not login_route and (
             not security.has_valid_session(request.cookies.get(admin.SESSION_COOKIE))
         ):
@@ -336,7 +339,7 @@ def create_app() -> FastAPI:
 
 def _apply_admin_security_headers(response) -> None:
     response.headers["X-Robots-Tag"] = "noindex, nofollow"
-    response.headers["Cache-Control"] = "no-store"
+    response.headers.setdefault("Cache-Control", "no-store")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers["X-Frame-Options"] = "DENY"

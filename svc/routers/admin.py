@@ -1,19 +1,20 @@
 """Server-rendered owner admin pages and their separate browser session."""
 
 import asyncio
+import hashlib
 import html
 import ipaddress
 import math
 import os
 import re
-import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from service import admin_accounts as admin_accounts_service
 from service import admin_auth, audit_log, email_sender
@@ -37,11 +38,49 @@ SESSION_COOKIE = "mayos_admin_session"
 LOGIN_CSRF_COOKIE = "mayos_admin_login_csrf"
 LOGIN_FAILURE_MESSAGE = "Invalid username, password, or verification code."
 LOGIN_CSRF_MESSAGE = "Please reload the login page and try again."
-_PAGE_CSS = """body{font-family:system-ui,sans-serif;margin:0;padding:1rem;background:#faf7f5;color:#201a17;line-height:1.5}main{max-width:42rem;margin:0 auto}h1{font-size:1.5rem;margin:.4rem 0 1rem}h2{font-size:1.15rem;margin-top:1.5rem}a{color:#7a3b1e}nav{display:flex;gap:1rem;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:0 0 1.5rem;padding-bottom:.8rem;border-bottom:1px solid #d8cec7}label{display:block;margin:.9rem 0 .25rem;font-weight:600}input,button{box-sizing:border-box;width:100%;font:inherit;padding:.7rem;border:1px solid #84776e;border-radius:6px}input[type=checkbox]{width:auto}button{margin-top:1rem;background:#5d321f;color:#fff;font-weight:600;cursor:pointer}form{margin:1rem 0}.alert{background:#9b1c1c;color:#fff;padding:.8rem;border-radius:6px;font-weight:600}.note{background:#efe7e1;padding:.8rem;border-radius:6px}.audit-list{padding-left:1.4rem}.audit-list li{border-bottom:1px solid #d8cec7;padding:.8rem 0;overflow-wrap:anywhere}.audit-meta{font-size:.92rem;color:#514840}.filters{display:grid;grid-template-columns:1fr;gap:.2rem}@media(min-width:36rem){.filters{grid-template-columns:1fr 1fr}.filters button{grid-column:1/-1}}"""
+_ADMIN_ASSET_DIR = Path(__file__).resolve().parents[1] / "static" / "admin"
+_ADMIN_ASSET_TYPES = {
+    "admin.css": "text/css",
+    "Inter-Variable.ttf": "font/ttf",
+    "PlayfairDisplay-Variable.ttf": "font/ttf",
+    "mayos-logo-blue.png": "image/png",
+    "mayos-logo-white.png": "image/png",
+    "favicon.png": "image/png",
+    "apple-touch-icon.png": "image/png",
+    "OFL-Inter.txt": "text/plain",
+    "OFL-PlayfairDisplay.txt": "text/plain",
+}
+_ADMIN_ASSETS = {
+    asset_name: (content_type, (_ADMIN_ASSET_DIR / asset_name).read_bytes())
+    for asset_name, content_type in _ADMIN_ASSET_TYPES.items()
+}
+_ADMIN_ASSET_VERSIONS = {
+    asset_name: hashlib.sha256(content).hexdigest()[:12]
+    for asset_name, (_, content) in _ADMIN_ASSETS.items()
+}
+_ADMIN_HOME_SECTIONS = (
+    ("Accounts", "/admin/accounts", "Review accounts, plans, and activity."),
+    ("Audit log", "/admin/audit", "Review owner actions and sign-ins."),
+)
 
 
 def not_found_response() -> HTMLResponse:
     return HTMLResponse("Not Found", status_code=404)
+
+
+@router.api_route("/assets/{asset_name}", methods=["GET", "HEAD"], include_in_schema=False)
+async def admin_asset(request: Request, asset_name: str):
+    if not request.app.state.admin_security.config.enabled:
+        return not_found_response()
+    asset = _ADMIN_ASSETS.get(asset_name)
+    if asset is None:
+        return not_found_response()
+    media_type, content = asset
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @router.get("/login", response_class=HTMLResponse, include_in_schema=False)
@@ -107,11 +146,10 @@ async def admin_home(request: Request):
     if session is None:
         return not_found_response()
     body = (
-        _admin_nav(session.csrf_token, security.login_alert_failed)
+        _admin_nav(session.csrf_token, security.login_alert_failed, "home")
         + "<main><h1>Owner dashboard</h1>"
-        + "<p class=\"note\">The owner dashboard is ready. Account tools will appear here.</p>"
-        + '<p><a href="/admin/accounts">Accounts</a></p>'
-        + "<p><a href=\"/admin/audit\">Audit log</a></p></main>"
+        + _admin_home_sections()
+        + "</main>"
     )
     return _document("Owner dashboard", body)
 
@@ -131,7 +169,7 @@ async def admin_accounts_list(
         db,
         query,
     )
-    body = _admin_nav(session.csrf_token, security.login_alert_failed)
+    body = _admin_nav(session.csrf_token, security.login_alert_failed, "accounts")
     body += _accounts_page(_AccountsPageView(rows, total, session.csrf_token, query))
     return _document("Accounts", body)
 
@@ -161,7 +199,7 @@ async def admin_account_detail(
     account = await asyncio.to_thread(_load_admin_account, db, account_id)
     if account is None:
         return not_found_response()
-    body = _admin_nav(session.csrf_token, security.login_alert_failed)
+    body = _admin_nav(session.csrf_token, security.login_alert_failed, "accounts")
     if account["deleted_at"] is not None:
         body += _deleted_account_page(account)
         return _document("Deleted account", body)
@@ -218,7 +256,7 @@ async def admin_audit_viewer(
     if session is None:
         return not_found_response()
     entries, total = await asyncio.to_thread(audit_log.list_audit_entries, db, query)
-    body = _admin_nav(session.csrf_token, security.login_alert_failed)
+    body = _admin_nav(session.csrf_token, security.login_alert_failed, "audit")
     body += _audit_page(entries, total, query)
     return _document("Audit log", body)
 
@@ -242,17 +280,20 @@ async def admin_logout(request: Request, db: Annotated[Any, Depends(get_db)]):
 
 def _login_form(security: admin_auth.AdminSecurity, message: str = "", status_code: int = 200) -> HTMLResponse:
     csrf_token = security.issue_login_csrf()
-    body = _alert_banner(security.login_alert_failed) + _login_form_markup(csrf_token, message)
-    response = _document("Owner login", body)
+    body = _login_form_markup(csrf_token, message, security.login_alert_failed)
+    response = _document("Owner login", body, page_class="login-page")
     response.status_code = status_code
     _set_admin_cookie(response, LOGIN_CSRF_COOKIE, csrf_token, max_age=admin_auth.LOGIN_CSRF_SECONDS)
     return response
 
 
-def _login_form_markup(csrf_token: str, message: str) -> str:
+def _login_form_markup(csrf_token: str, message: str, alert_failed: bool) -> str:
     escaped_message = f'<p class="alert" role="alert">{html.escape(message)}</p>' if message else ""
     return (
-        "<main><h1>Owner login</h1>"
+        '<main class="login-card">'
+        + _brand_lockup()
+        + _alert_banner(alert_failed)
+        + '<p class="login-intro">Owner access</p><h1>Sign in</h1>'
         f"{escaped_message}<form method=\"post\" action=\"/admin/login\">"
         f'<input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}">'
         '<label for="username">Username</label><input id="username" name="username" '
@@ -289,27 +330,77 @@ def _set_admin_cookie(response: HTMLResponse | RedirectResponse, name: str, valu
     )
 
 
-def _document(title: str, body: str) -> HTMLResponse:
-    nonce = secrets.token_urlsafe(18)
+def _document(title: str, body: str, *, page_class: str = "") -> HTMLResponse:
+    body_class = f' class="{html.escape(page_class, quote=True)}"' if page_class else ""
     page = (
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
-        '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        '<meta name="robots" content="noindex"><title>'
-        + html.escape(title)
-        + f'</title><style nonce="{nonce}">{_PAGE_CSS}</style></head><body>{body}</body></html>'
+        + _document_head(title)
+        + f"</head><body{body_class}>{body}</body></html>"
     )
-    return self_contained_html(page, cache_control="no-store", style_src=f"nonce-{nonce}", form_action="self")
+    response = self_contained_html(
+        page,
+        cache_control="no-store",
+        style_src="self",
+        form_action="self",
+        img_src="self",
+        font_src="self",
+    )
+    return response
 
 
-def _admin_nav(csrf_token: str, alert_failed: bool) -> str:
+def _document_head(title: str) -> str:
+    return (
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<meta name="robots" content="noindex">'
+        f'<link rel="icon" type="image/png" href="{_asset_url("favicon.png")}">'
+        f'<link rel="apple-touch-icon" href="{_asset_url("apple-touch-icon.png")}">'
+        f'<link rel="stylesheet" href="{_asset_url("admin.css")}">'
+        f"<title>{html.escape(title)}</title>"
+    )
+
+
+def _asset_url(asset_name: str) -> str:
+    return f"/admin/assets/{asset_name}?v={_ADMIN_ASSET_VERSIONS[asset_name]}"
+
+
+def _brand_lockup() -> str:
+    return (
+        '<div class="brand-lockup" role="img" aria-label="MAYOS">'
+        "<picture>"
+        f'<source media="(prefers-color-scheme: dark)" srcset="{_asset_url("mayos-logo-white.png")}">'
+        f'<img src="{_asset_url("mayos-logo-blue.png")}" alt="">'
+        '</picture><span class="brand-wordmark" aria-hidden="true">MAYOS</span></div>'
+    )
+
+
+def _admin_nav(csrf_token: str, alert_failed: bool, active_page: str) -> str:
+    brand_current = ' aria-current="page"' if active_page == "home" else ""
     nav = (
-        '<nav><a href="/admin">Owner dashboard</a><a href="/admin/accounts">Accounts</a>'
-        '<a href="/admin/audit">Audit log</a>'
-        '<form method="post" action="/admin/logout">'
+        '<nav class="admin-nav"><div class="admin-nav-main">'
+        f'<a class="brand-link" href="/admin" aria-label="MAYOS owner dashboard"{brand_current}>'
+        + _brand_lockup()
+        + '</a><div class="admin-nav-links">'
+        + _admin_nav_link("Accounts", "/admin/accounts", "accounts", active_page)
+        + _admin_nav_link("Audit log", "/admin/audit", "audit", active_page)
+        + '</div></div><form method="post" action="/admin/logout">'
         f'<input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}">'
         '<button type="submit">Log out</button></form></nav>'
     )
     return _alert_banner(alert_failed) + nav
+
+
+def _admin_nav_link(label: str, href: str, page: str, active_page: str) -> str:
+    current = ' aria-current="page"' if page == active_page else ""
+    return f'<a class="nav-link" href="{href}"{current}>{html.escape(label)}</a>'
+
+
+def _admin_home_sections() -> str:
+    cards = "".join(
+        f'<a class="dashboard-card" href="{href}">'
+        f"<h2>{html.escape(title)}</h2><p>{html.escape(description)}</p></a>"
+        for title, href, description in _ADMIN_HOME_SECTIONS
+    )
+    return f'<section class="dashboard-grid" aria-label="Owner dashboard sections">{cards}</section>'
 
 
 def _alert_banner(alert_failed: bool) -> str:

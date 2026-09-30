@@ -108,6 +108,7 @@ def test_unconfigured_and_partially_configured_admin_routes_are_not_found(monkey
     assert client.get("/admin").status_code == 404
     assert client.get("/admin/login").status_code == 404
     assert client.post("/admin/login").status_code == 404
+    assert client.get("/admin/assets/admin.css").status_code == 404
     client.close()
     monkeypatch.setenv("ADMIN_USERNAME", ADMIN_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", ADMIN_PASSWORD_HASH)
@@ -136,6 +137,103 @@ def test_malformed_admin_secret_disables_every_route(monkeypatch, key, value):
     assert client.get("/admin").status_code == 404
     assert client.post("/admin/login").status_code == 404
     client.close()
+
+
+@pytest.mark.parametrize(
+    ("asset_name", "content_type"),
+    [
+        ("admin.css", "text/css"),
+        ("Inter-Variable.ttf", "font/ttf"),
+        ("PlayfairDisplay-Variable.ttf", "font/ttf"),
+        ("mayos-logo-blue.png", "image/png"),
+        ("mayos-logo-white.png", "image/png"),
+        ("favicon.png", "image/png"),
+        ("apple-touch-icon.png", "image/png"),
+        ("OFL-Inter.txt", "text/plain"),
+        ("OFL-PlayfairDisplay.txt", "text/plain"),
+    ],
+)
+def test_admin_brand_assets_are_available_before_login_with_immutable_cache(admin_api, asset_name, content_type):
+    client, _, _, _ = admin_api
+    response = client.get(f"/admin/assets/{asset_name}?v=test")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith(content_type)
+    assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert response.headers["x-robots-tag"] == "noindex, nofollow"
+    assert response.content
+
+
+def test_admin_pages_reference_brand_assets_with_strict_self_only_csp(admin_api):
+    client, _, now, _ = admin_api
+    login_page = client.get("/admin/login")
+    assert login_page.status_code == 200
+    assert 'class="login-card"' in login_page.text
+    assert 'href="/admin/assets/admin.css?v=' in login_page.text
+    assert 'href="/admin/assets/favicon.png?v=' in login_page.text
+    assert 'href="/admin/assets/apple-touch-icon.png?v=' in login_page.text
+    assert "/admin/assets/mayos-logo-blue.png?v=" in login_page.text
+    assert "/admin/assets/mayos-logo-white.png?v=" in login_page.text
+    assert "<style" not in login_page.text and "style=\"" not in login_page.text
+    expected_csp = (
+        "default-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; "
+        "base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+    )
+    assert login_page.headers["content-security-policy"] == expected_csp
+    assert "unsafe-inline" not in login_page.headers["content-security-policy"]
+
+    stylesheet_url = re.search(r'href="([^"]*admin\.css\?v=[^"]+)', login_page.text).group(1)
+    stylesheet = client.get(stylesheet_url)
+    assert stylesheet.status_code == 200
+    assert stylesheet_url.endswith(f"?v={hashlib.sha256(stylesheet.content).hexdigest()[:12]}")
+    assert "font-family: \"Inter\"" in stylesheet.text
+    assert "font-family: \"Playfair Display\"" in stylesheet.text
+    assert "/admin/assets/Inter-Variable.ttf?v=" in stylesheet.text
+    assert "/admin/assets/PlayfairDisplay-Variable.ttf?v=" in stylesheet.text
+    assert "font-display: swap" in stylesheet.text
+    assert "@media (prefers-color-scheme: dark)" in stylesheet.text
+    assert "--color-accent: #2F6BFF" in stylesheet.text
+    assert "--color-canvas: #0A1422" in stylesheet.text
+    link_rule = re.search(r"(?m)^a\s*\{([^}]*)\}", stylesheet.text)
+    assert link_rule and "text-decoration: none;" in link_rule.group(1)
+    assert re.search(r"a:hover,\s*a:focus-visible\s*\{[^}]*text-decoration: underline;", stylesheet.text)
+    brand_rule = re.search(
+        r"\.brand-link,\s*\.brand-link:hover,\s*\.brand-link:focus-visible\s*\{([^}]*)\}",
+        stylesheet.text,
+    )
+    assert brand_rule and "text-decoration: none;" in brand_rule.group(1)
+    assert ".admin-nav-main" in stylesheet.text and "flex-wrap: wrap;" in stylesheet.text
+    assert '.admin-nav-links .nav-link[aria-current="page"]' in stylesheet.text
+    for brand_token in (
+        "#F6F5F2", "#FFFFFF", "#F1F3F7", "#E2E4E9", "#CFD4DC", "#0E1B2E", "#4B5A70",
+        "#2F6BFF", "#2257DE", "#DC2626", "#0A1422", "#101D2E", "#16263B", "#0D1826",
+        "#22344C", "#324A69", "#F3F6FB", "#A7B6CB", "#F87171",
+    ):
+        assert brand_token in stylesheet.text
+    for font_url in re.findall(r'url\("([^"]+\.ttf\?v=[^"]+)"\)', stylesheet.text):
+        font = client.get(font_url)
+        assert font.status_code == 200
+        assert font_url.endswith(f"?v={hashlib.sha256(font.content).hexdigest()[:12]}")
+
+    assert _login(client, now[0]).status_code == 303
+    home = client.get("/admin")
+    assert home.status_code == 200
+    assert 'href="/admin/assets/admin.css?v=' in home.text
+    assert 'href="/admin/assets/favicon.png?v=' in home.text
+    assert 'href="/admin/assets/apple-touch-icon.png?v=' in home.text
+    assert "/admin/assets/mayos-logo-blue.png?v=" in home.text
+    assert "/admin/assets/mayos-logo-white.png?v=" in home.text
+    assert home.headers["content-security-policy"] == expected_csp
+    assert 'class="brand-link" href="/admin" aria-label="MAYOS owner dashboard" aria-current="page"' in home.text
+    assert "The owner dashboard is ready" not in home.text
+    assert home.text.count('class="dashboard-card"') == 2
+    assert "Review accounts, plans, and activity." in home.text
+    assert "Review owner actions and sign-ins." in home.text
+    assert '<div class="admin-nav-links">' in home.text
+
+    accounts = client.get("/admin/accounts")
+    assert 'class="nav-link" href="/admin/accounts" aria-current="page">Accounts</a>' in accounts.text
+    audit = client.get("/admin/audit")
+    assert 'class="nav-link" href="/admin/audit" aria-current="page">Audit log</a>' in audit.text
 
 
 def test_every_protected_path_is_the_same_404_before_login(admin_api):
@@ -235,18 +333,18 @@ def test_admin_session_uses_secure_cookie_and_expires_after_idle_limit(admin_api
     assert response.status_code == 303
     cookie = response.headers["set-cookie"].lower()
     assert "httponly" in cookie and "secure" in cookie and "samesite=strict" in cookie
-    assert "path=/admin" in cookie and "max-age=28800" in cookie
+    assert "path=/admin" in cookie and "max-age=43200" in cookie
     home = client.get("/admin")
     assert home.status_code == 200
     assert 'href="/admin/accounts"' in home.text
-    now[0] += 30 * 60 + 1
+    now[0] += 2 * 60 * 60 + 1
     assert client.get("/admin").status_code == 404
 
 
 def test_admin_session_expires_at_absolute_limit_even_when_active(admin_api):
     client, _, now, _ = admin_api
     assert _login(client, now[0]).status_code == 303
-    for _ in range(17):
+    for _ in range(26):
         now[0] += 1_600
         assert client.get("/admin").status_code == 200
     now[0] += 1_600
