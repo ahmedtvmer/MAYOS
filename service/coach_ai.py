@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 #: Bumped whenever the prompt or the context shape changes; the eval report's
 #: ``prompt_hash`` must match :func:`prompt_version_hash` for the flag to enable.
-CONTEXT_VERSION = "coach-context-v2"
+CONTEXT_VERSION = "coach-context-v3"
 
 #: Schema version of the enablement report; a report written by another
 #: runner version is refused (ADR 049).
@@ -62,7 +62,9 @@ You answer one assigned coach's question about ONE selected player, using only t
 
 Rules:
 - Use the supplied figures exactly as given. Never compute, estimate, or invent
-  numbers. If the telemetry needed for the answer is not supplied, say so.
+  numbers. Do not derive figures from other figures, such as totals, percentages,
+  ratios, averages, or differences. If the telemetry needed for the answer is not
+  supplied, say so.
 - Refer to the person only as "the player". You are not told who they are; never
   guess names, contact details, or account information.
 - Give no medical advice: no diagnosis, no rehabilitation or medication advice.

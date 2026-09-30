@@ -363,7 +363,7 @@ def test_system_prompt_forbids_computation_and_medical_advice():
     assert "Never compute, estimate, or invent" in coach_ai.SYSTEM_PROMPT
     assert "no diagnosis" in coach_ai.SYSTEM_PROMPT
     assert '"the player"' in coach_ai.SYSTEM_PROMPT
-    assert coach_ai.CONTEXT_VERSION == "coach-context-v2"
+    assert coach_ai.CONTEXT_VERSION == "coach-context-v3"
 
 
 def test_issue_148_messages_have_one_leading_system_message():
