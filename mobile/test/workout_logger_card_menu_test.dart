@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
@@ -136,7 +137,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
 /// Seeds the stored Active workout through the real controller, so the cards
 /// render exactly what a player would start with (#123 item 2).
 Future<InMemoryActiveWorkoutStore> _seedThroughController(
-    {required FakeMayosApi fake}) async {
+    {required FakeMayosApi fake, String? startedAt}) async {
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
   final InMemoryActiveWorkoutStore store = InMemoryActiveWorkoutStore();
@@ -164,6 +165,22 @@ Future<InMemoryActiveWorkoutStore> _seedThroughController(
     programVersion: 3,
   );
   expect(outcome, StartWorkoutOutcome.started);
+  if (startedAt != null) {
+    final ActiveWorkout seeded = controller.workout!;
+    await store.write(
+      _account,
+      ActiveWorkout(
+        id: seeded.id,
+        accountId: seeded.accountId,
+        startedAt: startedAt,
+        dayOrder: seeded.dayOrder,
+        dayName: seeded.dayName,
+        programVersion: seeded.programVersion,
+        exercises: seeded.exercises,
+        baselines: seeded.baselines,
+      ),
+    );
+  }
   return store;
 }
 
@@ -181,6 +198,8 @@ Future<
   int liveProgramVersion = 3,
   ThemeMode mode = ThemeMode.light,
   Size size = const Size(1080, 2400),
+  String? startedAt,
+  DateTime Function()? clock,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -195,7 +214,7 @@ Future<
   // Seeding talks to the (fake) API on real timers, so it runs outside the
   // test's fake-async zone.
   final InMemoryActiveWorkoutStore store = (await tester.runAsync(
-    () => _seedThroughController(fake: fake),
+    () => _seedThroughController(fake: fake, startedAt: startedAt),
   ))!;
   final InMemoryRestLengthStore restLengths = InMemoryRestLengthStore();
 
@@ -216,6 +235,7 @@ Future<
         deviceTimezoneProvider.overrideWithValue(Future<String>.value('UTC')),
         deviceTimezoneOrNullProvider
             .overrideWithValue(Future<String?>.value('UTC')),
+        if (clock != null) clockProvider.overrideWithValue(clock),
         apiClientProvider.overrideWith((ref) {
           final ApiClient client = ApiClient(
             tokens: ref.watch(tokenStoreProvider),
@@ -245,6 +265,11 @@ Future<
   return (fake: fake, store: store, restLengths: restLengths);
 }
 
+void _includeProgramExercise(FakeMayosApi fake, ProgramExercise exercise) {
+  (fake.programDaysOverride!.single['exercises'] as List<dynamic>)
+      .add(exercise.toJson());
+}
+
 Finder _cardMenu(int exerciseIndex) =>
     find.byKey(ValueKey<String>('logger.cardMenu.$exerciseIndex'));
 
@@ -268,6 +293,10 @@ Finder _cell(int exercise, int set, String field) =>
 
 Finder _tick(int exercise, int set) =>
     find.byKey(ValueKey<String>('logger.tick.$exercise.$set'));
+
+Color? _rowColor(WidgetTester tester, int exercise, int set) =>
+    (tester.widget<Container>(_row(exercise, set)).decoration as BoxDecoration)
+        .color;
 
 Finder _muscleFilter() =>
     find.byKey(const ValueKey<String>('logger.search.muscleFilter'));
@@ -338,6 +367,121 @@ Future<void> _confirmReplace(
 }
 
 void main() {
+  testWidgets('planned exercise detail keeps its prescription and returns to '
+      'the unchanged Active workout (#217)', (WidgetTester tester) async {
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    DateTime now = DateTime.parse('2026-09-28T08:00:42.000Z');
+    await _openLogger(
+      tester,
+      startedAt: '2026-09-28T08:00:00.000Z',
+      clock: () => now,
+    );
+    await _tickSet(tester, 0, 0);
+
+    final Color? tickedRowColor = _rowColor(tester, 0, 0);
+    final Color? currentRowColor = _rowColor(tester, 0, 1);
+    expect(find.text('Log workout · 00:42'), findsOneWidget);
+    final SemanticsNode exerciseName =
+        tester.getSemantics(find.text('Bench Press'));
+    expect(exerciseName.flagsCollection.isButton, isTrue);
+    expect(exerciseName.label, 'View Bench Press details');
+
+    await tester.tap(find.text('Bench Press'));
+    await _pumpUntilFound(tester, find.text('Sets × reps'));
+
+    expect(find.text('3 × 5–8'), findsOneWidget);
+    expect(find.text('Technique'), findsOneWidget);
+    expect(find.text('History'), findsOneWidget);
+
+    now = DateTime.parse('2026-09-28T08:06:42.000Z');
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Log workout · 06:42'), findsOneWidget);
+    expect(_rowColor(tester, 0, 0), tickedRowColor);
+    expect(_rowColor(tester, 0, 1), currentRowColor);
+    expect(_rowColor(tester, 0, 2), isNull);
+    expect(_rowColor(tester, 1, 0), isNull);
+    expect(
+      find.descendant(of: _cell(0, 0, 'kg'), matching: find.text('100')),
+      findsOneWidget,
+    );
+    for (final Finder row in <Finder>[
+      _row(0, 0),
+      _row(0, 1),
+      _row(0, 2),
+      _row(1, 0),
+    ]) {
+      expect(row, findsOneWidget);
+    }
+    expect(find.byKey(const ValueKey<String>('logger.tick.0.0')),
+        findsOneWidget);
+    expect(find.byType(WorkoutLoggerScreen), findsOneWidget);
+    semantics.dispose();
+  });
+
+  testWidgets('replacement exercise detail has no program prescription '
+      '(#217)', (WidgetTester tester) async {
+    final harness = await _openLogger(tester);
+
+    await _pickMenuItem(tester, 0, _replaceItem(0));
+    await _pumpUntilFound(tester, find.text('Search the exercise catalog'));
+    await _searchAndPick(tester, 'fly', 'Cable Fly');
+    _includeProgramExercise(
+      harness.fake,
+      const ProgramExercise(
+        exerciseId: 'cable_fly',
+        exerciseName: 'Cable Fly',
+        targetSets: 4,
+        targetRepsMin: 8,
+        targetRepsMax: 12,
+        targetRpe: 8,
+        restSeconds: 90,
+      ),
+    );
+
+    await tester.tap(find.text('Cable Fly'));
+    await _pumpUntilFound(tester, find.text('Overview'));
+
+    expect(find.text('Cable Fly'), findsOneWidget);
+    expect(find.text('Sets × reps'), findsNothing);
+    expect(find.text('Technique'), findsOneWidget);
+    expect(find.text('History'), findsOneWidget);
+  });
+
+  testWidgets('unplanned exercise detail has no program prescription '
+      '(#217)', (WidgetTester tester) async {
+    final harness = await _openLogger(tester);
+
+    final Finder add = find.widgetWithText(OutlinedButton, 'Add exercise');
+    await tester.ensureVisible(add);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(add);
+    await _pumpUntilFound(tester, find.text('Search the exercise catalog'));
+    await _searchAndPick(tester, 'curl', 'Bicep Curl');
+    _includeProgramExercise(
+      harness.fake,
+      const ProgramExercise(
+        exerciseId: 'bicep_curl',
+        exerciseName: 'Bicep Curl',
+        targetSets: 5,
+        targetRepsMin: 10,
+        targetRepsMax: 15,
+        targetRpe: 8,
+        restSeconds: 60,
+      ),
+    );
+
+    await tester.tap(find.text('Bicep Curl'));
+    await _pumpUntilFound(tester, find.text('Overview'));
+
+    expect(find.text('Bicep Curl'), findsOneWidget);
+    expect(find.text('Sets × reps'), findsNothing);
+    expect(find.text('Technique'), findsOneWidget);
+    expect(find.text('History'), findsOneWidget);
+  });
+
   testWidgets(
       'the card menu offers Replace exercise and Rest time…, and Remove only '
       'for an unplanned exercise (#162)', (WidgetTester tester) async {

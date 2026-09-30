@@ -43,6 +43,7 @@ Future<void> _pumpDetail(
   String exerciseId, {
   ThemeMode mode = ThemeMode.light,
   int? dayOrder = 1,
+  String initialTab = 'overview',
   Size size = const Size(1080, 2400),
 }) async {
   tester.view.physicalSize = size;
@@ -76,7 +77,11 @@ Future<void> _pumpDetail(
         theme: MayosTheme.light,
         darkTheme: MayosTheme.dark,
         themeMode: mode,
-        home: ExerciseDetailScreen(exerciseId: exerciseId, dayOrder: dayOrder),
+        home: ExerciseDetailScreen(
+          exerciseId: exerciseId,
+          dayOrder: dayOrder,
+          initialTab: initialTab,
+        ),
       ),
     ),
   );
@@ -138,6 +143,22 @@ void main() {
     expect(find.text('Barbell'), findsWidgets);
     // Category and body part collapse into one row when equal.
     expect(find.text('Body part'), findsNothing);
+  });
+
+  testWidgets('detail without a day keeps the Progress-tab prescription',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpDetail(
+      tester,
+      fake,
+      'bench_press',
+      dayOrder: null,
+      initialTab: 'history',
+    );
+
+    expect(find.text('3 × 5–8'), findsOneWidget);
+    expect(find.text('RIR ≥ 2'), findsOneWidget);
+    expect(find.text('180s'), findsOneWidget);
   });
 
   testWidgets('technique tab renders instructions with an empty state fallback',

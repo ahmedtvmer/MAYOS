@@ -24,14 +24,17 @@ class ExerciseDetailScreen extends ConsumerStatefulWidget {
     super.key,
     required this.exerciseId,
     this.dayOrder,
+    this.showProgram = true,
     this.initialTab = 'overview',
   });
 
   final String exerciseId;
 
-  /// The program day the exercise was opened from, so prescription context
-  /// (sets × reps, RIR, rest, notes) can be shown. Null when opened elsewhere.
+  /// The program day the exercise was opened from. Null searches all days.
   final int? dayOrder;
+
+  /// Whether this detail should load a matching program prescription.
+  final bool showProgram;
 
   /// Which tab to open on. Progress (#48) opens this screen on `history`.
   final String initialTab;
@@ -73,22 +76,15 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen> {
     ExerciseHistory? history;
     String? partialError;
 
-    try {
-      final TrainingProgram? program = await api.activeProgram();
-      for (final ProgramDay day in program?.days ?? const <ProgramDay>[]) {
-        if (widget.dayOrder != null && day.dayOrder != widget.dayOrder) {
-          continue;
-        }
-        for (final ProgramExercise candidate in day.exercises) {
-          if (candidate.exerciseId == widget.exerciseId) {
-            exercise = candidate;
-            break;
-          }
-        }
-        if (exercise != null) break;
+    if (widget.showProgram) {
+      try {
+        exercise = _programExerciseForDay(
+          await api.activeProgram(),
+          widget.dayOrder,
+        );
+      } on ApiException catch (error) {
+        partialError = error.message;
       }
-    } on ApiException catch (error) {
-      partialError = error.message;
     }
     try {
       catalog = await api.exerciseCatalogDetail(widget.exerciseId);
@@ -107,6 +103,19 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen> {
       history: history,
       partialError: partialError,
     );
+  }
+
+  ProgramExercise? _programExerciseForDay(
+    TrainingProgram? program,
+    int? dayOrder,
+  ) {
+    for (final ProgramDay day in program?.days ?? const <ProgramDay>[]) {
+      if (dayOrder != null && day.dayOrder != dayOrder) continue;
+      for (final ProgramExercise candidate in day.exercises) {
+        if (candidate.exerciseId == widget.exerciseId) return candidate;
+      }
+    }
+    return null;
   }
 
   Future<void> _retry() async {

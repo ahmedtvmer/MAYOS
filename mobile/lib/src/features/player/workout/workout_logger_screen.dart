@@ -57,6 +57,19 @@ const String _kFinishBlockedError = 'Log at least one set';
 /// can never push the bottom bar (or the keypad) off the screen.
 const double _kMessageSlotMaxHeightFraction = 1 / 3;
 
+/// The logger's shared route for linked exercises and warm-up movements.
+void openLoggerExerciseDetail(
+  BuildContext context, {
+  required String exerciseId,
+  int? dayOrder,
+}) {
+  final String path =
+      '$exerciseDetailPath/${Uri.encodeComponent(exerciseId)}';
+  context.push(
+    dayOrder == null ? '$path?library=1' : '$path?day=$dayOrder',
+  );
+}
+
 enum _SummaryAction { save, retry, discardWorkout, done }
 
 class _WorkoutExerciseAtIndex {
@@ -1358,6 +1371,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     // A replacement is undone rather than removed: taking it out brings the
     // hidden planned exercise back (#162).
     final bool isReplacement = isReplacementExerciseAt(workout, exerciseIndex);
+    final String? linkedExerciseId =
+        exercise.exercise['exercise_id'] as String?;
     // One computation per exercise per build: the calculator is pure over the
     // persisted rows and the frozen baseline, so the badges are what the
     // Active workout holds — restart included (#124).
@@ -1395,6 +1410,13 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       // Replace is for every player whatever the Program authority (#162);
       // a replacement is undone, any other unplanned exercise is removed.
       onReplace: () => unawaited(_onReplaceExercise(exerciseIndex)),
+      onOpenDetail: linkedExerciseId == null || linkedExerciseId.isEmpty
+          ? null
+          : () => openLoggerExerciseDetail(
+                context,
+                exerciseId: linkedExerciseId,
+                dayOrder: exercise.unplanned ? null : workout.dayOrder,
+              ),
       onRemove: exercise.unplanned && !isReplacement
           ? () => unawaited(_onRemoveExercise(exerciseIndex))
           : null,

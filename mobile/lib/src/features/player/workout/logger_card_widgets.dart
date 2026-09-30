@@ -262,6 +262,51 @@ class ExerciseCatalogThumbnail extends StatelessWidget {
       );
 }
 
+/// Exercise name control shared by logger cards with a library link.
+class LoggerExerciseName extends StatelessWidget {
+  const LoggerExerciseName({
+    super.key,
+    required this.name,
+    required this.style,
+    this.onTap,
+  });
+
+  final String name;
+  final TextStyle style;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Text title = Text(name, style: style);
+    if (onTap == null) {
+      return title;
+    }
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Semantics(
+        button: true,
+        container: true,
+        label: 'View $name details',
+        onTap: onTap,
+        excludeSemantics: true,
+        child: InkWell(
+          onTap: onTap,
+          // The title row already holds a 48dp menu button, so the taller
+          // hit area doesn't change the card's height.
+          child: ConstrainedBox(
+            constraints:
+                const BoxConstraints(minHeight: kMayosMinTapTarget),
+            child: Align(
+                alignment: Alignment.centerLeft,
+                widthFactor: 1,
+                child: title),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// One compact exercise card (#158, plan §2): the name in primary text
 /// colour, the catalog picture (#161), the prescription line, the `Last:`
 /// line when there is history, the leaner table, a full-width "+ Add set"
@@ -281,6 +326,7 @@ class ExerciseLoggingCard extends StatelessWidget {
     required this.onPickRest,
     required this.onAddSet,
     required this.onReplace,
+    this.onOpenDetail,
     this.onRemove,
     this.onUndoReplace,
     this.unplanned = false,
@@ -307,6 +353,9 @@ class ExerciseLoggingCard extends StatelessWidget {
 
   final VoidCallback onPickRest;
   final VoidCallback onAddSet;
+
+  /// Opens the exercise's library entry, carrying a day only for planned work.
+  final VoidCallback? onOpenDetail;
 
   /// **Replace exercise** (#162), offered on every card.
   final VoidCallback onReplace;
@@ -347,8 +396,9 @@ class ExerciseLoggingCard extends StatelessWidget {
                 Expanded(
                   // Primary text colour: the accent blue is reserved for
                   // what the player must act on (#157).
-                  child: Text(
-                    exercise.exerciseName,
+                  child: LoggerExerciseName(
+                    name: exercise.exerciseName,
+                    onTap: onOpenDetail,
                     style: MayosTypography.exerciseTitle
                         .copyWith(color: c.textPrimary),
                   ),
