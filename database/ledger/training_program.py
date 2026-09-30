@@ -188,7 +188,7 @@ class LedgerTrainingProgramMixin:
                     f"""
                     SELECT {select_cols}
                     FROM program_exercises pe
-                    JOIN catalog.exercises e ON pe.exercise_id = e.id
+                    JOIN exercises e ON pe.exercise_id = e.id
                     WHERE pe.day_id = ?
                     ORDER BY pe.order_in_day ASC
                 """,

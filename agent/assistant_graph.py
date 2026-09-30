@@ -49,6 +49,7 @@ from agent.telemetry_reconciler import (
     clean_movement_stem,
     reconcile_telemetry_query,
 )
+from database.exercise_library.names import near_miss_exercise_ids
 from service import programs as programs_service
 from service.program_substitution import ProgramSubstitution, substitute_program_exercise
 from utils.logger import MyosLogger
@@ -960,6 +961,34 @@ def _muscle_compatible(candidate: dict[str, Any], target_muscle: str, body_part:
     return muscle_hit or body_hit
 
 
+def _compatible_name_match(
+    matches: list[dict[str, Any]], target_muscle: str, body_part: str, target_day: Any
+) -> dict[str, Any] | None:
+    compatible = [
+        match for match in matches
+        if _muscle_compatible(match, target_muscle, body_part)
+    ]
+    day_ids = {str(exercise.exercise_id) for exercise in target_day.exercises}
+    return next(
+        (match for match in compatible if str(match["id"]) not in day_ids),
+        compatible[0] if compatible else None,
+    )
+
+
+def _near_miss_refusal(store: Any, target: str, exercise_ids: frozenset[str]) -> dict[str, Any]:
+    similar_names = [
+        entry["name"]
+        for exercise_id in exercise_ids
+        if (entry := store.get_exercise_library_entry(exercise_id)) is not None
+    ]
+    if similar_names:
+        detail = ", ".join(f"**{name.title()}** is a different exercise" for name in similar_names)
+    else:
+        detail = "it is not a verified movement in this catalog"
+    content = f"I can't resolve **{target}** as requested because {detail}."
+    return {"program_updated": False, "response_content": content, "messages": [AIMessage(content=content)]}
+
+
 def _slot_alternative_lines(db: Any, matched_ex: Any, target_muscle: str, body_part: str) -> list[str]:
     alt_vec = EMBED_MODEL.embed_query(f"{target_muscle} {matched_ex.exercise_name}")
     slot_candidates = db.search_similar_exercises(alt_vec, limit=6)
@@ -974,8 +1003,8 @@ def _slot_alternative_lines(db: Any, matched_ex: Any, target_muscle: str, body_p
 def _target_is_name_like(target_desc: str, candidates: list[dict[str, Any]]) -> bool:
     """True when the target reads like a specific exercise name that failed to resolve by name.
 
-    Guards the semantic fallback: a hallucinated or typo'd name must surface a refusal
-    (plus real alternatives) instead of installing its nearest lexical sibling.
+    Guards the semantic fallback: a named near miss with one shared movement term
+    must refuse instead of installing its nearest lexical sibling.
     """
     target_tokens = {t for t in re.findall(r"[a-z0-9]+", target_desc.lower()) if len(t) > 2}
     if len(target_tokens) < 2:
@@ -1150,6 +1179,9 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     target_unspecific = (
         not resolve_text or len(resolve_text) < 3 or resolve_text.lower() in PRONOUNS | UNSPECIFIC_CHOICE_WORDS
     )
+    near_miss_ids = near_miss_exercise_ids(resolve_text)
+    if near_miss_ids:
+        return _near_miss_refusal(store, resolve_text, near_miss_ids)
 
     name_matches: list[dict[str, Any]] = []
     if not target_unspecific:
@@ -1164,9 +1196,8 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
                 for match in store.find_exercises_by_name(target_desc)
                 if str(match["id"]) != str(matched_ex.exercise_id)
             ]
-    compatible_name_match = next(
-        (match for match in name_matches if _muscle_compatible(match, target_muscle, body_part)),
-        None,
+    compatible_name_match = _compatible_name_match(
+        name_matches, target_muscle, body_part, target_day
     )
 
     replacement = None
@@ -1320,21 +1351,53 @@ def catalog_search_node(state: AssistantState, config: dict[str, Any] | None = N
     _, store = _graph_context(config)
     query = state.get("intent_metadata", {}).get("search_query") or _get_message_text(state["messages"][-1])
     try:
-        candidates = store.search_similar_exercises(EMBED_MODEL.embed_query(query), limit=4)
-        if not candidates or candidates[0].get("distance", 1.0) > 0.85:
+        candidates, from_name_search = _catalog_search_candidates(store, query)
+        if not _catalog_search_has_matches(query, candidates, from_name_search):
             msg = f"No exercises matching '{query}' were found in the catalog."
             return {"response_content": msg, "messages": [AIMessage(content=msg)]}
-        formatted = [
-            f"- **{c['name'].title()}** (`{c['target_muscle']}` | `{c['equipment']}`)\n  *{c['instructions'][:120]}...*"
-            for c in candidates
-        ]
-        return {
-            "response_content": f"**Catalog Matches for '{query}':**\n\n" + "\n\n".join(formatted),
-            "messages": [AIMessage(content=f"**Catalog Matches for '{query}':**\n\n" + "\n\n".join(formatted))],
-        }
+        return _catalog_search_response(query, candidates)
     except Exception as e:
         logger.error(f"Catalog search error: {e}")
         return {"response_content": "Failed to search the exercise catalog.", "messages": [AIMessage(content="Failed to search the exercise catalog.")]}
+
+
+def _catalog_search_candidates(store: Any, query: str) -> tuple[list[dict[str, Any]], bool]:
+    if near_miss_exercise_ids(query):
+        return [], True
+    name_matches = store.find_exercises_by_name(query, limit=4)
+    candidates = _library_search_details(store, name_matches)
+    if candidates:
+        return candidates, True
+    return store.search_similar_exercises(EMBED_MODEL.embed_query(query), limit=4), False
+
+
+def _catalog_search_has_matches(
+    query: str, candidates: list[dict[str, Any]], from_name_search: bool
+) -> bool:
+    if not candidates:
+        return False
+    if from_name_search:
+        return True
+    return not _target_is_name_like(query, candidates) and candidates[0].get("distance", 1.0) <= 0.85
+
+
+def _catalog_search_response(query: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    formatted = [
+        f"- **{candidate['name'].title()}** (`{candidate['target_muscle']}` | "
+        f"`{candidate['equipment']}`)\n  *{candidate['instructions'][:120]}...*"
+        for candidate in candidates
+    ]
+    content = f"**Catalog Matches for '{query}':**\n\n" + "\n\n".join(formatted)
+    return {"response_content": content, "messages": [AIMessage(content=content)]}
+
+
+def _library_search_details(store: Any, matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    candidates = []
+    for match in matches:
+        exercise = store.get_exercise_library_entry(match["id"])
+        if exercise is not None:
+            candidates.append({**match, "instructions": exercise["instructions"] or ""})
+    return candidates
 
 
 INPUT_TOO_LONG_RESPONSE = "Your latest message is too long for my context window. Please shorten it and send it again."

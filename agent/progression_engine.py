@@ -161,7 +161,7 @@ def get_weekly_muscle_volume(db: DatabaseManager, days_lookback: int = 7) -> dic
         SELECT ws.exercise_id, e.target_muscle, e.body_part
         FROM workout_sets ws
         JOIN workout_sessions s ON ws.session_id = s.id
-        JOIN catalog.exercises e ON ws.exercise_id = e.id
+        JOIN exercises e ON ws.exercise_id = e.id
         WHERE s.session_date >= ? AND ws.is_warmup = 0
     """,
         (cutoff_date,),
@@ -485,7 +485,7 @@ def get_progression_signals(db: DatabaseManager) -> str:
         SELECT DISTINCT ws.exercise_id, e.name, e.equipment
         FROM workout_sets ws
         JOIN workout_sessions s ON ws.session_id = s.id
-        JOIN catalog.exercises e ON ws.exercise_id = e.id
+        JOIN exercises e ON ws.exercise_id = e.id
         WHERE s.session_date >= ? AND ws.is_warmup = 0
         LIMIT 5
     """,

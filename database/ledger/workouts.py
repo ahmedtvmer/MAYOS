@@ -405,7 +405,7 @@ class LedgerWorkoutsMixin:
                    COUNT(*) AS sets, SUM(ws.reps) AS reps,
                    SUM(ws.weight_kg * ws.reps) AS volume_kg
             FROM workout_sets ws
-            LEFT JOIN catalog.exercises e ON e.id = ws.exercise_id
+            LEFT JOIN exercises e ON e.id = ws.exercise_id
             WHERE ws.session_id = ? AND ws.is_warmup = 0
             GROUP BY ws.exercise_id, e.name
             ORDER BY name COLLATE NOCASE, ws.exercise_id
@@ -479,7 +479,7 @@ class LedgerWorkoutsMixin:
                    ws.set_index, ws.weight_kg, ws.reps, ws.rpe, ws.is_warmup, ws.logged_at
             FROM workout_sets ws
             JOIN workout_sessions s ON ws.session_id = s.id
-            LEFT JOIN catalog.exercises e ON e.id = ws.exercise_id
+            LEFT JOIN exercises e ON e.id = ws.exercise_id
             ORDER BY s.session_date ASC, s.started_at ASC, s.rowid ASC, ws.rowid ASC
         """)
         return [dict(row) for row in cursor.fetchall()]
@@ -521,9 +521,11 @@ class LedgerWorkoutsMixin:
         cursor = self.conn.cursor()
         cursor.execute(
             """
-            SELECT session_id, exercise_id, exercise_name, kind, created_at
-            FROM session_divergences
-            WHERE session_id = ?
+            SELECT sd.session_id, sd.exercise_id,
+                   COALESCE(e.name, sd.exercise_name) AS exercise_name, sd.kind, sd.created_at
+            FROM session_divergences sd
+            LEFT JOIN exercises e ON e.id = sd.exercise_id
+            WHERE sd.session_id = ?
             ORDER BY kind ASC, exercise_id ASC
         """,
             (session_id,),
@@ -534,9 +536,11 @@ class LedgerWorkoutsMixin:
         """Every session's divergences keyed by session id, in a single query."""
         cursor = self.conn.cursor()
         cursor.execute("""
-            SELECT session_id, exercise_id, exercise_name, kind
-            FROM session_divergences
-            ORDER BY kind ASC, exercise_id ASC
+            SELECT sd.session_id, sd.exercise_id,
+                   COALESCE(e.name, sd.exercise_name) AS exercise_name, sd.kind
+            FROM session_divergences sd
+            LEFT JOIN exercises e ON e.id = sd.exercise_id
+            ORDER BY sd.kind ASC, sd.exercise_id ASC
         """)
         grouped: dict[str, list[dict[str, Any]]] = {}
         for row in cursor.fetchall():

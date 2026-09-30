@@ -7,7 +7,6 @@ Covers the three guarantees of the handle refactor:
 * a coach drill-down cannot obtain a player's ledger without an active assignment.
 """
 
-import sqlite3
 import threading
 from pathlib import Path
 
@@ -21,11 +20,6 @@ from database.shared import LedgerDeletedError
 @pytest.fixture
 def store(tmp_path: Path):
     catalog = tmp_path / "catalog.db"
-    conn = sqlite3.connect(catalog)
-    conn.execute("CREATE TABLE exercises (id TEXT PRIMARY KEY, name TEXT);")
-    conn.execute("CREATE TABLE exercise_secondary_muscles (exercise_id TEXT, muscle TEXT);")
-    conn.commit()
-    conn.close()
     db = DatabaseManager(
         catalog_path=catalog,
         ledgers_dir=tmp_path / "users",

@@ -24,11 +24,6 @@ def api(tmp_path: Path, monkeypatch):
 
     limiter._storage.reset()
     catalog_path = tmp_path / "catalog.db"
-    cat_conn = sqlite3.connect(catalog_path)
-    cat_conn.execute("CREATE TABLE exercises (id TEXT PRIMARY KEY, name TEXT);")
-    cat_conn.execute("CREATE TABLE exercise_secondary_muscles (exercise_id TEXT, muscle TEXT);")
-    cat_conn.commit()
-    cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path, ledgers_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
     )
@@ -237,11 +232,6 @@ def test_admin_cli_resets_password_and_revokes_sessions(tmp_path: Path):
     ledgers_dir.mkdir(parents=True)
     backups_dir.mkdir(parents=True)
     catalog_path = tmp_path / "catalog.db"
-    cat_conn = sqlite3.connect(catalog_path)
-    cat_conn.execute("CREATE TABLE exercises (id TEXT PRIMARY KEY, name TEXT);")
-    cat_conn.execute("CREATE TABLE exercise_secondary_muscles (exercise_id TEXT, muscle TEXT);")
-    cat_conn.commit()
-    cat_conn.close()
 
     # Seed a v3 ledger for "erin" with raw SQL (no DatabaseManager import state).
     ledger = ledgers_dir / "erin.db"
@@ -342,12 +332,6 @@ def test_admin_cli_revokes_enrolled_account_sessions(api):
 def test_fresh_catalog_boot_creates_account_tables(tmp_path: Path, monkeypatch):
     """A brand-new DatabaseManager() boot must provision recovery tables up front."""
     catalog_path = tmp_path / "catalog.db"
-    cat_conn = sqlite3.connect(catalog_path)
-    cat_conn.execute("CREATE TABLE exercises (id TEXT PRIMARY KEY, name TEXT);")
-    cat_conn.execute("CREATE TABLE exercise_secondary_muscles (exercise_id TEXT, muscle TEXT);")
-    cat_conn.commit()
-    cat_conn.close()
-
     # monkeypatch restores the singleton/thread-local after this test, so
     # module-level DatabaseManager() consumers in other test files stay intact.
     db = DatabaseManager(

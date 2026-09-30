@@ -1,10 +1,8 @@
-"""ExerciseSimilarityMixin (database split, #78).
-
-Extracted from DatabaseManager; behaviour is unchanged.
-"""
+"""Exercise semantic search, returning display names when present (ADR 053)."""
 
 import sqlite_vec
 from typing import Any
+from database.exercise_library.schema import effective_exercise_name_sql
 
 
 class ExerciseSimilarityMixin:
@@ -12,17 +10,23 @@ class ExerciseSimilarityMixin:
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
             serialized_vector = sqlite_vec.serialize_float32(query_vector)
+            name_expression, display_name_join = effective_exercise_name_sql()
             query = """
                 WITH knn_matches AS (
                     SELECT exercise_id, distance
                     FROM vec_exercises
                     WHERE embedding MATCH ? AND k = ?
                 )
-                SELECT e.id, e.name, e.body_part, e.target_muscle, e.equipment, e.instructions, m.distance
+                SELECT e.id, {name_expression}, e.body_part,
+                       e.target_muscle, e.equipment, e.instructions, m.distance
                 FROM knn_matches m
                 JOIN exercises e ON CAST(e.id AS INTEGER) = m.exercise_id
+                {display_name_join}
                 ORDER BY m.distance ASC;
-            """
+            """.format(
+                name_expression=name_expression,
+                display_name_join=display_name_join,
+            )
             cursor.execute(query, (serialized_vector, limit * 3))
             columns = ["id", "name", "body_part", "target_muscle", "equipment", "instructions", "distance"]
             candidates = []

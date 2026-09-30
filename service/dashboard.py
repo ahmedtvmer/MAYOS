@@ -55,7 +55,7 @@ def logged_exercises(db: Any, ledger_id: str, ledger: Any | None = None) -> list
         cursor.execute("""
             SELECT DISTINCT e.id, e.name
             FROM workout_sets ws
-            JOIN catalog.exercises e ON ws.exercise_id = e.id
+            JOIN exercises e ON ws.exercise_id = e.id
             ORDER BY e.name ASC
         """)
         return [{"id": row[0], "name": row[1]} for row in cursor.fetchall()]
@@ -88,7 +88,7 @@ def recent_personal_records(
             SELECT pr.exercise_id, COALESCE(e.name, pr.exercise_id) AS name, pr.record_type,
                    pr.reps, pr.value, pr.prev_value, pr.achieved_at, pr.session_id
             FROM personal_records pr
-            LEFT JOIN catalog.exercises e ON e.id = pr.exercise_id
+            LEFT JOIN exercises e ON e.id = pr.exercise_id
             ORDER BY pr.achieved_at DESC, pr.rowid DESC
             LIMIT ?
         """,

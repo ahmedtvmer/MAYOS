@@ -1,7 +1,6 @@
 """Request-identity isolation: explicit ledger handles, thread separation, and JWT auth."""
 
 import asyncio
-import sqlite3
 import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -18,11 +17,6 @@ from svc.dependencies import get_current_player
 @pytest.fixture
 def temp_db_env(tmp_path: Path, monkeypatch):
     catalog_path = tmp_path / "catalog.db"
-    cat_conn = sqlite3.connect(catalog_path)
-    cat_conn.execute("CREATE TABLE exercises (id TEXT PRIMARY KEY, name TEXT);")
-    cat_conn.execute("CREATE TABLE exercise_secondary_muscles (exercise_id TEXT, muscle TEXT);")
-    cat_conn.commit()
-    cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
         ledgers_dir=tmp_path / "users",

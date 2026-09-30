@@ -1,11 +1,11 @@
-"""ExerciseSeedingMixin (database split, #78).
-
-Extracted from DatabaseManager; behaviour is unchanged.
-"""
+"""Exercise library upserts and curated names (ADR 053, #225)."""
 
 import re
+
 import pandas as pd
 from database.shared import DEFAULT_CSV_PATH
+from database.exercise_library.names import apply_curated_exercise_names
+from database.exercise_library.schema import EXERCISE_COLUMNS
 
 from utils.logger import MyosLogger
 
@@ -17,62 +17,81 @@ class ExerciseSeedingMixin:
         # The catalog schema only: any per-ledger schema is created by
         # ``open_ledger`` when a handle is actually opened (ADR 041).
         self.create_catalog_schema()
-        with self._catalog_lock:
+        try:
+            df = pd.read_csv(csv_path)
+        except FileNotFoundError:
+            logger.error(f"Error: {csv_path} not found.")
+            return
+
+        logger.info("Upserting exercise library from CSV...")
+        exercise_rows, muscle_rows = _exercise_seed_rows(df)
+        with self._catalog_lock, self.catalog_conn:
             cursor = self.catalog_conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM exercises")
-            if cursor.fetchone()[0] > 0:
-                logger.info("Database already populated. Skipping CSV seed.")
-                return
-
-            logger.info("Seeding database from CSV...")
-            try:
-                df = pd.read_csv(csv_path)
-            except FileNotFoundError:
-                logger.error(f"Error: {csv_path} not found.")
-                return
-
-            core_df = df[
-                ["id", "name", "bodyPart", "target", "equipment", "image_path", "gif_path", "instructions"]
-            ].copy()
-            core_df.rename(columns={"bodyPart": "body_part", "target": "target_muscle"}, inplace=True)
-            core_df["name"] = (
-                core_df["name"]
-                .astype(str)
-                .str.replace(r"^lever\s+", "machine ", regex=True, flags=re.IGNORECASE)
-                .str.replace(r"\s+v\.\s*\d+", "", regex=True, flags=re.IGNORECASE)
-                .str.strip()
-            )
-            core_df.to_sql("exercises", self.catalog_conn, if_exists="append", index=False)
-
-            muscle_cols = [c for c in df.columns if c.startswith("secondaryMuscles/")]
-
-            if muscle_cols:
-                muscles_df = (
-                    df.melt(id_vars=["id"], value_vars=muscle_cols, value_name="muscle")
-                    .dropna(subset=["muscle"])
-                )
-                # Clean whitespace and case
-                muscles_df["muscle"] = muscles_df["muscle"].astype(str).str.strip().str.lower()
-                
-                # Filter out empty strings and stringified nulls
-                muscles_df = muscles_df[
-                    ~muscles_df["muscle"].isin(["", "nan", "none", "null"])
-                ]
-                
-                # Rename and drop duplicate pairs
-                muscles_df = (
-                    muscles_df[["id", "muscle"]]
-                    .rename(columns={"id": "exercise_id"})
-                    .drop_duplicates()
-                )
-
-                if not muscles_df.empty:
-                    muscles_df.to_sql(
-                        "exercise_secondary_muscles",
-                        self.catalog_conn,
-                        if_exists="append",
-                        index=False
-                    )
-                    self.catalog_conn.commit()
+            _upsert_exercise_rows(cursor, exercise_rows)
+            _replace_secondary_muscles(cursor, exercise_rows, muscle_rows)
+            apply_curated_exercise_names(cursor)
 
     EXCLUDED_BIOMECHANICAL_PATTERNS = ("behind neck", "behind the neck", "upright row")
+
+
+def _sqlite_value(value, *, column: str | None = None):
+    if pd.isna(value):
+        return None
+    value = value.item() if hasattr(value, "item") else value
+    return str(value) if column == "id" else value
+
+
+def _exercise_seed_rows(df):
+    exercises = df[
+        ["id", "name", "bodyPart", "target", "equipment", "image_path", "gif_path", "instructions"]
+    ].copy()
+    exercises.rename(columns={"bodyPart": "body_part", "target": "target_muscle"}, inplace=True)
+    exercises["name"] = (
+        exercises["name"]
+        .astype(str)
+        .str.replace(r"^lever\s+", "machine ", regex=True, flags=re.IGNORECASE)
+        .str.replace(r"\s+v\.\s*\d+", "", regex=True, flags=re.IGNORECASE)
+        .str.strip()
+    )
+    exercise_rows = [
+        tuple(_sqlite_value(row[column], column=column) for column in EXERCISE_COLUMNS)
+        for row in exercises.to_dict(orient="records")
+    ]
+    muscle_cols = [column for column in df.columns if column.startswith("secondaryMuscles/")]
+    return exercise_rows, _secondary_muscle_rows(df, muscle_cols)
+
+
+def _upsert_exercise_rows(cursor, exercise_rows):
+    placeholders = ", ".join("?" for _ in EXERCISE_COLUMNS)
+    updates = ", ".join(f"{column} = excluded.{column}" for column in EXERCISE_COLUMNS[1:])
+    cursor.executemany(
+        f"INSERT INTO exercises ({', '.join(EXERCISE_COLUMNS)}) VALUES ({placeholders}) "
+        f"ON CONFLICT(id) DO UPDATE SET {updates}",
+        exercise_rows,
+    )
+
+
+def _replace_secondary_muscles(cursor, exercise_rows, muscle_rows):
+    exercise_ids = {row[0] for row in exercise_rows}
+    cursor.executemany(
+        "DELETE FROM exercise_secondary_muscles WHERE exercise_id = ?",
+        [(exercise_id,) for exercise_id in exercise_ids],
+    )
+    cursor.executemany(
+        "INSERT INTO exercise_secondary_muscles (exercise_id, muscle) VALUES (?, ?)",
+        muscle_rows,
+    )
+
+
+def _secondary_muscle_rows(df, muscle_cols):
+    if not muscle_cols:
+        return []
+    muscles_df = df.melt(id_vars=["id"], value_vars=muscle_cols, value_name="muscle")
+    muscles_df = muscles_df.dropna(subset=["muscle"])
+    muscles_df["muscle"] = muscles_df["muscle"].astype(str).str.strip().str.lower()
+    muscles_df = muscles_df[~muscles_df["muscle"].isin(["", "nan", "none", "null"])]
+    muscles_df = muscles_df[["id", "muscle"]].drop_duplicates()
+    return [
+        (_sqlite_value(row["id"], column="id"), row["muscle"])
+        for row in muscles_df.to_dict(orient="records")
+    ]

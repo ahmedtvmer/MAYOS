@@ -142,7 +142,7 @@ class LedgerDebriefsMixin:
             """
             SELECT DISTINCT ws.exercise_id, COALESCE(e.name, ws.exercise_id) AS name
             FROM workout_sets ws
-            LEFT JOIN catalog.exercises e ON e.id = ws.exercise_id
+            LEFT JOIN exercises e ON e.id = ws.exercise_id
             WHERE ws.session_id = ? AND ws.is_warmup = 0
             ORDER BY name COLLATE NOCASE, ws.exercise_id
         """,
@@ -223,7 +223,7 @@ class LedgerDebriefsMixin:
             cursor.execute(
                 """
                 SELECT e.name, ws.weight_kg, ws.reps, ws.rpe
-                FROM workout_sets ws JOIN catalog.exercises e ON ws.exercise_id = e.id
+                FROM workout_sets ws JOIN exercises e ON ws.exercise_id = e.id
                 WHERE ws.session_id = ? AND ws.is_warmup = 0 ORDER BY ws.weight_kg DESC LIMIT 1
             """,
                 (s_id,),

@@ -825,8 +825,11 @@ database work when that file is missing; it never falls back to the
 `tests/fixtures` catalog. `SEED_CSV_PATH` is the only override and exists for
 deliberate input. Constructing `DatabaseManager` still provisions the engine's
 empty `default` ledger, exactly as a normal boot does; that is expected.
-`seed_vectors.py` uses the BGE model baked into the image. Re-running the
-initializer is safe: a populated catalog is skipped.
+Curated exercise display names and aliases are applied idempotently whenever
+the application ensures the catalog schema at startup. This does not reload
+the ExerciseDB library or its embeddings. `seed_vectors.py` uses the BGE model
+baked into the image. Re-running the initializer is safe: seed rows are upserted
+by exercise ID, and rows outside the seed source are retained.
 
 `/readyz` checks the running process, model, and writable volume; it does not
 check exercise or vector row counts. Finish both seed commands and verify the

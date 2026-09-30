@@ -24,13 +24,6 @@ def temp_db_env(tmp_path: Path, monkeypatch):
     ledgers_dir = tmp_path / "users"
     backups_dir = tmp_path / "backups"
 
-    # Create dummy catalog
-    cat_conn = sqlite3.connect(catalog_path)
-    cat_conn.execute("CREATE TABLE exercises (id TEXT PRIMARY KEY, name TEXT);")
-    cat_conn.execute("CREATE TABLE exercise_secondary_muscles (exercise_id TEXT, muscle TEXT);")
-    cat_conn.commit()
-    cat_conn.close()
-
     db = DatabaseManager(
         catalog_path=catalog_path,
         ledgers_dir=ledgers_dir,
@@ -221,7 +214,8 @@ def test_existing_ledger_gets_assistant_memory_idempotently(temp_db_env, version
 def test_latest_session_summary_uses_real_working_sets(temp_db_env):
     db, _, _ = temp_db_env
     db.catalog_conn.executemany(
-        "INSERT INTO exercises (id, name) VALUES (?, ?)",
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+        "VALUES (?, ?, 'Test', 'Test', 'Test')",
         [("bench", "Bench press"), ("row", "Row"), ("warmup", "Warmup only")],
     )
     db.catalog_conn.commit()
@@ -340,7 +334,8 @@ def test_session_comparison_empty_and_user_isolation(temp_db_env):
 def test_session_comparison_exact_baselines_and_bounded_queries(temp_db_env):
     db, _, _ = temp_db_env
     db.catalog_conn.executemany(
-        "INSERT INTO exercises (id, name) VALUES (?, ?)",
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+        "VALUES (?, ?, 'Test', 'Test', 'Test')",
         [("bench", "Press"), ("variant", "Press"), ("row", "Row")],
     )
     db.catalog_conn.commit()

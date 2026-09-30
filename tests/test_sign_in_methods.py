@@ -54,11 +54,6 @@ def api(tmp_path: Path, monkeypatch):
 
     limiter._storage.reset()
     catalog_path = tmp_path / "catalog.db"
-    cat_conn = sqlite3.connect(catalog_path)
-    cat_conn.execute("CREATE TABLE exercises (id TEXT PRIMARY KEY, name TEXT);")
-    cat_conn.execute("CREATE TABLE exercise_secondary_muscles (exercise_id TEXT, muscle TEXT);")
-    cat_conn.commit()
-    cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
         ledgers_dir=tmp_path / "users",

@@ -37,6 +37,7 @@ from database.registry.coach_alerts import RegistryCoachAlertsMixin
 from database.registry.check_ins import RegistryCheckInsMixin
 from database.registry.model_usage import RegistryModelUsageMixin
 from database.exercise_library.lookup import ExerciseLookupMixin
+from database.exercise_library.schema import EXERCISE_COLUMNS, effective_exercise_name_sql
 from database.exercise_library.similarity import ExerciseSimilarityMixin
 from database.exercise_library.seeding import ExerciseSeedingMixin
 from database.ledger.handle import TrainingLedger
@@ -115,7 +116,7 @@ class DatabaseManager(
         sqlite_vec.load(self.catalog_conn)
         self.catalog_conn.enable_load_extension(False)
 
-        self.ensure_account_schema()
+        self.create_catalog_schema()
 
         self._initialize_deletions()
 
@@ -142,7 +143,7 @@ class DatabaseManager(
 
         escaped_path = str(self.catalog_path.resolve()).replace("'", "''")
         new_conn.execute(f"ATTACH DATABASE '{escaped_path}' AS catalog;")
-        new_conn.execute("CREATE TEMP VIEW IF NOT EXISTS exercises AS SELECT * FROM catalog.exercises;")
+        self._create_ledger_exercise_view(new_conn)
         new_conn.execute(
             "CREATE TEMP VIEW IF NOT EXISTS exercise_secondary_muscles AS SELECT * FROM catalog.exercise_secondary_muscles;"
         )
@@ -151,6 +152,18 @@ class DatabaseManager(
         self._create_ledger_schema_on(new_conn)
         prune_ledger_backups(self.backups_dir / sanitized, max_rolling=3)
         return new_conn
+
+    @staticmethod
+    def _create_ledger_exercise_view(conn: sqlite3.Connection) -> None:
+        name_expression, display_name_join = effective_exercise_name_sql("catalog")
+        selected_columns = [
+            f"{name_expression} AS name" if column == "name" else f"e.{column}"
+            for column in EXERCISE_COLUMNS
+        ]
+        conn.execute(
+            "CREATE TEMP VIEW IF NOT EXISTS exercises AS "
+            f"SELECT {', '.join(selected_columns)} FROM catalog.exercises e {display_name_join}"
+        )
 
     def open_ledger(self, ledger_id: str) -> "TrainingLedger":
         """Opens an explicit ledger handle for ``ledger_id`` (ADR 041, phase B).

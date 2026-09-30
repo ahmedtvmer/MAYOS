@@ -5,6 +5,7 @@ Extracted from DatabaseManager; behaviour is unchanged.
 
 import json
 from typing import Any
+from database.exercise_library.names import apply_curated_exercise_names
 from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION
 from database.migration_manager import EQUIPMENT_ACCESS_DDL
 from database.migration_manager import CHECKPOINT_REVIEWS_DDL
@@ -17,6 +18,34 @@ from database.migration_manager import set_ledger_schema_version
 
 
 class SchemaMixin:
+    def _ensure_exercise_name_schema(self) -> None:
+        with self._catalog_lock, self.catalog_conn:
+            self.catalog_conn.execute("""
+                CREATE TABLE IF NOT EXISTS exercise_display_names (
+                    exercise_id TEXT PRIMARY KEY,
+                    display_name TEXT NOT NULL,
+                    FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
+                )
+            """)
+            self.catalog_conn.execute("""
+                CREATE TABLE IF NOT EXISTS exercise_aliases (
+                    exercise_id TEXT NOT NULL,
+                    alias TEXT NOT NULL,
+                    normalized_alias TEXT NOT NULL,
+                    PRIMARY KEY(exercise_id, normalized_alias),
+                    FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
+                )
+            """)
+            self.catalog_conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_exercise_alias_normalized
+                ON exercise_aliases(normalized_alias)
+            """)
+            exercise_table_exists = self.catalog_conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'exercises'"
+            ).fetchone()
+            if exercise_table_exists is not None:
+                apply_curated_exercise_names(self.catalog_conn.cursor())
+
     def create_catalog_schema(self) -> None:
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
@@ -44,6 +73,7 @@ class SchemaMixin:
                 CREATE INDEX IF NOT EXISTS idx_secondary_muscles_ex ON exercise_secondary_muscles(exercise_id);
             """)
             self.catalog_conn.commit()
+        self._ensure_exercise_name_schema()
         # Outside the lock block: ensure_account_schema acquires _catalog_lock itself.
         self.ensure_account_schema()
 

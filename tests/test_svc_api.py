@@ -1,6 +1,5 @@
 """FastAPI route tests: isolated DB, bypassed JWT subject, mocked LLM-bound calls."""
 
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -24,14 +23,6 @@ def client(tmp_path: Path, monkeypatch):
 
     limiter._storage.reset()
     catalog_path = tmp_path / "catalog.db"
-    cat_conn = sqlite3.connect(catalog_path)
-    cat_conn.execute(
-        "CREATE TABLE exercises (id TEXT PRIMARY KEY, name TEXT, body_part TEXT, target_muscle TEXT,"
-        " equipment TEXT, image_path TEXT, gif_path TEXT, instructions TEXT);"
-    )
-    cat_conn.execute("CREATE TABLE exercise_secondary_muscles (exercise_id TEXT, muscle TEXT);")
-    cat_conn.commit()
-    cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path,
         ledgers_dir=tmp_path / "users",
@@ -151,19 +142,12 @@ def test_claim_flow_requires_owner_issued_code_and_is_single_use(client):
 
 
 def test_cross_user_isolation_with_real_jwt(tmp_path, monkeypatch):
-    import sqlite3
-
     monkeypatch.setenv("SKIP_LLM_LOAD", "true")
     monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
     catalog_path = tmp_path / "catalog.db"
-    cat_conn = sqlite3.connect(catalog_path)
-    cat_conn.execute("CREATE TABLE exercises (id TEXT PRIMARY KEY, name TEXT);")
-    cat_conn.execute("CREATE TABLE exercise_secondary_muscles (exercise_id TEXT, muscle TEXT);")
-    cat_conn.commit()
-    cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path, ledgers_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
     )
@@ -190,28 +174,21 @@ def test_cross_user_isolation_with_real_jwt(tmp_path, monkeypatch):
 
 def _real_jwt_app(tmp_path, monkeypatch):
     """App with real JWT verification (no subject override) on an isolated DB."""
-    import sqlite3
-
     monkeypatch.setenv("SKIP_LLM_LOAD", "true")
     monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
     catalog_path = tmp_path / "catalog.db"
-    cat_conn = sqlite3.connect(catalog_path)
-    cat_conn.execute(
-        "CREATE TABLE exercises (id TEXT PRIMARY KEY, name TEXT, body_part TEXT, target_muscle TEXT,"
-        " equipment TEXT, image_path TEXT, gif_path TEXT, instructions TEXT);"
-    )
-    cat_conn.execute("CREATE TABLE exercise_secondary_muscles (exercise_id TEXT, muscle TEXT);")
-    cat_conn.execute(
-        "INSERT INTO exercises (id, name) VALUES ('sq', 'Squat'), ('bp', 'Bench Press'), ('row', 'Row')"
-    )
-    cat_conn.commit()
-    cat_conn.close()
     db = DatabaseManager(
         catalog_path=catalog_path, ledgers_dir=tmp_path / "users", backups_dir=tmp_path / "backups", default_ledger_id="bootstrap"
     )
+    db.catalog_conn.executemany(
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+        "VALUES (?, ?, 'Test', 'Test', 'Test')",
+        [("sq", "Squat"), ("bp", "Bench Press"), ("row", "Row")],
+    )
+    db.catalog_conn.commit()
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
     return app, db

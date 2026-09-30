@@ -15,7 +15,7 @@ REVERSE_LAT_SLOT = "673"  # reverse grip machine lat pulldown (lats | back)
 CABLE_LAT_SLOT = "150"  # cable bar lateral pulldown (lats | back)
 MACHINE_LAT_VARIANT = "2736"  # machine reverse grip lateral pulldown (lats | back)
 PULL_THROUGH = "196"  # cable pull through (with rope)
-HIP_THRUST = "3236"  # resistance band hip thrusts on knees (female)
+HIP_THRUST = "3562"  # barbell glute bridge row, displayed as Barbell Hip Thrust
 PUSH_UP = "662"  # push-up
 DECLINE_PUSH_UP = "279"  # decline push-up
 STIFF_LEG_DEADLIFT = "432"  # dumbbell stiff leg deadlift
@@ -253,6 +253,80 @@ def test_catalog_name_resolution_tiers(sub_db):
     assert db.find_exercises_by_name("press chest machine")[0]["name"] == "machine chest press"
     # The hallucinated transcript target matches nothing.
     assert db.find_exercises_by_name(HALLUCINATED_TARGET) == []
+
+
+def test_chat_substitution_resolves_display_alias(sub_db):
+    sub_db.initialize_and_seed()
+    result = exercise_substitution_node(
+        _state("reverse grip machine lat pulldown", "frontal lat pulldown"),
+        {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
+    )
+
+    assert result["program_updated"] is True, result
+    active = sub_db.ledger.get_active_program()
+    assert active.days[0].exercises[1].exercise_id == "2330"
+    assert active.days[0].exercises[1].exercise_name == "Wide-Grip Lat Pulldown"
+    assert active.days[0].exercises[2].exercise_id == CABLE_LAT_SLOT
+    assert "wide-grip lat pulldown" in result["response_content"].lower()
+
+
+def test_chat_library_search_returns_alias_matches_with_display_names(sub_db):
+    sub_db.initialize_and_seed()
+    state = _state("", "")
+    state["intent_metadata"] = {"search_query": "frontal lat pulldown"}
+
+    result = assistant_graph.catalog_search_node(
+        state, {"configurable": {"ledger": sub_db.ledger, "store": sub_db}}
+    )
+
+    assert "Wide-Grip Lat Pulldown" in result["response_content"]
+    assert "Lat Pulldown" in result["response_content"]
+
+
+@pytest.mark.parametrize(
+    ("target", "target_id", "source_id"),
+    [
+        ("pendulum squat", "744", "3562"),
+        ("kelso shrug", "329", None),
+        ("bayesian curl", "190", "318"),
+    ],
+)
+def test_near_miss_substitution_refuses_semantic_sibling(
+    sub_db, monkeypatch, target, target_id, source_id
+):
+    sub_db.initialize_and_seed()
+    if source_id is None:
+        source_id = sub_db.catalog_conn.execute(
+            "SELECT id FROM exercises WHERE target_muscle = 'traps' AND id != ? LIMIT 1",
+            (target_id,),
+        ).fetchone()[0]
+    source_name = sub_db.get_exercise_library_entry(source_id)["name"]
+    _save_program_days(sub_db, [("Upper 1", [source_id, CHEST_SLOT, REVERSE_LAT_SLOT])])
+    semantic_neighbor = sub_db.get_exercise_library_entry(target_id)
+    semantic_neighbor["distance"] = 0.1
+    semantic_calls = []
+
+    def search_semantic_neighbors(*args, **kwargs):
+        semantic_calls.append((args, kwargs))
+        return [semantic_neighbor]
+
+    monkeypatch.setattr(
+        assistant_graph,
+        "EMBED_MODEL",
+        SimpleNamespace(embed_query=lambda _query: [], embed_documents=lambda _documents: []),
+    )
+    monkeypatch.setattr(sub_db, "search_similar_exercises", search_semantic_neighbors)
+
+    result = exercise_substitution_node(
+        _state(source_name, target),
+        {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
+    )
+
+    assert result["program_updated"] is False
+    assert semantic_calls == []
+    active = sub_db.ledger.get_active_program()
+    assert active.days[0].exercises[0].exercise_id == source_id
+    assert all(exercise.exercise_id != target_id for exercise in active.days[0].exercises)
 
 
 def test_hallucinated_target_refuses_instead_of_installing_sibling(sub_db):
