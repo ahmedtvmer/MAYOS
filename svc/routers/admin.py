@@ -5,7 +5,9 @@ import html
 import ipaddress
 import math
 import os
+import re
 import secrets
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated, Any
 from urllib.parse import urlencode
@@ -13,18 +15,29 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from service import admin_accounts as admin_accounts_service
 from service import admin_auth, audit_log, email_sender
 from svc.dependencies import get_db
 from svc.html import self_contained_html
 from svc.rate_limit import LOGIN_LIMIT, client_ip, limiter
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+AccountListQuery = admin_accounts_service.AccountListQuery
+
+
+@dataclass(frozen=True)
+class _AccountsPageView:
+    rows: list[dict[str, Any]]
+    total: int
+    csrf_token: str
+    query: AccountListQuery
+
 
 SESSION_COOKIE = "mayos_admin_session"
 LOGIN_CSRF_COOKIE = "mayos_admin_login_csrf"
 LOGIN_FAILURE_MESSAGE = "Invalid username, password, or verification code."
 LOGIN_CSRF_MESSAGE = "Please reload the login page and try again."
-_PAGE_CSS = """body{font-family:system-ui,sans-serif;margin:0;padding:1rem;background:#faf7f5;color:#201a17;line-height:1.5}main{max-width:42rem;margin:0 auto}h1{font-size:1.5rem;margin:.4rem 0 1rem}h2{font-size:1.15rem;margin-top:1.5rem}a{color:#7a3b1e}nav{display:flex;gap:1rem;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:0 0 1.5rem;padding-bottom:.8rem;border-bottom:1px solid #d8cec7}label{display:block;margin:.9rem 0 .25rem;font-weight:600}input,button{box-sizing:border-box;width:100%;font:inherit;padding:.7rem;border:1px solid #84776e;border-radius:6px}button{margin-top:1rem;background:#5d321f;color:#fff;font-weight:600;cursor:pointer}form{margin:1rem 0}.alert{background:#9b1c1c;color:#fff;padding:.8rem;border-radius:6px;font-weight:600}.note{background:#efe7e1;padding:.8rem;border-radius:6px}.audit-list{padding-left:1.4rem}.audit-list li{border-bottom:1px solid #d8cec7;padding:.8rem 0;overflow-wrap:anywhere}.audit-meta{font-size:.92rem;color:#514840}.filters{display:grid;grid-template-columns:1fr;gap:.2rem}@media(min-width:36rem){.filters{grid-template-columns:1fr 1fr}.filters button{grid-column:1/-1}}"""
+_PAGE_CSS = """body{font-family:system-ui,sans-serif;margin:0;padding:1rem;background:#faf7f5;color:#201a17;line-height:1.5}main{max-width:42rem;margin:0 auto}h1{font-size:1.5rem;margin:.4rem 0 1rem}h2{font-size:1.15rem;margin-top:1.5rem}a{color:#7a3b1e}nav{display:flex;gap:1rem;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:0 0 1.5rem;padding-bottom:.8rem;border-bottom:1px solid #d8cec7}label{display:block;margin:.9rem 0 .25rem;font-weight:600}input,button{box-sizing:border-box;width:100%;font:inherit;padding:.7rem;border:1px solid #84776e;border-radius:6px}input[type=checkbox]{width:auto}button{margin-top:1rem;background:#5d321f;color:#fff;font-weight:600;cursor:pointer}form{margin:1rem 0}.alert{background:#9b1c1c;color:#fff;padding:.8rem;border-radius:6px;font-weight:600}.note{background:#efe7e1;padding:.8rem;border-radius:6px}.audit-list{padding-left:1.4rem}.audit-list li{border-bottom:1px solid #d8cec7;padding:.8rem 0;overflow-wrap:anywhere}.audit-meta{font-size:.92rem;color:#514840}.filters{display:grid;grid-template-columns:1fr;gap:.2rem}@media(min-width:36rem){.filters{grid-template-columns:1fr 1fr}.filters button{grid-column:1/-1}}"""
 
 
 def not_found_response() -> HTMLResponse:
@@ -97,9 +110,93 @@ async def admin_home(request: Request):
         _admin_nav(session.csrf_token, security.login_alert_failed)
         + "<main><h1>Owner dashboard</h1>"
         + "<p class=\"note\">The owner dashboard is ready. Account tools will appear here.</p>"
+        + '<p><a href="/admin/accounts">Accounts</a></p>'
         + "<p><a href=\"/admin/audit\">Audit log</a></p></main>"
     )
     return _document("Owner dashboard", body)
+
+
+@router.get("/accounts", response_class=HTMLResponse, include_in_schema=False)
+async def admin_accounts_list(
+    request: Request,
+    db: Annotated[Any, Depends(get_db)],
+    query: Annotated[AccountListQuery, Query()],
+):
+    security = request.app.state.admin_security
+    session = security.get_session(request.cookies.get(SESSION_COOKIE))
+    if session is None:
+        return not_found_response()
+    rows, total = await asyncio.to_thread(
+        admin_accounts_service.list_account_rows,
+        db,
+        query,
+    )
+    body = _admin_nav(session.csrf_token, security.login_alert_failed)
+    body += _accounts_page(_AccountsPageView(rows, total, session.csrf_token, query))
+    return _document("Accounts", body)
+
+
+@router.post("/accounts/email", include_in_schema=False)
+async def admin_account_email_lookup(request: Request, db: Annotated[Any, Depends(get_db)]):
+    security = request.app.state.admin_security
+    session_token = request.cookies.get(SESSION_COOKIE)
+    if security.get_session(session_token) is None:
+        return not_found_response()
+    form = await request.form()
+    if not security.validate_session_csrf(session_token, _form_text(form, "csrf_token")):
+        return HTMLResponse("Forbidden", status_code=403)
+    return await _email_lookup_response(db, request, security, _form_text(form, "email"))
+
+
+@router.get("/accounts/{account_id}", response_class=HTMLResponse, include_in_schema=False)
+async def admin_account_detail(
+    request: Request,
+    account_id: str,
+    db: Annotated[Any, Depends(get_db)],
+):
+    security = request.app.state.admin_security
+    session = security.get_session(request.cookies.get(SESSION_COOKIE))
+    if session is None:
+        return not_found_response()
+    account = await asyncio.to_thread(_load_admin_account, db, account_id)
+    if account is None:
+        return not_found_response()
+    body = _admin_nav(session.csrf_token, security.login_alert_failed)
+    if account["deleted_at"] is not None:
+        body += _deleted_account_page(account)
+        return _document("Deleted account", body)
+    metadata = await asyncio.to_thread(admin_accounts_service.account_metadata, db, account)
+    body += _account_detail_page(account, metadata)
+    return _document(f"Account · {account['username']}", body)
+
+
+def _load_admin_account(db: Any, account_id: str) -> dict[str, Any] | None:
+    if re.fullmatch(r"[0-9a-f]{32}", account_id, re.IGNORECASE) is None:
+        return None
+    account = db.get_account(account_id)
+    if account is None or (account["deleted_at"] is None and not db.is_live_account(account)):
+        return None
+    return account
+
+
+async def _email_lookup_response(
+    db: Any,
+    request: Request,
+    security: admin_auth.AdminSecurity,
+    email: str,
+) -> RedirectResponse:
+    account = await asyncio.to_thread(admin_accounts_service.find_by_recovery_email, db, email)
+    await _write_admin_audit(
+        db,
+        audit_log.AuditEvent(
+            actor=_owner_actor(security),
+            action="account_lookup_by_email",
+            target_account_id=account["account_id"] if account else None,
+            source_ip=_source_ip(request),
+        ),
+    )
+    destination = f"/admin/accounts/{account['account_id']}" if account else "/admin/accounts?lookup=not_found"
+    return RedirectResponse(destination, status_code=303)
 
 
 def _audit_query(
@@ -130,6 +227,8 @@ async def admin_audit_viewer(
 async def admin_logout(request: Request, db: Annotated[Any, Depends(get_db)]):
     security = request.app.state.admin_security
     session_token = request.cookies.get(SESSION_COOKIE)
+    if security.get_session(session_token) is None:
+        return not_found_response()
     form = await request.form()
     if not security.validate_session_csrf(session_token, _form_text(form, "csrf_token")):
         return HTMLResponse("Forbidden", status_code=403)
@@ -204,7 +303,8 @@ def _document(title: str, body: str) -> HTMLResponse:
 
 def _admin_nav(csrf_token: str, alert_failed: bool) -> str:
     nav = (
-        '<nav><a href="/admin">Owner dashboard</a><a href="/admin/audit">Audit log</a>'
+        '<nav><a href="/admin">Owner dashboard</a><a href="/admin/accounts">Accounts</a>'
+        '<a href="/admin/audit">Audit log</a>'
         '<form method="post" action="/admin/logout">'
         f'<input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}">'
         '<button type="submit">Log out</button></form></nav>'
@@ -223,7 +323,7 @@ def _audit_page(entries: list[dict[str, Any]], total: int, query: audit_log.Audi
     rows = "".join(_audit_entry(entry) for entry in entries)
     listing = f'<ol class="audit-list">{rows}</ol>' if rows else "<p>No audit entries match.</p>"
     page_count = max(1, math.ceil(total / query.page_size))
-    pager = _pagination(query, page_count)
+    pager = _pagination("/admin/audit", query.page, page_count, _audit_filter_params(query))
     return (
         "<main><h1>Audit log</h1>"
         f"<p>{total} matching entries · Page {query.page} of {page_count}</p>"
@@ -243,6 +343,15 @@ def _audit_filters(query: audit_log.AuditQuery) -> str:
     )
 
 
+def _audit_filter_params(query: audit_log.AuditQuery) -> dict[str, str]:
+    params = {}
+    if query.action:
+        params["action"] = query.action
+    if query.account_id:
+        params["account_id"] = query.account_id
+    return params
+
+
 def _audit_entry(entry: dict[str, Any]) -> str:
     fields = (
         ("Time", entry["created_at"]),
@@ -260,16 +369,202 @@ def _audit_entry(entry: dict[str, Any]) -> str:
     return f'<li><div class="audit-meta">{details}</div></li>'
 
 
-def _pagination(query: audit_log.AuditQuery, page_count: int) -> str:
+def _accounts_page(view: _AccountsPageView) -> str:
+    query = view.query
+    page_count = max(1, math.ceil(view.total / admin_accounts_service.ACCOUNT_PAGE_SIZE))
+    items = _account_rows(view.rows, query.show_deleted)
+    empty = "No deleted accounts match." if query.show_deleted else "No accounts match."
+    listing = f'<ol class="audit-list">{items}</ol>' if items else f"<p>{empty}</p>"
+    summary = f"<p>{view.total} matching accounts · Page {query.page} of {page_count}</p>"
+    deleted_note = (
+        '<p class="note">The username, coach, onboarding, and inactivity filters do not apply to deleted accounts.</p>'
+        if query.show_deleted
+        else ""
+    )
+    return (
+        "<main><h1>Accounts</h1>"
+        + _account_filter_forms(query, view.csrf_token)
+        + deleted_note
+        + _account_lookup_notice(query.lookup)
+        + summary
+        + listing
+        + _pagination(
+            "/admin/accounts", query.page, page_count, _account_filter_params(query)
+        )
+        + "</main>"
+    )
+
+
+def _account_filter_forms(query: AccountListQuery, csrf_token: str) -> str:
+    return _username_filter_form(query) + _email_lookup_form(csrf_token)
+
+
+def _username_filter_form(query: AccountListQuery) -> str:
+    search_value = html.escape(query.q, quote=True)
+    deleted_checked = " checked" if query.show_deleted else ""
+    coach_checked = " checked" if query.coach else ""
+    onboarding_checked = " checked" if query.not_onboarded else ""
+    inactive_value = html.escape(str(query.inactive_days or ""), quote=True)
+    return (
+        '<form class="filters" method="get" action="/admin/accounts">'
+        '<label for="q">Username</label>'
+        f'<input id="q" name="q" value="{search_value}" maxlength="64">'
+        f'<label><input type="checkbox" name="coach" value="1"{coach_checked}> Coach</label>'
+        f'<label><input type="checkbox" name="not_onboarded" value="1"{onboarding_checked}> Not onboarded</label>'
+        '<label for="inactive_days">Inactive for at least N days</label>'
+        f'<input id="inactive_days" name="inactive_days" type="number" min="1" max="3650" value="{inactive_value}">'
+        f'<label><input type="checkbox" name="show_deleted" value="1"{deleted_checked}> Show deleted accounts</label>'
+        '<button type="submit">Search accounts</button></form>'
+    )
+
+
+def _email_lookup_form(csrf_token: str) -> str:
+    return (
+        '<form method="post" action="/admin/accounts/email">'
+        f'<input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}">'
+        '<label for="recovery_email">Find by recovery email</label>'
+        '<input id="recovery_email" name="email" type="email" autocomplete="off" required>'
+        '<button type="submit">Find account</button></form>'
+    )
+
+
+def _account_lookup_notice(lookup: str) -> str:
+    if lookup == "not_found":
+        return '<p class="note">No account found for that recovery email.</p>'
+    return ""
+
+
+def _account_rows(rows: list[dict[str, Any]], show_deleted: bool) -> str:
+    render_row = _deleted_account_row if show_deleted else _live_account_row
+    return "".join(render_row(account) for account in rows)
+
+
+def _live_account_row(account: dict[str, Any]) -> str:
+    account_id = html.escape(account["account_id"], quote=True)
+    username = html.escape(account["username"])
+    created = html.escape(account["created_at"])
+    last_seen = html.escape(account["last_seen_at"] or "Never")
+    return (
+        "<li>"
+        f'<p><a href="/admin/accounts/{account_id}">{username}</a></p>'
+        f"<p>Account id: {account_id}</p><p>Created: {created}</p>"
+        f"<p>Last active day: {last_seen}</p>"
+        f"<p>Capabilities: {html.escape(', '.join(_capability_labels(account)))}</p>"
+        "</li>"
+    )
+
+
+def _deleted_account_row(account: dict[str, Any]) -> str:
+    return (
+        "<li>"
+        f"<p>Account id: {html.escape(account['account_id'])}</p>"
+        f"<p>Username: {html.escape(account['username'])}</p>"
+        f"<p>Deleted at: {html.escape(str(account['deleted_at']))}</p>"
+        "</li>"
+    )
+
+
+def _deleted_account_page(account: dict[str, Any]) -> str:
+    return (
+        "<main><h1>Deleted account</h1>"
+        f"<p>Account id: {html.escape(account['account_id'])}</p>"
+        f"<p>Username: {html.escape(account['username'])}</p>"
+        f"<p>Deleted at: {html.escape(str(account['deleted_at']))}</p></main>"
+    )
+
+
+def _account_detail_page(account: dict[str, Any], metadata: dict[str, Any]) -> str:
+    return (
+        "<main><h1>Account</h1><dl>"
+        + _account_metadata_fields(account, metadata)
+        + "</dl><h2>Model usage</h2>"
+        + _usage_summary("This UTC month", metadata["usage_month"])
+        + _usage_summary("All time", metadata["usage_all_time"])
+        + "<h2>Limit hits this UTC month</h2><ul>"
+        + _limit_hit_summary(metadata["limit_hits_month"])
+        + "</ul></main>"
+    )
+
+
+def _account_metadata_fields(account: dict[str, Any], metadata: dict[str, Any]) -> str:
+    return (
+        _metadata_field("Username", account["username"])
+        + _metadata_field("Immutable id", account["account_id"])
+        + _metadata_field("Created", account["created_at"])
+        + _metadata_field("Last active day", account["last_seen_at"] or "Never")
+        + _metadata_field("Capabilities", ", ".join(_capability_labels(account)) or "None")
+        + _metadata_field("Plans", ", ".join(_plan_labels(metadata["plans"])) or "None")
+        + _metadata_field("Onboarded", "Yes" if metadata["onboarded"] else "No")
+        + _metadata_field("Active assignment", _assignment_summary(metadata["assignments"]))
+        + _metadata_field("Recovery email", metadata["recovery_email"])
+    )
+
+
+def _capability_labels(account: dict[str, Any]) -> list[str]:
+    labels = []
+    if account["is_player"]:
+        labels.append("Player")
+    if account["is_coach"]:
+        labels.append("Coach")
+    return labels
+
+
+def _plan_labels(plans: dict[str, Any]) -> list[str]:
+    labels = []
+    for capability, label in (("lifter", "Lifter"), ("coach", "Coach")):
+        plan = plans.get(capability)
+        if plan is not None:
+            labels.append(f"{label}: {plan['plan'].capitalize()}")
+    return labels
+
+
+def _assignment_summary(assignments: dict[str, int]) -> str:
+    summary = []
+    coach_count = assignments["as_coach"]
+    if coach_count:
+        noun = "player" if coach_count == 1 else "players"
+        summary.append(f"Coach of {coach_count} active {noun}")
+    if assignments["as_player"]:
+        summary.append("Has an active coach")
+    return "; ".join(summary) or "None"
+
+
+def _limit_hit_summary(counts: dict[str, int]) -> str:
+    return (
+        f"<li>Daily token cap hits: {counts['daily_tokens']}</li>"
+        f"<li>Rate limit hits: {counts['rate']}</li>"
+    )
+
+
+def _metadata_field(label: str, value: Any) -> str:
+    return f"<dt>{html.escape(label)}</dt><dd>{html.escape(str(value))}</dd>"
+
+
+def _usage_summary(label: str, usage: dict[str, int | float]) -> str:
+    calls = int(usage["calls"])
+    call_label = "call" if calls == 1 else "calls"
+    return (
+        f"<section><h3>{html.escape(label)}</h3><ul>"
+        f"<li>Calls: {calls} {call_label}</li>"
+        f"<li>Input tokens: {int(usage['input_tokens'])}</li>"
+        f"<li>Output tokens: {int(usage['output_tokens'])}</li>"
+        f"<li>Total tokens: {int(usage['tokens'])}</li>"
+        f"<li>Cost: ${float(usage['cost_usd']):.2f}</li>"
+        "</ul></section>"
+    )
+
+
+def _account_filter_params(query: AccountListQuery) -> dict[str, str | int]:
+    values = query.model_dump(exclude={"page", "lookup"}, exclude_defaults=True, exclude_none=True)
+    return {key: 1 if value is True else value for key, value in values.items()}
+
+
+def _pagination(path: str, page: int, page_count: int, params: dict[str, str | int]) -> str:
     links = []
-    for label, page_number in (("Previous", query.page - 1), ("Next", query.page + 1)):
+    for label, page_number in (("Previous", page - 1), ("Next", page + 1)):
         if 1 <= page_number <= page_count:
-            params = {"page": page_number}
-            if query.action:
-                params["action"] = query.action
-            if query.account_id:
-                params["account_id"] = query.account_id
-            links.append(f'<a href="/admin/audit?{urlencode(params)}">{label}</a>')
+            page_params = {**params, "page": page_number}
+            links.append(f'<a href="{path}?{urlencode(page_params)}">{label}</a>')
     return f'<p>{" · ".join(links)}</p>' if links else ""
 
 
@@ -290,6 +585,10 @@ async def _send_login_alert(request: Request, source_ip: str | None) -> bool:
 
 async def _write_login_audit(db: Any, actor: str, action: str, source_ip: str | None) -> None:
     event = audit_log.AuditEvent(actor=actor, action=action, source_ip=source_ip)
+    await _write_admin_audit(db, event)
+
+
+async def _write_admin_audit(db: Any, event: audit_log.AuditEvent) -> None:
     await asyncio.to_thread(audit_log.write_audit_entry, db, event)
 
 

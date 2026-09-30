@@ -63,6 +63,25 @@ def month_bounds(now: datetime) -> tuple[datetime, datetime]:
     return start, nxt
 
 
+def account_usage_totals(
+    db: Any,
+    account_id: str,
+    start_iso: str | None = None,
+    end_iso: str | None = None,
+) -> dict[str, int | float]:
+    """Totals model calls, tokens, and cost through the account-scoped SQL aggregate."""
+    totals = db._aggregate_model_usage_for_account(account_id, start_iso, end_iso)
+    input_tokens = int(totals["input_tokens"])
+    output_tokens = int(totals["output_tokens"])
+    return {
+        "calls": int(totals["calls"]),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "tokens": input_tokens + output_tokens,
+        "cost_usd": float(totals["cost_usd"]),
+    }
+
+
 def project_month_spend(actual_usd: float, now: datetime) -> float:
     """Projects a full-month spend from month-to-date ``actual_usd``.
 
@@ -305,6 +324,7 @@ __all__ = [
     "MIN_MONTH_ELAPSED_FRACTION",
     "ReadOnlyModelUsageCatalog",
     "UsageNotRecordedError",
+    "account_usage_totals",
     "evaluate_spend_alert",
     "month_bounds",
     "project_month_spend",

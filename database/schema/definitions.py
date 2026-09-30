@@ -279,7 +279,8 @@ class SchemaMixin:
                     is_coach INTEGER NOT NULL DEFAULT 0,
                     session_epoch INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL,
-                    deleted_at TEXT
+                    deleted_at TEXT,
+                    last_seen_at TEXT
                 );
                 -- Partial unique index: a username is unique among live accounts, so a
                 -- deleted username can later be registered under a new immutable id.
@@ -499,6 +500,18 @@ class SchemaMixin:
                     ON model_usage(account_id, created_at);
                 CREATE INDEX IF NOT EXISTS idx_model_usage_created ON model_usage(created_at);
 
+                -- Model-limit refusals are operational metadata, retained for 400 days.
+                CREATE TABLE IF NOT EXISTS model_limit_hits (
+                    id TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    kind TEXT NOT NULL CHECK (kind IN ('rate', 'daily_tokens')),
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_model_limit_hits_account_created
+                    ON model_limit_hits(account_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_model_limit_hits_created
+                    ON model_limit_hits(created_at);
+
                 -- Spend-alert state: one row per UTC calendar month. ``fired_at`` is the
                 -- claim time and ``notified_at`` is set only after the owner email is
                 -- delivered, so a failed/absent send leaves the row claimable for retry
@@ -568,6 +581,7 @@ class SchemaMixin:
                     ON linked_sign_ins(account_id);
             """)
             self._create_coach_alerts_schema()
+            self._ensure_accounts_last_seen_at()
             self._ensure_roster_attendance_timezone()
             self._ensure_roster_attendance_last_workout_on()
             self._ensure_roster_attendance_program_name()
@@ -729,6 +743,13 @@ class SchemaMixin:
             cursor.execute("ALTER TABLE model_spend_alerts ADD COLUMN fired_at TEXT")
         if columns and "notified_at" not in columns:
             cursor.execute("ALTER TABLE model_spend_alerts ADD COLUMN notified_at TEXT")
+
+    def _ensure_accounts_last_seen_at(self) -> None:
+        """Add the day-granularity activity marker to existing account catalogs (#208)."""
+        cursor = self.catalog_conn.cursor()
+        columns = self._table_columns(cursor, "accounts")
+        if columns and "last_seen_at" not in columns:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN last_seen_at TEXT")
 
     def _ensure_linked_sign_in_account_provider(self) -> None:
         """``UNIQUE(account_id, provider)``: an account holds one link per provider (#114).

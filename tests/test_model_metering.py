@@ -8,7 +8,7 @@ and local builders attach. The catalog ledger is a temporary SQLite file.
 import json
 import sqlite3
 import threading
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -380,8 +380,9 @@ def test_metering_failure_does_not_break_a_turn(api, monkeypatch):
 
 
 def test_streamed_request_limit_refuses_with_429(api, monkeypatch):
-    client, _db = api
+    client, db = api
     token = _register(client, "player1")
+    account_id = _account_id(db, "player1")
     monkeypatch.setattr(assistant_graph, "llm", _fake_model())
     monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "2")
     reset_model_limits()
@@ -391,6 +392,8 @@ def test_streamed_request_limit_refuses_with_429(api, monkeypatch):
     refused = _post_chat(client, token)
     assert refused.status_code == 429
     assert refused.json()["detail"]
+    month_start = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    assert db.count_model_limit_hits(account_id, month_start.isoformat())["rate"] == 1
 
 
 def test_non_streamed_path_shares_the_account_limit(api, monkeypatch):
@@ -437,8 +440,9 @@ def test_same_account_two_tokens_share_one_limit(api, monkeypatch):
 
 
 def test_daily_token_limit_refuses_the_next_turn(api, monkeypatch):
-    client, _db = api
+    client, db = api
     token = _register(client, "player1")
+    account_id = _account_id(db, "player1")
     monkeypatch.setattr(assistant_graph, "llm", _fake_model(input_tokens=100, output_tokens=50))
     monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "100")
     reset_model_limits()
@@ -447,6 +451,66 @@ def test_daily_token_limit_refuses_the_next_turn(api, monkeypatch):
     refused = _post_chat(client, token)
     assert refused.status_code == 429
     assert "daily" in refused.json()["detail"].lower()
+    month_start = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    assert db.count_model_limit_hits(account_id, month_start.isoformat())["daily_tokens"] == 1
+
+
+def test_limit_hit_recording_failure_keeps_the_refusal_as_429(api, monkeypatch):
+    client, db = api
+    token = _register(client, "player1")
+    monkeypatch.setattr(assistant_graph, "llm", _fake_model())
+    monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "1")
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "0")
+    reset_model_limits()
+    assert _post_chat(client, token).status_code == 200
+
+    def fail_record(*args, **kwargs):
+        raise OSError("catalog unavailable")
+
+    monkeypatch.setattr(db, "record_model_limit_hit", fail_record)
+    assert _post_chat(client, token).status_code == 429
+
+
+def test_model_limit_hits_are_counted_by_kind_and_pruned_after_400_days(api, monkeypatch):
+    _client, db = api
+    account_id = db.create_account("limitowner")
+    assert account_id
+    now = datetime.now(UTC)
+    old = now - timedelta(days=401)
+    db.record_model_limit_hit(account_id, "rate", created_at=old.isoformat())
+    db.record_model_limit_hit(account_id, "rate", created_at=(now - timedelta(days=2)).isoformat())
+    db.record_model_limit_hit(account_id, "daily_tokens", created_at=(now - timedelta(days=1)).isoformat())
+
+    monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "1")
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "0")
+    reset_model_limits()
+    admit_model_request(account_id, guard=False, db=db)
+    with pytest.raises(ModelLimitExceeded):
+        admit_model_request(account_id, guard=False, db=db)
+
+    assert db.count_model_limit_hits(account_id, "0001-01-01T00:00:00+00:00") == {
+        "rate": 2,
+        "daily_tokens": 1,
+    }
+
+
+def test_account_usage_totals_sums_only_the_selected_account_and_window(api):
+    _client, db = api
+    account_id = db.create_account("usageowner")
+    other_account_id = db.create_account("otherusage")
+    assert account_id and other_account_id
+    now = datetime.now(UTC)
+    first = now - timedelta(days=2)
+    second = now - timedelta(days=1)
+    db.record_model_usage(account_id, "player", "model-a", 10, 5, 0.25, False, created_at=first.isoformat())
+    db.record_model_usage(account_id, "player", "model-b", 20, 7, 0.50, False, created_at=second.isoformat())
+    db.record_model_usage(other_account_id, "player", "model-a", 100, 50, 5.0, False, created_at=second.isoformat())
+
+    totals = metering_service.account_usage_totals(db, account_id)
+    recent = metering_service.account_usage_totals(db, account_id, second.isoformat())
+
+    assert totals == {"calls": 2, "input_tokens": 30, "output_tokens": 12, "tokens": 42, "cost_usd": 0.75}
+    assert recent == {"calls": 1, "input_tokens": 20, "output_tokens": 7, "tokens": 27, "cost_usd": 0.5}
 
 
 def test_concurrent_admits_are_capped(api, monkeypatch):

@@ -22,8 +22,8 @@ import threading
 import time
 from collections import deque
 from contextvars import ContextVar, Token
-from datetime import UTC, datetime
-from typing import Any
+from datetime import UTC, datetime, timedelta
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +71,8 @@ def utc_day_start_iso(now: datetime | None = None) -> str:
 
 _lock = threading.Lock()
 _request_window: dict[str, deque[float]] = {}
+_limit_hit_prune_lock = threading.Lock()
+_limit_hit_pruned_day: str | None = None
 #: The account that already claimed a request slot in this context, so a step
 #: that calls the entry point more than once still counts as one request. Keyed
 #: by account id (not a bare flag) so a different account in the same context is
@@ -79,9 +81,12 @@ _admitted: ContextVar[str | None] = ContextVar("mayos_model_admitted", default=N
 
 
 def reset_model_limits() -> None:
-    """Clears the in-process request window and the current context's admit flag (tests)."""
+    """Clears in-process admission and retention state, plus the current context's admit flag."""
+    global _limit_hit_pruned_day
     with _lock:
         _request_window.clear()
+    with _limit_hit_prune_lock:
+        _limit_hit_pruned_day = None
     _admitted.set(None)
 
 
@@ -91,6 +96,31 @@ def _check_request_window(account_id: str, now: float) -> int:
     while window and now - window[0] >= _WINDOW_SECONDS:
         window.popleft()
     return len(window)
+
+
+def _record_limit_hit(db: Any, account_id: str, kind: Literal["rate", "daily_tokens"]) -> None:
+    """Best-effort refusal telemetry; a catalog outage must preserve the 429."""
+    try:
+        db.record_model_limit_hit(account_id, kind)
+    except Exception:
+        logger.exception("Failed to record %s model-limit hit for account %s", kind, account_id)
+        return
+    _prune_limit_hits_once_daily(db)
+
+
+def _prune_limit_hits_once_daily(db: Any) -> None:
+    """Claims one daily retention sweep, then prunes outside the admission lock."""
+    global _limit_hit_pruned_day
+    day = datetime.now(UTC).date().isoformat()
+    with _limit_hit_prune_lock:
+        if _limit_hit_pruned_day == day:
+            return
+        _limit_hit_pruned_day = day
+    cutoff = (datetime.now(UTC) - timedelta(days=400)).isoformat()
+    try:
+        db._prune_model_limit_hits(cutoff)
+    except Exception:
+        logger.exception("Failed to prune old model-limit hits")
 
 
 def release_admission(token: Token[str | None] | None) -> None:
@@ -129,16 +159,23 @@ def admit_model_request(
 
     request_limit = request_limit_per_minute()
     token_limit = daily_token_limit()
+    refusal: tuple[Literal["rate", "daily_tokens"], str] | None = None
     with _lock:
         now = time.monotonic()
         in_window = _check_request_window(account_id, now)
         if request_limit > 0 and in_window >= request_limit:
-            raise ModelLimitExceeded(REQUEST_LIMIT_DETAIL)
-        if token_limit > 0:
+            refusal = ("rate", REQUEST_LIMIT_DETAIL)
+        elif token_limit > 0:
             used = db.sum_model_tokens_for_account(account_id, utc_day_start_iso())
             if used >= token_limit:
-                raise ModelLimitExceeded(DAILY_TOKEN_LIMIT_DETAIL)
-        _request_window.setdefault(account_id, deque()).append(now)
+                refusal = ("daily_tokens", DAILY_TOKEN_LIMIT_DETAIL)
+        if refusal is None:
+            _request_window.setdefault(account_id, deque()).append(now)
+
+    if refusal is not None:
+        kind, detail = refusal
+        _record_limit_hit(db, account_id, kind)
+        raise ModelLimitExceeded(detail)
 
     if guard:
         return _admitted.set(account_id)

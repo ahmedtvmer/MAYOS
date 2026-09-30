@@ -6,6 +6,8 @@ import hmac
 import re
 import sqlite3
 import struct
+import threading
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import bcrypt
@@ -22,6 +24,7 @@ ADMIN_USERNAME = "owner"
 TOTP_SECRET = b"12345678901234567890"
 TOTP_SECRET_BASE32 = base64.b32encode(TOTP_SECRET).decode("ascii").rstrip("=")
 ADMIN_PASSWORD_HASH = bcrypt.hashpw(ADMIN_PASSWORD.encode(), bcrypt.gensalt()).decode()
+TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
 
 
 @pytest.fixture
@@ -29,6 +32,7 @@ def admin_api(tmp_path: Path, monkeypatch):
     limiter.reset()
     monkeypatch.setenv("SKIP_LLM_LOAD", "true")
     monkeypatch.setenv("TESTING", "1")
+    monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
     monkeypatch.setenv("FLY_APP_NAME", "admin-tests")
     monkeypatch.setenv("ADMIN_USERNAME", ADMIN_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", ADMIN_PASSWORD_HASH)
@@ -232,7 +236,9 @@ def test_admin_session_uses_secure_cookie_and_expires_after_idle_limit(admin_api
     cookie = response.headers["set-cookie"].lower()
     assert "httponly" in cookie and "secure" in cookie and "samesite=strict" in cookie
     assert "path=/admin" in cookie and "max-age=28800" in cookie
-    assert client.get("/admin").status_code == 200
+    home = client.get("/admin")
+    assert home.status_code == 200
+    assert 'href="/admin/accounts"' in home.text
     now[0] += 30 * 60 + 1
     assert client.get("/admin").status_code == 404
 
@@ -405,3 +411,386 @@ def test_credentials_script_outputs_credentials_accepted_by_admin_auth():
     from service.admin_auth import AdminLoginResult
 
     assert security.verify_login(attempt) is AdminLoginResult.SUCCESS
+
+
+def _register_account(client, db, username):
+    limiter.reset()
+    response = client.post(
+        "/auth/register",
+        json={"trainee_id": username, "password": "correct-horse-1"},
+    )
+    assert response.status_code == 201, response.text
+    account = db.get_active_account_by_username(username)
+    assert account is not None
+    return account, {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
+def _accounts_page(client, now, **params):
+    assert _login(client, now).status_code == 303
+    return client.get("/admin/accounts", params=params)
+
+
+def test_account_pages_are_404_before_admin_login(admin_api):
+    client, _, now, _ = admin_api
+    pages = [client.get("/admin/accounts"), client.get("/admin/accounts/invalid")]
+    assert [page.status_code for page in pages] == [404, 404]
+    assert pages[0].text == pages[1].text
+    lookup = client.post("/admin/accounts/email", data={"csrf_token": "invalid", "email": "person@example.com"})
+    logout = client.post("/admin/logout", data={"csrf_token": "invalid"})
+    assert lookup.status_code == logout.status_code == 404
+    assert _login(client, now[0]).status_code == 303
+    malformed = client.get("/admin/accounts/invalid")
+    unknown = client.get(f"/admin/accounts/{'f' * 32}")
+    assert malformed.status_code == unknown.status_code == 404
+    assert malformed.text == unknown.text
+
+
+def test_account_search_matches_live_usernames_case_insensitively(admin_api):
+    client, db, now, _ = admin_api
+    matching, _ = _register_account(client, db, "AliceStrong")
+    other, _ = _register_account(client, db, "bobstrong")
+
+    response = _accounts_page(client, now[0], q="iCeSt")
+
+    assert response.status_code == 200
+    assert matching["account_id"] in response.text
+    assert other["account_id"] not in response.text
+
+
+def test_recovery_email_lookup_is_exact_masked_and_audited_without_email(admin_api):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "emailowner")
+    db.set_account_email(account["account_id"], "alice@example.com")
+    page = _accounts_page(client, now[0])
+    csrf = _csrf(page.text)
+    bad_csrf = client.post(
+        "/admin/accounts/email",
+        data={"csrf_token": "wrong-token", "email": "alice@example.com"},
+    )
+    assert bad_csrf.status_code == 403
+
+    found = client.post(
+        "/admin/accounts/email",
+        data={"csrf_token": csrf, "email": " ALICE@EXAMPLE.COM "},
+        headers={"Fly-Client-IP": "203.0.113.9"},
+        follow_redirects=False,
+    )
+    assert found.status_code == 303
+    assert found.headers["location"] == f"/admin/accounts/{account['account_id']}"
+    detail = client.get(found.headers["location"])
+    assert "a***@example.com" in detail.text
+    assert "alice@example.com" not in detail.text
+
+    csrf = _csrf(detail.text)
+    partial = client.post(
+        "/admin/accounts/email",
+        data={"csrf_token": csrf, "email": "alice@exa"},
+        headers={"Fly-Client-IP": "203.0.113.9"},
+        follow_redirects=False,
+    )
+    assert partial.status_code == 303
+    assert partial.headers["location"] == "/admin/accounts?lookup=not_found"
+    no_match = client.get(partial.headers["location"])
+    assert "alice@exa" not in no_match.text
+    assert "No account found for that recovery email" in no_match.text
+
+    audit = client.get("/admin/audit?action=account_lookup_by_email")
+    assert audit.status_code == 200
+    assert audit.text.count("<strong>Action:</strong> account_lookup_by_email") == 2
+    assert f"Account id:</strong> {account['account_id']}" in audit.text
+    assert audit.text.count("<strong>Account id:</strong>") == 1
+    assert "203.0.113.9" in audit.text
+    assert "alice@example.com" not in audit.text
+
+
+def test_account_list_filters_coach_not_onboarded_inactive_and_deleted(admin_api):
+    client, db, now, _ = admin_api
+    coach, _ = _register_account(client, db, "coachfilter")
+    onboarded, _ = _register_account(client, db, "onboardedfilter")
+    never_seen, _ = _register_account(client, db, "neverseen")
+    never_active, _ = _register_account(client, db, "neveractive")
+    older, _ = _register_account(client, db, "inactiveold")
+    recent, _ = _register_account(client, db, "inactiverecent")
+    with db.open_ledger(onboarded["ledger_id"]) as ledger:
+        ledger.upsert_player_profile({"current_goal": "PROFILE_MUST_NOT_BE_SHOWN"})
+
+    today = datetime.now(UTC).date()
+    with db.catalog_locked() as conn:
+        conn.execute("UPDATE accounts SET is_coach = 1 WHERE account_id = ?", (coach["account_id"],))
+        conn.execute(
+            "UPDATE accounts SET last_seen_at = ? WHERE account_id = ?",
+            ((today - timedelta(days=10)).isoformat(), older["account_id"]),
+        )
+        conn.execute(
+            "UPDATE accounts SET last_seen_at = ? WHERE account_id = ?",
+            ((today - timedelta(days=2)).isoformat(), recent["account_id"]),
+        )
+        conn.execute(
+            "UPDATE accounts SET status = 'deleted', deleted_at = ? WHERE account_id = ?",
+            ("2026-09-01T12:00:00+00:00", never_seen["account_id"]),
+        )
+        conn.commit()
+
+    coach_page = _accounts_page(client, now[0], coach="1")
+    assert coach["account_id"] in coach_page.text
+    assert onboarded["account_id"] not in coach_page.text
+
+    not_onboarded_page = client.get("/admin/accounts", params={"not_onboarded": "1"})
+    assert not_onboarded_page.status_code == 200
+    assert coach["account_id"] in not_onboarded_page.text
+    assert onboarded["account_id"] not in not_onboarded_page.text
+    assert "PROFILE_MUST_NOT_BE_SHOWN" not in not_onboarded_page.text
+
+    inactive_page = client.get("/admin/accounts", params={"inactive_days": "7"})
+    assert older["account_id"] in inactive_page.text
+    assert recent["account_id"] not in inactive_page.text
+    assert never_seen["account_id"] not in inactive_page.text
+    assert never_active["account_id"] in inactive_page.text
+
+    deleted_page = client.get(
+        "/admin/accounts",
+        params={
+            "show_deleted": "1",
+            "q": "no-match",
+            "coach": "1",
+            "not_onboarded": "1",
+            "inactive_days": "7",
+        },
+    )
+    assert deleted_page.status_code == 200
+    assert "do not apply to deleted accounts" in deleted_page.text
+    assert never_seen["account_id"] in deleted_page.text
+    assert "neverseen" in deleted_page.text
+    assert "2026-09-01T12:00:00+00:00" in deleted_page.text
+    assert coach["account_id"] not in deleted_page.text
+    assert 'href="/admin/accounts/' not in deleted_page.text
+
+    deleted_detail = client.get(f"/admin/accounts/{never_seen['account_id']}")
+    assert deleted_detail.status_code == 200
+    assert "neverseen" in deleted_detail.text
+    assert "2026-09-01T12:00:00+00:00" in deleted_detail.text
+    for forbidden in ("Capabilities", "Recovery email", "Model usage", "Onboarded", "last_seen_at"):
+        assert forbidden not in deleted_detail.text
+
+
+def test_account_page_shows_metadata_usage_limits_and_never_training_content(admin_api):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "detailowner")
+    player, _ = _register_account(client, db, "assignedplayer")
+    other_coach, _ = _register_account(client, db, "othercoach")
+    db.set_account_email(account["account_id"], "a@sample.test")
+    db.set_plan(account["account_id"], "lifter", "pro")
+    with db.catalog_locked() as conn:
+        conn.execute("UPDATE accounts SET is_coach = 1 WHERE account_id = ?", (account["account_id"],))
+        conn.execute("UPDATE accounts SET is_coach = 1 WHERE account_id = ?", (other_coach["account_id"],))
+        conn.execute(
+            "INSERT INTO assignments (assignment_id, coach_account_id, player_account_id, status, started_at)"
+            " VALUES ('assign-coach', ?, ?, 'active', '2026-09-01T00:00:00+00:00')",
+            (account["account_id"], player["account_id"]),
+        )
+        conn.execute(
+            "INSERT INTO assignments (assignment_id, coach_account_id, player_account_id, status, started_at)"
+            " VALUES ('assign-player', ?, ?, 'active', '2026-09-01T00:00:00+00:00')",
+            (other_coach["account_id"], account["account_id"]),
+        )
+        conn.commit()
+
+    db.record_model_usage(
+        account["account_id"], "player", "model-x", 100, 20, 0.12, False,
+        created_at=(datetime.now(UTC) - timedelta(minutes=1)).isoformat(),
+    )
+    db.record_model_usage(
+        account["account_id"], "coach", "model-y", 50, 30, 0.08, True,
+        created_at="2024-01-01T00:00:00+00:00",
+    )
+    db.record_model_limit_hit(account["account_id"], "rate", created_at=datetime.now(UTC).isoformat())
+    db.record_model_limit_hit(account["account_id"], "daily_tokens", created_at=datetime.now(UTC).isoformat())
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        ledger.upsert_player_profile({"current_goal": "PRIVATE_PROFILE_SENTINEL"})
+        ledger.conn.execute(
+            "INSERT INTO workout_sessions (id, session_date, split_name, started_at, session_notes)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (
+                "private-session",
+                "2026-09-01",
+                "PRIVATE_WORKOUT_SENTINEL",
+                "2026-09-01T10:00:00+00:00",
+                "PRIVATE_NOTE_SENTINEL",
+            ),
+        )
+        ledger.conn.commit()
+
+    assert _login(client, now[0]).status_code == 303
+    response = client.get(f"/admin/accounts/{account['account_id']}")
+
+    assert response.status_code == 200
+    for expected in (
+        "detailowner",
+        account["account_id"],
+        "Capabilities",
+        "Player",
+        "Coach",
+        "Pro",
+        "Coach: Free",
+        "Onboarded",
+        "Yes",
+        "Coach of 1 active player",
+        "Has an active coach",
+        "*@sample.test",
+        "This UTC month",
+        "All time",
+        "2 calls",
+        "150",
+        "120",
+        "$0.12",
+        "$0.20",
+        "Daily token cap hits: 1",
+        "Rate limit hits: 1",
+    ):
+        assert expected in response.text
+    for forbidden in ("PRIVATE_PROFILE_SENTINEL", "PRIVATE_WORKOUT_SENTINEL", "PRIVATE_NOTE_SENTINEL"):
+        assert forbidden not in response.text
+    missing_email = client.get(f"/admin/accounts/{other_coach['account_id']}")
+    assert "Not set" in missing_email.text
+
+
+def test_accounts_pages_paginate_at_fifty_rows(admin_api):
+    client, db, now, _ = admin_api
+    accounts = [db.create_account(f"pageuser{number:02d}") for number in range(51)]
+    assert all(accounts)
+    first = _accounts_page(client, now[0])
+    second = client.get("/admin/accounts", params={"page": "2"})
+    assert first.status_code == second.status_code == 200
+    assert "Page 1 of 2" in first.text
+    assert "Page 2 of 2" in second.text
+    assert first.text.count("<li>") == 50
+    assert second.text.count("<li>") == 1
+
+
+def test_authenticated_activity_updates_last_seen_once_per_utc_day(admin_api, monkeypatch):
+    from svc import dependencies
+
+    client, db, _, _ = admin_api
+    account, headers = _register_account(client, db, "lastseen")
+    day = ["2026-09-30"]
+    db.catalog_conn.executescript(
+        "CREATE TABLE last_seen_writes (account_id TEXT, seen_day TEXT);"
+        "CREATE TRIGGER observe_last_seen_write AFTER UPDATE OF last_seen_at ON accounts "
+        "BEGIN INSERT INTO last_seen_writes VALUES (NEW.account_id, NEW.last_seen_at); END;"
+    )
+    monkeypatch.setattr(dependencies, "_utc_day", lambda: day[0])
+    assert client.get("/auth/me", headers=headers).status_code == 200
+    assert client.get("/auth/me", headers=headers).status_code == 200
+    writes = db.catalog_conn.execute("SELECT account_id, seen_day FROM last_seen_writes").fetchall()
+    assert writes == [(account["account_id"], "2026-09-30")]
+    assert db.get_account(account["account_id"])["last_seen_at"] == "2026-09-30"
+
+    day[0] = "2026-10-01"
+    assert client.get("/auth/me", headers=headers).status_code == 200
+    writes = db.catalog_conn.execute("SELECT account_id, seen_day FROM last_seen_writes ORDER BY rowid").fetchall()
+    assert writes == [
+        (account["account_id"], "2026-09-30"),
+        (account["account_id"], "2026-10-01"),
+    ]
+    assert set(dependencies._last_seen_retry_after_by_account) == {account["account_id"]}
+
+
+def test_last_seen_write_failure_does_not_fail_authenticated_request(admin_api, monkeypatch):
+    from svc import dependencies
+
+    client, db, _, _ = admin_api
+    _, headers = _register_account(client, db, "lastseenfailure")
+    monkeypatch.setattr(dependencies, "_utc_day", lambda: "2026-09-30")
+
+    attempts = []
+
+    def fail_write(*args):
+        attempts.append(args)
+        raise OSError("catalog unavailable")
+
+    monkeypatch.setattr(db, "set_account_last_seen_at", fail_write)
+    response = client.get("/auth/me", headers=headers)
+    repeated = client.get("/auth/me", headers=headers)
+    assert response.status_code == 200
+    assert repeated.status_code == 200
+    assert len(attempts) == 1
+
+
+def test_last_seen_catalog_write_does_not_hold_process_lock(monkeypatch):
+    from svc import dependencies
+
+    started = threading.Event()
+    release = threading.Event()
+    second_done = threading.Event()
+
+    class BlockingStore:
+        def set_account_last_seen_at(self, account_id, seen_day):
+            if account_id == "slow":
+                started.set()
+                assert release.wait(5)
+            else:
+                second_done.set()
+
+    monkeypatch.setattr(dependencies, "_utc_day", lambda: "2099-01-01")
+    store = BlockingStore()
+    first = threading.Thread(target=dependencies._record_last_seen, args=(store, "slow"))
+    second = threading.Thread(target=dependencies._record_last_seen, args=(store, "fast"))
+    first.start()
+    assert started.wait(2)
+    second.start()
+    second_finished_while_first_blocked = second_done.wait(1)
+    release.set()
+    first.join(5)
+    second.join(5)
+
+    assert second_finished_while_first_blocked
+    assert not first.is_alive() and not second.is_alive()
+
+
+def test_failed_last_seen_write_waits_for_retry_backoff(monkeypatch):
+    from svc import dependencies
+
+    now = [100.0]
+    attempts = []
+
+    class FailingStore:
+        def set_account_last_seen_at(self, account_id, seen_day):
+            attempts.append((account_id, seen_day))
+            raise OSError("catalog unavailable")
+
+    monkeypatch.setattr(dependencies, "_utc_day", lambda: "2099-01-02")
+    monkeypatch.setattr(dependencies, "_monotonic", lambda: now[0])
+    store = FailingStore()
+    dependencies._record_last_seen(store, "backoff")
+    dependencies._record_last_seen(store, "backoff")
+    assert len(attempts) == 1
+
+    now[0] += dependencies._LAST_SEEN_RETRY_BACKOFF_SECONDS
+    dependencies._record_last_seen(store, "backoff")
+    assert len(attempts) == 2
+
+
+def test_existing_catalog_gets_nullable_last_seen_column(tmp_path):
+    catalog_path = tmp_path / "legacy-catalog.db"
+    connection = sqlite3.connect(catalog_path)
+    connection.execute(
+        "CREATE TABLE accounts (account_id TEXT PRIMARY KEY, username TEXT NOT NULL, ledger_id TEXT NOT NULL,"
+        " status TEXT NOT NULL DEFAULT 'active', is_player INTEGER NOT NULL DEFAULT 1,"
+        " is_coach INTEGER NOT NULL DEFAULT 0, session_epoch INTEGER NOT NULL DEFAULT 1,"
+        " created_at TEXT NOT NULL, deleted_at TEXT)"
+    )
+    connection.execute(
+        "INSERT INTO accounts (account_id, username, ledger_id, created_at) VALUES (?, ?, ?, ?)",
+        ("legacy-account", "legacy", "legacy", "2026-01-01T00:00:00+00:00"),
+    )
+    connection.commit()
+    connection.close()
+    db = DatabaseManager(
+        catalog_path=catalog_path,
+        ledgers_dir=tmp_path / "users",
+        backups_dir=tmp_path / "backups",
+    )
+    try:
+        assert db.get_account("legacy-account")["last_seen_at"] is None
+    finally:
+        db.catalog_conn.close()

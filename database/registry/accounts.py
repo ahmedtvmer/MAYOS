@@ -15,7 +15,7 @@ class RegistryAccountsMixin:
         return (self.ledgers_dir / f"{sanitized}.db").is_file() if sanitized else False
 
     _ACCOUNT_COLUMNS = (
-        "account_id, username, ledger_id, status, is_player, is_coach, session_epoch, created_at, deleted_at"
+        "account_id, username, ledger_id, status, is_player, is_coach, session_epoch, created_at, deleted_at, last_seen_at"
     )
 
     @staticmethod
@@ -32,6 +32,7 @@ class RegistryAccountsMixin:
             "session_epoch": max(1, int(row[6] or 1)),
             "created_at": str(row[7]),
             "deleted_at": row[8],
+            "last_seen_at": row[9],
         }
 
     @staticmethod
@@ -126,6 +127,32 @@ class RegistryAccountsMixin:
             cursor = self.catalog_conn.cursor()
             cursor.execute(f"SELECT {self._ACCOUNT_COLUMNS} FROM accounts WHERE account_id = ?", (str(account_id),))
             return self._account_from_row(cursor.fetchone())
+
+    def list_accounts(self, *, include_deleted: bool = False) -> list[dict[str, Any]]:
+        """Lists live or deleted account rows newest first for owner metadata views."""
+        self.ensure_account_schema()
+        predicate = "deleted_at IS NOT NULL" if include_deleted else "status = 'active' AND deleted_at IS NULL"
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                f"SELECT {self._ACCOUNT_COLUMNS} FROM accounts WHERE {predicate}"
+                " ORDER BY created_at DESC, account_id DESC"
+            )
+            return [self._account_from_row(row) for row in cursor.fetchall()]
+
+    def set_account_last_seen_at(self, account_id: str, day: str) -> None:
+        """Stores one UTC activity day without reading the current value first."""
+        if not account_id:
+            return
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            self.catalog_conn.execute(
+                "UPDATE accounts SET last_seen_at = ?"
+                " WHERE account_id = ? AND status = 'active' AND deleted_at IS NULL"
+                " AND (last_seen_at IS NULL OR last_seen_at < ?)",
+                (str(day), str(account_id), str(day)),
+            )
+            self._commit_catalog()
 
     def get_active_account_by_username(self, username: str) -> dict[str, Any] | None:
         """Reads the live account owning ``username``.

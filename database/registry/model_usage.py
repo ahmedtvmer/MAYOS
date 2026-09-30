@@ -5,7 +5,7 @@ Extracted from DatabaseManager; behaviour is unchanged.
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 
 class RegistryModelUsageMixin:
@@ -81,6 +81,49 @@ class RegistryModelUsageMixin:
             row = cursor.fetchone()
         return float(row[0] or 0.0) if row else 0.0
 
+    def record_model_limit_hit(
+        self, account_id: str, kind: Literal["rate", "daily_tokens"], created_at: str | None = None
+    ) -> None:
+        """Records one refused account request; retention pruning runs separately."""
+        if kind not in {"rate", "daily_tokens"}:
+            raise ValueError("Unknown model-limit hit kind.")
+        timestamp = created_at or datetime.now(UTC).isoformat()
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            self.catalog_conn.execute(
+                "INSERT INTO model_limit_hits (id, account_id, kind, created_at) VALUES (?, ?, ?, ?)",
+                (uuid.uuid4().hex, str(account_id), kind, timestamp),
+            )
+            self._commit_catalog()
+
+    def _prune_model_limit_hits(self, cutoff_iso: str) -> int:
+        """Deletes limit-hit history older than the caller's retention cutoff."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.execute("DELETE FROM model_limit_hits WHERE created_at < ?", (cutoff_iso,))
+            deleted = cursor.rowcount
+            self._commit_catalog()
+        return int(deleted)
+
+    def count_model_limit_hits(self, account_id: str, since_iso: str) -> dict[str, int]:
+        """Returns rate and daily-token refusal counts since an ISO timestamp."""
+        if not account_id:
+            return {"rate": 0, "daily_tokens": 0}
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "SELECT kind, COUNT(*) FROM model_limit_hits"
+                " WHERE account_id = ? AND created_at >= ? GROUP BY kind",
+                (str(account_id), str(since_iso)),
+            )
+            rows = cursor.fetchall()
+        totals = {"rate": 0, "daily_tokens": 0}
+        for kind, count in rows:
+            if kind in totals:
+                totals[str(kind)] = int(count)
+        return totals
+
     def sum_model_tokens_for_account(self, account_id: str, start_iso: str, end_iso: str | None = None) -> int:
         """Total (input + output) tokens for one account in ``[start, end)``."""
         if not account_id:
@@ -102,6 +145,34 @@ class RegistryModelUsageMixin:
                 )
             row = cursor.fetchone()
         return int(row[0] or 0) if row else 0
+
+    def _aggregate_model_usage_for_account(
+        self, account_id: str, start_iso: str | None = None, end_iso: str | None = None
+    ) -> dict[str, int | float]:
+        """Aggregates calls, tokens, and cost for one account in SQL."""
+        if not account_id:
+            return {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
+        clauses = ["account_id = ?"]
+        params: list[str] = [str(account_id)]
+        if start_iso is not None:
+            clauses.append("created_at >= ?")
+            params.append(str(start_iso))
+        if end_iso is not None:
+            clauses.append("created_at < ?")
+            params.append(str(end_iso))
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            row = self.catalog_conn.execute(
+                "SELECT COUNT(*), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),"
+                " COALESCE(SUM(cost_usd), 0) FROM model_usage WHERE " + " AND ".join(clauses),
+                params,
+            ).fetchone()
+        return {
+            "calls": int(row[0] or 0),
+            "input_tokens": int(row[1] or 0),
+            "output_tokens": int(row[2] or 0),
+            "cost_usd": float(row[3] or 0.0),
+        }
 
     def summarize_model_usage(self, start_iso: str, end_iso: str | None = None) -> list[dict[str, Any]]:
         """Per account/role/model totals for the owner report, ordered for display."""

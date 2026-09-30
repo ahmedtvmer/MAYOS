@@ -408,6 +408,26 @@
     "remove_linked_sign_in": {
       "kind": "method",
       "signature": "(self, provider: str, subject: str) -> None"
+    },
+    "active_assignment_summary": {
+      "kind": "method",
+      "signature": "(self, account_id: str) -> dict[str, int]"
+    },
+    "count_model_limit_hits": {
+      "kind": "method",
+      "signature": "(self, account_id: str, since_iso: str) -> dict[str, int]"
+    },
+    "list_accounts": {
+      "kind": "method",
+      "signature": "(self, *, include_deleted: bool = False) -> list[dict[str, typing.Any]]"
+    },
+    "record_model_limit_hit": {
+      "kind": "method",
+      "signature": "(self, account_id: str, kind: Literal['rate', 'daily_tokens'], created_at: str | None = None) -> None"
+    },
+    "set_account_last_seen_at": {
+      "kind": "method",
+      "signature": "(self, account_id: str, day: str) -> None"
     }
   },
   "module_names": [

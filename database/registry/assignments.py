@@ -92,6 +92,21 @@ class RegistryAssignmentsMixin:
             )
             return int(cursor.fetchone()[0])
 
+    def active_assignment_summary(self, account_id: str) -> dict[str, int]:
+        """Counts active assignments for an account in both participant roles."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "SELECT"
+                " SUM(CASE WHEN coach_account_id = ? THEN 1 ELSE 0 END),"
+                " SUM(CASE WHEN player_account_id = ? THEN 1 ELSE 0 END)"
+                " FROM assignments WHERE status = 'active'",
+                (str(account_id), str(account_id)),
+            )
+            row = cursor.fetchone()
+        return {"as_coach": int(row[0] or 0), "as_player": int(row[1] or 0)}
+
     def get_active_assignment_for_player(self, player_account_id: str) -> dict[str, Any] | None:
         self.ensure_account_schema()
         with self._catalog_lock:

@@ -27,6 +27,8 @@ served over https from the address of this page.
   Free/Pro plan state of each capability.
 - A **session epoch** used to revoke every signed-in session at once (for
   example when you change your password or delete your account).
+- The **last day you used the app**, recorded as a UTC calendar day when you
+  make an authenticated request.
 - Your **recovery email**, if you have added one. It is required before you can
   use the app, it lives in the shared account store (not in your training
   data), and it is used only to send password-reset links and to answer
@@ -104,6 +106,13 @@ Every AI request is metered per account for cost control: the immutable account
 id, the player/coach role, the model, the purpose, input/output token counts
 and the estimated cost. These rows carry **no username and no contact details**
 and are kept after deletion for cost reconciliation.
+
+### Owner access
+
+The owner can see account metadata — your username, account dates, capabilities,
+plan, masked recovery email, and model usage — through an owner-only admin page.
+Recovery-email lookups and owner actions are audited. That page never shows your
+training content or chats.
 
 ### Service logs
 

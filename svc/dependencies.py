@@ -1,8 +1,11 @@
 """FastAPI dependencies: database handle, verified player identity, Google ID-token seam."""
 
+import logging
 import os
 import threading
+import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Annotated, Any, NamedTuple
 
 import jwt
@@ -12,6 +15,12 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from svc.auth import signup_ticket_subject, token_claims, token_version_of
 
 _bearer = HTTPBearer(auto_error=False)
+logger = logging.getLogger(__name__)
+_monotonic = time.monotonic
+_last_seen_lock = threading.Lock()
+_last_seen_cache_day: str | None = None
+_last_seen_retry_after_by_account: dict[str, float | None] = {}
+_LAST_SEEN_RETRY_BACKOFF_SECONDS = 10 * 60
 
 #: Config read **by name only** — never hard-coded, never logged (#113).
 GOOGLE_WEB_CLIENT_ID_ENV = "GOOGLE_WEB_CLIENT_ID"
@@ -129,6 +138,32 @@ def _reject_revoked_token(db: Any, player: VerifiedPlayer) -> None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked.")
 
 
+def _utc_day() -> str:
+    return datetime.now(UTC).date().isoformat()
+
+
+def _record_last_seen(db: Any, account_id: str) -> None:
+    """Writes activity once per account and UTC day without failing the request."""
+    day = _utc_day()
+    now = _monotonic()
+    global _last_seen_cache_day
+    with _last_seen_lock:
+        if _last_seen_cache_day != day:
+            _last_seen_retry_after_by_account.clear()
+            _last_seen_cache_day = day
+        retry_after = _last_seen_retry_after_by_account.get(account_id, -1.0)
+        if retry_after is None or now < retry_after:
+            return
+        _last_seen_retry_after_by_account[account_id] = None
+    try:
+        db.set_account_last_seen_at(account_id, day)
+    except Exception:
+        logger.exception("Failed to update last-seen day for account %s", account_id)
+        with _last_seen_lock:
+            if _last_seen_cache_day == day and _last_seen_retry_after_by_account.get(account_id) is None:
+                _last_seen_retry_after_by_account[account_id] = _monotonic() + _LAST_SEEN_RETRY_BACKOFF_SECONDS
+
+
 async def get_verified_player(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     db: Annotated[Any, Depends(get_db)],
@@ -140,6 +175,7 @@ async def get_verified_player(
     """
     player = _verified_player(_resolve_registry_identity(credentials, db))
     _reject_revoked_token(db, player)
+    _record_last_seen(db, player.account_id)
     return player
 
 
@@ -168,6 +204,7 @@ async def get_current_player(
     """
     player = _verified_player(_resolve_registry_identity(credentials, db))
     _reject_revoked_token(db, player)
+    _record_last_seen(db, player.account_id)
     return player
 
 
@@ -186,6 +223,7 @@ async def get_current_coach(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Coach capability required.")
     player = _verified_player(identity)
     _reject_revoked_token(db, player)
+    _record_last_seen(db, player.account_id)
     return player
 
 

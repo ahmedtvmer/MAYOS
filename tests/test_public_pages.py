@@ -208,6 +208,10 @@ def test_policy_source_file_exists_and_every_section_is_served(api):
         "at most 30 days",
         "/account/delete-request",
         "Imported history, only if you opt in",
+        "last day you used the app",
+        "owner-only admin page",
+        "Recovery-email lookups and owner actions are audited",
+        "never shows your training content or chats",
     ):
         assert phrase in flat, f"missing from {POLICY_PATH.name}: {phrase!r}"
 
