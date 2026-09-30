@@ -9,6 +9,7 @@ import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/providers.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
 
 import 'support/fake_mayos_api.dart';
 
@@ -145,6 +146,58 @@ void main() {
       isTrue,
     );
     expect(find.text('Upper 1'), findsOneWidget);
+  });
+
+  testWidgets('home opens an unopened Checkpoint review and clears its card',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..checkpointReviewRows = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'checkpoint': 10,
+          'period_start': '2026-01-01',
+          'period_end': '2026-09-30',
+          'rating': <Map<String, dynamic>>[
+            <String, dynamic>{'part': 'Consistency', 'label': 'Strong'},
+          ],
+          'opened': false,
+        },
+      ]
+      ..checkpointReviewDetails[10] = <String, dynamic>{
+        'checkpoint': 10,
+        'period_start': '2026-01-01',
+        'period_end': '2026-09-30',
+        'facts': <String, dynamic>{'workouts_in_period': 10},
+        'rating': <Map<String, dynamic>>[
+          <String, dynamic>{'part': 'Consistency', 'label': 'Strong'},
+        ],
+        'text': 'Checkpoint 10: 10 workouts since you started logging in MAYOS.',
+        'text_is_template': true,
+      };
+    await _pumpHome(tester, fake);
+
+    expect(find.byKey(const ValueKey<String>('dashboard.checkpoint-review')),
+        findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('dashboard.checkpoint-review')),
+    );
+    await _pumpUntilFound(tester, find.text('Your 10th workout'));
+    expect(find.text('Consistency'), findsOneWidget);
+    expect(find.text('Strong'), findsOneWidget);
+    expect(
+      find.text(
+        'Checkpoint 10: 10 workouts since you started logging in MAYOS.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.pageBack();
+    await _pumpUntilFound(
+      tester,
+      find.byType(MayosBottomNavigation),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey<String>('dashboard.checkpoint-review')),
+        findsNothing);
   });
 
   for (final ThemeMode mode in <ThemeMode>[ThemeMode.light, ThemeMode.dark]) {

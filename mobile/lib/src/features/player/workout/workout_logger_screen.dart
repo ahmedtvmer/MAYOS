@@ -159,6 +159,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   /// opens the summary and never recomputed after that (#124: a summary
   /// already shown is never rewritten after a sync).
   WorkoutSummary? _summary;
+  int? _checkpointNumber;
+  CheckpointReview? _checkpointReview;
   bool _saving = false;
   _SummaryAction _summaryAction = _SummaryAction.save;
   LoggerCellFocus? _focus;
@@ -873,13 +875,22 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       status: trainingStatus,
       drafts: drafts,
       now: now,
+    ).toList();
+    final int? checkpointNumber = projectedCheckpointNumber(
+      status: trainingStatus,
+      drafts: drafts,
     );
+    if (checkpointNumber != null) {
+      trainingLines.remove('Your ${checkpointOrdinal(checkpointNumber)} workout!');
+    }
     setState(() {
       _summary = WorkoutSummary.of(
         finished,
         now: now,
         trainingLines: trainingLines,
       );
+      _checkpointNumber = checkpointNumber;
+      _checkpointReview = null;
       _summaryStep = true;
       _error = null;
       _recordFocus = null;
@@ -1027,10 +1038,27 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
                 readiness: _readiness,
                 notes: _notes.text.trim(),
               );
+      final dynamic checkpointBody = result.response?['checkpoint'];
+      final int? reachedCheckpoint = checkpointBody is Map<String, dynamic>
+          ? (checkpointBody['number'] as num?)?.toInt()
+          : null;
+      CheckpointReview? checkpointReview;
+      if (result.status == WebWorkoutCommitStatus.committed &&
+          reachedCheckpoint != null) {
+        try {
+          checkpointReview = await ref
+              .read(apiClientProvider)
+              .checkpointReview(reachedCheckpoint);
+        } on ApiException {
+          checkpointReview = null;
+        }
+      }
       if (!mounted) {
         return;
       }
       setState(() {
+        _checkpointNumber = reachedCheckpoint ?? _checkpointNumber;
+        _checkpointReview = checkpointReview;
         switch (result.status) {
           case WebWorkoutCommitStatus.committed:
             _summaryAction = _SummaryAction.done;
@@ -1133,6 +1161,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     setState(() {
       _summaryStep = false;
       _summary = null;
+      _checkpointNumber = null;
+      _checkpointReview = null;
       _error = null;
       _summaryAction = _SummaryAction.save;
     });
@@ -1953,6 +1983,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
             _buildCelebration(summary.records),
             const SizedBox(height: MayosSpacing.md),
           ],
+          if (_checkpointNumber != null) ...<Widget>[
+            _checkpointCelebration(),
+            const SizedBox(height: MayosSpacing.md),
+          ],
           _buildStats(summary),
           if (summary.trainingLines.isNotEmpty) ...<Widget>[
             const SizedBox(height: MayosSpacing.md),
@@ -2029,6 +2063,35 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _checkpointCelebration() {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final int checkpoint = _checkpointNumber!;
+    final CheckpointReview? review = _checkpointReview;
+    return MayosCard(
+      key: const ValueKey<String>('logger.summary.checkpoint'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Your ${checkpointOrdinal(checkpoint)} workout!',
+            style: MayosTypography.exerciseTitle.copyWith(color: c.accent),
+          ),
+          const SizedBox(height: MayosSpacing.xs),
+          if (review == null) ...<Widget>[
+            const Text('Your review will appear on your dashboard'),
+          ] else ...<Widget>[
+            Text(review.text),
+            for (final CheckpointRatingPart part in review.rating)
+              Padding(
+                padding: const EdgeInsets.only(top: MayosSpacing.xs),
+                child: Text('${part.part}: ${part.label}'),
+              ),
+          ],
         ],
       ),
     );

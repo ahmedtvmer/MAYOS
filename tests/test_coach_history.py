@@ -30,6 +30,8 @@ DRILL_DOWN_SUFFIXES = (
     "/player/personal-records",
     "/player/exercises",
     "/player/exercises/sq/history",
+    "/player/checkpoint-reviews",
+    "/player/checkpoint-reviews/10",
 )
 
 
@@ -212,6 +214,69 @@ def test_coach_reads_all_drill_downs_for_active_assignment(api):
 
     for response in (summary, records, exercises, history):
         assert not _contains_chat_field(response.json()), response.text
+
+
+def test_coach_checkpoint_review_reads_do_not_open_player_review(api):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id = _assigned_player(api)
+    outcome = _seed_session(db, "p1", 100.0, 5, "2026-09-24T10:00:00+00:00")
+    db.switch_user("p1")
+    db.conn.execute(
+        "INSERT INTO checkpoint_reviews "
+        "(checkpoint, session_id, period_start, period_end, facts_json, rating_json, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            10,
+            outcome.body["session_id"],
+            "2026-09-01",
+            "2026-09-24",
+            '{"workouts_in_period": 10}',
+            '[{"part":"Consistency","label":"Strong"}]',
+            "2026-09-24T10:00:00+00:00",
+        ),
+    )
+    db.conn.commit()
+
+    base = f"/coach/assignments/{assignment_id}/player/checkpoint-reviews"
+    listed = client.get(base, headers=coach_headers)
+    detail = client.get(f"{base}/10", headers=coach_headers)
+    assert listed.status_code == detail.status_code == 200
+    assert listed.json()[0]["checkpoint"] == 10
+    assert detail.json()["text"] == "Checkpoint 10: 10 workouts since you started logging in MAYOS."
+    assert detail.json()["text_is_template"] is True
+    assert detail.json()["rating"] == [{"part": "Consistency", "label": "Strong"}]
+    db.switch_user("p1")
+    assert db.conn.execute(
+        "SELECT opened_at FROM checkpoint_reviews WHERE checkpoint = 10"
+    ).fetchone()[0] is None
+
+    player_read = client.get("/checkpoint-reviews/10", headers=player_headers)
+    assert player_read.status_code == 200, player_read.text
+    assert player_read.json()["text_is_template"] is True
+    assert client.get("/checkpoint-reviews", headers=player_headers).json()[0]["opened"] is True
+
+
+@pytest.mark.parametrize(
+    ("ended", "status", "detail"),
+    [(False, 404, "Checkpoint review not found."), (True, 403, coach_history_service.DENIED_ERROR)],
+)
+def test_coach_missing_checkpoint_review_distinguishes_assignment_denial(
+    api, ended, status, detail
+):
+    client, _, _ = api
+    coach_headers, player_headers, assignment_id = _assigned_player(api)
+    if ended:
+        ended_response = client.post(
+            "/assignments/me/end", headers=player_headers
+        )
+        assert ended_response.status_code == 200, ended_response.text
+
+    response = client.get(
+        f"/coach/assignments/{assignment_id}/player/checkpoint-reviews/25",
+        headers=coach_headers,
+    )
+    assert response.status_code == status, response.text
+    assert response.json()["detail"] == detail
 
 
 def test_roster_listing_is_catalog_only_and_shape_unchanged(api, monkeypatch):

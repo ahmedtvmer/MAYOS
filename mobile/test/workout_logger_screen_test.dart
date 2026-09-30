@@ -263,6 +263,7 @@ List<Override> _appOverrides({
   InMemoryWorkoutCacheStore? workoutCache,
   ThemeMode themeMode = ThemeMode.light,
   DateTime Function()? clock,
+  bool webDirectCommit = false,
 }) =>
     <Override>[
       tokenStoreProvider.overrideWithValue(tokens),
@@ -281,6 +282,8 @@ List<Override> _appOverrides({
           .overrideWithValue(Future<String?>.value('UTC')),
       // Workout time and the summary's duration read this clock (#159).
       if (clock != null) clockProvider.overrideWithValue(clock),
+      webDirectWorkoutCommitEnabledProvider
+          .overrideWithValue(webDirectCommit),
       apiClientProvider.overrideWith((ref) {
         final ApiClient client = ApiClient(
           tokens: ref.watch(tokenStoreProvider),
@@ -324,6 +327,7 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
   DateTime Function()? clock,
   ProgramDay day = _day,
   FakeMayosApi? fakeApi,
+  bool webDirectCommit = false,
 }) async {
   _usePhoneView(tester);
 
@@ -346,6 +350,7 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
       workoutCache: workoutCache,
       themeMode: themeMode,
       clock: clock,
+      webDirectCommit: webDirectCommit,
     ),
   );
   await _resumeFromPrompt(tester);
@@ -1470,6 +1475,64 @@ void main() {
     expect(find.text('Weekly streak: 3 weeks'), findsOneWidget);
     expect(find.text('This week: 3 of 3 done'), findsOneWidget);
     expect(find.text('Your 10th workout!'), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('logger.summary.checkpoint')),
+        findsOneWidget);
+    expect(find.text('Your review will appear on your dashboard'), findsOneWidget);
+  });
+
+  testWidgets('a committed Checkpoint shows its review and computed ratings',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..trainingStatusBody = <String, dynamic>{
+        'weekly_streak': 0,
+        'week_start': '2026-09-26',
+        'week_done': 0,
+        'week_target': 3,
+        'mayos_workouts': 9,
+        'next_checkpoint': 10,
+        'workouts_to_next': 1,
+      }
+      ..programVersion = 3
+      ..checkpointOnCommit = <String, dynamic>{'number': 10, 'reached': true}
+      ..checkpointReviewRows = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'checkpoint': 10,
+          'period_start': '2026-09-01',
+          'period_end': '2026-09-30',
+          'rating': <Map<String, dynamic>>[
+            <String, dynamic>{'part': 'Consistency', 'label': 'Strong'},
+          ],
+          'opened': false,
+        },
+      ]
+      ..checkpointReviewDetails[10] = <String, dynamic>{
+        'checkpoint': 10,
+        'period_start': '2026-09-01',
+        'period_end': '2026-09-30',
+        'facts': <String, dynamic>{'workouts_in_period': 10},
+        'rating': <Map<String, dynamic>>[
+          <String, dynamic>{'part': 'Consistency', 'label': 'Strong'},
+        ],
+        'text': 'Checkpoint 10: 10 workouts since you started logging in MAYOS.',
+        'text_is_template': true,
+      };
+    await _openLogger(
+      tester,
+      fakeApi: fake,
+      webDirectCommit: true,
+      clock: () => DateTime(2026, 9, 30, 12),
+    );
+
+    await _typeCell(tester, 0, 0, 'kg', '105');
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    await _finishAndOpenSummary(tester);
+    expect(find.text('Your review will appear on your dashboard'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey<String>('logger.save')));
+    await _pumpUntilFound(tester, find.text('Consistency: Strong'));
+
+    expect(find.textContaining('Checkpoint 10:'), findsOneWidget);
+    expect(find.text('Consistency: Strong'), findsOneWidget);
   });
 
   testWidgets('a stale cached week hides streak lines but keeps Checkpoint progress',
@@ -1503,6 +1566,7 @@ void main() {
     expect(find.textContaining('Weekly streak:'), findsNothing);
     expect(find.textContaining('This week:'), findsNothing);
     expect(find.text('Your 10th workout!'), findsOneWidget);
+    expect(find.text('Your review will appear on your dashboard'), findsOneWidget);
   });
 
   testWidgets('records and workout summary fit phone and desktop columns', (

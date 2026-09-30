@@ -35,6 +35,9 @@ __all__ = [
     "CoachAssignmentsOut",
     "CoachCapabilityDisableOut",
     "CoachCheckInCreateOut",
+    "CheckpointRatingPartOut",
+    "CheckpointReviewListItemOut",
+    "CheckpointReviewOut",
     "CoachCheckInListOut",
     "CoachCrossRosterProgramRequestListOut",
     "CoachCrossRosterProgramRequestOut",
@@ -590,6 +593,29 @@ class CoachPersonalRecordOut(BaseModel):
     prev_value: float | None = None
     achieved_at: str
     session_id: str | None = None
+
+
+class CheckpointRatingPartOut(BaseModel):
+    part: str
+    label: str
+
+
+class CheckpointReviewListItemOut(BaseModel):
+    checkpoint: int
+    period_start: str
+    period_end: str
+    rating: list[CheckpointRatingPartOut]
+    opened: bool
+
+
+class CheckpointReviewOut(BaseModel):
+    checkpoint: int
+    period_start: str
+    period_end: str
+    facts: dict[str, Any]
+    rating: list[CheckpointRatingPartOut]
+    text: str
+    text_is_template: bool
 
 
 class CoachExerciseHistoryPointOut(BaseModel):

@@ -140,6 +140,9 @@ class FakeMayosApi {
   // Home empty states can be captured and tested.
   bool volumeEmpty = false;
   bool recordsEmpty = false;
+  List<Map<String, dynamic>> checkpointReviewRows = <Map<String, dynamic>>[];
+  final Map<int, Map<String, dynamic>> checkpointReviewDetails =
+      <int, Map<String, dynamic>>{};
   // Progress (#48). `GET /dashboard/exercises` lists the exercises the player
   // has logged; `dashboardExerciseHistories` supplies each one's progression
   // points; `volumeDaysRequests` records every `days` value the client asked
@@ -187,6 +190,7 @@ class FakeMayosApi {
   int commitRequests = 0;
   bool commitFails = false;
   bool commitResponseLost = false;
+  Map<String, dynamic>? checkpointOnCommit;
   int? commitRefusalStatusCode;
   String commitRefusalMessage = 'The workout could not be recorded.';
   String? commitRefusalErrorCode;
@@ -288,6 +292,9 @@ class FakeMayosApi {
     }
     if (path == '/dashboard/training-status') {
       return _trainingStatus(request);
+    }
+    if (path.startsWith('/checkpoint-reviews')) {
+      return _checkpointReview(request);
     }
     if (path == '/chat/history') {
       return _chatHistoryResponse(request);
@@ -1087,6 +1094,18 @@ class FakeMayosApi {
           403, <String, dynamic>{'detail': 'No active assignment.'});
     }
     final String path = request.path;
+    if (path.endsWith('/player/checkpoint-reviews')) {
+      return FakeResponse(
+          200, List<Map<String, dynamic>>.from(checkpointReviewRows));
+    }
+    if (path.contains('/player/checkpoint-reviews/')) {
+      final int? checkpoint = int.tryParse(path.split('/').last);
+      final Map<String, dynamic>? review =
+          checkpoint == null ? null : checkpointReviewDetails[checkpoint];
+      return review == null
+          ? const FakeResponse(404, <String, dynamic>{'detail': 'Not found.'})
+          : FakeResponse(200, review);
+    }
     if (path.endsWith('/player/summary')) {
       return FakeResponse(200, coachPlayerSummary);
     }
@@ -3006,6 +3025,7 @@ class FakeMayosApi {
       'active_program_version_at_sync': active,
       'is_historical_program': requested > 0 && requested < active,
       if (trainingStatusBody != null) 'training_status': trainingStatusBody,
+      if (checkpointOnCommit != null) 'checkpoint': checkpointOnCommit,
     };
   }
 
@@ -3133,6 +3153,27 @@ class FakeMayosApi {
     return FakeResponse(200, result);
   }
 
+  FakeResponse _checkpointReview(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (request.path == '/checkpoint-reviews') {
+      return FakeResponse(
+          200, List<Map<String, dynamic>>.from(checkpointReviewRows));
+    }
+    final int? checkpoint = int.tryParse(request.path.split('/').last);
+    final Map<String, dynamic>? review =
+        checkpoint == null ? null : checkpointReviewDetails[checkpoint];
+    if (review == null) {
+      return const FakeResponse(404, <String, dynamic>{'detail': 'Not found.'});
+    }
+    for (final Map<String, dynamic> row in checkpointReviewRows) {
+      if (row['checkpoint'] == checkpoint) row['opened'] = true;
+    }
+    return FakeResponse(200, review);
+  }
+
   FakeResponse _volume(FakeRequest request) {
     if (!_authorized(request)) {
       return const FakeResponse(
@@ -3215,6 +3256,8 @@ class FakeMayosApi {
       noActiveProgram = false;
       volumeEmpty = false;
       recordsEmpty = false;
+      checkpointReviewRows = <Map<String, dynamic>>[];
+      checkpointReviewDetails.clear();
       loggedExercises = _defaultLoggedExercises();
       loggedExercisesFails = false;
       dashboardExerciseHistories = _defaultDashboardHistories();
@@ -3249,6 +3292,7 @@ class FakeMayosApi {
       commitRequests = 0;
       commitFails = false;
       commitResponseLost = false;
+      checkpointOnCommit = null;
       commitRefusalStatusCode = null;
       commitRefusalMessage = 'The workout could not be recorded.';
       commitRefusalErrorCode = null;

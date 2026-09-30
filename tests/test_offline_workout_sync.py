@@ -11,6 +11,7 @@ newer than the active one or absent from the ledger is refused with 409.
 """
 
 import copy
+import json
 import sqlite3
 import threading
 from datetime import UTC, datetime, timedelta
@@ -1274,3 +1275,179 @@ def test_catalog_exercise_search_requires_authentication(api):
 
     resp = client.get("/workouts/exercises", params={"query": "squat"})
     assert resp.status_code == 401, resp.text
+
+
+@pytest.mark.parametrize("legacy", [False, True], ids=["offline-sync", "online"])
+def test_checkpoint_review_is_created_once_when_commit_reaches_ten(api, legacy):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    _seed_status_workouts(
+        db, "p1", ["2026-09-17"] * 9
+    )
+    payload = _sync_body(
+        client_session_id="22111111-1111-4111-8111-111111111111",
+        version=version,
+    )
+    if legacy:
+        for field in (
+            "client_session_id",
+            "performed_date",
+            "performed_timezone",
+            "program_version",
+            "captured_at",
+        ):
+            payload.pop(field)
+
+    first = client.post("/workouts/sessions", headers=headers, json=payload)
+    assert first.status_code == 201, first.text
+    assert first.json()["checkpoint"] == {"number": 10, "reached": True}
+
+    retry = client.post("/workouts/sessions", headers=headers, json=payload)
+    assert retry.status_code == (201 if legacy else 200), retry.text
+    assert retry.json().get("checkpoint") == {"number": 10, "reached": True} if not legacy else "checkpoint" not in retry.json()
+    db.switch_user("p1")
+    assert db.conn.execute("SELECT COUNT(*) FROM checkpoint_reviews").fetchone()[0] == 1
+    assert db.conn.execute("SELECT checkpoint FROM checkpoint_reviews").fetchone()[0] == 10
+    review = client.get("/checkpoint-reviews/10", headers=headers)
+    assert review.status_code == 200, review.text
+    assert review.json()["text"] == (
+        "Checkpoint 10: 10 workouts since you started logging in MAYOS."
+    )
+    assert review.json()["text_is_template"] is True
+    assert client.get("/checkpoint-reviews", headers=headers).json()[0]["opened"] is True
+
+
+def test_checkpoint_commit_only_reports_a_new_review_insert(api):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    _seed_status_workouts(db, "p1", ["2026-09-26"] * 9)
+    first = client.post(
+        "/workouts/sessions",
+        headers=headers,
+        json=_sync_body(
+            client_session_id="22133333-3333-4333-8333-333333333333",
+            version=version,
+        ),
+    )
+    assert first.status_code == 201, first.text
+    assert first.json()["checkpoint"] == {"number": 10, "reached": True}
+
+    db.switch_user("p1")
+    db.conn.execute("DELETE FROM workout_sessions WHERE id = 'status-p1-0'")
+    db.conn.commit()
+    second = client.post(
+        "/workouts/sessions",
+        headers=headers,
+        json=_sync_body(
+            client_session_id="22144444-4444-4444-8444-444444444444",
+            version=version,
+        ),
+    )
+    assert second.status_code == 201, second.text
+    assert second.json()["training_status"]["mayos_workouts"] == 10
+    assert "checkpoint" not in second.json()
+    db.switch_user("p1")
+    reviews = db.conn.execute(
+        "SELECT checkpoint, session_id FROM checkpoint_reviews"
+    ).fetchall()
+    assert [tuple(row) for row in reviews] == [(10, first.json()["session_id"])]
+
+
+def test_backdated_offline_workout_sets_period_date_bounds(api):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    _seed_status_workouts(db, "p1", ["2026-09-26"] * 9)
+    response = client.post(
+        "/workouts/sessions",
+        headers=headers,
+        json=_sync_body(
+            client_session_id="22155555-5555-4555-8555-555555555555",
+            version=version,
+            performed_date="2026-09-17",
+            captured_at="2026-09-17T11:30:00+00:00",
+        ),
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["checkpoint"] == {"number": 10, "reached": True}
+
+    db.switch_user("p1")
+    review = db.conn.execute(
+        "SELECT period_start, period_end, facts_json FROM checkpoint_reviews"
+    ).fetchone()
+    facts = json.loads(review["facts_json"])
+    assert (review["period_start"], review["period_end"]) == (
+        "2026-09-17",
+        "2026-09-26",
+    )
+    assert (facts["weeks_met"], facts["weeks_counted"]) == (1, 2)
+
+
+def test_imported_and_previously_reached_workouts_do_not_backfill_reviews(api):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    _seed_status_workouts(db, "p1", ["2026-09-17"] * 12)
+    assert client.get("/checkpoint-reviews", headers=headers).json() == []
+    next_workout = client.post(
+        "/workouts/sessions", headers=headers, json=_sync_body(version=version)
+    )
+    assert next_workout.status_code == 201, next_workout.text
+    assert next_workout.json()["training_status"]["mayos_workouts"] == 13
+    assert "checkpoint" not in next_workout.json()
+    db.switch_user("p1")
+    assert db.conn.execute("SELECT COUNT(*) FROM checkpoint_reviews").fetchone()[0] == 0
+
+
+def test_checkpoint_review_list_is_newest_first(api):
+    client, db = api
+    headers, _ = _prepare_player(client, db)
+    _seed_status_workouts(db, "p1", ["2026-09-17"] * 25)
+    for checkpoint in (10, 25):
+        db.conn.execute(
+            "INSERT INTO checkpoint_reviews "
+            "(checkpoint, session_id, period_start, period_end, facts_json, rating_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                checkpoint,
+                f"status-p1-{checkpoint - 1}",
+                "2026-09-17",
+                "2026-09-17",
+                "{}",
+                '[{"part":"Consistency","label":"Strong"}]',
+                "2026-09-17T12:00:00+00:00",
+            ),
+        )
+    db.conn.commit()
+
+    response = client.get("/checkpoint-reviews", headers=headers)
+    assert response.status_code == 200, response.text
+    assert [review["checkpoint"] for review in response.json()] == [25, 10]
+
+
+def test_imported_count_is_excluded_when_a_later_commit_reaches_checkpoint(api):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    account_id = db.get_active_account_by_username("p1")["account_id"]
+    db.catalog_conn.execute(
+        "INSERT INTO account_imports"
+        " (import_id, account_id, source_fingerprint, source_name, counts_json, opt_in_reference, imported_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("import-p1", account_id, "fingerprint", "snapshot.db", '{"workout_sessions": 9}', "test", "2026-01-01"),
+    )
+    db.catalog_conn.commit()
+    _seed_status_workouts(db, "p1", ["2026-09-17"] * 18)
+    response = client.post(
+        "/workouts/sessions",
+        headers=headers,
+        json=_sync_body(
+            client_session_id="22122222-2222-4222-8222-222222222222",
+            version=version,
+        ),
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["training_status"]["mayos_workouts"] == 10
+    assert response.json()["checkpoint"] == {"number": 10, "reached": True}
+    db.switch_user("p1")
+    review = db.conn.execute(
+        "SELECT checkpoint, period_start, period_end FROM checkpoint_reviews"
+    ).fetchone()
+    assert tuple(review) == (10, "2026-09-17", "2026-09-26")

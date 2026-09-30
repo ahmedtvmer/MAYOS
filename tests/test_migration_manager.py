@@ -1103,6 +1103,48 @@ def test_v13_to_v14_adds_session_cardio(temp_db_env):
         migrated.catalog_conn.close()
 
 
+def test_v14_to_v15_adds_checkpoint_reviews_without_backfill(temp_db_env):
+    db, ledgers_dir, _ = temp_db_env
+    legacy_path = ledgers_dir / "v14lifter.db"
+    conn = sqlite3.connect(legacy_path)
+    conn.executescript(
+        """
+        CREATE TABLE user_profile (id INTEGER PRIMARY KEY, gender TEXT, updated_at TEXT NOT NULL);
+        INSERT INTO user_profile VALUES (1, 'male', '2026-01-01T00:00:00+00:00');
+        CREATE TABLE workout_sessions (
+            id TEXT PRIMARY KEY, session_date TEXT NOT NULL, split_name TEXT NOT NULL,
+            started_at TEXT NOT NULL
+        );
+        INSERT INTO workout_sessions VALUES (
+            'session-1', '2026-01-01', 'Upper', '2026-01-01T10:00:00+00:00'
+        );
+        """
+    )
+    conn.execute("PRAGMA user_version = 14")
+    conn.commit()
+    conn.close()
+
+    migrated = sqlite3.connect(legacy_path)
+    migrated.row_factory = sqlite3.Row
+    migrated.execute("PRAGMA foreign_keys = ON")
+    try:
+        apply_lazy_migrations(
+            migrated, "v14lifter", ledgers_dir, db.backups_dir
+        )
+        assert get_ledger_schema_version(migrated) == CURRENT_LEDGER_SCHEMA_VERSION
+        assert migrated.execute("SELECT COUNT(*) FROM checkpoint_reviews").fetchone()[0] == 0
+        migrated.execute(
+            "INSERT INTO checkpoint_reviews "
+            "(checkpoint, session_id, period_start, period_end, facts_json, rating_json, created_at) "
+            "VALUES (10, 'session-1', '2026-01-01', '2026-01-01', '{}', '[]', '2026-01-01')"
+        )
+        migrated.execute("DELETE FROM workout_sessions WHERE id = 'session-1'")
+        migrated.commit()
+        assert migrated.execute("SELECT COUNT(*) FROM checkpoint_reviews").fetchone()[0] == 0
+    finally:
+        migrated.close()
+
+
 def test_onboarding_state_roundtrip_and_clear(temp_db_env):
     db, _, _ = temp_db_env
     assert db.ledger.load_onboarding_state() is None

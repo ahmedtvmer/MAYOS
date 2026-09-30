@@ -62,6 +62,17 @@ def next_checkpoint_for(mayos_workouts: int) -> int:
     return (count // 100 + 1) * 100
 
 
+def is_checkpoint(number: int) -> bool:
+    return number in CHECKPOINTS or (number > 100 and number % 100 == 0)
+
+
+def previous_checkpoint(number: int) -> int | None:
+    previous = [checkpoint for checkpoint in CHECKPOINTS if checkpoint < number]
+    if number > 100:
+        previous.append(number - 100)
+    return max(previous, default=None)
+
+
 def _as_date(value: Any) -> date:
     if isinstance(value, datetime):
         return value.date()
@@ -71,12 +82,23 @@ def _as_date(value: Any) -> date:
 
 
 def _week_target(week_start: date, facts: TrainingStatusFacts) -> int:
-    if not facts.versions:
-        return max(0, int(facts.weekly_frequency))
+    return weekly_target_for(
+        week_start, facts.versions, facts.pauses, facts.weekly_frequency
+    )
+
+
+def weekly_target_for(
+    week_start: date,
+    versions: list[dict[str, Any]],
+    pauses: list[dict[str, Any]],
+    weekly_frequency: int,
+) -> int:
+    if not versions:
+        return max(0, int(weekly_frequency))
     target = 0
     for offset in range(7):
         day = week_start + timedelta(days=offset)
-        if is_expected_day(facts.versions, facts.pauses, day):
+        if is_expected_day(versions, pauses, day):
             target += 1
     return target
 

@@ -96,6 +96,8 @@ class ApiClient {
       'The service returned invalid alert data.';
   static const String _invalidCheckIns =
       'The service returned invalid check-in data.';
+  static const String _invalidCheckpointReview =
+      'The service returned invalid checkpoint review data.';
   static const String _invalidProgram =
       'The service returned invalid program data.';
   static const String _invalidNotices =
@@ -481,6 +483,34 @@ class ApiClient {
     );
     return _parseBodyList(
         response.data, PersonalRecord.fromJson, _invalidCoachHistory);
+  }
+
+  Future<List<CheckpointReviewListItem>> coachCheckpointReviews(
+      String assignmentId) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/coach/assignments/$assignmentId/player/checkpoint-reviews',
+      ),
+    );
+    return _parseBodyList(
+      response.data,
+      CheckpointReviewListItem.fromJson,
+      _invalidCheckpointReview,
+    );
+  }
+
+  Future<CheckpointReview> coachCheckpointReview(
+      String assignmentId, int checkpoint) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/coach/assignments/$assignmentId/player/checkpoint-reviews/$checkpoint',
+      ),
+    );
+    return _parseBody(
+      response.data,
+      CheckpointReview.fromJson,
+      _invalidCheckpointReview,
+    );
   }
 
   /// The distinct exercises the assigned player has logged.
@@ -1188,6 +1218,27 @@ class ApiClient {
         .map((dynamic item) =>
             PersonalRecord.fromJson(item as Map<String, dynamic>))
         .toList(growable: false);
+  }
+
+  Future<List<CheckpointReviewListItem>> checkpointReviews() async {
+    final response =
+        await _send(() => _dio.get<dynamic>('/checkpoint-reviews'));
+    return _parseBodyList(
+      response.data,
+      CheckpointReviewListItem.fromJson,
+      _invalidCheckpointReview,
+    );
+  }
+
+  Future<CheckpointReview> checkpointReview(int checkpoint) async {
+    final response = await _send(
+      () => _dio.get<dynamic>('/checkpoint-reviews/$checkpoint'),
+    );
+    return _parseBody(
+      response.data,
+      CheckpointReview.fromJson,
+      _invalidCheckpointReview,
+    );
   }
 
   /// Auto-regulated targets for one training day (`GET /workouts/prescription`).

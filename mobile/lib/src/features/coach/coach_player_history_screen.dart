@@ -66,6 +66,8 @@ class _CoachPlayerHistoryScreenState
   bool _assignmentDenied = false;
   CoachPlayerSummary? _summary;
   List<PersonalRecord> _records = const <PersonalRecord>[];
+  List<CheckpointReviewListItem> _checkpointReviews =
+      const <CheckpointReviewListItem>[];
   List<CoachPlayerExercise> _exercises = const <CoachPlayerExercise>[];
   final Map<String, CoachExerciseHistory> _histories =
       <String, CoachExerciseHistory>{};
@@ -148,6 +150,7 @@ class _CoachPlayerHistoryScreenState
         api.coachAlerts(states: <String>['new', 'acknowledged']),
         api.coachPlayerSummary(_entry.assignmentId),
         api.coachPlayerPersonalRecords(_entry.assignmentId),
+        api.coachCheckpointReviews(_entry.assignmentId),
         api.coachPlayerExercises(_entry.assignmentId),
         api.coachProgramRequests(_entry.assignmentId),
         api.coachCheckIns(_entry.assignmentId),
@@ -158,10 +161,11 @@ class _CoachPlayerHistoryScreenState
       _alerts = _openAlerts(playerData[0] as List<CoachAlert>);
       _summary = playerData[1] as CoachPlayerSummary;
       _records = playerData[2] as List<PersonalRecord>;
-      _exercises = playerData[3] as List<CoachPlayerExercise>;
+      _checkpointReviews = playerData[3] as List<CheckpointReviewListItem>;
+      _exercises = playerData[4] as List<CoachPlayerExercise>;
       _programRequests =
-          sortCoachRequests(playerData[4] as List<ProgramRequest>);
-      _checkIns = sortCheckInsNewestFirst(playerData[5] as List<CheckIn>);
+          sortCoachRequests(playerData[5] as List<ProgramRequest>);
+      _checkIns = sortCheckInsNewestFirst(playerData[6] as List<CheckIn>);
       _loading = false;
       _assignmentDenied = false;
       _requestError = null;
@@ -667,6 +671,31 @@ class _CoachPlayerHistoryScreenState
     );
   }
 
+  Widget _checkpointReviewsCard(BuildContext context) {
+    return _section(
+      context,
+      'Checkpoints',
+      _checkpointReviews.isEmpty
+          ? <Widget>[const Text('No Checkpoints yet.')]
+          : <Widget>[
+              for (final CheckpointReviewListItem review in _checkpointReviews)
+                ListTile(
+                  key: ValueKey<String>(
+                      'coach.checkpoint.${review.checkpoint}'),
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('Checkpoint ${review.checkpoint}'),
+                  subtitle: Text('${review.periodStart} – ${review.periodEnd}'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push(
+                    '$checkpointReviewPath/${review.checkpoint}'
+                    '?assignment_id=${_entry.assignmentId}',
+                  ),
+                ),
+            ],
+    );
+  }
+
   Widget _exerciseDetail(BuildContext context, String exerciseId) {
     if (_loadingHistory) {
       return const Padding(
@@ -982,6 +1011,8 @@ class _CoachPlayerHistoryScreenState
       _recentSessionsCard(context),
       const SizedBox(height: MayosSpacing.sm),
       _recordsCard(context),
+      const SizedBox(height: MayosSpacing.sm),
+      _checkpointReviewsCard(context),
       const SizedBox(height: MayosSpacing.sm),
       _exercisesCard(context),
     ];

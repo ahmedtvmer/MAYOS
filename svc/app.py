@@ -33,6 +33,7 @@ from svc.routers import (
     chat,
     coach,
     coach_ai,
+    checkpoint_reviews,
     dashboard,
     media,
     onboarding,
@@ -323,6 +324,7 @@ def create_app() -> FastAPI:
     app.include_router(workouts.router)
     app.include_router(chat.router)
     app.include_router(dashboard.router)
+    app.include_router(checkpoint_reviews.router)
 
     @app.get("/healthz", response_model=HealthOut, tags=["ops"])
     async def healthz():

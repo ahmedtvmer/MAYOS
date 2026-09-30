@@ -24,6 +24,7 @@ import 'features/player/exercise/exercise_detail_screen.dart';
 import 'features/player/onboarding/onboarding_screen.dart';
 import 'features/player/plan/plan_screen.dart';
 import 'features/player/profile/profile_screen.dart';
+import 'features/player/progress/checkpoint_review_screen.dart';
 import 'features/player/setup/player_setup_screen.dart';
 import 'features/player/shell/player_shell.dart';
 import 'features/player/workout/logger_top_bar.dart';
@@ -64,6 +65,7 @@ const String assignmentPath = '/assignment';
 const String workoutsPath = '/workouts';
 const String logWorkoutPath = '/log-workout';
 const String exerciseDetailPath = '/exercise';
+const String checkpointReviewPath = '/checkpoint-review';
 const String chatPath = '/chat';
 const String splashPath = '/splash';
 
@@ -385,6 +387,21 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: chatPath,
         builder: (BuildContext context, GoRouterState state) =>
             const ChatScreen(),
+      ),
+      GoRoute(
+        path: '$checkpointReviewPath/:checkpoint',
+        builder: (BuildContext context, GoRouterState state) => MayosScaffold(
+            title: 'Checkpoint review',
+            showBack: true,
+            body: CheckpointReviewScreen(
+              key: ValueKey<String>(
+                '${state.pathParameters['checkpoint']}:${state.uri.queryParameters['assignment_id'] ?? ''}',
+              ),
+            checkpoint:
+                int.tryParse(state.pathParameters['checkpoint'] ?? '') ?? 0,
+            assignmentId: state.uri.queryParameters['assignment_id'],
+          ),
+        ),
       ),
       GoRoute(
         path: coachInvitePath,

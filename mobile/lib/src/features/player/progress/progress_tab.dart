@@ -56,6 +56,11 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
   bool _volumeLoading = false;
   int _volumeDays = 7;
 
+  List<CheckpointReviewListItem> _checkpointReviews =
+      const <CheckpointReviewListItem>[];
+  String? _checkpointError;
+  bool _checkpointLoading = true;
+
   int? _selectedPoint;
   String _section = 'strength';
 
@@ -65,12 +70,35 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
     _load();
   }
 
+  Future<void> _loadCheckpoints() async {
+    setState(() {
+      _checkpointLoading = true;
+      _checkpointError = null;
+    });
+    try {
+      final List<CheckpointReviewListItem> reviews =
+          await ref.read(apiClientProvider).checkpointReviews();
+      if (!mounted) return;
+      setState(() {
+        _checkpointReviews = reviews;
+        _checkpointLoading = false;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _checkpointError = _failureMessage(error);
+        _checkpointLoading = false;
+      });
+    }
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _loadError = null;
       _notice = null;
     });
+    await _loadCheckpoints();
     final List<LoggedExercise> exercises;
     try {
       exercises = await ref.read(apiClientProvider).loggedExercises();
@@ -192,6 +220,35 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
               color: c.textPrimary,
             ),
           ),
+          const SizedBox(height: MayosSpacing.lg),
+          const MayosSectionHeader(title: 'Checkpoints'),
+          if (_checkpointLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: MayosSpacing.md),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_checkpointError != null)
+            _InlineError(
+              message: _checkpointError!,
+              onRetry: _loadCheckpoints,
+            )
+          else if (_checkpointReviews.isEmpty)
+            Text(
+              'No Checkpoints yet.',
+              style: MayosTypography.bodySecondary
+                  .copyWith(color: c.textSecondary),
+            )
+          else
+            for (final CheckpointReviewListItem review in _checkpointReviews)
+              ListTile(
+                key: ValueKey<String>('progress.checkpoint.${review.checkpoint}'),
+                contentPadding: EdgeInsets.zero,
+                title: Text('Checkpoint ${review.checkpoint}'),
+                subtitle: Text('${review.periodStart} – ${review.periodEnd}'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('$checkpointReviewPath/${review.checkpoint}'),
+              ),
+          const SizedBox(height: MayosSpacing.lg),
           if (_notice != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
             _InlineNotice(message: _notice!),

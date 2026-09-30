@@ -20,6 +20,17 @@ List<String> projectTrainingStatusSummary({
   ]);
 }
 
+int? projectedCheckpointNumber({
+  required TrainingStatus? status,
+  required List<WorkoutDraft> drafts,
+}) {
+  if (status == null) return null;
+  final int count = status.mayosWorkouts +
+      drafts.where((WorkoutDraft draft) => draft.isUnsynced).length +
+      1;
+  return _isCheckpoint(count) ? count : null;
+}
+
 List<String> _weeklyLines(
   TrainingStatus status,
   List<WorkoutDraft> unsynced,
@@ -54,12 +65,12 @@ int _projectedStreak(TrainingStatus status, int projectedDone) {
 
 String _checkpointLine(int mayosWorkouts) {
   if (_isCheckpoint(mayosWorkouts)) {
-    return 'Your ${_ordinal(mayosWorkouts)} workout!';
+    return 'Your ${checkpointOrdinal(mayosWorkouts)} workout!';
   }
   final int checkpoint = _nextCheckpoint(mayosWorkouts);
   final int remaining = checkpoint - mayosWorkouts;
   final String workoutWord = remaining == 1 ? 'workout' : 'workouts';
-  return '$remaining $workoutWord to your ${_ordinal(checkpoint)}';
+  return '$remaining $workoutWord to your ${checkpointOrdinal(checkpoint)}';
 }
 
 DateTime _saturdayWeekStart(DateTime day) {
@@ -92,7 +103,7 @@ int _nextCheckpoint(int count) {
   return (count ~/ 100 + 1) * 100;
 }
 
-String _ordinal(int value) {
+String checkpointOrdinal(int value) {
   final int lastTwo = value % 100;
   if (lastTwo >= 11 && lastTwo <= 13) {
     return '${value}th';

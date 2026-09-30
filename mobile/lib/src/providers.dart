@@ -233,6 +233,16 @@ final StateNotifierProvider<TrainingStatusController, TrainingStatus?>
   return controller;
 });
 
+final FutureProvider<List<CheckpointReviewListItem>> checkpointReviewsProvider =
+    FutureProvider<List<CheckpointReviewListItem>>(
+  (ref) => ref.watch(apiClientProvider).checkpointReviews(),
+);
+
+final checkpointReviewProvider = FutureProvider.family<CheckpointReview, int>(
+  (ref, int checkpoint) =>
+      ref.watch(apiClientProvider).checkpointReview(checkpoint),
+);
+
 /// Protected, account-separated disclosure acceptance and chat-history cache
 /// for read-only offline viewing (#37, ADR 016/036).
 final Provider<ChatCacheStore> chatCacheStoreProvider =

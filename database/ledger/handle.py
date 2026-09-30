@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Iterator
 
 from database.ledger.auth import LedgerAuthMixin
+from database.ledger.checkpoint_reviews import LedgerCheckpointReviewsMixin
 from database.ledger.chat import LedgerChatMixin
 from database.ledger.debriefs import LedgerDebriefsMixin
 from database.ledger.onboarding import LedgerOnboardingMixin
@@ -38,6 +39,7 @@ class TrainingLedger(
     LedgerAuthMixin,
     LedgerTrainingProgramMixin,
     LedgerWorkoutsMixin,
+    LedgerCheckpointReviewsMixin,
     LedgerScheduleMixin,
     LedgerProfileMixin,
     LedgerOnboardingMixin,

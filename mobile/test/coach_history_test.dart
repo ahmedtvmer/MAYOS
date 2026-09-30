@@ -137,6 +137,54 @@ void main() {
     expect(find.textContaining('e1RM 120.0'), findsOneWidget);
   });
 
+  testWidgets('coach history lists and opens Checkpoints for the assignment',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..checkpointReviewRows = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'checkpoint': 10,
+          'period_start': '2026-01-01',
+          'period_end': '2026-09-30',
+          'rating': <Map<String, dynamic>>[
+            <String, dynamic>{'part': 'Consistency', 'label': 'Strong'},
+          ],
+          'opened': false,
+        },
+      ]
+      ..checkpointReviewDetails[10] = <String, dynamic>{
+        'checkpoint': 10,
+        'period_start': '2026-01-01',
+        'period_end': '2026-09-30',
+        'facts': <String, dynamic>{'workouts_in_period': 10},
+        'rating': <Map<String, dynamic>>[
+          <String, dynamic>{'part': 'Consistency', 'label': 'Strong'},
+        ],
+        'text': 'Checkpoint 10: 10 workouts since you started logging in MAYOS.',
+        'text_is_template': true,
+      };
+    await _pumpApp(tester, fake);
+
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    final Finder checkpoint =
+        find.byKey(const ValueKey<String>('coach.checkpoint.10'));
+    await tester.scrollUntilVisible(checkpoint, 300,
+        scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(checkpoint);
+    await tester.pumpAndSettle();
+    await tester.tap(checkpoint);
+    await _pumpUntilFound(tester, find.text('Your 10th workout'));
+
+    expect(find.text('Consistency'), findsOneWidget);
+    expect(find.text('Strong'), findsOneWidget);
+    expect(
+      find.text(
+        'Checkpoint 10: 10 workouts since you started logging in MAYOS.',
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('the player history offline banner sits below its app bar',
       (tester) async {
     final FakeMayosApi fake = _coachFake();

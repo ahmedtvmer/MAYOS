@@ -1581,6 +1581,97 @@ class TrainingStatus {
   }
 }
 
+class CheckpointRatingPart {
+  const CheckpointRatingPart({required this.part, required this.label});
+
+  factory CheckpointRatingPart.fromJson(Map<String, dynamic> json) {
+    final dynamic part = json['part'];
+    final dynamic label = json['label'];
+    if (part is! String || label is! String) {
+      throw const FormatException('Invalid checkpoint rating part.');
+    }
+    return CheckpointRatingPart(part: part, label: label);
+  }
+
+  final String part;
+  final String label;
+}
+
+/// One row from the player's or assigned coach's Checkpoints list.
+class CheckpointReviewListItem {
+  const CheckpointReviewListItem({
+    required this.checkpoint,
+    required this.periodStart,
+    required this.periodEnd,
+    required this.rating,
+    required this.opened,
+  });
+
+  factory CheckpointReviewListItem.fromJson(Map<String, dynamic> json) {
+    final dynamic rawRating = json['rating'];
+    if (rawRating is! List<dynamic>) {
+      throw const FormatException('Invalid checkpoint rating.');
+    }
+    return CheckpointReviewListItem(
+      checkpoint: (json['checkpoint'] as num).toInt(),
+      periodStart: json['period_start'] as String,
+      periodEnd: json['period_end'] as String,
+      rating: rawRating
+          .map((dynamic part) => CheckpointRatingPart.fromJson(
+              part as Map<String, dynamic>))
+          .toList(growable: false),
+      opened: json['opened'] as bool? ?? false,
+    );
+  }
+
+  final int checkpoint;
+  final String periodStart;
+  final String periodEnd;
+  final List<CheckpointRatingPart> rating;
+  final bool opened;
+}
+
+/// Full Checkpoint review returned by the player and active-assignment APIs.
+class CheckpointReview {
+  const CheckpointReview({
+    required this.checkpoint,
+    required this.periodStart,
+    required this.periodEnd,
+    required this.facts,
+    required this.rating,
+    required this.text,
+    required this.textIsTemplate,
+  });
+
+  factory CheckpointReview.fromJson(Map<String, dynamic> json) {
+    final dynamic facts = json['facts'];
+    final dynamic rawRating = json['rating'];
+    if (facts is! Map<String, dynamic> || rawRating is! List<dynamic>) {
+      throw const FormatException('Invalid checkpoint review.');
+    }
+    return CheckpointReview(
+      checkpoint: (json['checkpoint'] as num).toInt(),
+      periodStart: json['period_start'] as String,
+      periodEnd: json['period_end'] as String,
+      facts: Map<String, dynamic>.unmodifiable(facts),
+      rating: rawRating
+          .map((dynamic part) => CheckpointRatingPart.fromJson(
+              part as Map<String, dynamic>))
+          .toList(growable: false),
+      text: json['text'] as String,
+      textIsTemplate: json['text_is_template'] as bool? ?? false,
+    );
+  }
+
+  final int checkpoint;
+  final String periodStart;
+  final String periodEnd;
+  final Map<String, dynamic> facts;
+  final List<CheckpointRatingPart> rating;
+  final String text;
+  final bool textIsTemplate;
+}
+
 /// `PUT /profile/schedule` response: the appended version and the current schedule.
 class TrainingScheduleSetResult {
   const TrainingScheduleSetResult({required this.version, this.current});

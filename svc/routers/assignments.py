@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse
 from agent.ProgramState import GeneratedProgramSchema
 from service import assignments as assignment_service
 from service import check_ins as check_ins_service
+from service import checkpoint_reviews as checkpoint_reviews_service
 from service import coach_history as coach_history_service
 from service import coach_programs as coach_programs_service
 from service import program_requests as program_requests_service
@@ -54,6 +55,8 @@ from svc.schemas import (
     CheckInOut,
     CoachAssignmentsOut,
     CoachCheckInCreateOut,
+    CheckpointReviewListItemOut,
+    CheckpointReviewOut,
     CoachCheckInListOut,
     CoachCrossRosterProgramRequestListOut,
     CoachCrossRosterProgramRequestOut,
@@ -175,6 +178,51 @@ async def read_assigned_player_personal_records(
         return records
 
     return [CoachPersonalRecordOut(**record) for record in await asyncio.to_thread(_run)]
+
+
+@coach_router.get(
+    "/{assignment_id}/player/checkpoint-reviews",
+    response_model=list[CheckpointReviewListItemOut],
+)
+async def list_assigned_player_checkpoint_reviews(
+    assignment_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    reviews = await asyncio.to_thread(
+        checkpoint_reviews_service.coach_checkpoint_reviews,
+        db,
+        coach.account_id,
+        assignment_id,
+    )
+    if reviews is None:
+        raise _no_active_assignment()
+    return reviews
+
+
+@coach_router.get(
+    "/{assignment_id}/player/checkpoint-reviews/{checkpoint}",
+    response_model=CheckpointReviewOut,
+)
+async def read_assigned_player_checkpoint_review(
+    assignment_id: str,
+    checkpoint: int,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    try:
+        review = await asyncio.to_thread(
+            checkpoint_reviews_service.coach_checkpoint_review,
+            db,
+            coach.account_id,
+            assignment_id,
+            checkpoint,
+        )
+    except checkpoint_reviews_service.CheckpointReviewNotFoundError:
+        raise HTTPException(status_code=404, detail="Checkpoint review not found.")
+    if review is None:
+        raise _no_active_assignment()
+    return review
 
 
 @coach_router.get("/{assignment_id}/player/exercises", response_model=CoachPlayerExercisesOut)

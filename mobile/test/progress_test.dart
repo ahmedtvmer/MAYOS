@@ -200,6 +200,31 @@ void main() {
     expect(find.textContaining('e1RM 110'), findsOneWidget);
   });
 
+  testWidgets('Progress lists Checkpoints newest first', (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..checkpointReviewRows = <Map<String, dynamic>>[
+        for (final int checkpoint in <int>[25, 10])
+          <String, dynamic>{
+            'checkpoint': checkpoint,
+            'period_start': '2026-01-01',
+            'period_end': '2026-09-30',
+            'rating': <Map<String, dynamic>>[
+              <String, dynamic>{'part': 'Consistency', 'label': 'Strong'},
+            ],
+            'opened': false,
+          },
+      ];
+    await _pumpProgress(tester, fake);
+
+    final Finder newest =
+        find.byKey(const ValueKey<String>('progress.checkpoint.25'));
+    final Finder older =
+        find.byKey(const ValueKey<String>('progress.checkpoint.10'));
+    expect(newest, findsOneWidget);
+    expect(older, findsOneWidget);
+    expect(tester.getTopLeft(newest).dy, lessThan(tester.getTopLeft(older).dy));
+  });
+
   testWidgets('tapping a chart point shows that session\'s real values',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _signedInFake();

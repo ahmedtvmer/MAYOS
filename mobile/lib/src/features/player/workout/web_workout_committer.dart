@@ -11,10 +11,11 @@ enum WebWorkoutCommitStatus {
 }
 
 class WebWorkoutCommitResult {
-  const WebWorkoutCommitResult(this.status, {this.message});
+  const WebWorkoutCommitResult(this.status, {this.message, this.response});
 
   final WebWorkoutCommitStatus status;
   final String? message;
+  final Map<String, dynamic>? response;
 }
 
 /// Owns the web direct-commit policy: durable attempt marking, reconciliation,
@@ -68,7 +69,10 @@ class WebWorkoutCommitter {
         if (existing != null) {
           await onCommit?.call(workout.accountId, existing);
           await _removeCommittedWorkout(current);
-          return const WebWorkoutCommitResult(WebWorkoutCommitStatus.committed);
+          return WebWorkoutCommitResult(
+            WebWorkoutCommitStatus.committed,
+            response: existing,
+          );
         }
       } else {
         await _controller.markCommitAttempted(
@@ -80,7 +84,10 @@ class WebWorkoutCommitter {
       final WorkoutCommitResult result = await _api.commitWorkoutSession(body);
       await onCommit?.call(workout.accountId, result.body);
       await _removeCommittedWorkout(current);
-      return const WebWorkoutCommitResult(WebWorkoutCommitStatus.committed);
+      return WebWorkoutCommitResult(
+        WebWorkoutCommitStatus.committed,
+        response: result.body,
+      );
     } on ApiException catch (error) {
       return _classify(error);
     } on Object {

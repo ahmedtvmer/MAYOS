@@ -21,6 +21,7 @@ from core.effort import min_rir_label, rir_from_rpe
 from core.warmup import calculate_warmup_sets
 from service._base import ledger_scope
 from service import training_status as training_status_service
+from service import checkpoint_reviews as checkpoint_reviews_service
 from service.schedule import latest_schedule_timezone, local_date_in, local_today, parse_iso_date
 from utils.plate_calculator import calculate_barbell_plates
 
@@ -705,6 +706,19 @@ def committed_session(ledger: Any, client_session_id: str | None) -> CommitOutco
     return _commit_outcome_from_row(existing) if existing is not None else None
 
 
+def _record_checkpoint_review_for_commit(
+    ledger: Any,
+    body: dict[str, Any],
+    imported_workouts: int,
+    now_iso: str,
+) -> None:
+    checkpoint = body["training_status"]["mayos_workouts"]
+    if checkpoint_reviews_service.create_checkpoint_review(
+        ledger, checkpoint, imported_workouts, now_iso
+    ):
+        body["checkpoint"] = {"number": checkpoint, "reached": True}
+
+
 def session_state(db: Any, ledger_id: str, session_id: Any, body: dict[str, Any], ledger: Any | None = None) -> dict[str, Any]:
     """The stored commit body overlaid with the live session's corrected state (ADR 035).
 
@@ -784,6 +798,9 @@ def commit_session(
                     ledger=ledger,
                     imported_workouts=imported_workouts,
                 ).as_dict()
+            )
+            _record_checkpoint_review_for_commit(
+                ledger, body, imported_workouts, now_iso
             )
 
     _run_post_commit_hooks(
@@ -870,6 +887,9 @@ def commit_logged_session(
                         ledger=ledger,
                         imported_workouts=imported_workouts,
                     ).as_dict()
+                )
+                _record_checkpoint_review_for_commit(
+                    ledger, body, imported_workouts, now_iso
                 )
                 ledger.record_session_commit(client_session_id, session_id, json.dumps(body), now_iso)
                 outcome = CommitOutcome(body, created=True)

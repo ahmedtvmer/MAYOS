@@ -37,6 +37,7 @@ class _DashboardData {
     required this.volume,
     required this.records,
     this.latestSession,
+    this.unopenedCheckpointReview,
     this.partialError,
     this.programFromCache = false,
   });
@@ -49,6 +50,7 @@ class _DashboardData {
   /// The player's most recent committed session from the ledger (or its cached
   /// last-known value offline), used to derive the next program day (#53).
   final LatestSession? latestSession;
+  final CheckpointReviewListItem? unopenedCheckpointReview;
 
   /// True when [program] is the offline cached copy after a failed fetch (#54).
   final bool programFromCache;
@@ -96,6 +98,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     Map<String, double> volume = const <String, double>{};
     List<PersonalRecord> records = const <PersonalRecord>[];
     LatestSession? latestSession;
+    CheckpointReviewListItem? unopenedCheckpointReview;
     String? partialError;
     try {
       schedule = await api.trainingSchedule();
@@ -109,6 +112,18 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     }
     try {
       records = await api.personalRecords();
+    } on ApiException catch (error) {
+      partialError ??= error.message;
+    }
+    try {
+      final List<CheckpointReviewListItem> reviews =
+          await api.checkpointReviews();
+      for (final CheckpointReviewListItem review in reviews) {
+        if (!review.opened) {
+          unopenedCheckpointReview = review;
+          break;
+        }
+      }
     } on ApiException catch (error) {
       partialError ??= error.message;
     }
@@ -129,6 +144,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
       volume: volume,
       records: records,
       latestSession: latestSession,
+      unopenedCheckpointReview: unopenedCheckpointReview,
       partialError: partialError,
       programFromCache: active.fromCache,
     );
@@ -136,7 +152,9 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
 
   Future<void> _refresh() async {
     final Future<_DashboardData> future = _load();
-    setState(() => _future = future);
+    setState(() {
+      _future = future;
+    });
     await future;
   }
 
@@ -145,6 +163,11 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
   }
 
   void _openDrafts() => context.push(workoutsPath);
+
+  Future<void> _openCheckpointReview(int checkpoint) async {
+    await context.push('$checkpointReviewPath/$checkpoint');
+    if (mounted) await _refresh();
+  }
 
   void _openProgram() => ref.read(playerShellTabProvider.notifier).state = 1;
 
@@ -179,6 +202,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
           onRefresh: _refresh,
           onOpenExercise: _openExercise,
           onOpenDrafts: _openDrafts,
+          onOpenCheckpointReview: _openCheckpointReview,
           onOpenProgram: _openProgram,
           onLogWorkout: _logWorkout,
           trainedDays: <TrainedDay>[
@@ -199,6 +223,7 @@ class _HomeBody extends StatelessWidget {
     required this.onRefresh,
     required this.onOpenExercise,
     required this.onOpenDrafts,
+    required this.onOpenCheckpointReview,
     required this.onOpenProgram,
     required this.onLogWorkout,
     required this.trainedDays,
@@ -209,6 +234,7 @@ class _HomeBody extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final void Function(ProgramExercise exercise, int dayOrder) onOpenExercise;
   final VoidCallback onOpenDrafts;
+  final ValueChanged<int> onOpenCheckpointReview;
   final VoidCallback onOpenProgram;
   final void Function(ProgramDay day, int? programVersion) onLogWorkout;
   final List<TrainedDay> trainedDays;
@@ -249,6 +275,13 @@ class _HomeBody extends StatelessWidget {
             const SizedBox(height: MayosSpacing.md),
             _DraftsBanner(count: pendingDrafts, onTap: onOpenDrafts),
           ],
+          if (data.unopenedCheckpointReview != null) ...<Widget>[
+            const SizedBox(height: MayosSpacing.md),
+            _CheckpointReviewCard(
+              review: data.unopenedCheckpointReview!,
+              onTap: onOpenCheckpointReview,
+            ),
+          ],
           // No program means no next session to show: the Program tab owns the
           // generate flow, and a training day cannot be derived without one.
           if (nextDay != null) ...<Widget>[
@@ -267,6 +300,29 @@ class _HomeBody extends StatelessWidget {
           const SizedBox(height: MayosSpacing.xl),
           _RecordsSection(records: data.records),
         ],
+      ),
+    );
+  }
+}
+
+class _CheckpointReviewCard extends StatelessWidget {
+  const _CheckpointReviewCard({required this.review, required this.onTap});
+
+  final CheckpointReviewListItem review;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return MayosCard(
+      padding: EdgeInsets.zero,
+      child: ListTile(
+        key: const ValueKey<String>('dashboard.checkpoint-review'),
+        leading: Icon(Icons.emoji_events_outlined, color: c.accent),
+        title: const Text('Checkpoint review'),
+        subtitle: Text('Checkpoint ${review.checkpoint} · Open your review'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => onTap(review.checkpoint),
       ),
     );
   }

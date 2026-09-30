@@ -10,7 +10,7 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 14
+CURRENT_LEDGER_SCHEMA_VERSION: int = 15
 
 #: Performed-date correction DDL (ADR 035). Kept in one place so the
 #: fresh-create path (``DatabaseManager.create_ledger_schema``) and the v10->v11
@@ -79,6 +79,22 @@ SESSION_CARDIO_DDL: tuple[str, ...] = (
     " prescription TEXT NOT NULL CHECK (length(prescription) BETWEEN 1 AND 500),"
     " minutes INTEGER NOT NULL CHECK (minutes BETWEEN 1 AND 600),"
     " logged_at TEXT NOT NULL,"
+    " FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE"
+    ")",
+)
+
+CHECKPOINT_REVIEWS_DDL: tuple[str, ...] = (
+    "CREATE TABLE IF NOT EXISTS checkpoint_reviews ("
+    " checkpoint INTEGER PRIMARY KEY CHECK (checkpoint > 0),"
+    " session_id TEXT NOT NULL UNIQUE,"
+    " period_start TEXT NOT NULL,"
+    " period_end TEXT NOT NULL,"
+    " facts_json TEXT NOT NULL,"
+    " rating_json TEXT NOT NULL,"
+    " text TEXT,"
+    " text_language TEXT,"
+    " created_at TEXT NOT NULL,"
+    " opened_at TEXT,"
     " FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE"
     ")",
 )
@@ -390,6 +406,12 @@ def _migrate_v13_to_v14(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _migrate_v14_to_v15(conn: sqlite3.Connection) -> None:
+    """Adds one durable, computed review for each reached Checkpoint (#221)."""
+    for statement in CHECKPOINT_REVIEWS_DDL:
+        conn.execute(statement)
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -489,6 +511,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     11: _migrate_v11_to_v12,
     12: _migrate_v12_to_v13,
     13: _migrate_v13_to_v14,
+    14: _migrate_v14_to_v15,
 }
 
 
