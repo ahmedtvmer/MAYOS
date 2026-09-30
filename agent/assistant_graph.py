@@ -117,6 +117,51 @@ _TRAUMA_STRUCTURES = (
     r"ligaments?|pec(?:toral)?s?|biceps?|rotator(?:\s+cuff)?|meniscus|labrum|acl|groin)"
 )
 
+# Tier-0c: directly intensified joint pain during an explicit movement.
+_PAIN_WORDS = r"(?:pain(?:ful)?|hurt(?:s|ing)?|ache(?:s|ing)?)"
+_PREPAIN_INTENSITY = r"(?:strong|bad|sharp|severe|intense|awful|terrible|excruciating|really\s+bad|a\s+lot(?:\s+of)?)"
+_POSTPAIN_INTENSITY = r"(?:really\s+bad|bad|strong|sharp|severe|intense|awful|terrible|excruciating|a\s+lot)"
+RE_INTENSIFIED_JOINT_PAIN = re.compile(
+    rf"""
+    \b{_PREPAIN_INTENSITY}\s+(?:(?:my|the)\s+)?{_TRAUMA_STRUCTURES}\s+{_PAIN_WORDS}\b
+    |
+    \b{_PREPAIN_INTENSITY}\s+{_PAIN_WORDS}\s+(?:in|around|over)\s+(?:(?:my|the)\s+)?{_TRAUMA_STRUCTURES}\b
+    |
+    \b{_TRAUMA_STRUCTURES}\s+{_PAIN_WORDS}\s+(?:(?:is|feels|gets|was)\s+)?{_POSTPAIN_INTENSITY}\b
+    |
+    \b{_TRAUMA_STRUCTURES}\s+(?:is|feels|gets)\s+(?:really|very|so|super)\s+(?:painful|sore)\b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+RE_MOVEMENT_CONTEXT = re.compile(
+    r"""
+    \b(?:when|while|every\s+time|during|if)\b\s+
+    (?:i\s+)?(?:am\s+)?(?:(?:a|the|my)\s+)?
+    (?:raise|lift|press|squat|bend|reach|twist|rotate|push|pull|carry|deadlift|row|bench|dip|curl|lunge)\w*\b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+# Negation counts only when it sits right before the pain or its intensifier, so
+# "not sure why, my knee hurts a lot when I squat" still intercepts.
+RE_NON_ACUTE_PAIN_CONTEXT = re.compile(
+    rf"""
+    \b(?:used\s+to|better|helps?|helping|gone|anymore)\b
+    |
+    \b(?:doesn['’]t|don['’]t|isn['’]t|wasn['’]t|no|not|never|without)\s+(?:\w+\s+){{0,2}}?
+    (?:{_PAIN_WORDS}|{_POSTPAIN_INTENSITY})\b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+RE_TIER0_CLAUSE_SPLIT = re.compile(
+    r"[.!?;\n]+|\b(?:but|although|however|though|yet)\b",
+    re.IGNORECASE,
+)
+RE_JOINT_PAIN_AT_CLAUSE_END = re.compile(
+    rf"\b{_TRAUMA_STRUCTURES}\b[^.!?]{{0,16}}\b{_PAIN_WORDS}\b\s*$",
+    re.IGNORECASE,
+)
+RE_REALLY_BAD_FRAGMENT = re.compile(r"^\s*really\s+bad\b", re.IGNORECASE)
+
 # Tier-0b: DOMS-ambiguous tokens (swelling/tear/tore/torn/pop/tweaked) intercept
 # only with an explicit injury context; otherwise they fall through to Tier-1.
 RE_AMBIGUOUS_TRAUMA = re.compile(
@@ -135,8 +180,26 @@ RE_AMBIGUOUS_TRAUMA = re.compile(
 
 
 def _acute_injury_hit(text: str) -> bool:
-    """Tier-0: unconditional trauma OR DOMS-ambiguous tokens with injury context."""
-    return bool(RE_ACUTE_INJURY.search(text) or RE_AMBIGUOUS_TRAUMA.search(text))
+    """Tier-0: unconditional and contextual trauma plus Tier-0c movement pain."""
+    if RE_ACUTE_INJURY.search(text) or RE_AMBIGUOUS_TRAUMA.search(text):
+        return True
+    clauses = RE_TIER0_CLAUSE_SPLIT.split(text)
+    for clause in clauses:
+        if RE_NON_ACUTE_PAIN_CONTEXT.search(clause):
+            continue
+        if RE_INTENSIFIED_JOINT_PAIN.search(clause) and RE_MOVEMENT_CONTEXT.search(clause):
+            return True
+
+    for previous_clause, fragment in zip(clauses, clauses[1:]):
+        if RE_NON_ACUTE_PAIN_CONTEXT.search(previous_clause + " " + fragment):
+            continue
+        if (
+            RE_JOINT_PAIN_AT_CLAUSE_END.search(previous_clause)
+            and RE_REALLY_BAD_FRAGMENT.match(fragment)
+            and RE_MOVEMENT_CONTEXT.search(fragment)
+        ):
+            return True
+    return False
 
 
 RE_DIAGNOSIS = re.compile(
