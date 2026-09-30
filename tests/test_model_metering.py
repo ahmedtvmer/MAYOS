@@ -276,7 +276,7 @@ def test_coach_program_publish_is_metered(api, monkeypatch):
 
     client, db = api
     coach_headers, _player_headers, assignment_id = _assigned_player(client, db)
-    fake = _fake_model("Qwen/Qwen3.5-27B")
+    fake = _fake_model("deepseek-ai/DeepSeek-V4-Flash")
 
     def _stub_program() -> GeneratedProgramSchema:
         return GeneratedProgramSchema(
@@ -316,7 +316,7 @@ def test_coach_program_publish_is_metered(api, monkeypatch):
 
     rows = _usage_rows(db, _account_id(db, "coach"))
     assert rows and rows[0]["role"] == "coach"
-    assert rows[0]["model"] == "Qwen/Qwen3.5-27B"
+    assert rows[0]["model"] == "deepseek-ai/DeepSeek-V4-Flash"
 
 
 def test_cost_computed_from_pricing_json(api, monkeypatch):
@@ -339,6 +339,7 @@ def test_unknown_model_cost_is_zero():
     assert compute_cost("nobody/unknown-model", 1_000_000, 1_000_000) == 0.0
     assert compute_cost("Qwen/Qwen3.5-9B", 1_000_000, 1_000_000) == pytest.approx(0.25)
     assert compute_cost("Qwen/Qwen3.5-27B", 1_000_000, 1_000_000) == pytest.approx(2.86)
+    assert compute_cost("deepseek-ai/DeepSeek-V4-Flash", 1_000_000, 1_000_000) == pytest.approx(0.27)
 
 
 def test_missing_provider_usage_is_flagged_estimated(api):

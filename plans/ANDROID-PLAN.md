@@ -26,7 +26,7 @@
 | Product model      | One account may train, coach, or both; capabilities are not exclusive |
 | Client packaging   | Android Flutter app plus one capability-aware web app for players and coaches; evaluate Flutter web before choosing its frontend technology |
 | Player assistant   | Qwen3.5-9B via DeepInfra, non-reasoning; measured 62/65 standard and 15/15 generalization |
-| Coach assistant    | Qwen3.5-27B via DeepInfra (player-scoped analysis + split help)     |
+| Coach assistant    | DeepSeek-V4-Flash via DeepInfra (player-scoped analysis + split help) |
 | Judge LLM          | Qwen3.5-27B via DeepInfra (eval-only; outside production requests)  |
 | Assignment         | Short-lived single-use bearer code; instant binding after player consent, coach notified and may revoke; directory requests after trial |
 | Coach privacy      | `discoverable` flag, **default off** — invisible unless opted in   |
@@ -156,8 +156,9 @@ Two consent paths:
      `LLM_API_BASE`, `LLM_API_KEY`, `LLM_MODEL` (Qwen3.5-9B player),
      `temperature=0.0`, `max_tokens=200`, streaming. Judge equivalents
      (`JUDGE_MODEL`, Qwen3.5-27B, `max_tokens=700`) and coach equivalents
-     (`COACH_MODEL`, Qwen3.5-27B) follow the same shape.
-   - **Thinking mode disabled at API level** via
+     (`COACH_MODEL`, DeepSeek-V4-Flash) follow the same shape. The coach sends
+     no extra body by default; `COACH_EXTRA_BODY` replaces it when set.
+   - **Player and judge thinking mode disabled at API level** via
      `extra_body.chat_template_kwargs.enable_thinking=false`. The live smoke
      verified the model echo, non-reasoning response, streaming, and tool calls.
      `CoachOutputScrubber`

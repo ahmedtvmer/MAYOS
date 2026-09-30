@@ -28,7 +28,7 @@ from utils.model_metering import MeteringCallback
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
 
 
-COACH_MODEL_ID = "Qwen/Qwen3.5-27B"
+COACH_MODEL_ID = "deepseek-ai/DeepSeek-V4-Flash"
 
 
 class _StubCoachLLM(BaseChatModel):
@@ -668,7 +668,7 @@ def test_daily_token_limit_refuses_before_the_model_is_called(api, monkeypatch, 
     db.record_model_usage(
         account_id=_account_id(db, "coach"),
         role="coach",
-        model="Qwen/Qwen3.5-27B",
+        model=COACH_MODEL_ID,
         input_tokens=1000,
         output_tokens=500,
         cost_usd=0.0,

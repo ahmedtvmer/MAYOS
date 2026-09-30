@@ -29,7 +29,7 @@ primary_region = "fra"
   MAYOS_REQUIRE_PERSISTENT_DATA = "true"
   # Hosted inference: no GGUF/CUDA/llama-cpp in the image.
   LLM_BACKEND = "openai"
-  # Optional JSON object replacing the coach model's extra request body; {} disables it.
+  # Coach sends no extra body by default and ignores LLM_EXTRA_BODY; a JSON object here replaces it, {} disables it.
   # COACH_EXTRA_BODY = '{}'
   MODEL_DEVICE = "cpu"
   EMBEDDING_DEVICE = "cpu"
@@ -48,7 +48,7 @@ primary_region = "fra"
   # MODEL_RATE_LIMIT_REQUESTS = "20"      # requests/minute/account (0 disables)
   # MODEL_DAILY_TOKEN_LIMIT = "200000"    # tokens/UTC day/account (0 disables)
   # MODEL_SPEND_ALERT_USD = "50"
-  # MODEL_PRICING_JSON = '{"Qwen/Qwen3.5-9B":{"input":0.10,"output":0.15},"Qwen/Qwen3.5-27B":{"input":0.26,"output":2.60}}'
+  # MODEL_PRICING_JSON = '{"Qwen/Qwen3.5-9B":{"input":0.10,"output":0.15},"Qwen/Qwen3.5-27B":{"input":0.26,"output":2.60},"deepseek-ai/DeepSeek-V4-Flash":{"input":0.09,"output":0.18}}'
   # Android App Link association. Set the signing-cert SHA-256 fingerprint(s)
   # (comma-separated; case/colons optional, normalised to uppercase
   # colon-separated). Include both the upload key and the Play App Signing cert

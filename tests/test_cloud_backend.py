@@ -66,6 +66,8 @@ def test_cloud_builds_configured_openai_models(monkeypatch):
     monkeypatch.delenv("CI", raising=False)
     monkeypatch.delenv("LLM_ENABLE_THINKING", raising=False)
     monkeypatch.delenv("LLM_EXTRA_BODY", raising=False)
+    monkeypatch.delenv("COACH_EXTRA_BODY", raising=False)
+    monkeypatch.delenv("COACH_MODEL", raising=False)
     _reset_singletons()
     try:
         prod = md.get_llm()
@@ -75,11 +77,13 @@ def test_cloud_builds_configured_openai_models(monkeypatch):
         assert prod.max_tokens == 200 and prod.streaming is True
         assert judge.model_name == "Qwen/Qwen3.5-27B"
         assert judge.max_tokens == 700 and judge.streaming is False
-        assert coach.model_name == "Qwen/Qwen3.5-27B"
+        assert coach.model_name == "deepseek-ai/DeepSeek-V4-Flash"
         assert coach.max_tokens == 512 and coach.streaming is True
-        # Thinking disabled by default (DeepInfra's documented nested shape)
-        # keeps the tight output budget productive.
-        assert prod.extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
+        # Thinking disabled by default keeps player and judge output budgets productive.
+        qwen_extra_body = {"chat_template_kwargs": {"enable_thinking": False}}
+        assert prod.extra_body == qwen_extra_body
+        assert judge.extra_body == qwen_extra_body
+        assert coach.extra_body is None
     finally:
         _reset_singletons()
 
@@ -90,6 +94,7 @@ def test_cloud_model_ids_are_env_overridable(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "sk-test")
     monkeypatch.setenv("LLM_MODEL", "Qwen/Qwen3.5-4B-NonReasoning")
     monkeypatch.setenv("LLM_MAX_TOKENS", "321")
+    monkeypatch.setenv("COACH_MODEL", "deepseek-ai/custom-coach")
     monkeypatch.delenv("TESTING", raising=False)
     monkeypatch.delenv("CI", raising=False)
     _reset_singletons()
@@ -97,6 +102,7 @@ def test_cloud_model_ids_are_env_overridable(monkeypatch):
         prod = md.get_llm()
         assert prod.model_name == "Qwen/Qwen3.5-4B-NonReasoning"
         assert prod.max_tokens == 321
+        assert md._build_cloud_llm("coach").model_name == "deepseek-ai/custom-coach"
     finally:
         _reset_singletons()
 
@@ -171,27 +177,21 @@ def test_empty_coach_extra_body_disables_extra_body(monkeypatch):
     assert md._build_cloud_llm("coach").extra_body is None
 
 
-@pytest.mark.parametrize(
-    ("coach_body", "llm_body", "thinking", "expected"),
-    [
-        (None, None, None, {"chat_template_kwargs": {"enable_thinking": False}}),
-        ("", '{"shared": true}', None, {"shared": True}),
-        (None, None, "true", None),
-    ],
-)
+@pytest.mark.parametrize("coach_body", [None, ""])
 @pytest.mark.skipif(md.SafeChatOpenAI is None, reason="langchain-openai not installed")
-def test_unset_or_blank_coach_extra_body_keeps_existing_config(monkeypatch, coach_body, llm_body, thinking, expected):
+def test_unset_or_blank_coach_extra_body_sends_no_extra_body(monkeypatch, coach_body):
     monkeypatch.setenv("LLM_API_KEY", "sk-test")
-    for name, env_value in (
-        ("COACH_EXTRA_BODY", coach_body),
-        ("LLM_EXTRA_BODY", llm_body),
-        ("LLM_ENABLE_THINKING", thinking),
-    ):
-        if env_value is None:
-            monkeypatch.delenv(name, raising=False)
-        else:
-            monkeypatch.setenv(name, env_value)
-    assert md._build_cloud_llm("coach").extra_body == expected
+    monkeypatch.setenv("LLM_EXTRA_BODY", '{"chat_template_kwargs": {"enable_thinking": false}}')
+    monkeypatch.delenv("LLM_ENABLE_THINKING", raising=False)
+    if coach_body is None:
+        monkeypatch.delenv("COACH_EXTRA_BODY", raising=False)
+    else:
+        monkeypatch.setenv("COACH_EXTRA_BODY", coach_body)
+
+    qwen_extra_body = {"chat_template_kwargs": {"enable_thinking": False}}
+    assert md._build_cloud_llm("coach").extra_body is None
+    assert md._build_cloud_llm("production").extra_body == qwen_extra_body
+    assert md._build_cloud_llm("judge").extra_body == qwen_extra_body
 
 
 @pytest.mark.parametrize(

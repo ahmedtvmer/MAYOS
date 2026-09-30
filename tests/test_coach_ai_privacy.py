@@ -52,7 +52,7 @@ ASSISTANT_CHAT = "PRIVATE_ASSISTANT_REPLY_9c1d keep the elbows tucked"
 CHECK_IN_NOTE = "IDENTIFY_CHECKIN_NOTE_4b7c call me after the session"
 REQUEST_REASON = "IDENTIFY_REQUEST_REASON_5a1d I want more squat volume"
 
-COACH_MODEL_ID = "Qwen/Qwen3.5-27B"
+COACH_MODEL_ID = "deepseek-ai/DeepSeek-V4-Flash"
 
 #: Every seeded identifier, asserted absent from every message sent to the model.
 IDENTIFIERS = (

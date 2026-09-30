@@ -93,7 +93,7 @@ CLOUD_MODEL_REGISTRY = {
     },
     "coach": {
         "model_env": "COACH_MODEL",
-        "default_model": "Qwen/Qwen3.5-27B",
+        "default_model": "deepseek-ai/DeepSeek-V4-Flash",
         "max_tokens_env": "COACH_MAX_TOKENS",
         "default_max_tokens": 512,
         "streaming": True,
@@ -644,12 +644,10 @@ def _parse_extra_body(raw_extra_body: str, env_name: str) -> dict[str, Any]:
 def _build_cloud_llm(model_type: str) -> Any:
     """Builds a ``SafeChatOpenAI`` for ``model_type`` from cloud env config.
 
-    Thinking mode is disabled by default using the DeepInfra reference shape
-    ``chat_template_kwargs.enable_thinking = false`` so the tight output budgets
-    are never consumed by chain-of-thought; set ``LLM_ENABLE_THINKING=true`` to
-    opt back in. Provider-specific quirks can override the whole body via
-    ``LLM_EXTRA_BODY`` (JSON object); ``COACH_EXTRA_BODY`` replaces it for the
-    coach model only.
+    Hosted player and judge requests disable thinking by default using the
+    DeepInfra reference shape ``chat_template_kwargs.enable_thinking = false``.
+    The coach sends no extra body unless ``COACH_EXTRA_BODY`` is set, which
+    replaces the coach body independently of ``LLM_EXTRA_BODY``.
     """
     if SafeChatOpenAI is None:
         raise RuntimeError(
@@ -665,9 +663,10 @@ def _build_cloud_llm(model_type: str) -> Any:
         )
     config = CLOUD_MODEL_REGISTRY[model_type]
     extra_body: dict[str, Any] | None = None
-    raw_coach_extra_body = os.getenv("COACH_EXTRA_BODY", "").strip() if model_type == "coach" else ""
-    if raw_coach_extra_body:
-        extra_body = _parse_extra_body(raw_coach_extra_body, "COACH_EXTRA_BODY") or None
+    if model_type == "coach":
+        raw_coach_extra_body = os.getenv("COACH_EXTRA_BODY", "").strip()
+        if raw_coach_extra_body:
+            extra_body = _parse_extra_body(raw_coach_extra_body, "COACH_EXTRA_BODY") or None
     else:
         raw_extra_body = os.getenv("LLM_EXTRA_BODY", "").strip()
         if raw_extra_body:
@@ -783,7 +782,7 @@ def unload_judge_llm() -> None:
 def get_coach_llm(n_gpu_layers: int | None = None) -> Any:
     """Returns the coach-role model.
 
-    Cloud backend: the dedicated ``COACH_MODEL`` (Qwen3.5-27B by default).
+    Cloud backend: the dedicated ``COACH_MODEL`` (DeepSeek-V4-Flash by default).
     Local backend: there is no separate coach GGUF, so the production model is
     reused — local-first development keeps the stronger model as an opt-in.
     """
