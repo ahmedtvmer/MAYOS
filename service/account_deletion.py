@@ -1,4 +1,4 @@
-"""Password- or Google-confirmed durable account deletion (ADR 015/039).
+"""Customer proof-based and owner-initiated durable account deletion (ADR 015/039).
 
 The account holder proves possession — with their password, or with a fresh
 Google ID token whose linked subject is their own (#114) — then the account is
@@ -17,14 +17,26 @@ wrong password, or a Google identity that fails any part of its check — return
 the same generic ``Invalid credentials.`` (#43, #114), and the password path
 spends exactly one bcrypt verification, so neither the in-app path nor the
 public web form leaks "does this account exist?" through timing.
+
+The owner dashboard instead requires a live owner session, CSRF, the exact
+username, a fresh step-up TOTP code, and a privacy-checked reason. It uses the
+same database deletion routine and records accepted and rejected attempts in
+the owner audit log.
 """
 
+import logging
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import Enum
 from typing import Any
 
+from service import audit_log, email_sender
 from service._base import ledger_scope
 from service.auth import INVALID_CREDENTIALS, hash_password, verify_password
 from service.google_sign_in import PROVIDER
+
+logger = logging.getLogger(__name__)
 
 #: The Google proof must be this fresh: ``iat`` within the last 5 minutes (#114).
 GOOGLE_TOKEN_MAX_AGE_SECONDS = 5 * 60
@@ -34,6 +46,23 @@ GOOGLE_IAT_FUTURE_SKEW_SECONDS = 10
 # Lazily built so importing this module stays cheap; one bcrypt verification is
 # spent against it for every refusal that has no stored hash to compare with.
 _UNKNOWN_ACCOUNT_HASH: str | None = None
+
+
+@dataclass(frozen=True)
+class OwnerDeleteRequest:
+    account_id: str
+    actor: str
+    reason: str
+    source_ip: str | None
+    username_confirmation: str
+    totp_code: str
+
+
+class StepUpResult(str, Enum):
+    SUCCESS = "success"
+    REJECTED = "rejected"
+    LOCKED_OUT = "locked_out"
+    LOCKOUT_STARTED = "lockout_started"
 
 
 def _spend_one_bcrypt(password: Any) -> None:
@@ -91,6 +120,156 @@ def delete_account(
 
     db.delete_account(account["account_id"], datetime.now(UTC).isoformat(), ledger_id=account["ledger_id"])
     return {"ok": True, "account_id": account["account_id"], "trainee_id": account["ledger_id"]}
+
+
+def owner_delete_account(
+    db: Any,
+    request: OwnerDeleteRequest,
+    verify_step_up: Callable[[str], StepUpResult],
+    mailer: Callable[[str, str], bool] | None = None,
+) -> dict[str, Any]:
+    """Deletes any live account after owner step-up and records the outcome.
+
+    The username, reason, and TOTP checks happen before any deletion record is written.
+    The notice uses the recovery address captured here, after the durable
+    deletion record is appended but before ADR 039 clears recovery identity.
+    """
+    account = db.get_account(request.account_id)
+    if not db.is_live_account(account):
+        return {"outcome": "not_found"}
+    error = _owner_delete_request_error(account, request, verify_step_up)
+    if error:
+        if error == "lockout_started":
+            _write_owner_delete_audit(
+                db,
+                audit_log.AuditEvent(
+                    actor=request.actor,
+                    action="login_locked_out",
+                    source_ip=request.source_ip,
+                ),
+            )
+        _owner_delete_rejected(db, request)
+        if error == "lockout_started":
+            error = "confirmation_failed"
+        return {"outcome": "rejected", "error": error}
+    return _apply_owner_delete(db, account, request, mailer)
+
+
+def _owner_delete_request_error(
+    account: dict[str, Any],
+    request: OwnerDeleteRequest,
+    verify_step_up: Callable[[str], StepUpResult],
+) -> str | None:
+    if request.username_confirmation != account["username"]:
+        return "confirmation_failed"
+    if not request.reason.strip():
+        return "reason_required"
+    try:
+        audit_log.validate_audit_reason(request.reason)
+    except ValueError:
+        return "reason_invalid"
+    step_up_result = verify_step_up(request.totp_code)
+    if step_up_result is not StepUpResult.SUCCESS:
+        return "lockout_started" if step_up_result is StepUpResult.LOCKOUT_STARTED else "confirmation_failed"
+    return None
+
+
+def _apply_owner_delete(
+    db: Any,
+    account: dict[str, Any],
+    request: OwnerDeleteRequest,
+    mailer: Callable[[str, str], bool] | None,
+) -> dict[str, Any]:
+    recovery_email = db.get_account_email(request.account_id)
+    deleted_at = datetime.now(UTC).isoformat()
+    db.record_account_deletion(request.account_id, account["ledger_id"], deleted_at)
+    email_failed = False
+    if recovery_email:
+        email_failed = _send_owner_deletion_notice(recovery_email, account["username"], mailer)
+    try:
+        deletion = db.delete_account(request.account_id, deleted_at, ledger_id=account["ledger_id"])
+    except Exception as exc:
+        logger.error("Owner account deletion is pending replay (%s)", type(exc).__name__)
+        _write_owner_delete_audit(
+            db,
+            audit_log.AuditEvent(
+                actor=request.actor,
+                action="account_delete_pending",
+                target_account_id=request.account_id,
+                source_ip=request.source_ip,
+                reason=request.reason.strip(),
+            ),
+        )
+        if email_failed:
+            _write_owner_delete_audit(
+                db,
+                audit_log.AuditEvent(
+                    actor=request.actor,
+                    action="account_deleted_email_failed",
+                    target_account_id=request.account_id,
+                    source_ip=request.source_ip,
+                ),
+            )
+        return {"outcome": "pending", "account_id": request.account_id}
+    if not deletion.get("ok"):
+        return {"outcome": "not_found"}
+    _audit_owner_deletion(db, request, email_failed)
+    return {"outcome": "deleted", "account_id": request.account_id}
+
+
+def _send_owner_deletion_notice(
+    recovery_email: str,
+    username: str,
+    mailer: Callable[[str, str], bool] | None,
+) -> bool:
+    sender = mailer or email_sender.send_account_deleted_email
+    try:
+        return not sender(recovery_email, username)
+    except Exception as exc:
+        logger.error("Owner account deletion notice delivery failed (%s)", type(exc).__name__)
+        return True
+
+
+def _audit_owner_deletion(db: Any, request: OwnerDeleteRequest, email_failed: bool) -> None:
+    _write_owner_delete_audit(
+        db,
+        audit_log.AuditEvent(
+            actor=request.actor,
+            action="account_deleted",
+            target_account_id=request.account_id,
+            source_ip=request.source_ip,
+            reason=request.reason.strip(),
+        ),
+    )
+    if email_failed:
+        _write_owner_delete_audit(
+            db,
+            audit_log.AuditEvent(
+                actor=request.actor,
+                action="account_deleted_email_failed",
+                target_account_id=request.account_id,
+                source_ip=request.source_ip,
+            ),
+        )
+
+
+def _owner_delete_rejected(db: Any, request: OwnerDeleteRequest) -> None:
+    _write_owner_delete_audit(
+        db,
+        audit_log.AuditEvent(
+            actor=request.actor,
+            action="account_delete_rejected",
+            target_account_id=request.account_id,
+            source_ip=request.source_ip,
+        ),
+    )
+
+
+def _write_owner_delete_audit(db: Any, event: audit_log.AuditEvent) -> None:
+    try:
+        audit_log.write_audit_entry(db, event)
+    except Exception as exc:
+        logger.error("Owner account deletion audit write failed (%s)", type(exc).__name__)
 
 
 def _google_identity_deletes(db: Any, account_id: str, identity: Any, now: datetime | None = None) -> bool:

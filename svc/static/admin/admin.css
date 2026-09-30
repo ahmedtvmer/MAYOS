@@ -384,6 +384,24 @@ button:hover {
   background: var(--color-surface);
 }
 
+.danger-panel {
+  border-color: var(--color-danger);
+}
+
+.danger-link {
+  color: var(--color-danger);
+}
+
+button.danger-button {
+  border-color: var(--color-danger);
+  background: var(--color-danger);
+  color: var(--color-on-danger);
+}
+
+button.danger-button:hover {
+  filter: brightness(0.9);
+}
+
 .usage-panel h3 {
   margin-top: var(--space-5);
 }

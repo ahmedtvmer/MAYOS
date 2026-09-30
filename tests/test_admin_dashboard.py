@@ -93,6 +93,20 @@ def _csrf(page: str) -> str:
     return match.group(1)
 
 
+def _submit_account_delete(client, account_id, csrf, username, code, reason):
+    return client.post(
+        f"/admin/accounts/{account_id}/delete",
+        data={
+            "csrf_token": csrf,
+            "username_confirmation": username,
+            "totp_code": code,
+            "reason": reason,
+        },
+        headers={"Fly-Client-IP": "203.0.113.8"},
+        follow_redirects=False,
+    )
+
+
 def _login(
     client: TestClient,
     timestamp: float,
@@ -1169,6 +1183,397 @@ def test_owner_reset_link_rejects_expiry_using_its_configured_ttl(admin_api, mon
         json={"token": token, "new_password": "owner-expired-reset-7"},
     )
     assert expired.status_code == 400
+
+
+def test_owner_delete_reuses_durable_path_notifies_before_erasure_and_releases_username(admin_api, monkeypatch):
+    from service import email_sender
+
+    client, db, now, _ = admin_api
+    account, auth_headers = _register_account(client, db, "ownerdeleteflow")
+    account_id = account["account_id"]
+    ledger_id = account["ledger_id"]
+    recovery_email = "owner-delete@example.com"
+    reason = "The account holder requested permanent deletion."
+    db.set_account_email(account_id, recovery_email)
+    assert _login(client, now[0]).status_code == 303
+
+    detail = client.get(f"/admin/accounts/{account_id}")
+    assert 'class="health-panel danger-panel"' in detail.text
+    assert "Danger zone" in detail.text and "Delete this account" in detail.text
+    page = client.get(f"/admin/accounts/{account_id}/delete")
+    assert page.status_code == 200
+    for expected in (
+        "ownerdeleteflow",
+        "immediate, irreversible, and has no undo",
+        "training ledger and backups will be removed",
+        "recovery email and reset tokens will be removed",
+        "only as a new account",
+        "Fresh verification code",
+        "Reason for deletion",
+    ):
+        assert expected in page.text
+
+    deliveries = []
+
+    def check_notice(to_email, subject, body):
+        deliveries.append(
+            (
+                to_email,
+                subject,
+                body,
+                db.is_account_deleted(account_id),
+                db.get_account_email(account_id),
+                db.is_live_account(db.get_account(account_id)),
+            )
+        )
+        return True
+
+    monkeypatch.setattr(email_sender, "_deliver", check_notice)
+    now[0] += 30
+    response = _submit_account_delete(
+        client,
+        account_id,
+        _csrf(page.text),
+        account["username"],
+        _totp(TOTP_SECRET, now[0]),
+        reason,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/accounts?deleted=1"
+    assert account["username"] not in response.headers["location"]
+    assert len(deliveries) == 1
+    delivered_to, subject, body, record_written, captured_email, account_live = deliveries[0]
+    assert delivered_to == recovery_email
+    assert subject == "Your MAYOS account was deleted at your request"
+    assert "ownerdeleteflow" in body and "deleted at your request" in body
+    assert recovery_email not in body
+    assert record_written and captured_email == recovery_email and account_live
+    assert db.get_account(account_id)["deleted_at"] is not None
+    assert db.is_account_deleted(account_id)
+    assert db.get_account_email(account_id) is None
+    assert not db.ledger_exists(ledger_id)
+    assert not (db.backups_dir / ledger_id).exists()
+    deleted_detail = client.get(f"/admin/accounts/{account_id}")
+    assert deleted_detail.status_code == 200
+    assert "Danger zone" not in deleted_detail.text
+    assert "Delete this account" not in deleted_detail.text
+    old_token = client.get("/auth/me", headers=auth_headers)
+    assert old_token.status_code == 401
+    assert old_token.json() == {"error": "account_deleted"}
+    flash = client.get(response.headers["location"])
+    assert "Account deleted." in flash.text
+    assert account["username"] not in str(flash.url)
+    deleted_accounts = client.get("/admin/accounts?show_deleted=1")
+    assert account_id in deleted_accounts.text and "Deleted at:" in deleted_accounts.text
+
+    audit = client.get(f"/admin/audit?action=account_deleted&account_id={account_id}")
+    assert audit.status_code == 200
+    assert "account_deleted" in audit.text and reason in audit.text
+    assert recovery_email not in audit.text
+
+    limiter.reset()
+    replacement, _ = _register_account(client, db, account["username"])
+    assert replacement["account_id"] != account_id
+    assert replacement["ledger_id"] != ledger_id
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["wrong_username", "stale_totp", "missing_reason", "email_reason", "long_reason"],
+)
+def test_owner_delete_rejections_do_not_delete_and_store_no_reason(admin_api, failure):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, f"reject{failure.replace('_', '')}")
+    account_id = account["account_id"]
+    login_code = _totp(TOTP_SECRET, now[0])
+    assert _login(client, now[0], code=login_code).status_code == 303
+    page = client.get(f"/admin/accounts/{account_id}/delete")
+    assert page.status_code == 200
+    if failure == "stale_totp":
+        code = login_code
+    else:
+        now[0] += 30
+        code = _totp(TOTP_SECRET, now[0])
+    username = "wrong-name" if failure == "wrong_username" else account["username"]
+    reason = {
+        "wrong_username": "Support request",
+        "stale_totp": "Support request",
+        "missing_reason": "",
+        "email_reason": "Contact alice@example.com about this request",
+        "long_reason": "x" * 501,
+    }[failure]
+    expected_message = {
+        "wrong_username": "Confirmation did not match. Check the exact username and use a fresh verification code.",
+        "stale_totp": "Confirmation did not match. Check the exact username and use a fresh verification code.",
+        "missing_reason": "Enter a reason for deletion.",
+        "email_reason": "Use a reason of 500 characters or fewer without email addresses or links.",
+        "long_reason": "Use a reason of 500 characters or fewer without email addresses or links.",
+    }[failure]
+
+    response = _submit_account_delete(
+        client, account_id, _csrf(page.text), username, code, reason
+    )
+
+    assert response.status_code == 400
+    message = re.search(r'<p class="alert" role="alert">([^<]*)</p>', response.text)
+    assert message is not None
+    assert message.group(1) == expected_message
+    assert db.is_live_account(db.get_account(account_id))
+    assert not db.is_account_deleted(account_id)
+    rejected = client.get(f"/admin/audit?action=account_delete_rejected&account_id={account_id}")
+    assert rejected.status_code == 200
+    assert "account_delete_rejected" in rejected.text
+    assert not reason or reason not in rejected.text
+    assert "account_deleted" not in rejected.text
+
+
+def test_owner_delete_reason_rejection_does_not_consume_step_up_code_or_allow_login_replay(admin_api):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "deletionstepupreplay")
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{account['account_id']}/delete")
+    now[0] += 30
+    code = _totp(TOTP_SECRET, now[0])
+
+    missing_reason = _submit_account_delete(
+        client, account["account_id"], _csrf(page.text), account["username"], code, "  "
+    )
+
+    assert missing_reason.status_code == 400
+    message = re.search(r'<p class="alert" role="alert">([^<]*)</p>', missing_reason.text)
+    assert message is not None
+    assert message.group(1) == "Enter a reason for deletion."
+    assert db.is_live_account(db.get_account(account["account_id"]))
+    rejected = client.get(
+        f"/admin/audit?action=account_delete_rejected&account_id={account['account_id']}"
+    )
+    assert "account_delete_rejected" in rejected.text
+
+    accepted = _submit_account_delete(
+        client,
+        account["account_id"],
+        _csrf(page.text),
+        account["username"],
+        code,
+        "The account holder requested deletion.",
+    )
+    assert accepted.status_code == 303
+    assert accepted.headers["location"] == "/admin/accounts?deleted=1"
+
+    client.post("/admin/logout", data={"csrf_token": _csrf(client.get("/admin").text)})
+    reused_for_login = _login(client, now[0], code=code)
+    assert reused_for_login.status_code == 401
+
+
+def test_owner_delete_confirmation_warns_about_coach_active_player_count(admin_api):
+    client, db, now, _ = admin_api
+    coach, _ = _register_account(client, db, "deletecoachwarning")
+    player, _ = _register_account(client, db, "deletecoachplayer")
+    with db.catalog_locked() as conn:
+        conn.execute("UPDATE accounts SET is_coach = 1 WHERE account_id = ?", (coach["account_id"],))
+        conn.execute(
+            "INSERT INTO assignments (assignment_id, coach_account_id, player_account_id, status, started_at)"
+            " VALUES ('delete-coach-assignment', ?, ?, 'active', '2026-09-01T00:00:00+00:00')",
+            (coach["account_id"], player["account_id"]),
+        )
+        conn.commit()
+
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{coach['account_id']}/delete")
+    assert "This coach has 1 active players" in page.text
+
+
+def test_owner_can_delete_coach_only_account(admin_api):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "coachonlydelete")
+    with db.catalog_locked() as conn:
+        conn.execute(
+            "UPDATE accounts SET is_player = 0, is_coach = 1 WHERE account_id = ?",
+            (account["account_id"],),
+        )
+        conn.commit()
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{account['account_id']}/delete")
+    now[0] += 30
+
+    response = _submit_account_delete(
+        client,
+        account["account_id"],
+        _csrf(page.text),
+        account["username"],
+        _totp(TOTP_SECRET, now[0]),
+        "The coach requested deletion.",
+    )
+
+    assert response.status_code == 303
+    assert db.get_account(account["account_id"])["deleted_at"] is not None
+    assert not db.ledger_exists(account["ledger_id"])
+
+
+def test_owner_delete_failed_notice_does_not_block_deletion_and_is_audited(admin_api, monkeypatch):
+    from service import email_sender
+
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "deleteemailfailure")
+    db.set_account_email(account["account_id"], "notice-failed@example.com")
+    monkeypatch.setattr(
+        email_sender,
+        "_deliver",
+        lambda _to, subject, _body: False
+        if subject == "Your MAYOS account was deleted at your request"
+        else True,
+    )
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{account['account_id']}/delete")
+    now[0] += 30
+
+    response = _submit_account_delete(
+        client,
+        account["account_id"],
+        _csrf(page.text),
+        account["username"],
+        _totp(TOTP_SECRET, now[0]),
+        "The account holder requested deletion.",
+    )
+
+    assert response.status_code == 303
+    assert db.get_account(account["account_id"])["deleted_at"] is not None
+    deleted = client.get(
+        f"/admin/audit?action=account_deleted&account_id={account['account_id']}"
+    )
+    assert "The account holder requested deletion." in deleted.text
+    failed = client.get(
+        f"/admin/audit?action=account_deleted_email_failed&account_id={account['account_id']}"
+    )
+    assert "account_deleted_email_failed" in failed.text
+    assert "notice-failed@example.com" not in deleted.text + failed.text
+
+
+def test_owner_delete_audit_failure_does_not_turn_deletion_into_an_error(admin_api, monkeypatch):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "deleteauditfailure")
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{account['account_id']}/delete")
+    now[0] += 30
+    catalog_locked = db.catalog_locked
+
+    def fail_after_deletion_record():
+        if db.get_account(account["account_id"])["deleted_at"] is not None:
+            raise sqlite3.OperationalError("audit unavailable")
+        return catalog_locked()
+
+    monkeypatch.setattr(db, "catalog_locked", fail_after_deletion_record)
+    response = _submit_account_delete(
+        client,
+        account["account_id"],
+        _csrf(page.text),
+        account["username"],
+        _totp(TOTP_SECRET, now[0]),
+        "The account holder requested deletion.",
+    )
+
+    assert response.status_code == 303
+    assert db.get_account(account["account_id"])["deleted_at"] is not None
+    assert not db.ledger_exists(account["ledger_id"])
+
+
+def test_owner_delete_recorded_before_failure_redirects_with_pending_flash(admin_api, monkeypatch):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "deletionpendingreplay")
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{account['account_id']}/delete")
+    now[0] += 30
+    delete_account = db.delete_account
+    fail_next_delete = True
+
+    def fail_once(account_id, now_iso=None, *, ledger_id=None):
+        nonlocal fail_next_delete
+        if fail_next_delete:
+            fail_next_delete = False
+            raise RuntimeError("simulated cleanup interruption")
+        return delete_account(account_id, now_iso, ledger_id=ledger_id)
+
+    monkeypatch.setattr(db, "delete_account", fail_once)
+    response = _submit_account_delete(
+        client,
+        account["account_id"],
+        _csrf(page.text),
+        account["username"],
+        _totp(TOTP_SECRET, now[0]),
+        "The account holder requested deletion.",
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/accounts?deleted=pending"
+    assert db.is_account_deleted(account["account_id"])
+    flash = client.get(response.headers["location"])
+    assert "Deletion recorded. Cleanup will finish automatically." in flash.text
+    pending = client.get(
+        f"/admin/audit?action=account_delete_pending&account_id={account['account_id']}"
+    )
+    assert "account_delete_pending" in pending.text
+    assert ADMIN_USERNAME in pending.text
+    assert "The account holder requested deletion." in pending.text
+
+    assert db.replay_deletions() == 1
+    assert db.get_account(account["account_id"])["deleted_at"] is not None
+    assert not db.ledger_exists(account["ledger_id"])
+
+
+def test_owner_delete_requires_login_csrf_and_live_account(admin_api):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "deleteseccheck")
+    delete_url = f"/admin/accounts/{account['account_id']}/delete"
+    assert client.get(delete_url).status_code == 404
+    assert client.post(delete_url, data={}).status_code == 404
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(delete_url)
+    assert page.status_code == 200
+    bad_csrf = _submit_account_delete(
+        client, account["account_id"], "wrong", account["username"], "000000", "Support request"
+    )
+    assert bad_csrf.status_code == 403
+    assert db.is_live_account(db.get_account(account["account_id"]))
+    assert not db.is_account_deleted(account["account_id"])
+
+    db.delete_account(account["account_id"], ledger_id=account["ledger_id"])
+    assert client.get(delete_url).status_code == 404
+    assert client.post(
+        delete_url,
+        data={"csrf_token": _csrf(page.text)},
+        headers={"Fly-Client-IP": "203.0.113.8"},
+    ).status_code == 404
+
+
+def test_owner_step_up_totp_failures_lock_out_by_ip(admin_api):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "deletetotplockout")
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{account['account_id']}/delete")
+    now[0] += 30
+    csrf = _csrf(page.text)
+    for _ in range(5):
+        response = _submit_account_delete(
+            client, account["account_id"], csrf, account["username"], "not-a-code", "Support request"
+        )
+        assert response.status_code == 400
+
+    now[0] += 30
+    locked = _submit_account_delete(
+        client,
+        account["account_id"],
+        csrf,
+        account["username"],
+        _totp(TOTP_SECRET, now[0]),
+        "Support request",
+    )
+    assert locked.status_code == 400
+    assert db.is_live_account(db.get_account(account["account_id"]))
+    lockout = client.get("/admin/audit?action=login_locked_out")
+    assert "login_locked_out" in lockout.text
+    assert ADMIN_USERNAME in lockout.text
+    assert "203.0.113.8" in lockout.text
 
 
 def test_owner_reset_posts_require_login_and_csrf_and_deleted_accounts_have_no_actions(admin_api):

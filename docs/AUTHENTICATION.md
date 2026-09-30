@@ -219,6 +219,12 @@ python scripts/reset_password.py <trainee_id> \
 
 The CLI validates the password policy, writes a fresh bcrypt hash, and bumps the ledger `token_version`. When the ledger is **enrolled** in the registry it then mandatorily advances the account's registry session epoch — failing loudly rather than reporting success if that cannot be done — so every registry-verified API session is revoked, and it reports the real registry epoch. A supplied ledger id that belongs to a live account resolves that account and revokes its sessions too. A bare local ledger with no registry account keeps the legacy behavior and reports its ledger `token_version`. It prunes the revocation ledger and never prints or logs the hash. Each owner-initiated email, reset-link, or CLI password-set operation is recorded in the shared audit log; entries omit email addresses, links, tokens, and passwords.
 
+### Owner-initiated deletion
+
+From a live account page, the owner can open `GET /admin/accounts/{account_id}/delete` and submit `POST /admin/accounts/{account_id}/delete`. Both require a valid owner session; the POST also requires CSRF. Confirmation requires typing the exact username, entering a fresh replay-protected TOTP code even within that session, and providing a non-empty reason of at most 500 characters. Reasons containing email addresses or links are rejected. Failed confirmations are audited without storing the submitted reason.
+
+Deletion is immediate and final. The service captures the recovery email, writes the ADR 039 durable deletion record, attempts the customer notice, then runs `DatabaseManager.delete_account` to invalidate sessions and remove the ledger and account-specific backups. The same ADR 039 cleanup applies to a coach, including ending active assignments; the confirmation shows the active-player count for a coach. A failed notice does not stop deletion and creates an `account_deleted_email_failed` audit event. The `account_deleted` audit event records the owner, account id, available source IP, and reason. Deleted accounts have no owner deletion action, and both deletion routes return 404 for them. The username can be registered again only under a new immutable account id and ledger.
+
 ---
 
 ## 9. Email Delivery
@@ -251,6 +257,7 @@ Delivery failures are logged and swallowed; the client response stays generic. T
 | `POST /auth/logout` | Bearer | — | Revokes presenting `jti`; 204 |
 | `POST /auth/change-password` | Bearer | 10/min | Revokes **all** sessions; 400 on failure |
 | `DELETE /auth/account` | Bearer | 10/min | Exactly one proof: `password` **or** a fresh `google_id_token` (ADR 039); 400 generic on any failure |
+| `GET|POST /admin/accounts/{account_id}/delete` | Owner session | — | Owner-initiated ADR 039 deletion; POST requires CSRF, exact username, fresh TOTP, and a reason |
 | `GET /auth/email` | Bearer | — | `{"email": str \| null}` |
 | `POST /auth/email` | Bearer | 10/min | Normalizes; 400 on invalid/conflict |
 | `POST /auth/forgot-password` | — | 3/hour | Always 202 with generic message |

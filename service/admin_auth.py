@@ -186,12 +186,31 @@ class AdminSecurity:
             if self._is_locked(ip_key, now) or self._is_locked("identity", now):
                 return AdminLoginResult.LOCKED_OUT
         matching_step = self._matching_totp_step(attempt, now)
+        return self._complete_totp_attempt(ip_key, matching_step)
+
+    def verify_step_up_totp(self, code: str, client_ip: str) -> AdminLoginResult:
+        """Accepts one fresh TOTP step and counts failures toward owner lockout."""
+        if not self.config.enabled:
+            return AdminLoginResult.REJECTED
+        now = self.clock()
+        ip_key = f"ip:{client_ip[:MAX_TOKEN_LENGTH]}"
+        with self._lock:
+            if self._is_locked(ip_key, now) or self._is_locked("identity", now):
+                return AdminLoginResult.LOCKED_OUT
+            last_accepted_step = self._last_accepted_totp_step
+        matching_step = verify_totp_code(
+            self.config.totp_secret or b"", code, now, last_accepted_step
+        )
+        return self._complete_totp_attempt(ip_key, matching_step)
+
+    def _complete_totp_attempt(self, ip_key: str, matching_step: int | None) -> AdminLoginResult:
         now = self.clock()
         with self._lock:
             if self._is_locked(ip_key, now) or self._is_locked("identity", now):
                 return AdminLoginResult.LOCKED_OUT
             if matching_step is not None and (
-                self._last_accepted_totp_step is None or matching_step > self._last_accepted_totp_step
+                self._last_accepted_totp_step is None
+                or matching_step > self._last_accepted_totp_step
             ):
                 self._last_accepted_totp_step = matching_step
                 self._failures.pop(ip_key, None)

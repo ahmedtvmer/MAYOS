@@ -104,9 +104,17 @@ def _validate_event(event: AuditEvent) -> None:
     if event.source_ip is not None:
         ip_address(event.source_ip)
     if event.reason is not None:
-        reason = event.reason.strip()
-        if len(reason) > 500 or _contains_sensitive_text(reason):
-            raise ValueError("Audit reason must not contain contact details, links, or credentials.")
+        validate_audit_reason(event.reason)
+
+
+def validate_audit_reason(reason: str) -> str:
+    """Returns a trimmed reason after enforcing the audit log's privacy limits."""
+    clean_reason = reason.strip()
+    if len(clean_reason) > 500:
+        raise ValueError("Audit reason must be 500 characters or fewer.")
+    if _contains_sensitive_text(clean_reason):
+        raise ValueError("Audit reason must not contain email addresses or links.")
+    return clean_reason
 
 
 def _contains_sensitive_text(reason: str) -> bool:

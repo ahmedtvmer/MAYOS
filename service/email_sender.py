@@ -168,3 +168,13 @@ def send_password_reset_email(to_email: str, reset_link: str) -> bool:
         "If you did not request this, ignore this message — your password is unchanged."
     )
     return _deliver(to_email, subject, body)
+
+
+def send_account_deleted_email(to_email: str, username: str) -> bool:
+    """Notifies the account holder that the owner permanently deleted it."""
+    subject = "Your MAYOS account was deleted at your request"
+    body = (
+        f"Hi {username},\n\n"
+        "Your MAYOS account was deleted at your request. This deletion is final.\n"
+    )
+    return _deliver(to_email, subject, body)

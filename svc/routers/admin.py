@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from service import admin_accounts as admin_accounts_service
+from service import account_deletion as account_deletion_service
 from service import coach as coach_service
 from service import model_metering as model_metering_service
 from service import admin_auth, audit_log, email_sender, password_reset as password_reset_service, periodic_status
@@ -35,6 +36,7 @@ class _AccountsPageView:
     total: int
     csrf_token: str
     query: AccountListQuery
+    deletion_flash: str = ""
 
 
 SESSION_COOKIE = "mayos_admin_session"
@@ -176,8 +178,19 @@ async def admin_accounts_list(
         db,
         query,
     )
+    deletion_flash = request.query_params.get("deleted", "")
+    if deletion_flash not in {"1", "pending"}:
+        deletion_flash = ""
     body = _admin_nav(session.csrf_token, security.login_alert_failed, "accounts")
-    body += _accounts_page(_AccountsPageView(rows, total, session.csrf_token, query))
+    body += _accounts_page(
+        _AccountsPageView(
+            rows,
+            total,
+            session.csrf_token,
+            query,
+            deletion_flash=deletion_flash,
+        )
+    )
     return _document("Accounts", body)
 
 
@@ -241,6 +254,81 @@ async def admin_account_detail(
     reset_result = {"outcome": outcome}
     body += _account_detail_page(account, metadata, session.csrf_token, reset_result, coach_invites)
     return _document(f"Account · {account['username']}", body)
+
+
+@router.get("/accounts/{account_id}/delete", response_class=HTMLResponse, include_in_schema=False)
+async def admin_account_delete_confirmation(
+    request: Request,
+    account_id: str,
+    db: Annotated[Any, Depends(get_db)],
+):
+    security = request.app.state.admin_security
+    session = security.get_session(request.cookies.get(SESSION_COOKIE))
+    if session is None:
+        return not_found_response()
+    account = await asyncio.to_thread(_load_admin_account, db, account_id)
+    if account is None or account["deleted_at"] is not None:
+        return not_found_response()
+    assignments = await asyncio.to_thread(db.active_assignment_summary, account_id)
+    body = _admin_nav(session.csrf_token, security.login_alert_failed, "accounts")
+    body += _account_delete_confirmation_page(
+        account,
+        session.csrf_token,
+        assignments["as_coach"] if account["is_coach"] else 0,
+    )
+    return _document(f"Delete account · {account['username']}", body)
+
+
+@router.post("/accounts/{account_id}/delete", include_in_schema=False)
+async def admin_account_delete_submit(
+    request: Request,
+    account_id: str,
+    db: Annotated[Any, Depends(get_db)],
+):
+    security = request.app.state.admin_security
+    form = await request.form()
+    access = await _admin_account_action_access(request, account_id, db, form)
+    if isinstance(access, Response):
+        return access
+    session, account = access
+    deletion_request = account_deletion_service.OwnerDeleteRequest(
+        account_id=account_id,
+        actor=_owner_actor(security),
+        reason=_form_text(form, "reason"),
+        source_ip=_source_ip(request),
+        username_confirmation=_form_text(form, "username_confirmation"),
+        totp_code=_form_text(form, "totp_code"),
+    )
+    source_ip = deletion_request.source_ip
+
+    def verify_step_up(code: str) -> account_deletion_service.StepUpResult:
+        result = security.verify_step_up_totp(code, source_ip or "unavailable")
+        return account_deletion_service.StepUpResult(result.value)
+
+    outcome = await asyncio.to_thread(
+        account_deletion_service.owner_delete_account,
+        db,
+        deletion_request,
+        verify_step_up,
+    )
+    if outcome["outcome"] == "not_found":
+        return not_found_response()
+    if outcome["outcome"] == "deleted":
+        return RedirectResponse("/admin/accounts?deleted=1", status_code=303)
+    if outcome["outcome"] == "pending":
+        return RedirectResponse("/admin/accounts?deleted=pending", status_code=303)
+
+    assignments = await asyncio.to_thread(db.active_assignment_summary, account_id)
+    body = _admin_nav(session.csrf_token, security.login_alert_failed, "accounts")
+    body += _account_delete_confirmation_page(
+        account,
+        session.csrf_token,
+        assignments["as_coach"] if account["is_coach"] else 0,
+        error=outcome["error"],
+    )
+    response = _document(f"Delete account · {account['username']}", body)
+    response.status_code = 400
+    return response
 
 
 def _load_admin_account(db: Any, account_id: str) -> dict[str, Any] | None:
@@ -1007,8 +1095,18 @@ def _accounts_page(view: _AccountsPageView) -> str:
         if query.show_deleted
         else ""
     )
+    deletion_messages = {
+        "1": "Account deleted.",
+        "pending": "Deletion recorded. Cleanup will finish automatically.",
+    }
+    deletion_notice = (
+        f'<p class="note" role="status">{deletion_messages[view.deletion_flash]}</p>'
+        if view.deletion_flash
+        else ""
+    )
     return (
         "<main><h1>Accounts</h1>"
+        + deletion_notice
         + _account_filter_forms(query, view.csrf_token)
         + deleted_note
         + _account_lookup_notice(query.lookup)
@@ -1118,7 +1216,68 @@ def _account_detail_page(
         + "</ul>"
         + _password_card(account, metadata, csrf_token, reset_result)
         + _coach_access_card(account, csrf_token, coach_invites, coach_issue)
+        + _account_delete_card(account)
         + "</main>"
+    )
+
+
+def _account_delete_card(account: dict[str, Any]) -> str:
+    account_id = html.escape(account["account_id"], quote=True)
+    return (
+        '<section class="health-panel danger-panel" aria-labelledby="danger-zone-title">'
+        '<h2 id="danger-zone-title">Danger zone</h2>'
+        '<p>Owner-initiated deletion is immediate and permanent.</p>'
+        f'<a class="danger-link" href="/admin/accounts/{account_id}/delete">Delete this account</a>'
+        "</section>"
+    )
+
+
+def _account_delete_confirmation_page(
+    account: dict[str, Any],
+    csrf_token: str,
+    active_players: int,
+    *,
+    error: str = "",
+) -> str:
+    account_id = html.escape(account["account_id"], quote=True)
+    username = html.escape(str(account["username"]))
+    csrf = html.escape(csrf_token, quote=True)
+    warning = (
+        f'<p class="alert" role="alert">This coach has {active_players} active players.</p>'
+        if account["is_coach"] and active_players > 0
+        else ""
+    )
+    errors = {
+        "confirmation_failed": "Confirmation did not match. Check the exact username and use a fresh verification code.",
+        "reason_required": "Enter a reason for deletion.",
+        "reason_invalid": "Use a reason of 500 characters or fewer without email addresses or links.",
+    }
+    error_notice = (
+        f'<p class="alert" role="alert">{html.escape(errors.get(error, "Confirmation failed."))}</p>'
+        if error
+        else ""
+    )
+    return (
+        '<main><h1>Delete account</h1>'
+        f"{error_notice}<section class=\"health-panel danger-panel\">"
+        f"<p>Account: <strong>{username}</strong></p>"
+        f"{warning}"
+        "<p>This deletion is immediate, irreversible, and has no undo.</p>"
+        "<ul><li>The training ledger and backups will be removed.</li>"
+        "<li>The recovery email and reset tokens will be removed.</li>"
+        "<li>The username can be registered again only as a new account.</li></ul>"
+        "<p>A deletion notice will be sent to any linked recovery email.</p>"
+        f'<form method="post" action="/admin/accounts/{account_id}/delete">'
+        f'<input type="hidden" name="csrf_token" value="{csrf}">'
+        '<label for="username_confirmation">Type the username exactly</label>'
+        '<input id="username_confirmation" name="username_confirmation" maxlength="64" required autocomplete="off">'
+        '<label for="totp_code">Fresh verification code</label>'
+        '<input id="totp_code" name="totp_code" inputmode="numeric" autocomplete="one-time-code" '
+        'pattern="[0-9]{6}" maxlength="6" required>'
+        '<label for="delete_reason">Reason for deletion</label>'
+        '<textarea id="delete_reason" name="reason" maxlength="500" required></textarea>'
+        '<button class="danger-button" type="submit">Delete account permanently</button>'
+        "</form></section></main>"
     )
 
 
