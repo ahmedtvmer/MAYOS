@@ -96,6 +96,16 @@ void switchToMode(BuildContext context, WidgetRef ref, AppMode mode) {
   if (session == null) {
     return;
   }
+  final String currentPath = GoRouterState.of(context).uri.path;
+  if (ref.read(appModeControllerProvider).mode == AppMode.coach &&
+      currentPath.startsWith('$coachPath/')) {
+    ref.read(coachLocationMemoryProvider.notifier).state = CoachLocationMemory(
+      accountId: session.account.accountId,
+      location: currentPath,
+    );
+  }
+  final CoachLocationMemory? remembered =
+      ref.read(coachLocationMemoryProvider);
   ref.read(appModeControllerProvider.notifier).setMode(
         mode,
         accountId: session.account.accountId,
@@ -103,7 +113,9 @@ void switchToMode(BuildContext context, WidgetRef ref, AppMode mode) {
       );
   context.go(
     mode == AppMode.coach
-        ? coachRosterPath
+        ? remembered?.accountId == session.account.accountId
+            ? remembered!.location
+            : coachRosterPath
         : (session.onboarded ? homePath : playerSetupPath),
   );
 }

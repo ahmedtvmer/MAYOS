@@ -29,6 +29,7 @@ class MayosScaffold extends StatelessWidget {
     this.header,
     this.resizeToAvoidBottomInset = true,
     this.safeBottom = true,
+    this.showOfflineBanner = true,
   });
 
   final Widget body;
@@ -42,6 +43,7 @@ class MayosScaffold extends StatelessWidget {
   final Widget? header;
   final bool resizeToAvoidBottomInset;
   final bool safeBottom;
+  final bool showOfflineBanner;
 
   @override
   Widget build(BuildContext context) {
@@ -111,7 +113,7 @@ class MayosScaffold extends StatelessWidget {
                 showBack: showBack,
                 actions: actions,
               ),
-          const OfflineBannerSlot(),
+          if (showOfflineBanner) const OfflineBannerSlot(),
           Expanded(
             child: SizedBox(
               key: bodyContentKey,

@@ -9,6 +9,38 @@ import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
 import 'coach_request_sheet.dart';
 
+bool isDesktopLayout(BuildContext context) =>
+    MediaQuery.sizeOf(context).width >=
+    MayosLayout.desktopNavigationBreakpoint;
+
+class CoachListDetail extends StatelessWidget {
+  const CoachListDetail({
+    super.key,
+    required this.list,
+    required this.detail,
+    this.listKey,
+    this.detailKey,
+  });
+
+  final Widget list;
+  final Widget detail;
+  final Key? listKey;
+  final Key? detailKey;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: <Widget>[
+          SizedBox(
+            key: listKey,
+            width: MayosLayout.coachListPaneWidth,
+            child: list,
+          ),
+          const VerticalDivider(width: MayosBorderWidths.hairline),
+          Expanded(key: detailKey, child: detail),
+        ],
+      );
+}
+
 /// A tinted caption pill — the roster's urgency chips and the alert state
 /// chip (#120). Colour comes from the theme tokens, type from
 /// [MayosTypography.caption].
@@ -152,11 +184,13 @@ class CoachRequestCard extends StatelessWidget {
     required this.request,
     this.playerUsername,
     this.onTap,
+    this.selected = false,
   });
 
   final ProgramRequest request;
   final String? playerUsername;
   final VoidCallback? onTap;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
@@ -168,6 +202,7 @@ class CoachRequestCard extends StatelessWidget {
     return MayosCard(
       key: Key('request_card_${request.requestId}'),
       onTap: request.isPending ? onTap : null,
+      selected: selected,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[

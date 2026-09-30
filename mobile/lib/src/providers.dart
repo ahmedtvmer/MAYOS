@@ -272,6 +272,34 @@ final StateProvider<int> coachRosterRevisionProvider = StateProvider<int>(
   (ref) => 0,
 );
 
+class CoachLocationMemory {
+  const CoachLocationMemory({required this.accountId, required this.location});
+
+  final String accountId;
+  final String location;
+}
+
+/// The latest Coach route for this signed-in account, kept in memory only.
+final StateProvider<CoachLocationMemory?> coachLocationMemoryProvider =
+    StateProvider<CoachLocationMemory?>((ref) {
+  _resetOnAccountChange(ref, () => ref.controller.state = null);
+  return null;
+});
+
+/// Shared in-memory roster data so URL selection can replace the right pane
+/// without refetching or rebuilding the mounted list pane.
+final StateProvider<List<CoachRosterEntry>?> coachRosterEntriesProvider =
+    StateProvider<List<CoachRosterEntry>?>((ref) {
+  _resetOnAccountChange(ref, () => ref.controller.state = null);
+  return null;
+});
+
+final StateProvider<int?> coachRosterEntriesRevisionProvider =
+    StateProvider<int?>((ref) {
+  _resetOnAccountChange(ref, () => ref.controller.state = null);
+  return null;
+});
+
 /// Bumped whenever a coach alert is acknowledged or resolved outside the
 /// Alerts tab (the player page). The Alerts tab listens and refetches, which
 /// also republishes [coachNewAlertsCountProvider] (#120).
@@ -281,6 +309,19 @@ final StateProvider<int> coachRosterRevisionProvider = StateProvider<int>(
 final StateProvider<int> coachAlertsRevisionProvider = StateProvider<int>(
   (ref) => 0,
 );
+
+/// Shared in-memory Alerts data across coach route transitions.
+final StateProvider<List<CoachAlert>?> coachAlertsListProvider =
+    StateProvider<List<CoachAlert>?>((ref) {
+  _resetOnAccountChange(ref, () => ref.controller.state = null);
+  return null;
+});
+
+final StateProvider<int?> coachAlertsListRevisionProvider =
+    StateProvider<int?>((ref) {
+  _resetOnAccountChange(ref, () => ref.controller.state = null);
+  return null;
+});
 
 /// The number of the coach's pending program requests, published by the
 /// Requests tab so the shell's badge tracks apply/decline without a second
@@ -292,6 +333,19 @@ final StateProvider<int> coachPendingRequestsCountProvider = StateProvider<int>(
     return 0;
   },
 );
+
+/// Shared in-memory Requests tab data across URL selection changes.
+final StateProvider<List<ProgramRequest>?> coachRequestsListProvider =
+    StateProvider<List<ProgramRequest>?>((ref) {
+  _resetOnAccountChange(ref, () => ref.controller.state = null);
+  return null;
+});
+
+final StateProvider<int?> coachRequestsListRevisionProvider =
+    StateProvider<int?>((ref) {
+  _resetOnAccountChange(ref, () => ref.controller.state = null);
+  return null;
+});
 
 /// Bumped whenever a program request is applied or declined outside the
 /// Requests tab (the player page). The Requests tab listens and refetches,

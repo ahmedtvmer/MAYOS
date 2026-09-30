@@ -6,6 +6,8 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_card.dart';
 import 'package:mayos_mobile/src/features/coach/coach_player_history_screen.dart';
 import 'package:mayos_mobile/src/features/coach/coach_shell.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
@@ -99,9 +101,12 @@ Map<String, dynamic> _assignment(String id, String username) =>
       'last_workout_on': null,
     };
 
-Map<String, dynamic> _request() => <String, dynamic>{
-      'request_id': 'request-1',
-      'assignment_id': 'assignment-1',
+Map<String, dynamic> _request({
+  String id = 'request-1',
+  String assignmentId = 'assignment-1',
+}) => <String, dynamic>{
+      'request_id': id,
+      'assignment_id': assignmentId,
       'kind': 'exercise_substitution',
       'program_version': 1,
       'day_name': 'Upper 1',
@@ -116,6 +121,10 @@ Map<String, dynamic> _request() => <String, dynamic>{
       'resolved_at': null,
       'resolved_by': null,
     };
+
+int _calls(FakeMayosApi fake, String path) => fake.adapter.requests
+    .where((request) => request.method == 'GET' && request.path == path)
+    .length;
 
 void main() {
   testWidgets('coach tabs have clean URLs and mode switching persists the URL',
@@ -144,9 +153,6 @@ void main() {
     );
     await _openUrl(tester, coachProfilePath);
     expect(_path(tester), coachProfilePath);
-    await tester.tap(find.text('Roster'));
-    await tester.pumpAndSettle();
-    expect(_path(tester), coachRosterPath);
 
     await tester.tap(find.byType(ModeAvatarButton));
     await tester.pumpAndSettle();
@@ -159,7 +165,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Coach mode'));
     await tester.pumpAndSettle();
-    expect(_path(tester), coachRosterPath);
+    expect(_path(tester), coachProfilePath);
     expect(modeStore.values['account-alice'], AppMode.coach);
   });
 
@@ -173,6 +179,7 @@ void main() {
     await tester.tap(find.byKey(const Key('roster_row_assignment-1')));
     await _pumpUntilFound(tester, _playerTitle('bob'));
     expect(_path(tester), '$coachRosterPath/assignment-1');
+    expect(_calls(fake, '/coach/assignments'), 1);
     expect(find.byType(CoachPlayerHistoryScreen), findsOneWidget);
     expect(
       find.descendant(
@@ -191,6 +198,7 @@ void main() {
     await _pumpUntilFound(tester, _playerTitle('carol'));
     expect(_path(tester), '$coachRosterPath/assignment-2');
     expect(_playerTitle('bob'), findsNothing);
+    expect(_calls(fake, '/coach/assignments'), 1);
 
     // A URL opened directly, as after reload, reconstructs the same selection.
     _router(tester).go('$coachRosterPath/assignment-1');
@@ -198,7 +206,7 @@ void main() {
     expect(_path(tester), '$coachRosterPath/assignment-1');
   });
 
-  testWidgets('phone roster selection pushes a page and back restores roster',
+  testWidgets('phone roster selection stays over the shell and system back restores it',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _coachFake();
     fake.assignments.add(_assignment('assignment-1', 'bob'));
@@ -209,10 +217,24 @@ void main() {
         tester, find.byKey(const Key('coach_player_history_app_bar')));
     expect(_path(tester), '$coachRosterPath/assignment-1');
     expect(find.text('Active assignments'), findsNothing);
+    final int alertsOnPlayerPage = _calls(fake, '/coach/alerts');
+    final int requestsOnPlayerPage = _calls(fake, '/coach/program-requests');
+    final container =
+        ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+    final int rosterRevisionBeforeBack =
+        container.read(coachRosterRevisionProvider);
 
-    await tester.tap(find.byType(BackButton).first);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
     await _pumpUntilFound(tester, find.text('Active assignments'));
     expect(_path(tester), coachRosterPath);
+    expect(find.byType(MayosBottomNavigation), findsOneWidget);
+    expect(
+      container.read(coachRosterRevisionProvider),
+      rosterRevisionBeforeBack + 1,
+    );
+    expect(_calls(fake, '/coach/alerts'), alertsOnPlayerPage);
+    expect(_calls(fake, '/coach/program-requests'), requestsOnPlayerPage);
 
     // A cold or reloaded player URL selects the same assignment on phones.
     _router(tester).go('$coachRosterPath/assignment-1');
@@ -234,6 +256,9 @@ void main() {
     await _pumpUntilFound(tester, find.text('No active assignment.'));
     expect(find.textContaining('foreign-assignment'), findsNothing);
     expect(find.text('No active assignment.'), findsOneWidget);
+    expect(find.byKey(const Key('coach_roster_master_pane')), findsOneWidget);
+    expect(find.byKey(const Key('log_check_in_action')), findsNothing);
+    expect(find.byKey(const Key('player_page_actions')), findsNothing);
   });
 
   testWidgets('desktop requests expose URL-addressable detail and actions',
@@ -241,6 +266,7 @@ void main() {
     final FakeMayosApi fake = _coachFake();
     fake.assignments.add(_assignment('assignment-1', 'bob'));
     fake.programRequests.add(_request());
+    fake.programRequests.add(_request(id: 'request-2'));
     await _pumpApp(tester, fake);
 
     await tester.tap(find.text('Requests'));
@@ -254,5 +280,74 @@ void main() {
     expect(find.byKey(const Key('request_apply_button')), findsOneWidget);
     expect(find.byKey(const Key('request_decline_button')), findsOneWidget);
     expect(find.byKey(const Key('request_card_request-1')), findsOneWidget);
+    expect(
+      tester.widget<MayosCard>(find.byKey(const Key('request_card_request-1')))
+          .selected,
+      isTrue,
+    );
+    final int requestReads = _calls(fake, '/coach/program-requests');
+
+    await tester.tap(find.byKey(const Key('request_card_request-2')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('coach_request_detail_pane')));
+    expect(_path(tester), coachRequestLocation('request-2'));
+    expect(find.byKey(const Key('request_card_request-2')), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(_calls(fake, '/coach/program-requests'), requestReads);
+    expect(
+      tester.widget<MayosCard>(find.byKey(const Key('request_card_request-2')))
+          .selected,
+      isTrue,
+    );
+  });
+
+  testWidgets('desktop back and forward URLs restore both roster selections',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.assignments.add(_assignment('assignment-1', 'bob'));
+    fake.assignments.add(_assignment('assignment-2', 'carol'));
+    await _pumpApp(tester, fake);
+
+    _router(tester).go(coachAssignmentLocation('assignment-1'));
+    await _pumpUntilFound(tester, _playerTitle('bob'));
+    _router(tester).go(coachAssignmentLocation('assignment-2'));
+    await _pumpUntilFound(tester, _playerTitle('carol'));
+    expect(_path(tester), coachAssignmentLocation('assignment-2'));
+    _router(tester).go(coachAssignmentLocation('assignment-1'));
+    await _pumpUntilFound(tester, _playerTitle('bob'));
+    expect(_path(tester), coachAssignmentLocation('assignment-1'));
+    expect(_playerTitle('carol'), findsNothing);
+    _router(tester).go(coachAssignmentLocation('assignment-2'));
+    await _pumpUntilFound(tester, _playerTitle('carol'));
+    expect(_path(tester), coachAssignmentLocation('assignment-2'));
+  });
+
+  testWidgets('unknown request URL shows the generic denial on desktop',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.assignments.add(_assignment('assignment-1', 'bob'));
+    fake.programRequests.add(_request(id: 'foreign-request', assignmentId: 'other-assignment'));
+    await _pumpApp(tester, fake);
+
+    _router(tester).go(coachRequestLocation('foreign-request'));
+    await _pumpUntilFound(
+        tester, find.text('This request is no longer available.'));
+    expect(find.byKey(const Key('coach_request_master_pane')), findsOneWidget);
+    expect(find.textContaining('foreign-request'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('unknown request URL shows the generic denial on phone',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.assignments.add(_assignment('assignment-1', 'bob'));
+    await _pumpApp(tester, fake, size: const Size(390, 844));
+
+    _router(tester).go(coachRequestLocation('unknown-request'));
+    await _pumpUntilFound(
+        tester, find.text('This request is no longer available.'));
+    expect(find.textContaining('unknown-request'), findsNothing);
+    expect(find.byType(MayosBottomNavigation), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

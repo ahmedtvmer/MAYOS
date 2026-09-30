@@ -48,7 +48,18 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _load();
+    final List<CoachRosterEntry>? cached =
+        ref.read(coachRosterEntriesProvider);
+    final int? cacheRevision =
+        ref.read(coachRosterEntriesRevisionProvider);
+    if (cached == null ||
+        cacheRevision != ref.read(coachRosterRevisionProvider)) {
+      _load();
+    } else {
+      _assignments = cached;
+      _loading = false;
+      _publishRoster(cached);
+    }
   }
 
   @override
@@ -85,14 +96,10 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
         _assignments = assignments;
         _loading = false;
       });
-      // The refreshed roster is the authority on what is still assigned: an
-      // assignment that vanished ends the coach assistant's in-memory
-      // transcript for it (issue #45).
-      ref
-          .read(coachAssistantControllerProvider.notifier)
-          .clearUnlessAssigned(<String>[
-        for (final CoachRosterEntry row in assignments) row.assignmentId,
-      ]);
+      ref.read(coachRosterEntriesProvider.notifier).state = assignments;
+      ref.read(coachRosterEntriesRevisionProvider.notifier).state =
+          ref.read(coachRosterRevisionProvider);
+      _publishRoster(assignments);
     } on ApiException catch (error) {
       if (!mounted || seq != _loadSeq) return;
       setState(() {
@@ -100,6 +107,17 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
         _error = error.message;
       });
     }
+  }
+
+  void _publishRoster(List<CoachRosterEntry> assignments) {
+    // The refreshed roster is the authority on what is still assigned: an
+    // assignment that vanished ends the coach assistant's in-memory
+    // transcript for it (issue #45).
+    ref.read(coachAssistantControllerProvider.notifier).clearUnlessAssigned(
+          <String>[
+            for (final CoachRosterEntry row in assignments) row.assignmentId,
+          ],
+        );
   }
 
   Future<void> _revoke(CoachRosterEntry entry) async {
@@ -140,6 +158,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                 row.assignmentId != entry.assignmentId)
             .toList(growable: false);
       });
+      ref.read(coachRosterEntriesProvider.notifier).state = _assignments;
       // Revocation ends the assistant's in-memory context for that player too
       // (issue #45): no further question can be asked about them.
       ref
@@ -261,8 +280,8 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
             ? null
             : () {
                 final String location =
-                    '$coachRosterPath/${Uri.encodeComponent(entry.assignmentId)}';
-                context.go(location);
+                    coachAssignmentLocation(entry.assignmentId);
+                context.go(location, extra: entry);
               },
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: MayosSpacing.sm),
@@ -276,7 +295,8 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                   entry.playerUsername.isEmpty
                       ? '?'
                       : entry.playerUsername.substring(0, 1).toUpperCase(),
-                  style: MayosTypography.label.copyWith(color: c.textPrimary),
+                  style:
+                      MayosTypography.label.copyWith(color: c.textPrimary),
                 ),
               ),
               const SizedBox(width: MayosSpacing.md),
@@ -286,8 +306,8 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                   children: <Widget>[
                     Text(
                       entry.playerUsername,
-                      style: MayosTypography.exerciseTitle
-                          .copyWith(color: c.textPrimary),
+                      style:
+                          MayosTypography.exerciseTitle.copyWith(color: c.textPrimary),
                     ),
                     const SizedBox(height: MayosSpacing.xxs),
                     Text(

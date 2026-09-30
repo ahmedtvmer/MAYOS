@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/theme/mayos_spacing.dart';
 import '../../core/ui/mayos_app_header.dart';
 import '../../core/ui/mayos_bottom_navigation.dart';
 import '../../core/ui/mayos_scaffold.dart';
@@ -12,6 +11,7 @@ import '../shared/mode_switch.dart';
 import 'coach_alerts_screen.dart';
 import 'coach_assignments_screen.dart';
 import 'coach_requests_screen.dart';
+import 'coach_shared.dart';
 
 /// The coach shell's navigation indices (#119/#121). Named so a new tab never
 /// silently shifts an existing destination or a test's index.
@@ -26,9 +26,14 @@ abstract final class CoachShellTab {
 /// tab, and the assignment route keeps the roster open beside its player page
 /// on desktop.
 class CoachShell extends ConsumerWidget {
-  const CoachShell({super.key, required this.child});
+  const CoachShell({
+    super.key,
+    required this.child,
+    this.assignmentId,
+  });
 
   final Widget child;
+  final String? assignmentId;
 
   static const List<MayosNavItem> _items = <MayosNavItem>[
     MayosNavItem(
@@ -59,33 +64,30 @@ class CoachShell extends ConsumerWidget {
     final int pendingRequests = ref.watch(coachPendingRequestsCountProvider);
     final String path = GoRouterState.of(context).uri.path;
     final int index = _tabForPath(path);
-    final bool assignmentSelected =
-        path.startsWith('$coachRosterPath/') &&
-        path.substring(coachRosterPath.length + 1).isNotEmpty;
-    final String assignmentId = assignmentSelected
-        ? Uri.decodeComponent(path.substring(coachRosterPath.length + 1))
-        : '';
-    final bool desktop = MediaQuery.sizeOf(context).width >=
-        MayosLayout.desktopNavigationBreakpoint;
-
-    final Widget paneBody = assignmentSelected && desktop
-        ? Row(
-            children: <Widget>[
-              SizedBox(
-                key: const Key('coach_roster_master_pane'),
-                width: MayosLayout.coachMasterPaneWidth,
-                child: CoachAssignmentsScreen(
-                  selectedAssignmentId: assignmentId,
-                ),
-              ),
-              const VerticalDivider(width: 1),
-              Expanded(
-                key: const Key('coach_player_detail_pane'),
-                child: child,
-              ),
-            ],
-          )
-        : child;
+    final bool assignmentSelected = assignmentId != null;
+    final bool desktop = isDesktopLayout(context);
+    final Widget roster = CoachAssignmentsScreen(
+      key: const Key('coach_roster_list_screen'),
+      selectedAssignmentId: assignmentId,
+    );
+    final Widget paneBody = index != CoachShellTab.roster
+        ? child
+        : assignmentSelected && desktop
+            ? CoachListDetail(
+                list: roster,
+                detail: child,
+                listKey: const Key('coach_roster_master_pane'),
+                detailKey: const Key('coach_player_detail_pane'),
+              )
+            : assignmentSelected
+                ? Stack(
+                    fit: StackFit.expand,
+                    children: <Widget>[
+                      Offstage(offstage: true, child: roster),
+                      child,
+                    ],
+                  )
+                : roster;
     final Widget body = _keepBadgeTabsMounted(paneBody, path);
 
     final Widget shell = MayosScaffold(
@@ -93,6 +95,7 @@ class CoachShell extends ConsumerWidget {
         actions: <Widget>[ModeAvatarButton()],
       ),
       body: body,
+      showOfflineBanner: !assignmentSelected,
       bottomBar: MayosBottomNavigation(
         items: <MayosNavItem>[
           for (int i = 0; i < _items.length; i++)
@@ -118,11 +121,6 @@ class CoachShell extends ConsumerWidget {
         },
       ),
     );
-    // Below the desktop breakpoint the URL route replaces the shell, matching
-    // the existing phone drill-down page and keeping its controls unobscured.
-    if (assignmentSelected && !desktop) {
-      return child;
-    }
     return shell;
   }
 

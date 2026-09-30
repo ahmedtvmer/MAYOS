@@ -35,7 +35,7 @@ abstract final class MayosLayout {
   static const double navigationRailWidth = 88;
 
   /// Width for the list pane in desktop coach master/detail layouts.
-  static const double coachMasterPaneWidth = 360;
+  static const double coachListPaneWidth = 360;
 }
 
 /// A deliberately small radius set. Screens pick one of these rather than
@@ -59,8 +59,9 @@ abstract final class MayosRadii {
       BorderRadius.all(Radius.circular(pill));
 }
 
-/// Stroke widths for rules and separators that need more emphasis.
+/// Named widths for hairline separators and emphasized strokes.
 abstract final class MayosBorderWidths {
+  static const double hairline = 1;
   static const double emphasis = 3;
 }
 

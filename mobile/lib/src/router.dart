@@ -6,7 +6,6 @@ import 'core/app_mode.dart';
 import 'core/models.dart';
 import 'core/ui/mayos_scaffold.dart';
 import 'features/coach/coach_alerts_screen.dart';
-import 'features/coach/coach_assignments_screen.dart';
 import 'features/coach/coach_invite_screen.dart';
 import 'features/coach/coach_player_history_screen.dart';
 import 'features/coach/coach_profile_screen.dart';
@@ -47,10 +46,18 @@ const String settingsPath = '/settings';
 const String planPath = '/plan';
 const String profilePath = '/profile';
 const String coachPath = '/coach';
-const String coachRosterPath = '/coach/roster';
-const String coachAlertsPath = '/coach/alerts';
-const String coachRequestsPath = '/coach/requests';
-const String coachProfilePath = '/coach/profile';
+const String coachRosterRoutePath = 'roster';
+const String coachAssignmentRoutePath = ':assignmentId';
+const String coachAlertsRoutePath = 'alerts';
+const String coachRequestsRoutePath = 'requests';
+const String coachRequestRoutePath = ':requestId';
+const String coachProfileRoutePath = 'profile';
+const String coachAssignmentParameter = 'assignmentId';
+const String coachRequestParameter = 'requestId';
+const String coachRosterPath = '$coachPath/$coachRosterRoutePath';
+const String coachAlertsPath = '$coachPath/$coachAlertsRoutePath';
+const String coachRequestsPath = '$coachPath/$coachRequestsRoutePath';
+const String coachProfilePath = '$coachPath/$coachProfileRoutePath';
 const String coachInvitePath = '/coach-invite';
 const String playerSetupPath = '/player-setup';
 const String assignmentPath = '/assignment';
@@ -266,6 +273,12 @@ String carryingLocation(BuildContext context, String destination) => withCarry(
 /// `'/splash?from=<encoded location>'`, decoded by the router's redirect.
 String splashHold(String location) => _locationWithCarry(splashPath, location);
 
+String coachAssignmentLocation(String id) =>
+    '$coachRosterPath/${Uri.encodeComponent(id)}';
+
+String coachRequestLocation(String id) =>
+    '$coachRequestsPath/${Uri.encodeComponent(id)}';
+
 String _locationWithCarry(String route, String target) =>
     '$route?from=${Uri.encodeComponent(target)}';
 
@@ -380,7 +393,10 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       ),
       ShellRoute(
         builder: (BuildContext context, GoRouterState state, Widget child) =>
-            CoachShell(child: child),
+            CoachShell(
+          child: child,
+          assignmentId: state.pathParameters[coachAssignmentParameter],
+        ),
         routes: <RouteBase>[
           GoRoute(
             path: coachPath,
@@ -388,43 +404,48 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
                 state.uri.path == coachPath ? coachRosterPath : null,
             routes: <RouteBase>[
               GoRoute(
-                path: 'roster',
+                path: coachRosterRoutePath,
                 builder: (BuildContext context, GoRouterState state) =>
-                    const KeyedSubtree(
-                  key: Key('coach_roster_list_screen'),
-                  child: CoachAssignmentsScreen(),
-                ),
+                    const SizedBox.shrink(),
                 routes: <RouteBase>[
                   GoRoute(
-                    path: ':assignmentId',
+                    path: coachAssignmentRoutePath,
                     builder: (BuildContext context, GoRouterState state) =>
-                        CoachPlayerHistoryScreen.fromAssignmentId(
+                        CoachPlayerHistoryScreen(
+                      key: ValueKey<String>(
+                        state.pathParameters[coachAssignmentParameter] ?? '',
+                      ),
                       assignmentId:
-                          state.pathParameters['assignmentId'] ?? '',
+                          state.pathParameters[coachAssignmentParameter] ?? '',
+                      entry: state.extra is CoachRosterEntry
+                          ? state.extra! as CoachRosterEntry
+                          : null,
                     ),
                   ),
                 ],
               ),
               GoRoute(
-                path: 'alerts',
+                path: coachAlertsRoutePath,
                 builder: (BuildContext context, GoRouterState state) =>
                     const CoachAlertsScreen(),
               ),
               GoRoute(
-                path: 'requests',
+                path: coachRequestsRoutePath,
                 builder: (BuildContext context, GoRouterState state) =>
                     const CoachRequestsScreen(),
+                routes: <RouteBase>[
+                  GoRoute(
+                    path: coachRequestRoutePath,
+                    builder: (BuildContext context, GoRouterState state) =>
+                        CoachRequestsScreen(
+                      selectedRequestId:
+                          state.pathParameters[coachRequestParameter] ?? '',
+                    ),
+                  ),
+                ],
               ),
               GoRoute(
-                path: 'requests/:requestId',
-                builder: (BuildContext context, GoRouterState state) =>
-                    CoachRequestsScreen(
-                  selectedRequestId:
-                      state.pathParameters['requestId'] ?? '',
-                ),
-              ),
-              GoRoute(
-                path: 'profile',
+                path: coachProfileRoutePath,
                 builder: (BuildContext context, GoRouterState state) =>
                     const CoachProfileScreen(),
               ),

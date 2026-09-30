@@ -112,11 +112,13 @@ All under `lib/src/core/theme/`.
   numeric medium, code, caption, caption strong, avatar initials, mode badge; plus
   `textTheme()` mapping onto Material slots.
 - `mayos_spacing.dart` — `MayosSpacing` (4…40), `MayosRadii` (8/12/16/24/pill),
-  `MayosBorderWidths`, `MayosMotion` (150/220/320 ms with standard/emphasized curves),
+  `MayosBorderWidths` (hairline 1 / emphasis 3), `MayosMotion`
+  (150/220/320 ms with standard/emphasized curves),
   `MayosIconSizes` (small 14 / medium 20 — named icon sizes, never raw pixel
   literals; navigation 24 for shell tabs and the rail), `kMayosMinTapTarget`
   (48), and `MayosLayout` (#133: `desktopNavigationBreakpoint` 1024,
   `playerColumnMaxWidth` 480, `navigationRailWidth` 88,
+  `coachListPaneWidth` 360,
   `googleButtonMaxWidth` 400 for Google's rendered web button).
 - `mayos_theme.dart` — `MayosTheme.light` / `MayosTheme.dark` / `MayosTheme.of`,
   built from the tokens with component themes overridden for app bars, buttons,
@@ -144,7 +146,10 @@ wider, `MayosScaffold` swaps a `MayosBottomNavigation` for a
 (read from `MayosAppModeScope`, installed once in `app.dart`) constrains the
 page to a centred `playerColumnMaxWidth` column; Coach mode keeps the full
 width. `AuthScaffold` applies the same column. Below the breakpoint nothing
-changes.
+changes. In Coach mode at ≥ 1024 px, roster and request selections use a
+`coachListPaneWidth` list beside the selected detail; on phones the player page
+is pushed over the mounted shell, and request taps keep the resolve bottom
+sheet.
 
 The web-only `OfflineBannerSlot` sits below the header in `MayosScaffold` and
 at the top of `AuthScaffold` content. `AuthScaffold` keeps a fixed Home Screen

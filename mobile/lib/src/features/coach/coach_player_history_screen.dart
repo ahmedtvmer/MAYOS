@@ -31,16 +31,14 @@ import 'coach_shared.dart';
 /// a revoked or foreign assignment yields a denial and no training data.
 /// Player-assistant chats never appear here.
 class CoachPlayerHistoryScreen extends ConsumerStatefulWidget {
-  const CoachPlayerHistoryScreen({super.key, required this.entry})
-      : assignmentId = null;
-
-  const CoachPlayerHistoryScreen.fromAssignmentId({
+  const CoachPlayerHistoryScreen({
     super.key,
     required this.assignmentId,
-  }) : entry = null;
+    this.entry,
+  });
 
   final CoachRosterEntry? entry;
-  final String? assignmentId;
+  final String assignmentId;
 
   @override
   ConsumerState<CoachPlayerHistoryScreen> createState() =>
@@ -64,6 +62,7 @@ class _CoachPlayerHistoryScreenState
   late CoachRosterEntry _entry;
   bool _loading = true;
   String? _error;
+  bool _assignmentDenied = false;
   CoachPlayerSummary? _summary;
   List<PersonalRecord> _records = const <PersonalRecord>[];
   List<CoachPlayerExercise> _exercises = const <CoachPlayerExercise>[];
@@ -95,36 +94,9 @@ class _CoachPlayerHistoryScreenState
     _load();
   }
 
-  @override
-  void didUpdateWidget(covariant CoachPlayerHistoryScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    final String? oldId = oldWidget.entry?.assignmentId ?? oldWidget.assignmentId;
-    final String? nextId = widget.entry?.assignmentId ?? widget.assignmentId;
-    if (oldId == nextId) return;
-    _entry = _routeEntry();
-    _nextFollowUpOn = _entry.nextFollowUpOn;
-    _alertsSeq++;
-    _requestsSeq++;
-    _summary = null;
-    _records = const <PersonalRecord>[];
-    _exercises = const <CoachPlayerExercise>[];
-    _histories.clear();
-    _openExerciseId = null;
-    _loadingHistory = false;
-    _programRequests = const <ProgramRequest>[];
-    _requestError = null;
-    _checkIns = const <CheckIn>[];
-    _alerts = const <CoachAlert>[];
-    _busyAlertId = null;
-    _publishError = null;
-    _publishing = false;
-    _segment = _PlayerSegment.history;
-    _load();
-  }
-
   CoachRosterEntry _routeEntry() => widget.entry ??
       CoachRosterEntry(
-        assignmentId: widget.assignmentId!,
+        assignmentId: widget.assignmentId,
         playerUsername: '',
         startedAt: '',
         status: 'active',
@@ -190,6 +162,7 @@ class _CoachPlayerHistoryScreenState
           sortCoachRequests(playerData[4] as List<ProgramRequest>);
       _checkIns = sortCheckInsNewestFirst(playerData[5] as List<CheckIn>);
       _loading = false;
+      _assignmentDenied = false;
       _requestError = null;
     });
   }
@@ -203,6 +176,7 @@ class _CoachPlayerHistoryScreenState
     }
     setState(() {
       _loading = false;
+      _assignmentDenied = error.statusCode == 403;
       _error = error.statusCode == 403
           ? 'No active assignment.'
           : error.message;
@@ -752,10 +726,7 @@ class _CoachPlayerHistoryScreenState
     final bool assistantEnabled =
         ref.watch(authControllerProvider).session?.account.coachAiEnabled ??
             false;
-    final bool phoneAssignmentRoute =
-        widget.assignmentId != null &&
-        MediaQuery.sizeOf(context).width <
-            MayosLayout.desktopNavigationBreakpoint;
+    final bool phoneAssignmentRoute = !isDesktopLayout(context);
     return PopScope<void>(
       onPopInvokedWithResult: (bool didPop, _) {
         if (didPop) {
@@ -779,46 +750,44 @@ class _CoachPlayerHistoryScreenState
                 )
               : null,
           title: Text(entry.playerUsername),
-          actions: <Widget>[
-            // The header action of the player page (#120): it opens the
-            // channel + note sheet dated today.
-            TextButton(
-              key: const Key('log_check_in_action'),
-              onPressed: _loading ? null : _openCheckInSheet,
-              child: const Text('Log check-in'),
-            ),
-            // Three text actions do not fit a 360dp app bar, so the two
-            // player-scoped actions live behind the overflow (#G).
-            PopupMenuButton<_PlayerAction>(
-              key: const Key('player_page_actions'),
-              icon: const Icon(Icons.more_vert),
-              onSelected: (_PlayerAction action) {
-                switch (action) {
-                  case _PlayerAction.publishProgram:
-                    if (!_publishing) {
-                      _openPublishDialog();
-                    }
-                  case _PlayerAction.askAssistant:
-                    _openAssistant();
-                }
-              },
-              itemBuilder: (BuildContext context) =>
-                  <PopupMenuEntry<_PlayerAction>>[
-                PopupMenuItem<_PlayerAction>(
-                  key: const Key('publish_program_action'),
-                  value: _PlayerAction.publishProgram,
-                  enabled: !_publishing,
-                  child: const Text('Publish program'),
-                ),
-                if (assistantEnabled)
-                  const PopupMenuItem<_PlayerAction>(
-                    key: Key('coach_assistant_entry'),
-                    value: _PlayerAction.askAssistant,
-                    child: Text('Ask assistant'),
+          actions: _assignmentDenied
+              ? const <Widget>[]
+              : <Widget>[
+                  TextButton(
+                    key: const Key('log_check_in_action'),
+                    onPressed: _loading ? null : _openCheckInSheet,
+                    child: const Text('Log check-in'),
                   ),
-              ],
-            ),
-          ],
+                  PopupMenuButton<_PlayerAction>(
+                    key: const Key('player_page_actions'),
+                    icon: const Icon(Icons.more_vert),
+                    onSelected: (_PlayerAction action) {
+                      switch (action) {
+                        case _PlayerAction.publishProgram:
+                          if (!_publishing) {
+                            _openPublishDialog();
+                          }
+                        case _PlayerAction.askAssistant:
+                          _openAssistant();
+                      }
+                    },
+                    itemBuilder: (BuildContext context) =>
+                        <PopupMenuEntry<_PlayerAction>>[
+                      PopupMenuItem<_PlayerAction>(
+                        key: const Key('publish_program_action'),
+                        value: _PlayerAction.publishProgram,
+                        enabled: !_publishing,
+                        child: const Text('Publish program'),
+                      ),
+                      if (assistantEnabled)
+                        const PopupMenuItem<_PlayerAction>(
+                          key: Key('coach_assistant_entry'),
+                          value: _PlayerAction.askAssistant,
+                          child: Text('Ask assistant'),
+                        ),
+                    ],
+                  ),
+                ],
         ),
         body: Column(
           children: <Widget>[

@@ -30,9 +30,7 @@ class CoachRequestsScreen extends ConsumerStatefulWidget {
 }
 
 class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
-  final TextEditingController _reply = TextEditingController();
   bool _loading = true;
-  bool _resolving = false;
   String? _error;
   List<ProgramRequest> _requests = const <ProgramRequest>[];
 
@@ -41,16 +39,9 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
   int _loadSeq = 0;
 
   @override
-  void dispose() {
-    _reply.dispose();
-    super.dispose();
-  }
-
-  @override
   void didUpdateWidget(covariant CoachRequestsScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selectedRequestId != widget.selectedRequestId) {
-      _reply.clear();
       _error = null;
     }
   }
@@ -58,7 +49,17 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    final List<ProgramRequest>? cached = ref.read(coachRequestsListProvider);
+    final int? cacheRevision =
+        ref.read(coachRequestsListRevisionProvider);
+    if (cached == null ||
+        cacheRevision != ref.read(coachRequestsRevisionProvider)) {
+      _load();
+    } else {
+      _requests = cached;
+      _loading = false;
+      _publishCount();
+    }
   }
 
   /// Publishes the pending count so the shell's badge tracks every change
@@ -85,6 +86,9 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
         _loading = false;
         _error = null;
       });
+      ref.read(coachRequestsListProvider.notifier).state = requests;
+      ref.read(coachRequestsListRevisionProvider.notifier).state =
+          ref.read(coachRequestsRevisionProvider);
       _publishCount();
     } on ApiException catch (error) {
       if (!mounted || seq != _loadSeq) return;
@@ -117,21 +121,17 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
     );
   }
 
-  Future<void> _resolveInline(
-      ProgramRequest request, CoachRequestDecision decision) async {
-    setState(() {
-      _resolving = true;
-      _error = null;
-    });
+  Future<void> _resolveInline(ProgramRequest request,
+      CoachRequestDecision decision, String reply) async {
+    setState(() => _error = null);
     final CoachRequestResolution resolution =
         await resolveCoachProgramRequest(
       api: ref.read(apiClientProvider),
       request: request,
       decision: decision,
-      reply: _reply.text.trim(),
+      reply: reply,
     );
     if (!mounted) return;
-    setState(() => _resolving = false);
     await applyCoachRequestAction(
       ref,
       context: context,
@@ -170,9 +170,9 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
         if (_requests.isEmpty)
           _emptyRequests(context)
         else ...<Widget>[
-          _pendingSection(context, pending),
+          _pendingSection(context, pending, widget.selectedRequestId),
           const SizedBox(height: MayosSpacing.md),
-          _answeredSection(context, answered),
+          _answeredSection(context, answered, widget.selectedRequestId),
         ],
       ],
     );
@@ -185,7 +185,7 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
       );
 
   Widget _pendingSection(
-      BuildContext context, List<ProgramRequest> pending) {
+      BuildContext context, List<ProgramRequest> pending, String? selectedId) {
     final Color secondary = MayosTheme.of(context).textSecondary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -198,6 +198,7 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
           for (final ProgramRequest request in pending)
             CoachRequestCard(
               request: request,
+              selected: request.requestId == selectedId,
               onTap: () => _openRequest(context, request),
             ),
       ],
@@ -205,18 +206,16 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
   }
 
   void _openRequest(BuildContext context, ProgramRequest request) {
-    final bool desktop = MediaQuery.sizeOf(context).width >=
-        MayosLayout.desktopNavigationBreakpoint;
+    final bool desktop = isDesktopLayout(context);
     if (desktop) {
-      context.go(
-          '$coachRequestsPath/${Uri.encodeComponent(request.requestId)}');
+      context.go(coachRequestLocation(request.requestId));
       return;
     }
     _resolve(request);
   }
 
   Widget _answeredSection(
-      BuildContext context, List<ProgramRequest> answered) {
+      BuildContext context, List<ProgramRequest> answered, String? selectedId) {
     final Color secondary = MayosTheme.of(context).textSecondary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -227,7 +226,10 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
               style: MayosTypography.bodySecondary.copyWith(color: secondary))
         else
           for (final ProgramRequest request in answered)
-            CoachRequestCard(request: request),
+            CoachRequestCard(
+              request: request,
+              selected: request.requestId == selectedId,
+            ),
       ],
     );
   }
@@ -236,60 +238,14 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
     if (request == null) {
       return const Center(child: Text('This request is no longer available.'));
     }
-    return ListView(
-      key: const Key('coach_request_detail_pane'),
-      padding: MayosSpacing.screen,
-      children: <Widget>[
-        _errorBanner(context),
-        const MayosSectionHeader(title: 'Request detail'),
-        _requestSummary(context, request),
-        if (request.isPending) ...<Widget>[
-          const SizedBox(height: MayosSpacing.md),
-          _decisionControls(request),
-        ] else
-          _answeredRequestMessage(context),
-      ],
+    return CoachRequestDetailPane(
+      key: ValueKey<String>(request.requestId),
+      request: request,
+      error: _error,
+      onDecision: (CoachRequestDecision decision, String reply) =>
+          _resolveInline(request, decision, reply),
     );
   }
-
-  Widget _requestSummary(BuildContext context, ProgramRequest request) {
-    final MayosThemeExtension theme = MayosTheme.of(context);
-    return MayosCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(request.playerUsername ?? 'Player'),
-          const SizedBox(height: MayosSpacing.xs),
-          Text(coachRequestTitle(request),
-              style: MayosTypography.exerciseTitle
-                  .copyWith(color: theme.textPrimary)),
-          const SizedBox(height: MayosSpacing.xs),
-          Text('“${request.reason}”'),
-          const SizedBox(height: MayosSpacing.xs),
-          coachRequestStatusChip(context, request),
-          if (request.hasResponse) ...<Widget>[
-            const SizedBox(height: MayosSpacing.xs),
-            Text('You: ${request.response}'),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _decisionControls(ProgramRequest request) =>
-      CoachRequestDecisionControls(
-        request: request,
-        replyController: _reply,
-        busy: _resolving,
-        onDecision: (CoachRequestDecision decision) =>
-            _resolveInline(request, decision),
-      );
-
-  Widget _answeredRequestMessage(BuildContext context) => Text(
-        'This request has been answered.',
-        style: MayosTypography.bodySecondary
-            .copyWith(color: MayosTheme.of(context).textSecondary),
-      );
 
   @override
   Widget build(BuildContext context) {
@@ -314,26 +270,114 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
         }
       }
     }
-    final bool desktop = MediaQuery.sizeOf(context).width >=
-        MayosLayout.desktopNavigationBreakpoint;
+    final bool desktop = isDesktopLayout(context);
     if (desktop) {
-      return Row(
-        children: <Widget>[
-          SizedBox(
-            width: MayosLayout.coachMasterPaneWidth,
-            child: _requestList(context),
-          ),
-          const VerticalDivider(width: 1),
-          Expanded(
-            child: selectedId == null
-                ? const Center(child: Text('Select a request to review.'))
-                : _requestDetail(context, selected),
-          ),
-        ],
+      return CoachListDetail(
+        list: _requestList(context),
+        detail: selectedId == null
+            ? const Center(child: Text('Select a request to review.'))
+            : _requestDetail(context, selected),
+        listKey: const Key('coach_request_master_pane'),
+        detailKey: const Key('coach_request_detail_region'),
       );
     }
     return selectedId == null
         ? _requestList(context)
         : _requestDetail(context, selected);
+  }
+}
+
+class CoachRequestDetailPane extends StatefulWidget {
+  const CoachRequestDetailPane({
+    super.key,
+    required this.request,
+    required this.onDecision,
+    this.error,
+  });
+
+  final ProgramRequest request;
+  final String? error;
+  final Future<void> Function(CoachRequestDecision decision, String reply)
+      onDecision;
+
+  @override
+  State<CoachRequestDetailPane> createState() =>
+      _CoachRequestDetailPaneState();
+}
+
+class _CoachRequestDetailPaneState extends State<CoachRequestDetailPane> {
+  final TextEditingController _reply = TextEditingController();
+  bool _resolving = false;
+
+  @override
+  void dispose() {
+    _reply.dispose();
+    super.dispose();
+  }
+
+  Future<void> _resolve(CoachRequestDecision decision) async {
+    setState(() => _resolving = true);
+    await widget.onDecision(decision, _reply.text.trim());
+    if (mounted) {
+      setState(() => _resolving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ProgramRequest request = widget.request;
+    final MayosThemeExtension theme = MayosTheme.of(context);
+    return ListView(
+      key: const Key('coach_request_detail_pane'),
+      padding: MayosSpacing.screen,
+      children: <Widget>[
+        if (widget.error != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+            child: Text(
+              widget.error!,
+              style: MayosTypography.bodySecondary
+                  .copyWith(color: theme.danger),
+            ),
+          ),
+        const MayosSectionHeader(title: 'Request detail'),
+        MayosCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(request.playerUsername ?? 'Player'),
+              const SizedBox(height: MayosSpacing.xs),
+              Text(
+                coachRequestTitle(request),
+                style: MayosTypography.exerciseTitle
+                    .copyWith(color: theme.textPrimary),
+              ),
+              const SizedBox(height: MayosSpacing.xs),
+              Text('“${request.reason}”'),
+              const SizedBox(height: MayosSpacing.xs),
+              coachRequestStatusChip(context, request),
+              if (request.hasResponse) ...<Widget>[
+                const SizedBox(height: MayosSpacing.xs),
+                Text('You: ${request.response}'),
+              ],
+            ],
+          ),
+        ),
+        if (request.isPending) ...<Widget>[
+          const SizedBox(height: MayosSpacing.md),
+          CoachRequestDecisionControls(
+            request: request,
+            replyController: _reply,
+            busy: _resolving,
+            onDecision: _resolve,
+          ),
+        ] else
+          Text(
+            'This request has been answered.',
+            style: MayosTypography.bodySecondary
+                .copyWith(color: theme.textSecondary),
+          ),
+      ],
+    );
   }
 }

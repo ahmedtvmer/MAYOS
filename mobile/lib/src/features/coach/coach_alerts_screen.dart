@@ -43,7 +43,16 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    final List<CoachAlert>? cached = ref.read(coachAlertsListProvider);
+    final int? cacheRevision = ref.read(coachAlertsListRevisionProvider);
+    if (cached == null ||
+        cacheRevision != ref.read(coachAlertsRevisionProvider)) {
+      _load();
+    } else {
+      _alerts = cached;
+      _loading = false;
+      _publishNewCount();
+    }
   }
 
   /// Publishes the new-alert count so the shell's badge tracks every change
@@ -69,6 +78,9 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
         _alerts = alerts;
         _loading = false;
       });
+      ref.read(coachAlertsListProvider.notifier).state = alerts;
+      ref.read(coachAlertsListRevisionProvider.notifier).state =
+          ref.read(coachAlertsRevisionProvider);
       _publishNewCount();
     } on ApiException catch (error) {
       if (!mounted || seq != _loadSeq) return;
@@ -101,6 +113,9 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
                 row.alertId == updated.alertId ? updated : row)
             .toList(growable: false);
       });
+      ref.read(coachAlertsListProvider.notifier).state = _alerts;
+      ref.read(coachAlertsListRevisionProvider.notifier).state =
+          ref.read(coachAlertsRevisionProvider);
       _publishNewCount();
     } on ApiException catch (error) {
       if (!mounted) return;
