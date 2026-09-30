@@ -128,6 +128,20 @@ class RegistryAccountsMixin:
             cursor.execute(f"SELECT {self._ACCOUNT_COLUMNS} FROM accounts WHERE account_id = ?", (str(account_id),))
             return self._account_from_row(cursor.fetchone())
 
+    def get_accounts_by_ids(self, account_ids: list[str]) -> list[dict[str, Any]]:
+        """Reads a set of accounts in one query, preserving database row order."""
+        unique_ids = list(dict.fromkeys(str(account_id) for account_id in account_ids if account_id))
+        if not unique_ids:
+            return []
+        self.ensure_account_schema()
+        placeholders = ", ".join("?" for _ in unique_ids)
+        with self._catalog_lock:
+            rows = self.catalog_conn.execute(
+                f"SELECT {self._ACCOUNT_COLUMNS} FROM accounts WHERE account_id IN ({placeholders})",
+                unique_ids,
+            ).fetchall()
+        return [self._account_from_row(row) for row in rows]
+
     def list_accounts(self, *, include_deleted: bool = False) -> list[dict[str, Any]]:
         """Lists live or deleted account rows newest first for owner metadata views."""
         self.ensure_account_schema()

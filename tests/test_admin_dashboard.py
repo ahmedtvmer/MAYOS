@@ -3,6 +3,8 @@
 import base64
 import hashlib
 import hmac
+import html
+import json
 import os
 import re
 import sqlite3
@@ -265,13 +267,16 @@ def test_admin_pages_reference_brand_assets_with_strict_self_only_csp(admin_api)
     assert home.headers["content-security-policy"] == expected_csp
     assert 'class="brand-link" href="/admin" aria-label="MAYOS owner dashboard" aria-current="page"' in home.text
     assert "The owner dashboard is ready" not in home.text
-    assert home.text.count('class="dashboard-card"') == 2
+    assert home.text.count('class="dashboard-card"') == 3
     assert "Review accounts, plans, and activity." in home.text
+    assert "Review model usage, limits, and spend." in home.text
     assert "Review owner actions and sign-ins." in home.text
     assert '<div class="admin-nav-links">' in home.text
 
     accounts = client.get("/admin/accounts")
     assert 'class="nav-link" href="/admin/accounts" aria-current="page">Accounts</a>' in accounts.text
+    usage = client.get("/admin/usage")
+    assert 'class="nav-link" href="/admin/usage" aria-current="page">Usage</a>' in usage.text
     audit = client.get("/admin/audit")
     assert 'class="nav-link" href="/admin/audit" aria-current="page">Audit log</a>' in audit.text
 
@@ -641,7 +646,14 @@ def test_admin_responses_include_noindex_and_security_headers(admin_api):
     before_login = client.get("/admin/audit")
     login_page = client.get("/admin/login")
     login = _login(client, now[0])
-    for response in (before_login, login_page, login, client.get("/admin"), client.get("/admin/audit")):
+    for response in (
+        before_login,
+        login_page,
+        login,
+        client.get("/admin"),
+        client.get("/admin/usage"),
+        client.get("/admin/audit"),
+    ):
         assert response.headers["x-robots-tag"] == "noindex, nofollow"
         assert response.headers["cache-control"] == "no-store"
         assert response.headers["x-content-type-options"] == "nosniff"
@@ -1078,3 +1090,282 @@ def test_existing_catalog_gets_nullable_last_seen_column(tmp_path):
         assert db.get_account("legacy-account")["last_seen_at"] is None
     finally:
         db.catalog_conn.close()
+
+
+def test_usage_page_requires_login_and_shows_empty_catalog_state(admin_api, monkeypatch):
+    client, _, now, _ = admin_api
+    from svc.routers import admin as admin_router
+
+    fixed_now = datetime(2026, 9, 15, 12, tzinfo=UTC)
+    monkeypatch.setattr(admin_router, "_utc_now", lambda: fixed_now)
+    assert client.get("/admin/usage").status_code == 404
+    assert _login(client, now[0]).status_code == 303
+
+    page = client.get("/admin/usage")
+
+    assert page.status_code == 200
+    assert "No usage recorded yet" in page.text
+    assert 'data-period="today"' in page.text
+    assert 'data-period="this-month"' in page.text
+    assert 'data-period="last-month"' in page.text
+    assert "Monthly alert: Not fired" in page.text
+    assert "No limit hits recorded this month." in page.text
+    assert "No account usage recorded this month." in page.text
+    assert "<meter" in page.text
+    assert "style=" not in page.text and "<script" not in page.text
+
+
+def _seed_ranked_usage_rows(db, account_ids, created_at):
+    for index, account_id in enumerate(account_ids):
+        db.record_model_usage(
+            account_id=account_id,
+            role=("player", "coach", "judge")[index % 3],
+            purpose="admin usage test",
+            model=f"model-{index % 2}",
+            input_tokens=1000,
+            output_tokens=500,
+            estimated=False,
+            cost_usd=float(21 - index),
+            created_at=created_at,
+        )
+
+
+def _seed_estimated_usage_row(db, account_id, created_at):
+    db.record_model_usage(
+        account_id=account_id,
+        role="judge",
+        purpose="admin usage test",
+        model="estimated-model",
+        input_tokens=1500,
+        output_tokens=700,
+        estimated=True,
+        cost_usd=0.25,
+        created_at=created_at,
+    )
+
+
+def _seed_unattributed_usage_row(db, created_at):
+    db.record_model_usage(
+        account_id=None,
+        role="judge",
+        purpose="unattributed test",
+        model="unattributed-model",
+        input_tokens=300,
+        output_tokens=100,
+        estimated=True,
+        cost_usd=0.5,
+        created_at=created_at,
+    )
+
+
+def _seed_previous_month_usage_row(db, account_id, month_start):
+    db.record_model_usage(
+        account_id=account_id,
+        role="coach",
+        purpose="admin usage test",
+        model="last-month-model",
+        input_tokens=250,
+        output_tokens=125,
+        estimated=False,
+        cost_usd=1.25,
+        created_at=(month_start + timedelta(days=1)).isoformat(),
+    )
+
+
+def _seed_limit_hits(db, account_ids, created_at):
+    for kind in ("daily_tokens", "daily_tokens", "rate"):
+        db.record_model_limit_hit(account_ids[0], kind, created_at)
+    for _ in range(2):
+        db.record_model_limit_hit(account_ids[2], "rate", created_at)
+    db.record_model_limit_hit(account_ids[3], "daily_tokens", created_at)
+    for _ in range(2):
+        db.record_model_limit_hit("orphan-limit-hit-account", "rate", created_at)
+
+
+def _delete_usage_account(db, account_id, deleted_at):
+    account = db.get_account(account_id)
+    assert account
+    return db.delete_account(account_id, deleted_at, ledger_id=account["ledger_id"])
+
+
+def _seed_usage_dashboard(db, moment):
+    from service import model_metering
+
+    month_start, _ = model_metering.month_bounds(moment)
+    prior_month_start, _ = model_metering.month_bounds(month_start - timedelta(microseconds=1))
+    account_ids = [db.create_account(f"usageuser{index:02d}") for index in range(21)]
+    assert all(account_ids)
+    current_at = moment.isoformat()
+    _seed_ranked_usage_rows(db, account_ids, current_at)
+    _seed_estimated_usage_row(db, account_ids[0], current_at)
+    _seed_unattributed_usage_row(db, current_at)
+    _seed_previous_month_usage_row(db, account_ids[0], prior_month_start)
+    _seed_limit_hits(db, account_ids, current_at)
+    _delete_usage_account(db, account_ids[2], current_at)
+    db.catalog_conn.execute("UPDATE accounts SET status = 'disabled' WHERE account_id = ?", (account_ids[3],))
+    db.catalog_conn.commit()
+    return moment, account_ids
+
+
+def _usage_period_html(page, period):
+    match = re.search(rf'<section class="health-panel usage-panel" data-period="{period}">(.*?)</section>', page, re.S)
+    assert match
+    return match.group(1)
+
+
+def _usage_metric_value(page, period, metric):
+    markup = _usage_period_html(page, period)
+    match = re.search(rf'<div data-metric="{metric}"><dt>.*?</dt><dd>(.*?)</dd>', markup)
+    assert match
+    return match.group(1)
+
+
+def _assert_usage_period_totals(page):
+    for period in ("today", "this-month"):
+        assert _usage_metric_value(page, period, "calls") == "23"
+        assert _usage_metric_value(page, period, "input-tokens") == "22,800"
+        assert _usage_metric_value(page, period, "output-tokens") == "11,300"
+        assert _usage_metric_value(page, period, "cost") == "$231.75"
+    assert _usage_metric_value(page, "last-month", "calls") == "1"
+    assert _usage_metric_value(page, "last-month", "input-tokens") == "250"
+    assert _usage_metric_value(page, "last-month", "output-tokens") == "125"
+    assert _usage_metric_value(page, "last-month", "cost") == "$1.25"
+
+
+def _assert_usage_breakdowns(page):
+    today = _usage_period_html(page, "today")
+    assert "model-0" in today and "model-1" in today
+    assert "last-month-model" not in today
+    assert "<td>judge</td><td>9</td>" in today
+    assert "estimated-model" in today and "Estimated tokens" in today
+    assert "Unattributed usage" in today and "unattributed-model" in today
+
+
+def _assert_usage_top_accounts(page, account_ids):
+    top = re.search(r'<section class="health-panel usage-panel" data-top-accounts>(.*?)</section>', page, re.S)
+    assert top
+    ranked_ids = re.findall(r'href="/admin/accounts/([0-9a-f]{32})"', top.group(1))
+    assert ranked_ids == account_ids[:20]
+    assert f'<a href="/admin/accounts/{account_ids[0]}">usageuser00</a>' in top.group(1)
+    assert f'<a href="/admin/accounts/{account_ids[2]}">Deleted account</a>' in top.group(1)
+    assert account_ids[20] not in ranked_ids
+
+
+def _assert_usage_limit_hits(page, account_ids):
+    limits = re.search(r'<section class="health-panel usage-panel" data-limit-hits>(.*?)</section>', page, re.S)
+    assert limits
+    hit_account_ids = re.findall(r'href="/admin/accounts/([^"]+)"', limits.group(1))
+    assert hit_account_ids == [account_ids[0], account_ids[2], "orphan-limit-hit-account", account_ids[3]]
+    assert f'<a href="/admin/accounts/{account_ids[2]}">Deleted account</a>' in limits.group(1)
+    assert f'<a href="/admin/accounts/{account_ids[3]}">Deleted account</a>' in limits.group(1)
+    assert '<a href="/admin/accounts/orphan-limit-hit-account">Deleted account</a>' in limits.group(1)
+
+
+def _assert_usage_spend_alert(page):
+    assert "Fired and notified at" in page
+    assert 'max="50.00" value="50.00"' in page
+    assert "Actual: $231.75" in page
+
+
+def _freeze_metering_clock(monkeypatch, moment):
+    from service import model_metering
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return moment.astimezone(tz) if tz else moment.replace(tzinfo=None)
+
+    monkeypatch.setattr(model_metering, "datetime", FrozenDateTime)
+
+
+def _usage_breakdown_rows(page, period, breakdown):
+    markup = _usage_period_html(page, period)
+    table = re.search(rf'<table class="usage-table" data-breakdown="{breakdown}">(.*?)</table>', markup, re.S)
+    assert table
+    rows = re.findall(r"<tr>(.*?)</tr>", table.group(1), re.S)[1:]
+    return [
+        [html.unescape(re.sub(r"<[^>]*>", "", cell)).strip() for cell in re.findall(r"<td>(.*?)</td>", row, re.S)]
+        for row in rows
+    ]
+
+
+def _cli_breakdown_rows(report, dimensions):
+    groups = {}
+    for row in report["rows"]:
+        if dimensions == ("role", "model") and row["account_id"] is not None:
+            continue
+        key = tuple(row[dimension] for dimension in dimensions)
+        totals = groups.setdefault(key, {"requests": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "estimated_calls": 0})
+        for field in totals:
+            totals[field] += row[field]
+    result = []
+    for key in sorted(groups):
+        totals = groups[key]
+        estimate = "—"
+        if totals["estimated_calls"]:
+            calls = totals["estimated_calls"]
+            estimate = f"Estimated tokens · {calls:,} {'call' if calls == 1 else 'calls'}"
+        result.append(
+            [
+                *key,
+                f"{totals['requests']:,}",
+                f"{totals['input_tokens']:,}",
+                f"{totals['output_tokens']:,}",
+                f"${totals['cost_usd']:,.2f}",
+                estimate,
+            ]
+        )
+    return result
+
+
+def _assert_cli_usage_parity(db, page, capsys, monkeypatch, moment):
+    from scripts import model_usage_report
+
+    _freeze_metering_clock(monkeypatch, moment)
+    assert model_usage_report.main(["--catalog", str(db.catalog_path), "--json"]) == 0
+    cli_report = json.loads(capsys.readouterr().out)
+    assert _usage_metric_value(page, "this-month", "calls") == f'{cli_report["total_requests"]:,}'
+    assert _usage_metric_value(page, "this-month", "input-tokens") == f'{cli_report["total_input_tokens"]:,}'
+    assert _usage_metric_value(page, "this-month", "output-tokens") == f'{cli_report["total_output_tokens"]:,}'
+    assert _usage_metric_value(page, "this-month", "cost") == f'${cli_report["total_cost_usd"]:,.2f}'
+    assert _usage_breakdown_rows(page, "this-month", "model") == _cli_breakdown_rows(cli_report, ("model",))
+    assert _usage_breakdown_rows(page, "this-month", "role") == _cli_breakdown_rows(cli_report, ("role",))
+    assert _usage_breakdown_rows(page, "this-month", "unattributed") == _cli_breakdown_rows(
+        cli_report, ("role", "model")
+    )
+    unattributed = _usage_breakdown_rows(page, "this-month", "unattributed")
+    assert ["judge", "unattributed-model", "1", "300", "100", "$0.50", "Estimated tokens · 1 call"] in unattributed
+    assert page.count('data-spend-alert') == 1
+    spend_panel = re.search(r'<section class="health-panel usage-panel" data-spend-alert ([^>]*)>', page)
+    assert spend_panel
+    assert f'data-actual-usd="{cli_report["mtd_actual_usd"]:.2f}"' in spend_panel.group(1)
+    assert f'data-projected-usd="{cli_report["mtd_projected_usd"]:.2f}"' in spend_panel.group(1)
+    cli_alert = cli_report["alert"]
+    assert f'data-alert-fired="{str(bool(cli_alert and cli_alert.get("fired_at"))).lower()}"' in spend_panel.group(1)
+    assert f'data-alert-notified="{str(bool(cli_alert and cli_alert.get("notified_at"))).lower()}"' in spend_panel.group(1)
+
+
+def test_usage_page_reports_periods_accounts_limits_alert_and_cli_totals(admin_api, monkeypatch, capsys):
+    from service import model_metering
+    from svc.routers import admin as admin_router
+
+    client, db, now, _ = admin_api
+    assert _login(client, now[0]).status_code == 303
+    moment = datetime(2026, 9, 15, 12, tzinfo=UTC)
+    monkeypatch.setattr(admin_router, "_utc_now", lambda: moment)
+    moment, account_ids = _seed_usage_dashboard(db, moment)
+    monkeypatch.setenv("MODEL_SPEND_ALERT_USD", "50")
+    alert = model_metering.evaluate_spend_alert(db, now=moment)
+    assert alert["fired"] is True and alert["notified"] is True
+    page = client.get("/admin/usage")
+
+    assert page.status_code == 200
+    _assert_usage_period_totals(page.text)
+    _assert_usage_breakdowns(page.text)
+    _assert_usage_top_accounts(page.text, account_ids)
+    _assert_usage_limit_hits(page.text, account_ids)
+    assert "Daily token cap: 3 · Rate limit: 5" in page.text
+    _assert_usage_spend_alert(page.text)
+    assert not re.search(r'href="[^"]+\.csv', page.text)
+    assert "style=" not in page.text and "<script" not in page.text
+    _assert_cli_usage_parity(db, page.text, capsys, monkeypatch, moment)

@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from service import admin_accounts as admin_accounts_service
+from service import model_metering as model_metering_service
 from service import admin_auth, audit_log, email_sender, periodic_status
 from svc.dependencies import get_db
 from svc.html import self_contained_html
@@ -61,6 +62,7 @@ _ADMIN_ASSET_VERSIONS = {
 }
 _ADMIN_HOME_SECTIONS = (
     ("Accounts", "/admin/accounts", "Review accounts, plans, and activity."),
+    ("Usage", "/admin/usage", "Review model usage, limits, and spend."),
     ("Audit log", "/admin/audit", "Review owner actions and sign-ins."),
 )
 
@@ -175,6 +177,17 @@ async def admin_accounts_list(
     body = _admin_nav(session.csrf_token, security.login_alert_failed, "accounts")
     body += _accounts_page(_AccountsPageView(rows, total, session.csrf_token, query))
     return _document("Accounts", body)
+
+
+@router.get("/usage", response_class=HTMLResponse, include_in_schema=False)
+async def admin_usage_page(request: Request, db: Annotated[Any, Depends(get_db)]):
+    security = request.app.state.admin_security
+    session = security.get_session(request.cookies.get(SESSION_COOKIE))
+    if session is None:
+        return not_found_response()
+    report = await asyncio.to_thread(model_metering_service.usage_dashboard_report, db, _utc_now())
+    body = _admin_nav(session.csrf_token, security.login_alert_failed, "usage") + _usage_page(report)
+    return _document("Usage and cost", body)
 
 
 @router.post("/accounts/email", include_in_schema=False)
@@ -384,6 +397,7 @@ def _admin_nav(csrf_token: str, alert_failed: bool, active_page: str) -> str:
         + _brand_lockup()
         + '</a><div class="admin-nav-links">'
         + _admin_nav_link("Accounts", "/admin/accounts", "accounts", active_page)
+        + _admin_nav_link("Usage", "/admin/usage", "usage", active_page)
         + _admin_nav_link("Audit log", "/admin/audit", "audit", active_page)
         + '</div></div><form method="post" action="/admin/logout">'
         f'<input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}">'
@@ -404,6 +418,193 @@ def _admin_home_sections() -> str:
         for title, href, description in _ADMIN_HOME_SECTIONS
     )
     return f'<section class="dashboard-grid" aria-label="Owner dashboard sections">{cards}</section>'
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _usage_page(report: dict[str, Any]) -> str:
+    empty_note = '<p class="note">No usage recorded yet.</p>' if not report["has_usage"] else ""
+    return (
+        '<main class="usage-page"><h1>Usage and cost</h1>'
+        + empty_note
+        + _spend_alert_panel(report["spend_alert"])
+        + _limit_hits_panel(report["limit_hits"])
+        + '<h2>Model usage totals</h2><div class="usage-period-grid">'
+        + "".join(_usage_period_panel(period) for period in report["periods"])
+        + "</div>"
+        + _top_usage_accounts_panel(report["top_accounts"])
+        + "</main>"
+    )
+
+
+def _spend_alert_panel(spend: dict[str, Any]) -> str:
+    threshold = float(spend["threshold_usd"])
+    actual = float(spend["actual_usd"])
+    projected = float(spend["projected_usd"])
+    progress_fill = min(max(projected, 0.0), threshold)
+    threshold_ratio = projected / threshold * 100
+    alert = spend["alert"]
+    alert_state = _spend_alert_state(alert)
+    fired = bool(alert and alert.get("fired_at"))
+    notified = bool(alert and alert.get("notified_at"))
+    return (
+        '<section class="health-panel usage-panel" data-spend-alert '
+        f'data-actual-usd="{actual:.2f}" data-projected-usd="{projected:.2f}" '
+        f'data-alert-fired="{str(fired).lower()}" data-alert-notified="{str(notified).lower()}">'
+        '<h2>Monthly spend alert</h2>'
+        f'<p>Actual: {_usd(actual)} · Projected: {_usd(spend["projected_usd"])} · '
+        f'Threshold: {_usd(threshold)} (MODEL_SPEND_ALERT_USD)</p>'
+        f'<meter class="usage-progress" min="0" max="{threshold:.2f}" value="{progress_fill:.2f}" '
+        'aria-label="Projected monthly spend against monthly alert threshold">'
+        f'{_usd(projected)} of {_usd(threshold)}</meter>'
+        f'<p>Projected spend is {threshold_ratio:.1f}% of the threshold. Monthly alert: {alert_state}</p></section>'
+    )
+
+
+def _spend_alert_state(alert: dict[str, Any] | None) -> str:
+    if alert is None:
+        return "Not fired"
+    if alert.get("notified_at"):
+        notified_at = html.escape(str(alert["notified_at"]))
+        return f"Fired and notified at {notified_at}"
+    fired_at = html.escape(str(alert.get("fired_at") or ""))
+    return f"Fired at {fired_at}; notification pending"
+
+
+def _limit_hits_panel(counts: dict[str, Any]) -> str:
+    rows = counts["top_accounts"]
+    account_rows = "".join(_limit_hit_row(row) for row in rows)
+    table = _limit_hits_table(account_rows) if rows else '<p>No limit hits recorded this month.</p>'
+    return (
+        '<section class="health-panel usage-panel" data-limit-hits><h2>Limit hits this UTC month</h2>'
+        f'<p>Daily token cap: {counts["daily_tokens"]:,} · Rate limit: {counts["rate"]:,}</p>'
+        f'{table}</section>'
+    )
+
+
+def _limit_hits_table(rows: str) -> str:
+    return (
+        '<div class="table-scroll"><table class="usage-table"><thead><tr><th>Account</th>'
+        '<th>Daily-cap hits</th><th>Rate-limit hits</th><th>Total hits</th></tr></thead>'
+        f'<tbody>{rows}</tbody></table></div>'
+    )
+
+
+def _limit_hit_row(row: dict[str, Any]) -> str:
+    total = row["rate"] + row["daily_tokens"]
+    account = _usage_account_link(row)
+    return (
+        f"<tr><td>{account}</td><td>{row['daily_tokens']:,}</td>"
+        f"<td>{row['rate']:,}</td><td>{total:,}</td></tr>"
+    )
+
+
+def _usage_period_panel(period: dict[str, Any]) -> str:
+    report = period["report"]
+    return (
+        f'<section class="health-panel usage-panel" data-period="{html.escape(period["key"], quote=True)}">'
+        f'<h2>{html.escape(period["label"])}</h2>{_usage_totals(report)}'
+        '<h3>By model (all usage)</h3>'
+        f'{_usage_breakdown_table(period["by_model"], (("model", "Model"),), "model")}'
+        '<h3>By role (all usage)</h3>'
+        f'{_usage_breakdown_table(period["by_role"], (("role", "Role"),), "role")}'
+        '<h3>Unattributed usage</h3><p>Calls without an account id, shown separately.</p>'
+        f'{_usage_breakdown_table(period["unattributed"], (("role", "Role"), ("model", "Model")), "unattributed")}'
+        '</section>'
+    )
+
+
+def _usage_totals(report: dict[str, Any]) -> str:
+    return (
+        '<dl class="usage-totals">'
+        + _usage_metric("calls", "Model calls", report["total_requests"])
+        + _usage_metric("input-tokens", "Input tokens", report["total_input_tokens"])
+        + _usage_metric("output-tokens", "Output tokens", report["total_output_tokens"])
+        + _usage_metric("cost", "Cost", _usd(report["total_cost_usd"]))
+        + "</dl>"
+    )
+
+
+def _usage_metric(metric_key: str, metric_label: str, metric_value: Any) -> str:
+    metric_text = f"{metric_value:,}" if isinstance(metric_value, int) else str(metric_value)
+    return (
+        f'<div data-metric="{html.escape(metric_key, quote=True)}">'
+        f"<dt>{html.escape(metric_label)}</dt><dd>{html.escape(metric_text)}</dd></div>"
+    )
+
+
+def _usage_breakdown_table(
+    rows: list[dict[str, Any]], dimensions: tuple[tuple[str, str], ...], kind: str
+) -> str:
+    if not rows:
+        return '<p>No usage recorded.</p>'
+    headings = "".join(f"<th>{html.escape(label)}</th>" for _, label in dimensions)
+    body = "".join(_usage_breakdown_row(row, dimensions) for row in rows)
+    return (
+        f'<div class="table-scroll"><table class="usage-table" data-breakdown="{html.escape(kind, quote=True)}"><thead><tr>'
+        f"{headings}<th>Calls</th><th>Input tokens</th><th>Output tokens</th><th>Cost</th><th>Estimated</th>"
+        f"</tr></thead><tbody>{body}</tbody></table></div>"
+    )
+
+
+def _usage_breakdown_row(row: dict[str, Any], dimensions: tuple[tuple[str, str], ...]) -> str:
+    labels = "".join(f"<td>{html.escape(str(row[key]))}</td>" for key, _ in dimensions)
+    estimate = _estimated_usage(row["estimated_calls"])
+    return (
+        f"<tr>{labels}<td>{row['requests']:,}</td><td>{row['input_tokens']:,}</td>"
+        f"<td>{row['output_tokens']:,}</td><td>{_usd(row['cost_usd'])}</td><td>{estimate}</td></tr>"
+    )
+
+
+def _estimated_usage(calls: int) -> str:
+    if not calls:
+        return "—"
+    call_label = "call" if calls == 1 else "calls"
+    return f'<span class="usage-estimate">Estimated tokens</span> · {calls:,} {call_label}'
+
+
+def _top_usage_accounts_panel(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return (
+            '<section class="health-panel usage-panel" data-top-accounts>'
+            '<h2>Top 20 accounts by cost this UTC month</h2><p>No account usage recorded this month.</p></section>'
+        )
+    body = "".join(_top_usage_account_row(row) for row in rows)
+    return (
+        '<section class="health-panel usage-panel" data-top-accounts>'
+        '<h2>Top 20 accounts by cost this UTC month</h2>'
+        '<div class="table-scroll"><table class="usage-table"><thead><tr><th>Account</th>'
+        '<th>Calls</th><th>Input tokens</th><th>Output tokens</th><th>Cost</th><th>Estimated</th></tr></thead>'
+        f'<tbody>{body}</tbody></table></div></section>'
+    )
+
+
+def _top_usage_account_row(row: dict[str, Any]) -> str:
+    account = _usage_account_link(row)
+    estimate = _estimated_usage(row["estimated_calls"])
+    return (
+        f"<tr><td>{account}</td><td>{row['requests']:,}</td><td>{row['input_tokens']:,}</td>"
+        f"<td>{row['output_tokens']:,}</td><td>{_usd(row['cost_usd'])}</td><td>{estimate}</td></tr>"
+    )
+
+
+def _account_link(name: str, account_id: str) -> str:
+    escaped_id = html.escape(account_id, quote=True)
+    return f'<a href="/admin/accounts/{escaped_id}">{html.escape(name)}</a> · {escaped_id}'
+
+
+def _usage_account_link(row: dict[str, Any]) -> str:
+    account_id = row["account_id"]
+    if account_id is None:
+        return "Unattributed"
+    name = "Deleted account" if row["deleted"] else row["username"]
+    return _account_link(name or "Deleted account", account_id)
+
+
+def _usd(amount: Any) -> str:
+    return f"${float(amount):,.2f}"
 
 
 def _system_health_panel(db: Any) -> str:

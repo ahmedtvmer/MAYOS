@@ -124,6 +124,38 @@ class RegistryModelUsageMixin:
                 totals[str(kind)] = int(count)
         return totals
 
+    def count_all_model_limit_hits(self, since_iso: str) -> dict[str, int]:
+        """Returns refusal totals across every account id, including orphaned hits."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            rows = self.catalog_conn.execute(
+                "SELECT kind, COUNT(*) FROM model_limit_hits WHERE created_at >= ? GROUP BY kind",
+                (str(since_iso),),
+            ).fetchall()
+        totals = {"rate": 0, "daily_tokens": 0}
+        for kind, count in rows:
+            if kind in totals:
+                totals[str(kind)] = int(count)
+        return totals
+
+    def summarize_model_limit_hits_by_account(self, since_iso: str) -> list[dict[str, Any]]:
+        """Returns refusal counts grouped by account id and kind since a timestamp."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            rows = self.catalog_conn.execute(
+                "SELECT account_id, kind, COUNT(*) FROM model_limit_hits WHERE created_at >= ?"
+                " GROUP BY account_id, kind ORDER BY account_id, kind",
+                (str(since_iso),),
+            ).fetchall()
+        return [{"account_id": row[0], "kind": str(row[1]), "count": int(row[2])} for row in rows]
+
+    def has_model_usage(self) -> bool:
+        """Checks whether any usage row exists without aggregating report history."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            row = self.catalog_conn.execute("SELECT 1 FROM model_usage LIMIT 1").fetchone()
+        return row is not None
+
     def sum_model_tokens_for_account(self, account_id: str, start_iso: str, end_iso: str | None = None) -> int:
         """Total (input + output) tokens for one account in ``[start, end)``."""
         if not account_id:

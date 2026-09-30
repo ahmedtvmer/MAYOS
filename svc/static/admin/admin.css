@@ -375,6 +375,48 @@ button:hover {
   background: var(--color-surface);
 }
 
+.usage-panel h3 {
+  margin-top: var(--space-5);
+}
+
+.usage-period-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+.usage-totals {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  padding: var(--space-3);
+}
+
+.usage-totals dd {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.usage-table {
+  min-width: 38rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-progress {
+  width: 100%;
+  height: 1rem;
+  accent-color: var(--color-accent);
+}
+
+.usage-estimate {
+  font-weight: 700;
+}
+
 .health-panel h2 {
   margin-bottom: var(--space-3);
 }
@@ -574,6 +616,10 @@ li {
   .health-row {
     grid-template-columns: minmax(9rem, 1fr) minmax(0, 2fr);
     align-items: center;
+  }
+
+  .usage-period-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
 }
