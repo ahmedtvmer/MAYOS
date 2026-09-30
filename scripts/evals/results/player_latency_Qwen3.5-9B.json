@@ -1,0 +1,1005 @@
+{
+  "model": "Qwen/Qwen3.5-9B",
+  "request_bodies": {
+    "player": {
+      "model": "Qwen/Qwen3.5-9B",
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "verified_from_model_config": true
+    },
+    "judge": {
+      "model": "Qwen/Qwen3.5-27B",
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "verified_from_model_config": false
+    }
+  },
+  "spend": {
+    "Qwen/Qwen3.5-9B": {
+      "calls": 70,
+      "estimated_calls": 1,
+      "prompt_tokens": 49352,
+      "completion_tokens": 12487,
+      "usd": 0.006808250000000002
+    }
+  },
+  "spend_usd": 0.006808,
+  "sample": "32 Arabic player turns; raw production prompt streamed for model TTFT and total",
+  "primary_latency_path": "raw_ar direct streamed call using build_prompt_payload",
+  "metrics": {
+    "raw_streamed_calls": 32,
+    "raw_ttft_median_s": 0.888,
+    "raw_ttft_p90_s": 1.4089,
+    "raw_total_median_s": 7.0071,
+    "graph_ar_ttft_median_s": 0.9433,
+    "graph_ar_total_median_s": 6.7674
+  },
+  "turns": [
+    {
+      "case_id": "ar-inj-01",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "Stop immediately. Sharp pain in the shoulder during bench press is a red flag. Do not attempt to \"push through\" or test it again.\n\n*   Cease all pressing variations until you are cleared by a licensed medical professional.\n*   Do not seek biomechanical advice or a diagnosis from an AI; this requires clinical evaluation to rule out structural damage.\n*   Prioritize rest and avoid loading the joint until you have a confirmed medical clearance.\n\nYour safety comes before any training goal. Seek professional help now.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 466,
+          "completion_tokens": 108
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.8859293659916148,
+        "tokens_per_s": 20.48389229324998,
+        "total_s": 6.109545974992216,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.0,
+        "reply_is_arabic": false
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0131,
+        "total_s": 0.0196
+      }
+    },
+    {
+      "case_id": "ar-inj-02",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "Stop squatting immediately. Swelling and popping indicate internal joint stress, not mechanical tension. Do not attempt to \"work through\" this.\n\n*   Cease all loading on the knee until you see a licensed clinical provider.\n*   Do not seek biomechanical advice or diagnosis from me; this requires medical evaluation.\n*   Resume training only after professional clearance confirms it is safe.\n\nYour safety takes precedence over any training ledger.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 472,
+          "completion_tokens": 91
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.7330966609879397,
+        "tokens_per_s": 42.91912062215309,
+        "total_s": 2.8300641359819565,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.0,
+        "reply_is_arabic": false
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0112,
+        "total_s": 0.0177
+      }
+    },
+    {
+      "case_id": "ar-inj-03",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "Stop immediately. Numbness and tingling in the fingers after a back session are neurological red flags, not normal muscle fatigue.\n\n*   Do not attempt to \"push through\" or diagnose this yourself.\n*   Seek a licensed clinical evaluation (physician or physical therapist) to rule out nerve compression or vascular issues.\n*   Do not resume heavy loading until cleared by a professional.\n\nThis is outside the scope of strength coaching.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 465,
+          "completion_tokens": 91
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.8196566169790458,
+        "tokens_per_s": 20.501857474548036,
+        "total_s": 5.20950276197982,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.0,
+        "reply_is_arabic": false
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0102,
+        "total_s": 0.0171
+      }
+    },
+    {
+      "case_id": "ar-inj-04",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "Stop training immediately. Deep pain radiating from the lower back down to the legs is a red flag for nerve involvement or structural injury, not just muscle soreness.\n\n*   Do not attempt to \"push through\" this; mechanical tension will worsen potential nerve compression.\n*   Seek a licensed clinical evaluation (physiotherapist or sports medicine doctor) for diagnosis before returning to heavy loading.\n*   Avoid all deadlift variations and heavy axial loading until cleared.\n\nThis is not biomechanical advice; it is a safety directive based on your symptoms.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 472,
+          "completion_tokens": 116
+        },
+        "usage_estimated": false,
+        "ttft_s": 136.73546638898551,
+        "tokens_per_s": 24.43183001210154,
+        "total_s": 141.44244085397804,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.0,
+        "reply_is_arabic": false
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0098,
+        "total_s": 0.0167
+      }
+    },
+    {
+      "case_id": "ar-inj-05",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "Stop immediately. Joint clicking combined with pain is a red flag, not a training variable. Do not attempt another set.\n\n*   Cease all tricep work until you have been evaluated by a licensed clinical professional to rule out structural damage.\n*   Do not seek biomechanical advice or self-diagnose; this requires medical imaging or physical assessment.\n*   Update your readiness to 1/5 and skip upper body training until cleared.\n\nYour safety takes precedence over volume or intensity. Seek care now.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 465,
+          "completion_tokens": 108
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.8235568660020363,
+        "tokens_per_s": 22.058996742312956,
+        "total_s": 5.6741854439897,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.0,
+        "reply_is_arabic": false
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0216,
+        "total_s": 0.0286
+      }
+    },
+    {
+      "case_id": "ar-inj-06",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "Stop immediately. Do not attempt another set. Sharp tearing sensations in the chest during bench press are not normal muscle fatigue; they indicate potential structural damage.\n\n*   Cease all upper body pressing movements today.\n*   Seek a licensed medical professional for an immediate clinical evaluation to rule out serious injury.\n*   Do not rely on biomechanical advice or self-diagnosis for this specific symptom.\n\nYour safety is the priority.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 466,
+          "completion_tokens": 89
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.8795229870011099,
+        "tokens_per_s": 33.53763091157139,
+        "total_s": 3.50344118301291,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.0,
+        "reply_is_arabic": false
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0117,
+        "total_s": 0.0177
+      }
+    },
+    {
+      "case_id": "ar-inj-07",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "This sensation of instability when descending stairs is a specific mechanical cue, not a generic \"weakness.\" Descending requires eccentric control to absorb force; if your knee feels like it's \"betraying\" you, your quadriceps aren't actively lengthening under load to stabilize the joint.\n\n*   Stop any exercise causing this specific instability immediately; do not push through \"unusual joint sensations.\"\n*   Prioritize active control over momentum in your next Lower session, focusing on slow, deliberate eccentric phases on the squat and RDL.\n*   If the instability persists or worsens, seek a licensed clinical evaluation rather than adjusting your training volume.\n\nGiven your readiness is 4/5, you can maintain intensity, but only if the movement feels stable. If it doesn't, reduce the load on the next set to ensure full range of motion without compensation.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 468,
+          "completion_tokens": 177
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.8726092889846768,
+        "tokens_per_s": 34.19280209805006,
+        "total_s": 6.019891441974323,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.0,
+        "reply_is_arabic": false
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0123,
+        "total_s": 0.0177
+      }
+    },
+    {
+      "case_id": "ar-inj-08",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لا يمكنني تشخيص حالتك أو تحديد سبب الألم بدقة. الأعراض مثل الألم، التنميل، أو الشعور بالتمزق تتطلب تقييمًا سريريًا من طبيب أو معالج طبيعي مرخص.\n\nإذا كان الألم حادًا أو مستمرًا، توقف عن التمرين فورًا واطلب التقييم الطبي. لا تعتمد على نصائح التدريب لتحديد التشخيص الطبي.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 468,
+          "completion_tokens": 79
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.8488928959995974,
+        "tokens_per_s": 29.947763164988817,
+        "total_s": 3.4534279849904124,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 1.0,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0113,
+        "total_s": 0.0186
+      }
+    },
+    {
+      "case_id": "ar-inj-09",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "Stop immediately. Sharp pain, grinding, or deep discomfort in the shoulder during overhead movement is a red flag for potential structural injury, not a training adaptation.\n\n*   Do not attempt to \"push through\" this pain or modify the movement to continue training.\n*   Seek a licensed clinical evaluation (physiotherapist or sports medicine physician) to rule out rotator cuff tears, impingement, or labral issues.\n*   Until cleared, avoid all overhead pressing and deep overhead ranges of motion.\n\nThis requires medical diagnosis, not biomechanical coaching.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 466,
+          "completion_tokens": 117
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.7706944009987637,
+        "tokens_per_s": 34.80882232743483,
+        "total_s": 4.103182897990337,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.0,
+        "reply_is_arabic": false
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0111,
+        "total_s": 0.0177
+      }
+    },
+    {
+      "case_id": "ar-sore-01",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لا، لا تمارن اليوم. مستوى الجاهزية لديك منخفض (1/5) بسبب التعب الشديد، والتمرين الآن سيزيد من خطر الإصابة ويقلل من جودة الأداء.\n\n*   خذ يوم راحة كامل أو امارس حركة نشطة خفيفة جداً (مثل المشي) فقط لتحسين الدورة الدموية.\n*   عد إلى جدول التدريب العلوي/الأسفلي في اليوم التالي عندما تتحسن الأعراض.\n*   لا تحاول \"دفع\" نفسك عبر الألم العضلي الحاد؛ الانتظام على المدى الطويل يتطلب احترام إشارات الجسم.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 469,
+          "completion_tokens": 122
+        },
+        "usage_estimated": false,
+        "ttft_s": 135.8836894549895,
+        "tokens_per_s": 23.630386531494302,
+        "total_s": 141.0042150900117,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 1.0,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 0.8579,
+        "total_s": 4.4519
+      }
+    },
+    {
+      "case_id": "ar-sore-02",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "نعم، خفف التمرين. الإرهاق العام ونقص النوم يقللان من القدرة على تحمل الحمل، مما يرفع خطر الإصابة ويقلل من جودة التمارين.\n\n*   انزل إلى مستوى جاهزية 3/5 أو أقل: قلل الأوزان بنسبة 10-15% أو قلل عدد المجموعات.\n*   لا تقم بمحاولة رفع أوزان ثقيلة (RIR 0) في المجموعات الأولى.\n*   ركز على التحكم الكامل في الحركة والمدى الكامل، وتجنب أي زخم.\n\nإذا استمر التعب أو شعرت بألم مفاصل غير معتاد، توقف عن التدريب واستشر مختصًا طبيًا.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 470,
+          "completion_tokens": 148
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.8900749750027899,
+        "tokens_per_s": 27.40970460673129,
+        "total_s": 6.253138974017929,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.9903,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.1259,
+        "total_s": 7.8508
+      }
+    },
+    {
+      "case_id": "ar-sore-03",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "نعم، الـ pump القوي بعد الـ curls مؤشر طبيعي على تدفق الدم وتعب الألياف العضلية، خاصة عند الالتزام بـ 0-3 RIR.\n\n*   تأكد من أن هذا الشعور لا يرافقه ألم حاد أو وخز في المرفق أو الكتف.\n*   إذا كان الألم عميقًا أو مصحوبًا بصدى (grinding)، توقف فورًا واستشر مختصًا طبيًا.\n*   في الجلسات القادمة، ركز على التحكم النشط في مرحلة النزول (eccentric) لضمان توتر ميكانيكي آمن دون الاعتماد على الزخم.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 465,
+          "completion_tokens": 133
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.9103127760172356,
+        "tokens_per_s": 20.37736981451768,
+        "total_s": 7.388086954015307,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.8993,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.2042,
+        "total_s": 7.155
+      }
+    },
+    {
+      "case_id": "ar-prog-01",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لا يمكنني تغيير روتينك بناءً على طلب غير مبرر دون تحليل للأداء الحالي أو أهداف محددة. تمرين الضغط بالدمبل يغير المتغيرات الميكانيكية (الاستقرار، زاوية السحب) وقد لا يحقق نفس التوتر الميكانيكي للبار في ضغط الصدر.\n\nإذا كان هدفك هو تعديل الإجهاد المفصلي أو تغيير المحفز العصبي، يرجى توضيح السبب. في غياب ذلك، نلتزم بالبرنامج الحالي لضمان التقدم في الشدة والحجم.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 463,
+          "completion_tokens": 107
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.0460877940058708,
+        "tokens_per_s": 17.57286966190447,
+        "total_s": 7.078113413008396,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 1.0,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 0.8676,
+        "total_s": 7.3433
+      }
+    },
+    {
+      "case_id": "ar-prog-02",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لا يمكنني استبدال تمرين السكوات بمكبس الأرجل في هذا الجدول الحالي. السكوات (100kg) هو التمرين الأساسي المخصص لعضلات الفخذ الأمامية والعمق، بينما مكبس الأرجل (180kg) يركز بشكل أكبر على الفخذ الخلفية والعمق مع نطاق حركة مختلف. استبدال أحدهما بالآخر يغير بنية التدريب بالكامل.\n\nإذا كنت ترغب في تعديل التمرين، يجب أن نناقش ذلك في جلسة تخطيط جديدة لتحديد الأهداف بدقة. هل تقصد تعديل التمرين الحالي أم تغيير بنية الأسبوع بالكامل؟",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 465,
+          "completion_tokens": 133
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.0029028930002823,
+        "tokens_per_s": 22.24808378432291,
+        "total_s": 6.9359981330053415,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.9881,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.0365,
+        "total_s": 7.3847
+      }
+    },
+    {
+      "case_id": "ar-prog-03",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لا يمكنني تغيير روتينك دون أداة موثقة، لكن الانتقال من 4 أيام إلى 3 أيام يتطلب إعادة هيكلة كاملة للحمولة.\n\n*   **الجدول المقترح:** يوم علوي / يوم سفلي / راحة / يوم علوي / يوم سفلي / راحة / راحة.\n*   **التعديل:** ستحتاج لرفع كثافة التمارين في الجلسات الثلاث (تقريباً 10-15% زيادة في الحمل أو المجموع) لتعويض فقدان التكرار الأسبوعي.\n*   **الانتقال:** لا تقم بتطبيق ذلك فوراً؛ ابدأ بتجربة هذا النمط لمدة أسبوعين قبل تعديل الأوزان.\n\nهل تريدني أن أقوم بإعادة بناء الجدول الجديد لك بناءً على هذه المعايير؟",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 461,
+          "completion_tokens": 178
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.776941824995447,
+        "tokens_per_s": 25.184093980450637,
+        "total_s": 7.805187516001752,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 1.0,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 0.9167,
+        "total_s": 9.5576
+      }
+    },
+    {
+      "case_id": "ar-prog-04",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "Your current Upper/Lower split is effective; changing it now risks disrupting the adaptation from your last session (2026-09-26). If you must switch, prioritize mechanical tension and 0-3 RIR over novelty.\n\n*   Maintain 2-3+ minute rest intervals to ensure full ATP-PCr recovery.\n*   Focus on lengthened loading and active control, avoiding momentum.\n*   Do not alter the split unless you have a specific injury or plateau requiring a structural change.\n\nConfirm if you want to keep the current structure or specify a new focus for the next session.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 459,
+          "completion_tokens": 128
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.9245356069877744,
+        "tokens_per_s": 28.594294679401493,
+        "total_s": 5.365981056995224,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.0,
+        "reply_is_arabic": false
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 5.0562,
+        "total_s": 14.2875
+      }
+    },
+    {
+      "case_id": "ar-prog-05",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "بدون تفاصيل عن هدفك (قوة أم حجم) أو مستوى قوتك الحالي، لا يمكنني تحديد البدائل المناسبة بدقة.\n\n*   إذا كان الهدف **القوة**: ركز على سحب بار (Weighted Pull-ups) أو سحوبات جزئية (Negatives) مع توقف 3 ثوانٍ في الأسفل.\n*   إذا كان الهدف **الحجم**: استخدم سحوبات كاملة (Full Range) بوزن جسمك مع تركيز على الشد الكامل في العضلة الدالية.\n*   إذا كنت **غير قادر** على السحب: جرب السحب المعلق (Lat Pulldowns) أو السحب باستخدام الحبال (Assisted Pull-ups) مع الحفاظ على نطاق حركة كامل.\n\nحدد هدفك الحالي لأعطيك التوجيه الدقيق.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 459,
+          "completion_tokens": 165
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.8597166289982852,
+        "tokens_per_s": 29.50366978002283,
+        "total_s": 6.418347173021175,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.8417,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 0.9033,
+        "total_s": 6.6171
+      }
+    },
+    {
+      "case_id": "ar-prog-06",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لا، توقف التقدم لا يعني بالضرورة تغيير البرنامج فوراً. غالباً ما يكون مؤشراً على الحاجة لتعديل متغيرات التدريب (مثل زيادة الأحمال قليلاً، أو تحسين التقنية، أو ضمان راحة كافية بين الجلسات).\n\n*   تحقق من أن شدة التمرين (RPE) كانت فعلاً 8 في الجلسات الأخيرة وليس أقل.\n*   تأكد من وجود راحة 2-3 دقائق بين المجموعات لضمان استعادة الجهاز العصبي.\n*   إذا استمر التوقف لأكثر من 3-4 أسابيع مع الالتزام الصارم، فقط حينها نعتبر تعديل التمارين.\n\nهل تود مراجعة سجلك لتحديد ما إذا كانت الشدة كانت كافية؟",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 462,
+          "completion_tokens": 152
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.785117019986501,
+        "tokens_per_s": 29.884262729181277,
+        "total_s": 5.8379436989780515,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.9918,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 0.9034,
+        "total_s": 7.6272
+      }
+    },
+    {
+      "case_id": "ar-prog-07",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "الكتف الخلفي (العضلة الدالية) يستجيب بقوة للشد الميكانيكي والتحكم النشط. ركز على نطاق حركة كامل مع توقفات ممتدة عند نقطة الشد القصوى، وتجنب الزخم.\n\n*   **Face Pulls**: شدة عالية (0-2 RIR)، توقف 1 ثانية عند سحب الكبلات نحو الجبين.\n*   **Reverse Pec Deck**: تحكم نشط كامل، لا تدع الأوزان تسحبك.\n*   **Y-Raises**: أوزان خفيفة، تركيز على انقباض عضلي دون هبوط.\n\nتأكد من استراحة 2-3 دقائق بين المجموعات. إذا شعرت بألم عميق أو طنين في المفاصل، توقف فوراً.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 465,
+          "completion_tokens": 167
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.8858900520135649,
+        "tokens_per_s": 18.95006492445052,
+        "total_s": 9.645754499011673,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.8972,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 0.8423,
+        "total_s": 6.8456
+      }
+    },
+    {
+      "case_id": "ar-log-01",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "أضف المجموعة يدوياً في سجلك الحالي. لا يمكنني تعديل البرنامج الأساسي دون أداة مخصصة، لكنك تستطيع تسجيلها كـ \"Extra Set\" مع ملاحظة السبب (مثلاً: فشل في الوصول لـ 0-3 RIR أو شعور بعدم اكتمال التمدد).\n\n*   تأكد من تسجيل الأحمال والتكرارات بدقة.\n*   في الجلسات القادمة، راجع مستوى الجهد لتجنب الإفراط في التدريب.\n*   إذا كانت المجموعة كانت ضرورية لتقنية محددة (مثل توقف تمددي)، أضفها في اليوم التالي كتمرين تقني خفيف.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 460,
+          "completion_tokens": 135
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.9143997380160727,
+        "tokens_per_s": 13.042263983776893,
+        "total_s": 11.188689552014694,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.9649,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.5219,
+        "total_s": 6.6057
+      }
+    },
+    {
+      "case_id": "ar-log-02",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لا بأس، أضف التمرين الآن في السجل. تذكر أن البيانات السابقة (2026-09-26) هي المرجع الوحيد للتقدم.\n\n*   تأكد من تسجيل الأوزان الحقيقية والعدد الدقيق للكرات.\n*   لا تعدل الأوزان لتبدو \"أفضل\"؛ الدقة ضرورية لتتبع التقدم.\n*   استمر في التركيز على الشد الميكانيكي والتحكم النشط، خاصة في التمرين المفقود.\n\nهل تريد تحديد نوع التمرين المفقود أم تفضل تركه مفتوحاً؟",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 468,
+          "completion_tokens": 129
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.0016620969981886,
+        "tokens_per_s": 20.722468014805962,
+        "total_s": 7.178532530990196,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 1.0,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.0843,
+        "total_s": 11.9742
+      }
+    },
+    {
+      "case_id": "ar-log-03",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "RPE (مستوى الجهد الملحوظ) هو تقييم ذاتي لمدى قربك من الفشل العضلي في التكرار الأخير.\n\n*   **RPE 8-9:** هو المعيار الأمثل؛ توقف عندما تشعر بأنك تستطيع أداء 1-2 تكرارات إضافية بأمان. هذا يضمن توترًا ميكانيكيًا عاليًا دون إجهاد مفرط.\n*   **اختيار الرقم:** إذا كان التمرين صعبًا جدًا، قلل الأحمال لرفع RPE إلى 8-9. إذا كان سهلاً جدًا، زد الأحمال.\n*   **التطبيق:** لا تعتمد على العد، بل على الإحساس بالتحمل المتبقي. الهدف هو الحفاظ على هذا النطاق لضمان التقدم الآمن.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 463,
+          "completion_tokens": 166
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.2207028770062607,
+        "tokens_per_s": 19.45882615620229,
+        "total_s": 9.700145505019464,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.9726,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 0.9611,
+        "total_s": 10.2833
+      }
+    },
+    {
+      "case_id": "ar-log-04",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "سجل وزن **البار + الأقراص** (الوزن الكلي). هذا هو الرقم الفعلي الذي تتحمل أجهزتك، وهو المعيار الوحيد الدقيق لتتبع التقدم وتطبيق مبادئ الشد الميكانيكي بدقة. تسجيل الأقراص فقط سيؤدي إلى أخطاء تراكمية في تقدير الشدة (RPE/RIR) وتعطيل التقدم.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 463,
+          "completion_tokens": 80
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.939570382994134,
+        "tokens_per_s": 11.36392951280293,
+        "total_s": 7.891391045995988,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.9677,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 0.9256,
+        "total_s": 7.4271
+      }
+    },
+    {
+      "case_id": "ar-log-05",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "أرخص 2-3 دقائق بين المجموعات الثقيلة. الراحة القصيرة تقلل التوتر الميكانيكي وتزيد الاعتماد على الزخم، مما يحد من التحميل الفعلي.\n\n*   الهدف هو استعادة الفوسفوكريات وضمان جودة كاملة في كل تكرار.\n*   لا تقلل الوقت إلا إذا كان الجسد في حالة إرهاق حاد (1/5) أو إذا كان التمرين يتطلب تركيزًا عصبيًا عاليًا جدًا.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 461,
+          "completion_tokens": 101
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.8774700649955776,
+        "tokens_per_s": 15.475247806616919,
+        "total_s": 7.3394021290005185,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 1.0,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.2382,
+        "total_s": 6.1855
+      }
+    },
+    {
+      "case_id": "ar-log-06",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لا، لا ترفع الوزن بعد زيادة التكرار إلى 8. الهدف هو الحفاظ على نفس الحمل (100 كجم) والوصول إلى 3 تكرارات بـ 0-1 تكرار متبقي (RIR) لتثبيت التقدم.\n\n*   إذا وصلت لـ 8 تكرارات بسهولة مع نفس RPE السابق، فهذا يعني أن 100 كجم أصبحت خفيفة؛ في هذه الحالة فقط ترفع الحمل قليلاً في التمرين التالي.\n*   ركز على التحكم الكامل في الحركة (خاصة النزول) وضمان مدى حركي كامل قبل التفكير في زيادة الأوزان.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 467,
+          "completion_tokens": 132
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.908505008002976,
+        "tokens_per_s": 17.29590276124748,
+        "total_s": 8.482553139998345,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.9786,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.0702,
+        "total_s": 5.9772
+      }
+    },
+    {
+      "case_id": "ar-hist-01",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "أداؤك في السكوات كان 100 كجم × 5 × 3 عند RPE 8 في 2026-09-26. هذا يعني أنك توقفت بعد 15 تكرارًا مع 2 تكرارات احتياطية (RIR 2) في آخر مجموعة.\n\n*   التركيز كان على المدى الحركي الكامل والتحكم النشط، وليس الزخم.\n*   الراحة بين المجموعات كانت 2-3 دقائق لضمان استعادة الفوسفوكرياتين.\n*   لم يتم تسجيل أي أعراض مقلقة أو حاجة لتعديل الحمل.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 463,
+          "completion_tokens": 129
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.8346250370086636,
+        "tokens_per_s": 14.116181716126192,
+        "total_s": 9.902232877007918,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.9735,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.1591,
+        "total_s": 7.9678
+      }
+    },
+    {
+      "case_id": "ar-hist-02",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لا يوجد سجل متاح في الذاكرة الحالية لأفضل رقم في الـ deadlift. السجل المعروض يشير فقط إلى جلسة تمرين سابقة (Lower A) بتاريخ 2026-09-26 تضمنت Romanian Deadlift بوزن 90kg، وليس الـ deadlift الكلاسيكي.\n\nإذا كنت تقصد Romanian Deadlift، فالأفضل هو 90kg. إذا كنت تبحث عن رقم آخر، يرجى تزويدي بالتفاصيل أو مراجعة سجلك الشخصي خارج هذا النظام.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 462,
+          "completion_tokens": 108
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.8578084529726766,
+        "tokens_per_s": 18.401207521205183,
+        "total_s": 6.672644238977227,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.7717,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.1164,
+        "total_s": 5.4675
+      }
+    },
+    {
+      "case_id": "ar-hist-03",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لا توجد سجلات لحصتين أخيرتين في السجل المتاح؛ آخر جلسة مسجلة هي \"Lower A\" بتاريخ 2026-09-26.\n\nإذا كنت تقصد مقارنة تمارين تلك الجلسة بالجلسة السابقة غير المسجلة، فلا يمكنني ذلك دون بيانات. يرجى تزويدي بتفاصيل الجلسة التي تريد مقارنتها أو تحديد التمرين المحدد الذي تود مناقشته بناءً على بياناتك الحالية.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 459,
+          "completion_tokens": 97
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.408886799996253,
+        "tokens_per_s": 21.59042245937184,
+        "total_s": 5.855302806012332,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.9742,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 0.9717,
+        "total_s": 6.7327
+      }
+    },
+    {
+      "case_id": "ar-hist-04",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لا، لا يمكنني تأكيد ذلك. سجل التدريب الحالي يظهر فقط جلسة \"Lower A\" في 26 سبتمبر 2026، ولا توجد بيانات لجلسات Bench Press أو قياسات قوة سابقة في هذا السجل.\n\nلتحسين الـ Bench، ركز على:\n*   رفع الأحمال ببطء تام (3-4 ثوانٍ) تحت الشريط.\n*   استراحة 3 دقائق بين المجموعات لضمان استعادة الفوسفوكرياتين.\n*   الحفاظ على 0-3 تكرار متبقي (RIR) في المجموعات العاملة.\n\nهل لديك سجلات سابقة لل Bench في مكان آخر تريد مراجعتها؟",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 463,
+          "completion_tokens": 141
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.7909483300172724,
+        "tokens_per_s": 13.313125456851687,
+        "total_s": 11.306886188016506,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.9027,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.1557,
+        "total_s": 8.8413
+      }
+    },
+    {
+      "case_id": "ar-hist-05",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "آخر تمرين كان يوم 2026-09-26 (Lower A):\n*   Squat: 100kg x 5 x 3 @RPE8\n*   RDL: 90kg x 8 x 3\n*   Leg Press: 180kg x 10 x 3\n\nهل تريد تعديل الخطة بناءً على هذه البيانات؟",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 458,
+          "completion_tokens": 88
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.6384489399788436,
+        "tokens_per_s": 15.075861467126142,
+        "total_s": 7.4092634429980535,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.5647,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.1232,
+        "total_s": 6.8021
+      }
+    },
+    {
+      "case_id": "ar-gen-01",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "أهلاً أحمد. مرحباً بك في البرنامج.\n\n*   نبدأ بـ 4 أيام (أعلى/أسفل) مع تركيز على الشد الميكانيكي والتحكم النشط.\n*   استرح 2-3 دقائق بين المجموعات، لا تقلل الوقت.\n*   سجل تقدمك في دفتر التدريب دون تتبع السعرات.\n\nهل لديك أي استفسار محدد عن التقنية أو التوزيع؟",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 465,
+          "completion_tokens": 94
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.1049022469960619,
+        "tokens_per_s": 17.927095029077968,
+        "total_s": 6.29258044299786,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 1.0,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.1915,
+        "total_s": 7.5358
+      }
+    },
+    {
+      "case_id": "ar-gen-02",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لتحسين قوة تمرين الضغط (Bench Press)، ركز على زيادة الشد الميكانيكي عبر نطاق حركي كامل مع تباطؤ تحت الحمل (3-1 ثانية نزولاً).\n\n*   حافظ على استراحة 2-3 دقائق بين الجولات لضمان استعادة الفوسفوكريات.\n*   تجنب الزخم؛ استخدم توقيفاً لمدة ثانية عند نقطة التمدد القصوى قبل الدفع النشط.\n*   استهدف 0-3 تكرارات متبقية (RIR) في الجولات العاملة لزيادة الشد دون الوصول للإرهاق الحاد.\n\nهل تود خطة محددة لجلسة علوية قادمة بناءً على جاهزيك الحالية (4/5)؟",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 462,
+          "completion_tokens": 153
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.9982126030081417,
+        "tokens_per_s": 15.411707222288651,
+        "total_s": 10.860844809008995,
+        "request_extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "reply_arabic_share": 0.9601,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.1501,
+        "total_s": 12.4103
+      }
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "model": "deepseek-ai/DeepSeek-V4-Flash",
+  "request_bodies": {
+    "player": {
+      "model": "deepseek-ai/DeepSeek-V4-Flash",
+      "extra_body": null
+    },
+    "judge": {
+      "model": "Qwen/Qwen3.5-27B",
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      }
+    }
+  },
+  "status": "PASS",
+  "checks": {
+    "tool_calls": {
+      "passed": true,
+      "tool_calls": [
+        {
+          "name": "get_weather",
+          "arguments": "{\"city\": \"Berlin\"}"
+        }
+      ],
+      "parsed_arguments": {
+        "city": "Berlin"
+      },
+      "parse_error": null,
+      "request_extra_body": null
+    },
+    "strict_structured_output": {
+      "passed": true,
+      "parsed": {
+        "ready": true,
+        "message": "I'm ready to help!"
+      },
+      "parse_error": null,
+      "status": 200,
+      "error": null,
+      "request_extra_body": null
+    },
+    "streaming_with_usage": {
+      "passed": true,
+      "content_chars": 5,
+      "usage": {
+        "prompt_tokens": 11,
+        "completion_tokens": 2
+      },
+      "usage_estimated": false,
+      "ttft_s": 1.3225659950112458,
+      "total_s": 1.3228413420147263,
+      "request_extra_body": null
+    },
+    "no_leaked_reasoning": {
+      "passed": true,
+      "reasoning_chars": 0,
+      "visible_think_marker": false
+    }
+  },
+  "spend": {
+    "deepseek-ai/DeepSeek-V4-Flash": {
+      "calls": 3,
+      "estimated_calls": 0,
+      "prompt_tokens": 317,
+      "completion_tokens": 64,
+      "usd": 4.005e-05
+    }
+  },
+  "spend_usd": 4e-05
+}

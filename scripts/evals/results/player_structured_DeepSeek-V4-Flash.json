@@ -1,0 +1,297 @@
+{
+  "status": "COMPLETE",
+  "model": "deepseek-ai/DeepSeek-V4-Flash",
+  "request_bodies": {
+    "player": {
+      "model": "deepseek-ai/DeepSeek-V4-Flash",
+      "extra_body": null,
+      "verified_from_model_config": true
+    },
+    "judge": {
+      "model": "Qwen/Qwen3.5-27B",
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "verified_from_model_config": false
+    }
+  },
+  "method": "json_schema",
+  "strict": true,
+  "call_sites": {
+    "assistant_graph.intent_classification": {
+      "probes": 2,
+      "passed": 2,
+      "failed": 0
+    },
+    "assistant_graph.substitution_resolution": {
+      "probes": 2,
+      "passed": 2,
+      "failed": 0
+    },
+    "program_rules.dynamic_split_plan": {
+      "probes": 2,
+      "passed": 0,
+      "failed": 2
+    },
+    "onboarding_graph.step1_extraction": {
+      "probes": 1,
+      "passed": 1,
+      "failed": 0
+    },
+    "onboarding_graph.step2_extraction": {
+      "probes": 1,
+      "passed": 1,
+      "failed": 0
+    },
+    "onboarding_graph.step3_extraction": {
+      "probes": 1,
+      "passed": 1,
+      "failed": 0
+    },
+    "fitness_abbreviations.expansion": {
+      "probes": 2,
+      "passed": 2,
+      "failed": 0
+    }
+  },
+  "failures": [
+    {
+      "site": "program_rules.dynamic_split_plan",
+      "case_id": "split-01",
+      "query_excerpt": "Custom weekly arrangement with separate emphasis days for chest, back, and arms",
+      "schema": "DynamicSplitPlan",
+      "method": "json_schema",
+      "strict": true,
+      "ok": false,
+      "error": "LengthFinishReasonError: Could not parse response content as the length limit was reached",
+      "parsed": null,
+      "elapsed_s": 8.8892,
+      "request_extra_body": null
+    },
+    {
+      "site": "program_rules.dynamic_split_plan",
+      "case_id": "split-02",
+      "query_excerpt": "Unusual movement-focused split with a dedicated shoulders day",
+      "schema": "DynamicSplitPlan",
+      "method": "json_schema",
+      "strict": true,
+      "ok": false,
+      "error": "LengthFinishReasonError: Could not parse response content as the length limit was reached",
+      "parsed": null,
+      "elapsed_s": 8.0488,
+      "request_extra_body": null
+    }
+  ],
+  "probes": [
+    {
+      "site": "assistant_graph.intent_classification",
+      "case_id": "intent-01",
+      "query_excerpt": "Reorganize the exercises in my program for a chest emphasis.",
+      "schema": "IntentClassification",
+      "method": "json_schema",
+      "strict": true,
+      "ok": true,
+      "error": null,
+      "parsed": {
+        "intent": "program_mutation",
+        "source_exercise": null,
+        "target_exercise": null,
+        "target_frequency": null,
+        "search_query": null
+      },
+      "elapsed_s": 3.1922,
+      "request_extra_body": null
+    },
+    {
+      "site": "assistant_graph.intent_classification",
+      "case_id": "intent-02",
+      "query_excerpt": "Rearrange my weekly exercises to focus on back strength.",
+      "schema": "IntentClassification",
+      "method": "json_schema",
+      "strict": true,
+      "ok": true,
+      "error": null,
+      "parsed": {
+        "intent": "program_mutation",
+        "source_exercise": null,
+        "target_exercise": null,
+        "target_frequency": null,
+        "search_query": null
+      },
+      "elapsed_s": 3.495,
+      "request_extra_body": null
+    },
+    {
+      "site": "assistant_graph.substitution_resolution",
+      "case_id": "substitution-01",
+      "query_excerpt": "Replace it with an incline dumbbell press.",
+      "schema": "SubstitutionResolution",
+      "method": "json_schema",
+      "strict": true,
+      "ok": true,
+      "error": null,
+      "parsed": {
+        "source_exercise": "bench press",
+        "target_exercise": "incline dumbbell press"
+      },
+      "elapsed_s": 1.4865,
+      "request_extra_body": null
+    },
+    {
+      "site": "assistant_graph.substitution_resolution",
+      "case_id": "substitution-02",
+      "query_excerpt": "Could I swap that movement for a machine chest press?",
+      "schema": "SubstitutionResolution",
+      "method": "json_schema",
+      "strict": true,
+      "ok": true,
+      "error": null,
+      "parsed": {
+        "source_exercise": "bench press",
+        "target_exercise": "machine chest press"
+      },
+      "elapsed_s": 2.1102,
+      "request_extra_body": null
+    },
+    {
+      "site": "program_rules.dynamic_split_plan",
+      "case_id": "split-01",
+      "query_excerpt": "Custom weekly arrangement with separate emphasis days for chest, back, and arms",
+      "schema": "DynamicSplitPlan",
+      "method": "json_schema",
+      "strict": true,
+      "ok": false,
+      "error": "LengthFinishReasonError: Could not parse response content as the length limit was reached",
+      "parsed": null,
+      "elapsed_s": 8.8892,
+      "request_extra_body": null
+    },
+    {
+      "site": "program_rules.dynamic_split_plan",
+      "case_id": "split-02",
+      "query_excerpt": "Unusual movement-focused split with a dedicated shoulders day",
+      "schema": "DynamicSplitPlan",
+      "method": "json_schema",
+      "strict": true,
+      "ok": false,
+      "error": "LengthFinishReasonError: Could not parse response content as the length limit was reached",
+      "parsed": null,
+      "elapsed_s": 8.0488,
+      "request_extra_body": null
+    },
+    {
+      "site": "onboarding_graph.step1_extraction",
+      "case_id": "step1_extraction-01",
+      "query_excerpt": "I have longer legs than torso. I am a male, 30 years old, 80kg and 180cm tall.",
+      "schema": "Step1Extraction",
+      "method": "json_schema",
+      "strict": true,
+      "ok": true,
+      "error": null,
+      "parsed": {
+        "proportions": "long_legs",
+        "gender": "male",
+        "age": 30,
+        "weight_kg": 80.0,
+        "height_cm": 180.0,
+        "is_off_topic": false
+      },
+      "elapsed_s": 2.8334,
+      "request_extra_body": null
+    },
+    {
+      "site": "onboarding_graph.step2_extraction",
+      "case_id": "step2_extraction-01",
+      "query_excerpt": "My current goal is muscle growth and long-term goal is strength. I can train four days weekly and have lifted for two years.",
+      "schema": "Step2Extraction",
+      "method": "json_schema",
+      "strict": true,
+      "ok": true,
+      "error": null,
+      "parsed": {
+        "current_goal": "muscle growth",
+        "long_term_goal": "strength",
+        "weekly_frequency": 4,
+        "training_age_years": 2.0,
+        "rep_preference": "balanced",
+        "is_off_topic": false
+      },
+      "elapsed_s": 2.2864,
+      "request_extra_body": null
+    },
+    {
+      "site": "onboarding_graph.step3_extraction",
+      "case_id": "step3_extraction-01",
+      "query_excerpt": "I train in a commercial gym with barbells and cables. I sleep about seven hours and have no injuries.",
+      "schema": "Step3Extraction",
+      "method": "json_schema",
+      "strict": true,
+      "ok": true,
+      "error": null,
+      "parsed": {
+        "equipment_access": "commercial gym with barbells and cables",
+        "injuries_or_limitations": "None",
+        "stress_and_sleep": "sleep about seven hours",
+        "is_off_topic": false
+      },
+      "elapsed_s": 2.5952,
+      "request_extra_body": null
+    },
+    {
+      "site": "fitness_abbreviations.expansion",
+      "case_id": "abbreviation-01",
+      "query_excerpt": "XTR",
+      "schema": "AbbreviationExpansion",
+      "method": "json_schema",
+      "strict": true,
+      "ok": true,
+      "error": null,
+      "parsed": {
+        "is_fitness_movement": false,
+        "canonical_name": null
+      },
+      "elapsed_s": 1.8855,
+      "request_extra_body": null
+    },
+    {
+      "site": "fitness_abbreviations.expansion",
+      "case_id": "abbreviation-02",
+      "query_excerpt": "QZP",
+      "schema": "AbbreviationExpansion",
+      "method": "json_schema",
+      "strict": true,
+      "ok": true,
+      "error": null,
+      "parsed": {
+        "is_fitness_movement": false,
+        "canonical_name": null
+      },
+      "elapsed_s": 1.5269,
+      "request_extra_body": null
+    }
+  ],
+  "spend": {
+    "deepseek-ai/DeepSeek-V4-Flash": {
+      "calls": 9,
+      "estimated_calls": 9,
+      "prompt_tokens": 1041,
+      "completion_tokens": 261,
+      "usd": 0.00014066999999999997
+    }
+  },
+  "spend_usd": 0.000141,
+  "path_failures": [
+    {
+      "site": "onboarding_graph.step3_extraction",
+      "case_id": "step3_extraction-01",
+      "query_excerpt": "I train in a commercial gym with barbells and cables. I sleep about seven hours and have no injuries.",
+      "error": "RuntimeError: Onboarding graph requires an explicit ledger handle in config."
+    }
+  ],
+  "harness_notes": [
+    "Two substitution outputs were valid SubstitutionResolution strict parses but were attributed to the intent wrapper because graph.llm was not switched to the substitution wrapper. The result records were reattributed using their schemas and probe order.",
+    "The onboarding step 3 strict parse succeeded. Its later intake path raised because the harness omitted the explicit ledger handle; that post-parse path error is recorded separately and is not counted as a structured-output failure."
+  ]
+}

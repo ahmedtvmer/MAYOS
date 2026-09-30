@@ -1,0 +1,49 @@
+{
+  "by_model": {
+    "deepseek-ai/DeepSeek-V4-Flash": {
+      "calls": 154,
+      "estimated_calls": 52,
+      "prompt_tokens": 74595,
+      "completion_tokens": 17687,
+      "usd": 0.009897209999999998
+    },
+    "Qwen/Qwen3.5-9B": {
+      "calls": 145,
+      "estimated_calls": 43,
+      "prompt_tokens": 79060,
+      "completion_tokens": 19687,
+      "usd": 0.010859050000000002
+    },
+    "Qwen/Qwen3.5-27B": {
+      "calls": 320,
+      "estimated_calls": 0,
+      "prompt_tokens": 402385,
+      "completion_tokens": 53306,
+      "usd": 0.24321570000000003
+    }
+  },
+  "by_run": {
+    "arabic_DeepSeek-V4-Flash": 0.00595,
+    "arabic_Qwen3.5-9B": 0.00681,
+    "gate_gen_DeepSeek-V4-Flash": 0.0115,
+    "gate_gen_DeepSeek-V4-Flash_r2": 0.01164,
+    "gate_gen_Qwen3.5-9B": 0.01161,
+    "gate_gen_Qwen3.5-9B_r2": 0.01169,
+    "gate_std_DeepSeek-V4-Flash": 0.05109,
+    "gate_std_DeepSeek-V4-Flash_r2": 0.05067,
+    "gate_std_Qwen3.5-9B": 0.05181,
+    "gate_std_Qwen3.5-9B_r2": 0.05098,
+    "smoke_DeepSeek-V4-Flash": 4e-05,
+    "smoke_Qwen3.5-9B": 4e-05,
+    "structured_DeepSeek-V4-Flash": 0.00014
+  },
+  "unmetered_partial_runs": [
+    {
+      "run": "structured_Qwen3.5-9B",
+      "calls": 4,
+      "usd": null,
+      "reason": "terminated before the per-run usage ledger could be persisted"
+    }
+  ],
+  "total_usd": 0.263972
+}

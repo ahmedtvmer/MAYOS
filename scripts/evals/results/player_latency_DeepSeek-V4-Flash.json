@@ -1,0 +1,873 @@
+{
+  "model": "deepseek-ai/DeepSeek-V4-Flash",
+  "request_bodies": {
+    "player": {
+      "model": "deepseek-ai/DeepSeek-V4-Flash",
+      "extra_body": null,
+      "verified_from_model_config": true
+    },
+    "judge": {
+      "model": "Qwen/Qwen3.5-27B",
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "verified_from_model_config": false
+    }
+  },
+  "spend": {
+    "deepseek-ai/DeepSeek-V4-Flash": {
+      "calls": 70,
+      "estimated_calls": 1,
+      "prompt_tokens": 45593,
+      "completion_tokens": 10237,
+      "usd": 0.005946029999999998
+    }
+  },
+  "spend_usd": 0.005946,
+  "sample": "32 Arabic player turns; raw production prompt streamed for model TTFT and total",
+  "primary_latency_path": "raw_ar direct streamed call using build_prompt_payload",
+  "metrics": {
+    "raw_streamed_calls": 32,
+    "raw_ttft_median_s": 1.5226,
+    "raw_ttft_p90_s": 3.527,
+    "raw_total_median_s": 4.6361,
+    "graph_ar_ttft_median_s": 1.2921,
+    "graph_ar_total_median_s": 3.4194
+  },
+  "turns": [
+    {
+      "case_id": "ar-inj-01",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "أوقف تمرين الضغط على الصدر فوراً.\n\nالألم الحاد أثناء الحركة ليس إرهاقاً عضلياً طبيعياً. لا تختبر الحركة مرة أخرى، ولا تحاول \"فك\" الكتف.\n\nاطلب تقييماً سريرياً من أخصائي علاج طبيعي أو طبيب رياضي. لا يمكنني تشخيص الإصابة أو تقديم نصائح تأهيلية.\n\nللباقي من الجلسة: استخدم تمارين لا تحمل الكتف أو تحركه ضد مقاومة حتى يتم الفحص.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 432,
+          "completion_tokens": 125
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.7154620649816934,
+        "tokens_per_s": 17.459288141824334,
+        "total_s": 8.817698936996749,
+        "request_extra_body": null,
+        "reply_arabic_share": 1.0,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0132,
+        "total_s": 0.0195
+      }
+    },
+    {
+      "case_id": "ar-inj-02",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "أوقف تمارين السكوات والضغط على الركبة فوراً. التورم بعد سماع فرقعة علامة تستوجب تقييمًا سريريًا.\n\n- راجع طبيبًا أو أخصائي علاج طبيعي لتشخيص الحالة.\n- لا تبحث عن تشخيص ميكانيكي حيوي هنا، فهذا خارج نطاق عملي.\n\nعد للتدريب فقط بعد الحصول على تصريح طبي.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 438,
+          "completion_tokens": 105
+        },
+        "usage_estimated": false,
+        "ttft_s": 3.1567263230099343,
+        "tokens_per_s": 21.23794651860447,
+        "total_s": 8.05362160000368,
+        "request_extra_body": null,
+        "reply_arabic_share": 1.0,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0119,
+        "total_s": 0.0202
+      }
+    },
+    {
+      "case_id": "ar-inj-03",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "التنميل والوخز في الأصابع بعد تمرين الظهر قد يشير إلى تهيج عصبي، غالباً العصب الزندي أو الكعبري. هذا خارج نطاق اختصاصي كمدرب.\n\nأوقف أي حركة تسبب أو تزيد الأعراض. راجع أخصائي علاج طبيعي أو طبيب رياضي للتقييم السريري. لا تبحث عن تشخيص ميكانيكي حيوي هنا.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 432,
+          "completion_tokens": 102
+        },
+        "usage_estimated": false,
+        "ttft_s": 5.58047170098871,
+        "tokens_per_s": 7.432921804701484,
+        "total_s": 19.168667924997862,
+        "request_extra_body": null,
+        "reply_arabic_share": 1.0,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0148,
+        "total_s": 0.0205
+      }
+    },
+    {
+      "case_id": "ar-inj-04",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "ألم يمتد إلى الرجل بعد deadlift يشير إلى احتمالية انضغاط عصب، وليس مجرد إجهاد عضلي.\n\nأوقف deadlift فوراً. لا تختبر الحركة مرة أخرى.\n\nاطلب تقييماً سريرياً من أخصائي علاج طبيعي أو طبيب رياضي. لا تنتظر \"حتى تزول\".\n\nلا يمكنني تشخيص أو وصف تمارين علاجية. هذا خارج نطاقي.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 436,
+          "completion_tokens": 106
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.3889553679910023,
+        "tokens_per_s": 41.65864537714123,
+        "total_s": 3.909440588991856,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.9212,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0118,
+        "total_s": 0.0191
+      }
+    },
+    {
+      "case_id": "ar-inj-05",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "طقطقة الكوع مع ألم أثناء التراي تعني أوقف التمرين فورًا. هذا ليس طبيعيًا ولا يحتاج تشخيصًا مني.\n\nاطلب تقييمًا سريريًا من أخصائي علاج طبيعي أو طبيب رياضي قبل العودة لتمارين الدفع أو العزل.\n\nللمعلومة: لا يوجد سجل سابق لإصابة كوع في ملفك.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 431,
+          "completion_tokens": 96
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.9638150219980162,
+        "tokens_per_s": 70.05903838324026,
+        "total_s": 3.3198142219916917,
+        "request_extra_body": null,
+        "reply_arabic_share": 1.0,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0125,
+        "total_s": 0.0199
+      }
+    },
+    {
+      "case_id": "ar-inj-06",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "أوقف تمارين الضغط فوراً ولا تختبر الحركة. التمزق المحسوس في الصدر أثناء البنش بريس يحتاج تقييم سريري، ليس نصيحة ميكانيكية حيوية.\n\nراجع طبيباً أو أخصائي علاج طبيعي خلال 24 ساعة. لا تعاود التمرين حتى يتم التشخيص.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 429,
+          "completion_tokens": 88
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.1397313110064715,
+        "tokens_per_s": 40.21980060011676,
+        "total_s": 3.302844969002763,
+        "request_extra_body": null,
+        "reply_arabic_share": 1.0,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0129,
+        "total_s": 0.0199
+      }
+    },
+    {
+      "case_id": "ar-inj-07",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "ألم أو عدم ثبات الركبة عند النزول من الدرج يشير عادة إلى ضعف في التحكم اللامركزي أو ضعف في العضلة الرباعية.\n\nلا يمكنني تشخيص إصابة، لكن إليك خطوة عملية:\n- جرب تمرين *Step-down* البطيء (20-30 سم) مع تحكم كامل لمدة 3-4 أسابيع، 3 مجموعات × 8 تكرارات لكل رجل.\n- إذا استمر الإحساس بعدم الثبات أو صاحبه ألم حاد أو تورم، راجع أخصائي علاج طبيعي.\n\nهل هذا الإحساس موجود أثناء التمرين أيضاً أم فقط خارج الصالة؟",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 434,
+          "completion_tokens": 154
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.4406691920012236,
+        "tokens_per_s": 44.05684618473491,
+        "total_s": 4.913455222995253,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.9729,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0163,
+        "total_s": 0.0217
+      }
+    },
+    {
+      "case_id": "ar-inj-08",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لا يمكنني تشخيص حالتك. ألم الرسغ له أسباب متعددة، منها التهاب الأوتار، متلازمة النفق الرسغي، أو إجهاد المفصل.\n\nإذا شعرت بألم حاد، طقطقة، تنميل، أو ضعف في القبضة، أوقف التمارين التي تسبب الألم واستشر أخصائي علاج طبيعي أو طبيب رياضي للتقييم السريري.\n\nلتقليل الضغط على الرسغ مؤقتاً، يمكنك استخدام قبضة محايدة أو أربطة دعم، لكن هذا ليس علاجاً.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 431,
+          "completion_tokens": 130
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.0830318279913627,
+        "tokens_per_s": 23.86295003460174,
+        "total_s": 6.488901588978479,
+        "request_extra_body": null,
+        "reply_arabic_share": 1.0,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0108,
+        "total_s": 0.0183
+      }
+    },
+    {
+      "case_id": "ar-inj-09",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "أوقف أي حركة ترفع الذراع فوق الرأس فورًا. الألم القوي ليس إشارة تدريبية، بل يستوجب تقييمًا سريريًا من مختص (طبيب أو فيزيوترابيست). لا يمكنني تشخيص أو تقديم نصائح علاجية.\n\nحتى يتم الفحص، استبدل تمارين الدفع والسحب العلوية بحركات أفقية أو تحت مستوى الكتف (مثل دمبل فلای منخفض أو صفوف). لا تعاود الرفع العلوي قبل الحصول على تقييم مهني.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 432,
+          "completion_tokens": 135
+        },
+        "usage_estimated": false,
+        "ttft_s": 138.60755664700991,
+        "tokens_per_s": 27.733698708666857,
+        "total_s": 143.4392237610009,
+        "request_extra_body": null,
+        "reply_arabic_share": 1.0,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "clinical_intercept",
+        "first_chunk_s": 0.0122,
+        "total_s": 0.018
+      }
+    },
+    {
+      "case_id": "ar-sore-01",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لا، لا تتمرن اليوم. تعب العضلات بعد تمرين الأمس يعني أنك لم تتعافَ بعد. خذ يوم راحة إضافي، وارجع غداً إذا شعرت أن readiness عادت إلى 3/5 على الأقل.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 435,
+          "completion_tokens": 61
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.9079188519972377,
+        "tokens_per_s": 46.680674043353676,
+        "total_s": 3.193247335992055,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.9174,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.1242,
+        "total_s": 1.5443
+      }
+    },
+    {
+      "case_id": "ar-sore-02",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "نعم، خفف. الإرهاق العام وقلة النوم يخفضان التعافي والجهاز العصبي.\n\n- حافظ على المجموعات لكن اخفض الوزن بحيث تكون RIR 2-3 (جهد 7-8/10).\n- لا تصل إلى RIR 0 أو فشل.\n- إذا شعرت أن الأداء منخفض جداً بعد الإحماء، اختصر حجم التمرين (مثلاً مجموعة واحدة أقل لكل تمرين).\n\nاستمع لجسمك، الراحة اليوم أفضل من إصابة أو تراجع غداً.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 435,
+          "completion_tokens": 128
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.2560849669971503,
+        "tokens_per_s": 25.61382875554683,
+        "total_s": 6.214344086009078,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.9736,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 0.8291,
+        "total_s": 4.9427
+      }
+    },
+    {
+      "case_id": "ar-sore-03",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "نعم، طبيعي تماماً. الـ pump هو تجمع الدم والسوائل في العضلة أثناء التمرين، ويحدث بقوة في الذراعين لأن العضلات صغيرة نسبياً والدم يحتبس بسهولة.\n\nطالما ما في ألم غير طبيعي أو تنميل، استمتع فيه.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 433,
+          "completion_tokens": 76
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.034044749016175,
+        "tokens_per_s": 54.26089934008615,
+        "total_s": 2.4162555290095042,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.9732,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.0841,
+        "total_s": 4.7108
+      }
+    },
+    {
+      "case_id": "ar-prog-01",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "تم التبديل. استخدم ضغط الدمبل بدلاً من البنش برس في اليوم العلوي القادم. حافظ على نفس نطاق التكرارات وRIR 0-3.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 427,
+          "completion_tokens": 47
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.5123787749907933,
+        "tokens_per_s": 36.2559167390077,
+        "total_s": 2.781137204990955,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.9643,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.3207,
+        "total_s": 3.4432
+      }
+    },
+    {
+      "case_id": "ar-prog-02",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "بناءً على سجلك، تم استبدال القرفصاء بمكبس الأرجل. إليك التعديل:\n\n- **مكبس الأرجل**: 3 مجموعات عمل، 8-12 تكرار، RIR 1-2. ركز على النطاق الكامل مع توقف قصير في وضع التمدد (لنشاط العضلات الأقصى).\n- حافظ على راحة 2-3 دقائق بين المجموعات.\n- استمر في باقي التمرين كما هو: روماني ديدليفت 90 كجم × 8 × 3، ثم مكبس الأرجل.\n\nإذا شعرت بأي إزعاج غير معتاد في الركبة أو الورك، توقف فورًا.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 430,
+          "completion_tokens": 172
+        },
+        "usage_estimated": false,
+        "ttft_s": 2.8557273449841887,
+        "tokens_per_s": 11.308383537793231,
+        "total_s": 17.977251957985573,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.9885,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 2.081,
+        "total_s": 4.7966
+      }
+    },
+    {
+      "case_id": "ar-prog-03",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "سأحوّل برنامجك إلى 3 أيام في الأسبوع (Push/Pull/Legs أو Upper/Lower/Full Body). بناءً على آخر جلسة (سكوات 100 كغ × 5 × 3 @RPE8)، سأبقي الشدة متوسطة مع تركيز على التحميل الطويل.\n\nأحتاج توضيحاً واحداً: هل تفضل تقسيم Push/Pull/Legs أم Upper/Lower مع يوم Full Body إضافي؟",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 427,
+          "completion_tokens": 110
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.1053963770100381,
+        "tokens_per_s": 56.63490360675149,
+        "total_s": 3.030004578991793,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.6719,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 2.2082,
+        "total_s": 10.703
+      }
+    },
+    {
+      "case_id": "ar-prog-04",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "ما زلت على نفس الـ split المناسب لك. لا حاجة لتغييره حاليًا.\n\nاستمر في التقدم الخطي على Squat و RDL. إذا توقفت الزيادات، عندها نعدل.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 424,
+          "completion_tokens": 51
+        },
+        "usage_estimated": false,
+        "ttft_s": 2.3275012699887156,
+        "tokens_per_s": 9.151574329677336,
+        "total_s": 7.791042099008337,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.8713,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 4.4777,
+        "total_s": 11.1555
+      }
+    },
+    {
+      "case_id": "ar-prog-05",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "بدائل السحب (Pull-ups) تعتمد على المعدات المتوفرة:\n\n- **صف بالدمبل** (Dumbbell Row): حمل ثقيل، تحميل طولي جيد. 3 مجموعات × 6-8 تكرارات، RIR 1-2.\n- **سحب كابل بعرض الكتفين** (Cable Lat Pulldown): مشابهة للسحب لكن بثبات أفضل. 3 × 8-10، RIR 0-1.\n- **صف بالبار** (Barbell Row): حمل أكبر، لكنه أقل تركيزاً على اللاتس مقارنة بالسحب.\n\nاختر واحداً يناسب جدولك.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 422,
+          "completion_tokens": 151
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.1761964229808655,
+        "tokens_per_s": 58.242812121723794,
+        "total_s": 3.7516215189825743,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.7863,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 2.4113,
+        "total_s": 13.8653
+      }
+    },
+    {
+      "case_id": "ar-prog-06",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لا، ليس بالضرورة. التوقف المؤقت في التقدم (plateau) غالباً ما يكون بسبب:\n\n- نقص في الشدة الفعلية (RIR غير دقيق)\n- قلة فترات الراحة بين المجموعات\n- عدم كفاية الحمل الزائد التدريجي\n\nقبل تغيير البرنامج، جرب:\n1. زيادة الوزن بمقدار 2.5-5 كجم\n2. التأكد من 0-2 RIR في المجموعات النهائية\n3. راحة 3 دقائق بين المجموعات الثقيلة\n\nإذا استمر الركود 3-4 أسابيع مع تدهور الأداء، عندها فكر في تغيير التمرين أو البرمجة.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 428,
+          "completion_tokens": 165
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.1752125059720129,
+        "tokens_per_s": 51.88016347529371,
+        "total_s": 4.336343639995903,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.9559,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 2.5574,
+        "total_s": 7.0011
+      }
+    },
+    {
+      "case_id": "ar-prog-07",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "أفضل تمارين للعضلة الخلفية للكتف (Posterior Deltoid):\n\n- Face Pull: كابل أو حبل، تركيز على سحب الكتفين للخلف مع دوران خارجي\n- Reverse Pec Deck: صدر عكسي، مرفقين مفتوحين قليلاً\n- Bent-Over Dumbbell Lateral Raise: انحناء 45-60 درجة، رفع جانبي مع تثبيت الكتف\n\nركّز على تحميل العضلة في وضعية الطول (الذراعين للأمام) مع توقف قصير عند أقصى تقلص. استخدم 0-2 RIR، راحة 2-3 دقائق بين المجموعات.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 430,
+          "completion_tokens": 161
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.0197886450041551,
+        "tokens_per_s": 23.36424948648816,
+        "total_s": 7.867857961013215,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.7596,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.0575,
+        "total_s": 4.663
+      }
+    },
+    {
+      "case_id": "ar-log-01",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "سجلها في نهاية الجلسة كملاحظة: \"إضافة مجموعة اختيارية لـ [التمرين] × [الوزن] × [التكرارات] @RIR [كذا]\".\n\nلا تحذف المجموعات المقررة ولا تستبدلها. إذا تكررت الإضافات، زِد الوزن في البرنامج الأصلي بدلاً من التجميع العشوائي.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 428,
+          "completion_tokens": 96
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.5327664530195761,
+        "tokens_per_s": 13.67926598503133,
+        "total_s": 8.477583529020194,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.9819,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.3984,
+        "total_s": 3.8842
+      }
+    },
+    {
+      "case_id": "ar-log-02",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "نعم، تقدر تضيفه. اكتب التمرين والمجموعات والتكرارات والتاريخ، وبسجله.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 434,
+          "completion_tokens": 30
+        },
+        "usage_estimated": false,
+        "ttft_s": 2.4120014870131854,
+        "tokens_per_s": 53.83514090632748,
+        "total_s": 2.9506830899917986,
+        "request_extra_body": null,
+        "reply_arabic_share": 1.0,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.6993,
+        "total_s": 3.2235
+      }
+    },
+    {
+      "case_id": "ar-log-03",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "RPE (معدل الجهد المدرك) هو مقياس شخصي لصعوبة المجموعة من 1 إلى 10، حيث 10 = فشل تام و1 = بدون جهد تقريباً.\n\nلاختيار الرقم الصحيح:\n- RPE 7-8: الأفضل للنمو العضلي والقوة. يعني يتبقى 2-3 تكرارات قبل الفشل.\n- RPE 9: يتبقى تكرار واحد فقط. استخدمه نادراً للمجموعات الأخيرة.\n- RPE 10: فشل عضلي. احتفظ به للاختبارات فقط.\n\nقاعدة بسيطة: اختر وزناً يسمح لك بأداء التكرارات المطلوبة مع تحكم كامل، وتوقف قبل أن تضطر للتضحية بالشكل أو السرعة.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 430,
+          "completion_tokens": 193
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.3031093979952857,
+        "tokens_per_s": 28.55548224670981,
+        "total_s": 8.026862068014452,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.961,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 3.2055,
+        "total_s": 9.0564
+      }
+    },
+    {
+      "case_id": "ar-log-04",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "سجّل الوزن الإجمالي (البار + الأقراص). هذا هو الحمل الفعلي الذي تتعامل معه العضلات والمفاصل.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 429,
+          "completion_tokens": 37
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.585150914004771,
+        "tokens_per_s": 106.68338545719499,
+        "total_s": 1.9225980229966808,
+        "request_extra_body": null,
+        "reply_arabic_share": 1.0,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.8626,
+        "total_s": 2.1701
+      }
+    },
+    {
+      "case_id": "ar-log-05",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "دقيقتان إلى 3 دقائق بين المجموعات الثقيلة. هذا يسمح بتعافي كافٍ للجهاز العصبي والعضلي للحفاظ على الشدة والأداء في المجموعات التالية.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 426,
+          "completion_tokens": 51
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.6025223809992895,
+        "tokens_per_s": 41.06431294408053,
+        "total_s": 2.8201246350072324,
+        "request_extra_body": null,
+        "reply_arabic_share": 1.0,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.652,
+        "total_s": 4.5083
+      }
+    },
+    {
+      "case_id": "ar-log-06",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لا، لا تزود الوزن. 8 عدات بدل 6 تعني أن الحمل كان أخف من المطلوب للمدى المستهدف (6-8). حافظ على نفس الوزن في الجلسة القادمة وارفع الـ 6 عدات فقط بالمجهود الصحيح (RIR 0-1). زود الوزن فقط لما تقدر ترفع 6 عدات متقنة بالشكل المطلوب.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 434,
+          "completion_tokens": 99
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.6001156510028522,
+        "tokens_per_s": 35.91928336078652,
+        "total_s": 4.328455162001774,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.9818,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.8462,
+        "total_s": 6.3372
+      }
+    },
+    {
+      "case_id": "ar-hist-01",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "آخر حصة سكوات (26 سبتمبر): 100 كجم × 5 × 3 @RPE 8. أداء جيد ومستقر. الـ RPE 8 يترك 2 تكرار في الاحتياطي، وهو مناسب لمرحلة تراكمية. استمر في نفس الحمل أو زد 2.5 كجم إذا شعرت أن الحركة محكمة والسيطرة سلبية في التكرارات الأخيرة.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 427,
+          "completion_tokens": 100
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.2056084240030032,
+        "tokens_per_s": 29.093990820385933,
+        "total_s": 4.608372954011429,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.9615,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 2.2086,
+        "total_s": 7.8587
+      }
+    },
+    {
+      "case_id": "ar-hist-02",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "ليس لدي سجل شخصي لأنني لست رافعًا. أنا مدرب. إذا كنت تسأل عن سجلك أنت، فليس لدي بيانات عن الـ deadlift في تاريخك المسجل.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 426,
+          "completion_tokens": 49
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.9094562770042103,
+        "tokens_per_s": 25.6000741241535,
+        "total_s": 2.7844508480047807,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.913,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 0.9276,
+        "total_s": 1.8559
+      }
+    },
+    {
+      "case_id": "ar-hist-03",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "بناءً على السجلات المتاحة، لدي فقط بيانات الجلسة الأخيرة (2026-09-26، Lower A). لا توجد جلسة سابقة مسجلة للمقارنة.\n\nإذا كنت تقصد مقارنة بين تمارين Lower A و Lower B، أو جلسة سابقة غير مسجلة، يرجى توضيح أي جلسة تقصد تحديدًا.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 423,
+          "completion_tokens": 89
+        },
+        "usage_estimated": false,
+        "ttft_s": 0.9670597900112625,
+        "tokens_per_s": 23.80441384697897,
+        "total_s": 4.6638531899952795,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.8889,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.3535,
+        "total_s": 3.3955
+      }
+    },
+    {
+      "case_id": "ar-hist-04",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لا توجد بيانات كافية في السجل الحالي لمقارنة أداء تمرين الـ bench press خلال الشهر الماضي. السجل المتاح يظهر فقط جلسة Lower A بتاريخ 2026-09-26، ولا يحتوي على أي معلومات عن تمارين الصدر أو الـ bench press.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 428,
+          "completion_tokens": 69
+        },
+        "usage_estimated": false,
+        "ttft_s": 136.00031550298445,
+        "tokens_per_s": 45.10613275043145,
+        "total_s": 137.50787103598122,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.8333,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.11,
+        "total_s": 1.9429
+      }
+    },
+    {
+      "case_id": "ar-hist-05",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "آخر تمرين كان Lower A بتاريخ 26 سبتمبر 2026:\n- Squat 100kg x 5 x 3 @RPE8\n- Romanian Deadlift 90kg x 8 x 3\n- Leg Press 180kg x 10 x 3\nالجاهزية 4/5.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 422,
+          "completion_tokens": 69
+        },
+        "usage_estimated": false,
+        "ttft_s": 2.4509333279856946,
+        "tokens_per_s": 39.13311042381167,
+        "total_s": 4.188592288992368,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.3827,
+        "reply_is_arabic": false
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 2.497,
+        "total_s": 3.8114
+      }
+    },
+    {
+      "case_id": "ar-gen-01",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "أهلاً أحمد، مرحباً بك. بداية ممتازة.\n\nللأسبوع الأول، ركز على تعلم الحركات الأساسية بأوزان خفيفة جداً. جرب:\n\n- القرفصاء (Squat) بالبار فقط أو دمبل خفيف\n- تمرين الضغط (Push-ups) على الركبتين أو الحائط\n- صف الدمبل (Dumbbell Row) بوزن خفيف\n\n3 مجموعات من 10-12 تكراراً. الراحة دقيقتين بين المجموعات. الأهم هو الاتساق والشكل الصحيح، وليس الوزن.",
+        "reasoning_chars": 0,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 429,
+          "completion_tokens": 142
+        },
+        "usage_estimated": false,
+        "ttft_s": 1.2510547179845162,
+        "tokens_per_s": 39.76306805330363,
+        "total_s": 4.797058758995263,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.908,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 1.2635,
+        "total_s": 3.3228
+      }
+    },
+    {
+      "case_id": "ar-gen-02",
+      "raw_ar": {
+        "status": 200,
+        "error": null,
+        "reply": "لزيادة قوة الضغط على الصدر، ركّز على:\n\n- **التوتر الميكانيكي**: استخدم نطاق حركة كامل مع توقف قصير في وضعية التمدد (أسفل الحركة) لثانيتين، فهذا يزيل المرونة التخزينية ويجبر العضلة على العمل الفعّال.\n- **0-3 RIR**: اترك 1-3 تكرارات في الاحتياطي للمجموعات الثقيلة، ولا تصل للفشل العضلي في كل جلسة.\n- **الراحة الكافية**: استرح 2-3 دقائق بين المجموعات الثقيلة، وليس 30-60 ثانية.\n\nإذا كان هدفك القوة، فاستخدم تمرين الضغط بالبار (Bench Press) كحركة رئيسية، مع زيادة الحمل تدريجياً (2.5-5",
+        "reasoning_chars": 0,
+        "finish_reason": "length",
+        "usage": {
+          "prompt_tokens": 429,
+          "completion_tokens": 200
+        },
+        "usage_estimated": false,
+        "ttft_s": 3.5270163269888144,
+        "tokens_per_s": 14.583076702487425,
+        "total_s": 17.172970747982617,
+        "request_extra_body": null,
+        "reply_arabic_share": 0.9625,
+        "reply_is_arabic": true
+      },
+      "graph_ar": {
+        "intent": "coaching_qa",
+        "first_chunk_s": 2.5876,
+        "total_s": 8.2057
+      }
+    }
+  ]
+}

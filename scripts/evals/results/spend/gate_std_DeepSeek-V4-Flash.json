@@ -1,0 +1,19 @@
+{
+  "by_model": {
+    "deepseek-ai/DeepSeek-V4-Flash": {
+      "calls": 28,
+      "estimated_calls": 16,
+      "prompt_tokens": 10925,
+      "completion_tokens": 2997,
+      "usd": 0.0015227099999999996
+    },
+    "Qwen/Qwen3.5-27B": {
+      "calls": 65,
+      "estimated_calls": 0,
+      "prompt_tokens": 81784,
+      "completion_tokens": 10887,
+      "usd": 0.04957004
+    }
+  },
+  "total_usd": 0.05109
+}

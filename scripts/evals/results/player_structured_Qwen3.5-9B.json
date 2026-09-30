@@ -1,0 +1,42 @@
+{
+  "model": "Qwen/Qwen3.5-9B",
+  "status": "NOT-RUN",
+  "attempted": true,
+  "reason": "The prior run reached four structured requests and was terminated at the run time limit before saving a complete result. Those partial records and usage were not recoverable; this model was not rerun per instruction.",
+  "method": "json_schema",
+  "strict": true,
+  "request_bodies": {
+    "player": {
+      "model": "Qwen/Qwen3.5-9B",
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "verified_by_completed_smoke": true
+    },
+    "judge": {
+      "model": "Qwen/Qwen3.5-27B",
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "used": false
+    }
+  },
+  "call_sites": {},
+  "failures": [],
+  "path_failures": [],
+  "probes": [],
+  "spend": {},
+  "spend_usd": null,
+  "attempted_probe_count": 4,
+  "attempted_probe_names": [
+    "intent-01",
+    "intent-02",
+    "substitution-01",
+    "substitution-02"
+  ],
+  "partial_usage_unmetered": true
+}

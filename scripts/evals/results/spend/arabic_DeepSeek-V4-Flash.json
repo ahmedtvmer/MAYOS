@@ -1,0 +1,12 @@
+{
+  "by_model": {
+    "deepseek-ai/DeepSeek-V4-Flash": {
+      "calls": 70,
+      "estimated_calls": 1,
+      "prompt_tokens": 45593,
+      "completion_tokens": 10237,
+      "usd": 0.005946029999999998
+    }
+  },
+  "total_usd": 0.00595
+}

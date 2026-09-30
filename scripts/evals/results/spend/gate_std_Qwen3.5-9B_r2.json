@@ -1,0 +1,19 @@
+{
+  "by_model": {
+    "Qwen/Qwen3.5-9B": {
+      "calls": 28,
+      "estimated_calls": 16,
+      "prompt_tokens": 11617,
+      "completion_tokens": 2884,
+      "usd": 0.0015942999999999997
+    },
+    "Qwen/Qwen3.5-27B": {
+      "calls": 65,
+      "estimated_calls": 0,
+      "prompt_tokens": 81678,
+      "completion_tokens": 10827,
+      "usd": 0.04938648
+    }
+  },
+  "total_usd": 0.05098
+}
