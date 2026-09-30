@@ -136,6 +136,47 @@ void _resize(WidgetTester tester, Size size) {
   tester.view.physicalSize = size;
 }
 
+Future<void> _checkOverlayWidths(
+  WidgetTester tester, {
+  required double expectedWidth,
+  required double expectedCenter,
+}) async {
+  final BuildContext context =
+      tester.element(find.byKey(MayosScaffold.bodyContentKey));
+  final Future<void> sheet = showModalBottomSheet<void>(
+    context: context,
+    builder: (BuildContext context) => const SizedBox(
+      key: ValueKey<String>('overlay.sheet'),
+      width: double.infinity,
+      height: 120,
+    ),
+  );
+  await tester.pumpAndSettle();
+  final Rect sheetRect = tester.getRect(
+    find.byKey(const ValueKey<String>('overlay.sheet')),
+  );
+  expect(sheetRect.width, expectedWidth);
+  expect(sheetRect.center.dx, expectedCenter);
+  Navigator.of(context).pop();
+  await tester.pumpAndSettle();
+  await sheet;
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('Overlay width check')),
+  );
+  await tester.pumpAndSettle();
+  final Rect snackRect = tester.getRect(
+    find.descendant(
+      of: find.byType(SnackBar),
+      matching: find.byType(Material),
+    ),
+  );
+  expect(snackRect.width, expectedWidth);
+  expect(snackRect.center.dx, expectedCenter);
+  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets(
     'Player mode switches layouts, preserves tab state, and centres pushed screens',
@@ -212,6 +253,11 @@ void main() {
       );
       expect(pushedBody.width, MayosLayout.playerColumnMaxWidth);
       expect(pushedBody.center.dx, 640);
+      await _checkOverlayWidths(
+        tester,
+        expectedWidth: MayosLayout.playerColumnMaxWidth,
+        expectedCenter: 640,
+      );
     },
   );
 
@@ -301,6 +347,11 @@ void main() {
       expect(
         tester.getRect(find.byType(CoachAssignmentsScreen)).width,
         1280 - MayosLayout.navigationRailWidth,
+      );
+      await _checkOverlayWidths(
+        tester,
+        expectedWidth: MayosLayout.coachOverlayMaxWidth,
+        expectedCenter: 640,
       );
     },
   );

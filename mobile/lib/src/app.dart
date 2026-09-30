@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import 'core/app_mode.dart';
 import 'core/connectivity.dart';
+import 'core/theme/mayos_spacing.dart';
 import 'core/theme/mayos_theme.dart';
 import 'core/ui/mayos_app_mode_scope.dart';
 import 'providers.dart';
@@ -84,20 +85,43 @@ class _MayosAppState extends ConsumerState<MayosApp>
       theme: MayosTheme.light,
       darkTheme: MayosTheme.dark,
       themeMode: themeMode,
-      // Root messenger for permission one-liners raised outside a screen's
-      // own messenger (the rest-alarm ask, #125).
-      scaffoldMessengerKey: mayosMessengerKey,
       routerConfig: router,
       builder: (BuildContext context, Widget? child) {
         final MayosThemeExtension c = _effective(context, themeMode);
         return MayosAppModeScope(
           mode: appMode,
-          child: AnnotatedRegion<SystemUiOverlayStyle>(
-            value: MayosTheme.overlayStyle(c),
-            child: child ?? const SizedBox.shrink(),
+          child: Theme(
+            data: _responsiveOverlayTheme(context, appMode),
+            child: ScaffoldMessenger(
+              // Own the app's screen snackbars under the responsive theme.
+              // The same messenger also receives permission prompts via its
+              // global key.
+              key: mayosMessengerKey,
+              child: AnnotatedRegion<SystemUiOverlayStyle>(
+                value: MayosTheme.overlayStyle(c),
+                child: child ?? const SizedBox.shrink(),
+              ),
+            ),
           ),
         );
       },
+    );
+  }
+
+  ThemeData _responsiveOverlayTheme(BuildContext context, AppMode mode) {
+    final bool desktop = MediaQuery.sizeOf(context).width >=
+        MayosLayout.desktopNavigationBreakpoint;
+    final double overlayMaxWidth = mode == AppMode.player
+        ? MayosLayout.playerColumnMaxWidth
+        : MayosLayout.coachOverlayMaxWidth;
+    final ThemeData theme = Theme.of(context);
+    return theme.copyWith(
+      bottomSheetTheme: theme.bottomSheetTheme.copyWith(
+        constraints: BoxConstraints(maxWidth: overlayMaxWidth),
+      ),
+      snackBarTheme: theme.snackBarTheme.copyWith(
+        width: desktop ? overlayMaxWidth : null,
+      ),
     );
   }
 

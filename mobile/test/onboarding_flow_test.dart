@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -43,6 +45,12 @@ FakeMayosApi _fake({bool acknowledged = false}) {
   return fake;
 }
 
+typedef _OnboardingViewport = ({
+  Size size,
+  ThemeMode mode,
+  double textScale,
+});
+
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     {int attempts = 60}) async {
   for (int i = 0; i < attempts; i++) {
@@ -82,6 +90,27 @@ Future<void> _pumpOnboarding(
   ThemeMode mode = ThemeMode.light,
   double textScale = 1.0,
 }) async {
+  await _mountOnboarding(
+    tester,
+    fake,
+    viewport: (size: size, mode: mode, textScale: textScale),
+  );
+  await _pumpUntilFound(tester, find.byType(OnboardingScaffold));
+}
+
+Future<void> _mountOnboarding(
+  WidgetTester tester,
+  FakeMayosApi fake, {
+  _OnboardingViewport? viewport,
+}) async {
+  final _OnboardingViewport view = viewport ??
+      (
+        size: const Size(393, 852),
+        mode: ThemeMode.light,
+        textScale: 1.0,
+      );
+  final Size size = view.size;
+  final double textScale = view.textScale;
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
@@ -102,12 +131,19 @@ Future<void> _pumpOnboarding(
         debugShowCheckedModeBanner: false,
         theme: MayosTheme.light,
         darkTheme: MayosTheme.dark,
-        themeMode: mode,
+        themeMode: view.mode,
         home: const OnboardingScreen(),
       ),
     ),
   );
-  await _pumpUntilFound(tester, find.byType(OnboardingScaffold));
+}
+
+void _expectDesktopPlayerColumn(WidgetTester tester) {
+  final Rect column = tester.getRect(
+    find.byKey(const ValueKey<String>('onboarding.playerColumn')),
+  );
+  expect(column.width, 480);
+  expect(column.center.dx, 640);
 }
 
 Future<void> _tapAndFind(WidgetTester tester, Finder tap, Finder next) async {
@@ -206,6 +242,79 @@ void main() {
         find.byKey(const Key('gender_option_female')));
     expect(fake.intakeDisclosureAcknowledged, isTrue);
     expect(find.text(questionFor('gender')), findsOneWidget);
+  });
+
+  testWidgets('raw onboarding loading state uses the desktop player column',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _fake();
+    final Completer<void> pending = Completer<void>();
+    fake.adapter.beforeRespond = (request) async {
+      if (request.method == 'GET' && request.path == '/onboarding/intake') {
+        await pending.future;
+      }
+    };
+    await _mountOnboarding(
+      tester,
+      fake,
+      viewport: (
+        size: const Size(1280, 800),
+        mode: ThemeMode.light,
+        textScale: 1.0,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    _expectDesktopPlayerColumn(tester);
+    pending.complete();
+    await _pumpUntilFound(tester, find.byType(OnboardingScaffold));
+  });
+
+  testWidgets('raw onboarding error state uses the desktop player column',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _fake()
+      ..failOffline('GET', '/onboarding/intake');
+    await _mountOnboarding(
+      tester,
+      fake,
+      viewport: (
+        size: const Size(1280, 800),
+        mode: ThemeMode.light,
+        textScale: 1.0,
+      ),
+    );
+    await _pumpUntilFound(tester, find.text('Could not load your setup'));
+
+    _expectDesktopPlayerColumn(tester);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('program-building state uses the desktop player column',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _fake(acknowledged: true)
+      ..intakeAnswers.addAll(_requiredAnswers);
+    await _pumpOnboarding(
+      tester,
+      fake,
+      size: const Size(1280, 800),
+    );
+    await _pumpUntilFound(tester, find.byKey(const Key('onboarding_confirm')));
+
+    final Completer<void> pending = Completer<void>();
+    fake.adapter.beforeRespond = (request) async {
+      if (request.method == 'POST' &&
+          request.path == '/onboarding/intake/confirm') {
+        await pending.future;
+      }
+    };
+    fake.failOffline('POST', '/onboarding/intake/confirm');
+    await tester.tap(find.byKey(const Key('onboarding_confirm')));
+    await _pumpUntilFound(tester, find.text('Building your program'));
+
+    _expectDesktopPlayerColumn(tester);
+    expect(tester.takeException(), isNull);
+    pending.complete();
+    await _pumpUntilFound(tester, find.byType(OnboardingScaffold));
   });
 
   testWidgets('each field type selects and saves its answer',

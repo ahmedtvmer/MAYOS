@@ -14,6 +14,7 @@ import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/workout/active_workout_controller.dart';
+import 'package:mayos_mobile/src/features/player/workout/logger_keypad.dart';
 import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
@@ -163,6 +164,8 @@ Future<
         activeWorkoutStoreProvider.overrideWithValue(store),
         restLengthStoreProvider.overrideWithValue(restLengths),
         restAlertsProvider.overrideWithValue(alerts),
+        // Simulate Flutter's browser visibility lifecycle on the native host.
+        webPageVisibilityEnabledProvider.overrideWithValue(true),
         deviceTimezoneProvider.overrideWithValue(Future<String>.value('UTC')),
         deviceTimezoneOrNullProvider.overrideWithValue(
           Future<String?>.value('UTC'),
@@ -462,6 +465,64 @@ void main() {
       expect(harness.alerts.ended, hasLength(1));
     },
   );
+
+  testWidgets('a hidden page catches up silently and keeps real remaining time', (
+    WidgetTester tester,
+  ) async {
+    final harness = await _openLogger(tester);
+
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    harness.clock.advance(const Duration(seconds: 40));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(find.text('2:20'), findsOneWidget);
+    expect(harness.alerts.playEndCalls, 0);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    harness.clock.advance(const Duration(seconds: 200));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(_restControls(), findsNothing);
+    expect(harness.alerts.playEndCalls, 0);
+    expect((await harness.store.read(_account))!.rest, isNull);
+  });
+
+  testWidgets('the focused row and keypad stay clear at the Safari viewport', (
+    WidgetTester tester,
+  ) async {
+    await _openLogger(tester);
+    tester.view.physicalSize = const Size(390, 664);
+    tester.view.viewPadding = const FakeViewPadding(bottom: 34);
+    addTearDown(tester.view.resetViewPadding);
+    await tester.pump();
+
+    await tester.ensureVisible(_cell(1, 0, 'kg'));
+    await tester.pumpAndSettle();
+    await tester.tap(_cell(1, 0, 'kg'));
+    await tester.pumpAndSettle();
+
+    final Rect row = tester.getRect(
+      find.byKey(const ValueKey<String>('logger.row.1.0')),
+    );
+    final Rect keypad = tester.getRect(find.byType(LoggerKeypad));
+    final Rect hideKey = tester.getRect(
+      find.byKey(const ValueKey<String>('logger.key.hide')),
+    );
+    expect(row.bottom, lessThanOrEqualTo(keypad.top));
+    expect(row.top, greaterThanOrEqualTo(0));
+    expect(hideKey.bottom, lessThanOrEqualTo(664 - 34));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.hide')));
+    await tester.pumpAndSettle();
+    final Rect finishButton = tester.getRect(
+      find.widgetWithText(FilledButton, 'Finish workout'),
+    );
+    expect(finishButton.bottom, lessThanOrEqualTo(664 - 34));
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('a warm-up tick never starts the rest timer', (
     WidgetTester tester,

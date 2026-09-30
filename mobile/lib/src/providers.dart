@@ -183,6 +183,12 @@ final Provider<BrowserKeyValueStore> browserKeyValueStoreProvider =
 final Provider<DateTime Function()> clockProvider =
     Provider<DateTime Function()>((ref) => DateTime.now);
 
+/// Flutter lifecycle changes reflect browser tab visibility on web. Injectable
+/// so widget tests can exercise that path on the native test host.
+final Provider<bool> webPageVisibilityEnabledProvider = Provider<bool>(
+  (ref) => kIsWeb,
+);
+
 /// The workout summary the logger is showing (#159): Finish takes the
 /// snapshot, Back drops it. While it is set the top bar freezes Workout time
 /// at the snapshot's duration, so no live clock ticks next to the summary's

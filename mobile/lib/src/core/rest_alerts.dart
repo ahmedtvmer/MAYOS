@@ -5,6 +5,8 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import 'rest_alerts_web_stub.dart'
+    if (dart.library.js_interop) 'rest_alerts_web.dart' as web_alerts;
 import 'rest_length.dart';
 import 'secure_store.dart';
 
@@ -96,6 +98,16 @@ class NoopRestAlerts implements RestAlerts {
 
   @override
   Future<void> playEnd(RestAlertInfo info) async {}
+}
+
+/// Web has no scheduled notification or background alarm. The foreground
+/// logger calls [playEnd] only while its page is visible (#180).
+class WebRestAlerts extends NoopRestAlerts {
+  @override
+  Future<void> ensureReady() => web_alerts.prepareWebRestAudio();
+
+  @override
+  Future<void> playEnd(RestAlertInfo info) => web_alerts.playWebRestEnd();
 }
 
 /// The real Android implementation (#125): an ongoing, system-drawn countdown
@@ -400,7 +412,10 @@ RestAlerts platformRestAlerts({
   void Function(String line)? explain,
   DateTime Function()? now,
 }) {
-  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+  if (kIsWeb) {
+    return WebRestAlerts();
+  }
+  if (defaultTargetPlatform == TargetPlatform.android) {
     return AndroidRestAlerts(explain: explain, now: now);
   }
   return const NoopRestAlerts();

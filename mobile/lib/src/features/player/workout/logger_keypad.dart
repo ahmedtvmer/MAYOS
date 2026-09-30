@@ -319,6 +319,8 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
       // navigation even though the frame no longer insets the body (#160).
       child: SafeArea(
         top: false,
+        // The route Scaffold may clear padding while retaining viewPadding.
+        maintainBottomViewPadding: true,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(MayosSpacing.xs,
               MayosSpacing.xs, MayosSpacing.xs, MayosSpacing.xs),

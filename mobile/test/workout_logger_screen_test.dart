@@ -1129,6 +1129,37 @@ void main() {
     expect(_badge(0, 0, PrRecordKind.weight), findsOneWidget);
   });
 
+  testWidgets('records and workout summary fit phone and desktop columns', (
+    WidgetTester tester,
+  ) async {
+    for (final Size size in const <Size>[
+      Size(390, 664),
+      Size(1280, 800),
+    ]) {
+      await _openLogger(tester);
+      tester.view.physicalSize = size;
+      await tester.pump();
+      await _typeCell(tester, 0, 0, 'kg', '105');
+      await tester.ensureVisible(_tick(0, 0));
+      await tester.pumpAndSettle();
+      await tester.tap(_tick(0, 0));
+      await tester.pumpAndSettle();
+
+      expect(_badge(0, 0, PrRecordKind.weight), findsOneWidget);
+      expect(_badge(0, 0, PrRecordKind.e1rm), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Finish workout'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Discard unticked sets and finish'));
+      await tester.pumpAndSettle();
+      expect(find.text('Workout summary'), findsOneWidget);
+      expect(find.text('Bench Press · PR 105 kg'), findsOneWidget);
+      expect(find.text('Bench Press · PR e1RM 126 kg'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
   testWidgets('the summary omits the celebration when nothing earned a record',
       (WidgetTester tester) async {
     await _openLogger(tester);

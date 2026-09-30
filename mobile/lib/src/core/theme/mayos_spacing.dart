@@ -36,6 +36,9 @@ abstract final class MayosLayout {
 
   /// Width for the list pane in desktop coach master/detail layouts.
   static const double coachListPaneWidth = 360;
+
+  /// Maximum desktop width for Coach mode modal sheets and SnackBars.
+  static const double coachOverlayMaxWidth = 640;
 }
 
 /// A deliberately small radius set. Screens pick one of these rather than

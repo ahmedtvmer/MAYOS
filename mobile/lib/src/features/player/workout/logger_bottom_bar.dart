@@ -65,6 +65,8 @@ class LoggerBottomBar extends StatelessWidget {
       // The surface keeps going under the inset; the content stops above it.
       child: SafeArea(
         top: false,
+        // The route Scaffold may clear padding while retaining viewPadding.
+        maintainBottomViewPadding: true,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,

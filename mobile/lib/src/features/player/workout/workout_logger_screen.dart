@@ -112,7 +112,8 @@ class WorkoutLoggerScreen extends ConsumerStatefulWidget {
       _WorkoutLoggerScreenState();
 }
 
-class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
+class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
+    with WidgetsBindingObserver {
   final TextEditingController _notes = TextEditingController();
   final TextEditingController _refreshedCoachReason = TextEditingController();
 
@@ -146,6 +147,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   bool _saving = false;
   _SummaryAction _summaryAction = _SummaryAction.save;
   LoggerCellFocus? _focus;
+  final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
+  bool _pageVisible = true;
 
   /// The foreground countdown ticker (#125): while a rest runs it wakes the
   /// bar every quarter second and, at the end time, completes the rest — the
@@ -156,18 +159,43 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_keepAwake(true));
     Future<void>.microtask(_load);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _restTicker?.cancel();
     _restTicker = null;
     unawaited(_keepAwake(false));
     _notes.dispose();
     _refreshedCoachReason.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!ref.read(webPageVisibilityEnabledProvider)) {
+      return;
+    }
+    if (state == AppLifecycleState.resumed) {
+      final bool returnedFromHidden = !_pageVisible;
+      _pageVisible = true;
+      if (returnedFromHidden) {
+        // Re-read the stored end time immediately. If rest ended while this
+        // page was away, clear it without a background alert on return.
+        _onRestResume();
+        if (mounted) {
+          setState(() {});
+        }
+      }
+    } else if (state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _pageVisible = false;
+    }
   }
 
   /// Starts or stops the ticker to match whether a rest is running. Called
@@ -186,6 +214,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
   }
 
   void _onRestTick() {
+    if (ref.read(webPageVisibilityEnabledProvider) && !_pageVisible) {
+      return;
+    }
     final ActiveRestTimer? rest = _workout?.rest;
     if (rest == null) {
       return;
@@ -204,6 +235,18 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     // so it runs even behind the keypad, while the countdown repaints itself
     // through RestTimerControls' own ticker (#160). The rest ending changes
     // the controller's state, which rebuilds the screen anyway.
+  }
+
+  void _onRestResume() {
+    final ActiveRestTimer? rest = _workout?.rest;
+    if (rest == null) {
+      return;
+    }
+    if (!rest.isOver(ref.read(clockProvider)())) {
+      _onRestTick();
+      return;
+    }
+    unawaited(_controller.completeRest(playAlert: false));
   }
 
   /// The chip's picker (#125): Off, then 1:00–5:00 in 15-second steps, saved
@@ -427,6 +470,40 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     );
   }
 
+  void _changeFocusAndReveal(LoggerCellFocus? next) {
+    setState(() => _changeFocus(next));
+    if (next == null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _revealFocusedRow(next),
+    );
+  }
+
+  void _revealFocusedRow(LoggerCellFocus focus) {
+    if (!mounted) {
+      return;
+    }
+    final ActiveWorkout? workout = _workout;
+    if (workout == null ||
+        focus.exerciseIndex >= workout.exercises.length ||
+        focus.setIndex >= workout.exercises[focus.exerciseIndex].sets.length) {
+      return;
+    }
+    final String setId =
+        workout.exercises[focus.exerciseIndex].sets[focus.setIndex].id;
+    final BuildContext? rowContext = _rowKeys[setId]?.currentContext;
+    if (rowContext != null) {
+      unawaited(
+        Scrollable.ensureVisible(
+          rowContext,
+          alignment: 0.5,
+          duration: MayosMotion.fast,
+        ),
+      );
+    }
+  }
+
   /// Settles the focused cell's edit: the heavy haptic fires only if its row
   /// now holds a record the focus-time snapshot did not.
   void _settleRecordFocus() {
@@ -572,7 +649,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     if (workout == null) {
       return;
     }
-    setState(() => _changeFocus(nextLoggerCellFocus(workout, focus)));
+    _changeFocusAndReveal(nextLoggerCellFocus(workout, focus));
   }
 
   void _onKeypadNext() {
@@ -581,7 +658,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     if (workout == null || focus == null) {
       return;
     }
-    setState(() => _changeFocus(nextLoggerCellFocus(workout, focus)));
+    _changeFocusAndReveal(nextLoggerCellFocus(workout, focus));
   }
 
   void _onKeypadHide() {
@@ -632,13 +709,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     }
     if (weight <= 0 || reps <= 0) {
       // Nothing to log yet: open the keypad at the first required cell.
-      setState(
-        () => _changeFocus(
-          LoggerCellFocus(
-            exerciseIndex,
-            setIndex,
-            weight <= 0 ? LoggerField.kg : LoggerField.reps,
-          ),
+      _changeFocusAndReveal(
+        LoggerCellFocus(
+          exerciseIndex,
+          setIndex,
+          weight <= 0 ? LoggerField.kg : LoggerField.reps,
         ),
       );
       return;
@@ -1678,6 +1753,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
     final ActiveWorkoutExercise exercise = workout.exercises[exerciseIndex];
     final ActiveWorkoutSet set = exercise.sets[setIndex];
     return SetLoggingRow(
+      key: _rowKeys.putIfAbsent(set.id, GlobalKey.new),
       exerciseIndex: exerciseIndex,
       setIndex: setIndex,
       set: set,
@@ -1686,8 +1762,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen> {
       badges: badges[set.id] ?? const SetRecordBadges(),
       focus: _focus,
       isCurrent: isCurrent,
-      onSelectCell: (LoggerField field) => setState(
-        () => _changeFocus(LoggerCellFocus(exerciseIndex, setIndex, field)),
+      onSelectCell: (LoggerField field) => _changeFocusAndReveal(
+        LoggerCellFocus(exerciseIndex, setIndex, field),
       ),
       onToggleWarmup: () => unawaited(
         _updateWithRecordHaptic(
