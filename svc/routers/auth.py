@@ -5,7 +5,7 @@ from typing import Annotated, Any
 
 import jwt
 from fastapi.responses import JSONResponse
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from service import account_deletion as deletion_service
@@ -509,14 +509,15 @@ async def set_recovery_email(
 
 @router.post("/forgot-password", response_model=MessageOut, status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit(RESET_LIMIT)
-async def forgot_password(request: Request, body: ForgotPasswordIn, db: Annotated[Any, Depends(get_db)]):
+async def forgot_password(
+    request: Request,
+    body: ForgotPasswordIn,
+    background_tasks: BackgroundTasks,
+    db: Annotated[Any, Depends(get_db)],
+):
     """Always returns the same generic message (anti-enumeration), known or unknown email."""
-
-    def _run():
-        return reset_service.request_password_reset(db, body.email)
-
-    result = await asyncio.to_thread(_run)
-    return MessageOut(message=result["message"])
+    background_tasks.add_task(reset_service.request_password_reset, db, body.email)
+    return MessageOut(message=reset_service.GENERIC_REQUEST_MESSAGE)
 
 
 @router.post("/reset-password", response_model=MessageOut)

@@ -30,12 +30,12 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <!-- Android App Link for password reset. autoVerify makes Android
-                 open https://<appLinkHost>/reset-password in the app when it is
-                 installed; the host is injected at build time
-                 (-PappLinkHost=...). The API serves /.well-known/assetlinks.json
-                 to prove ownership. Flutter's built-in deep linking forwards the
-                 URL to go_router, which matches /reset-password. -->
+            <!-- Android App Links for password reset and signup. autoVerify
+                 makes Android open these paths on <appLinkHost> in the app when
+                 installed; the host is injected at build time (-PappLinkHost=).
+                 The API serves /.well-known/assetlinks.json to prove ownership.
+                 Flutter's built-in deep linking forwards the URL to go_router,
+                 which matches /reset-password and /register. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
@@ -44,6 +44,10 @@
                     android:scheme="https"
                     android:host="${appLinkHost}"
                     android:path="/reset-password"/>
+                <data
+                    android:scheme="https"
+                    android:host="${appLinkHost}"
+                    android:path="/register"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

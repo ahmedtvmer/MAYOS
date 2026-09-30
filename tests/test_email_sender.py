@@ -61,3 +61,30 @@ def test_issue_176_console_log_uses_keyed_recipient_reference(monkeypatch, caplo
     assert recipient not in caplog.text
     assert f"recipient_ref=email:{digest}" in caplog.text
     assert "https://mayos.example/reset-password?token=secret-token&address=[redacted email]" in caplog.text
+
+
+def test_no_account_notice_uses_console_sender_without_personal_details(monkeypatch, caplog):
+    recipient = "private.player@example.com"
+    monkeypatch.setenv("SMTP_HOST", "")
+
+    with caplog.at_level(logging.INFO, logger="service.email_sender"):
+        delivered = email_sender.send_no_account_notice_email(
+            recipient, "https://mayos.example/register"
+        )
+
+    assert delivered is True
+    assert "No MAYOS account uses this email" in caplog.text
+    assert "https://mayos.example/register" in caplog.text
+    assert "try the email address you registered with" in caplog.text
+    assert "log in and add a recovery email in Settings" in caplog.text
+    assert recipient not in caplog.text
+
+
+def test_email_reference_and_notice_keys_are_purpose_separated_without_secret(monkeypatch):
+    from service.email_hash_keys import derive_email_hash_key
+
+    monkeypatch.delenv("JWT_SECRET", raising=False)
+
+    assert derive_email_hash_key("log-ref") != derive_email_hash_key(
+        "no-account-notice"
+    )

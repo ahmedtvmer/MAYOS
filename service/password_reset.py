@@ -6,20 +6,27 @@ uses one generic message for unknown/expired/used tokens. Route layers must
 preserve this (same status code and body shape for both cases).
 """
 
+import hashlib
+import hmac
 import logging
 import os
 import re
 import secrets
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
 from service import audit_log, auth as auth_service
 from service._tokens import hash_token
+from service.email_hash_keys import derive_email_hash_key
 from service.email_sender import (
+    PURPOSE_NO_ACCOUNT_NOTICE,
     PURPOSE_PASSWORD_RESET,
     DeliveryContext,
     build_reset_link,
+    build_signup_link,
     log_email_preparation_failure,
+    send_no_account_notice_email,
     send_password_reset_email,
 )
 
@@ -28,6 +35,7 @@ logger = logging.getLogger(__name__)
 GENERIC_REQUEST_MESSAGE = "If this email is linked to a ledger, a reset link is on its way."
 GENERIC_TOKEN_ERROR = "Invalid or expired reset code."
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+NO_ACCOUNT_NOTICE_WINDOW = timedelta(hours=24)
 
 
 class OwnerPasswordError(Exception):
@@ -249,37 +257,106 @@ def set_recovery_email(db: Any, account_id: str, email: str) -> dict[str, Any]:
     return {"ok": True, "trainee_id": account["ledger_id"], "email": normalized}
 
 
+def _no_account_notice_hash(normalized_email: str) -> str:
+    return hmac.new(
+        derive_email_hash_key("no-account-notice"),
+        normalized_email.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _prune_expired_notice_claims(db: Any, now: datetime) -> bool:
+    try:
+        db.prune_expired_notice_claims((now - NO_ACCOUNT_NOTICE_WINDOW).isoformat())
+        return True
+    except sqlite3.Error:
+        logger.exception("Could not prune no-account password notice limits")
+        return False
+
+
+def _claim_no_account_notice(db: Any, email_hash: str, now: datetime) -> bool:
+    try:
+        return db.claim_no_account_notice(email_hash, now.isoformat())
+    except sqlite3.Error:
+        logger.exception("Could not claim no-account password notice limit")
+        return False
+
+
+def _store_requested_reset_token(
+    db: Any,
+    account_id: str,
+    token_factory: Callable[[], str] | None,
+) -> str | None:
+    try:
+        if token_factory is None:
+            raw_token, _ = _new_reset_token(db, account_id, reset_ttl())
+        else:
+            raw_token = token_factory()
+            expires_at = (datetime.now(UTC) + reset_ttl()).isoformat()
+            db.store_reset_token(hash_token(raw_token), account_id, expires_at)
+    except Exception:
+        logger.exception("Failed to store password-reset token for %s", account_id)
+        return None
+    return raw_token
+
+
+def _send_requested_reset_email(
+    normalized: str,
+    account_id: str,
+    raw_token: str,
+    mailer: Callable[..., bool] | None,
+) -> None:
+    try:
+        sender = mailer or send_password_reset_email
+        sender(normalized, build_reset_link(raw_token), account_id=account_id)
+    except Exception as exc:
+        log_email_preparation_failure(
+            DeliveryContext(PURPOSE_PASSWORD_RESET, account_id), exc
+        )
+
+
+def _send_no_account_notice_email(
+    normalized: str,
+    mailer: Callable[[str, str], bool] | None,
+) -> None:
+    try:
+        sender = mailer or send_no_account_notice_email
+        sender(normalized, build_signup_link())
+    except Exception as exc:
+        log_email_preparation_failure(DeliveryContext(PURPOSE_NO_ACCOUNT_NOTICE), exc)
+
+
 def request_password_reset(
     db: Any,
     email: str,
     mailer: Callable[..., bool] | None = None,
     token_factory: Callable[[], str] | None = None,
+    *,
+    no_account_mailer: Callable[[str, str], bool] | None = None,
 ) -> dict[str, Any]:
-    """Logged-out: issue a single-use reset token. Always returns the generic message."""
+    """Sends recovery mail while keeping the logged-out response generic."""
+    generic_response = {"ok": True, "message": GENERIC_REQUEST_MESSAGE}
     normalized = normalize_email(email)
+    now = datetime.now(UTC)
+    notice_hash = _no_account_notice_hash(normalized) if normalized else None
     recovery_key = db.get_account_by_email(normalized) if normalized else None
     account = _live_player_account(db, recovery_key) if recovery_key else None
+    claims_pruned = _prune_expired_notice_claims(db, now)
     if account is None:
-        return {"ok": True, "message": GENERIC_REQUEST_MESSAGE}
-    try:
-        if token_factory is None:
-            raw_token, _ = _new_reset_token(db, account["account_id"], reset_ttl())
-        else:
-            raw_token = token_factory()
-            expires_at = (datetime.now(UTC) + reset_ttl()).isoformat()
-            db.store_reset_token(hash_token(raw_token), account["account_id"], expires_at)
-    except Exception:
-        logger.exception("Failed to store password-reset token for %s", account["account_id"])
-        return {"ok": True, "message": GENERIC_REQUEST_MESSAGE}
-    try:
-        sender = mailer or send_password_reset_email
-        sender(normalized, build_reset_link(raw_token), account_id=account["account_id"])
-    except Exception as exc:
-        log_email_preparation_failure(
-            DeliveryContext(PURPOSE_PASSWORD_RESET, account["account_id"]), exc
+        notice_claimed = (
+            _claim_no_account_notice(db, notice_hash, now)
+            if normalized is not None and notice_hash is not None and claims_pruned
+            else False
         )
-    db.prune_reset_tokens(datetime.now(UTC).isoformat())
-    return {"ok": True, "message": GENERIC_REQUEST_MESSAGE}
+        if notice_claimed:
+            _send_no_account_notice_email(normalized, no_account_mailer)
+        return generic_response
+    raw_token = _store_requested_reset_token(db, account["account_id"], token_factory)
+    if raw_token is None:
+        return generic_response
+    _send_requested_reset_email(normalized, account["account_id"], raw_token, mailer)
+    db.prune_reset_tokens(now.isoformat())
+    return generic_response
 
 
 def reset_password_with_token(db: Any, token: str, new_password: str) -> dict[str, Any]:

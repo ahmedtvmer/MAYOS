@@ -25,6 +25,10 @@
       "kind": "method",
       "signature": "(self, period: str, projected_usd: float, actual_usd: float, fired_at: str) -> bool"
     },
+    "claim_no_account_notice": {
+      "kind": "method",
+      "signature": "(self, email_hash: str, claimed_at: str) -> bool"
+    },
     "consume_reset_token": {
       "kind": "method",
       "signature": "(self, token_hash: str, now_iso: str) -> str | None"
@@ -268,6 +272,10 @@
     "prune_coach_invites": {
       "kind": "method",
       "signature": "(self, now_iso: str) -> int"
+    },
+    "prune_expired_notice_claims": {
+      "kind": "method",
+      "signature": "(self, cutoff: str) -> int"
     },
     "prune_reset_tokens": {
       "kind": "method",

@@ -97,6 +97,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             kind: AuthNoticeKind.success,
             message: _confirmation!,
           ),
+          const SizedBox(height: MayosSpacing.sm),
+          const Text("Didn't get an email? Check the address,"),
+          AuthLink(
+            key: const Key('forgot_signup'),
+            label: 'sign up',
+            onPressed: _busy
+                ? null
+                : () => context.go(carryingLocation(context, registerPath)),
+          ),
+          const Text('or log in and add a recovery email in Settings.'),
         ],
       ],
     );

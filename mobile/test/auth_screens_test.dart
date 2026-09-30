@@ -425,7 +425,13 @@ void main() {
     await tester.tap(find.byKey(const Key('forgot_submit')));
 
     await _pumpUntilFound(tester, find.text(fake.resetConfirmation));
+    expect(find.text("Didn't get an email? Check the address,"), findsOneWidget);
+    expect(find.text('or log in and add a recovery email in Settings.'), findsOneWidget);
+    expect(find.text('sign up'), findsOneWidget);
     expect(fake.forgotRequests, 1);
+
+    await tester.tap(find.byKey(const Key('forgot_signup')));
+    await _pumpUntilFound(tester, find.text('Create account'));
   });
 
   testWidgets('reset-password still completes and routes to login',

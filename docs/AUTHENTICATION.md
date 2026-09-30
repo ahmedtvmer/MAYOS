@@ -174,10 +174,16 @@ sequenceDiagram
     participant Mail as SMTP / console-dev
 
     User->>API: POST /auth/forgot-password {email}
+    API-->>User: 202 + identical generic message
+    Note over API: One background path looks up and hashes every valid address
     API->>DB: lookup trainee_emails -> account_id (live accounts only)
-    Note over API: ALWAYS 202 + identical generic message (anti-enumeration)
+    alt Live account uses the recovery email
     API->>DB: store SHA-256(token) keyed by account_id, expires_at, used_at=NULL
     API->>Mail: send reset link (or log it in console-dev mode)
+    else No live account uses the address
+    API->>DB: claim one 24-hour slot using a keyed address hash
+    API->>Mail: send no-account notice with sign-up link when allowed
+    end
     User->>API: POST /auth/reset-password {token, new_password}
     API->>API: validate password policy BEFORE consuming
     API->>DB: atomic consume (unused AND unexpired)
@@ -187,10 +193,12 @@ sequenceDiagram
 
 Defensive details:
 
+* A well-formed address that has no live MAYOS account receives a short **“No MAYOS account uses this email”** email with a sign-up link and advice to try the registered address or add a recovery email in Settings. The link uses `RESET_LINK_BASE_URL/register`, the same host as reset links. `GET /register` redirects to the first configured `UI_BASE_URL` origin's `/register` route; when no web origin is configured, the API serves a self-contained page asking the person to open the MAYOS app. The app opens that route through its Android App Link. Malformed addresses send no email. Unknown-address notices share the SMTP/console sender and are limited to one per address every 24 hours using a keyed hash. Expired hashes are pruned during forgot-password requests; no startup or scheduled cleanup exists, so inactive rows can remain until another request. The address itself is never stored for this limit.
+* The forgot-password endpoint returns its usual generic 202 before lookup or email work begins. FastAPI `BackgroundTasks` runs the same lookup, hashing, and pruning path for every valid address; the catalog store is passed explicitly to that task. The app keeps the generic success message because the email notification can reach someone other than the person using the device; a different on-screen response would reveal whether an account exists.
 * Weak new passwords are rejected **before** token consumption — a failed attempt does not burn the link.
 * Unknown, expired, reused, and fabricated tokens all share one generic `400 Invalid or expired reset code.`
 * Expired and consumed tokens are pruned on each request.
-* The reset link is `RESET_LINK_BASE_URL/reset-password?token=…`. There is no `UI_BASE_URL` fallback: the retired Streamlit UI does not serve `/reset-password`, so an unset `RESET_LINK_BASE_URL` defaults to the API's own local base (`http://localhost:8000`) for development only. The path is an **Android App Link** when the app is installed and a **hosted fallback page** otherwise. In production the host must be identical in all three places: `RESET_LINK_BASE_URL`, the Android App Link intent-filter host (`-PappLinkHost`), and where `/.well-known/assetlinks.json` is served.
+* The reset link is `RESET_LINK_BASE_URL/reset-password?token=…`. There is no `UI_BASE_URL` fallback for reset links: the retired Streamlit UI does not serve `/reset-password`, so an unset `RESET_LINK_BASE_URL` defaults to the API's own local base (`http://localhost:8000`) for development only. The path is an **Android App Link** when the app is installed and a **hosted fallback page** otherwise. In production the host must be identical in all three places: `RESET_LINK_BASE_URL`, the Android App Link intent-filter host (`-PappLinkHost`), and where `/.well-known/assetlinks.json` is served.
   * `GET /reset-password` on the API serves a self-contained HTML page (strict nonce CSP, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`) that reads the token from `location`, immediately scrubs it from the URL with `history.replaceState(null, '', location.pathname)`, and POSTs to `/auth/reset-password`; the token is never reflected into the HTML. A non-string error body (for example a 422 validation list) falls back to the generic message.
   * `GET /.well-known/assetlinks.json` serves the Digital Asset Links statement (`ANDROID_APP_PACKAGE`, `ANDROID_APP_SHA256_CERT_FINGERPRINTS`). Each fingerprint may use upper/lower case and colons or not; it is normalised to the uppercase colon-separated 32-byte form, invalid entries are skipped with a logged warning, and no valid fingerprint returns 404 rather than an invalid file.
   * The API installs an `uvicorn.access` log filter (`svc/app.py::RedactResetTokenFilter`) that rewrites any `token=…` query value to `token=[REDACTED]`, so the single-use token never lands in access logs regardless of the uvicorn CLI flags.
@@ -274,7 +282,7 @@ Rate-limit keys combine the client IP with a bearer-token suffix when present, s
 | `JWT_SECRET` | **required** | HS256 signing/verification key; service refuses to start signing without it |
 | `JWT_EXPIRY_HOURS` | `2` | Access-token lifetime |
 | `GOOGLE_WEB_CLIENT_ID` | unset (⇒ `/auth/google*` returns 503) | The **only** audience Google ID tokens are verified against (Section 13); the same value the Android client passes as `serverClientId` |
-| `UI_BASE_URL` | `http://localhost:8501` | CORS origin(s), comma-separated (not used for reset links) |
+| `UI_BASE_URL` | `http://localhost:8501` | CORS origin(s), comma-separated; when set, the first origin is the `GET /register` web target (not used for reset links) |
 | `RESET_LINK_BASE_URL` | `http://localhost:8000` | Reset-link / App Link base (`<base>/reset-password?token=…`) |
 | `ANDROID_APP_PACKAGE` | `com.mayos.mayos_mobile` | Package name in `assetlinks.json` |
 | `ANDROID_APP_SHA256_CERT_FINGERPRINTS` | unset (⇒ 404) | Comma-separated signing-cert SHA-256 fingerprints (case/colons optional; normalised) |

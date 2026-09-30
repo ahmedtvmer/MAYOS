@@ -314,6 +314,10 @@ class SchemaMixin:
                     created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_reset_tokens_trainee ON password_reset_tokens(trainee_id);
+                CREATE TABLE IF NOT EXISTS password_reset_notice_limits (
+                    email_hash TEXT PRIMARY KEY,
+                    claimed_at TEXT NOT NULL
+                );
 
                 CREATE TABLE IF NOT EXISTS accounts (
                     account_id TEXT PRIMARY KEY,

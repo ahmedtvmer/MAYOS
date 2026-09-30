@@ -43,6 +43,32 @@ class RegistryRecoveryMixin:
             row = cursor.fetchone()
             return str(row[0]) if row and row[0] else None
 
+    def prune_expired_notice_claims(self, cutoff: str) -> int:
+        """Deletes address-hash notice claims older than the retention window."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "DELETE FROM password_reset_notice_limits WHERE claimed_at <= ?",
+                (cutoff,),
+            )
+            self._commit_catalog()
+            return cursor.rowcount
+
+    def claim_no_account_notice(self, email_hash: str, claimed_at: str) -> bool:
+        """Claims an address-hash notice slot without retaining the address."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "INSERT OR IGNORE INTO password_reset_notice_limits (email_hash, claimed_at)"
+                " VALUES (?, ?)",
+                (email_hash, claimed_at),
+            )
+            claimed = cursor.rowcount == 1
+            self._commit_catalog()
+            return claimed
+
     def store_reset_token(self, token_hash: str, account_id: str, expires_at: str) -> None:
         self.ensure_account_schema()
         now = datetime.now(UTC).isoformat()

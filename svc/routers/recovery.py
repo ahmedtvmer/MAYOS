@@ -7,10 +7,11 @@ the same link directly in the installed app (ADR 037).
 """
 
 import json
+import os
 import secrets
 
 from fastapi import APIRouter
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from service.app_links import build_asset_links
 from service.password_reset import GENERIC_TOKEN_ERROR
@@ -103,6 +104,28 @@ button { width: 100%; margin-top: 0.75rem; padding: 0.7rem; font-size: 1rem; }
 </html>
 """
 
+_REGISTER_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Sign up for MAYOS</title>
+<style nonce="__NONCE__">
+body { font-family: system-ui, sans-serif; margin: 0; padding: 2rem 1rem; background: #faf7f5; color: #201a17; }
+main { max-width: 30rem; margin: 0 auto; }
+h1 { font-size: 1.3rem; }
+</style>
+</head>
+<body>
+<main>
+<h1>Sign up for MAYOS</h1>
+<p>Open the MAYOS app to create your account.</p>
+</main>
+</body>
+</html>
+"""
+
 
 @router.get("/.well-known/assetlinks.json")
 async def asset_links():
@@ -124,5 +147,24 @@ async def reset_password_page():
         style_src=f"nonce-{nonce}",
         script_src=f"nonce-{nonce}",
         connect_src="self",
+        form_action="none",
+    )
+
+
+@router.get("/register")
+async def register_page():
+    """Redirects to the web sign-up page or serves an app sign-up hint."""
+    ui_base = next(
+        (origin.strip().rstrip("/") for origin in os.getenv("UI_BASE_URL", "").split(",") if origin.strip()),
+        None,
+    )
+    if ui_base:
+        return RedirectResponse(f"{ui_base}/register", status_code=302)
+    nonce = secrets.token_urlsafe(16)
+    page = _REGISTER_PAGE.replace("__NONCE__", nonce)
+    return self_contained_html(
+        page,
+        cache_control="no-store",
+        style_src=f"nonce-{nonce}",
         form_action="none",
     )

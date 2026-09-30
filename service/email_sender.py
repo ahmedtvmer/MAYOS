@@ -11,17 +11,15 @@ import hmac
 import logging
 import os
 import re
-import secrets
 import smtplib
 import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
 
+from service.email_hash_keys import derive_email_hash_key
 from utils.env_flags import env_flag
 
 logger = logging.getLogger(__name__)
-# Keep missing-secret development runs from using a guessable, unkeyed digest.
-_FALLBACK_EMAIL_HASH_KEY = secrets.token_bytes(32)
 _EMAIL_ADDRESS_TOKEN = re.compile(
     r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@"
     r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?"
@@ -29,6 +27,7 @@ _EMAIL_ADDRESS_TOKEN = re.compile(
 )
 
 PURPOSE_PASSWORD_RESET = "password_reset"
+PURPOSE_NO_ACCOUNT_NOTICE = "no_account_notice"
 PURPOSE_ASSIGNMENT_NOTICE = "assignment_notice"
 PURPOSE_PROGRAM_REQUEST_NOTICE = "program_request_notice"
 PURPOSE_MODEL_SPEND_ALERT = "model_spend_alert"
@@ -64,14 +63,21 @@ def build_reset_link(token: str) -> str:
     return f"{_reset_link_base_url()}/reset-password?token={token}"
 
 
+def build_signup_link() -> str:
+    """Builds a signup link on the same host as reset links."""
+    return f"{_reset_link_base_url()}/register"
+
+
 def _recipient_reference(delivery: DeliveryContext) -> str | None:
     if delivery.account_id:
         return f"account:{delivery.account_id}"
     if not delivery.recipient_email:
         return None
-    secret = os.getenv("JWT_SECRET", "").encode()
-    key = hmac.new(secret, b"email-log-ref", hashlib.sha256).digest() if secret else _FALLBACK_EMAIL_HASH_KEY
-    digest = hmac.new(key, delivery.recipient_email.strip().lower().encode(), hashlib.sha256).hexdigest()[:16]
+    digest = hmac.new(
+        derive_email_hash_key("log-ref"),
+        delivery.recipient_email.encode(),
+        hashlib.sha256,
+    ).hexdigest()[:16]
     return f"email:{digest}"
 
 
@@ -295,6 +301,23 @@ def send_password_reset_email(
         subject,
         body,
         delivery=DeliveryContext(PURPOSE_PASSWORD_RESET, account_id, to_email),
+    )
+
+
+def send_no_account_notice_email(to_email: str, signup_link: str) -> bool:
+    """Tells an inbox owner how to proceed without naming any account details."""
+    subject = "No MAYOS account uses this email"
+    body = (
+        "No MAYOS account uses this email.\n\n"
+        f"You can sign up at {signup_link}.\n\n"
+        "If you already have an account, try the email address you registered "
+        "with, or log in and add a recovery email in Settings."
+    )
+    return _deliver(
+        to_email,
+        subject,
+        body,
+        delivery=DeliveryContext(PURPOSE_NO_ACCOUNT_NOTICE, recipient_email=to_email),
     )
 
 
