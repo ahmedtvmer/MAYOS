@@ -286,6 +286,30 @@ class SchemaMixin:
                     ON accounts(username) WHERE deleted_at IS NULL;
                 CREATE INDEX IF NOT EXISTS idx_accounts_ledger ON accounts(ledger_id);
 
+                -- No account foreign key: deletion events outlive the account they target.
+                CREATE TABLE IF NOT EXISTS audit_log (
+                    id TEXT PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    target_account_id TEXT,
+                    source_ip TEXT,
+                    reason TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_audit_log_created
+                    ON audit_log(created_at DESC, id DESC);
+                CREATE INDEX IF NOT EXISTS idx_audit_log_action_created
+                    ON audit_log(action, created_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_audit_log_target_created
+                    ON audit_log(target_account_id, created_at DESC);
+                CREATE TRIGGER IF NOT EXISTS audit_log_no_update
+                    BEFORE UPDATE ON audit_log
+                    BEGIN SELECT RAISE(ABORT, 'audit log entries are immutable'); END;
+                CREATE TRIGGER IF NOT EXISTS audit_log_no_recent_delete
+                    BEFORE DELETE ON audit_log
+                    WHEN julianday(OLD.created_at) >= julianday('now', '-365 days')
+                    BEGIN SELECT RAISE(ABORT, 'audit log entries are retained for one year'); END;
+
                 -- Server-owned Lifter/Coach plan state, keyed by the immutable account
                 -- id and one row per capability. A missing row means the ongoing Free
                 -- plan; eligibility is decided from the account's live capabilities,

@@ -14,11 +14,13 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from database.storage import storage_status
+from service.admin_auth import AdminSecurity, partial_secret_configuration
 from service.model_limits import ModelLimitExceeded
 from service.model_metering import record_model_usage
 from svc.dependencies import AccountDeletedError
 from svc.rate_limit import limiter
 from svc.routers import (
+    admin,
     alerts,
     assignments,
     auth,
@@ -244,6 +246,9 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Mayos Training Engine", version="2.0.0", lifespan=lifespan)
     app.state.limiter = limiter
     app.state.db = None
+    app.state.admin_security = AdminSecurity()
+    if partial_secret_configuration():
+        logger.warning("Owner admin secrets are partially configured; /admin stays disabled.")
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     _register_model_metering()
 
@@ -271,12 +276,33 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
 
+    @app.middleware("http")
+    async def secure_admin_surface(request: Request, call_next):
+        path = request.url.path
+        if path != "/admin" and not path.startswith("/admin/"):
+            return await call_next(request)
+        security = request.app.state.admin_security
+        login_route = path == "/admin/login" and request.method in {"GET", "POST"}
+        if path == "/admin/login" and not login_route:
+            response = admin.not_found_response()
+        elif not security.config.enabled:
+            response = admin.not_found_response()
+        elif not login_route and (
+            not security.has_valid_session(request.cookies.get(admin.SESSION_COOKIE))
+        ):
+            response = admin.not_found_response()
+        else:
+            response = await call_next(request)
+        _apply_admin_security_headers(response)
+        return response
+
     @app.exception_handler(Exception)
     async def unhandled_handler(request: Request, exc: Exception):
         logger.exception("Unhandled error on %s %s", request.method, request.url.path)
         return JSONResponse(status_code=502, content={"detail": "Request failed. Please try again."})
 
     app.include_router(auth.router)
+    app.include_router(admin.router)
     app.include_router(recovery.router)
     app.include_router(public_pages.router)
     app.include_router(coach.router)
@@ -306,6 +332,21 @@ def create_app() -> FastAPI:
         return {"status": "ready", "details": details}
 
     return app
+
+
+def _apply_admin_security_headers(response) -> None:
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    response.headers["Cache-Control"] = "no-store"
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+    content_security_policy = response.headers.get("Content-Security-Policy")
+    if content_security_policy is None:
+        content_security_policy = "default-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+    elif "frame-ancestors 'none'" not in content_security_policy:
+        content_security_policy += "; frame-ancestors 'none'"
+    response.headers["Content-Security-Policy"] = content_security_policy
 
 
 app = create_app()

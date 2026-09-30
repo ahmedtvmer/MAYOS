@@ -128,6 +128,9 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
 | `JWT_SECRET` | **required** | HS256 token signing/verification; the service refuses to operate without it |
+| `ADMIN_USERNAME` | unset | Separate owner identity for `/admin`; all three `ADMIN_*` secrets must be valid or every `/admin` route returns 404 |
+| `ADMIN_PASSWORD_HASH` | unset | Owner password's bcrypt hash; generate it with `.venv/bin/python scripts/admin_credentials.py` (the script never prints the password) |
+| `ADMIN_TOTP_SECRET` | unset | Owner authenticator secret in Base32; generate it with `.venv/bin/python scripts/admin_credentials.py` and add its URI to an authenticator app |
 | `JWT_EXPIRY_HOURS` | `2` | Access-token lifetime |
 | `GOOGLE_WEB_CLIENT_ID` | unset (⇒ `/auth/google*` returns 503) | **Secret-ish config**: the OAuth web client ID Google ID tokens are verified against (issue #113). Use the *Web* client ID from the Google Cloud console; Android requests its ID token with this value as `serverClientId`, so it is the only audience the API needs. Unset disables Google sign-in only — password auth is unaffected |
 | `UI_BASE_URL` | `http://localhost:8501` | CORS origins: one, or several comma-separated (web app host + local dev). Not used for reset links |
@@ -156,7 +159,7 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `COACH_AI_EVAL_REPORT` | unset | Path to the recorded coach privacy + evaluation report JSON (see §4, "Enabling the optional coach AI assistant") |
 | `RATE_LIMIT_COACH_ASSISTANT` | `30/minute` | Per-client limit on `POST /coach/assignments/{id}/assistant`; the per-account model limits (`MODEL_*`) still apply |
 | `PRIVACY_CONTACT_EMAIL` | unset (⇒ placeholder + warning) | Owner contact rendered on the public privacy policy at `GET /privacy`; unset still serves the page |
-| `OWNER_ALERT_EMAIL` | unset | Alert recipient (set via `fly secrets set` on Fly); unset logs the warning only and retries delivery each sweep |
+| `OWNER_ALERT_EMAIL` | unset | Recipient for model-spend and `/admin` login alerts. Model-spend alerts retry on the sweep; an admin login still succeeds if this is unset or email delivery fails, and the dashboard shows a red banner and audit event |
 | `MODEL_PATH` / `JUDGE_MODEL_PATH` | registry defaults | Explicit GGUF paths (win over `MODEL_DIR` + registry filename) |
 | `COACH_EXTRA_BODY` | unset | Coach sends no extra body by default and ignores the player and judge body settings; a JSON object replaces its body, and `{}` sends none |
 | `MODEL_DIR` | `models/` | Download target directory |
@@ -715,6 +718,14 @@ fly secrets set SMTP_HOST="<smtp-host>" SMTP_USER="<smtp-user>" \
 # /auth/google* endpoints answer 503) while password auth keeps working.
 fly secrets set GOOGLE_WEB_CLIENT_ID="<web-client-id>.apps.googleusercontent.com"
 
+# Generate the separate owner credentials locally and enroll the URI in an
+# authenticator app: .venv/bin/python scripts/admin_credentials.py
+# Store only the username, bcrypt hash, Base32 secret, and alert address on Fly.
+fly secrets set ADMIN_USERNAME="<owner-username>" \
+  ADMIN_PASSWORD_HASH="<bcrypt-hash>" \
+  ADMIN_TOTP_SECRET="<base32-secret>" \
+  OWNER_ALERT_EMAIL="<owner-alert-address>"
+
 # Deploy a single Machine (no HA pair) so only one writer mounts the volume.
 fly deploy --ha=false
 ```
@@ -729,6 +740,22 @@ override, not a build input.
 `JWT_SECRET` and `LLM_API_KEY` are mandatory: without the JWT secret the service
 refuses to mint tokens, and without the hosted key readiness fails loudly
 (ADR 012) instead of 401ing every request.
+
+The owner dashboard stays off until all three `ADMIN_*` secrets are valid. To
+prepare them locally, run `.venv/bin/python scripts/admin_credentials.py`; it prompts for
+an owner username and password twice, then prints the bcrypt hash, a fresh
+Base32 TOTP secret, and an `otpauth://` URI to scan into an authenticator app.
+The username must use 1–64 ASCII letters, digits, dots, underscores, or hyphens;
+the password must be 8–72 UTF-8 bytes.
+Set the printed hash and secret as Fly secrets, along with the owner alert
+recipient. Keep the password in the owner's password manager and scan the URI
+into an authenticator app; do not put either value in the Fly secret set. The
+setup block above shows the Fly secret names and placeholders.
+
+Use a private `fly secrets import` file if shell history is retained. The owner
+login locks one source IP for 15 minutes after five failed password/TOTP
+attempts within 15 minutes. Twenty failed attempts against the owner identity
+within 15 minutes lock it globally for 15 minutes.
 
 ### 10.4 One-time catalog init + vector seed (inside the API Machine)
 

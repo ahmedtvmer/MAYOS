@@ -59,6 +59,14 @@ _Avoid_: Invite code (ambiguous with Coach invite)
 A single-use invitation issued by MAYOS that grants an account the coach capability. It is how a person becomes a coach, and it never creates an assignment.
 _Avoid_: Invite code, redeem coach invite
 
+**Owner dashboard**:
+The owner-only, phone-first web surface served by the API at `/admin`, protected by a separate password and TOTP identity. It exposes account metadata and owner operations, never training content.
+_Avoid_: Dashboard (without a qualifier; that usually means the player dashboard)
+
+**Audit log**:
+The append-only catalog record of owner and CLI operations, identified by actor and action and optionally an immutable account id, source IP, and reason. It is retained for one year and excludes credentials and contact details.
+_Avoid_: Activity feed
+
 **Exercise library**:
 The shared reference set of exercises that programs, substitutions, and search draw from. It is the same for every account and holds no personal data.
 _Avoid_: Exercise catalog

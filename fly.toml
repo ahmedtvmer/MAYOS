@@ -58,6 +58,12 @@ primary_region = "fra"
   # MODEL_DAILY_TOKEN_LIMIT = "200000"    # tokens/UTC day/account (0 disables)
   # MODEL_SPEND_ALERT_USD = "50"
   # MODEL_PRICING_JSON = '{"Qwen/Qwen3.5-9B":{"input":0.10,"output":0.15},"Qwen/Qwen3.5-27B":{"input":0.26,"output":2.60},"deepseek-ai/DeepSeek-V4-Flash":{"input":0.09,"output":0.18}}'
+  # Owner dashboard (#207) stays off unless all three Fly secrets are valid:
+  # ADMIN_USERNAME, ADMIN_PASSWORD_HASH (bcrypt), and ADMIN_TOTP_SECRET (Base32).
+  # Generate the hash, fresh TOTP secret, and authenticator URI with
+  # scripts/admin_credentials.py; never put the plaintext password in Fly.
+  # OWNER_ALERT_EMAIL receives model-spend and owner-login alerts. A failed
+  # login-alert send does not block login; /admin shows a red banner and audit row.
   # Android App Link association. Set the signing-cert SHA-256 fingerprint(s)
   # (comma-separated; case/colons optional, normalised to uppercase
   # colon-separated). Include both the upload key and the Play App Signing cert

@@ -1,13 +1,14 @@
 """Rate limits. Auth routes are strict (anti-enumeration); chat/onboarding keyed per user."""
 
 import os
+import ipaddress
 
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.requests import Request
 
 
-def _client_ip(request: Request) -> str:
+def client_ip(request: Request) -> str:
     """The client address a limit is keyed on.
 
     On Fly every request reaches the app from the proxy, so ``get_remote_address``
@@ -20,12 +21,22 @@ def _client_ip(request: Request) -> str:
     if os.getenv("FLY_APP_NAME"):
         forwarded = request.headers.get("fly-client-ip", "")
         if forwarded:
-            return forwarded.strip()
-    return get_remote_address(request)
+            address = forwarded.strip()
+        else:
+            address = get_remote_address(request)
+    else:
+        address = get_remote_address(request)
+    try:
+        return ipaddress.ip_address(address).compressed
+    except ValueError:
+        return address
+
+
+_client_ip = client_ip
 
 
 def _key(request: Request) -> str:
-    ip = _client_ip(request)
+    ip = client_ip(request)
     auth = request.headers.get("authorization", "")
     if auth.lower().startswith("bearer ") and len(auth) > 20:
         return f"{ip}:{auth[-12:]}"

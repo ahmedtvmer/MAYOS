@@ -1,4 +1,4 @@
-"""Outbound email for account recovery and assignment notices.
+"""Outbound email for account recovery, owner login, and assignment notices.
 
 Production delivery requires SMTP_* env (see .env.example). When SMTP_HOST is
 unset, the message is logged server-side instead of sent — safe for local dev,
@@ -134,6 +134,22 @@ def send_model_spend_alert_email(
         "This notice contains aggregate spend only."
     )
     return _deliver(to_email, subject, body)
+
+
+def send_owner_login_alert_email(to_email: str, login_time: str, source_ip: str, user_agent: str) -> bool:
+    """Alerts the owner to an admin login without including credentials or account data."""
+    subject = "MAYOS owner dashboard login"
+    body = (
+        "The MAYOS owner dashboard was accessed successfully.\n\n"
+        f"Time (UTC): {login_time}\n"
+        f"IP address: {_single_line(source_ip)}\n"
+        f"User agent: {_single_line(user_agent)}\n"
+    )
+    return _deliver(to_email, subject, body)
+
+
+def _single_line(value: str) -> str:
+    return " ".join(str(value).split())[:500] or "unavailable"
 
 
 def send_password_reset_email(to_email: str, reset_link: str) -> bool:
