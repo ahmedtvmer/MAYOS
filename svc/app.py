@@ -17,6 +17,12 @@ from database.storage import storage_status
 from service.admin_auth import AdminSecurity, partial_secret_configuration
 from service.model_limits import ModelLimitExceeded
 from service.model_metering import record_model_usage
+from service.periodic_status import (
+    ALERT_SWEEP_JOB,
+    DAILY_BACKUP_JOB,
+    configured_interval_seconds,
+    record_run,
+)
 from svc.dependencies import AccountDeletedError
 from svc.rate_limit import limiter
 from svc.routers import (
@@ -98,21 +104,7 @@ def _register_model_metering() -> None:
 
     model_metering.set_recorder(record_model_usage)
 
-DEFAULT_ALERT_SWEEP_INTERVAL_SECONDS = 3600.0
-DEFAULT_DAILY_BACKUP_INTERVAL_SECONDS = 3600.0
-
-
-def _env_interval_seconds(name: str, default: float) -> float:
-    """Reads a non-negative interval in seconds; malformed values use ``default``."""
-    raw = os.getenv(name, str(default))
-    try:
-        return float(raw)
-    except ValueError:
-        logger.warning("Invalid %s=%r; using the default.", name, raw)
-        return default
-
-
-async def _periodic_loop(db: object, interval_seconds: float, step: object, label: str) -> None:
+async def _periodic_loop(db: object, interval_seconds: float, step: object, job: str) -> None:
     """Runs ``step(db)`` once at startup, then every interval, until cancelled.
 
     One generic loop backs both the alert sweep and the daily backup. Either job
@@ -124,9 +116,21 @@ async def _periodic_loop(db: object, interval_seconds: float, step: object, labe
             await asyncio.to_thread(step, db)
         except asyncio.CancelledError:
             raise
-        except Exception:
-            logger.exception("%s iteration failed; the loop continues", label)
+        except Exception as exc:
+            record_run(job, interval_seconds, False, type(exc).__name__)
+            logger.exception("%s iteration failed; the loop continues", job)
+        else:
+            record_run(job, interval_seconds, True, None)
         await asyncio.sleep(interval_seconds)
+
+
+def readiness_snapshot() -> tuple[str, dict[str, bool | str]]:
+    """Returns the verdict and details shared by the readiness endpoint and dashboard."""
+    storage_ok, storage_detail = storage_status()
+    details = {**_ready, "storage": storage_ok, "storage_detail": storage_detail}
+    if _ready["draining"] or not (_ready["model"] and _ready["catalog"] and storage_ok):
+        return "not_ready", details
+    return "ready", details
 
 
 async def _cancel_loop(task: asyncio.Task[None] | None, label: str) -> None:
@@ -204,25 +208,23 @@ async def lifespan(app: FastAPI):
     loops_enabled = _ready["catalog"] and _ready["storage"] and not unit_test_mode
     # The alert sweep runs in-process; its evaluations are idempotent and due-ness
     # is per player-local day, so an hourly cadence is sufficient (ADR 030/031).
-    sweep_interval = _env_interval_seconds("MAYOS_ALERT_SWEEP_INTERVAL_SECONDS", DEFAULT_ALERT_SWEEP_INTERVAL_SECONDS)
+    sweep_interval = configured_interval_seconds(ALERT_SWEEP_JOB)
     if loops_enabled and sweep_interval > 0:
         from service.alert_sweep import run_sweep
 
-        sweep_task = asyncio.create_task(_periodic_loop(app.state.db, sweep_interval, run_sweep, "Alert sweep"))
+        sweep_task = asyncio.create_task(_periodic_loop(app.state.db, sweep_interval, run_sweep, ALERT_SWEEP_JOB))
         logger.info("Alert sweep loop started (every %ss).", sweep_interval)
 
     # Daily online backups run in this same always-on API Machine, because a
     # detached Machine cannot mount /data (#41). The job creates at most one
     # snapshot per UTC day, so the default hourly cadence just retries a failed
     # day sooner. 0 disables the loop.
-    backup_interval = _env_interval_seconds(
-        "MAYOS_DAILY_BACKUP_INTERVAL_SECONDS", DEFAULT_DAILY_BACKUP_INTERVAL_SECONDS
-    )
+    backup_interval = configured_interval_seconds(DAILY_BACKUP_JOB)
     if loops_enabled and backup_interval > 0:
         from database.backup import create_daily_backup
 
         backup_task = asyncio.create_task(
-            _periodic_loop(app.state.db, backup_interval, create_daily_backup, "Daily backup")
+            _periodic_loop(app.state.db, backup_interval, create_daily_backup, DAILY_BACKUP_JOB)
         )
         logger.info("Daily backup loop started (every %ss).", backup_interval)
 
@@ -234,8 +236,8 @@ async def lifespan(app: FastAPI):
     )
     yield
     _ready["draining"] = True
-    await _cancel_loop(sweep_task, "Alert sweep")
-    await _cancel_loop(backup_task, "Daily backup")
+    await _cancel_loop(sweep_task, ALERT_SWEEP_JOB)
+    await _cancel_loop(backup_task, DAILY_BACKUP_JOB)
     from svc.llm import unload_all
 
     await asyncio.to_thread(unload_all)
@@ -328,11 +330,10 @@ def create_app() -> FastAPI:
 
     @app.get("/readyz", response_model=HealthOut, tags=["ops"])
     async def readyz():
-        storage_ok, storage_detail = storage_status()
-        details = {**_ready, "storage": storage_ok, "storage_detail": storage_detail}
-        if _ready["draining"] or not (_ready["model"] and _ready["catalog"] and storage_ok):
-            return JSONResponse(status_code=503, content={"status": "not_ready", "details": details})
-        return {"status": "ready", "details": details}
+        status, details = readiness_snapshot()
+        if status != "ready":
+            return JSONResponse(status_code=503, content={"status": status, "details": details})
+        return {"status": status, "details": details}
 
     return app
 

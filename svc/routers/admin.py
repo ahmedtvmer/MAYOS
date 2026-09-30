@@ -7,17 +7,18 @@ import ipaddress
 import math
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from service import admin_accounts as admin_accounts_service
-from service import admin_auth, audit_log, email_sender
+from service import admin_auth, audit_log, email_sender, periodic_status
 from svc.dependencies import get_db
 from svc.html import self_contained_html
 from svc.rate_limit import LOGIN_LIMIT, client_ip, limiter
@@ -145,9 +146,11 @@ async def admin_home(request: Request):
     session = security.get_session(request.cookies.get(SESSION_COOKIE))
     if session is None:
         return not_found_response()
+    health_panel = await asyncio.to_thread(_system_health_panel, request.app.state.db)
     body = (
         _admin_nav(session.csrf_token, security.login_alert_failed, "home")
         + "<main><h1>Owner dashboard</h1>"
+        + health_panel
         + _admin_home_sections()
         + "</main>"
     )
@@ -401,6 +404,115 @@ def _admin_home_sections() -> str:
         for title, href, description in _ADMIN_HOME_SECTIONS
     )
     return f'<section class="dashboard-grid" aria-label="Owner dashboard sections">{cards}</section>'
+
+
+def _system_health_panel(db: Any) -> str:
+    now = datetime.now(UTC)
+    rows = (
+        _safe_health_row("readiness", "Readiness", _readiness_health_value),
+        _safe_health_row("backup", "Last backup", lambda: _backup_health_value(db, now)),
+        _periodic_job_health_row("backup-job", "Backup job", periodic_status.DAILY_BACKUP_JOB, now),
+        _safe_health_row("offsite", "Off-site (R2) upload", lambda: _offsite_health_value(db)),
+        _periodic_job_health_row("alert-sweep", "Last alert sweep", periodic_status.ALERT_SWEEP_JOB, now),
+        _safe_health_row("coach-ai", "Coach AI", _coach_ai_health_value),
+    )
+    return (
+        '<section class="health-panel" aria-labelledby="system-health-title">'
+        '<h2 id="system-health-title">System health</h2>'
+        f'<dl class="health-list">{"".join(rows)}</dl></section>'
+    )
+
+
+def _safe_health_row(
+    key: str,
+    label: str,
+    source: Callable[[], tuple[str, Literal["normal", "warning"]]],
+) -> str:
+    try:
+        value, emphasis = source()
+    except Exception as exc:
+        value, emphasis = f"Unknown ({type(exc).__name__})", "warning"
+    return _health_row(key, label, value, emphasis)
+
+
+def _readiness_health_value() -> tuple[str, Literal["normal", "warning"]]:
+    from svc.app import readiness_snapshot
+
+    status, _ = readiness_snapshot()
+    if status == "ready":
+        return "Ready", "normal"
+    return "Not ready", "warning"
+
+
+def _backup_health_value(db: Any, now: datetime) -> tuple[str, Literal["normal", "warning"]]:
+    if db is None:
+        return "Unknown (DatabaseNotReady)", "warning"
+    from database.backup import list_daily_backups
+
+    snapshots = list_daily_backups(db.backups_dir)
+    if not snapshots:
+        return "Never", "warning"
+    latest = snapshots[-1]
+    created_at = datetime.fromtimestamp(latest.stat().st_mtime, UTC)
+    age = now - created_at
+    value = f"{created_at:%Y-%m-%d %H:%M UTC} ({_hours_ago(age)} ago)"
+    emphasis = "warning" if age > timedelta(hours=26) else "normal"
+    return value, emphasis
+
+
+def _periodic_job_health_row(key: str, label: str, job: str, now: datetime) -> str:
+    return _safe_health_row(key, label, lambda: _periodic_job_health_value(job, now))
+
+
+def _periodic_job_health_value(job: str, now: datetime) -> tuple[str, Literal["normal", "warning"]]:
+    run = periodic_status.get(job)
+    if run is None:
+        interval = periodic_status.configured_interval_seconds(job)
+        age = now - periodic_status.process_started_at()
+        emphasis = "warning" if age > timedelta(seconds=2 * interval) else "normal"
+        return "Not run since restart", emphasis
+    age = now - run.finished_at
+    result = "ok" if run.ok else run.error_class or "Failed"
+    value = f"{result} · {_health_time(run.finished_at, age)}"
+    stale = age > timedelta(seconds=2 * run.interval_seconds)
+    emphasis = "warning" if stale or not run.ok else "normal"
+    return value, emphasis
+
+
+def _offsite_health_value(db: Any) -> tuple[str, Literal["normal", "warning"]]:
+    if db is None:
+        return "Unknown (DatabaseNotReady)", "warning"
+    configured = getattr(db, "offsite_backup", None) is not None
+    return ("Configured" if configured else "Not configured"), "normal"
+
+
+def _coach_ai_health_value() -> tuple[str, Literal["normal", "warning"]]:
+    from service.coach_ai import resolve_enable_gate
+
+    gate = resolve_enable_gate()
+    enabled = gate.enabled
+    value = "On" if enabled else "Off"
+    if not enabled or enabled != gate.requested:
+        value += f" — {gate.reason}"
+    emphasis = "warning" if not enabled or enabled != gate.requested else "normal"
+    return value, emphasis
+
+
+def _health_row(key: str, label: str, value: str, emphasis: Literal["normal", "warning"] = "normal") -> str:
+    warning_class = ' class="health-warning"' if emphasis == "warning" else ""
+    return (
+        f'<div class="health-row" data-health="{html.escape(key, quote=True)}">'
+        f"<dt>{html.escape(label)}</dt><dd{warning_class}>{html.escape(value)}</dd></div>"
+    )
+
+
+def _hours_ago(age: timedelta) -> str:
+    hours = max(0, int(age.total_seconds() // 3600))
+    return f"{hours} hour{'s' if hours != 1 else ''}"
+
+
+def _health_time(finished_at: datetime, age: timedelta) -> str:
+    return f"{finished_at:%Y-%m-%d %H:%M UTC} ({_hours_ago(age)} ago)"
 
 
 def _alert_banner(alert_failed: bool) -> str:

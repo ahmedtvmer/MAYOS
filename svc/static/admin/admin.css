@@ -31,6 +31,8 @@
   --color-focus: #2F6BFF;
   --color-danger: #DC2626;
   --color-on-danger: #FFFFFF;
+  --color-warning: #8A4B00;
+  --color-warning-background: #FFF7E0;
   --color-note: #E9F0FE;
   --font-display: "Playfair Display", Georgia, serif;
   --font-body: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -64,6 +66,8 @@
     --color-focus: #2F6BFF;
     --color-danger: #F87171;
     --color-on-danger: #0A1422;
+    --color-warning: #FCD34D;
+    --color-warning-background: #422006;
     --color-note: #13294A;
   }
 }
@@ -363,6 +367,52 @@ button:hover {
   color: var(--color-text);
 }
 
+.health-panel {
+  margin-bottom: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-large);
+  background: var(--color-surface);
+}
+
+.health-panel h2 {
+  margin-bottom: var(--space-3);
+}
+
+.health-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.health-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.health-row:last-child {
+  border-bottom: 0;
+}
+
+.health-row dd {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.health-row .health-warning {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-medium);
+  background: var(--color-warning-background);
+  color: var(--color-warning);
+  font-weight: 700;
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -519,6 +569,11 @@ li {
 
   .dashboard-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .health-row {
+    grid-template-columns: minmax(9rem, 1fr) minmax(0, 2fr);
+    align-items: center;
   }
 
 }

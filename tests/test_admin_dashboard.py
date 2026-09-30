@@ -3,10 +3,12 @@
 import base64
 import hashlib
 import hmac
+import os
 import re
 import sqlite3
 import struct
 import threading
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -14,10 +16,19 @@ import bcrypt
 import pytest
 from fastapi.testclient import TestClient
 
+from database.backup import daily_backups_root
 from database.database_manager import DatabaseManager
+from service.periodic_status import (
+    ALERT_SWEEP_JOB,
+    DAILY_BACKUP_JOB,
+    configured_interval_seconds,
+    get as get_periodic_run,
+    record_run,
+    reset as reset_periodic_status,
+)
 from svc.app import create_app
 from svc.dependencies import get_db
-from svc.rate_limit import _client_ip, client_ip, limiter
+from svc.rate_limit import client_ip, limiter
 
 ADMIN_PASSWORD = "owner-password-27"
 ADMIN_USERNAME = "owner"
@@ -51,7 +62,9 @@ def admin_api(tmp_path: Path, monkeypatch):
         default_ledger_id="bootstrap",
     )
     app = create_app()
+    app.state.db = db
     app.dependency_overrides[get_db] = lambda: db
+    reset_periodic_status()
     current_time = [1_700_000_000.0]
     app.state.admin_security.clock = lambda: current_time[0]
     client = TestClient(app, base_url="https://testserver")
@@ -98,6 +111,33 @@ def _login(
         headers={"Fly-Client-IP": client_ip, "User-Agent": "MAYOS admin test/1.0"},
         follow_redirects=False,
     )
+
+
+def _admin_home(client: TestClient, timestamp: float) -> str:
+    assert _login(client, timestamp).status_code == 303
+    response = client.get("/admin")
+    assert response.status_code == 200
+    return response.text
+
+
+def _prepare_healthy_readiness(monkeypatch) -> None:
+    details = {"model": True, "catalog": True, "storage": True, "draining": False}
+    monkeypatch.setattr("svc.app.readiness_snapshot", lambda: ("ready", details))
+    monkeypatch.setattr("service.periodic_status.process_started_at", lambda: datetime.now(UTC))
+
+
+def _create_snapshot(db: DatabaseManager, created_at: datetime) -> Path:
+    snapshot = daily_backups_root(db.backups_dir) / created_at.strftime("%Y%m%d")
+    snapshot.mkdir(parents=True)
+    (snapshot / "catalog.db").touch()
+    os.utime(snapshot, (created_at.timestamp(), created_at.timestamp()))
+    return snapshot
+
+
+def _health_row(page: str, key: str) -> str:
+    match = re.search(rf'<div class="health-row" data-health="{key}">(.*?)</div>', page)
+    assert match, page
+    return match.group(1)
 
 
 def test_unconfigured_and_partially_configured_admin_routes_are_not_found(monkeypatch):
@@ -236,6 +276,152 @@ def test_admin_pages_reference_brand_assets_with_strict_self_only_csp(admin_api)
     assert 'class="nav-link" href="/admin/audit" aria-current="page">Audit log</a>' in audit.text
 
 
+def test_home_health_panel_matches_readyz_and_shows_healthy_values(admin_api, monkeypatch):
+    client, db, now, _ = admin_api
+    _prepare_healthy_readiness(monkeypatch)
+    _create_snapshot(db, datetime.now(UTC) - timedelta(hours=2))
+    db.offsite_backup = object()
+    from service.coach_ai import GateStatus
+
+    monkeypatch.setattr(
+        "service.coach_ai.resolve_enable_gate",
+        lambda: GateStatus(requested=True, enabled=True, reason="flag on and report accepted"),
+    )
+
+    ready = client.get("/readyz")
+    page = _admin_home(client, now[0])
+
+    assert ready.status_code == 200
+    assert ready.json()["status"] == "ready"
+    assert "System health" in page
+    assert "Ready" in _health_row(page, "readiness")
+    assert "UTC" in _health_row(page, "backup")
+    assert "Configured" in _health_row(page, "offsite")
+    assert "On" in _health_row(page, "coach-ai")
+    assert all(
+        "health-warning" not in _health_row(page, key)
+        for key in ("readiness", "backup", "backup-job", "offsite", "alert-sweep", "coach-ai")
+    )
+
+
+def test_not_ready_health_panel_matches_readyz(admin_api):
+    client, _, now, _ = admin_api
+
+    ready = client.get("/readyz")
+    page = _admin_home(client, now[0])
+    readiness_row = _health_row(page, "readiness")
+
+    assert ready.status_code == 503
+    assert ready.json()["status"] == "not_ready"
+    assert "Not ready" in readiness_row
+    assert "health-warning" in readiness_row
+
+
+def test_missing_backup_is_never_and_highlighted(admin_api):
+    client, _, now, _ = admin_api
+
+    page = _admin_home(client, now[0])
+    backup_row = _health_row(page, "backup")
+
+    assert "Never" in backup_row
+    assert "health-warning" in backup_row
+    assert "Not configured" in _health_row(page, "offsite")
+
+
+@pytest.mark.parametrize(("hours_ago", "highlighted"), [(30, True), (2, False)])
+def test_backup_age_controls_warning_highlight(admin_api, hours_ago, highlighted):
+    client, db, now, _ = admin_api
+    _create_snapshot(db, datetime.now(UTC) - timedelta(hours=hours_ago))
+
+    page = _admin_home(client, now[0])
+    backup_row = _health_row(page, "backup")
+
+    assert "UTC" in backup_row
+    assert ("health-warning" in backup_row) is highlighted
+
+
+def test_unrun_job_rows_warn_only_after_two_intervals(admin_api, monkeypatch):
+    client, _, now, _ = admin_api
+    monkeypatch.setenv("MAYOS_ALERT_SWEEP_INTERVAL_SECONDS", "3600")
+    monkeypatch.setenv("MAYOS_DAILY_BACKUP_INTERVAL_SECONDS", "3600")
+    monkeypatch.setattr(
+        "service.periodic_status.process_started_at",
+        lambda: datetime.now(UTC) - timedelta(hours=1),
+    )
+
+    page = _admin_home(client, now[0])
+    for key in ("alert-sweep", "backup-job"):
+        row = _health_row(page, key)
+        assert "Not run since restart" in row
+        assert "health-warning" not in row
+
+    monkeypatch.setattr(
+        "service.periodic_status.process_started_at",
+        lambda: datetime.now(UTC) - timedelta(hours=3),
+    )
+    stale_page = client.get("/admin").text
+    for key in ("alert-sweep", "backup-job"):
+        assert "health-warning" in _health_row(stale_page, key)
+
+
+def test_periodic_job_status_uses_run_interval_and_highlights_failures(admin_api, monkeypatch):
+    client, _, now, _ = admin_api
+    monkeypatch.setenv("MAYOS_DAILY_BACKUP_INTERVAL_SECONDS", "3600")
+    record_run(ALERT_SWEEP_JOB, 3600, True, None)
+    record_run(DAILY_BACKUP_JOB, 0.01, True, None)
+    assert get_periodic_run(ALERT_SWEEP_JOB).ok is True
+    assert get_periodic_run(DAILY_BACKUP_JOB).interval_seconds == 0.01
+
+    time.sleep(0.03)
+    _admin_home(client, now[0])
+    page = client.get("/admin").text
+    assert "ok" in _health_row(page, "alert-sweep")
+    assert "health-warning" not in _health_row(page, "alert-sweep")
+    assert "health-warning" in _health_row(page, "backup-job")
+    assert configured_interval_seconds(DAILY_BACKUP_JOB) == 3600
+
+    record_run(ALERT_SWEEP_JOB, 3600, False, "RuntimeError")
+    failed_sweep = _health_row(client.get("/admin").text, "alert-sweep")
+    assert "RuntimeError" in failed_sweep
+    assert "health-warning" in failed_sweep
+
+    record_run(DAILY_BACKUP_JOB, 3600, False, "OSError")
+    failed_backup = _health_row(client.get("/admin").text, "backup-job")
+    assert "OSError" in failed_backup
+    assert "health-warning" in failed_backup
+
+
+def test_coach_ai_off_reason_is_shown(admin_api, monkeypatch):
+    client, _, now, _ = admin_api
+    from service.coach_ai import GateStatus
+
+    gate = [GateStatus(requested=True, enabled=True, reason="flag on and report accepted")]
+    monkeypatch.setattr("service.coach_ai.resolve_enable_gate", lambda: gate[0])
+    _admin_home(client, now[0])
+    assert "On" in _health_row(client.get("/admin").text, "coach-ai")
+
+    gate[0] = GateStatus(requested=True, enabled=False, reason="evaluation report is missing")
+    off_row = _health_row(client.get("/admin").text, "coach-ai")
+    assert "Off" in off_row
+    assert "evaluation report is missing" in off_row
+
+
+def test_backup_source_error_renders_unknown_without_failing_the_page(admin_api, monkeypatch):
+    client, _, now, _ = admin_api
+    _admin_home(client, now[0])
+
+    def fail_backup_listing(_):
+        raise OSError("private path details")
+
+    monkeypatch.setattr("database.backup.list_daily_backups", fail_backup_listing)
+    page = client.get("/admin")
+    assert page.status_code == 200
+    unknown_backup = _health_row(page.text, "backup")
+    assert "Unknown" in unknown_backup
+    assert "OSError" in unknown_backup
+    assert "private path details" not in page.text
+
+
 def test_every_protected_path_is_the_same_404_before_login(admin_api):
     client, _, _, _ = admin_api
     home = client.get("/admin")
@@ -243,6 +429,7 @@ def test_every_protected_path_is_the_same_404_before_login(admin_api):
     unknown = client.get("/admin/accounts")
     assert home.status_code == audit.status_code == unknown.status_code == 404
     assert home.text == audit.text == unknown.text
+    assert "System health" not in home.text
     assert client.get("/admin/login").status_code == 200
 
 
@@ -469,7 +656,7 @@ def test_totp_verifies_rfc_6238_sha1_vector():
     assert verify_totp_code(b"12345678901234567890", "287082", 59) == 1
 
 
-def test_client_ip_is_normalized_and_private_alias_remains_available(monkeypatch):
+def test_client_ip_is_normalized(monkeypatch):
     from starlette.requests import Request
 
     monkeypatch.setenv("FLY_APP_NAME", "admin-tests")
@@ -487,7 +674,6 @@ def test_client_ip_is_normalized_and_private_alias_remains_available(monkeypatch
         }
     )
     assert client_ip(request) == "2001:db8::1"
-    assert _client_ip(request) == client_ip(request)
 
 
 def test_credentials_script_outputs_credentials_accepted_by_admin_auth():
