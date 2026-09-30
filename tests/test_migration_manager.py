@@ -1166,6 +1166,36 @@ def test_v15_to_v16_adds_checkpoint_review_retry_timestamp(temp_db_env):
         migrated.close()
 
 
+def test_v17_to_v18_resets_assistant_style_and_instructions(tmp_path: Path):
+    ledger_path = tmp_path / "v17-player.db"
+    conn = sqlite3.connect(ledger_path)
+    conn.execute(
+        "CREATE TABLE user_profile (id INTEGER PRIMARY KEY, coach_tone TEXT, custom_instructions TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO user_profile (id, coach_tone, custom_instructions) VALUES (?, ?, ?)",
+        [(1, "Tough, candid", "Keep it short"), (2, "legacy tone", "old text")],
+    )
+    conn.execute("PRAGMA user_version = 17")
+    conn.commit()
+    try:
+        apply_lazy_migrations(conn, "v17-player", tmp_path, tmp_path / "backups")
+        assert get_ledger_schema_version(conn) == 18
+        assert conn.execute(
+            "SELECT coach_tone, custom_instructions FROM user_profile ORDER BY id"
+        ).fetchall() == [("direct", ""), ("direct", "")]
+    finally:
+        conn.close()
+
+
+def test_new_player_profile_defaults_to_direct_style_with_no_instructions(temp_db_env):
+    db, _, _ = temp_db_env
+    db.ledger.upsert_player_profile({"current_goal": "Strength"})
+    profile = db.ledger.get_player_profile()
+    assert profile["coach_tone"] == "direct"
+    assert profile["custom_instructions"] == ""
+
+
 def test_onboarding_state_roundtrip_and_clear(temp_db_env):
     db, _, _ = temp_db_env
     assert db.ledger.load_onboarding_state() is None

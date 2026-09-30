@@ -2,11 +2,13 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from agent.ProgramState import GeneratedProgramSchema, ProgramExerciseSchema
+from agent.prompts import ASSISTANT_STYLE_KEYS, MAX_ASSISTANT_STYLE_INSTRUCTIONS
 from utils.equipment_access import EQUIPMENT_ACCESS_VALUES
 
+AssistantStyleKey = Literal[*ASSISTANT_STYLE_KEYS]
 EquipmentAccessLiteral = Literal.__getitem__(EQUIPMENT_ACCESS_VALUES)
 
 __all__ = [
@@ -726,8 +728,20 @@ class ProfileUpdate(BaseModel):
 
 
 class PersonaUpdate(BaseModel):
-    coach_tone: str = Field(min_length=1, max_length=200)
-    custom_instructions: str = Field(default="", max_length=5000)
+    coach_tone: AssistantStyleKey
+    custom_instructions: str = Field(default="")
+
+    @field_validator("custom_instructions", mode="before")
+    @classmethod
+    def trim_assistant_style_instructions(cls, instructions: Any) -> Any:
+        if not isinstance(instructions, str):
+            return instructions
+        trimmed = instructions.strip()
+        if len(trimmed) > MAX_ASSISTANT_STYLE_INSTRUCTIONS:
+            raise ValueError(
+                f"Instructions must be at most {MAX_ASSISTANT_STYLE_INSTRUCTIONS} characters"
+            )
+        return trimmed
 
 
 class TrainingScheduleVersionOut(BaseModel):

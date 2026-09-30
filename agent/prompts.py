@@ -55,4 +55,26 @@ Output Budget & Structural Constraints:
 - Never claim to change a routine without a confirmed tool result.
 """
 
+DEFAULT_ASSISTANT_STYLE = "direct"
+ASSISTANT_STYLE_KEYS = (
+    DEFAULT_ASSISTANT_STYLE,
+    "encouraging",
+    "scientific",
+    "tough_love",
+    "concise",
+)
+MAX_ASSISTANT_STYLE_INSTRUCTIONS = 500
+
+ASSISTANT_STYLE_DESCRIPTIONS = dict(zip(
+    ASSISTANT_STYLE_KEYS,
+    (
+        "Be direct, grounded, and pragmatic. Lead with the useful answer.",
+        "Be encouraging and recognize effort while keeping advice realistic.",
+        "Explain the evidence and reasoning clearly without overstating certainty.",
+        "Be candid and firm while staying respectful and constructive.",
+        "Keep the wording especially brief and focused on the main point.",
+    ),
+    strict=True,
+))
+
 STATIC_SYSTEM_PROMPT = STATIC_SYSTEM_CORE

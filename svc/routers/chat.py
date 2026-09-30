@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import StreamingResponse
 
 from agent.assistant_graph import stream_assistant_turn
+from agent.prompts import DEFAULT_ASSISTANT_STYLE
 from service import chat as chat_service
 from service.model_limits import admit_model_request
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
@@ -72,7 +73,7 @@ def _run_turn(
             state = chat_service.build_turn_state(
                 str(player),
                 tail,
-                coach_tone=profile.get("coach_tone", "Direct, grounded, and pragmatic"),
+                coach_tone=profile.get("coach_tone", DEFAULT_ASSISTANT_STYLE),
                 custom_instructions=profile.get("custom_instructions", ""),
                 player_account_id=account_id_of(player),
             )

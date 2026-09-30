@@ -1,9 +1,14 @@
-"""Sidebar: session controls, profile/persona editing, program actions."""
+"""Sidebar: session controls, player profile and Assistant style, program actions."""
 
 import time
 
 import streamlit as st
 
+from agent.prompts import (
+    ASSISTANT_STYLE_KEYS,
+    DEFAULT_ASSISTANT_STYLE,
+    MAX_ASSISTANT_STYLE_INSTRUCTIONS,
+)
 from ui import present, session
 from ui.api_client import api
 
@@ -80,30 +85,25 @@ def render_sidebar(profile: dict | None) -> None:
             st.markdown(f"**Limitations:** `{profile.get('injuries_or_limitations', 'None')}`")
             st.markdown(f"**Equipment:** `{profile.get('equipment_access', 'Commercial Gym')}`")
 
-            with st.expander("⚙️ Coach Persona & Directives"):
-                tone_options = [
-                    "Direct, grounded, and pragmatic",
-                    "Scientific & biomechanics-focused",
-                    "Drill sergeant / High accountability",
-                    "Concise & bullet-points only",
-                    "Custom",
-                ]
-                current_tone = profile.get("coach_tone", "Direct, grounded, and pragmatic")
-                default_tone_idx = tone_options.index(current_tone) if current_tone in tone_options else 4
-
-                selected_tone = st.selectbox("Speaking Tone", tone_options, index=default_tone_idx)
-                if selected_tone == "Custom":
-                    selected_tone = st.text_input("Define Custom Tone:", value=current_tone)
-
+            with st.expander("Assistant style"):
+                current_style = profile.get("coach_tone", DEFAULT_ASSISTANT_STYLE)
+                default_style_index = (
+                    ASSISTANT_STYLE_KEYS.index(current_style)
+                    if current_style in ASSISTANT_STYLE_KEYS
+                    else ASSISTANT_STYLE_KEYS.index(DEFAULT_ASSISTANT_STYLE)
+                )
+                selected_style = st.selectbox(
+                    "Speaking style", ASSISTANT_STYLE_KEYS, index=default_style_index
+                )
                 custom_rules = st.text_area(
-                    "Behavioral Directives & Guardrails:",
+                    "Optional wording preferences:",
                     value=profile.get("custom_instructions", ""),
-                    placeholder="e.g., Never use motivational fluff. Always prioritize joint longevity over load.",
+                    max_chars=MAX_ASSISTANT_STYLE_INSTRUCTIONS,
                 )
 
-                if st.button("Save Coach Settings", use_container_width=True):
-                    api("PUT", "/profile/persona", json={"coach_tone": selected_tone, "custom_instructions": custom_rules})
-                    st.success("Persona saved.")
+                if st.button("Save Assistant style", use_container_width=True):
+                    api("PUT", "/profile/persona", json={"coach_tone": selected_style, "custom_instructions": custom_rules})
+                    st.success("Assistant style saved.")
                     st.rerun()
 
             st.divider()

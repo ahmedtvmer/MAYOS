@@ -19,6 +19,7 @@ class FakeMayosApi {
   String? currentUsername;
   bool tokenValid = true;
   bool coach = false;
+  bool playerCapability = true;
   // Account deletion (issue #40). `accountDeleted` makes every authenticated
   // request answer 401 `{"error": "account_deleted"}`, as a device holding an
   // old token would see; the password delete endpoint is handled below.
@@ -46,6 +47,8 @@ class FakeMayosApi {
   String equipmentAccess = equipmentAccessCommercialGym;
   final List<Map<String, dynamic>> profileUpdateBodies = <Map<String, dynamic>>[];
   int profileRebuildCalls = 0;
+  String assistantStyle = defaultAssistantStyle;
+  String assistantInstructions = '';
   // Forces a coach-controlled profile-update response even with no publication.
   bool profileBlocked = false;
   String coachDisplayName = '';
@@ -445,6 +448,8 @@ class FakeMayosApi {
         return _schedule(request);
       case '/profile/schedule/pauses':
         return _schedulePauses(request);
+      case '/profile/persona':
+        return _profilePersona(request);
       case '/profile':
         return _profile(request);
       case '/onboarding/start':
@@ -695,7 +700,10 @@ class FakeMayosApi {
     return FakeResponse(200, <String, dynamic>{
       'account_id': 'account-$currentUsername',
       'trainee_id': currentUsername,
-      'capabilities': <String, dynamic>{'player': true, 'coach': coach},
+      'capabilities': <String, dynamic>{
+        'player': playerCapability,
+        'coach': coach,
+      },
       'plans': _plansBody(),
       'coach_ai_enabled': coachAiEnabled,
       'has_password': hasPassword,
@@ -1903,7 +1911,27 @@ class FakeMayosApi {
         'rep_preference': repPreference,
         'weekly_frequency': weeklyFrequency,
         'equipment_access': equipmentAccess,
+        'coach_tone': assistantStyle,
+        'custom_instructions': assistantInstructions,
       };
+
+  FakeResponse _profilePersona(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!profileExists) {
+      return const FakeResponse(
+        404,
+        <String, dynamic>{'detail': 'No profile yet; complete onboarding.'},
+      );
+    }
+    assistantStyle =
+        request.body['coach_tone'] as String? ?? defaultAssistantStyle;
+    assistantInstructions =
+        (request.body['custom_instructions'] as String? ?? '').trim();
+    return FakeResponse(200, <String, dynamic>{'profile': _profileBody()});
+  }
 
   FakeResponse _updateProfile(FakeRequest request) {
     profileUpdateBodies.add(Map<String, dynamic>.from(request.body));

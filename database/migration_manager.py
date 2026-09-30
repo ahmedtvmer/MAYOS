@@ -6,6 +6,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from agent.prompts import DEFAULT_ASSISTANT_STYLE
 from utils.logger import MyosLogger
 from utils.equipment_access import (
     EQUIPMENT_ACCESS_VALUES,
@@ -15,7 +16,7 @@ from utils.equipment_access import (
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 17
+CURRENT_LEDGER_SCHEMA_VERSION: int = 18
 
 _EQUIPMENT_ACCESS_NOT_IN = "NEW.equipment_access NOT IN (" + ", ".join(
     "'" + value.replace("'", "''") + "'" for value in EQUIPMENT_ACCESS_VALUES
@@ -491,6 +492,19 @@ def _migrate_v16_to_v17(conn: sqlite3.Connection) -> None:
             conn.execute(statement)
 
 
+def _migrate_v17_to_v18(conn: sqlite3.Connection) -> None:
+    """Reset pre-release Assistant style data to the v18 preset contract (#237)."""
+    if not _ledger_table_exists(conn, "user_profile"):
+        return
+    columns = {column[1] for column in conn.execute("PRAGMA table_info(user_profile)")}
+    if not {"coach_tone", "custom_instructions"} <= columns:
+        return
+    conn.execute(
+        "UPDATE user_profile SET coach_tone = ?, custom_instructions = ''",
+        (DEFAULT_ASSISTANT_STYLE,),
+    )
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -593,6 +607,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     14: _migrate_v14_to_v15,
     15: _migrate_v15_to_v16,
     16: _migrate_v16_to_v17,
+    17: _migrate_v17_to_v18,
 }
 
 

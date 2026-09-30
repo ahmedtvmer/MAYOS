@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from typing import Any
 from utils.equipment_access import map_equipment_access
 
+from agent.prompts import DEFAULT_ASSISTANT_STYLE
+
 
 class LedgerProfileMixin:
     def get_player_profile(self, user_id: int = 1) -> dict[str, Any] | None:
@@ -53,6 +55,8 @@ class LedgerProfileMixin:
             "equipment_access": map_equipment_access(profile_data.get("equipment_access")),
             "injuries_or_limitations": str(profile_data.get("injuries_or_limitations", "None")),
             "stress_and_sleep": str(profile_data.get("stress_and_sleep", "normal")),
+            "coach_tone": str(profile_data.get("coach_tone", DEFAULT_ASSISTANT_STYLE)),
+            "custom_instructions": str(profile_data.get("custom_instructions", "")),
             "created_at": now,
             "updated_at": now,
         }
@@ -61,11 +65,13 @@ class LedgerProfileMixin:
             INSERT INTO user_profile (
                 id, gender, proportions, age, weight_kg, height_cm, rep_preference,
                 current_goal, long_term_goal, weekly_frequency, training_age_years,
-                equipment_access, injuries_or_limitations, stress_and_sleep, created_at, updated_at
+                equipment_access, injuries_or_limitations, stress_and_sleep, coach_tone,
+                custom_instructions, created_at, updated_at
             ) VALUES (
                 :id, :gender, :proportions, :age, :weight_kg, :height_cm, :rep_preference,
                 :current_goal, :long_term_goal, :weekly_frequency, :training_age_years,
-                :equipment_access, :injuries_or_limitations, :stress_and_sleep, :created_at, :updated_at
+                :equipment_access, :injuries_or_limitations, :stress_and_sleep, :coach_tone,
+                :custom_instructions, :created_at, :updated_at
             )
             ON CONFLICT(id) DO UPDATE SET
                 gender = excluded.gender, proportions = excluded.proportions, age = excluded.age,

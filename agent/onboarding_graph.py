@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from agent.program_generator import extract_frequency_from_text, validate_frequency
 from utils.equipment_access import map_equipment_access
+from agent.prompts import DEFAULT_ASSISTANT_STYLE
 from utils.logger import MyosLogger
 from utils.model_downloader import llm
 
@@ -500,7 +501,7 @@ def intake_node(state: OnboardingGraphState, config: RunnableConfig | None = Non
         ledger = (config or {}).get("configurable", {}).get("ledger")
         if ledger is None:
             raise RuntimeError("Onboarding graph requires an explicit ledger handle in config.")
-        profile.setdefault("coach_tone", "Direct, grounded, and pragmatic")
+        profile.setdefault("coach_tone", DEFAULT_ASSISTANT_STYLE)
         profile.setdefault("custom_instructions", "")
         ledger.upsert_player_profile(profile)
 

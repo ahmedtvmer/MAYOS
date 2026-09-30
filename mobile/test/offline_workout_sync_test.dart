@@ -841,6 +841,8 @@ void main() {
 
       await _pumpApp(tester, fake, draftStore: store);
       await _openSettings(tester);
+      await tester.ensureVisible(find.text('Log out'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Log out'));
       await _pumpUntilFound(tester, find.text('Unsynced workouts'));
 
@@ -862,6 +864,8 @@ void main() {
 
       await _pumpApp(tester, fake, draftStore: store);
       await _openSettings(tester);
+      await tester.ensureVisible(find.text('Log out'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Log out'));
       await _pumpUntilFound(tester, find.text('Unsynced workouts'));
 

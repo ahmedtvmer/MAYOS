@@ -439,10 +439,51 @@ def test_profile_crud_without_body_identity(client):
     assert update.status_code in {200, 422}
     profile = client.get("/profile").json()
     assert profile["current_goal"] == ("Strength" if update.status_code == 200 else profile["current_goal"])
-    persona = client.put("/profile/persona", json={"coach_tone": "Direct", "custom_instructions": ""})
+    assert profile["coach_tone"] == "direct"
+    assert profile["custom_instructions"] == ""
+    persona = client.put("/profile/persona", json={"coach_tone": "direct"})
     assert persona.status_code == 200
+    assert client.get("/profile").json()["custom_instructions"] == ""
     assert client.delete("/profile").status_code == 204
     assert client.get("/profile").status_code == 404
+
+
+def test_assistant_style_api_roundtrip_and_refusals(client):
+    client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
+    assert client.put("/profile", json={"current_goal": "Strength"}).status_code == 200
+
+    saved = client.put(
+        "/profile/persona",
+        json={"coach_tone": "scientific", "custom_instructions": "  Explain your reasoning.  "},
+    )
+    assert saved.status_code == 200
+    profile = client.get("/profile").json()
+    assert profile["coach_tone"] == "scientific"
+    assert profile["custom_instructions"] == "Explain your reasoning."
+
+    for tone in ("direct", "encouraging", "scientific", "tough_love", "concise"):
+        accepted = client.put("/profile/persona", json={"coach_tone": tone})
+        assert accepted.status_code == 200
+        assert client.get("/profile").json()["coach_tone"] == tone
+
+    accepted_limit = client.put(
+        "/profile/persona",
+        json={"coach_tone": "direct", "custom_instructions": "x" * 500},
+    )
+    assert accepted_limit.status_code == 200
+    assert len(client.get("/profile").json()["custom_instructions"]) == 500
+
+    assert client.put("/profile/persona", json={"coach_tone": "invented"}).status_code == 422
+    assert client.put(
+        "/profile/persona",
+        json={"coach_tone": "direct", "custom_instructions": "x" * 501},
+    ).status_code == 422
+    whitespace_only = client.put(
+        "/profile/persona",
+        json={"coach_tone": "direct", "custom_instructions": " " * 501},
+    )
+    assert whitespace_only.status_code == 200
+    assert client.get("/profile").json()["custom_instructions"] == ""
 
 
 def test_dashboard_empty_ledger(client):

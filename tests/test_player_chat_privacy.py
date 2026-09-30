@@ -195,7 +195,7 @@ def test_player_model_input_excludes_identifying_fields(api, monkeypatch):
     assert db.switch_user(username)
     # custom_instructions and preferred_name are stored context, not settable
     # through PUT /profile; write them directly as onboarding/memory would.
-    db.ledger.update_player_persona("Direct, grounded, and pragmatic", "Prefer short answers.")
+    db.ledger.update_player_persona("direct", "Prefer short answers.")
     db.ledger.set_assistant_memory("preferred_name", "Sam")
 
     llm = _CapturingLLM()

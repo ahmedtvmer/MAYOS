@@ -5,6 +5,8 @@ Extracted from DatabaseManager; behaviour is unchanged.
 
 import json
 from typing import Any
+
+from agent.prompts import DEFAULT_ASSISTANT_STYLE
 from database.exercise_library.names import apply_curated_exercise_names
 from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION
 from database.migration_manager import EQUIPMENT_ACCESS_DDL
@@ -96,7 +98,7 @@ class SchemaMixin:
                 equipment_access TEXT NOT NULL,
                 injuries_or_limitations TEXT DEFAULT 'None',
                 stress_and_sleep TEXT NOT NULL,
-                coach_tone TEXT DEFAULT 'Direct, grounded, and pragmatic',
+                coach_tone TEXT DEFAULT '__DEFAULT_ASSISTANT_STYLE__',
                 custom_instructions TEXT DEFAULT '',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -266,7 +268,7 @@ class SchemaMixin:
                 expires_at TEXT NOT NULL,
                 revoked_at TEXT NOT NULL
             );
-        """ + "\n".join(
+        """.replace("__DEFAULT_ASSISTANT_STYLE__", DEFAULT_ASSISTANT_STYLE) + "\n".join(
             f"{statement};"
             for statement in (
                 *PERFORMED_DATE_CORRECTIONS_DDL,

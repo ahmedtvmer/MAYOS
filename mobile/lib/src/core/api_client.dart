@@ -1000,6 +1000,35 @@ class ApiClient {
     return _parseBody(response.data, PlayerProfile.fromJson, _invalidProfile);
   }
 
+  /// Saves the player's Assistant style and optional wording instructions.
+  Future<PlayerProfile> updateAssistantStyle({
+    required String style,
+    required String instructions,
+  }) async {
+    final response = await _send(
+      () => _dio.put<dynamic>(
+        '/profile/persona',
+        data: <String, dynamic>{
+          'coach_tone': style,
+          'custom_instructions': instructions,
+        },
+      ),
+    );
+    return _parseAssistantStyleResponse(response.data);
+  }
+
+  PlayerProfile _parseAssistantStyleResponse(dynamic responseBody) {
+    if (responseBody is! Map<String, dynamic> ||
+        responseBody['profile'] is! Map<String, dynamic>) {
+      throw const ApiException(_invalidProfile);
+    }
+    return _parseBody(
+      responseBody['profile'],
+      PlayerProfile.fromJson,
+      _invalidProfile,
+    );
+  }
+
   /// Updates the player's profile. Changes to training days or rep preference
   /// can trigger a rebuild, so a coach-controlled program may leave it unchanged
   /// while still applying the profile update.

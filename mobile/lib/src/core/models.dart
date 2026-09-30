@@ -14,6 +14,8 @@ const List<String> equipmentAccessValues = <String>[
   equipmentAccessHomeGym,
   equipmentAccessBodyweightOnly,
 ];
+const String defaultAssistantStyle = 'direct';
+const int maxAssistantStyleInstructions = 500;
 
 class Capabilities {
   const Capabilities({required this.player, required this.coach});
@@ -1396,6 +1398,8 @@ class PlayerProfile {
     this.repPreference = 'balanced',
     this.weeklyFrequency = 4,
     this.equipmentAccess = equipmentAccessCommercialGym,
+    this.assistantStyle = defaultAssistantStyle,
+    this.assistantInstructions = '',
   });
 
   factory PlayerProfile.fromJson(Map<String, dynamic> json) => PlayerProfile(
@@ -1403,11 +1407,16 @@ class PlayerProfile {
         weeklyFrequency: (json['weekly_frequency'] as num?)?.toInt() ?? 4,
         equipmentAccess:
             json['equipment_access'] as String? ?? equipmentAccessCommercialGym,
+        assistantStyle:
+            json['coach_tone'] as String? ?? defaultAssistantStyle,
+        assistantInstructions: json['custom_instructions'] as String? ?? '',
       );
 
   final String repPreference;
   final int weeklyFrequency;
   final String equipmentAccess;
+  final String assistantStyle;
+  final String assistantInstructions;
 }
 
 /// `PUT /profile` response body.

@@ -5,6 +5,7 @@ from typing import Any
 from langchain_core.messages import AIMessage, HumanMessage
 
 from agent.chat_markers import chat_message_kind
+from agent.prompts import DEFAULT_ASSISTANT_STYLE
 from service._base import ledger_scope
 
 
@@ -60,7 +61,7 @@ def build_tail_messages(records: list[dict[str, Any]]) -> list:
 def build_turn_state(
     ledger_id: str,
     tail_messages: list,
-    coach_tone: str = "Direct, grounded, and pragmatic",
+    coach_tone: str = DEFAULT_ASSISTANT_STYLE,
     custom_instructions: str = "",
     player_account_id: str | None = None,
 ) -> dict[str, Any]:
