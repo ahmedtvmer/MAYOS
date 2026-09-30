@@ -41,8 +41,8 @@ The muscle-filtered Replace list in the workout logger is ranked by relevance, w
 <verification_loop>
 Run these and make them green before finishing; fix what they surface, don't just report it:
   ruff check --select E,F,W --ignore E402,E501,EXE002,W291,W292,W293 .
-  SKIP_LLM_LOAD=true pytest <the test files you added or changed> -q   (run often while working)
-  SKIP_LLM_LOAD=true pytest tests/ -q                                   (once, at the end)
+  SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 -m pytest <the test files you added or changed> -q   (run often while working)
+  SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 -m pytest tests/ -q                                   (once, at the end)
 If a gate cannot run in this environment (missing SDK, blocked network, missing model files), say exactly which one and why in the report. Never skip, disable or weaken a test to get green.
 Confirm `git status` shows only the changes this issue needs.
 </verification_loop>

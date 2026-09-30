@@ -46,8 +46,8 @@ None (can start immediately).
 <verification_loop>
 Run these and make them green before finishing; fix what they surface, don't just report it:
   ruff check --select E,F,W --ignore E402,E501,EXE002,W291,W292,W293 .
-  SKIP_LLM_LOAD=true pytest <the test files you added or changed> -q   (run often while working)
-  SKIP_LLM_LOAD=true pytest tests/ -q                                   (once, at the end)
+  SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 -m pytest <the test files you added or changed> -q   (run often while working)
+  SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 -m pytest tests/ -q                                   (once, at the end)
   cd mobile && flutter analyze
   cd mobile && flutter test <the widget test files you added or changed>   (run often while working)
   cd mobile && flutter test                                                (once, at the end)
