@@ -1,0 +1,61 @@
+<task>
+Implement GitHub issue #202 in the MAYOS repository (this working tree). The issue is the source of truth; it is quoted in full below. Every acceptance criterion must be met.
+
+Before coding, read AGENTS.md, the relevant CONTEXT.md glossary entries and the ADRs in DECISIONS.md that the issue or notes mention. Use the glossary's terms in code, tests and docs. If the issue conflicts with an ADR or with the code as it stands, stop and report the conflict instead of guessing.
+
+Work test-first where a seam exists: write a failing test through public behaviour (HTTP responses, assistant replies and prompts built by the pipeline, generated programs, search results, rendered widgets), make it pass, then refactor. Tests must not assert on private helpers, SQL shape or table rows.
+
+Other implementers are working on other issues at the same time in separate worktrees. Stay strictly inside this issue's scope so the branches merge cleanly.
+
+<orchestrator_notes>
+Read CONTEXT.md "Roster urgency order", "Lapsing" and ADR 024 (with its 2026-09-30 amendment) in DECISIONS.md.
+Scope is ONLY the lapsing-first key and the `alerts_new_lapsing` field. Stall length and the stall alert are separate later tickets — do not add them. The order must stay one pure, strict tuple with no weights. Listing the roster must not open any player ledger (read catalog tables only); keep or add a test that proves it.
+</orchestrator_notes>
+
+<issue>
+# #202 Lapsing-first roster order
+
+## Parent
+
+#201
+
+## What to build
+
+A coach's roster ranks lapsing players first. Roster rows carry the number of new *lapsing* alerts (missed expected days, follow-up due). The roster urgency order's first key becomes that count. It is followed by the other new coach alerts plus pending program requests, then the existing keys unchanged. The order stays a strict, weightless tuple, and the roster still reads only catalog data.
+
+## Acceptance criteria
+
+- [ ] Roster rows expose `alerts_new_lapsing`, counting only new (not acknowledged, not resolved) missed-day and follow-up-due alerts, read from catalog tables only.
+- [ ] The order ranks by new lapsing alerts, then other new alerts plus pending program requests, then missed-day streak, overdue follow-up, oldest last workout, and username, as in CONTEXT.md "Roster urgency order".
+- [ ] A player with one new missed-day alert ranks above a player with two new regression alerts (roster API test).
+- [ ] Acknowledged lapsing alerts do not count.
+- [ ] Pure ordering tests cover the lapsing/other split. Existing roster order tests still pass or are updated only where the new first key changes the expected order.
+- [ ] Listing the roster opens no player ledger.
+
+## Blocked by
+
+None (can start immediately)
+
+</issue>
+</task>
+
+<verification_loop>
+Run these and make them green before finishing; fix what they surface, don't just report it:
+  ruff check --select E,F,W --ignore E402,E501,EXE002,W291,W292,W293 .
+  SKIP_LLM_LOAD=true pytest <the test files you added or changed> -q   (run often while working)
+  SKIP_LLM_LOAD=true pytest tests/ -q                                   (once, at the end)
+If a gate cannot run in this environment (missing SDK, blocked network, missing model files), say exactly which one and why in the report. Never skip, disable or weaken a test to get green.
+Confirm `git status` shows only the changes this issue needs.
+</verification_loop>
+
+<action_safety>
+Keep changes scoped to this issue. No unrelated refactors, renames or cleanup. Do not edit the issue text or other tickets' scope. Do NOT run git add, git commit, git push or any branch operation; leave the work uncommitted in the working tree for the orchestrator to review and commit.
+</action_safety>
+
+<structured_output_contract>
+End with a report delimited by lines `=== REPORT ===` and `=== END REPORT ===`, containing:
+  1. What changed and why, mapped to each acceptance criterion (met / not met, with the test that proves it)
+  2. Files touched
+  3. Gate outcomes with counts (ruff, pytest, flutter analyze/test as applicable)
+  4. Anything you deviated on, left open, or want decided
+</structured_output_contract>
