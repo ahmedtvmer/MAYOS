@@ -51,8 +51,13 @@ An on-demand coach view that summarizes which assigned players need attention ac
 **Assignment**:
 A mutually consented coaching relationship between a coach and a player. A player has at most one active assignment, and the coach can access that player's training history only while it is active.
 
-**Invite code**:
+**Assignment invite**:
 A single-use invitation issued by a coach. The first player to redeem it may accept an assignment with that coach.
+_Avoid_: Invite code (ambiguous with Coach invite)
+
+**Coach invite**:
+A single-use invitation issued by MAYOS that grants an account the coach capability. It is how a person becomes a coach, and it never creates an assignment.
+_Avoid_: Invite code, redeem coach invite
 
 **Exercise library**:
 The shared reference set of exercises that programs, substitutions, and search draw from. It is the same for every account and holds no personal data.
@@ -111,6 +116,16 @@ A workout the player is logging right now and has not yet finished. A device hol
 **Current set**:
 The next set of an Active workout the player should log: the first working set that is not yet ticked, in workout order, skipping warm-ups and moving across exercises. There is no Current set once every working set is ticked.
 
+**Warm-up set**:
+A set recorded as preparation rather than training. It is kept in the workout's history but never counts toward personal records, progress, volume, the Current set, or sets done.
+
+**Warm-up movement**:
+A general preparation exercise prescribed in a training day's warm-up block, logged only as warm-up sets. Doing or leaving it out is never a workout divergence: it is neither skipped nor unplanned.
+_Avoid_: Warm-up exercise (confusable with an exercise's own ramped warm-up sets)
+
+**Cardio**:
+The conditioning work a training day prescribes, recorded in a workout by the minutes done. It counts toward no set totals.
+
 **Workout time**:
 The time a player has spent on the Active workout they are logging: measured from when that workout started to the present, with no pause, shown live in the logger and as the workout's total duration in its summary.
 
@@ -128,6 +143,17 @@ A scheduled training day that no workout satisfied within its grace period. One 
 
 **Missed-day streak**:
 A run of consecutive missed expected days, measured over the sequence of expected days. Paused and non-expected days are skipped and neither break nor extend it. It drives coach alerts.
+
+**Weekly streak**:
+A run of consecutive weeks, starting Saturday in the player's timezone, in each of which the player completed at least as many workouts as they had expected training days, or as their program's weekly frequency when they keep no Training schedule. Fully paused weeks neither break nor extend it, and the week in progress never breaks it. It is the player-facing counterpart of the Missed-day streak.
+
+**Checkpoint**:
+A workout-count landmark in a player's training: the 10th, 25th, 50th and 100th workout, then every 100th. Only workouts completed in MAYOS count; imported history does not.
+_Avoid_: Milestone, achievement
+
+**Checkpoint review**:
+The written assessment of a player's training since their previous checkpoint, produced once when a checkpoint is reached and never changed. Its rating is computed from recorded facts; the assistant only writes the words around it. An assigned coach can read it while the assignment is active.
+_Avoid_: AI rating, performance score
 
 **Coach alert**:
 A catalog-side notification of a coaching fact about an assigned player, such as a missed-day streak of at least two days or a due follow-up. It has new, acknowledged, and resolved states, and deduplicates on a kind-specific key so retries never duplicate it.
