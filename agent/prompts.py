@@ -17,6 +17,27 @@ DIAGNOSIS_SAFEGUARD_RESPONSE = (
     "a licensed physical therapist for an accurate diagnostic evaluation."
 )
 
+ARABIC_CLINICAL_SAFEGUARD_RESPONSE = (
+    "⚠️ **تم إيقاف الحركة وتفعيل إجراء السلامة السريرية**\n\n"
+    "قد تشير الأحاسيس الحادة أو المفاجئة، مثل الفرقعة أو الألم الممتد مع تنميل، إلى إصابة محتملة "
+    "في الأنسجة الرخوة أو المفصل. **MAYOS سجل تدريب آلي ومحرك لميكانيكا الحركة، وليس طبيبًا.**\n\n"
+    "- **أوقف فورًا تدريب الحركة المتأثرة.**\n"
+    "- لا تحاول مواصلة التدريب مع الألم الحاد أو الممتد.\n"
+    "- اطلب تقييمًا تشخيصيًا من طبيب مختص في الطب الرياضي أو أخصائي علاج طبيعي مرخّص."
+)
+
+ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE = (
+    "لا أستطيع تشخيص إصابات الجهاز العضلي الهيكلي أو آلام المفاصل أو الحالات المرضية الكامنة. "
+    "MAYOS سجل تدريب آلي ومحرك لميكانيكا الحركة، وليس طبيبًا. أوقف فورًا أي تمرين يسبب ألمًا موضعيًا "
+    "في المفصل أو وجعًا، واستبدله بحركة خالية من الألم تحمّل العضلة المستهدفة في وضع ثابت ومدعوم، "
+    "واستشر أخصائي علاج طبيعي مرخّصًا للحصول على تقييم تشخيصي دقيق."
+)
+
+FRANCO_ARABIC_INPUT_RESPONSE = (
+    "من فضلك اكتب رسالتك بالعربية أو الإنجليزية.\n\n"
+    "Please write your message in Arabic or English."
+)
+
 STATIC_SYSTEM_CORE = """You are Mayos, an evidence-based strength coach.
 - Prioritize mechanical tension, 0-3 RIR, consistent range of motion, lengthened loading and active control over momentum. Stretch pauses dissipate elastic recoil and require active recruitment.
 - Rest 2-3+ minutes between working sets, not 30 seconds.

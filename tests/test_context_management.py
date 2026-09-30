@@ -1,5 +1,6 @@
 import importlib.util
 import logging
+import re
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -13,7 +14,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 def graph(monkeypatch):
     modules = {}
     for name, attrs in {
-        "agent.clinical_guard": ["EMBED_MODEL", "evaluate_clinical_semantic_guard"],
+        "agent.clinical_guard": ["ARABIC_SCRIPT_RE", "EMBED_MODEL", "evaluate_clinical_semantic_guard"],
         "agent.program_generator": ["extract_frequency_from_text", "generate_program_pipeline", "get_biomechanical_cue"],
         "database.database_manager": ["DatabaseManager"],
         "utils.model_downloader": ["llm", "uses_cloud_backend"],
@@ -25,6 +26,7 @@ def graph(monkeypatch):
         modules[name] = module
         monkeypatch.setitem(sys.modules, name, module)
     modules["agent.clinical_guard"].evaluate_clinical_semantic_guard.return_value = (False, 0.0)
+    modules["agent.clinical_guard"].ARABIC_SCRIPT_RE = re.compile(r"[\u0600-\u06ff]")
     modules["agent.program_generator"].extract_frequency_from_text.return_value = None
 
     class NullFileHandler(logging.NullHandler):

@@ -23,6 +23,7 @@ sys.path.append(str(BASE_DIR))
 from agent.chat_markers import is_session_pointer_text
 from core.effort import rir_label
 from agent.clinical_guard import (
+    ARABIC_SCRIPT_RE,
     EMBED_MODEL,
     evaluate_clinical_semantic_guard,
 )
@@ -37,8 +38,11 @@ from agent.program_generator import (
 )
 from agent.program_rules import COMPOUND_KEYWORDS
 from agent.prompts import (
+    ARABIC_CLINICAL_SAFEGUARD_RESPONSE,
+    ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE,
     CLINICAL_SAFEGUARD_RESPONSE,
     DIAGNOSIS_SAFEGUARD_RESPONSE,
+    FRANCO_ARABIC_INPUT_RESPONSE,
     STATIC_SYSTEM_CORE,
 )
 from agent.telemetry_reconciler import (
@@ -55,6 +59,13 @@ load_dotenv()
 logger = MyosLogger().get_logger(__name__)
 
 TAIL_WINDOW_SIZE = 6
+CLINICAL_SAFEGUARD_RESPONSES = {
+    ("en", "clinical"): CLINICAL_SAFEGUARD_RESPONSE,
+    ("en", "diagnosis"): DIAGNOSIS_SAFEGUARD_RESPONSE,
+    ("ar", "clinical"): ARABIC_CLINICAL_SAFEGUARD_RESPONSE,
+    ("ar", "diagnosis"): ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE,
+    ("franco", "input"): FRANCO_ARABIC_INPUT_RESPONSE,
+}
 
 IntentType = Literal[
     "clinical_intercept",
@@ -75,6 +86,28 @@ RE_ACUTE_INJURY = re.compile(
     r"can['']t\s+move\s+my|joint\s+clicking\s+with\s+pain)\b",
     re.IGNORECASE,
 )
+
+FRANCO_ARABIC_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?!(?:b2b)(?![A-Za-z0-9]))"
+    r"(?:[A-Za-z]+[2356789][A-Za-z]+|"
+    r"[2356789](?!(?:kgs?|lbs?|km|mi|mins?|secs?|hrs?|am|pm|x|rm|reps?|sets?|days?|wks?|"
+    r"st|nd|rd|th|rpe|rir|k|m|s|h|d)\b)"
+    r"[A-Za-z]+)(?![A-Za-z0-9])",
+    re.IGNORECASE,
+)
+FRANCO_COMMON_WORDS = frozenset(
+    {
+        "ana", "enta", "enty", "3ayez", "keda", "delwa2ty",
+        "ezay", "leh", "awy", "wa3", "waga3ny", "alam",
+    }
+)
+
+
+def is_franco_arabic(text: str) -> bool:
+    if len(FRANCO_ARABIC_RE.findall(text)) >= 2:
+        return True
+    words = text.lower().replace("-", " ").split()
+    return any(word.strip(".,!?;:()[]{}\"'") in FRANCO_COMMON_WORDS for word in words)
 
 #: Joints and tear-prone structures. Deliberately excludes the big DOMS muscle
 #: groups (quads, glutes, hamstrings, chest, lats...) whose slang
@@ -109,6 +142,9 @@ def _acute_injury_hit(text: str) -> bool:
 RE_DIAGNOSIS = re.compile(
     r"\b(diagnos(?:e|is|ing)|what(?:'s|\s+is)\s+wrong\s+with|why\s+does\s+my\s+\w+\s+(?:hurt|ache))\b",
     re.IGNORECASE,
+)
+RE_ARABIC_DIAGNOSIS = re.compile(
+    r"(?:تشخيص|شخّ?ص|ما\s+(?:الذي\s+)?يسبب\s+(?:ألم|وجع|إصابة)|ما\s+سبب\s+(?:ألم|وجع|إصابة))"
 )
 RE_BANNED_MOVEMENT = re.compile(
     r"\b(behind[\s-]the[\s-]neck|upright[\s-]rows?|(?:burn|activation)[\s-]sets?|(?:light\s+reps|burn\s+and\s+activation))\b",
@@ -326,6 +362,21 @@ def _action_command(query: str) -> str:
     return "" if RE_INQUISITIVE_PREFIX.search(command) else command
 
 
+def _clinical_candidate_metadata(candidate: str) -> dict[str, Any] | None:
+    if is_franco_arabic(candidate):
+        return {"franco": True}
+    if _acute_injury_hit(candidate):
+        return {}
+    if RE_DIAGNOSIS.search(candidate) or (
+        ARABIC_SCRIPT_RE.search(candidate) and RE_ARABIC_DIAGNOSIS.search(candidate)
+    ):
+        return {"mode": "diagnosis"}
+    is_clinical, clinical_score = evaluate_clinical_semantic_guard(candidate, threshold=0.70)
+    if is_clinical:
+        return {"semantic_score": round(clinical_score, 3)}
+    return None
+
+
 def _authorized_action(query: str, intent: str) -> bool:
     command = _action_command(query)
     if intent == "program_mutation":
@@ -338,16 +389,11 @@ def _classify_single_clause(clause: str, telemetry: str = "", messages: Sequence
     if not c:
         return None
 
-    if _acute_injury_hit(c):
-        return {"intent": "clinical_intercept", "intent_metadata": {"raw_query": c}, "query": c}
-    if RE_DIAGNOSIS.search(c):
-        return {"intent": "clinical_intercept", "intent_metadata": {"raw_query": c, "mode": "diagnosis"}, "query": c}
-
-    is_clinical, clinical_score = evaluate_clinical_semantic_guard(c, threshold=0.70)
-    if is_clinical:
+    clinical_metadata = _clinical_candidate_metadata(c)
+    if clinical_metadata is not None:
         return {
             "intent": "clinical_intercept",
-            "intent_metadata": {"raw_query": c, "semantic_score": round(clinical_score, 3)},
+            "intent_metadata": {"raw_query": c, **clinical_metadata},
             "query": c,
         }
 
@@ -411,6 +457,8 @@ def _classify_single_clause(clause: str, telemetry: str = "", messages: Sequence
 
 
 def _clinical_turn_metadata(query: str, sub_intents=()) -> dict[str, Any] | None:
+    if is_franco_arabic(query):
+        return {"raw_query": query, "franco": True}
     queries = [query] + [part.strip() for part in RE_CLAUSE_SPLIT.split(query) if part.strip() != query]
     for sub in sub_intents:
         if sub.get("intent") == "clinical_intercept":
@@ -418,13 +466,9 @@ def _clinical_turn_metadata(query: str, sub_intents=()) -> dict[str, Any] | None
         if sub.get("query"):
             queries.append(sub["query"])
     for candidate in queries:
-        if _acute_injury_hit(candidate):
-            return {"raw_query": query}
-        if RE_DIAGNOSIS.search(candidate):
-            return {"raw_query": query, "mode": "diagnosis"}
-        clinical, score = evaluate_clinical_semantic_guard(candidate, threshold=0.70)
-        if clinical:
-            return {"raw_query": query, "semantic_score": round(score, 3)}
+        clinical_metadata = _clinical_candidate_metadata(candidate)
+        if clinical_metadata is not None:
+            return {"raw_query": query, **clinical_metadata}
     return None
 
 
@@ -550,7 +594,14 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
 
 def clinical_intercept_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     meta = state.get("intent_metadata", {})
-    content = DIAGNOSIS_SAFEGUARD_RESPONSE if meta.get("mode") == "diagnosis" else CLINICAL_SAFEGUARD_RESPONSE
+    raw_query = meta.get("raw_query") or (_get_message_text(state["messages"][-1]) if state.get("messages") else "")
+    if meta.get("franco"):
+        response_key = ("franco", "input")
+    else:
+        language = "ar" if ARABIC_SCRIPT_RE.search(raw_query) else "en"
+        response_type = "diagnosis" if meta.get("mode") == "diagnosis" else "clinical"
+        response_key = (language, response_type)
+    content = CLINICAL_SAFEGUARD_RESPONSES[response_key]
     return {"program_updated": False, "response_content": content, "messages": [AIMessage(content=content)]}
 
 
