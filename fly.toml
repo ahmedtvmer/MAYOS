@@ -29,7 +29,11 @@ primary_region = "fra"
   MAYOS_REQUIRE_PERSISTENT_DATA = "true"
   # Hosted inference: no GGUF/CUDA/llama-cpp in the image.
   LLM_BACKEND = "openai"
-  # Coach sends no extra body by default and ignores LLM_EXTRA_BODY; a JSON object here replaces it, {} disables it.
+  # Hosted player defaults to DeepSeek-V4-Flash and sends no extra body.
+  # LLM_EXTRA_BODY replaces the player body; JUDGE_EXTRA_BODY replaces the
+  # judge body (which defaults to Qwen thinking disabled).
+  # LLM_ENABLE_THINKING=true opts the judge back in when JUDGE_EXTRA_BODY is unset.
+  # Coach sends no extra body by default; a JSON object here replaces it, {} disables it.
   # COACH_EXTRA_BODY = '{}'
   # Coach AI (ADR 049): on, gated by the committed live report for the configured
   # coach model (DeepSeek-V4-Flash, 11/11, #183). A report for another model or

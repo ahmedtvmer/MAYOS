@@ -25,7 +25,7 @@
 |--------------------|--------------------------------------------------------------------|
 | Product model      | One account may train, coach, or both; capabilities are not exclusive |
 | Client packaging   | Android Flutter app plus one capability-aware web app for players and coaches; evaluate Flutter web before choosing its frontend technology |
-| Player assistant   | Qwen3.5-9B via DeepInfra, non-reasoning; measured 62/65 standard and 15/15 generalization |
+| Player assistant   | DeepSeek-V4-Flash via DeepInfra; #184: 60/65 and 62/65 standard, 15/15 generalization, 96.9% Arabic |
 | Coach assistant    | DeepSeek-V4-Flash via DeepInfra (player-scoped analysis + split help) |
 | Judge LLM          | Qwen3.5-27B via DeepInfra (eval-only; outside production requests)  |
 | Assignment         | Short-lived single-use bearer code; instant binding after player consent, coach notified and may revoke; directory requests after trial |
@@ -153,14 +153,17 @@ Two consent paths:
 1. **Factory swap** — `utils/model_downloader.py`
    - Env `LLM_BACKEND` = `local` (default) | `openai`.
    - `openai` → thin `SafeChatOpenAI` wrapper (langchain-openai `ChatOpenAI`):
-     `LLM_API_BASE`, `LLM_API_KEY`, `LLM_MODEL` (Qwen3.5-9B player),
+     `LLM_API_BASE`, `LLM_API_KEY`, `LLM_MODEL` (DeepSeek-V4-Flash player),
      `temperature=0.0`, `max_tokens=200`, streaming. Judge equivalents
      (`JUDGE_MODEL`, Qwen3.5-27B, `max_tokens=700`) and coach equivalents
      (`COACH_MODEL`, DeepSeek-V4-Flash) follow the same shape. The coach sends
      no extra body by default; `COACH_EXTRA_BODY` replaces it when set.
-   - **Player and judge thinking mode disabled at API level** via
-     `extra_body.chat_template_kwargs.enable_thinking=false`. The live smoke
-     verified the model echo, non-reasoning response, streaming, and tool calls.
+   - The DeepSeek player sends no extra body by default; `LLM_EXTRA_BODY`
+     replaces only the player body. The Qwen judge disables thinking via
+     `extra_body.chat_template_kwargs.enable_thinking=false`; `JUDGE_EXTRA_BODY`
+     replaces its body and `LLM_ENABLE_THINKING=true` opts it back in. The live
+     smoke verifies model echo, no leaked reasoning, structured output,
+     streaming, and tool calls.
      `CoachOutputScrubber`
      (`utils/text_scrubber.py:38`) remains the final guard.
    - Mock seams preserved: `TESTING=1` → `MockSafeChatLlamaCpp` regardless of

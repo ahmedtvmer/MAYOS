@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
@@ -7,7 +8,9 @@ sys.path.append(str(BASE_DIR))
 import pytest
 
 from agent.program_rules import (
+    DYNAMIC_SPLIT_PLAN_MAX_TOKENS,
     fetch_filtered_candidates,
+    get_default_split,
     resolve_split,
 )
 from utils.logger import MyosLogger
@@ -57,8 +60,24 @@ def test_rules(fresh_store):
     for c in candidates:
         logger.info(f"  [ID {c['id']}] {c['name']} (Target: {c['target_muscle']})")
         assert "deadlift" not in c["name"].lower()
-
     logger.info("\nAll deterministic and dynamic program rules passed.")
+
+
+def test_dynamic_split_plan_uses_its_own_output_budget(monkeypatch):
+    model = MagicMock()
+    model.with_structured_output.return_value.bind.return_value.invoke.return_value = get_default_split(3)
+    monkeypatch.setattr("agent.program_rules.llm", model)
+
+    plan = resolve_split(
+        3,
+        preference="Custom weekly arrangement with separate emphasis days for chest, back, and arms",
+    )
+
+    assert len(plan.days) == 3
+    model.with_structured_output.assert_called_once()
+    model.with_structured_output.return_value.bind.assert_called_once_with(
+        max_tokens=DYNAMIC_SPLIT_PLAN_MAX_TOKENS
+    )
 
 
 if __name__ == "__main__":

@@ -4,11 +4,13 @@ from types import SimpleNamespace
 
 from scripts import provider_smoke as smoke
 
+_UNSET = object()
+
 
 class _FakeModel:
-    def __init__(self, *, model_name="Qwen/Qwen3.5-4B", extra_body=None, chunks=("rea", "dy"), tool_name="get_weather", boom=None):
+    def __init__(self, *, model_name="Qwen/Qwen3.5-4B", extra_body=_UNSET, chunks=("rea", "dy"), tool_name="get_weather", boom=None):
         self.model_name = model_name
-        self.extra_body = {"enable_thinking": False} if extra_body is None else extra_body
+        self.extra_body = {"enable_thinking": False} if extra_body is _UNSET else extra_body
         self._chunks = chunks
         self._tool_name = tool_name
         self._boom = boom
@@ -25,6 +27,9 @@ class _FakeModel:
     def invoke(self, prompt):
         calls = [] if self._tool_name is None else [{"name": self._tool_name, "args": {"city": "Berlin"}}]
         return SimpleNamespace(tool_calls=calls)
+
+    def with_structured_output(self, schema):
+        return SimpleNamespace(invoke=lambda _prompt: schema(result="ready"))
 
 
 def _requester(model="Qwen/Qwen3.5-4B", reasoning=""):
@@ -65,7 +70,20 @@ def test_run_smoke_passes_all_checks():
         requester=_requester(),
     )
     assert report.status == "pass"
-    assert {check.name for check in report.checks} >= {"model_id", "non_reasoning_config", "streaming", "tool_calls"}
+    assert {check.name for check in report.checks} >= {
+        "model_id", "request_body_config", "streaming", "structured_output", "tool_calls"
+    }
+
+
+def test_deepseek_default_allows_no_extra_body():
+    report = smoke.run_smoke(
+        _FakeModel(model_name=smoke.DEEPSEEK_PLAYER, extra_body=None),
+        expected_model=smoke.DEEPSEEK_PLAYER,
+        api_base="https://example.invalid/v1/openai",
+        requester=_requester(model=smoke.DEEPSEEK_PLAYER),
+    )
+    assert report.status == "pass"
+    assert next(c for c in report.checks if c.name == "request_body_config").passed
 
 
 def test_run_smoke_detects_reasoning_content():
@@ -77,8 +95,8 @@ def test_run_smoke_detects_reasoning_content():
         requester=_requester(reasoning="let me think..."),
     )
     assert report.status == "fail"
-    non_reasoning = next(c for c in report.checks if c.name == "non_reasoning_response")
-    assert not non_reasoning.passed
+    no_leaked_reasoning = next(c for c in report.checks if c.name == "non_reasoning_response")
+    assert not no_leaked_reasoning.passed
 
 
 def test_run_smoke_detects_missing_tool_calls():
@@ -114,7 +132,7 @@ def test_nested_chat_template_shape_is_accepted():
         api_key="sk-secret",
         requester=_requester(),
     )
-    assert next(c for c in report.checks if c.name == "non_reasoning_config").passed
+    assert next(c for c in report.checks if c.name == "request_body_config").passed
 
 
 def test_report_never_leaks_the_api_key():

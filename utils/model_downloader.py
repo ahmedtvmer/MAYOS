@@ -76,7 +76,7 @@ MODEL_REGISTRY = {
 CLOUD_MODEL_REGISTRY = {
     "production": {
         "model_env": "LLM_MODEL",
-        "default_model": "Qwen/Qwen3.5-9B",
+        "default_model": "deepseek-ai/DeepSeek-V4-Flash",
         "max_tokens_env": "LLM_MAX_TOKENS",
         "default_max_tokens": 200,
         "streaming": True,
@@ -644,10 +644,9 @@ def _parse_extra_body(raw_extra_body: str, env_name: str) -> dict[str, Any]:
 def _build_cloud_llm(model_type: str) -> Any:
     """Builds a ``SafeChatOpenAI`` for ``model_type`` from cloud env config.
 
-    Hosted player and judge requests disable thinking by default using the
-    DeepInfra reference shape ``chat_template_kwargs.enable_thinking = false``.
-    The coach sends no extra body unless ``COACH_EXTRA_BODY`` is set, which
-    replaces the coach body independently of ``LLM_EXTRA_BODY``.
+    The player sends no extra body by default; ``LLM_EXTRA_BODY`` replaces it.
+    The judge disables thinking by default and has its own ``JUDGE_EXTRA_BODY``
+    override. The coach sends no extra body unless ``COACH_EXTRA_BODY`` is set.
     """
     if SafeChatOpenAI is None:
         raise RuntimeError(
@@ -667,13 +666,16 @@ def _build_cloud_llm(model_type: str) -> Any:
         raw_coach_extra_body = os.getenv("COACH_EXTRA_BODY", "").strip()
         if raw_coach_extra_body:
             extra_body = _parse_extra_body(raw_coach_extra_body, "COACH_EXTRA_BODY") or None
-    else:
+    elif model_type == "production":
         raw_extra_body = os.getenv("LLM_EXTRA_BODY", "").strip()
         if raw_extra_body:
-            extra_body = _parse_extra_body(raw_extra_body, "LLM_EXTRA_BODY")
+            extra_body = _parse_extra_body(raw_extra_body, "LLM_EXTRA_BODY") or None
+    else:
+        raw_judge_extra_body = os.getenv("JUDGE_EXTRA_BODY", "").strip()
+        if raw_judge_extra_body:
+            extra_body = _parse_extra_body(raw_judge_extra_body, "JUDGE_EXTRA_BODY") or None
         elif not _env_truthy("LLM_ENABLE_THINKING"):
-            # DeepInfra's documented Qwen example nests the toggle under
-            # chat_template_kwargs; other providers can override via LLM_EXTRA_BODY.
+            # Qwen's DeepInfra template uses this shape to disable thinking.
             extra_body = {"chat_template_kwargs": {"enable_thinking": False}}
     model_id = _cloud_model_id(model_type)
     return SafeChatOpenAI(

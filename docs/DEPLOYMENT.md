@@ -145,6 +145,12 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `MODEL_DAILY_TOKEN_LIMIT` | `200000` | Per-account input+output tokens/UTC day; `0` disables |
 | `MODEL_PRICING_JSON` | built-in defaults | `{model: {"input": usd, "output": usd}}` per 1M tokens; unknown model ⇒ cost 0 + warning |
 | `MODEL_SPEND_ALERT_USD` | `50` | Owner alert when projected month spend reaches this (evaluated on the hourly sweep) |
+| `LLM_BACKEND` | `local` | `local` uses GGUF; `openai` uses the hosted OpenAI-compatible endpoint |
+| `LLM_MODEL` | `deepseek-ai/DeepSeek-V4-Flash` | Hosted player model; set to override the default |
+| `LLM_EXTRA_BODY` | unset | Hosted player sends no extra body by default; a JSON object replaces only the player body, and `{}` sends none |
+| `JUDGE_MODEL` | `Qwen/Qwen3.5-27B` | Hosted evaluation judge; set to override the default |
+| `JUDGE_EXTRA_BODY` | unset | Judge defaults to `chat_template_kwargs.enable_thinking: false`; a JSON object replaces only its body, and `{}` sends none |
+| `LLM_ENABLE_THINKING` | unset (`false`) | `true` opts only the judge back into thinking unless `JUDGE_EXTRA_BODY` overrides it |
 | `COACH_MODEL` | `deepseek-ai/DeepSeek-V4-Flash` | Hosted coach model; set to override the default |
 | `COACH_AI_ENABLED` | `false` | Enables the optional coach AI assistant (#45); refused unless `COACH_AI_EVAL_REPORT` records a passing **live** report for the current prompt version *and* the configured coach model/backend |
 | `COACH_AI_EVAL_REPORT` | unset | Path to the recorded coach privacy + evaluation report JSON (see §4, "Enabling the optional coach AI assistant") |
@@ -152,12 +158,12 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `PRIVACY_CONTACT_EMAIL` | unset (⇒ placeholder + warning) | Owner contact rendered on the public privacy policy at `GET /privacy`; unset still serves the page |
 | `OWNER_ALERT_EMAIL` | unset | Alert recipient (set via `fly secrets set` on Fly); unset logs the warning only and retries delivery each sweep |
 | `MODEL_PATH` / `JUDGE_MODEL_PATH` | registry defaults | Explicit GGUF paths (win over `MODEL_DIR` + registry filename) |
-| `COACH_EXTRA_BODY` | unset | Coach sends no extra body by default and ignores `LLM_EXTRA_BODY` / `LLM_ENABLE_THINKING`; a JSON object replaces the body, and `{}` sends none |
+| `COACH_EXTRA_BODY` | unset | Coach sends no extra body by default and ignores the player and judge body settings; a JSON object replaces its body, and `{}` sends none |
 | `MODEL_DIR` | `models/` | Download target directory |
 | `MODEL_REVISION` / `MODEL_SHA256` (and `JUDGE_*`) | unset | Optional pin + integrity check for reproducible deployments |
 | `N_GPU_LAYERS` | `-1` (all layers) | Production model offload; `0` = CPU-only |
 | `JUDGE_N_GPU_LAYERS` | `18` | Judge offload default; tune per VRAM (see §4) |
-| `LLM_N_CTX` / `LLM_MAX_TOKENS` / `LLM_N_BATCH` / `LLM_THREADS` | `2048` / `200` / `512` / `OMP_NUM_THREADS` | Inference tuning |
+| `LLM_N_CTX` / `LLM_MAX_TOKENS` / `LLM_N_BATCH` / `LLM_THREADS` | `2048` / `200` / `512` / `OMP_NUM_THREADS` | Inference tuning; hosted player chat replies use 200 tokens, while DynamicSplitPlan binds 1200 for that call |
 | `OMP_NUM_THREADS` | — | Pin to physical cores (see §6) |
 | `SKIP_LLM_LOAD` | unset | Skips **eager warmup only**; the real GGUF lazy-loads on first inference. **Not** a mock switch |
 | `TESTING` | unset | Substitutes the in-repo mock model (CI/tests only; never in production) |

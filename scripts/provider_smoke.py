@@ -3,9 +3,10 @@
 Confirms, against the configured OpenAI-compatible endpoint, that:
 
 1. the provider answers with the configured model ID;
-2. the thinking/reasoning setting is applied (no ``reasoning_content`` leaks);
+2. the role's request-body configuration is applied (no ``reasoning_content`` leaks);
 3. streaming yields chunks;
-4. the model emits the required tool calls.
+4. structured output parses;
+5. the model emits the required tool calls.
 
 Usage::
 
@@ -46,6 +47,11 @@ from utils.model_downloader import (  # noqa: E402
 PRODUCTION = CLOUD_MODEL_REGISTRY["production"]
 TOOL_PROMPT = "What is the weather in Berlin? Use the get_weather tool to find out."
 STREAM_PROMPT = "Reply with the single word: ready"
+DEEPSEEK_PLAYER = PRODUCTION["default_model"]
+
+
+class StructuredSmokeResult(BaseModel):
+    result: str = Field(description="The requested short result.")
 
 
 class WeatherInput(BaseModel):
@@ -110,6 +116,17 @@ def _thinking_disabled(extra_body: Any) -> bool:
     return isinstance(nested, dict) and nested.get("enable_thinking") is False
 
 
+def _request_body_configured(model: str, extra_body: Any) -> bool:
+    """The hosted player has no default body; legacy Qwen defaults to thinking off."""
+    if os.getenv("LLM_EXTRA_BODY", "").strip():
+        return isinstance(extra_body, dict)
+    if model == DEEPSEEK_PLAYER:
+        return extra_body is None
+    if os.getenv("LLM_ENABLE_THINKING", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return extra_body is None
+    return _thinking_disabled(extra_body)
+
+
 def _reasoning_content(payload: dict[str, Any]) -> str:
     try:
         message = payload["choices"][0]["message"]
@@ -168,7 +185,11 @@ def run_smoke(
 
     extra_body = getattr(chat_model, "extra_body", None)
     checks.append(
-        Check("non_reasoning_config", _thinking_disabled(extra_body), f"extra_body={extra_body!r}")
+        Check(
+            "request_body_config",
+            _request_body_configured(expected_model, extra_body),
+            f"extra_body={extra_body!r}",
+        )
     )
 
     try:
@@ -183,6 +204,17 @@ def run_smoke(
         )
     except Exception as exc:  # noqa: BLE001 - reported, never re-raised with a key
         checks.append(Check("streaming", False, f"stream raised {type(exc).__name__}: {_redact(exc, api_key)}"))
+
+    try:
+        structured = chat_model.with_structured_output(StructuredSmokeResult).invoke(
+            "Return the word ready in the result field."
+        )
+        valid = isinstance(structured, StructuredSmokeResult) and bool(structured.result.strip())
+        checks.append(Check("structured_output", valid, f"parsed={type(structured).__name__}"))
+    except Exception as exc:  # noqa: BLE001
+        checks.append(
+            Check("structured_output", False, f"invoke raised {type(exc).__name__}: {_redact(exc, api_key)}")
+        )
 
     try:
         bound = chat_model.bind_tools([get_weather])

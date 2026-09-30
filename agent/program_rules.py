@@ -119,6 +119,9 @@ Rules:
 7. Lower days MAY include low-fatigue upper isolations ('side_delts', 'biceps_preacher', 'biceps_alt', 'triceps_pushdown', 'triceps_overhead', 'abs').
 """
 
+# A full custom week can exceed the shared 200-token chat reply budget.
+DYNAMIC_SPLIT_PLAN_MAX_TOKENS = 1200
+
 
 def _plan_from_blueprint_days(split_name: str, days: list) -> DynamicSplitPlan:
     return DynamicSplitPlan(
@@ -223,7 +226,9 @@ def resolve_split(frequency: int, preference: str | None = None, gender: str = "
         # stay deterministic and fall back to the frequency default rather than the LLM.
         return get_default_split(clamped_freq, gender=gender)
 
-    structured_llm = llm.with_structured_output(DynamicSplitPlan)
+    structured_llm = llm.with_structured_output(DynamicSplitPlan).bind(
+        max_tokens=DYNAMIC_SPLIT_PLAN_MAX_TOKENS
+    )
     gender_context = (
         "female trainee (prioritize glutes and lower body; still include direct arm and forearm work)"
         if gender.lower() == "female"

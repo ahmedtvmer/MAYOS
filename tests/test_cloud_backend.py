@@ -66,23 +66,27 @@ def test_cloud_builds_configured_openai_models(monkeypatch):
     monkeypatch.delenv("CI", raising=False)
     monkeypatch.delenv("LLM_ENABLE_THINKING", raising=False)
     monkeypatch.delenv("LLM_EXTRA_BODY", raising=False)
+    monkeypatch.delenv("JUDGE_EXTRA_BODY", raising=False)
     monkeypatch.delenv("COACH_EXTRA_BODY", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    monkeypatch.delenv("LLM_MAX_TOKENS", raising=False)
+    monkeypatch.delenv("JUDGE_MODEL", raising=False)
+    monkeypatch.delenv("JUDGE_MAX_TOKENS", raising=False)
     monkeypatch.delenv("COACH_MODEL", raising=False)
     _reset_singletons()
     try:
         prod = md.get_llm()
         judge = md.get_judge_llm()
         coach = md.get_coach_llm()
-        assert prod.model_name == "Qwen/Qwen3.5-9B"
+        assert prod.model_name == "deepseek-ai/DeepSeek-V4-Flash"
         assert prod.max_tokens == 200 and prod.streaming is True
         assert judge.model_name == "Qwen/Qwen3.5-27B"
         assert judge.max_tokens == 700 and judge.streaming is False
         assert coach.model_name == "deepseek-ai/DeepSeek-V4-Flash"
         assert coach.max_tokens == 512 and coach.streaming is True
-        # Thinking disabled by default keeps player and judge output budgets productive.
-        qwen_extra_body = {"chat_template_kwargs": {"enable_thinking": False}}
-        assert prod.extra_body == qwen_extra_body
-        assert judge.extra_body == qwen_extra_body
+        # DeepSeek's player request has no extra body; Qwen judge thinking stays off.
+        assert prod.extra_body is None
+        assert judge.extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
         assert coach.extra_body is None
     finally:
         _reset_singletons()
@@ -115,8 +119,11 @@ def test_thinking_can_be_enabled_via_env(monkeypatch):
     monkeypatch.delenv("TESTING", raising=False)
     monkeypatch.delenv("CI", raising=False)
     monkeypatch.delenv("LLM_EXTRA_BODY", raising=False)
+    monkeypatch.delenv("JUDGE_EXTRA_BODY", raising=False)
     _reset_singletons()
     try:
+        assert md._build_cloud_llm("production").extra_body is None
+        assert md._build_cloud_llm("judge").extra_body is None
         assert md.get_llm().extra_body is None
     finally:
         _reset_singletons()
@@ -132,6 +139,9 @@ def test_extra_body_json_overrides_default(monkeypatch):
     _reset_singletons()
     try:
         assert md.get_llm().extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
+        assert md._build_cloud_llm("judge").extra_body == {
+            "chat_template_kwargs": {"enable_thinking": False}
+        }
     finally:
         _reset_singletons()
 
@@ -166,7 +176,30 @@ def test_coach_extra_body_overrides_global_body_only_for_coach(monkeypatch):
     monkeypatch.setenv("COACH_EXTRA_BODY", '{"coach": true}')
     assert md._build_cloud_llm("coach").extra_body == {"coach": True}
     assert md._build_cloud_llm("production").extra_body == {"shared": True}
-    assert md._build_cloud_llm("judge").extra_body == {"shared": True}
+    assert md._build_cloud_llm("judge").extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
+
+
+@pytest.mark.skipif(md.SafeChatOpenAI is None, reason="langchain-openai not installed")
+def test_judge_extra_body_overrides_only_judge(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("LLM_EXTRA_BODY", '{"player": true}')
+    monkeypatch.setenv("JUDGE_EXTRA_BODY", '{"judge": true}')
+    monkeypatch.delenv("COACH_EXTRA_BODY", raising=False)
+
+    assert md._build_cloud_llm("production").extra_body == {"player": True}
+    assert md._build_cloud_llm("judge").extra_body == {"judge": True}
+    assert md._build_cloud_llm("coach").extra_body is None
+
+
+@pytest.mark.skipif(md.SafeChatOpenAI is None, reason="langchain-openai not installed")
+def test_empty_judge_extra_body_disables_default_and_ignores_player_body(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("LLM_EXTRA_BODY", '{"player": true}')
+    monkeypatch.setenv("JUDGE_EXTRA_BODY", "{}")
+    monkeypatch.delenv("LLM_ENABLE_THINKING", raising=False)
+
+    assert md._build_cloud_llm("production").extra_body == {"player": True}
+    assert md._build_cloud_llm("judge").extra_body is None
 
 
 @pytest.mark.skipif(md.SafeChatOpenAI is None, reason="langchain-openai not installed")
@@ -175,23 +208,24 @@ def test_empty_coach_extra_body_disables_extra_body(monkeypatch):
     monkeypatch.setenv("LLM_EXTRA_BODY", '{"shared": true}')
     monkeypatch.setenv("COACH_EXTRA_BODY", "{}")
     assert md._build_cloud_llm("coach").extra_body is None
+    assert md._build_cloud_llm("production").extra_body == {"shared": True}
+    assert md._build_cloud_llm("judge").extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
 @pytest.mark.parametrize("coach_body", [None, ""])
 @pytest.mark.skipif(md.SafeChatOpenAI is None, reason="langchain-openai not installed")
 def test_unset_or_blank_coach_extra_body_sends_no_extra_body(monkeypatch, coach_body):
     monkeypatch.setenv("LLM_API_KEY", "sk-test")
-    monkeypatch.setenv("LLM_EXTRA_BODY", '{"chat_template_kwargs": {"enable_thinking": false}}')
+    monkeypatch.setenv("LLM_EXTRA_BODY", '{"player": true}')
     monkeypatch.delenv("LLM_ENABLE_THINKING", raising=False)
     if coach_body is None:
         monkeypatch.delenv("COACH_EXTRA_BODY", raising=False)
     else:
         monkeypatch.setenv("COACH_EXTRA_BODY", coach_body)
 
-    qwen_extra_body = {"chat_template_kwargs": {"enable_thinking": False}}
     assert md._build_cloud_llm("coach").extra_body is None
-    assert md._build_cloud_llm("production").extra_body == qwen_extra_body
-    assert md._build_cloud_llm("judge").extra_body == qwen_extra_body
+    assert md._build_cloud_llm("production").extra_body == {"player": True}
+    assert md._build_cloud_llm("judge").extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
 @pytest.mark.parametrize(
