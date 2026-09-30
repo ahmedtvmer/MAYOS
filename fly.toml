@@ -31,6 +31,11 @@ primary_region = "fra"
   LLM_BACKEND = "openai"
   # Coach sends no extra body by default and ignores LLM_EXTRA_BODY; a JSON object here replaces it, {} disables it.
   # COACH_EXTRA_BODY = '{}'
+  # Coach AI (ADR 049): on, gated by the committed live report for the configured
+  # coach model (DeepSeek-V4-Flash, 11/11, #183). A report for another model or
+  # prompt version keeps the feature off.
+  COACH_AI_ENABLED = "true"
+  COACH_AI_EVAL_REPORT = "/app/reports/coach_ai_eval.json"
   MODEL_DEVICE = "cpu"
   EMBEDDING_DEVICE = "cpu"
   HF_HOME = "/app/.cache/huggingface"
