@@ -321,7 +321,7 @@ class ApiClient {
     return AuthTokens.fromJson(response.data as Map<String, dynamic>);
   }
 
-  /// Redeems an owner-issued, single-use coach invite and returns the updated account.
+  /// Redeems a single-use Coach invite from MAYOS and returns the updated account.
   Future<Account> redeemCoachInvite(String token) async {
     final response = await _send(
       () => _dio.post<dynamic>('/coach/invite/redeem', data: {'token': token}),

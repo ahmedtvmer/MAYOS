@@ -105,7 +105,7 @@ class _PlayerAssignmentScreenState
   Future<void> _previewCode() async {
     final String token = _code.text.trim();
     if (token.length < 10) {
-      setState(() => _error = 'Enter the invite code you received.');
+      setState(() => _error = 'Enter the invite code from your coach.');
       return;
     }
     setState(() {
@@ -510,7 +510,7 @@ class _PlayerAssignmentScreenState
       children: <Widget>[
         const MayosSectionHeader(title: 'Coach assignment'),
         Text(
-          'Enter a coach invite code. Your coach can only see your training data '
+          'Enter the invite code from your coach. Your coach can only see your training data '
           'after you accept, and access ends when either of you ends the assignment.',
           style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
         ),
@@ -521,7 +521,7 @@ class _PlayerAssignmentScreenState
           autocorrect: false,
           enableSuggestions: false,
           onChanged: _onCodeChanged,
-          label: 'Invite code',
+          label: 'Invite code from your coach',
         ),
         const SizedBox(height: MayosSpacing.sm),
         MayosButton(

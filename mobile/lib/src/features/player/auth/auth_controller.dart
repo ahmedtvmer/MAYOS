@@ -482,7 +482,7 @@ class AuthController extends StateNotifier<AuthState> {
     state = const AuthState.unauthenticated();
   }
 
-  /// Redeems an owner-issued coach invite and applies the returned account.
+  /// Redeems a Coach invite from MAYOS and applies the returned account.
   ///
   /// The grant response is authoritative: onboarding and recovery-email flags
   /// are carried over from the current session, and no follow-up read is issued,

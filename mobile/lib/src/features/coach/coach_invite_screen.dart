@@ -11,7 +11,7 @@ import '../../core/ui/mayos_text_field.dart';
 import '../../providers.dart';
 import '../../router.dart';
 
-/// Redemption entry for an owner-issued coach invitation.
+/// Redemption entry for a MAYOS Coach invite.
 ///
 /// The code is account-bound and single-use; a successful redemption refreshes
 /// the registry capabilities, which unlocks the coach route.
@@ -36,7 +36,7 @@ class _CoachInviteScreenState extends ConsumerState<CoachInviteScreen> {
   Future<void> _submit() async {
     final String token = _token.text.trim();
     if (token.length < 10) {
-      setState(() => _error = 'Enter the invite code you received.');
+      setState(() => _error = 'Enter your MAYOS coach code.');
       return;
     }
     setState(() {
@@ -64,18 +64,18 @@ class _CoachInviteScreenState extends ConsumerState<CoachInviteScreen> {
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
     return MayosScaffold(
-      title: 'Coach invite',
+      title: 'Become a coach',
       showBack: true,
       body: ListView(
         padding: MayosSpacing.screen,
         children: <Widget>[
           Text(
-            'Enter your invite code',
+            'Enter your MAYOS coach code',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: MayosSpacing.xs),
           Text(
-            'This owner-issued code enables the coach capability on your own account. '
+            'This code comes from MAYOS and enables Coach mode on your own account. '
             'It is single-use and expires. Entering it does not assign you to a coach.',
             style: Theme.of(context)
                 .textTheme
@@ -87,7 +87,7 @@ class _CoachInviteScreenState extends ConsumerState<CoachInviteScreen> {
             controller: _token,
             autocorrect: false,
             enableSuggestions: false,
-            label: 'Invite code',
+            label: 'MAYOS coach code',
           ),
           if (_error != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),

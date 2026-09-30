@@ -20,7 +20,7 @@ const List<String> _lifterFreeBenefits = <String>[
 ];
 
 const List<String> _coachFreeBenefits = <String>[
-  'Coach profile and player invite codes',
+  'Coach profile and player invites',
   'Active roster with assignment status',
   'End or revoke assignments at any time',
 ];

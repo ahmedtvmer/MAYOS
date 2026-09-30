@@ -144,7 +144,7 @@ void main() {
     await _pumpUntilFound(tester, find.text('Coach profile'));
     expect(find.text('Strength coach.'), findsOneWidget);
     expect(find.text('Invite a player'), findsOneWidget);
-    expect(find.text('Create invite code'), findsOneWidget);
+    expect(find.text('Create player invite'), findsOneWidget);
   });
 
   testWidgets(

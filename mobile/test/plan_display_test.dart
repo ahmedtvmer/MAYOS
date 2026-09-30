@@ -174,7 +174,7 @@ void main() {
 
     expect(find.text('Lifter Free'), findsOneWidget);
     expect(find.text('Coach Free'), findsOneWidget);
-    expect(find.text('Coach profile and player invite codes'), findsOneWidget);
+    expect(find.text('Coach profile and player invites'), findsOneWidget);
     expect(find.text('Active roster with assignment status'), findsOneWidget);
     expect(find.text('Automatic training program'), findsOneWidget);
   });

@@ -318,7 +318,7 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
           ),
           const SizedBox(height: MayosSpacing.sm),
           MayosButton(
-            label: 'Create invite code',
+            label: 'Create player invite',
             icon: Icons.add,
             loading: _issuing,
             onPressed: _issuing ? null : _issue,

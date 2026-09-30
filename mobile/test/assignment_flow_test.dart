@@ -88,6 +88,22 @@ void main() {
     await tester.tap(find.byIcon(Icons.badge_outlined));
     await _pumpUntilFound(tester, find.text('Coach assignment'));
 
+    expect(find.text('Invite code from your coach'), findsOneWidget);
+    expect(
+      find.text(
+        'Enter the invite code from your coach. Your coach can only see your training data '
+        'after you accept, and access ends when either of you ends the assignment.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('coach invite'), findsNothing);
+
+    await tester.enterText(
+        find.byKey(const Key('assignment_code_field')), 'short');
+    await tester.tap(find.text('Preview access'));
+    await _pumpUntilFound(
+        tester, find.text('Enter the invite code from your coach.'));
+
     // A bad code is rejected and grants nothing.
     await tester.enterText(
         find.byKey(const Key('assignment_code_field')), 'wrong-code-123456');
@@ -219,7 +235,8 @@ void main() {
         findsOneWidget);
 
     // Issuing shows the one-time bearer code and remaining capacity.
-    await tester.tap(find.text('Create invite code'));
+    expect(find.text('Create player invite'), findsOneWidget);
+    await tester.tap(find.text('Create player invite'));
     await _pumpUntilFound(tester, find.text('assignment-invite-token-123456'));
     expect(fake.issuedAssignmentToken, 'assignment-invite-token-123456');
 
