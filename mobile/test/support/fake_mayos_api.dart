@@ -141,6 +141,13 @@ class FakeMayosApi {
   /// test can pin a different target cap than the default program fixture and
   /// assert its equivalent minimum RIR (#111).
   final Map<String, double> prescriptionTargetRpe = <String, double>{};
+  bool prescriptionOffline = false;
+  Map<String, dynamic> prescriptionDeload = <String, dynamic>{
+    'state': 'none',
+    'reason': null,
+    'volume_multiplier': 1.0,
+    'intensity_cap_rpe': null,
+  };
   // When true the volume and personal-records endpoints return empty, so the
   // Home empty states can be captured and tested.
   bool volumeEmpty = false;
@@ -2697,6 +2704,7 @@ class FakeMayosApi {
   }
 
   FakeResponse _prescription(FakeRequest request) {
+    if (prescriptionOffline) return const FakeResponse.networkFailure();
     if (!_authorized(request)) {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
@@ -2717,6 +2725,7 @@ class FakeMayosApi {
         'intensity_cap_rpe': null,
         'recent_readiness_avg': null,
       },
+      'deload': Map<String, dynamic>.from(prescriptionDeload),
       'targets': <Map<String, dynamic>>[
         for (final dynamic entry in exercises)
           <String, dynamic>{

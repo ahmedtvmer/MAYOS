@@ -47,6 +47,28 @@ Future<ActiveProgram> loadActiveProgram({
   }
 }
 
+/// Refreshes one day prescription and returns its last cached copy offline.
+Future<Prescription?> loadDayPrescription({
+  required ApiClient api,
+  required WorkoutCacheStore cache,
+  required String accountId,
+  required int dayOrder,
+  Duration timeout = const Duration(seconds: 5),
+}) async {
+  try {
+    final Prescription fresh =
+        await api.prescription(dayOrder).timeout(timeout);
+    try {
+      await cache.writePrescription(accountId, dayOrder, fresh);
+    } on Object {
+      // The fresh server response remains usable if device storage fails.
+    }
+    return fresh;
+  } on Object {
+    return _readCachedPrescription(cache, accountId, dayOrder);
+  }
+}
+
 /// Best-effort cache write: a slow or failing store must never affect a
 /// successful online fetch (ADR 020/033).
 Future<void> cacheActiveProgram(
@@ -65,6 +87,19 @@ Future<TrainingProgram?> _readCachedProgram(
         .readProgram(accountId)
         .timeout(kActiveProgramCacheTimeout);
   } on Object {
+    return null;
+  }
+}
+
+Future<Prescription?> _readCachedPrescription(
+  WorkoutCacheStore cache,
+  String accountId,
+  int dayOrder,
+) async {
+  try {
+    return await cache.readPrescription(accountId, dayOrder);
+  } on Object {
+    // An unreadable offline cache has no prescription to show for this day.
     return null;
   }
 }

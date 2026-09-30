@@ -33,6 +33,10 @@ MAX_BACKDATE_DAYS = 3
 #: Device clocks drift; a capture timestamp within this window of "now" is fine.
 CLOCK_SKEW = timedelta(minutes=10)
 
+DELOAD_STATE_APPLIED = "applied"
+DELOAD_STATE_SUGGESTED = "suggested"
+DELOAD_STATE_NONE = "none"
+
 
 class SessionSyncValidationError(ValueError):
     """Raised for an invalid commit request (mapped to HTTP 400 by the router)."""
@@ -319,20 +323,29 @@ def evaluate_fatigue(db: Any, ledger_id: str, ledger: Any | None = None) -> dict
         return evaluate_systemic_fatigue(ledger)
 
 
-def build_prescription(db: Any, ledger_id: str, day_plan: Any, ledger: Any | None = None) -> dict[str, Any]:
-    """Auto-regulated targets per exercise for the given training day."""
+def build_prescription(
+    db: Any,
+    ledger_id: str,
+    day_plan: Any,
+    ledger: Any | None = None,
+    *,
+    player_account_id: str,
+) -> dict[str, Any]:
+    """Build targets using the ledger plus the player's registry identity."""
+    assignment = db.get_active_assignment_for_player(player_account_id)
     with ledger_scope(db, ledger, ledger_id) as ledger:
-        return _build_prescription(ledger, day_plan)
+        return _build_prescription(ledger, day_plan, assignment)
 
 
-def _build_prescription(ledger: Any, day_plan: Any) -> dict[str, Any]:
+def _build_prescription(ledger: Any, day_plan: Any, assignment: dict[str, Any] | None) -> dict[str, Any]:
     fatigue_info = evaluate_systemic_fatigue(ledger)
+    deload_state = _prescription_deload_state(fatigue_info, assignment)
     targets = []
     for ex_idx, ex in enumerate(day_plan.exercises, start=1):
         is_barbell = _is_barbell(ex)
         effective_sets = ex.target_sets
         target_rpe_cap = ex.target_rpe or 8.5
-        if fatigue_info["deload_recommended"]:
+        if deload_state["state"] == DELOAD_STATE_APPLIED:
             effective_sets = max(1, round(ex.target_sets * fatigue_info["volume_multiplier"]))
             target_rpe_cap = min(target_rpe_cap, fatigue_info["intensity_cap_rpe"] or 10.0)
         last_perf = ledger.get_last_performance(ex.exercise_id)
@@ -367,7 +380,27 @@ def _build_prescription(ledger: Any, day_plan: Any) -> dict[str, Any]:
         if ex_idx == 1 or ex.target_reps_min <= 8:
             entry["warmups"] = calculate_warmup_sets(entry["projected_weight"])
         targets.append(entry)
-    return {"fatigue_info": fatigue_info, "targets": targets}
+    return {"fatigue_info": fatigue_info, "deload": deload_state, "targets": targets}
+
+
+def _prescription_deload_state(
+    fatigue_info: dict[str, Any], assignment: dict[str, Any] | None
+) -> dict[str, Any]:
+    if not fatigue_info["deload_recommended"]:
+        return {
+            "state": DELOAD_STATE_NONE,
+            "reason": None,
+            "volume_multiplier": 1.0,
+            "intensity_cap_rpe": None,
+        }
+    return {
+        "state": (
+            DELOAD_STATE_SUGGESTED if assignment is not None else DELOAD_STATE_APPLIED
+        ),
+        "reason": fatigue_info["reason"],
+        "volume_multiplier": fatigue_info["volume_multiplier"],
+        "intensity_cap_rpe": fatigue_info["intensity_cap_rpe"],
+    }
 
 
 def _to_rir(rpe: Any) -> float | None:

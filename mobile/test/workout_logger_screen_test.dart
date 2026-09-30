@@ -195,6 +195,7 @@ Future<InMemoryActiveWorkoutStore> _seedThroughController({
   required FakeMayosApi fake,
   required String startedAt,
   ProgramDay day = _day,
+  InMemoryWorkoutCacheStore? workoutCache,
 }) async {
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
@@ -203,7 +204,9 @@ Future<InMemoryActiveWorkoutStore> _seedThroughController({
     overrides: <Override>[
       tokenStoreProvider.overrideWithValue(tokens),
       draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
-      workoutCacheStoreProvider.overrideWithValue(InMemoryWorkoutCacheStore()),
+      workoutCacheStoreProvider.overrideWithValue(
+        workoutCache ?? InMemoryWorkoutCacheStore(),
+      ),
       baselineCacheStoreProvider
           .overrideWithValue(InMemoryBaselineCacheStore()),
       activeWorkoutStoreProvider.overrideWithValue(store),
@@ -230,6 +233,7 @@ Future<InMemoryActiveWorkoutStore> _seedThroughController({
     dayName: seeded.dayName,
     warmupMovements: seeded.warmupMovements,
     cardio: seeded.cardio,
+    deload: seeded.deload,
     programVersion: seeded.programVersion,
     exercises: seeded.exercises,
     baselines: seeded.baselines,
@@ -337,7 +341,12 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
   // Seeding talks to the (fake) API on real timers, so it runs outside the
   // test's fake-async zone.
   final InMemoryActiveWorkoutStore store = (await tester.runAsync(
-    () => _seedThroughController(fake: fake, startedAt: startedAt, day: day),
+    () => _seedThroughController(
+      fake: fake,
+      startedAt: startedAt,
+      day: day,
+      workoutCache: workoutCache,
+    ),
   ))!;
 
   await _pumpApp(
@@ -496,6 +505,43 @@ Future<void> _assertNoOverflowAt360(
 }
 
 void main() {
+  testWidgets('workout logger shows the applied deload and opens the assistant',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake()..prescriptionOffline = true;
+    final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
+    await cache.writePrescription(
+      _account,
+      _day.dayOrder,
+      const Prescription(
+        deload: DeloadDecision(
+          state: DeloadState.applied,
+          reason: 'Rolling readiness crash across the last 3 sessions.',
+          volumeMultiplier: 0.5,
+          intensityCapRpe: 7.0,
+        ),
+        targets: <PrescriptionTarget>[],
+      ),
+    );
+    await _openLogger(tester, fakeApi: fake, workoutCache: cache);
+
+    expect(find.byKey(const ValueKey<String>('logger.deload')), findsOneWidget);
+    expect(find.text('Deload applied'), findsOneWidget);
+    expect(
+      find.text(
+        'Applied: sets scaled to 50% of plan · RPE capped at 7.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      (await cache.readPrescription(_account, _day.dayOrder))?.deload.state,
+      DeloadState.applied,
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('deload_banner.chat')));
+    await _pumpUntilFound(tester, find.text('Assistant'));
+
+    expect(find.byKey(const Key('chat_composer')), findsOneWidget);
+  });
+
   testWidgets('warm-up movements show prescribed rows and stay outside work progress',
       (WidgetTester tester) async {
     final InMemoryActiveWorkoutStore store =

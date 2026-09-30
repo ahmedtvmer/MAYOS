@@ -307,3 +307,77 @@ def test_baselines_never_leak_another_players_data(api):
     assert bob.json() == {"baselines": []}
 
     assert client.get("/workouts/baselines").status_code in {401, 403}
+
+
+def _seed_acute_readiness_floor(db):
+    db.ledger.log_workout_session(
+        session_id="readiness-floor",
+        session_date="2026-09-26",
+        split_name="Full Body",
+        started_at="2026-09-26T10:00:00+00:00",
+        completed_at="2026-09-26T11:00:00+00:00",
+        readiness_score=1,
+    )
+
+
+def test_solo_player_gets_applied_deload_in_prescription(api):
+    client, db = api
+    headers, _ = _prepare_player(client, db)
+    _seed_acute_readiness_floor(db)
+
+    response = client.get("/workouts/prescription", params={"day_order": 1}, headers=headers)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["deload"] == {
+        "state": "applied",
+        "reason": "Acute readiness floor (1/5 logged). Systemic recovery compromised.",
+        "volume_multiplier": 0.5,
+        "intensity_cap_rpe": 7.0,
+    }
+    assert all(target["effective_sets"] == 2 for target in body["targets"])
+    assert all(target["target_rpe_cap"] == 7.0 for target in body["targets"])
+
+
+def test_prescription_reports_no_deload_when_fatigue_is_not_triggered(api):
+    client, db = api
+    headers, _ = _prepare_player(client, db)
+
+    response = client.get("/workouts/prescription", params={"day_order": 1}, headers=headers)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["deload"] == {
+        "state": "none",
+        "reason": None,
+        "volume_multiplier": 1.0,
+        "intensity_cap_rpe": None,
+    }
+
+
+def test_coached_player_gets_suggested_deload_without_target_changes(api):
+    client, db = api
+    _register(client, "coach")
+    headers, _ = _prepare_player(client, db)
+    _seed_acute_readiness_floor(db)
+    coach_id = db.get_active_account_by_username("coach")["account_id"]
+    player_id = db.get_active_account_by_username("alice")["account_id"]
+    db.catalog_conn.execute(
+        "INSERT INTO assignments"
+        " (assignment_id, coach_account_id, player_account_id, status, started_at)"
+        " VALUES ('deload-assignment', ?, ?, 'active', '2026-09-26T00:00:00+00:00')",
+        (coach_id, player_id),
+    )
+    db.catalog_conn.commit()
+
+    response = client.get("/workouts/prescription", params={"day_order": 1}, headers=headers)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["deload"] == {
+        "state": "suggested",
+        "reason": "Acute readiness floor (1/5 logged). Systemic recovery compromised.",
+        "volume_multiplier": 0.5,
+        "intensity_cap_rpe": 7.0,
+    }
+    assert all(target["effective_sets"] == 3 for target in body["targets"])
+    assert all(target["target_rpe_cap"] == 8.5 for target in body["targets"])

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart'
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/account_data_eraser.dart';
+import 'core/active_program.dart';
 import 'core/active_workout.dart';
 import 'core/api_client.dart';
 import 'core/app_mode.dart';
@@ -493,7 +494,7 @@ activeWorkoutControllerProvider =
         // The prescription a start seeds and hints from: fresh with a short
         // timeout, else the cache, as the old logger resolved it (#123).
         loadPrescription: (String accountId, int dayOrder) =>
-            prescriptionAtStart(
+            loadDayPrescription(
               api: api,
               cache: cache,
               accountId: accountId,

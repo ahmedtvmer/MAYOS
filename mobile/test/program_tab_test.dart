@@ -56,6 +56,7 @@ Future<void> _pumpProgram(
   ThemeMode mode = ThemeMode.light,
   Size size = const Size(1080, 2400),
   ActiveWorkoutStore? activeWorkoutStore,
+  WorkoutCacheStore? workoutCacheStore,
 }) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 1.0;
@@ -73,8 +74,9 @@ Future<void> _pumpProgram(
         draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
         if (activeWorkoutStore != null)
           activeWorkoutStoreProvider.overrideWithValue(activeWorkoutStore),
-        workoutCacheStoreProvider
-            .overrideWithValue(InMemoryWorkoutCacheStore()),
+        workoutCacheStoreProvider.overrideWithValue(
+          workoutCacheStore ?? InMemoryWorkoutCacheStore(),
+        ),
         baselineCacheStoreProvider
             .overrideWithValue(InMemoryBaselineCacheStore()),
         chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
@@ -132,6 +134,41 @@ Future<void> _chooseCableFly(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('program shows a suggested deload and opens the assistant',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..prescriptionOffline = true;
+    final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
+    await cache.writePrescription(
+      'account-alice',
+      1,
+      const Prescription(
+        deload: DeloadDecision(
+          state: DeloadState.suggested,
+          reason: 'Acute readiness floor (1/5 logged).',
+          volumeMultiplier: 0.5,
+          intensityCapRpe: 7.0,
+        ),
+        targets: <PrescriptionTarget>[],
+      ),
+    );
+    await _pumpProgram(tester, fake, workoutCacheStore: cache);
+    await _pumpUntilFound(tester, find.text('Deload suggested'));
+
+    expect(find.text('Acute readiness floor (1/5 logged).'), findsOneWidget);
+    expect(
+      find.text(
+        'If applied: sets scaled to 50% of plan · RPE capped at 7. '
+        'Your coach has been told.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('deload_banner.chat')));
+    await _pumpUntilFound(tester, find.text('Assistant'));
+
+    expect(find.byKey(const Key('chat_composer')), findsOneWidget);
+  });
+
   testWidgets('program overview shows real days, prescriptions, and provenance',
       (tester) async {
     final FakeMayosApi fake = _signedInFake();

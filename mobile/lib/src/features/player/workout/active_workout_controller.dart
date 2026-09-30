@@ -3,45 +3,12 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/active_workout.dart';
-import '../../../core/api_client.dart';
 import '../../../core/baseline_service.dart';
 import '../../../core/baselines.dart';
 import '../../../core/client_session_id.dart';
 import '../../../core/models.dart';
 import '../../../core/rest_alerts.dart';
 import '../../../core/rest_length.dart';
-import '../../../core/workout_storage.dart';
-
-/// The workout-start prescription (#123 item 4): a fresh
-/// `GET /workouts/prescription` inside [timeout], written back to the
-/// per-account cache on success, otherwise whatever the cache already holds —
-/// the order the old logger used, bounded so a slow network never blocks
-/// starting a workout.
-Future<Prescription?> prescriptionAtStart({
-  required ApiClient api,
-  required WorkoutCacheStore cache,
-  required String accountId,
-  required int dayOrder,
-  Duration timeout = const Duration(seconds: 5),
-}) async {
-  try {
-    final Prescription fresh = await api
-        .prescription(dayOrder)
-        .timeout(timeout);
-    try {
-      await cache.writePrescription(accountId, dayOrder, fresh);
-    } on Object {
-      // A cache failure must not lose the fresh prescription.
-    }
-    return fresh;
-  } on Object {
-    try {
-      return await cache.readPrescription(accountId, dayOrder);
-    } on Object {
-      return null;
-    }
-  }
-}
 
 /// Why [ActiveWorkoutController.startFromDay] refused to start: there is at
 /// most one Active workout per account, so a second start must first be
@@ -368,6 +335,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
           ActiveWarmupMovement.fromPrescription(movement),
       ],
       cardio: day.hasCardio ? WorkoutCardio(prescription: day.cardio!) : null,
+      deload: prescription?.deload,
       programVersion: programVersion,
       exercises: <ActiveWorkoutExercise>[
         for (final ProgramExercise exercise in day.exercises)

@@ -2541,15 +2541,99 @@ class PrescriptionTarget {
       };
 }
 
+enum DeloadState { applied, suggested, none }
+
+/// The server's decision and the fatigue signal that produced it.
+class DeloadDecision {
+  const DeloadDecision({
+    this.state = DeloadState.none,
+    this.reason,
+    this.volumeMultiplier = 1.0,
+    this.intensityCapRpe,
+  });
+
+  factory DeloadDecision.fromJson(Map<String, dynamic> json) {
+    final Object? rawState = json['state'];
+    final String stateName = rawState is String ? rawState : 'none';
+    final DeloadState state = switch (stateName) {
+      'applied' => DeloadState.applied,
+      'suggested' => DeloadState.suggested,
+      'none' => DeloadState.none,
+      _ => DeloadState.none,
+    };
+    return DeloadDecision(
+      state: state,
+      reason: json['reason'] as String?,
+      volumeMultiplier:
+          (json['volume_multiplier'] as num?)?.toDouble() ?? 1.0,
+      intensityCapRpe:
+          (json['intensity_cap_rpe'] as num?)?.toDouble(),
+    );
+  }
+
+  final DeloadState state;
+  final String? reason;
+  final double volumeMultiplier;
+  final double? intensityCapRpe;
+
+  bool get isVisible => state != DeloadState.none;
+  bool get isApplied => state == DeloadState.applied;
+  bool get isSuggested => state == DeloadState.suggested;
+
+  String get title => isApplied ? 'Deload applied' : 'Deload suggested';
+
+  List<String> get changeDetails {
+    final List<String> changes = <String>[];
+    if (volumeMultiplier < 1.0) {
+      final int targetVolume = (volumeMultiplier * 100).round();
+      changes.add('sets scaled to $targetVolume% of plan');
+    }
+    final double? rpeCap = intensityCapRpe;
+    if (rpeCap != null) {
+      changes.add('RPE capped at ${_formatDeloadRpe(rpeCap)}');
+    }
+    return changes;
+  }
+
+  String get changeSummary {
+    final List<String> changes = changeDetails;
+    if (changes.isEmpty) {
+      return isApplied
+          ? 'No set or RPE changes applied.'
+          : 'No set or RPE changes proposed. Your coach has been told.';
+    }
+    final String action = isApplied ? 'Applied' : 'If applied';
+    final String coachNote = isSuggested ? ' Your coach has been told.' : '';
+    return '$action: ${changes.join(' · ')}.$coachNote';
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'state': state.name,
+        'reason': reason,
+        'volume_multiplier': volumeMultiplier,
+        'intensity_cap_rpe': intensityCapRpe,
+      };
+}
+
+String _formatDeloadRpe(double rpe) => rpe == rpe.roundToDouble()
+    ? rpe.toStringAsFixed(0)
+    : rpe.toStringAsFixed(1);
+
 /// `GET /workouts/prescription`: fatigue state and auto-regulated targets.
 class Prescription {
   const Prescription(
-      {this.fatigueInfo = const <String, dynamic>{}, required this.targets});
+      {this.fatigueInfo = const <String, dynamic>{},
+      this.deload = const DeloadDecision(),
+      required this.targets});
 
   factory Prescription.fromJson(Map<String, dynamic> json) => Prescription(
         fatigueInfo: Map<String, dynamic>.from(
             (json['fatigue_info'] as Map<String, dynamic>?) ??
                 const <String, dynamic>{}),
+        deload: DeloadDecision.fromJson(
+          (json['deload'] as Map<String, dynamic>?) ??
+              const <String, dynamic>{},
+        ),
         targets: (json['targets'] as List<dynamic>? ?? const <dynamic>[])
             .map((dynamic t) =>
                 PrescriptionTarget.fromJson(t as Map<String, dynamic>))
@@ -2557,6 +2641,7 @@ class Prescription {
       );
 
   final Map<String, dynamic> fatigueInfo;
+  final DeloadDecision deload;
   final List<PrescriptionTarget> targets;
 
   PrescriptionTarget? forExercise(String exerciseId) {
@@ -2570,6 +2655,7 @@ class Prescription {
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'fatigue_info': fatigueInfo,
+        'deload': deload.toJson(),
         'targets': <Map<String, dynamic>>[
           for (final PrescriptionTarget target in targets) target.toJson(),
         ],

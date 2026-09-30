@@ -18,6 +18,7 @@ import '../../../providers.dart';
 import '../../../router.dart';
 import '../assignment/program_request_dialog.dart';
 import '../exercise_picker_dialog.dart';
+import '../workout/deload_banner.dart';
 import '../workout/active_workout_prompt.dart';
 import 'program_authority_recovery.dart';
 
@@ -70,6 +71,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   String? _loadError;
   String? _actionError;
   TrainingProgram? _program;
+  Map<int, DeloadDecision> _deloadByDay = <int, DeloadDecision>{};
 
   /// The player's active assignment, or null when none (used for coach
   /// provenance). [_assignmentKnown] is false when the assignment lookup failed
@@ -105,11 +107,12 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         accountId: accountId,
       );
       if (!mounted) return;
-      setState(() {
-        _program = result.program;
-        _fromCache = result.fromCache;
-        _loading = false;
-      });
+      _updateProgram(
+        result.program,
+        accountId,
+        fromCache: result.fromCache,
+        loading: false,
+      );
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -132,6 +135,69 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     }
   }
 
+  void _updateProgram(
+    TrainingProgram? program,
+    String? accountId, {
+    required bool fromCache,
+    bool? loading,
+    bool? generating,
+  }) {
+    setState(() {
+      _program = program;
+      _deloadByDay = <int, DeloadDecision>{};
+      _fromCache = fromCache;
+      if (loading != null) _loading = loading;
+      if (generating != null) _generating = generating;
+    });
+    if (program != null) {
+      unawaited(_loadProgramDeload(program, accountId));
+    }
+  }
+
+  Future<void> _loadProgramDeload(
+    TrainingProgram program,
+    String? accountId,
+  ) async {
+    if (accountId == null || program.days.isEmpty) return;
+    final ApiClient api = ref.read(apiClientProvider);
+    final WorkoutCacheStore cache = ref.read(workoutCacheStoreProvider);
+    Prescription? prescription = await loadDayPrescription(
+      api: api,
+      cache: cache,
+      accountId: accountId,
+      dayOrder: program.days.first.dayOrder,
+    );
+    for (final ProgramDay day in program.days.skip(1)) {
+      if (prescription != null) break;
+      try {
+        prescription = await cache.readPrescription(accountId, day.dayOrder);
+      } on Object {
+        // One unreadable day cache does not prevent trying the others.
+      }
+    }
+    if (!mounted || _program?.version != program.version) return;
+    if (prescription == null) return;
+    final DeloadDecision decision = prescription.deload;
+    setState(() {
+      _deloadByDay = <int, DeloadDecision>{
+        for (final ProgramDay day in program.days) day.dayOrder: decision,
+      };
+    });
+  }
+
+  List<Widget> _deloadBannerFor(ProgramDay day) {
+    final DeloadDecision? deload = _deloadByDay[day.dayOrder];
+    if (deload == null) return const <Widget>[];
+    return <Widget>[
+      DeloadBanner(
+        key: ValueKey<String>('program.deload.${day.dayOrder}'),
+        decision: deload,
+        onOpenAssistant: () => context.push(chatPath),
+      ),
+      const SizedBox(height: MayosSpacing.md),
+    ];
+  }
+
   Future<void> _generate() async {
     setState(() {
       _generating = true;
@@ -146,11 +212,12 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
             ref.read(workoutCacheStoreProvider), accountId, program));
       }
       if (!mounted) return;
-      setState(() {
-        _generating = false;
-        _program = program;
-        _fromCache = false;
-      });
+      _updateProgram(
+        program,
+        accountId,
+        fromCache: false,
+        generating: false,
+      );
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -679,6 +746,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                         .copyWith(color: c.textPrimary),
                   ),
                   children: <Widget>[
+                    ..._deloadBannerFor(day),
                     MayosButton(
                       label: 'Log workout',
                       icon: Icons.edit_note,

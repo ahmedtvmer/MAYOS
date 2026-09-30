@@ -650,6 +650,7 @@ class ActiveWorkout {
     required this.exercises,
     this.warmupMovements = const <ActiveWarmupMovement>[],
     this.cardio,
+    this.deload,
     required this.baselines,
     this.programVersion,
     this.rest,
@@ -677,6 +678,9 @@ class ActiveWorkout {
             .toList(growable: false),
     cardio: json['cardio'] is Map<String, dynamic>
         ? WorkoutCardio.fromJson(json['cardio'] as Map<String, dynamic>)
+        : null,
+    deload: json['deload'] is Map<String, dynamic>
+        ? DeloadDecision.fromJson(json['deload'] as Map<String, dynamic>)
         : null,
     baselines: _baselinesFromJson(json['baselines']),
     rest: json['rest'] is Map<String, dynamic>
@@ -725,6 +729,9 @@ class ActiveWorkout {
   /// The prescribed Cardio item and its logged minutes, independent of sets.
   final WorkoutCardio? cardio;
 
+  /// The server's active deload decision frozen with this workout.
+  final DeloadDecision? deload;
+
   /// The baselines frozen at start, keyed by exercise id.
   final Map<String, BaselineExercise> baselines;
 
@@ -742,6 +749,7 @@ class ActiveWorkout {
     List<ActiveWorkoutExercise>? exercises,
     List<ActiveWarmupMovement>? warmupMovements,
     WorkoutCardio? cardio,
+    DeloadDecision? deload,
     Map<String, BaselineExercise>? baselines,
     String? clientSessionId,
     bool? commitAttempted,
@@ -760,6 +768,7 @@ class ActiveWorkout {
     exercises: exercises ?? this.exercises,
     warmupMovements: warmupMovements ?? this.warmupMovements,
     cardio: cardio ?? this.cardio,
+    deload: deload ?? this.deload,
     baselines: baselines ?? this.baselines,
     rest: clearRest ? null : (rest ?? this.rest),
   );
@@ -782,6 +791,7 @@ class ActiveWorkout {
           movement.toJson(),
       ],
     if (cardio != null) 'cardio': cardio!.toJson(),
+    if (deload != null) 'deload': deload!.toJson(),
     'baselines': <String, dynamic>{
       for (final MapEntry<String, BaselineExercise> entry in baselines.entries)
         entry.key: entry.value.toJson(),

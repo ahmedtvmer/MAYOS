@@ -32,6 +32,7 @@ import '../../../router.dart';
 import '../exercise_picker_dialog.dart';
 import 'active_workout_controller.dart';
 import 'draft_sync_service.dart';
+import 'deload_banner.dart';
 import 'logger_program_substitution.dart';
 import 'logger_replace_confirmation.dart';
 import 'logger_bottom_bar.dart';
@@ -1391,6 +1392,14 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
           if (_fromCache) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
             const _OfflineLoggerNotice(),
+          ],
+          if (workout.deload != null) ...<Widget>[
+            const SizedBox(height: MayosSpacing.md),
+            DeloadBanner(
+              key: const ValueKey<String>('logger.deload'),
+              decision: workout.deload!,
+              onOpenAssistant: () => context.push(chatPath),
+            ),
           ],
           const SizedBox(height: MayosSpacing.md),
           if (workout.warmupMovements.isNotEmpty) ...<Widget>[

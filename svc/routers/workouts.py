@@ -114,7 +114,13 @@ async def read_prescription(
     db: Annotated[Any, Depends(get_db)],
 ):
     def _run():
-        return workouts_service.build_prescription(db, str(player), _day_plan(ledger, day_order), ledger=ledger)
+        return workouts_service.build_prescription(
+            db,
+            str(player),
+            _day_plan(ledger, day_order),
+            ledger=ledger,
+            player_account_id=player.account_id,
+        )
 
     return await asyncio.to_thread(_run)
 
