@@ -269,6 +269,47 @@ canonical fixture, not just the prompt text), and changing `COACH_MODEL` /
 invalidates an existing report: re-run step 2 before enabling again. The report is a JSON file, safe
 to commit — it contains fixture questions/answers, never production data.
 
+### Enabling model-written Checkpoint reviews (issue #222)
+
+Checkpoint review wording is off by default. Set
+`CHECKPOINT_REVIEW_AI_ENABLED=true` only after recording a passing live
+evaluation report for the current prompt and configured **player** model. The
+runner exercises the production prompt and deterministic rubric, and runs the
+privacy suite as part of `--write-report`:
+
+```bash
+# Plumbing run with the in-repo mock model; mock reports never enable the feature.
+.venv/bin/python tests/eval/run_checkpoint_review_evaluation.py --mock --no-privacy
+
+# Hosted player model and privacy suite; requires the owner's model credentials.
+.venv/bin/python tests/eval/run_checkpoint_review_evaluation.py \
+  --write-report reports/checkpoint_review_eval.json
+```
+
+Point `CHECKPOINT_REVIEW_EVAL_REPORT` at that report. The service and
+`--check-report` use the same validator. It requires `mode: "live"`, a matching
+`prompt_hash`, the configured player `model` and `backend`, passing privacy and
+evaluation gates, and runs whose recorded verdict agrees with the report.
+Changing the prompt, renderer, reduced facts, or configured player model
+invalidates the report. The generated text is stored after its first successful
+read; failed attempts return the fixed template and can retry after ten minutes.
+For this call only, cloud inference sets `chat_template_kwargs.enable_thinking`
+to `false`; other player requests keep the configured `LLM_EXTRA_BODY` behavior.
+These calls are metered as player usage with purpose `checkpoint_review` and
+excluded from the player's daily AI-allowance admission total.
+
+```bash
+export CHECKPOINT_REVIEW_AI_ENABLED=true
+export CHECKPOINT_REVIEW_EVAL_REPORT=reports/checkpoint_review_eval.json
+```
+
+Check an existing report without loading a model:
+
+```bash
+.venv/bin/python tests/eval/run_checkpoint_review_evaluation.py \
+  --check-report reports/checkpoint_review_eval.json
+```
+
 ### Production `docker-compose.yaml` (actual — abridged formatting)
 
 ```yaml

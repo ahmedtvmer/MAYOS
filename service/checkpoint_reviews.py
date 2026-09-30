@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import json
+import logging
+import threading
+import weakref
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from agent.progression_engine import set_e1rm
 from service import training_status
 from service._base import ledger_scope
+
+logger = logging.getLogger(__name__)
 
 CONSISTENCY_STRONG_THRESHOLD = 0.8
 CONSISTENCY_STEADY_THRESHOLD = 0.5
@@ -30,6 +35,26 @@ class CheckpointFactsInput:
 
 class CheckpointReviewNotFoundError(LookupError):
     """A review is missing after coach access has already been authorized."""
+
+
+_generation_locks = weakref.WeakValueDictionary()
+_generation_locks_guard = threading.Lock()
+
+
+@dataclass(frozen=True)
+class _ReviewReadContext:
+    db: Any
+    ledger_id: str
+    checkpoint: int
+    language: str
+    account_id: str | None
+    ledger_handle: Any | None
+
+
+def resolve_display_language(account_id: str | None = None) -> str:
+    """Current Display language; #135 will connect this to account preference."""
+    # TODO(#135): read the account's persisted Display language here.
+    return "en"
 
 
 def _session_ids(workouts: list[dict[str, Any]]) -> set[str]:
@@ -262,6 +287,96 @@ def _review_from_row(row: Any, language: str) -> dict[str, Any]:
     }
 
 
+def _get_review_row(context: _ReviewReadContext, opened_at: str | None = None) -> dict[str, Any] | None:
+    with ledger_scope(context.db, context.ledger_handle, context.ledger_id) as open_ledger:
+        if opened_at is not None:
+            open_ledger.mark_checkpoint_review_opened(context.checkpoint, opened_at)
+        return open_ledger.get_checkpoint_review_row(context.checkpoint)
+
+
+def _generation_lock(ledger_id: str, checkpoint: int) -> threading.Lock:
+    key = (ledger_id, checkpoint)
+    with _generation_locks_guard:
+        lock = _generation_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _generation_locks[key] = lock
+        return lock
+
+
+def _claim_generation_attempt(context: _ReviewReadContext, now: datetime) -> bool:
+    attempted_at = now.isoformat()
+    retry_after = (now - timedelta(minutes=10)).isoformat()
+    with ledger_scope(context.db, context.ledger_handle, context.ledger_id) as open_ledger:
+        return open_ledger.claim_checkpoint_review_text_attempt(context.checkpoint, attempted_at, retry_after)
+
+
+def _store_review_text(context: _ReviewReadContext, text: str) -> None:
+    with ledger_scope(context.db, context.ledger_handle, context.ledger_id) as open_ledger:
+        open_ledger.store_checkpoint_review_text(context.checkpoint, text, context.language)
+
+
+def _latest_or_template(context: _ReviewReadContext, fallback: dict[str, Any]) -> dict[str, Any] | None:
+    latest = _get_review_row(context)
+    if latest is None:
+        return None
+    return fallback if latest["text"] is None else _review_from_row(latest, context.language)
+
+
+def _review_generation_request(context: _ReviewReadContext, row: dict[str, Any]) -> Any:
+    from service import checkpoint_review_ai
+
+    return checkpoint_review_ai.ReviewGenerationRequest(
+        db=context.db,
+        account_id=context.account_id,
+        facts=json.loads(row["facts_json"]),
+        rating=json.loads(row["rating_json"]),
+        language=context.language,
+    )
+
+
+def _generate_and_store_review_text(
+    context: _ReviewReadContext, row: dict[str, Any], fallback: dict[str, Any]
+) -> dict[str, Any] | None:
+    from service import checkpoint_review_ai
+
+    request = _review_generation_request(context, row)
+    try:
+        generated = checkpoint_review_ai.generate_review_text(request)
+    except Exception as exc:
+        # Provider failures vary by backend; review wording is optional so a failed turn uses its template.
+        logger.warning("Checkpoint review text generation failed (%s).", type(exc).__name__)
+        return fallback
+    if not generated:
+        return fallback
+    _store_review_text(context, generated)
+    return _latest_or_template(context, fallback)
+
+
+def _generate_review_after_claim(context: _ReviewReadContext) -> dict[str, Any] | None:
+    row = _get_review_row(context)
+    if row is None:
+        return None
+    if row["text"] is not None:
+        return _review_from_row(row, context.language)
+    fallback = _review_from_row(row, context.language)
+    if not _claim_generation_attempt(context, datetime.now(UTC)):
+        return _latest_or_template(context, fallback)
+    return _generate_and_store_review_text(context, row, fallback)
+
+
+def _generate_missing_review_text(context: _ReviewReadContext, fallback: dict[str, Any]) -> dict[str, Any] | None:
+    if context.account_id is None:
+        return fallback
+    from service import checkpoint_review_ai
+
+    if not checkpoint_review_ai.checkpoint_review_ai_enabled():
+        return fallback
+    # A local lock makes simultaneous request threads reuse the first stored text.
+    with _generation_lock(context.ledger_id, context.checkpoint):
+        return _generate_review_after_claim(context)
+
+
 def template_text(checkpoint: int, workouts: int, language: str, first: bool) -> str:
     if language == "ar":
         # TODO(#135): review wording for Arabic dialect before model-written text lands.
@@ -293,15 +408,20 @@ def read_checkpoint_review(
     ledger_id: str,
     checkpoint: int,
     *,
-    language: str = "en",
+    language: str | None = None,
+    account_id: str | None = None,
     opened_at: str | None = None,
     ledger: Any | None = None,
 ) -> dict[str, Any] | None:
-    with ledger_scope(db, ledger, ledger_id) as open_ledger:
-        if opened_at is not None:
-            open_ledger.mark_checkpoint_review_opened(checkpoint, opened_at)
-        row = open_ledger.get_checkpoint_review_row(checkpoint)
-        return None if row is None else _review_from_row(row, language)
+    language = language or resolve_display_language(account_id)
+    context = _ReviewReadContext(db, ledger_id, checkpoint, language, account_id, ledger)
+    row = _get_review_row(context, opened_at)
+    if row is None:
+        return None
+    if row["text"] is not None:
+        return _review_from_row(row, language)
+    fallback = _review_from_row(row, language)
+    return _generate_missing_review_text(context, fallback)
 
 
 def coach_checkpoint_reviews(
@@ -327,8 +447,10 @@ def coach_checkpoint_review(
         return None
     ledger, context = authorized
     with ledger:
+        ledger_id = context["player"]["ledger_id"]
+        player_account_id = context["player"]["account_id"]
         review = read_checkpoint_review(
-            db, context["player"]["ledger_id"], checkpoint, ledger=ledger
+            db, ledger_id, checkpoint, account_id=player_account_id, ledger=ledger
         )
         if review is None:
             raise CheckpointReviewNotFoundError(checkpoint)

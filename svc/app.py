@@ -164,6 +164,11 @@ async def lifespan(app: FastAPI):
     gate = log_enable_gate_at_startup()
     if gate.enabled:
         logger.info("Coach AI enabled: %s", gate.reason)
+    from service.checkpoint_review_ai import log_enable_gate_at_startup as log_checkpoint_review_gate
+
+    checkpoint_gate = log_checkpoint_review_gate()
+    if checkpoint_gate.enabled:
+        logger.info("Checkpoint review AI enabled: %s", checkpoint_gate.reason)
     if unit_test_mode:
         logger.info("SKIP_LLM_LOAD set; skipping catalog init and LLM warmup (unit-test mode).")
         _ready["catalog"] = True

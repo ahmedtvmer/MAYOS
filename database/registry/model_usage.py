@@ -7,6 +7,10 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+#: Model usage recorded under this purpose is metered and costed but never
+#: counts toward an account's daily token allowance (ADR 052).
+ALLOWANCE_EXEMPT_PURPOSE = "checkpoint_review"
+
 
 class RegistryModelUsageMixin:
     _MODEL_USAGE_COLUMNS = (
@@ -166,14 +170,16 @@ class RegistryModelUsageMixin:
             if end_iso is None:
                 cursor.execute(
                     "SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM model_usage"
-                    " WHERE account_id = ? AND created_at >= ?",
-                    (str(account_id), start_iso),
+                    " WHERE account_id = ? AND created_at >= ?"
+                    " AND (purpose IS NULL OR purpose <> ?)",
+                    (str(account_id), start_iso, ALLOWANCE_EXEMPT_PURPOSE),
                 )
             else:
                 cursor.execute(
                     "SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM model_usage"
-                    " WHERE account_id = ? AND created_at >= ? AND created_at < ?",
-                    (str(account_id), start_iso, end_iso),
+                    " WHERE account_id = ? AND created_at >= ? AND created_at < ?"
+                    " AND (purpose IS NULL OR purpose <> ?)",
+                    (str(account_id), start_iso, end_iso, ALLOWANCE_EXEMPT_PURPOSE),
                 )
             row = cursor.fetchone()
         return int(row[0] or 0) if row else 0

@@ -10,7 +10,7 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 15
+CURRENT_LEDGER_SCHEMA_VERSION: int = 16
 
 #: Performed-date correction DDL (ADR 035). Kept in one place so the
 #: fresh-create path (``DatabaseManager.create_ledger_schema``) and the v10->v11
@@ -93,6 +93,7 @@ CHECKPOINT_REVIEWS_DDL: tuple[str, ...] = (
     " rating_json TEXT NOT NULL,"
     " text TEXT,"
     " text_language TEXT,"
+    " last_attempt_at TEXT,"
     " created_at TEXT NOT NULL,"
     " opened_at TEXT,"
     " FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE"
@@ -412,6 +413,13 @@ def _migrate_v14_to_v15(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _migrate_v15_to_v16(conn: sqlite3.Connection) -> None:
+    """Adds retry throttling for lazy Checkpoint review text generation (#222)."""
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(checkpoint_reviews)").fetchall()}
+    if "last_attempt_at" not in columns:
+        conn.execute("ALTER TABLE checkpoint_reviews ADD COLUMN last_attempt_at TEXT")
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -512,6 +520,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     12: _migrate_v12_to_v13,
     13: _migrate_v13_to_v14,
     14: _migrate_v14_to_v15,
+    15: _migrate_v15_to_v16,
 }
 
 

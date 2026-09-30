@@ -52,11 +52,31 @@ class LedgerCheckpointReviewsMixin:
 
     def get_checkpoint_review_row(self, checkpoint: int) -> dict[str, Any] | None:
         row = self.conn.execute(
-            "SELECT checkpoint, period_start, period_end, facts_json, rating_json, text "
+            "SELECT checkpoint, period_start, period_end, facts_json, rating_json, text, "
+            "text_language, last_attempt_at "
             "FROM checkpoint_reviews WHERE checkpoint = ?",
             (checkpoint,),
         ).fetchone()
         return None if row is None else dict(row)
+
+    def claim_checkpoint_review_text_attempt(self, checkpoint: int, attempted_at: str, retry_after: str) -> bool:
+        cursor = self.conn.execute(
+            "UPDATE checkpoint_reviews SET last_attempt_at = ? "
+            "WHERE checkpoint = ? AND text IS NULL "
+            "AND (last_attempt_at IS NULL OR last_attempt_at < ?)",
+            (attempted_at, checkpoint, retry_after),
+        )
+        self._commit_ledger()
+        return cursor.rowcount == 1
+
+    def store_checkpoint_review_text(self, checkpoint: int, text: str, language: str) -> bool:
+        cursor = self.conn.execute(
+            "UPDATE checkpoint_reviews SET text = ?, text_language = ? "
+            "WHERE checkpoint = ? AND text IS NULL",
+            (text, language, checkpoint),
+        )
+        self._commit_ledger()
+        return cursor.rowcount == 1
 
     def mark_checkpoint_review_opened(self, checkpoint: int, opened_at: str) -> None:
         self.conn.execute(

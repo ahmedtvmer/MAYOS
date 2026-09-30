@@ -28,7 +28,6 @@ async def list_player_checkpoint_reviews(
 async def read_player_checkpoint_review(
     checkpoint: int,
     player: Annotated[Any, Depends(get_verified_player)],
-    ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
     review = await asyncio.to_thread(
@@ -36,8 +35,8 @@ async def read_player_checkpoint_review(
         db,
         str(player),
         checkpoint,
+        account_id=player.account_id,
         opened_at=datetime.now(UTC).isoformat(),
-        ledger=ledger,
     )
     if review is None:
         raise HTTPException(status_code=404, detail="Checkpoint review not found.")

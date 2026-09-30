@@ -1077,7 +1077,7 @@ def test_v13_to_v14_adds_session_cardio(temp_db_env):
         );
         """
     )
-    conn.execute(f"PRAGMA user_version = {CURRENT_LEDGER_SCHEMA_VERSION - 1}")
+    conn.execute("PRAGMA user_version = 13")
     conn.commit()
     conn.close()
 
@@ -1132,6 +1132,10 @@ def test_v14_to_v15_adds_checkpoint_reviews_without_backfill(temp_db_env):
             migrated, "v14lifter", ledgers_dir, db.backups_dir
         )
         assert get_ledger_schema_version(migrated) == CURRENT_LEDGER_SCHEMA_VERSION
+        review_columns = {
+            row[1] for row in migrated.execute("PRAGMA table_info(checkpoint_reviews)").fetchall()
+        }
+        assert "last_attempt_at" in review_columns
         assert migrated.execute("SELECT COUNT(*) FROM checkpoint_reviews").fetchone()[0] == 0
         migrated.execute(
             "INSERT INTO checkpoint_reviews "
@@ -1141,6 +1145,28 @@ def test_v14_to_v15_adds_checkpoint_reviews_without_backfill(temp_db_env):
         migrated.execute("DELETE FROM workout_sessions WHERE id = 'session-1'")
         migrated.commit()
         assert migrated.execute("SELECT COUNT(*) FROM checkpoint_reviews").fetchone()[0] == 0
+    finally:
+        migrated.close()
+
+
+def test_v15_to_v16_adds_checkpoint_review_retry_timestamp(temp_db_env):
+    db, ledgers_dir, _ = temp_db_env
+    legacy_path = ledgers_dir / "v15lifter.db"
+    conn = sqlite3.connect(legacy_path)
+    conn.execute(
+        "CREATE TABLE checkpoint_reviews (checkpoint INTEGER PRIMARY KEY, text TEXT)"
+    )
+    conn.execute("PRAGMA user_version = 15")
+    conn.commit()
+    conn.close()
+
+    migrated = sqlite3.connect(legacy_path)
+    migrated.row_factory = sqlite3.Row
+    try:
+        apply_lazy_migrations(migrated, "v15lifter", ledgers_dir, db.backups_dir)
+        columns = {row[1] for row in migrated.execute("PRAGMA table_info(checkpoint_reviews)")}
+        assert "last_attempt_at" in columns
+        assert get_ledger_schema_version(migrated) == CURRENT_LEDGER_SCHEMA_VERSION
     finally:
         migrated.close()
 
