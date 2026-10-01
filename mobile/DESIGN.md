@@ -229,7 +229,9 @@ light status bar (`MayosWallpaper`), since the photo is always dark.
 - Header: assistant chat and **Settings**.
 - Settings (`/settings`) is the single home for: Profile, Plan, Coaching
   assignment, coach profile / roster / alert center (coach capability) or
-  Redeem coach invite, Assistant, Workout drafts (Android only), and Log out.
+  **Enable coaching**, Assistant, Workout drafts (Android only), and Log out.
+- Onboarding (`/onboarding`) offers **I'm a coach — enter coach code** during
+  the hosted-processing disclosure, before intake answers begin.
 - Workout logging stays reachable from Program day rows; coach history
   drill-downs stay reachable from the roster.
 

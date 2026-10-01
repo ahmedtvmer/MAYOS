@@ -234,6 +234,7 @@ void main() {
 
     expect(find.byKey(const Key('onboarding_disclosure_continue')),
         findsOneWidget);
+    expect(find.text("I'm a coach — enter coach code"), findsOneWidget);
     expect(find.text('Hosted AI processing'), findsOneWidget);
     expect(find.byKey(const Key('onboarding_continue')), findsNothing);
     expect(fake.intakeAnswers, isEmpty);
@@ -245,6 +246,7 @@ void main() {
         find.byKey(const Key('gender_option_female')));
     expect(fake.intakeDisclosureAcknowledged, isTrue);
     expect(find.text(questionFor('gender')), findsOneWidget);
+    expect(find.text("I'm a coach — enter coach code"), findsNothing);
   });
 
   testWidgets('raw onboarding loading state uses the desktop player column',

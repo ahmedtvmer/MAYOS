@@ -16,6 +16,7 @@ import '../../../core/ui/mayos_player_column.dart';
 import '../../../core/ui/mayos_progress.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
+import 'coach_code_form.dart';
 import 'onboarding_widgets.dart';
 
 /// The focused, full-screen MAYOS onboarding flow (#51).
@@ -30,6 +31,27 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
+}
+
+class _CoachInviteRedeemDialog extends StatelessWidget {
+  const _CoachInviteRedeemDialog();
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Enable coaching'),
+        content: CoachCodeForm(
+          description: 'Enter your MAYOS coach code.',
+          fieldKey: const Key('onboarding_coach_code'),
+          submitButtonKey: const Key('onboarding_redeem_coach_code'),
+          onRedeemed: () => Navigator.of(context).pop(true),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+        ],
+      );
 }
 
 enum _OnboardingPhase { loading, error, disclosure, answering }
@@ -353,6 +375,25 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     }
   }
 
+  Future<void> _redeemCoachInvite() async {
+    final bool? redeemed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => const _CoachInviteRedeemDialog(),
+    );
+    if (redeemed == true && mounted) {
+      context.go(coachPath);
+    }
+  }
+
+  Widget _coachInviteEntry() => Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: TextButton(
+          key: const Key('onboarding_coach_invite_entry'),
+          onPressed: _redeemCoachInvite,
+          child: const Text("I'm a coach — enter coach code"),
+        ),
+      );
+
   void _finishToHome() {
     ref.read(authControllerProvider.notifier).markOnboarded();
     if (mounted) {
@@ -417,6 +458,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             const SizedBox(height: MayosSpacing.md),
             OnboardingInlineError(message: _disclosureError!),
           ],
+          const SizedBox(height: MayosSpacing.md),
+          _coachInviteEntry(),
         ],
       ),
     );
