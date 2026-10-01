@@ -4,15 +4,23 @@ MAYOS supports personal training and a consented coaching relationship. A person
 
 ## Language
 
+Arabic wording uses simple standard Arabic for ordinary training and coaching
+terms: set is **مجموعة**, rep is **تكرار**, and Training program is
+**برنامج تدريبي**. Exercise names and established abbreviations retain their
+English spelling; the label RIR stays **RIR**. The UI and Arabic assistant
+replies use the same vocabulary.
+
 **Account**:
 The identity a person uses to access MAYOS. An account can have player and coach capabilities at the same time.
 
 **Player**:
 An account holder using MAYOS for their own training. A player may also be a coach.
+_Arabic_: لاعب
 _Avoid_: Trainee (legacy code and API term), client
 
 **Coach**:
 An account holder who provides coaching to assigned players. A coach may also be a player.
+_Arabic_: مدرب
 
 **Lifter plan**:
 The customer-facing Free or Pro plan for a player's own training features. It is independent of any coaching plan on the same account.
@@ -30,10 +38,11 @@ The free, invitation-only period before public launch, during which no plan is s
 A coach who joined during the closed trial and therefore qualifies for the founding promotion at public launch. Joining during the trial is necessary but the promotion itself decides the status.
 
 **AI allowance**:
-The number of assistant requests available to an account for a given period. An account with both player and coach capabilities has separate Lifter and Coach allowances.
+The maximum number of completed assistant requests an account may use in a given period, with the same request-count ceiling in English and Arabic. An account with both player and coach capabilities has separate Lifter and Coach allowances.
 
 **Assistant style**:
 How the player's assistant talks to that player: a chosen tone and optional instructions in the player's own words. It shapes the wording of assistant chat and Checkpoint reviews, never their facts, numbers, program changes, safety rules or reply language. It does not apply to what a coach reads.
+_Arabic_: أسلوب المساعد
 _Avoid_: Persona, coach tone
 
 **Active account**:
@@ -44,6 +53,7 @@ A recorded act of coaching by a coach for a player on an active assignment: reco
 
 **Roster**:
 A coach's list of players on active assignments. It opens most urgent first, by the roster urgency order.
+_Arabic_: قائمة اللاعبين
 
 **Roster urgency order**:
 The fixed, inspectable order of a roster by need for attention. Players are ranked first by new lapsing alerts, then by other new coach alerts plus pending program requests, then by longest missed-day streak, then by the most overdue follow-up, then by the oldest last workout, then by longest stall length. Username breaks any remaining tie. It uses no weights and no model scores. Acknowledged alerts do not count.
@@ -60,19 +70,24 @@ The number of consecutive committing sessions without a personal record on any e
 
 **Volume review**:
 A per-muscle assessment of a player's weekly working sets, made once at least four weeks of the current program have enough training behind them. Each muscle is judged progressing, stalled, or under-recovered from its primary exercises, which leads to keeping, adding, or removing sets. It is distinct from Stalling, which concerns the whole player.
+_Arabic_: مراجعة مجموعات التدريب
 
 **Roster briefing**:
 An on-demand coach view that summarizes which assigned players need attention across the roster. It is distinct from a conversation about one selected player.
+_Arabic_: ملخص قائمة اللاعبين
 
 **Assignment**:
 A mutually consented coaching relationship between a coach and a player. A player has at most one active assignment, and the coach can access that player's training history only while it is active.
+_Arabic_: علاقة تدريب
 
 **Assignment invite**:
 A single-use invitation issued by a coach. The first player to redeem it may accept an assignment with that coach.
+_Arabic_: دعوة للتدريب مع مدرب
 _Avoid_: Invite code (ambiguous with Coach invite)
 
 **Coach invite**:
 A single-use invitation issued by MAYOS that grants an account the coach capability. It can be bound to an existing Account or hold a username for a future Account. It is how a person becomes a Coach, and it never creates an Assignment; an Assignment invite is a separate code issued by a Coach to invite a Player into a coaching relationship.
+_Arabic_: دعوة لتفعيل دور المدرب
 _Avoid_: Invite code, redeem coach invite
 
 **Owner dashboard**:
@@ -85,6 +100,7 @@ _Avoid_: Activity feed
 
 **Exercise library**:
 The shared reference set of exercises that programs, substitutions, and search draw from. It is the same for every account and holds no personal data.
+_Arabic_: مكتبة التمارين
 _Avoid_: Exercise catalog
 
 **Exercise display name**:
@@ -110,9 +126,11 @@ _Avoid_: User database, user DB
 
 **Training program**:
 The player's current structured selection of training days and exercises.
+_Arabic_: برنامج تدريبي
 
 **Training profile**:
 The editable facts a player can update after onboarding: current goal, Equipment access, injuries or limitations, and weight. Body proportions remain onboarding-only.
+_Arabic_: الملف التدريبي
 
 **Body proportions**:
 A player's self-reported comparison of leg and torso length, recorded as coaching context.
@@ -125,15 +143,18 @@ The right to change a player's program structure. It remains with the player unt
 
 **Substitution request**:
 A player's request for their coach to replace an exercise in a coach-controlled program. The program does not change until the coach applies a replacement.
+_Arabic_: طلب تبديل تمرين من المدرب
 
 **Exercise substitution**:
 A permanent change of one exercise in the player's own program, made by the player while they hold Program authority. It is distinct from Replace exercise, which changes one workout only, and Substitution request, which asks the coach to make a permanent change.
+_Arabic_: تبديل تمرين في البرنامج
 
 **Unplanned exercise**:
 An exercise the player performed and recorded that was not prescribed in the active program. Recording it does not change the program.
 
 **Replace exercise**:
 Swapping a prescribed exercise for a different one while logging a workout. It applies to that workout only: the program is unchanged, the replaced exercise is recorded as skipped and the replacement as performed.
+_Arabic_: استبدال تمرين لهذه الحصة
 
 **Reps in reserve (RIR)**:
 The player's own estimate of how many more reps they could have completed in a set. It is the effort measure players see and enter; it is optional, and a blank value means the player did not rate the set.
@@ -141,6 +162,7 @@ _Avoid_: RPE (internal legacy measure; RIR = 10 − RPE)
 
 **Personal record**:
 A player's best result on an exercise, measured as heaviest weight lifted or best estimated one-rep max. An exercise's first recorded session sets the baseline and is never itself a personal record.
+_Arabic_: رقم قياسي شخصي
 _Avoid_: PR (in prose), PB
 
 **Player mode** / **Coach mode**:
@@ -148,11 +170,15 @@ The two app surfaces of one account: training for oneself, or coaching assigned 
 _Avoid_: Lifter UI, coach account
 
 **Display language**:
-The language, English or Arabic, an account chooses for the app and for messages MAYOS sends it. It belongs to the account, not the device. It does not bind the assistant, which replies in the language of the player's latest message and falls back to the Display language only when that message has no clear language.
+An account's chosen English or Arabic language for the app and MAYOS messages, initially taken from the system or a manual choice and restored on sign-in without later system changes overriding it. The assistant replies in the language of the player's latest message and falls back to Display language only when that message has no clear language.
 _Avoid_: Locale (implementation term), app language
 
 **Linked sign-in**:
 An external identity, such as a Google account, attached to exactly one MAYOS account and usable to sign in to it. It never replaces the account's username. An account always keeps at least one way to sign in, so a Linked sign-in can be removed only while the account has a password.
+
+**Workout**:
+A single training session recorded by a player, distinct from an individual exercise within it.
+_Arabic_: حصة تدريبية
 
 **Active workout**:
 A workout the player is logging right now and has not yet finished. A device holds at most one, and it survives the app closing; in the web app it survives a reload of that browser. Finishing it produces a Workout draft on Android; in the web app, finishing commits it directly, and a failed commit keeps the Active workout for retry.
@@ -162,9 +188,11 @@ The next set of an Active workout the player should log: the first working set t
 
 **Warm-up set**:
 A set recorded as preparation rather than training. It is kept in the workout's history but never counts toward personal records, progress, volume, the Current set, or sets done.
+_Arabic_: مجموعة إحماء
 
 **Warm-up movement**:
 A general preparation exercise prescribed in a training day's warm-up block, logged only as warm-up sets. Doing or leaving it out is never a workout divergence: it is neither skipped nor unplanned.
+_Arabic_: حركة إحماء
 _Avoid_: Warm-up exercise (confusable with an exercise's own ramped warm-up sets)
 
 **Cardio**:
@@ -178,6 +206,7 @@ A workout the player has recorded on their Android device but has not yet commit
 
 **Training schedule**:
 The weekdays on which a player expects to train, interpreted in the player's timezone. It is separate from the ordered training days in a program.
+_Arabic_: جدول التدريب
 
 **Schedule pause**:
 An interval during which the player's expected training days do not count as missed days.
@@ -190,13 +219,16 @@ A run of consecutive missed expected days, measured over the sequence of expecte
 
 **Weekly streak**:
 A run of consecutive weeks, starting Saturday in the player's timezone, in each of which the player completed at least as many workouts as they had expected training days, or as their program's weekly frequency when they keep no Training schedule. Fully paused weeks neither break nor extend it, and the week in progress never breaks it. It is the player-facing counterpart of the Missed-day streak.
+_Arabic_: أسابيع الالتزام المتتالية
 
 **Checkpoint**:
 A workout-count landmark in a player's training: the 10th, 25th, 50th and 100th workout, then every 100th. Only workouts completed in MAYOS count; imported history does not.
+_Arabic_: محطة تقدم
 _Avoid_: Milestone, achievement
 
 **Checkpoint review**:
 The assessment of a player's training since their previous checkpoint, with a rating computed from recorded facts and player-facing prose written once in their Assistant style and never changed. During an active assignment, the coach reads a neutral assessment of those same facts and rating, unaffected by the player's style or optional instructions.
+_Arabic_: مراجعة محطة التقدم
 _Avoid_: AI rating, performance score
 
 **Coach alert**:
@@ -204,12 +236,15 @@ A catalog-side notification of a coaching fact about an assigned player, such as
 
 **Deload**:
 A temporary cut to a player's prescribed sets and effort, recommended when recorded readiness and effort show fatigue. Without an assigned coach it is applied to the player's workouts automatically; with one it is only suggested, and the coach decides. Either way the player can, through the assistant, undo an applied deload or apply a suggested one for their next workout only, and an assigned coach sees that choice on the deload alert.
+_Arabic_: تخفيف التدريب
 
 **Signal episode**:
 A run of consecutive committing sessions over which a progression signal (a recommended deload, or a regression on one exercise) keeps firing. It opens when the signal first fires and closes on the first later commit where it does not, producing one durable coach alert per episode rather than one per session.
 
 **Check-in**:
 A contact recorded by the coach and visible to both coach and player, including contact outside MAYOS. It starts the interval until the next follow-up is due.
+_Arabic_: تواصل; recording a Check-in is تسجيل تواصل.
 
 **Follow-up due**:
 The state of an assignment whose most recent check-in (or assignment start) is at least the weekly cadence in the past, measured in the player's timezone.
+_Arabic_: حان موعد المتابعة

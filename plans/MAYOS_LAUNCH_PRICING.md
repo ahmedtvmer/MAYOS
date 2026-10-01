@@ -122,9 +122,23 @@ and require evaluation before use.
 An account with both capabilities receives separate Lifter and Coach request
 pools; requests for one capability do not consume the other's allowance. Daily
 pools reset at midnight UTC, and the next reset time is shown in the app. Count
-completed assistant answers; provider errors and interrupted streams do not
-consume a daily allowance. Add durable per-account rate limits to protect
-model spending.
+completed assistant answers; provider errors, interrupted streams and
+provider-reported output-token truncation do not consume a daily allowance.
+Add durable per-account rate limits to protect model spending.
+
+English and Arabic receive the same request-count ceiling for the same plan
+and capability. Separate Lifter and Coach daily resource budgets count actual
+token usage without language normalization and may stop requests before that
+ceiling is reached. Exhausting one capability's resource budget does not block
+the other. Size those budgets from measured usage before sale; tokens from
+output-truncated answers still count toward resource usage and cost.
+
+Disclose this safeguard beside the plan's request allowance, explaining
+upfront that longer conversations and Arabic replies may use more resources.
+Show a persistent assistant warning at 80% of the capability's resource budget.
+At cutoff, explain that the daily resource limit was reached and show remaining
+requests and reset time. These structured messages follow Display language.
+See ADR 059 and the [accepted Arabic allowance policy](../docs/design-review/arabic-model-and-allowance-policy.md).
 
 MAYOS should retrieve only relevant context rather than filling the maximum budget:
 

@@ -7,6 +7,24 @@ not customer promises or current application behavior. Evaluate answer quality,
 latency, model cost, and privacy before choosing per-tier limits. Keep separate
 Lifter and Coach daily request pools as defined in the pricing plan.
 
+The numeric budgets below remain hypotheses. [ADR 059](../DECISIONS.md)
+accepts the launch policy: equal completed-request ceilings in English and
+Arabic, separate Lifter and Coach resource budgets charged by actual token
+usage, and a possible resource cutoff before the request ceiling is reached.
+Disclose that safeguard beside plan allowances, warn persistently in the
+assistant at 80% of the capability's resource budget, and show remaining
+requests and reset time at cutoff. Output-token truncation consumes no
+completed-request allowance but its usage remains costed and charged to the
+resource budget. Numeric resource limits require measured evidence before sale.
+
+The closed trial retains its shared 200,000-token per-account UTC-day safeguard
+without an Arabic multiplier. After #190 and #194, compare equivalent complete
+DeepSeek conversations covering short questions, long histories, mixed
+Arabic/English, program actions and coach analysis. A reproducible ordinary-use
+day that reaches the trial cap in Arabic while its English equivalent passes
+triggers raising the common trial cap. This differs from the accepted launch
+policy permitting earlier cutoff from actual usage.
+
 | Candidate budget | Lifter Free | Lifter Pro | Coach Free | Coach Pro |
 |---|---:|---:|---:|---:|
 | Input context ceiling | 8K tokens | 16K tokens | 16K tokens | 32K tokens |

@@ -14,8 +14,8 @@ in `DECISIONS.md`. See `docs/agents/domain.md`.
 
 GitHub issues are the implementation plan and source of truth.
 
-For implementation tickets, use the `opencode-delegate` skill and delegate
-implementation to the configured OpenCode implementer.
+For implementation tickets, use the `codex-delegate` skill and delegate
+implementation to the configured codex implementer.
 
 Do not create a redundant implementation plan before delegation unless the
 issue is ambiguous, incomplete, conflicts with the codebase, or requires an
@@ -25,7 +25,7 @@ For a sufficiently specified issue:
 
 1. Read the issue and its blockers.
 2. Read only the architectural/project context required to understand it.
-3. Delegate implementation immediately using `opencode-delegate`.
+3. Delegate implementation immediately using `codex-delegate`.
 4. Do not monitor, poll, inspect partial output, or supervise the delegate
    while it works. Wait for completion.
 5. On completion, inspect the final report and `git diff`.
@@ -43,7 +43,7 @@ performed by the implementer.
 
 External delegation is synchronous from the orchestrator's perspective.
 
-When using `opencode-delegate`, invoke the relay in the foreground and block
+When using `codex-delegate`, invoke the relay in the foreground and block
 until it exits.
 
 The orchestrator must produce no reasoning turns, process
