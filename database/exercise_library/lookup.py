@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 from database.shared import _normalize_exercise_name
 from database.exercise_library.names import near_miss_exercise_ids
 from database.exercise_library.schema import (
@@ -20,11 +20,26 @@ class _NameSearch:
     muscle_clause: str
     muscle_params: tuple[str, ...]
     equipment_clause: str | None
-    limit: int
+    muscle_browse: bool
+    limit: int | None
 
 
-def _exercise_name_rows(cursor, where_sql: str, params: list[str], limit: int | None):
+def _exercise_name_rows(
+    cursor,
+    where_sql: str,
+    params: list[str],
+    limit: int | None,
+    *,
+    ranking: Literal["name_length", "display_name_first"] = "name_length",
+):
     name_expression, display_name_join = effective_exercise_name_sql()
+    if ranking == "display_name_first":
+        order_by = (
+            f"CASE WHEN {name_expression} = e.name THEN 1 ELSE 0 END, "
+            f"LOWER({name_expression}), e.id"
+        )
+    else:
+        order_by = "LENGTH(e.name)"
     query = """
         SELECT e.id AS id, {name_expression} AS display_name, e.body_part AS body_part,
                e.target_muscle AS target_muscle, e.equipment AS equipment,
@@ -32,11 +47,12 @@ def _exercise_name_rows(cursor, where_sql: str, params: list[str], limit: int | 
         FROM exercises e
         {display_name_join}
         WHERE {where_sql}
-        ORDER BY LENGTH(e.name)
+        ORDER BY {order_by}
     """.format(
         name_expression=name_expression,
         display_name_join=display_name_join,
         where_sql=where_sql,
+        order_by=order_by,
     )
     if limit is not None:
         query += " LIMIT ?"
@@ -116,12 +132,16 @@ def _token_name_rows(cursor, search: _NameSearch):
 
 
 def _find_name_rows(cursor, search: _NameSearch):
-    if search.muscle and not search.query:
+    if search.muscle_browse:
         where = search.muscle_clause
         if search.equipment_clause:
             where += f" AND ({search.equipment_clause})"
         return _exercise_name_rows(
-            cursor, where, list(search.muscle_params), search.limit
+            cursor,
+            where,
+            list(search.muscle_params),
+            search.limit,
+            ranking="display_name_first",
         )
     if not search.normalized_query:
         return []
@@ -206,9 +226,10 @@ class ExerciseLookupMixin:
     def find_exercises_by_name(
         self,
         query: str,
-        limit: int = 5,
+        limit: int | None = 5,
         target_muscle: str | None = None,
         equipment_access: str | None = None,
+        muscle_browse: bool = False,
     ) -> list[dict[str, Any]]:
         """Ranked Exercise library matches across source names, display names, and aliases.
 
@@ -223,12 +244,12 @@ class ExerciseLookupMixin:
         library (case-insensitive ``target_muscle`` column). With a muscle and no name
         query it lists that muscle's exercises, so the logger's Replace search
         can open pre-filtered before the player types. ``equipment_access``
-        filters only that unnamed muscle browse; explicit name queries remain
+        filters only when ``muscle_browse`` is true; explicit name queries remain
         unfiltered so players can still find movements outside their usual setup.
         """
         clean = query.strip().lower()
         muscle = (target_muscle or "").strip().lower()
-        if limit <= 0 or (not clean and not muscle):
+        if (limit is not None and limit <= 0) or (not clean and not muscle):
             return []
         search = _NameSearch(
             query=clean,
@@ -236,9 +257,10 @@ class ExerciseLookupMixin:
             muscle=muscle,
             muscle_clause="LOWER(e.target_muscle) = ?" if muscle else "1 = 1",
             muscle_params=(muscle,) if muscle else (),
+            muscle_browse=muscle_browse,
             equipment_clause=(
                 equipment_access_sql(equipment_access)
-                if equipment_access and not clean
+                if equipment_access and muscle_browse
                 else None
             ),
             limit=limit,

@@ -152,7 +152,43 @@ def test_catalog_search_by_muscle_lists_that_muscle_without_a_name_query(api):
         "/workouts/exercises", headers=_authed(token), params={"target_muscle": "quads"}
     )
     assert resp.status_code == 200, resp.text
-    assert [m["id"] for m in resp.json()["exercises"]] == ["lp", "sq"]
+    assert [m["id"] for m in resp.json()["exercises"]] == ["sq", "lp"]
+
+
+def test_replace_browse_ranks_display_named_exercises_and_returns_every_match(api):
+    """Replace's muscle browse puts exercises with Exercise display names first and does not
+    truncate the Exercise library at the old page size (#226)."""
+    client, db = api
+    token = _register(client, "lat-browse")["access_token"]
+    rows = [
+        ("2330", "cable lat pulldown full range of motion", "cable"),
+        ("150", "cable lateral pulldown", "cable"),
+    ] + [
+        (f"lat-{index}", f"Long Name {index:02d} for Lats Exercise", "cable")
+        for index in range(30)
+    ]
+    db.catalog_conn.executemany(
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+        "VALUES (?, ?, 'Back', 'lats', ?)",
+        rows,
+    )
+    db.catalog_conn.executemany(
+        "INSERT INTO exercise_display_names (exercise_id, display_name) VALUES (?, ?)",
+        [("2330", "Wide-Grip Lat Pulldown"), ("150", "Lat Pulldown")],
+    )
+    db.catalog_conn.commit()
+
+    resp = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params={"target_muscle": "lats"},
+    )
+    assert resp.status_code == 200, resp.text
+    matches = resp.json()["exercises"]
+    ids = [match["id"] for match in matches]
+    assert ids[:2] == ["150", "2330"]
+    assert len(matches) == 32
+    assert "lat-29" in ids
 
 
 def test_catalog_search_combines_a_name_query_with_the_muscle(api):
