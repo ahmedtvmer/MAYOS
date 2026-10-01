@@ -105,6 +105,10 @@ class LedgerTrainingProgramMixin:
                         exercise_values["slot_key"] = ex.get("slot_key")
                     if "warmup_sets" in exercise_cols:
                         exercise_values["warmup_sets"] = ex.get("warmup_sets", 0)
+                    if "suggested_substitutes_json" in exercise_cols:
+                        exercise_values["suggested_substitutes_json"] = json.dumps(
+                            ex.get("suggested_substitutes", []), ensure_ascii=False
+                        )
                     cursor.execute(
                         f"INSERT INTO program_exercises ({', '.join(exercise_values)}) "
                         f"VALUES ({', '.join(['?'] * len(exercise_values))})",
@@ -167,6 +171,7 @@ class LedgerTrainingProgramMixin:
         exercise_cols = {col[1] for col in cursor.fetchall()}
         has_slot_key = "slot_key" in exercise_cols
         has_warmup_sets = "warmup_sets" in exercise_cols
+        has_suggested_substitutes = "suggested_substitutes_json" in exercise_cols
 
         days = []
         try:
@@ -184,6 +189,8 @@ class LedgerTrainingProgramMixin:
                     select_cols += ", pe.slot_key"
                 if has_warmup_sets:
                     select_cols += ", pe.warmup_sets"
+                if has_suggested_substitutes:
+                    select_cols += ", pe.suggested_substitutes_json"
                 cursor.execute(
                     f"""
                     SELECT {select_cols}
@@ -196,6 +203,13 @@ class LedgerTrainingProgramMixin:
                 )
                 exercises = []
                 for r in cursor.fetchall():
+                    suggested_substitutes_index = 10 + int(has_slot_key) + int(has_warmup_sets)
+                    suggested_substitutes = []
+                    if has_suggested_substitutes:
+                        try:
+                            suggested_substitutes = json.loads(r[suggested_substitutes_index] or "[]")
+                        except (TypeError, ValueError):
+                            logger.warning("Skipping malformed Staple substitute list on %s", r[1])
                     exercises.append(
                         ProgramExerciseSchema(
                             exercise_id=str(r[0]),
@@ -210,6 +224,7 @@ class LedgerTrainingProgramMixin:
                             gif_path=r[9],
                             slot_key=r[10] if has_slot_key else None,
                             warmup_sets=int(r[11]) if has_warmup_sets and r[11] is not None else 0,
+                            suggested_substitutes=suggested_substitutes,
                         )
                     )
 

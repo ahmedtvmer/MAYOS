@@ -445,6 +445,41 @@ SLOT_SPECS: dict[str, SlotSpec] = {
     ),
 }
 
+# Ordered Staple exercises by movement slot. Terms match Exercise display names
+# where available and source names otherwise; missing entries are skipped so a
+# player's Equipment access can move to the next allowed Staple. Remaining
+# catalog candidates provide a stable fallback for slots without a curated
+# named variant. The authored ids are the MAYOS Staples from ADR 053.
+SLOT_STAPLES: dict[str, tuple[str, ...]] = {
+    "incline_press": ("incline dumbbell press", "incline smith machine press", "incline chest press", "incline barbell bench press"),
+    "flat_press": ("machine chest press", "barbell bench press", "dumbbell bench press"),
+    "chest_fly": ("cable chest fly", "pec deck", "dumbbell fly"),
+    "horizontal_row": ("chest supported row", "seated cable row", "machine row", "barbell row"),
+    "upper_back_pull": ("t-bar row", "chest supported row", "one arm dumbbell row"),
+    "vertical_pull": ("wide-grip lat pulldown", "lat pulldown", "assisted pull-up", "pull-up"),
+    "pullover": ("cable pullover", "straight arm pulldown", "dumbbell pullover"),
+    "shrug": ("mayos:1", "dumbbell shrug", "barbell shrug", "machine shrug"),
+    "shoulder_press": ("machine shoulder press", "dumbbell shoulder press", "smith machine shoulder press"),
+    "side_delts": ("cable lateral raise", "machine lateral raise", "dumbbell lateral raise"),
+    "rear_delts": ("mayos:3", "reverse pec deck", "cable rear delt fly", "dumbbell rear delt fly"),
+    "biceps_preacher": ("preacher curl", "machine preacher curl", "cable preacher curl"),
+    "biceps_alt": ("318", "mayos:2", "incline dumbbell curl", "bayesian curl", "cable curl"),
+    "triceps_pushdown": ("cable triceps pushdown", "rope pushdown", "straight bar pushdown"),
+    "triceps_overhead": ("overhead cable triceps extension", "cable overhead triceps extension", "dumbbell overhead triceps extension"),
+    "forearm_wrist": ("wrist curl", "cable wrist curl", "dumbbell wrist curl"),
+    "forearm_reverse": ("reverse wrist curl", "reverse barbell wrist curl", "dumbbell reverse wrist curl"),
+    "quad_compound": ("hack squat", "leg press", "barbell squat", "smith squat"),
+    "quad_lunge": ("bulgarian split squat", "walking lunge", "dumbbell lunge"),
+    "quad_iso": ("leg extension", "machine leg extension"),
+    "ham_curl": ("seated leg curl", "lying leg curl", "standing leg curl"),
+    "ham_hinge": ("romanian deadlift", "dumbbell romanian deadlift", "barbell good morning"),
+    "glute_thrust": ("mayos:4", "barbell hip thrust", "smith machine hip thrust"),
+    "glute_iso": ("cable glute kickback", "glute kickback machine", "hip abduction"),
+    "adductors": ("hip adduction", "machine hip adduction", "cable hip adduction"),
+    "calf": ("standing calf raise", "seated calf raise", "leg press calf raise"),
+    "abs": ("cable crunch", "abdominal crunch machine", "hanging leg raise"),
+}
+
 
 # --- General warm-up block (Belghamdi protocol) ----------------------------
 

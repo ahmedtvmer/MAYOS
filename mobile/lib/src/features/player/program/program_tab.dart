@@ -920,6 +920,13 @@ class _ExerciseRow extends StatelessWidget {
                       color: c.textSecondary,
                     ),
                   ),
+                  if (exercise.suggestedSubstitutes.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 2),
+                    Text(
+                      'Suggested substitutes: ${exercise.suggestedSubstitutes.map((SuggestedSubstitute item) => item.exerciseName).join(', ')}',
+                      style: MayosTypography.caption.copyWith(color: c.textMuted),
+                    ),
+                  ],
                   const SizedBox(height: 2),
                   Text(
                     <String>[

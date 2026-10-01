@@ -2557,6 +2557,12 @@ class FakeMayosApi {
                     'target_rpe': 8.5,
                     'rest_seconds': 180,
                     'notes': 'Pause on the chest.',
+                    'suggested_substitutes': <Map<String, String>>[
+                      <String, String>{
+                        'exercise_id': 'incline_db_press',
+                        'exercise_name': 'Incline DB Press',
+                      },
+                    ],
                   },
                   <String, dynamic>{
                     'exercise_id': 'overhead_press',

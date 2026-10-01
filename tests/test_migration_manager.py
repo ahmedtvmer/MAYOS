@@ -47,7 +47,7 @@ def test_schema_version_stamping(temp_db_env):
     assert version == CURRENT_LEDGER_SCHEMA_VERSION
 
 
-def test_v18_to_v19_adds_per_ledger_deload_choice(temp_db_env):
+def test_v18_upgrade_adds_deload_choice_and_staple_substitute_storage(temp_db_env):
     db, ledgers_dir, _ = temp_db_env
     legacy_path = ledgers_dir / "v18lifter.db"
     conn = sqlite3.connect(legacy_path)
@@ -65,7 +65,11 @@ def test_v18_to_v19_adds_per_ledger_deload_choice(temp_db_env):
         default_ledger_id="v18lifter",
     )
     try:
-        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 19
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 20
+        exercise_columns = {
+            row[1] for row in migrated.conn.execute("PRAGMA table_info(program_exercises)")
+        }
+        assert "suggested_substitutes_json" in exercise_columns
         assert migrated.ledger.get_deload_choice() is None
         migrated.ledger.set_deload_choice("undo")
         assert migrated.ledger.get_deload_choice() == "undo"

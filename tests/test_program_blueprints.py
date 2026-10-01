@@ -20,6 +20,7 @@ from agent.program_blueprints import (
     MAX_RECOVERY_CUTS_PER_DAY,
     PPL_DAYS,
     SLOT_SPECS,
+    SLOT_STAPLES,
     SPLIT_DAY_POOLS,
     UL_DAYS,
     WARMUP_FAMILIES,
@@ -87,6 +88,11 @@ def test_every_warmup_spec_resolves(warmup_key):
 def test_all_slot_keys_are_referenced_by_a_blueprint():
     referenced = {slot for blueprint in ALL_BLUEPRINTS for slot in blueprint.slots}
     assert referenced == set(SLOT_SPECS), f"Unused slots: {set(SLOT_SPECS) - referenced}"
+
+
+def test_every_movement_slot_has_an_ordered_staple_list():
+    assert set(SLOT_STAPLES) == set(SLOT_SPECS)
+    assert all(staples and len(staples) == len(set(staples)) for staples in SLOT_STAPLES.values())
 
 
 def test_warmup_families_reference_known_specs():
@@ -163,6 +169,37 @@ def test_incline_and_front_pulldown_reach_programs(gender, frequency):
     names = {exercise.exercise_name.lower() for day in program.days for exercise in day.exercises}
     assert any("incline" in name and ("press" in name or "bench" in name) for name in names), names
     assert any(("pulldown" in name or "pull-up" in name or "pull up" in name) for name in names), names
+
+
+def test_commercial_gym_vertical_pull_prescribes_wide_grip_lat_pulldown():
+    program = _generate("male", 3, preference="Push/Pull/Legs")
+    vertical_pulls = [
+        exercise
+        for day in program.days
+        for exercise in day.exercises
+        if exercise.slot_key == "vertical_pull"
+    ]
+    assert vertical_pulls
+    assert all(exercise.exercise_name == "Wide-Grip Lat Pulldown" for exercise in vertical_pulls)
+    assert vertical_pulls[0].suggested_substitutes[0]["exercise_name"] == "Lat Pulldown"
+
+
+def test_generation_is_repeatable_and_offers_ordered_staple_substitutes():
+    first = _generate("male", 4, preference="Upper/Lower")
+    second = _generate("male", 4, preference="Upper/Lower")
+    assert first.model_dump() == second.model_dump()
+    loaded = db.ledger.get_active_program()
+    assert loaded is not None
+    assert [day.model_dump() for day in loaded.days] == [day.model_dump() for day in second.days]
+
+    exercises = [exercise for day in first.days for exercise in day.exercises]
+    assert any(exercise.suggested_substitutes for exercise in exercises)
+    ham_curls = [exercise for exercise in exercises if exercise.slot_key == "ham_curl"]
+    assert ham_curls and "seated leg curl" in ham_curls[0].exercise_name.lower()
+    triceps_overhead = [exercise for exercise in exercises if exercise.slot_key == "triceps_overhead"]
+    assert triceps_overhead and "cable overhead" in triceps_overhead[0].exercise_name.lower()
+    biceps_alternatives = [exercise for exercise in exercises if exercise.slot_key == "biceps_alt"]
+    assert biceps_alternatives and biceps_alternatives[0].exercise_id == "318"
 
 
 def test_no_duplicate_exercises_within_a_day():

@@ -1784,6 +1784,7 @@ class ProgramExercise {
     this.warmupSets = 0,
     this.restSeconds,
     this.notes,
+    this.suggestedSubstitutes = const <SuggestedSubstitute>[],
     this.imagePath,
   });
 
@@ -1800,6 +1801,12 @@ class ProgramExercise {
         // resolves it to the flat 2:00 instead of a phantom 3:00 (#125).
         restSeconds: (json['rest_seconds'] as num?)?.toInt(),
         notes: json['notes'] as String?,
+        suggestedSubstitutes:
+            (json['suggested_substitutes'] as List<dynamic>? ??
+                    const <dynamic>[])
+                .whereType<Map<String, dynamic>>()
+                .map(SuggestedSubstitute.fromJson)
+                .toList(growable: false),
         // The catalog's ExerciseDB path (`images/…`), already on the program
         // payload (`ProgramExerciseSchema.image_path`), kept so the logger can
         // build its public `/media` URL (#161). Null when the program carried
@@ -1823,6 +1830,9 @@ class ProgramExercise {
   /// a program that omits the field still reads "rest 120s".
   final int? restSeconds;
   final String? notes;
+
+  /// Equipment access-compatible Staple exercises listed after the prescribed one.
+  final List<SuggestedSubstitute> suggestedSubstitutes;
 
   /// The catalog picture path the program payload carried (#161), relative
   /// (`images/0001-2gPfomN.jpg`), never a served URL: the logger builds the
@@ -1859,6 +1869,11 @@ class ProgramExercise {
       json['rest_seconds'] = restSeconds;
     }
     json['notes'] = notes;
+    if (suggestedSubstitutes.isNotEmpty) {
+      json['suggested_substitutes'] = suggestedSubstitutes
+          .map((SuggestedSubstitute item) => item.toJson())
+          .toList(growable: false);
+    }
     // Omitted when the program carried none (#161), so a payload without a
     // picture still encodes exactly as it did before this field existed.
     if (imagePath != null) {
@@ -1866,6 +1881,27 @@ class ProgramExercise {
     }
     return json;
   }
+}
+
+class SuggestedSubstitute {
+  const SuggestedSubstitute({
+    required this.exerciseId,
+    required this.exerciseName,
+  });
+
+  factory SuggestedSubstitute.fromJson(Map<String, dynamic> json) =>
+      SuggestedSubstitute(
+        exerciseId: json['exercise_id'] as String,
+        exerciseName: json['exercise_name'] as String,
+      );
+
+  final String exerciseId;
+  final String exerciseName;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'exercise_id': exerciseId,
+        'exercise_name': exerciseName,
+      };
 }
 
 /// `WarmupExerciseSchema`: a general preparation movement for a training day.

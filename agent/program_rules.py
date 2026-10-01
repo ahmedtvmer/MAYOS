@@ -302,10 +302,12 @@ def _fetch_by_sql(
 
     rank_sql = _equipment_rank_sql(equipment_pref)
     query = f"""
-        SELECT id, name, body_part, target_muscle, equipment, instructions, image_path, gif_path
-        FROM exercises
+        SELECT e.id, COALESCE(edn.display_name, e.name) AS name, e.body_part, e.target_muscle,
+               e.equipment, e.instructions, e.image_path, e.gif_path
+        FROM exercises e
+        LEFT JOIN exercise_display_names edn ON edn.exercise_id = e.id
         WHERE {' AND '.join(where)}
-        ORDER BY {_name_rank_sql(name_rank)}{rank_sql} ASC, RANDOM()
+        ORDER BY {_name_rank_sql(name_rank)}{rank_sql} ASC, id ASC
         LIMIT ?
     """
     cursor.execute(query, (limit * 4,))

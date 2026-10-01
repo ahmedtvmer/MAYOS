@@ -16,7 +16,7 @@ from utils.equipment_access import (
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 19
+CURRENT_LEDGER_SCHEMA_VERSION: int = 20
 
 _EQUIPMENT_ACCESS_NOT_IN = "NEW.equipment_access NOT IN (" + ", ".join(
     "'" + value.replace("'", "''") + "'" for value in EQUIPMENT_ACCESS_VALUES
@@ -518,6 +518,17 @@ def _migrate_v18_to_v19(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _migrate_v19_to_v20(conn: sqlite3.Connection) -> None:
+    """Stores ordered Staple substitutes alongside generated program slots (#230)."""
+    if not _ledger_table_exists(conn, "program_exercises"):
+        return
+    columns = {column[1] for column in conn.execute("PRAGMA table_info(program_exercises)")}
+    if "suggested_substitutes_json" not in columns:
+        conn.execute(
+            "ALTER TABLE program_exercises ADD COLUMN suggested_substitutes_json TEXT NOT NULL DEFAULT '[]'"
+        )
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -622,6 +633,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     16: _migrate_v16_to_v17,
     17: _migrate_v17_to_v18,
     18: _migrate_v18_to_v19,
+    19: _migrate_v19_to_v20,
 }
 
 
