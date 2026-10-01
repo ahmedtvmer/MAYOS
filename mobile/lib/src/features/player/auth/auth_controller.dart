@@ -221,11 +221,13 @@ class AuthController extends StateNotifier<AuthState> {
     required String username,
     required String password,
     bool rememberMe = false,
+    String? coachInviteCode,
   }) async {
     final AccountSession session = await _repository.register(
       username: username,
       password: password,
       rememberMe: rememberMe,
+      coachInviteCode: coachInviteCode,
     );
     state = AuthState.authenticated(session);
   }

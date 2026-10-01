@@ -13,12 +13,16 @@ from typing import Any
 import bcrypt
 
 from service._base import ledger_scope
+from service.coach import DEFAULT_CAPACITY, GENERIC_NEW_ACCOUNT_INVITE_ERROR
 from service._tokens import hash_token
 
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 128
 INVALID_CREDENTIALS = "Invalid credentials."
 INVALID_CLAIM = "Invalid or expired claim code."
+MIN_COACH_INVITE_CODE_LENGTH = 10
+MAX_COACH_INVITE_CODE_LENGTH = 128
+USERNAME_TAKEN = "This Trainee ID already exists. Please log in."
 
 
 def validate_password(password: Any) -> str:
@@ -38,7 +42,9 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def register_player(db: Any, username: str, password: str) -> dict[str, Any]:
+def register_player(
+    db: Any, username: str, password: str, coach_invite_code: str | None = None
+) -> dict[str, Any]:
     """Creates an immutable account identity plus its ledger.
 
     A username that already has a live account, or an unenrolled local ledger,
@@ -48,15 +54,35 @@ def register_player(db: Any, username: str, password: str) -> dict[str, Any]:
     clean_id = db._sanitize_username(username)
     if not clean_id:
         return {"ok": False, "error": "Trainee ID is empty after sanitization."}
-    if db.get_active_account_by_username(clean_id) is not None or db.ledger_exists(clean_id):
-        return {"ok": False, "error": "This Trainee ID already exists. Please log in."}
-    try:
-        validate_password(password)
-    except ValueError as exc:
-        return {"ok": False, "error": str(exc)}
-    account_id = db.create_account(clean_id)
+    if coach_invite_code is not None:
+        try:
+            validate_password(password)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc), "code": "weak_new"}
+        if not isinstance(coach_invite_code, str) or not (
+            MIN_COACH_INVITE_CODE_LENGTH <= len(coach_invite_code) <= MAX_COACH_INVITE_CODE_LENGTH
+        ):
+            return {"ok": False, "error": GENERIC_NEW_ACCOUNT_INVITE_ERROR, "code": "invalid_coach_invite"}
+        account = db.register_account_with_coach_invite(
+            hash_token(coach_invite_code), clean_id, datetime.now(UTC).isoformat(), DEFAULT_CAPACITY
+        )
+        if account is None:
+            return {"ok": False, "error": GENERIC_NEW_ACCOUNT_INVITE_ERROR, "code": "invalid_coach_invite"}
+        account_id = account["account_id"]
+    else:
+        if (
+            db.get_active_account_by_username(clean_id) is not None
+            or db.ledger_exists(clean_id)
+            or db.is_username_held(clean_id)
+        ):
+            return {"ok": False, "error": USERNAME_TAKEN, "code": "username_taken"}
+        try:
+            validate_password(password)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        account_id = db.create_account(clean_id)
     if account_id is None:
-        return {"ok": False, "error": "This Trainee ID already exists. Please log in."}
+        return {"ok": False, "error": USERNAME_TAKEN, "code": "username_taken"}
     account = db.get_account(account_id) or {}
     # A reused username gets a fresh ledger id (see DatabaseManager.create_account),
     # so always mount the account's own ledger rather than the username.

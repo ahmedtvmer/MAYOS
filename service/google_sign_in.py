@@ -308,7 +308,11 @@ def _materialise_ledger(db: Any, account: dict[str, Any], fallback: str | None =
 
 def _is_free(db: Any, clean: str) -> bool:
     """True when no live account owns ``clean`` and no ledger file claims it."""
-    return db.get_active_account_by_username(clean) is None and not db.ledger_exists(clean)
+    return (
+        db.get_active_account_by_username(clean) is None
+        and not db.ledger_exists(clean)
+        and not db.is_username_held(clean)
+    )
 
 
 def _base_from_given_name(given_name: Any) -> str:

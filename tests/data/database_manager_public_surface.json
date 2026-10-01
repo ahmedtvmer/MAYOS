@@ -43,7 +43,7 @@
     },
     "create_account": {
       "kind": "method",
-      "signature": "(self, username: str) -> str | None"
+      "signature": "(self, username: str, *, allow_held_username: bool = False) -> str | None"
     },
     "create_assignment_invite": {
       "kind": "method",
@@ -468,6 +468,18 @@
     "set_account_last_seen_at": {
       "kind": "method",
       "signature": "(self, account_id: str, day: str) -> None"
+    },
+    "is_username_held": {
+      "kind": "method",
+      "signature": "(self, username: str, now_iso: str | None = None) -> bool"
+    },
+    "issue_new_account_coach_invite": {
+      "kind": "method",
+      "signature": "(self, token_hash: str, username: str, expires_at: str) -> bool"
+    },
+    "register_account_with_coach_invite": {
+      "kind": "method",
+      "signature": "(self, token_hash: str, username: str, now_iso: str, default_capacity: int) -> dict[str, typing.Any] | None"
     }
   },
   "module_names": [

@@ -9,6 +9,80 @@ from typing import Any
 
 
 class RegistryCoachInvitesMixin:
+    def is_username_held(self, username: str, now_iso: str | None = None) -> bool:
+        """Whether a live new-account Coach invite currently holds username."""
+        self.ensure_account_schema()
+        now = now_iso or datetime.now(UTC).isoformat()
+        with self._catalog_lock:
+            return self._username_has_live_coach_invite_hold(username, now)
+
+    def _username_has_live_coach_invite_hold(self, username: str, now_iso: str) -> bool:
+        return self.catalog_conn.execute(
+            "SELECT 1 FROM new_account_coach_invites"
+            " WHERE username = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ? LIMIT 1",
+            (self._sanitize_username(username), now_iso),
+        ).fetchone() is not None
+
+    def issue_new_account_coach_invite(self, token_hash: str, username: str, expires_at: str) -> bool:
+        """Holds a normalized username with a single-use Coach invite."""
+        self.ensure_account_schema()
+        now = datetime.now(UTC).isoformat()
+        with self.catalog_transaction():
+            if self.get_active_account_by_username(username) is not None or self.ledger_exists(username):
+                return False
+            if self._username_has_live_coach_invite_hold(username, now):
+                return False
+            self.catalog_conn.execute(
+                "INSERT INTO new_account_coach_invites"
+                " (token_hash, username, expires_at, used_at, revoked_at, created_at)"
+                " VALUES (?, ?, ?, NULL, NULL, ?)",
+                (token_hash, username, expires_at, now),
+            )
+        return True
+
+    def register_account_with_coach_invite(
+        self, token_hash: str, username: str, now_iso: str, default_capacity: int
+    ) -> dict[str, Any] | None:
+        """Registers a Player and grants Coach capability while claiming its hold."""
+        self.ensure_account_schema()
+        with self.catalog_transaction():
+            row = self.catalog_conn.execute(
+                "SELECT username, expires_at, used_at, revoked_at FROM new_account_coach_invites"
+                " WHERE token_hash = ?",
+                (token_hash,),
+            ).fetchone()
+            if (
+                row is None
+                or str(row[0]) != username
+                or row[2] is not None
+                or row[3] is not None
+                or str(row[1]) <= now_iso
+                or self.get_active_account_by_username(username) is not None
+                or self.ledger_exists(username)
+            ):
+                return None
+            account_id = self.create_account(username, allow_held_username=True)
+            if account_id is None:
+                return None
+            cursor = self.catalog_conn.execute(
+                "UPDATE new_account_coach_invites SET used_at = ?"
+                " WHERE token_hash = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?",
+                (now_iso, token_hash, now_iso),
+            )
+            if cursor.rowcount != 1:
+                raise RuntimeError("Coach invite claim changed during registration.")
+            self.catalog_conn.execute("UPDATE accounts SET is_coach = 1 WHERE account_id = ?", (account_id,))
+            self.catalog_conn.execute(
+                "INSERT INTO coach_profiles"
+                " (account_id, display_name, bio, specialization, capacity, created_at, updated_at)"
+                " VALUES (?, ?, '', '', ?, ?, ?)",
+                (account_id, username, int(default_capacity), now_iso, now_iso),
+            )
+            account = self.get_account(account_id)
+            if account is not None:
+                account["is_coach"] = True
+            return account
+
     def create_coach_invite(self, token_hash: str, account_id: str, expires_at: str) -> None:
         """Stores a hashed, account-bound invite. The raw token is never persisted."""
         self.ensure_account_schema()

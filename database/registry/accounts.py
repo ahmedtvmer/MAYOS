@@ -83,15 +83,15 @@ class RegistryAccountsMixin:
                 return candidate
             suffix += 1
 
-    def create_account(self, username: str) -> str | None:
+    def create_account(self, username: str, *, allow_held_username: bool = False) -> str | None:
         """Atomically reserves ``username`` and returns a new immutable account id.
 
-        Returns ``None`` when a live account already owns the username. The
-        uniqueness is enforced by a partial unique index, so concurrent
-        registrations cannot both succeed; deleted rows keep their old id, which
-        lets the username be reused later under a new id. A reused username gets
-        a distinct ``ledger_id``/ledger path so it never aliases a deleted
-        account's ledger.
+        Returns ``None`` when a live account owns the username or a live Coach
+        invite holds it. The uniqueness is enforced by a partial unique index,
+        so concurrent registrations cannot both succeed; deleted rows keep
+        their old id, which lets the username be reused later under a new id. A
+        reused username gets a distinct ``ledger_id``/ledger path so it never
+        aliases a deleted account's ledger.
         """
         clean_id = self._sanitize_username(username)
         if not clean_id:
@@ -102,6 +102,9 @@ class RegistryAccountsMixin:
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
             try:
+                if not allow_held_username:
+                    if self._username_has_live_coach_invite_hold(clean_id, now):
+                        return None
                 ledger_id = self._unique_ledger_id(cursor, clean_id, account_id)
                 cursor.execute(
                     "INSERT INTO accounts"

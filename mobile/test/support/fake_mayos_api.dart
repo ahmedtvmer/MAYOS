@@ -56,6 +56,8 @@ class FakeMayosApi {
   String coachSpecialization = '';
   int coachCapacity = 10;
   String? validCoachInviteToken;
+  String? validNewAccountCoachInviteCode;
+  String? lastRegistrationCoachInviteCode;
   bool coachProfileLoadFails = false;
 
   // Google sign-in and the username picker (#115).
@@ -657,10 +659,19 @@ class FakeMayosApi {
       return const FakeResponse(
           400, <String, dynamic>{'detail': 'Password is too short.'});
     }
+    final String? coachInviteCode = request.body['coach_invite_code'] as String?;
+    lastRegistrationCoachInviteCode = coachInviteCode;
+    if (coachInviteCode != null &&
+        coachInviteCode != validNewAccountCoachInviteCode) {
+      return const FakeResponse(400, <String, dynamic>{
+        'detail': "This coach invite code isn't valid for this username",
+      });
+    }
     passwords[username] = password;
     hasPassword = true;
     linkedSignIns.clear();
     _beginSession(username, fresh: true);
+    if (coachInviteCode != null) coach = true;
     return FakeResponse(201, _tokenBody(username));
   }
 

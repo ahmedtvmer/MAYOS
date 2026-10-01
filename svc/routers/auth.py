@@ -57,9 +57,13 @@ _bearer = HTTPBearer(auto_error=False)
 @limiter.limit(REGISTER_LIMIT)
 async def register(request: Request, body: TraineeIn, db: Annotated[Any, Depends(get_db)]):
     def _run():
-        result = auth_service.register_player(db, body.trainee_id, body.password)
+        result = auth_service.register_player(db, body.trainee_id, body.password, body.coach_invite_code)
         if not result["ok"]:
-            status_code = status.HTTP_409_CONFLICT if "already exists" in result["error"] else status.HTTP_400_BAD_REQUEST
+            status_code = (
+                status.HTTP_409_CONFLICT
+                if result.get("code") == "username_taken"
+                else status.HTTP_400_BAD_REQUEST
+            )
             raise HTTPException(status_code=status_code, detail=result["error"])
         return result
 

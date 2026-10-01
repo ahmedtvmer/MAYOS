@@ -16,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from database.database_manager import DatabaseManager
+from service import auth as auth_service
 from service import coach as coach_service
 from svc.app import create_app
 from svc.dependencies import get_db
@@ -406,6 +407,157 @@ def test_invite_ttl_is_clamped_to_documented_bounds(api):
     assert datetime.fromisoformat(high["expires_at"]) <= now + timedelta(
         minutes=coach_service.MAX_INVITE_TTL_MINUTES + 1
     )
+
+
+def test_new_account_invite_holds_username_and_registers_coach(api):
+    client, db, _ = api
+    _register(client, "alreadytaken")
+    issued = coach_service.issue_coach_invite(
+        db,
+        "Future.Coach",
+        new_account=True,
+        token_factory=lambda: "new-coach-code-123",
+        actor="cli",
+    )
+    assert issued["ok"]
+    assert issued["username"] == "futurecoach"
+
+    held = client.post(
+        "/auth/register", json={"trainee_id": "FUTURECOACH", "password": "correct-horse-1"}
+    )
+    taken = client.post(
+        "/auth/register", json={"trainee_id": "alreadytaken", "password": "correct-horse-1"}
+    )
+    assert held.status_code == 409
+    assert (held.status_code, held.json()) == (taken.status_code, taken.json())
+
+    response = client.post(
+        "/auth/register",
+        json={
+            "trainee_id": "FUTURECOACH",
+            "password": "correct-horse-1",
+            "coach_invite_code": issued["token"],
+        },
+    )
+    assert response.status_code == 201, response.text
+    me = client.get("/auth/me", headers=_authed(response.json()["access_token"]))
+    assert me.json()["capabilities"] == {"player": True, "coach": True}
+    profile = client.get("/coach/profile", headers=_authed(response.json()["access_token"]))
+    assert profile.status_code == 200
+    assert profile.json()["display_name"] == "futurecoach"
+
+
+@pytest.mark.parametrize("case", ["wrong", "account_bound", "different_username", "expired", "used"])
+def test_invalid_new_account_code_creates_nothing(api, monkeypatch, case):
+    client, db, _ = api
+    issued = coach_service.issue_coach_invite(
+        db, "heldname", new_account=True, token_factory=lambda: "held-code-123456", actor="cli"
+    )
+    code = issued["token"]
+    username = "heldname"
+    if case == "wrong":
+        code = "wrong-code-123456"
+    elif case == "account_bound":
+        _register(client, "existingcoach")
+        code = _issue(db, "existingcoach", actor="cli")["token"]
+    elif case == "different_username":
+        username = "anothername"
+    elif case == "expired":
+        class ExpiredDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime.now(tz) + timedelta(days=8)
+
+        monkeypatch.setattr("service.auth.datetime", ExpiredDateTime)
+    elif case == "used":
+        first = client.post(
+            "/auth/register",
+            json={"trainee_id": "heldname", "password": "correct-horse-1", "coach_invite_code": code},
+        )
+        assert first.status_code == 201
+        deleted = client.request(
+            "DELETE",
+            "/auth/account",
+            headers=_authed(first.json()["access_token"]),
+            json={"password": "correct-horse-1"},
+        )
+        assert deleted.status_code == 200
+
+    response = client.post(
+        "/auth/register",
+        json={"trainee_id": username, "password": "correct-horse-1", "coach_invite_code": code},
+    )
+    assert response.status_code == 400
+    assert response.json() == {"detail": "This coach invite code isn't valid for this username"}
+    login = client.post("/auth/login", json={"trainee_id": username, "password": "correct-horse-1"})
+    assert login.status_code == 401
+
+
+def test_new_account_invite_refusals_and_ttl_bounds(api, monkeypatch):
+    client, db, _ = api
+    _register(client, "occupied")
+    existing = coach_service.issue_coach_invite(db, "occupied", new_account=True, actor="cli")
+    assert existing["ok"] is False
+    assert existing["code"] == "username_unavailable"
+
+    frozen_now = datetime(2026, 9, 30, 12, tzinfo=UTC)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen_now
+
+    monkeypatch.setattr(coach_service, "datetime", FrozenDateTime)
+    monkeypatch.setattr("database.registry.coach_invites.datetime", FrozenDateTime)
+    monkeypatch.setenv("COACH_INVITE_TTL_MINUTES", "5")
+    default = coach_service.issue_coach_invite(db, "helddefault", new_account=True, actor="cli")
+    assert default["ok"]
+    assert datetime.fromisoformat(default["expires_at"]) == frozen_now + timedelta(hours=24)
+
+    first = coach_service.issue_coach_invite(db, "held", new_account=True, ttl_minutes=1, actor="cli")
+    assert first["ok"]
+    assert datetime.fromisoformat(first["expires_at"]) == frozen_now + timedelta(minutes=5)
+    duplicate = coach_service.issue_coach_invite(db, "HELD", new_account=True, actor="cli")
+    assert duplicate["ok"] is False
+    assert duplicate["code"] == "username_unavailable"
+
+    long = coach_service.issue_coach_invite(db, "heldlong", new_account=True, ttl_minutes=999999, actor="cli")
+    assert long["ok"]
+    assert datetime.fromisoformat(long["expires_at"]) == frozen_now + timedelta(days=7)
+
+
+def test_expired_new_account_invite_releases_username(api, monkeypatch):
+    client, db, _ = api
+    coach_service.issue_coach_invite(db, "released", new_account=True, actor="cli")
+
+    class ExpiredDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.now(tz) + timedelta(days=8)
+
+    monkeypatch.setattr("database.registry.accounts.datetime", ExpiredDateTime)
+    monkeypatch.setattr("database.registry.coach_invites.datetime", ExpiredDateTime)
+    response = client.post(
+        "/auth/register", json={"trainee_id": "released", "password": "correct-horse-1"}
+    )
+    assert response.status_code == 201, response.text
+    assert client.get("/coach/profile", headers=_authed(response.json()["access_token"])).status_code == 403
+
+
+def test_taken_and_held_usernames_keep_conflict_precedence_over_weak_password(api):
+    client, db, _ = api
+    _register(client, "occupiedweak")
+    coach_service.issue_coach_invite(db, "heldweak", new_account=True, actor="cli")
+
+    for username in ("occupiedweak", "heldweak"):
+        result = auth_service.register_player(db, username, "weak")
+        assert result["ok"] is False
+        assert result["code"] == "username_taken"
+
+    response = client.post(
+        "/auth/register", json={"trainee_id": "occupiedweak", "password": "correct-horse-1"}
+    )
+    assert response.status_code == 409
 
 
 def test_used_invite_is_listed_until_pruned_after_30_days(api):
