@@ -1207,6 +1207,8 @@ class IntakeField {
     this.allowedValues = const <String>[],
     this.minimum,
     this.maximum,
+    this.minimumLength,
+    this.maximumLength,
     this.explanation,
     this.hint,
     this.examples = const <String>[],
@@ -1233,6 +1235,8 @@ class IntakeField {
           .toList(growable: false),
       minimum: (json['minimum'] as num?)?.toDouble(),
       maximum: (json['maximum'] as num?)?.toDouble(),
+      minimumLength: (json['minimum_length'] as num?)?.toInt(),
+      maximumLength: (json['maximum_length'] as num?)?.toInt(),
       explanation: json['explanation'] as String?,
       hint: json['hint'] as String?,
       examples: (json['examples'] as List<dynamic>? ?? const [])
@@ -1257,6 +1261,8 @@ class IntakeField {
   final List<String> allowedValues;
   final double? minimum;
   final double? maximum;
+  final int? minimumLength;
+  final int? maximumLength;
   final String? explanation;
   final String? hint;
   final List<String> examples;
@@ -1321,6 +1327,7 @@ class OnboardingIntake {
     required this.status,
     required this.disclosureAcknowledged,
     required this.fields,
+    required this.profileRebuildFields,
     required this.progress,
     this.program,
   });
@@ -1340,6 +1347,10 @@ class OnboardingIntake {
       fields: rawFields
           .map((dynamic f) => IntakeField.fromJson(f as Map<String, dynamic>))
           .toList(growable: false),
+      profileRebuildFields:
+          (json['profile_rebuild_fields'] as List<dynamic>? ?? const [])
+              .map((dynamic field) => field.toString())
+              .toList(growable: false),
       progress: IntakeProgress.fromJson(
           json['progress'] as Map<String, dynamic>? ?? const {}),
       program: json['program'] == null
@@ -1351,6 +1362,7 @@ class OnboardingIntake {
   final String status;
   final bool disclosureAcknowledged;
   final List<IntakeField> fields;
+  final List<String> profileRebuildFields;
   final IntakeProgress progress;
   final IntakeProgram? program;
 
@@ -1403,6 +1415,7 @@ class PlayerProfile {
     this.weightKg = 75,
     this.assistantStyle = defaultAssistantStyle,
     this.assistantInstructions = '',
+    this.playerControlsProgram = true,
   });
 
   factory PlayerProfile.fromJson(Map<String, dynamic> json) => PlayerProfile(
@@ -1417,6 +1430,7 @@ class PlayerProfile {
         assistantStyle:
             json['coach_tone'] as String? ?? defaultAssistantStyle,
         assistantInstructions: json['custom_instructions'] as String? ?? '',
+        playerControlsProgram: json['player_controls_program'] as bool? ?? true,
       );
 
   final String repPreference;
@@ -1427,6 +1441,7 @@ class PlayerProfile {
   final double weightKg;
   final String assistantStyle;
   final String assistantInstructions;
+  final bool playerControlsProgram;
 }
 
 /// `PUT /profile` response body.
@@ -1439,6 +1454,7 @@ class ProfileUpdateResult {
     required this.programRebuilt,
     this.programBlocked = false,
     this.programMessage,
+    this.profile,
   });
 
   factory ProfileUpdateResult.fromJson(Map<String, dynamic> json) =>
@@ -1446,11 +1462,15 @@ class ProfileUpdateResult {
         programRebuilt: json['program_rebuilt'] as bool? ?? false,
         programBlocked: json['program_blocked'] as bool? ?? false,
         programMessage: json['program_message'] as String?,
+        profile: json['profile'] is Map<String, dynamic>
+            ? PlayerProfile.fromJson(json['profile'] as Map<String, dynamic>)
+            : null,
       );
 
   final bool programRebuilt;
   final bool programBlocked;
   final String? programMessage;
+  final PlayerProfile? profile;
 }
 
 const List<String> weekdayLabels = <String>[

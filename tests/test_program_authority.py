@@ -364,6 +364,25 @@ def test_profile_refuses_proportions_and_onboarding_only_fields(api):
         assert response.status_code == 422, (field, response.text)
 
 
+def test_intake_exposes_profile_contract_and_rebuild_fields(api):
+    client, _, _ = api
+    _, player_headers, _, _, _ = _assigned_player(api)
+
+    response = client.get("/onboarding/intake", headers=player_headers)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["profile_rebuild_fields"] == [
+        "injuries_or_limitations", "equipment_access", "weekly_frequency", "rep_preference"
+    ]
+    fields = {field["name"]: field for field in body["fields"]}
+    assert (fields["weight_kg"]["minimum"], fields["weight_kg"]["maximum"]) == (30, 250)
+    assert (fields["equipment_access"]["allowed_values"] == [
+        "Commercial gym", "Home gym", "Bodyweight only"
+    ])
+    assert (fields["current_goal"]["minimum_length"], fields["current_goal"]["maximum_length"]) == (2, 500)
+
+
 def test_profile_edit_uses_intake_catalog_validation(api):
     client, _, _ = api
     _, player_headers, _, _, _ = _assigned_player(api)
@@ -397,6 +416,35 @@ def test_profile_rebuild_blocked_during_control(api, monkeypatch):
     after = _active(db)
     assert after.program_name == "Coach Plan"
     assert after.version == before.version
+
+
+def test_coached_profile_edit_saves_equipment_goal_weight_without_rebuild(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+    before = client.get("/programs/active", headers=player_headers).json()
+    _, calls = _profile_generation(db, monkeypatch)
+
+    response = client.put(
+        "/profile",
+        headers=player_headers,
+        json={"equipment_access": "Home gym", "current_goal": "Build strength", "weight_kg": 82},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["profile"]["equipment_access"] == "Home gym"
+    assert body["profile"]["current_goal"] == "Build strength"
+    assert body["profile"]["weight_kg"] == 82
+    assert body["program_rebuilt"] is False
+    assert body["program_blocked"] is True
+    assert body["program_message"] == programs_service.COACH_CONTROLLED_ERROR
+    assert calls["n"] == 0
+    after = client.get("/programs/active", headers=player_headers).json()
+    assert (after["program_name"], after["version"]) == (
+        before["program_name"], before["version"]
+    )
 
 
 def test_profile_rebuild_allowed_after_unassignment(api, monkeypatch):

@@ -1078,6 +1078,8 @@ class IntakeFieldOut(BaseModel):
     allowed_values: list[str] = []
     minimum: float | None = None
     maximum: float | None = None
+    minimum_length: int | None = None
+    maximum_length: int | None = None
     profile_field: str
     explanation: str | None = None
     hint: str | None = None
@@ -1113,6 +1115,7 @@ class IntakeOut(BaseModel):
     status: str
     disclosure_acknowledged: bool
     fields: list[IntakeFieldOut]
+    profile_rebuild_fields: list[str] = []
     progress: IntakeProgressOut
     program: IntakeProgramOut | None = None
 

@@ -20,16 +20,17 @@ import '../auth/auth_controller.dart';
 import '../auth/auth_widgets.dart' show AuthPasswordField, validateNewPassword;
 import '../auth/google_auth_gateway.dart';
 import '../auth/google_sign_in_button.dart';
-import '../onboarding/onboarding_widgets.dart' show optionLabel;
+import '../onboarding/onboarding_widgets.dart'
+    show isFieldAnswerValid, optionLabel;
 
 /// Mirrors the server's `MAX_PAUSE_DAYS` in `service/schedule.py`; the client
 /// check is only a courtesy, the service stays authoritative.
 const int maxPauseDays = 14;
 
-/// Player Training profile editor. Changing Equipment access, injuries,
-/// training days or rep preference can trigger a program rebuild. When an
-/// assigned coach owns the active program, the service leaves it unchanged and
-/// explains that a coach request is needed.
+/// Player Training profile editor. The intake contract supplies the facts the
+/// service considers for a rebuild and the service remains authoritative. When
+/// an assigned coach owns the active program, it stays unchanged and the app
+/// shows that a coach request is needed.
 ///
 /// Below the profile card, the player separately owns an expected training
 /// schedule (weekdays + timezone) and prospective pauses. Setting either never
@@ -42,23 +43,16 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  /// The intake's allowed `rep_preference` values (`service/intake.py`).
-  static const List<String> _repPreferences = <String>[
-    'low',
-    'balanced',
-    'high',
-  ];
   int _weeklyFrequency = 4;
-  int _savedWeeklyFrequency = 4;
   String _repPreference = 'balanced';
-  String _savedRepPreference = 'balanced';
   String _equipmentAccess = equipmentAccessCommercialGym;
-  String _savedEquipmentAccess = equipmentAccessCommercialGym;
-  final TextEditingController _currentGoal = TextEditingController();
-  final TextEditingController _injuriesOrLimitations =
+  final TextEditingController _currentGoalController = TextEditingController();
+  final TextEditingController _injuriesOrLimitationsController =
       TextEditingController(text: 'None');
-  final TextEditingController _weightKg = TextEditingController(text: '75');
-  String _savedInjuriesOrLimitations = 'None';
+  final TextEditingController _weightController =
+      TextEditingController(text: '75');
+  PlayerProfile? _savedProfile;
+  OnboardingIntake? _intake;
 
   bool _loading = true;
   bool _saving = false;
@@ -113,9 +107,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   void dispose() {
     _timezone.dispose();
-    _currentGoal.dispose();
-    _injuriesOrLimitations.dispose();
-    _weightKg.dispose();
+    _currentGoalController.dispose();
+    _injuriesOrLimitationsController.dispose();
+    _weightController.dispose();
     _deletePassword.dispose();
     _currentPassword.dispose();
     _newPassword.dispose();
@@ -135,35 +129,36 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         api.trainingSchedule(),
         api.trainingPauses(),
         api.currentAccount(),
+        api.onboardingIntake(),
       ]);
       if (!mounted) return;
       final PlayerProfile profile = results[0] as PlayerProfile;
       final TrainingSchedule schedule = results[1] as TrainingSchedule;
       final List<ScheduledPause> pauses = results[2] as List<ScheduledPause>;
       final Account account = results[3] as Account;
+      final OnboardingIntake intake = results[4] as OnboardingIntake;
+      final List<String> equipmentOptions =
+          intake.field('equipment_access')!.allowedValues;
+      final List<String> repOptions =
+          intake.field('rep_preference')!.allowedValues;
       final String timezone = schedule.current != null
           ? schedule.current!.timezone
           : await ref.read(deviceTimezoneProvider);
       if (!mounted) return;
       setState(() {
         _weeklyFrequency = profile.weeklyFrequency;
-        _savedWeeklyFrequency = profile.weeklyFrequency;
-        _equipmentAccess =
-            equipmentAccessValues.contains(profile.equipmentAccess)
-                ? profile.equipmentAccess
-                : equipmentAccessCommercialGym;
-        _savedEquipmentAccess = _equipmentAccess;
-        _currentGoal.text = profile.currentGoal;
-        _injuriesOrLimitations.text = profile.injuriesOrLimitations;
-        _savedInjuriesOrLimitations = profile.injuriesOrLimitations;
-        _weightKg.text = profile.weightKg.toStringAsFixed(
+        _savedProfile = profile;
+        _intake = intake;
+        _equipmentAccess = equipmentOptions.contains(profile.equipmentAccess)
+            ? profile.equipmentAccess
+            : equipmentOptions.first;
+        _currentGoalController.text = profile.currentGoal;
+        _injuriesOrLimitationsController.text = profile.injuriesOrLimitations;
+        _weightController.text = profile.weightKg.toStringAsFixed(
             profile.weightKg.truncateToDouble() == profile.weightKg ? 0 : 1);
-        // A value this screen once offered by mistake (`strength`,
-        // `hypertrophy`) is shown as the generator reads it: balanced.
-        _repPreference = _repPreferences.contains(profile.repPreference)
+        _repPreference = repOptions.contains(profile.repPreference)
             ? profile.repPreference
-            : 'balanced';
-        _savedRepPreference = _repPreference;
+            : repOptions.first;
         _schedule = schedule;
         _pauses = pauses;
         _account = account;
@@ -183,14 +178,42 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _save() async {
-    final double? parsedWeight = double.tryParse(_weightKg.text.trim());
-    final bool rebuildRequested =
-        _weeklyFrequency != _savedWeeklyFrequency ||
-            _repPreference != _savedRepPreference ||
-            _equipmentAccess != _savedEquipmentAccess ||
-            _injuriesOrLimitations.text.trim() !=
-                _savedInjuriesOrLimitations.trim();
-    if (rebuildRequested) {
+    final PlayerProfile? saved = _savedProfile;
+    final OnboardingIntake? intake = _intake;
+    if (saved == null || intake == null) return;
+    final double? parsedWeight = double.tryParse(_weightController.text.trim());
+    final bool weightChanged = parsedWeight == null
+        ? _weightController.text.trim() != saved.weightKg.toString()
+        : parsedWeight != saved.weightKg;
+    final String currentGoal = _currentGoalController.text.trim();
+    final String injuries = _injuriesOrLimitationsController.text.trim();
+    final Map<String, Object?> changedValues = <String, Object?>{
+      if (_weeklyFrequency != saved.weeklyFrequency)
+        'weekly_frequency': _weeklyFrequency,
+      if (_repPreference != saved.repPreference)
+        'rep_preference': _repPreference,
+      if (_equipmentAccess != saved.equipmentAccess)
+        'equipment_access': _equipmentAccess,
+      if (currentGoal != saved.currentGoal) 'current_goal': currentGoal,
+      if (injuries != saved.injuriesOrLimitations)
+        'injuries_or_limitations': injuries,
+      if (weightChanged) 'weight_kg': parsedWeight ?? _weightController.text,
+    };
+    for (final MapEntry<String, Object?> entry in changedValues.entries) {
+      final String contractName = entry.key;
+      final IntakeField? field = intake.field(contractName);
+      if (field == null || !isFieldAnswerValid(field, entry.value)) {
+        setState(() {
+          _notice = _validationMessage(field);
+          _noticeIsError = true;
+        });
+        return;
+      }
+    }
+    final bool rebuildRequested = intake.profileRebuildFields.any(
+      (String field) => changedValues.containsKey(field),
+    );
+    if (rebuildRequested && saved.playerControlsProgram) {
       final bool? confirmed = await showDialog<bool>(
         context: context,
         builder: (BuildContext context) => AlertDialog(
@@ -211,13 +234,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       );
       if (confirmed != true || !mounted) return;
     }
-    if (parsedWeight == null || parsedWeight < 30 || parsedWeight > 250) {
-      setState(() {
-        _notice = 'Weight must be between 30 and 250 kg.';
-        _noticeIsError = true;
-      });
-      return;
-    }
     setState(() {
       _saving = true;
       _notice = null;
@@ -226,23 +242,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     try {
       final ProfileUpdateResult result =
           await ref.read(apiClientProvider).updateProfile(
-                weeklyFrequency: _weeklyFrequency,
-                repPreference: _repPreference,
-                currentGoal: _currentGoal.text.trim(),
-                injuriesOrLimitations: _injuriesOrLimitations.text.trim(),
-                weightKg: parsedWeight,
-                equipmentAccess: _equipmentAccess == _savedEquipmentAccess
-                    ? null
-                    : _equipmentAccess,
+                weeklyFrequency: changedValues['weekly_frequency'] as int?,
+                repPreference: changedValues['rep_preference'] as String?,
+                currentGoal: changedValues['current_goal'] as String?,
+                injuriesOrLimitations:
+                    changedValues['injuries_or_limitations'] as String?,
+                weightKg: parsedWeight != saved.weightKg ? parsedWeight : null,
+                equipmentAccess: changedValues['equipment_access'] as String?,
               );
       if (!mounted) return;
       if (result.programRebuilt) unawaited(_refreshProgramCache());
       setState(() {
         _saving = false;
-        _savedWeeklyFrequency = _weeklyFrequency;
-        _savedRepPreference = _repPreference;
-        _savedEquipmentAccess = _equipmentAccess;
-        _savedInjuriesOrLimitations = _injuriesOrLimitations.text.trim();
+        _savedProfile = result.profile ??
+            PlayerProfile(
+              weeklyFrequency: _weeklyFrequency,
+              repPreference: _repPreference,
+              equipmentAccess: _equipmentAccess,
+              currentGoal: currentGoal,
+              injuriesOrLimitations: injuries,
+              weightKg: parsedWeight ?? saved.weightKg,
+              playerControlsProgram: saved.playerControlsProgram,
+            );
         _notice = result.programBlocked
             ? result.programMessage
             : result.programRebuilt
@@ -257,6 +278,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _noticeIsError = true;
       });
     }
+  }
+
+  String _validationMessage(IntakeField? field) {
+    if (field == null) return 'Check your profile details and try again.';
+    if (field.name == 'weight_kg' &&
+        field.minimum != null &&
+        field.maximum != null) {
+      return 'Weight must be between ${field.minimum!.toStringAsFixed(0)} and '
+          '${field.maximum!.toStringAsFixed(0)} kg.';
+    }
+    if (field.type == 'enum') {
+      return 'Choose an allowed ${optionLabel('', field.name)}.';
+    }
+    return field.hint ??
+        'Check your ${optionLabel('', field.name).toLowerCase()} and try again.';
   }
 
   Future<void> _refreshProgramCache() async {
@@ -948,12 +984,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         const MayosSectionHeader(
           title: 'Training profile',
           subtitle:
-              'Changes to equipment, injuries, training days or rep preference can rebuild your program.',
+              'Update the profile facts used to personalize your training.',
         ),
         const SizedBox(height: MayosSpacing.md),
         MayosTextField(
           fieldKey: const Key('current_goal_field'),
-          controller: _currentGoal,
+          controller: _currentGoalController,
           label: 'Current goal',
           enabled: !_saving,
           textCapitalization: TextCapitalization.sentences,
@@ -961,7 +997,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         const SizedBox(height: MayosSpacing.sm),
         MayosTextField(
           fieldKey: const Key('injuries_or_limitations_field'),
-          controller: _injuriesOrLimitations,
+          controller: _injuriesOrLimitationsController,
           label: 'Injuries or limitations',
           enabled: !_saving,
           textCapitalization: TextCapitalization.sentences,
@@ -969,7 +1005,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         const SizedBox(height: MayosSpacing.sm),
         MayosTextField(
           fieldKey: const Key('weight_kg_field'),
-          controller: _weightKg,
+          controller: _weightController,
           label: 'Weight (kg)',
           enabled: !_saving,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -983,7 +1019,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             border: OutlineInputBorder(),
           ),
           items: <DropdownMenuItem<int>>[
-            for (int days = 1; days <= 5; days++)
+            for (int days =
+                    _intake!.field('weekly_frequency')!.minimum!.toInt();
+                days <= _intake!.field('weekly_frequency')!.maximum!.toInt();
+                days++)
               DropdownMenuItem<int>(value: days, child: Text('$days')),
           ],
           onChanged: _saving
@@ -1000,7 +1039,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             border: OutlineInputBorder(),
           ),
           items: <DropdownMenuItem<String>>[
-            for (final String preference in _repPreferences)
+            for (final String preference
+                in _intake!.field('rep_preference')!.allowedValues)
               DropdownMenuItem<String>(
                   value: preference,
                   child: Text(optionLabel('rep_preference', preference),
@@ -1021,7 +1061,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             border: OutlineInputBorder(),
           ),
           items: <DropdownMenuItem<String>>[
-            for (final String access in equipmentAccessValues)
+            for (final String access
+                in _intake!.field('equipment_access')!.allowedValues)
               DropdownMenuItem<String>(value: access, child: Text(access)),
           ],
           onChanged: _saving

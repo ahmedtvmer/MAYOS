@@ -165,7 +165,6 @@ void main() {
     await _pumpUntilFound(tester, find.text('Bodyweight only'));
     await tester.tap(find.text('Bodyweight only').last);
     await tester.pump(const Duration(milliseconds: 300));
-    final int activeProgramCallsBeforeRebuild = fake.activeProgramCalls;
     await tester.tap(find.text('Save profile'));
     await _pumpUntilFound(tester, find.text('This rebuilds your program'));
     await tester.tap(find.byKey(const Key('profile_rebuild_confirm_button')));
@@ -174,7 +173,13 @@ void main() {
     expect(fake.equipmentAccess, 'Bodyweight only');
     expect(fake.profileUpdateBodies.last['equipment_access'], 'Bodyweight only');
     expect(fake.profileRebuildCalls, 1);
-    expect(fake.activeProgramCalls, greaterThan(activeProgramCallsBeforeRebuild));
+    await tester.tap(find.byTooltip('Back').hitTestable().last);
+    await _pumpUntilFound(tester, find.text('Appearance'));
+    await tester.tap(find.byTooltip('Back').hitTestable().last);
+    await _pumpUntilFound(tester, find.text('Home'));
+    await tester.tap(find.text('Program'));
+    await _pumpUntilFound(tester, find.text('Rebuilt program 1'));
+    expect(find.text('Rebuilt program 1'), findsOneWidget);
   });
 
   testWidgets('player program hides the version and keeps coach provenance',

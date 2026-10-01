@@ -659,6 +659,11 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(playerShellTabProvider, (int? previous, int next) {
+      if (next == 1 && previous != 1) {
+        unawaited(_load());
+      }
+    });
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
