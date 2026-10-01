@@ -221,15 +221,16 @@ Delivery failures are logged and swallowed; the client response stays generic. T
 
 | Endpoint | Auth | Limits | Notes |
 | :--- | :--- | :--- | :--- |
-| `POST /auth/register` | — | 5/min | Optional `coach_invite_code`; 409 if username taken or held (identical response); 400 generic invalid Coach invite; 201 + JWT |
+| `POST /auth/register` | — | 5/min | Optional `coach_invite_code` and `display_language` (`en`/`ar`, default `en`); 409 if username taken or held (identical response); 400 generic invalid Coach invite; 201 + JWT |
 | `POST /auth/login` | — | 5/min | 401 generic for unknown usernames and invalid passwords |
 | `POST /auth/google` | — | 5/min | Verifies a Google ID token: linked subject ⇒ `TokenOut` (remember-me lifetime), otherwise `{signup_ticket, suggested_username, existing_account_hint}`; the hint is true only for a verified-email match to a live recovery email; 503 when `GOOGLE_WEB_CLIENT_ID` is unset |
 | `GET /auth/username-available` | signup ticket (Bearer) | 30/min | `{available, reason?}`; clear 400 for a username that breaks the rule; 401 for a missing/expired ticket |
-| `POST /auth/google/complete` | — | 5/min | One catalog transaction: account + link; 400 invalid username, 409 taken or already linked |
+| `POST /auth/google/complete` | — | 5/min | One catalog transaction: account + link; accepts `display_language` (`en`/`ar`, default `en`); 400 invalid username, 409 taken or already linked |
 | `POST /auth/google/link` | Bearer | 10/min | Connects a verified Google identity to the caller; idempotent; 409 conflicts (never which other account); 503 when `GOOGLE_WEB_CLIENT_ID` is unset |
 | `DELETE /auth/google/link` | Bearer | 10/min | Disconnects Google; **409 unless the account has a password** (an account always keeps one way to sign in); idempotent; 503 when unconfigured |
 | `POST /auth/set-password` | Bearer | 10/min | First password only (e.g. a Google-only account); 409 pointing at `change-password` when one exists; no epoch bump |
-| `GET /auth/me` | Bearer | — | Identity, capabilities, plans, plus `has_password` and `linked_sign_ins` (provider names only, never a subject) |
+| `GET /auth/me` | Bearer | — | Identity, capabilities, plans, `display_language`, plus `has_password` and `linked_sign_ins` (provider names only, never a subject) |
+| `PUT /auth/display-language` | Bearer | — | Saves `display_language` (`en` or `ar`) against the immutable account id |
 | `POST /auth/logout` | Bearer | — | Revokes presenting `jti`; 204 |
 | `POST /auth/change-password` | Bearer | 10/min | Revokes **all** sessions; 400 on failure |
 | `DELETE /auth/account` | Bearer | 10/min | Exactly one proof: `password` **or** a fresh `google_id_token` (ADR 039); 400 generic on any failure |

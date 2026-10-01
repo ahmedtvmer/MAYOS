@@ -55,6 +55,13 @@ class VerifiedPlayer(str):
         return value
 
 
+class VerifiedAccount:
+    """Authenticated account identity that does not require Player capability."""
+
+    def __init__(self, account_id: str):
+        self.account_id = account_id
+
+
 async def get_db(request: Request) -> Any:
     """Returns the one store the application built at startup (ADR 041).
 
@@ -178,6 +185,34 @@ async def get_verified_player(
     _reject_revoked_token(db, player)
     _record_last_seen(db, player.account_id)
     return player
+
+
+async def get_verified_account(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    db: Annotated[Any, Depends(get_db)],
+) -> VerifiedAccount:
+    """Authenticates an Account-level preference independent of its capabilities."""
+    if credentials is None or credentials.scheme.lower() != "bearer" or not credentials.credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token.")
+    try:
+        claims = token_claims(credentials.credentials)
+        account_id = str(claims["sub"])
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.") from None
+    if db.is_account_deleted(account_id):
+        raise AccountDeletedError()
+    account = db.get_account(account_id)
+    if account is not None and account["deleted_at"] is not None:
+        raise AccountDeletedError()
+    if not db.is_live_account(account) or token_version_of(claims) != account["session_epoch"]:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
+    if not db.ledger_exists(account["ledger_id"]):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        if ledger.is_token_revoked(str(claims["jti"])):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked.")
+    _record_last_seen(db, account_id)
+    return VerifiedAccount(account_id)
 
 
 async def get_ledger(

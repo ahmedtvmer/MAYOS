@@ -13,6 +13,7 @@ import 'core/baselines.dart';
 import 'core/browser_key_value_store.dart';
 import 'core/chat_storage.dart';
 import 'core/config.dart';
+import 'core/display_language.dart';
 import 'core/models.dart';
 import 'core/personal_records.dart';
 import 'core/rest_alerts.dart';
@@ -76,6 +77,7 @@ final Provider<AuthRepository> authRepositoryProvider =
         api: ref.watch(apiClientProvider),
         tokens: ref.watch(tokenStoreProvider),
         chatCache: ref.watch(chatCacheStoreProvider),
+        displayLanguageStore: ref.watch(displayLanguageStoreProvider),
         eraser: AccountDataEraser(
           drafts: ref.watch(draftStoreProvider),
           workoutCache: ref.watch(workoutCacheStoreProvider),

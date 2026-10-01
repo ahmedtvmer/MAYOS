@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/display_language.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -181,7 +182,9 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
     });
     try {
       final CompleteGoogleSignupResult result =
-          await _auth.completeGoogleSignup(username: _username.text.trim());
+          await _auth.completeGoogleSignup(
+              username: _username.text.trim(),
+              displayLanguage: ref.read(displayLanguageProvider));
       if (!mounted) {
         return;
       }
@@ -328,7 +331,8 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
       ),
       children: <Widget>[
         Text(
-          'The Google sign-in could not be finished, so no account was created.',
+          MayosCopy(ref.watch(displayLanguageProvider)).translate(
+              'The Google sign-in could not be finished, so no account was created.'),
           style: MayosTypography.bodySecondary
               .copyWith(color: c.textSecondary, height: 1.5),
         ),

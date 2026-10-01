@@ -15,7 +15,7 @@ class RegistryAccountsMixin:
         return (self.ledgers_dir / f"{sanitized}.db").is_file() if sanitized else False
 
     _ACCOUNT_COLUMNS = (
-        "account_id, username, ledger_id, status, is_player, is_coach, session_epoch, created_at, deleted_at, last_seen_at"
+        "account_id, username, ledger_id, status, is_player, is_coach, session_epoch, created_at, deleted_at, last_seen_at, display_language"
     )
 
     @staticmethod
@@ -33,6 +33,7 @@ class RegistryAccountsMixin:
             "created_at": str(row[7]),
             "deleted_at": row[8],
             "last_seen_at": row[9],
+            "display_language": row[10] or "en",
         }
 
     @staticmethod
@@ -83,7 +84,7 @@ class RegistryAccountsMixin:
                 return candidate
             suffix += 1
 
-    def create_account(self, username: str, *, allow_held_username: bool = False) -> str | None:
+    def create_account(self, username: str, *, allow_held_username: bool = False, display_language: str = "en") -> str | None:
         """Atomically reserves ``username`` and returns a new immutable account id.
 
         Returns ``None`` when a live account owns the username or a live Coach
@@ -108,14 +109,26 @@ class RegistryAccountsMixin:
                 ledger_id = self._unique_ledger_id(cursor, clean_id, account_id)
                 cursor.execute(
                     "INSERT INTO accounts"
-                    " (account_id, username, ledger_id, status, is_player, is_coach, session_epoch, created_at, deleted_at)"
-                    " VALUES (?, ?, ?, 'active', 1, 0, 1, ?, NULL)",
-                    (account_id, clean_id, ledger_id, now),
+                    " (account_id, username, ledger_id, status, is_player, is_coach, session_epoch, created_at, deleted_at, display_language)"
+                    " VALUES (?, ?, ?, 'active', 1, 0, 1, ?, NULL, ?)",
+                    (account_id, clean_id, ledger_id, now, display_language if display_language in ("en", "ar") else "en"),
                 )
             except sqlite3.IntegrityError:
                 self._rollback_catalog()
                 return None
         return account_id
+
+    def set_account_display_language(self, account_id: str, language: str) -> bool:
+        if language not in ("en", "ar"):
+            return False
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.execute(
+                "UPDATE accounts SET display_language = ? WHERE account_id = ? AND status = 'active' AND deleted_at IS NULL",
+                (language, str(account_id)),
+            )
+            self._commit_catalog()
+            return cursor.rowcount == 1
 
     def get_account(self, account_id: str) -> dict[str, Any] | None:
         """Reads an account by immutable id. Returns ``None`` when absent (fail closed)."""

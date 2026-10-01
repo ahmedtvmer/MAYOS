@@ -157,6 +157,7 @@ def test_owner_issued_invite_grants_capability_without_reissuing_token(api):
     assert redeemed.json() == {
         "account_id": account_id,
         "trainee_id": "alice",
+        "display_language": "en",
         "capabilities": {"player": True, "coach": True},
         "coach_ai_enabled": False,
         "has_password": True,
@@ -437,11 +438,13 @@ def test_new_account_invite_holds_username_and_registers_coach(api):
             "trainee_id": "FUTURECOACH",
             "password": "correct-horse-1",
             "coach_invite_code": issued["token"],
+            "display_language": "ar",
         },
     )
     assert response.status_code == 201, response.text
     me = client.get("/auth/me", headers=_authed(response.json()["access_token"]))
     assert me.json()["capabilities"] == {"player": True, "coach": True}
+    assert me.json()["display_language"] == "ar"
     profile = client.get("/coach/profile", headers=_authed(response.json()["access_token"]))
     assert profile.status_code == 200
     assert profile.json()["display_name"] == "futurecoach"

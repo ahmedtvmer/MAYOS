@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/connectivity.dart';
+import '../../../core/display_language.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -72,7 +74,8 @@ class AuthScaffold extends StatelessWidget {
         // A phone-width column on desktop (#133); a no-op on phones. Applied at
         // every width so the fields' widget tree never changes shape.
         child: MayosPlayerColumn(
-          child: AutofillGroup(
+          child: Stack(children: <Widget>[
+            AutofillGroup(
               child: Column(
                 children: <Widget>[
                   const OfflineBannerSlot(),
@@ -148,7 +151,13 @@ class AuthScaffold extends StatelessWidget {
                 ],
               ),
             ),
-          ),
+            const PositionedDirectional(
+              top: 0,
+              end: MayosSpacing.md,
+              child: DisplayLanguageSelector(compact: true),
+            ),
+          ]),
+        ),
       ),
     );
     if (!wallpaper) {
@@ -162,21 +171,22 @@ class AuthScaffold extends StatelessWidget {
 }
 
 /// The editorial serif heading and its short sans explanation.
-class AuthHeading extends StatelessWidget {
+class AuthHeading extends ConsumerWidget {
   const AuthHeading({super.key, required this.title, this.lead});
 
   final String title;
   final String? lead;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     final double width = MediaQuery.sizeOf(context).width;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          title,
+          copy.translate(title),
           style: MayosTypography.pageHeading.copyWith(
             color: c.textPrimary,
             fontSize: width < 400 ? 28 : 32,
@@ -186,7 +196,7 @@ class AuthHeading extends StatelessWidget {
         if (lead != null) ...<Widget>[
           const SizedBox(height: MayosSpacing.sm),
           Text(
-            lead!,
+            copy.translate(lead!),
             style: MayosTypography.bodySecondary.copyWith(
               color: c.textSecondary,
               height: 1.5,
@@ -201,7 +211,7 @@ class AuthHeading extends StatelessWidget {
 enum AuthNoticeKind { error, success, info }
 
 /// An inline, left-aligned message for local validation and server responses.
-class AuthInlineNotice extends StatelessWidget {
+class AuthInlineNotice extends ConsumerWidget {
   const AuthInlineNotice({
     super.key,
     required this.message,
@@ -212,7 +222,7 @@ class AuthInlineNotice extends StatelessWidget {
   final AuthNoticeKind kind;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final (Color color, IconData icon) = switch (kind) {
       AuthNoticeKind.error => (c.danger, Icons.error_outline),
@@ -228,7 +238,7 @@ class AuthInlineNotice extends StatelessWidget {
           const SizedBox(width: MayosSpacing.xs),
           Expanded(
             child: Text(
-              message,
+              MayosCopy(ref.watch(displayLanguageProvider)).translate(message),
               style: MayosTypography.bodySecondary.copyWith(color: color),
             ),
           ),
@@ -305,7 +315,7 @@ class AuthActionBar extends StatelessWidget {
 ///
 /// The indicator is aligned to the field's left edge, the label is body weight,
 /// and the entire 48dp-high row is tappable with a checked semantics state.
-class AuthConsentRow extends StatelessWidget {
+class AuthConsentRow extends ConsumerWidget {
   const AuthConsentRow({
     super.key,
     required this.label,
@@ -320,7 +330,7 @@ class AuthConsentRow extends StatelessWidget {
   final bool enabled;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final bool interactive = enabled && onChanged != null;
     final Color labelColor = interactive ? c.textPrimary : c.textDisabled;
@@ -329,7 +339,7 @@ class AuthConsentRow extends StatelessWidget {
       container: true,
       checked: value,
       enabled: interactive,
-      label: label,
+      label: MayosCopy(ref.watch(displayLanguageProvider)).translate(label),
       onTap: toggle,
       child: ExcludeSemantics(
         child: InkWell(
@@ -343,7 +353,8 @@ class AuthConsentRow extends StatelessWidget {
                 const SizedBox(width: MayosSpacing.sm),
                 Expanded(
                   child: Text(
-                    label,
+                    MayosCopy(ref.watch(displayLanguageProvider))
+                        .translate(label),
                     style: MayosTypography.body.copyWith(color: labelColor),
                   ),
                 ),
@@ -405,7 +416,7 @@ String? validateNewPassword(String password, String confirm) =>
     passwordConfirmationError(password, confirm);
 
 /// A password input with an obscured default and a labelled visibility toggle.
-class AuthPasswordField extends StatefulWidget {
+class AuthPasswordField extends ConsumerStatefulWidget {
   const AuthPasswordField({
     super.key,
     required this.controller,
@@ -432,19 +443,21 @@ class AuthPasswordField extends StatefulWidget {
   final Key? toggleKey;
 
   @override
-  State<AuthPasswordField> createState() => _AuthPasswordFieldState();
+  ConsumerState<AuthPasswordField> createState() => _AuthPasswordFieldState();
 }
 
-class _AuthPasswordFieldState extends State<AuthPasswordField> {
+class _AuthPasswordFieldState extends ConsumerState<AuthPasswordField> {
   bool _obscure = true;
 
   @override
   Widget build(BuildContext context) {
+    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     return MayosTextField(
       fieldKey: widget.fieldKey,
       controller: widget.controller,
-      label: widget.label,
-      helperText: widget.helperText,
+      label: copy.translate(widget.label),
+      helperText:
+          widget.helperText == null ? null : copy.translate(widget.helperText!),
       errorText: widget.errorText,
       obscureText: _obscure,
       keyboardType: TextInputType.visiblePassword,
@@ -456,7 +469,7 @@ class _AuthPasswordFieldState extends State<AuthPasswordField> {
       onSubmitted: widget.onSubmitted,
       suffixIcon: IconButton(
         key: widget.toggleKey,
-        tooltip: _obscure ? 'Show password' : 'Hide password',
+        tooltip: copy.translate(_obscure ? 'Show password' : 'Hide password'),
         onPressed: () => setState(() => _obscure = !_obscure),
         icon: Icon(
           _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
@@ -468,16 +481,16 @@ class _AuthPasswordFieldState extends State<AuthPasswordField> {
 }
 
 /// A quiet link built from the shared tertiary button.
-class AuthLink extends StatelessWidget {
+class AuthLink extends ConsumerWidget {
   const AuthLink({super.key, required this.label, required this.onPressed});
 
   final String label;
   final VoidCallback? onPressed;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return MayosButton(
-      label: label,
+      label: MayosCopy(ref.watch(displayLanguageProvider)).translate(label),
       variant: MayosButtonVariant.tertiary,
       expand: false,
       onPressed: onPressed,

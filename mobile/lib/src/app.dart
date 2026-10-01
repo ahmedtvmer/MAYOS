@@ -1,16 +1,21 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/app_mode.dart';
 import 'core/connectivity.dart';
+import 'core/display_language.dart';
+import 'core/models.dart';
 import 'core/theme/mayos_spacing.dart';
 import 'core/theme/mayos_theme.dart';
 import 'core/ui/is_desktop_layout.dart';
 import 'core/ui/mayos_app_mode_scope.dart';
+import 'features/player/auth/auth_controller.dart';
 import 'providers.dart';
 import 'router.dart';
 
@@ -41,13 +46,37 @@ class _MayosAppState extends ConsumerState<MayosApp>
     // soon as the stored session is known (#220).
     ref.read(trainingStatusProvider.notifier);
     // Resolve any persisted session once, off the first frame.
-    Future<void>.microtask(
-      () => ref.read(authControllerProvider.notifier).initialize(),
-    );
+    Future<void>.microtask(() async {
+      final tokens = ref.read(tokenStoreProvider);
+      final accountId = await tokens.readAccountId() ??
+          _unverifiedSubject(await tokens.read());
+      await ref
+          .read(displayLanguageProvider.notifier)
+          .initialize(accountId: accountId);
+      await ref.read(authControllerProvider.notifier).initialize();
+    });
     // Load the persisted appearance choice off the first frame.
     Future<void>.microtask(
       () => ref.read(themeModeControllerProvider.notifier).initialize(),
     );
+  }
+
+  // The subject only selects this device's account-namespaced cache. The API
+  // still verifies the signed token before restoring an Account session.
+  String? _unverifiedSubject(String? token) {
+    if (token == null) return null;
+    final parts = token.split('.');
+    if (parts.length < 2) return null;
+    try {
+      final payload =
+          utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+      final subject = (jsonDecode(payload) as Map<String, dynamic>)['sub'];
+      return subject is String && subject.isNotEmpty ? subject : null;
+    } on FormatException {
+      return null;
+    } on TypeError {
+      return null;
+    }
   }
 
   @override
@@ -73,7 +102,24 @@ class _MayosAppState extends ConsumerState<MayosApp>
   }
 
   @override
+  void didChangeLocales(List<Locale>? locales) {
+    if (locales == null || locales.isEmpty) return;
+    ref
+        .read(displayLanguageProvider.notifier)
+        .systemLanguageChanged(locales.first.languageCode);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    ref.listen<AuthState>(authControllerProvider, (previous, next) {
+      final Account? account = next.session?.account;
+      if (account != null) {
+        ref.read(displayLanguageProvider.notifier).useAccount(
+              account.accountId,
+              account.displayLanguage,
+            );
+      }
+    });
     final GoRouter router = ref.watch(routerProvider);
     // The capability caps the mode: a lost coach capability lays out as
     // Player mode whatever is stored.
@@ -83,12 +129,18 @@ class _MayosAppState extends ConsumerState<MayosApp>
       stored: ref.watch(appModeControllerProvider).mode,
     );
     final ThemeMode themeMode = ref.watch(themeModeControllerProvider);
+    final AccountSession? session = ref.watch(authControllerProvider).session;
+    final String selectedLanguage =
+        session?.account.displayLanguage ?? ref.watch(displayLanguageProvider);
     return MaterialApp.router(
       title: 'MAYOS',
       debugShowCheckedModeBanner: false,
       theme: MayosTheme.light,
       darkTheme: MayosTheme.dark,
       themeMode: themeMode,
+      locale: Locale(selectedLanguage),
+      supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       routerConfig: router,
       builder: (BuildContext context, Widget? child) {
         final MayosThemeExtension c = _effective(context, themeMode);

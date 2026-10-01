@@ -40,7 +40,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def register_player(
-    db: Any, username: str, password: str, coach_invite_code: str | None = None
+    db: Any, username: str, password: str, coach_invite_code: str | None = None, display_language: str = "en"
 ) -> dict[str, Any]:
     """Creates an immutable account identity plus its ledger.
 
@@ -61,7 +61,7 @@ def register_player(
         ):
             return {"ok": False, "error": GENERIC_NEW_ACCOUNT_INVITE_ERROR, "code": "invalid_coach_invite"}
         account = db.register_account_with_coach_invite(
-            hash_token(coach_invite_code), clean_id, datetime.now(UTC).isoformat(), DEFAULT_CAPACITY
+            hash_token(coach_invite_code), clean_id, datetime.now(UTC).isoformat(), DEFAULT_CAPACITY, display_language
         )
         if account is None:
             return {"ok": False, "error": GENERIC_NEW_ACCOUNT_INVITE_ERROR, "code": "invalid_coach_invite"}
@@ -77,7 +77,7 @@ def register_player(
             validate_password(password)
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
-        account_id = db.create_account(clean_id)
+        account_id = db.create_account(clean_id, display_language=display_language)
     if account_id is None:
         return {"ok": False, "error": USERNAME_TAKEN, "code": "username_taken"}
     account = db.get_account(account_id) or {}
@@ -92,6 +92,7 @@ def register_player(
         "trainee_id": ledger_id,
         "account_id": account_id,
         "session_epoch": account.get("session_epoch", 1),
+        "display_language": account.get("display_language", "en"),
     }
 
 
@@ -112,6 +113,7 @@ def login_player(db: Any, username: str, password: str) -> dict[str, Any]:
             "trainee_id": account["ledger_id"],
             "account_id": account["account_id"],
             "session_epoch": account["session_epoch"],
+            "display_language": account.get("display_language", "en"),
             "has_profile": bool(profile),
             "profile": profile,
             "active_program": ledger.get_active_program() if profile else None,

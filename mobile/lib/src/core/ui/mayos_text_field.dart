@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../display_language.dart';
 
 /// A thin wrapper over [TextField] so inputs share the themed decoration and
 /// consistent text actions. The visual treatment lives in the theme's
 /// `inputDecorationTheme`; this exists to keep call sites uniform.
-class MayosTextField extends StatelessWidget {
+class MayosTextField extends ConsumerWidget {
   const MayosTextField({
     super.key,
     this.controller,
@@ -70,7 +73,8 @@ class MayosTextField extends StatelessWidget {
   final Key? fieldKey;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     return TextField(
       key: fieldKey,
       controller: controller,
@@ -91,9 +95,9 @@ class MayosTextField extends StatelessWidget {
       maxLines: maxLines,
       maxLength: maxLength,
       decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        helperText: helperText,
+        labelText: label == null ? null : copy.translate(label!),
+        hintText: hint == null ? null : copy.translate(hint!),
+        helperText: helperText == null ? null : copy.translate(helperText!),
         errorText: errorText,
         prefixIcon: prefixIcon,
         suffixIcon: suffixIcon,

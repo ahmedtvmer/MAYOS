@@ -43,7 +43,7 @@
     },
     "create_account": {
       "kind": "method",
-      "signature": "(self, username: str, *, allow_held_username: bool = False) -> str | None"
+      "signature": "(self, username: str, *, allow_held_username: bool = False, display_language: str = 'en') -> str | None"
     },
     "create_assignment_invite": {
       "kind": "method",
@@ -455,7 +455,7 @@
     },
     "register_account_with_coach_invite": {
       "kind": "method",
-      "signature": "(self, token_hash: str, username: str, now_iso: str, default_capacity: int) -> dict[str, typing.Any] | None"
+      "signature": "(self, token_hash: str, username: str, now_iso: str, default_capacity: int, display_language: str = 'en') -> dict[str, typing.Any] | None"
     },
     "get_roster_missed_streak": {
       "kind": "method",
@@ -468,6 +468,10 @@
     "mark_stall_session_processed": {
       "kind": "method",
       "signature": "(self, assignment_id: str, session_id: str, now_iso: str) -> None"
+    },
+    "set_account_display_language": {
+      "kind": "method",
+      "signature": "(self, account_id: str, language: str) -> bool"
     }
   },
   "module_names": [

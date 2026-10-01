@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/home_screen_install_hint_store.dart';
+import '../../../core/display_language.dart';
 import '../../../core/home_screen_install_hint_store_stub.dart'
     if (dart.library.js_interop) '../../../core/home_screen_install_hint_store_web.dart'
     as platform;
@@ -110,14 +111,15 @@ class _HomeScreenInstallHintBanner extends StatelessWidget {
   }
 }
 
-class _HomeScreenInstallHintText extends StatelessWidget {
+class _HomeScreenInstallHintText extends ConsumerWidget {
   const _HomeScreenInstallHintText();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final MayosThemeExtension colors = MayosTheme.of(context);
     return Text(
-      HomeScreenInstallHintSlot.message,
+      MayosCopy(ref.watch(displayLanguageProvider))
+          .translate(HomeScreenInstallHintSlot.message),
       maxLines: 1,
       softWrap: false,
       overflow: TextOverflow.ellipsis,
@@ -126,16 +128,17 @@ class _HomeScreenInstallHintText extends StatelessWidget {
   }
 }
 
-class _HomeScreenInstallHintDismissButton extends StatelessWidget {
+class _HomeScreenInstallHintDismissButton extends ConsumerWidget {
   const _HomeScreenInstallHintDismissButton({required this.onDismiss});
 
   final VoidCallback onDismiss;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final MayosThemeExtension colors = MayosTheme.of(context);
     return IconButton(
-      tooltip: 'Dismiss Home Screen hint',
+      tooltip: MayosCopy(ref.watch(displayLanguageProvider))
+          .translate('Dismiss Home Screen hint'),
       onPressed: onDismiss,
       constraints: const BoxConstraints(
         minWidth: kMayosMinTapTarget,

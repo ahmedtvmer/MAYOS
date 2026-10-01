@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../../../core/account_data_eraser.dart';
 import '../../../core/api_client.dart';
 import '../../../core/chat_storage.dart';
+import '../../../core/display_language.dart';
 import '../../../core/models.dart';
 import '../../../core/token_store.dart';
 
@@ -38,28 +39,33 @@ class AuthRepository {
     required TokenStore tokens,
     required AccountDataEraser eraser,
     ChatCacheStore? chatCache,
+    DisplayLanguageStore? displayLanguageStore,
   })  : _api = api,
         _tokens = tokens,
         _eraser = eraser,
-        _chatCache = chatCache;
+        _chatCache = chatCache,
+        _displayLanguageStore = displayLanguageStore;
 
   final ApiClient _api;
   final TokenStore _tokens;
   final AccountDataEraser _eraser;
   final ChatCacheStore? _chatCache;
+  final DisplayLanguageStore? _displayLanguageStore;
 
   Future<AccountSession> register({
     required String username,
     required String password,
     bool rememberMe = false,
     String? coachInviteCode,
+    String displayLanguage = 'en',
   }) {
     return _establishSession(
       () => _api.register(
           traineeId: username,
           password: password,
           rememberMe: rememberMe,
-          coachInviteCode: coachInviteCode),
+          coachInviteCode: coachInviteCode,
+          displayLanguage: displayLanguage),
     );
   }
 
@@ -95,9 +101,13 @@ class AuthRepository {
   Future<AccountSession> completeGoogleSignup({
     required String signupTicket,
     required String username,
+    String displayLanguage = 'en',
   }) {
     return _establishSession(
-      () => _api.googleComplete(signupTicket: signupTicket, username: username),
+      () => _api.googleComplete(
+          signupTicket: signupTicket,
+          username: username,
+          displayLanguage: displayLanguage),
     );
   }
 
@@ -197,6 +207,7 @@ class AuthRepository {
       return;
     }
     await _eraser.erase(accountId);
+    await _displayLanguageStore?.deleteAccount(accountId);
   }
 
   /// The immutable account id for local-key lookup: the persisted id, or the
@@ -271,6 +282,9 @@ class AuthRepository {
 
   /// Re-reads the current account (live capabilities) for a resume refresh.
   Future<Account> currentAccount() => _api.currentAccount();
+
+  Future<void> updateDisplayLanguage(String language) =>
+      _api.updateDisplayLanguage(language);
 
   Future<void> clearToken() => _tokens.clear();
 

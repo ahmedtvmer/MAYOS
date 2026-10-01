@@ -23,6 +23,7 @@ from svc.dependencies import (
     get_ledger,
     get_signup_subject,
     get_verified_player,
+    get_verified_account,
     google_sign_in_enabled,
 )
 from svc.rate_limit import PASSWORD_LIMIT, REGISTER_LIMIT, LOGIN_LIMIT, RESET_LIMIT, USERNAME_CHECK_LIMIT, limiter
@@ -30,6 +31,7 @@ from svc.schemas import (
     AccountCapabilitiesOut,
     AccountDeleteIn,
     AccountOut,
+    DisplayLanguageIn,
     AccountPlansOut,
     EmailUpdateIn,
     ForgotPasswordIn,
@@ -55,7 +57,7 @@ _bearer = HTTPBearer(auto_error=False)
 @limiter.limit(REGISTER_LIMIT)
 async def register(request: Request, body: TraineeIn, db: Annotated[Any, Depends(get_db)]):
     def _run():
-        result = auth_service.register_player(db, body.trainee_id, body.password, body.coach_invite_code)
+        result = auth_service.register_player(db, body.trainee_id, body.password, body.coach_invite_code, body.display_language)
         if not result["ok"]:
             status_code = (
                 status.HTTP_409_CONFLICT
@@ -73,6 +75,7 @@ async def register(request: Request, body: TraineeIn, db: Annotated[Any, Depends
             token_version=result["session_epoch"],
         ),
         trainee_id=result["trainee_id"],
+        display_language=result.get("display_language", "en"),
     )
 
 
@@ -93,6 +96,7 @@ async def login(request: Request, body: TraineeIn, db: Annotated[Any, Depends(ge
             token_version=result["session_epoch"],
         ),
         trainee_id=result["trainee_id"],
+        display_language=result.get("display_language", "en"),
     )
 
 
@@ -131,6 +135,7 @@ async def google_sign_in(
                 token_version=result["session_epoch"],
             ),
             trainee_id=result["trainee_id"],
+            display_language=result.get("display_language", "en"),
         )
     return GoogleSignUpOut(
         signup_ticket=create_signup_ticket(identity.sub),
@@ -187,7 +192,7 @@ async def google_complete(
 
     def _run():
         try:
-            return google_service.complete_signup(db, subject, body.username)
+            return google_service.complete_signup(db, subject, body.username, body.display_language)
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
         except google_service.SignUpConflictError as exc:
@@ -201,6 +206,7 @@ async def google_complete(
             token_version=result["session_epoch"],
         ),
         trainee_id=result["trainee_id"],
+        display_language=result.get("display_language", "en"),
     )
 
 
@@ -306,8 +312,22 @@ async def read_current_account(
         plans=AccountPlansOut(**plans),
         has_password=has_password,
         linked_sign_ins=linked_sign_ins,
+        display_language=account.get("display_language", "en"),
         coach_ai_enabled=coach_ai_service.coach_ai_enabled(),
     )
+
+
+@router.put("/display-language")
+async def update_display_language(
+    body: DisplayLanguageIn,
+    player: Annotated[Any, Depends(get_verified_account)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Saves the account's Display language by immutable account identity."""
+    saved = await asyncio.to_thread(db.set_account_display_language, player.account_id, body.display_language)
+    if not saved:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found.")
+    return {"display_language": body.display_language}
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

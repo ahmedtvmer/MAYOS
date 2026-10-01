@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/connectivity_message.dart';
+import '../../../core/display_language.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_text_field.dart';
@@ -98,7 +99,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             message: _confirmation!,
           ),
           const SizedBox(height: MayosSpacing.sm),
-          const Text("Didn't get an email? Check the address,"),
+          Text(MayosCopy(ref.watch(displayLanguageProvider))
+              .translate("Didn't get an email? Check the address,")),
           AuthLink(
             key: const Key('forgot_signup'),
             label: 'sign up',
@@ -106,7 +108,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                 ? null
                 : () => context.go(carryingLocation(context, registerPath)),
           ),
-          const Text('or log in and add a recovery email in Settings.'),
+          Text(MayosCopy(ref.watch(displayLanguageProvider))
+              .translate('or log in and add a recovery email in Settings.')),
         ],
       ],
     );

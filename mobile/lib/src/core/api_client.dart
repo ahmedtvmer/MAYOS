@@ -220,6 +220,7 @@ class ApiClient {
     required String password,
     bool rememberMe = false,
     String? coachInviteCode,
+    String displayLanguage = 'en',
   }) async {
     final response = await _send(
       () => _dio.post<dynamic>(
@@ -229,6 +230,7 @@ class ApiClient {
           'password': password,
           'remember_me': rememberMe,
           if (coachInviteCode != null) 'coach_invite_code': coachInviteCode,
+          'display_language': displayLanguage,
         },
         options: Options(extra: {_skipAuth: true}),
       ),
@@ -318,6 +320,7 @@ class ApiClient {
   Future<AuthTokens> googleComplete({
     required String signupTicket,
     required String username,
+    String displayLanguage = 'en',
   }) async {
     final response = await _send(
       () => _dio.post<dynamic>(
@@ -325,11 +328,19 @@ class ApiClient {
         data: <String, dynamic>{
           'signup_ticket': signupTicket,
           'username': username,
+          'display_language': displayLanguage,
         },
         options: Options(extra: {_skipAuth: true}),
       ),
     );
     return AuthTokens.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<void> updateDisplayLanguage(String language) async {
+    await _send(() => _dio.put<dynamic>(
+          '/auth/display-language',
+          data: <String, dynamic>{'display_language': language},
+        ));
   }
 
   /// Redeems a single-use Coach invite from MAYOS and returns the updated account.

@@ -344,7 +344,8 @@ class SchemaMixin:
                     session_epoch INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL,
                     deleted_at TEXT,
-                    last_seen_at TEXT
+                    last_seen_at TEXT,
+                    display_language TEXT NOT NULL DEFAULT 'en' CHECK (display_language IN ('en', 'ar'))
                 );
                 -- Partial unique index: a username is unique among live accounts, so a
                 -- deleted username can later be registered under a new immutable id.
@@ -657,6 +658,7 @@ class SchemaMixin:
             self.catalog_conn.execute("DROP TABLE IF EXISTS account_claim_codes")
             self._create_coach_alerts_schema()
             self._ensure_accounts_last_seen_at()
+            self._ensure_accounts_display_language()
             self._ensure_roster_attendance_timezone()
             self._ensure_roster_attendance_last_workout_on()
             self._ensure_roster_attendance_program_name()
@@ -834,6 +836,16 @@ class SchemaMixin:
         columns = self._table_columns(cursor, "accounts")
         if columns and "last_seen_at" not in columns:
             cursor.execute("ALTER TABLE accounts ADD COLUMN last_seen_at TEXT")
+
+    def _ensure_accounts_display_language(self) -> None:
+        """Add account-owned Display language; legacy accounts retain English (#250)."""
+        cursor = self.catalog_conn.cursor()
+        columns = self._table_columns(cursor, "accounts")
+        if columns and "display_language" not in columns:
+            cursor.execute(
+                "ALTER TABLE accounts ADD COLUMN display_language TEXT NOT NULL DEFAULT 'en' "
+                "CHECK (display_language IN ('en', 'ar'))"
+            )
 
     def _ensure_coach_invites_revoked_at(self) -> None:
         """Add revocation state to existing coach invite catalogs (#210)."""

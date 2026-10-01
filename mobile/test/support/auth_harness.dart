@@ -4,6 +4,7 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
+import 'package:mayos_mobile/src/core/display_language.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
@@ -17,6 +18,8 @@ ProviderContainer authContainerFor(
     overrides: <Override>[
       tokenStoreProvider.overrideWithValue(tokens),
       appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
+      displayLanguageStoreProvider
+          .overrideWithValue(InMemoryDisplayLanguageStore()),
       apiClientProvider.overrideWith((ref) {
         final ApiClient client = ApiClient(
           tokens: ref.watch(tokenStoreProvider),
@@ -41,6 +44,8 @@ Widget authApp(FakeMayosApi fake, InMemoryTokenStore tokens,
     overrides: <Override>[
       tokenStoreProvider.overrideWithValue(tokens),
       appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
+      displayLanguageStoreProvider
+          .overrideWithValue(InMemoryDisplayLanguageStore()),
       chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
       apiClientProvider.overrideWith((ref) {
         final ApiClient client = ApiClient(

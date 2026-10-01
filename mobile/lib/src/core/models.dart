@@ -94,6 +94,7 @@ class Account {
     this.coachAiEnabled = false,
     this.hasPassword = false,
     this.linkedSignIns = const <String>[],
+    this.displayLanguage = 'en',
   });
 
   factory Account.fromJson(Map<String, dynamic> json) {
@@ -115,6 +116,7 @@ class Account {
       linkedSignIns: rawLinked is List<dynamic>
           ? rawLinked.whereType<String>().toList(growable: false)
           : const <String>[],
+      displayLanguage: json['display_language'] == 'ar' ? 'ar' : 'en',
     );
   }
 
@@ -135,6 +137,7 @@ class Account {
 
   /// The connected providers by name — never a subject (`/auth/me`, #114).
   final List<String> linkedSignIns;
+  final String displayLanguage;
 
   bool get isCoach => capabilities.coach;
 

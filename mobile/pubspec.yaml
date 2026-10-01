@@ -9,12 +9,15 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   # Path URL strategy for clean browser URLs (#127); a no-op on Android.
   flutter_web_plugins:
     sdk: flutter
   dio: ^5.7.0
   flutter_secure_storage: ^9.2.2
   flutter_riverpod: ^2.5.1
+  intl: any
   # Lightweight GFM rendering for selectable assistant replies.
   flutter_markdown_plus: ^1.0.12
   flutter_timezone: ^5.1.0

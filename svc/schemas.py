@@ -123,12 +123,18 @@ class TraineeIn(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     remember_me: bool = False
     coach_invite_code: str | None = None
+    display_language: Literal["en", "ar"] = "en"
 
 
 class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     trainee_id: str
+    display_language: Literal["en", "ar"] = "en"
+
+
+class DisplayLanguageIn(BaseModel):
+    display_language: Literal["en", "ar"]
 
 
 class GoogleSignInIn(BaseModel):
@@ -157,6 +163,7 @@ class GoogleCompleteIn(BaseModel):
 
     signup_ticket: str
     username: str
+    display_language: Literal["en", "ar"] = "en"
 
 
 class GoogleLinkIn(BaseModel):
@@ -219,6 +226,7 @@ class AccountOut(BaseModel):
     plans: AccountPlansOut
     has_password: bool
     linked_sign_ins: list[str]
+    display_language: Literal["en", "ar"] = "en"
     coach_ai_enabled: bool = False
 
 

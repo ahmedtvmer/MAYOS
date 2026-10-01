@@ -12,6 +12,7 @@ import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_models.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
+import 'package:mayos_mobile/src/core/display_language.dart';
 import 'package:mayos_mobile/src/core/client_session_id.dart';
 import 'package:mayos_mobile/src/core/connectivity_message.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
@@ -118,6 +119,7 @@ ProviderContainer _container({
   required InMemoryDraftStore drafts,
   required InMemoryWorkoutCacheStore cache,
   required InMemoryChatCacheStore chat,
+  DisplayLanguageStore? displayLanguageStore,
 }) {
   return ProviderContainer(
     overrides: <Override>[
@@ -126,6 +128,8 @@ ProviderContainer _container({
       draftStoreProvider.overrideWithValue(drafts),
       workoutCacheStoreProvider.overrideWithValue(cache),
       chatCacheStoreProvider.overrideWithValue(chat),
+      if (displayLanguageStore != null)
+        displayLanguageStoreProvider.overrideWithValue(displayLanguageStore),
       // The keystore-backed stores of #123 have no plugin on the test host;
       // the in-memory fakes keep the account-deletion erase path real.
       activeWorkoutStoreProvider
@@ -181,11 +185,19 @@ void main() {
       final InMemoryDraftStore drafts = InMemoryDraftStore();
       final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
       final InMemoryChatCacheStore chat = InMemoryChatCacheStore();
+      final InMemoryDisplayLanguageStore displayLanguage =
+          InMemoryDisplayLanguageStore();
+      await displayLanguage.writeAccount(_accountAlice, 'ar');
       await _seedSignedIn(fake, tokens);
       await _seedLocalData(tokens, drafts, cache, chat);
 
       final ProviderContainer container = _container(
-          fake: fake, tokens: tokens, drafts: drafts, cache: cache, chat: chat);
+          fake: fake,
+          tokens: tokens,
+          drafts: drafts,
+          cache: cache,
+          chat: chat,
+          displayLanguageStore: displayLanguage);
       addTearDown(container.dispose);
       final AuthController auth =
           container.read(authControllerProvider.notifier);
@@ -206,6 +218,7 @@ void main() {
       expect(await cache.readPrescription(_accountAlice, 1), isNull);
       expect(await chat.readDisclosureAccepted(_accountAlice), isFalse);
       expect(await chat.readHistory(_accountAlice), isEmpty);
+      expect(await displayLanguage.readAccount(_accountAlice), isNull);
       expect(await tokens.read(), isNull);
       expect(await tokens.readAccountId(), isNull);
     });

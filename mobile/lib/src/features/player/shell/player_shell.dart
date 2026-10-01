@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/ui/mayos_app_header.dart';
+import '../../../core/display_language.dart';
 import '../../../core/ui/mayos_bottom_navigation.dart';
 import '../../../core/ui/mayos_scaffold.dart';
 import '../../../providers.dart';
@@ -95,6 +96,8 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
     final int index = ref.watch(playerShellTabProvider);
     final bool isCoach =
         ref.watch(authControllerProvider).session?.account.isCoach ?? false;
+    final String settingsLabel =
+        MayosCopy(ref.watch(displayLanguageProvider)).settings;
     return MayosScaffold(
       header: MayosAppHeader(
         actions: <Widget>[
@@ -104,7 +107,7 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
             icon: const Icon(Icons.chat_bubble_outline),
           ),
           IconButton(
-            tooltip: 'Settings',
+            tooltip: settingsLabel,
             onPressed: () => context.push(settingsPath),
             icon: const Icon(Icons.settings_outlined),
           ),

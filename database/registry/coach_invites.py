@@ -41,7 +41,7 @@ class RegistryCoachInvitesMixin:
         return True
 
     def register_account_with_coach_invite(
-        self, token_hash: str, username: str, now_iso: str, default_capacity: int
+        self, token_hash: str, username: str, now_iso: str, default_capacity: int, display_language: str = "en"
     ) -> dict[str, Any] | None:
         """Registers a Player and grants Coach capability while claiming its hold."""
         self.ensure_account_schema()
@@ -61,7 +61,7 @@ class RegistryCoachInvitesMixin:
                 or self.ledger_exists(username)
             ):
                 return None
-            account_id = self.create_account(username, allow_held_username=True)
+            account_id = self.create_account(username, allow_held_username=True, display_language=display_language)
             if account_id is None:
                 return None
             cursor = self.catalog_conn.execute(

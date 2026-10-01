@@ -154,7 +154,7 @@ def test_first_sign_in_creates_account_only_after_the_username_is_picked(api):
 
     completed = client.post(
         "/auth/google/complete",
-        json={"signup_ticket": ticket, "username": signup["suggested_username"]},
+        json={"signup_ticket": ticket, "username": signup["suggested_username"], "display_language": "ar"},
     )
     assert completed.status_code == 200, completed.text
     assert completed.json()["trainee_id"] == "alfred"
@@ -177,6 +177,8 @@ def test_first_sign_in_creates_account_only_after_the_username_is_picked(api):
     assert session.status_code == 200
     assert session.json()["trainee_id"] == "alfred"
     assert session.json()["capabilities"] == {"player": True, "coach": False}
+    assert session.json()["display_language"] == "ar"
+    assert completed.json()["display_language"] == "ar"
 
 
 def test_returning_google_sign_in_goes_straight_in_with_remember_me(api):
@@ -184,17 +186,20 @@ def test_returning_google_sign_in_goes_straight_in_with_remember_me(api):
     signup = _sign_in_for_ticket(client, "bob-token:Bob")
     completed = client.post(
         "/auth/google/complete",
-        json={"signup_ticket": signup["signup_ticket"], "username": "bob"},
+        json={"signup_ticket": signup["signup_ticket"], "username": "bob", "display_language": "ar"},
     )
     assert completed.status_code == 200
 
     again = client.post("/auth/google", json={"id_token": "bob-token:Bob"})
     assert again.status_code == 200
     body = again.json()
-    assert set(body) == {"access_token", "token_type", "trainee_id"}
+    assert set(body) == {"access_token", "token_type", "trainee_id", "display_language"}
+    assert body["display_language"] == "ar"
     assert body["trainee_id"] == "bob"
     assert _lifetime_hours(body["access_token"]) == 720
-    assert client.get("/auth/me", headers=_headers(body["access_token"])).status_code == 200
+    restored = client.get("/auth/me", headers=_headers(body["access_token"]))
+    assert restored.status_code == 200
+    assert restored.json()["display_language"] == "ar"
     assert len(verifier.seen) == 2
 
     # Two sign-ins, one account, one link.

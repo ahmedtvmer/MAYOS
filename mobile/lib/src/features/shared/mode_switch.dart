@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/app_mode.dart';
+import '../../core/display_language.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
@@ -54,8 +55,8 @@ class ModeAvatarButton extends ConsumerWidget {
                   backgroundColor: c.accentSubtle,
                   child: Text(
                     initials,
-                    style:
-                        MayosTypography.avatarInitials.copyWith(color: c.accent),
+                    style: MayosTypography.avatarInitials
+                        .copyWith(color: c.accent),
                   ),
                 ),
                 Positioned(
@@ -63,8 +64,8 @@ class ModeAvatarButton extends ConsumerWidget {
                   bottom: 6,
                   child: Container(
                     key: badgeKey,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 4, vertical: 1),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                     decoration: BoxDecoration(
                       color: coachMode ? c.accent : c.success,
                       borderRadius: MayosRadii.pillRadius,
@@ -72,8 +73,8 @@ class ModeAvatarButton extends ConsumerWidget {
                     ),
                     child: Text(
                       coachMode ? 'C' : 'P',
-                      style: MayosTypography.modeBadge
-                          .copyWith(color: coachMode ? c.onAccent : c.onSuccess),
+                      style: MayosTypography.modeBadge.copyWith(
+                          color: coachMode ? c.onAccent : c.onSuccess),
                     ),
                   ),
                 ),
@@ -104,8 +105,7 @@ void switchToMode(BuildContext context, WidgetRef ref, AppMode mode) {
       location: currentPath,
     );
   }
-  final CoachLocationMemory? remembered =
-      ref.read(coachLocationMemoryProvider);
+  final CoachLocationMemory? remembered = ref.read(coachLocationMemoryProvider);
   ref.read(appModeControllerProvider.notifier).setMode(
         mode,
         accountId: session.account.accountId,
@@ -123,6 +123,7 @@ void switchToMode(BuildContext context, WidgetRef ref, AppMode mode) {
 /// The account sheet: switch between Player mode and Coach mode, then
 /// Settings and Log out. Only coach accounts reach it (#119).
 Future<void> showModeSheet(BuildContext context, WidgetRef ref) {
+  final MayosCopy copy = MayosCopy(ref.read(displayLanguageProvider));
   final AccountSession? session = ref.read(authControllerProvider).session;
   if (session == null) {
     return Future<void>.value();
@@ -146,12 +147,10 @@ Future<void> showModeSheet(BuildContext context, WidgetRef ref) {
         final bool selected = current == mode;
         return ListTile(
           minTileHeight: 64,
-          leading:
-              Icon(icon, color: selected ? c.accent : c.textSecondary),
+          leading: Icon(icon, color: selected ? c.accent : c.textSecondary),
           title: Text(title, style: MayosTypography.body),
           subtitle: Text(subtitle, style: MayosTypography.caption),
-          trailing:
-              selected ? Icon(Icons.check_circle, color: c.accent) : null,
+          trailing: selected ? Icon(Icons.check_circle, color: c.accent) : null,
           onTap: () {
             Navigator.of(sheetContext).pop();
             if (selected) {
@@ -164,52 +163,51 @@ Future<void> showModeSheet(BuildContext context, WidgetRef ref) {
 
       // The sheet stays usable on a 360dp screen at 1.5x text (#119).
       final Widget content = Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  MayosSpacing.lg, 0, MayosSpacing.lg, MayosSpacing.sm),
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Text(username,
-                        style: MayosTypography.sectionHeading),
-                  ),
-                  Text('Switch mode', style: MayosTypography.caption),
-                ],
-              ),
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+                MayosSpacing.lg, 0, MayosSpacing.lg, MayosSpacing.sm),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(username, style: MayosTypography.sectionHeading),
+                ),
+                Text('Switch mode', style: MayosTypography.caption),
+              ],
             ),
-            modeRow(
-              AppMode.player,
-              Icons.fitness_center,
-              'Player mode',
-              onboarded ? 'Your own training' : 'Set up your own training',
-            ),
-            modeRow(
-              AppMode.coach,
-              Icons.groups_outlined,
-              'Coach mode',
-              'Your roster, alerts, and profile',
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.settings_outlined),
-              title: const Text('Settings'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                context.push(settingsPath);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.logout),
-              title: const Text('Log out'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                confirmLogout(context, ref);
-              },
-            ),
-          ],
-        );
+          ),
+          modeRow(
+            AppMode.player,
+            Icons.fitness_center,
+            'Player mode',
+            onboarded ? 'Your own training' : 'Set up your own training',
+          ),
+          modeRow(
+            AppMode.coach,
+            Icons.groups_outlined,
+            'Coach mode',
+            'Your roster, alerts, and profile',
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.settings_outlined),
+            title: Text(copy.settings),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              context.push(settingsPath);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: Text(copy.translate('Log out')),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              confirmLogout(context, ref);
+            },
+          ),
+        ],
+      );
       return SafeArea(
         child: ConstrainedBox(
           constraints: BoxConstraints(

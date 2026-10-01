@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/config.dart';
+import '../../core/api_client.dart';
+import '../../core/display_language.dart';
 import '../../core/models.dart';
 import '../../core/privacy_policy.dart';
 import '../../core/theme/mayos_spacing.dart';
@@ -22,24 +24,69 @@ import 'logout_confirmation.dart';
 /// Opened from the shell header (never a bottom-bar destination). This is the
 /// single home for actions that previously crowded the Home header, so nothing
 /// stops being reachable when the bottom bar is reduced to Home + Program.
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  int _selectorRevision = 0;
+
+  @override
+  Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final ThemeMode mode = ref.watch(themeModeControllerProvider);
     final AccountSession? session = ref.watch(authControllerProvider).session;
     final bool isCoach = session?.account.isCoach ?? false;
     final bool hasPlayerProfile = session?.account.capabilities.player ?? false;
     final bool offlineDrafts = ref.watch(offlineWorkoutDraftsEnabledProvider);
+    final String language = ref.watch(displayLanguageProvider);
+    final MayosCopy copy = MayosCopy(language);
 
     return MayosScaffold(
-      title: 'Settings',
+      title: copy.settings,
       showBack: true,
       body: ListView(
         padding: MayosSpacing.screen,
         children: <Widget>[
+          MayosSectionHeader(title: copy.displayLanguage),
+          DropdownButtonFormField<String>(
+            key: ValueKey<String>(
+                'account_display_language_$language-$_selectorRevision'),
+            initialValue: language,
+            items: <DropdownMenuItem<String>>[
+              DropdownMenuItem(value: 'en', child: Text(copy.english)),
+              DropdownMenuItem(value: 'ar', child: Text(copy.arabic)),
+            ],
+            onChanged: session == null
+                ? null
+                : (value) async {
+                    if (value == null || value == language) {
+                      return;
+                    }
+                    try {
+                      await ref
+                          .read(authRepositoryProvider)
+                          .updateDisplayLanguage(value);
+                      await ref
+                          .read(displayLanguageProvider.notifier)
+                          .useAccount(session.account.accountId, value);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(copy.languageSaved)));
+                      }
+                    } on ApiException {
+                      setState(() => _selectorRevision++);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(copy.languageSaveFailed)));
+                      }
+                    }
+                  },
+          ),
+          const SizedBox(height: MayosSpacing.xl),
           const MayosSectionHeader(
             title: 'Appearance',
             subtitle: 'Choose how MAYOS looks. System follows your device.',

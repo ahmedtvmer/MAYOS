@@ -222,12 +222,14 @@ class AuthController extends StateNotifier<AuthState> {
     required String password,
     bool rememberMe = false,
     String? coachInviteCode,
+    String displayLanguage = 'en',
   }) async {
     final AccountSession session = await _repository.register(
       username: username,
       password: password,
       rememberMe: rememberMe,
       coachInviteCode: coachInviteCode,
+      displayLanguage: displayLanguage,
     );
     state = AuthState.authenticated(session);
   }
@@ -281,8 +283,7 @@ class AuthController extends StateNotifier<AuthState> {
         state = AuthState.authenticated(session);
         return const GoogleSignInDone();
       }
-      final GoogleUsernameRequired required =
-          result as GoogleUsernameRequired;
+      final GoogleUsernameRequired required = result as GoogleUsernameRequired;
       _pendingSignup = PendingGoogleSignup(
         signupTicket: required.signupTicket,
         suggestedUsername: required.suggestedUsername,
@@ -309,7 +310,7 @@ class AuthController extends StateNotifier<AuthState> {
 
   /// Picks the username and creates the account behind the pending ticket.
   Future<CompleteGoogleSignupResult> completeGoogleSignup(
-      {required String username}) async {
+      {required String username, String displayLanguage = 'en'}) async {
     final PendingGoogleSignup? pending = _pendingSignup;
     if (pending == null) {
       return const GoogleSignupTicketExpired();
@@ -318,6 +319,7 @@ class AuthController extends StateNotifier<AuthState> {
       final AccountSession session = await _repository.completeGoogleSignup(
         signupTicket: pending.signupTicket,
         username: username,
+        displayLanguage: displayLanguage,
       );
       _pendingSignup = null;
       state = AuthState.authenticated(session);
@@ -389,8 +391,7 @@ class AuthController extends StateNotifier<AuthState> {
   Future<DeleteWithGoogleResult> _deleteAccountWithGoogleToken(
       String googleIdToken) async {
     try {
-      await _repository.deleteAccountWithGoogle(
-          googleIdToken: googleIdToken);
+      await _repository.deleteAccountWithGoogle(googleIdToken: googleIdToken);
     } on ApiException catch (error) {
       return DeleteWithGoogleRefused(mutationFailureMessage(error));
     }

@@ -71,6 +71,7 @@ Future<void> _pumpProfile(
   InMemoryDraftStore? drafts,
   InMemoryWorkoutCacheStore? cache,
   InMemoryChatCacheStore? chat,
+  bool openProfile = true,
 }) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 2.0;
@@ -123,6 +124,7 @@ Future<void> _pumpProfile(
     await tester.tap(find.text('Settings'));
   }
   await _pumpUntilFound(tester, find.text('Appearance'));
+  if (!openProfile) return;
   await tester.tap(find.text('Profile'));
   await _pumpUntilFound(tester, find.text('Training profile'));
   await tester.scrollUntilVisible(
@@ -147,6 +149,29 @@ Future<void> _reveal(WidgetTester tester, Finder finder) async {
 
 void main() {
   group('sign-in methods section', () {
+    testWidgets('failed Display language save keeps confirmed selection',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi()
+        ..displayLanguageUpdateFails = true;
+      final InMemoryTokenStore tokens = InMemoryTokenStore();
+      await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
+      await _pumpProfile(tester, fake, tokens,
+          google: FakeGoogleAuthGateway(), openProfile: false);
+
+      final Finder selector =
+          find.byKey(const Key('account_display_language_en-0'));
+      expect(selector, findsOneWidget);
+      await tester.tap(selector);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Arabic').last);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('account_display_language_en-1')),
+          findsOneWidget);
+      expect(fake.displayLanguage, 'en');
+      expect(find.text('Could not save Display language.'), findsOneWidget);
+      expect(find.text('English'), findsOneWidget);
+    });
+
     testWidgets('a password-only account offers change password and connect',
         (WidgetTester tester) async {
       final FakeMayosApi fake = FakeMayosApi();

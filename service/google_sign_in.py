@@ -121,6 +121,7 @@ def sign_in(db: Any, identity: GoogleIdentity) -> dict[str, Any]:
             "account_id": account["account_id"],
             "trainee_id": _materialise_ledger(db, account),
             "session_epoch": account["session_epoch"],
+            "display_language": account.get("display_language", "en"),
         }
     return {
         "kind": "signup",
@@ -140,7 +141,7 @@ def _has_live_recovery_email(db: Any, email: str | None) -> bool:
     return admin_accounts.find_by_recovery_email(db, email) is not None
 
 
-def complete_signup(db: Any, subject: str, username: Any) -> dict[str, Any]:
+def complete_signup(db: Any, subject: str, username: Any, display_language: str = "en") -> dict[str, Any]:
     """Creates the account and the link in one catalog transaction.
 
     Mirrors ``register_player``: player capability, its own ledger, no password
@@ -166,7 +167,7 @@ def complete_signup(db: Any, subject: str, username: Any) -> dict[str, Any]:
             db.remove_linked_sign_in(PROVIDER, subject)
         if not _is_free(db, clean):
             raise SignUpConflictError(USERNAME_TAKEN)
-        account_id = db.create_account(clean)
+        account_id = db.create_account(clean, display_language=display_language)
         if account_id is None:
             raise SignUpConflictError(USERNAME_TAKEN)
         try:
@@ -186,6 +187,7 @@ def complete_signup(db: Any, subject: str, username: Any) -> dict[str, Any]:
         "account_id": account_id,
         "trainee_id": ledger_id,
         "session_epoch": account.get("session_epoch", 1),
+        "display_language": account.get("display_language", "en"),
     }
 
 

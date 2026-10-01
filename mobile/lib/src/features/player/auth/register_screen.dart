@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/display_language.dart';
 import '../../../core/privacy_policy.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/ui/mayos_button.dart';
@@ -61,6 +62,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                 _showCoachInviteCode && _coachInviteCode.text.trim().isNotEmpty
                     ? _coachInviteCode.text.trim()
                     : null,
+            displayLanguage: ref.read(displayLanguageProvider),
           );
       TextInput.finishAutofillContext();
     } on ApiException catch (error) {

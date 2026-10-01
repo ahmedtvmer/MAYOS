@@ -18,6 +18,7 @@ class FakeMayosApi {
   String? issuedToken;
   String? currentUsername;
   bool tokenValid = true;
+  bool displayLanguageUpdateFails = false;
   bool coach = false;
   bool playerCapability = true;
   // Account deletion (issue #40). `accountDeleted` makes every authenticated
@@ -83,6 +84,8 @@ class FakeMayosApi {
   // what the connect/disconnect/set-password/change-password routes do.
   /// Mirrors `auth_service.account_has_password` for the signed-in account.
   bool hasPassword = true;
+  String displayLanguage = 'en';
+  String? registeredDisplayLanguage;
 
   /// Provider names on `linked_sign_ins` (never a subject).
   final Set<String> linkedSignIns = <String>{};
@@ -409,6 +412,8 @@ class FakeMayosApi {
                 401, <String, dynamic>{'detail': 'Token has been revoked.'});
       case '/auth/me':
         return _me(request);
+      case '/auth/display-language':
+        return _updateDisplayLanguage(request);
       case '/auth/email':
         return _recoveryEmail(request);
       case '/auth/forgot-password':
@@ -546,6 +551,7 @@ class FakeMayosApi {
           409, <String, dynamic>{'detail': 'That username is taken.'});
     }
     googleCompletedUsernames.add(username);
+    displayLanguage = request.body['display_language'] == 'ar' ? 'ar' : 'en';
     // A fresh Google sign-up creates a Google-only account (#113).
     hasPassword = false;
     linkedSignIns
@@ -663,6 +669,8 @@ class FakeMayosApi {
           400, <String, dynamic>{'detail': 'Password is too short.'});
     }
     final String? coachInviteCode = request.body['coach_invite_code'] as String?;
+    registeredDisplayLanguage = request.body['display_language'] as String?;
+    displayLanguage = registeredDisplayLanguage == 'ar' ? 'ar' : 'en';
     lastRegistrationCoachInviteCode = coachInviteCode;
     if (coachInviteCode != null &&
         coachInviteCode != validNewAccountCoachInviteCode) {
@@ -711,7 +719,26 @@ class FakeMayosApi {
       'coach_ai_enabled': coachAiEnabled,
       'has_password': hasPassword,
       'linked_sign_ins': linkedSignIns.toList(growable: false),
+      'display_language': displayLanguage,
     });
+  }
+
+  FakeResponse _updateDisplayLanguage(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (displayLanguageUpdateFails) {
+      return const FakeResponse(503, <String, dynamic>{'detail': 'offline'});
+    }
+    final language = request.body['display_language'];
+    if (language != 'en' && language != 'ar') {
+      return const FakeResponse(
+          422, <String, dynamic>{'detail': 'Invalid display language.'});
+    }
+    displayLanguage = language as String;
+    return FakeResponse(
+        200, <String, dynamic>{'display_language': displayLanguage});
   }
 
   Map<String, dynamic> _plansBody() => <String, dynamic>{
