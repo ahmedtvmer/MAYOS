@@ -14,11 +14,14 @@ class RegistryCoachInvitesMixin:
         self.ensure_account_schema()
         now = now_iso or datetime.now(UTC).isoformat()
         with self._catalog_lock:
-            return self.catalog_conn.execute(
-                "SELECT 1 FROM new_account_coach_invites"
-                " WHERE username = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ? LIMIT 1",
-                (self._sanitize_username(username), now),
-            ).fetchone() is not None
+            return self._username_has_live_coach_invite_hold(username, now)
+
+    def _username_has_live_coach_invite_hold(self, username: str, now_iso: str) -> bool:
+        return self.catalog_conn.execute(
+            "SELECT 1 FROM new_account_coach_invites"
+            " WHERE username = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ? LIMIT 1",
+            (self._sanitize_username(username), now_iso),
+        ).fetchone() is not None
 
     def issue_new_account_coach_invite(self, token_hash: str, username: str, expires_at: str) -> bool:
         """Holds a normalized username with a single-use Coach invite."""
@@ -27,12 +30,7 @@ class RegistryCoachInvitesMixin:
         with self.catalog_transaction():
             if self.get_active_account_by_username(username) is not None or self.ledger_exists(username):
                 return False
-            held = self.catalog_conn.execute(
-                "SELECT 1 FROM new_account_coach_invites"
-                " WHERE username = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ? LIMIT 1",
-                (username, now),
-            ).fetchone()
-            if held is not None:
+            if self._username_has_live_coach_invite_hold(username, now):
                 return False
             self.catalog_conn.execute(
                 "INSERT INTO new_account_coach_invites"
@@ -42,10 +40,10 @@ class RegistryCoachInvitesMixin:
             )
         return True
 
-    def redeem_new_account_coach_invite(
+    def register_account_with_coach_invite(
         self, token_hash: str, username: str, now_iso: str, default_capacity: int
     ) -> dict[str, Any] | None:
-        """Creates a Player and grants Coach capability while claiming its hold."""
+        """Registers a Player and grants Coach capability while claiming its hold."""
         self.ensure_account_schema()
         with self.catalog_transaction():
             row = self.catalog_conn.execute(

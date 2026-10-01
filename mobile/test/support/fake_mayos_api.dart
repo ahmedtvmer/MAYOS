@@ -45,8 +45,7 @@ class FakeMayosApi {
   String repPreference = 'balanced';
   int weeklyFrequency = 4;
   String equipmentAccess = equipmentAccessCommercialGym;
-  final List<Map<String, dynamic>> profileUpdateBodies =
-      <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> profileUpdateBodies = <Map<String, dynamic>>[];
   int profileRebuildCalls = 0;
   String assistantStyle = defaultAssistantStyle;
   String assistantInstructions = '';
@@ -660,8 +659,7 @@ class FakeMayosApi {
       return const FakeResponse(
           400, <String, dynamic>{'detail': 'Password is too short.'});
     }
-    final String? coachInviteCode =
-        request.body['coach_invite_code'] as String?;
+    final String? coachInviteCode = request.body['coach_invite_code'] as String?;
     lastRegistrationCoachInviteCode = coachInviteCode;
     if (coachInviteCode != null &&
         coachInviteCode != validNewAccountCoachInviteCode) {

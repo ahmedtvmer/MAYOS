@@ -477,7 +477,7 @@
       "kind": "method",
       "signature": "(self, token_hash: str, username: str, expires_at: str) -> bool"
     },
-    "redeem_new_account_coach_invite": {
+    "register_account_with_coach_invite": {
       "kind": "method",
       "signature": "(self, token_hash: str, username: str, now_iso: str, default_capacity: int) -> dict[str, typing.Any] | None"
     }

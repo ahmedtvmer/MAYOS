@@ -281,7 +281,8 @@ class AuthController extends StateNotifier<AuthState> {
         state = AuthState.authenticated(session);
         return const GoogleSignInDone();
       }
-      final GoogleUsernameRequired required = result as GoogleUsernameRequired;
+      final GoogleUsernameRequired required =
+          result as GoogleUsernameRequired;
       _pendingSignup = PendingGoogleSignup(
         signupTicket: required.signupTicket,
         suggestedUsername: required.suggestedUsername,
@@ -388,7 +389,8 @@ class AuthController extends StateNotifier<AuthState> {
   Future<DeleteWithGoogleResult> _deleteAccountWithGoogleToken(
       String googleIdToken) async {
     try {
-      await _repository.deleteAccountWithGoogle(googleIdToken: googleIdToken);
+      await _repository.deleteAccountWithGoogle(
+          googleIdToken: googleIdToken);
     } on ApiException catch (error) {
       return DeleteWithGoogleRefused(mutationFailureMessage(error));
     }

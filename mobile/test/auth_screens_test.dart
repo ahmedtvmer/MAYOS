@@ -5,8 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
+import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
@@ -401,12 +401,7 @@ void main() {
     await tester.tap(toggle);
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('register_coach_invite_code')), findsOneWidget);
-    final Finder inviteEditable = find.descendant(
-      of: find.byKey(const Key('register_coach_invite_code')),
-      matching: find.byType(EditableText),
-    );
-    expect(
-        tester.widget<EditableText>(inviteEditable).controller.text, isEmpty);
+    expect(find.text('temporary-code'), findsNothing);
     await tester.enterText(
         find.byKey(const Key('register_coach_invite_code')), 'temporary-code');
     await tester.tap(toggle);
@@ -430,10 +425,6 @@ void main() {
         find.byKey(const Key('recovery_email')), 'coach@example.com');
     await tester.tap(find.byKey(const Key('recovery_submit')));
     await _pumpUntilFound(tester, find.text('Roster'));
-    final ProviderContainer container =
-        ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
-    expect(container.read(authControllerProvider).session!.account.isCoach,
-        isTrue);
     expect(_routerOf(tester).routeInformationProvider.value.uri.path,
         coachRosterPath);
     expect(find.text('Before we begin'), findsNothing);

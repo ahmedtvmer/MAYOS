@@ -30,14 +30,19 @@ MAX_SPECIALIZATION = 200
 MIN_INVITE_TTL_MINUTES = 5
 MAX_INVITE_TTL_MINUTES = 43200
 MAX_NEW_ACCOUNT_INVITE_TTL_MINUTES = 10080
+DEFAULT_NEW_ACCOUNT_INVITE_TTL_MINUTES = 1440
 
 GENERIC_INVITE_ERROR = "Invalid or expired invite code."
 GENERIC_NEW_ACCOUNT_INVITE_ERROR = "This coach invite code isn't valid for this username"
 
 
-def _bounded_ttl_minutes(minutes: int) -> int:
-    """Clamps an invite lifetime to the documented 5 min – 30 day bounds."""
-    return min(max(int(minutes), MIN_INVITE_TTL_MINUTES), MAX_INVITE_TTL_MINUTES)
+def _bounded_ttl_minutes(minutes: int, maximum: int = MAX_INVITE_TTL_MINUTES) -> int:
+    """Clamps an invite lifetime to its minimum and the selected maximum."""
+    return min(max(int(minutes), MIN_INVITE_TTL_MINUTES), maximum)
+
+
+def _invalid_ttl(minutes: int | None) -> bool:
+    return isinstance(minutes, bool) or not isinstance(minutes, int) or minutes <= 0
 
 
 def coach_invite_ttl() -> timedelta:
@@ -69,20 +74,15 @@ def issue_coach_invite(
     clean_id = db._sanitize_username(username)
     if new_account:
         if ttl_minutes is None:
-            ttl = min(
-                coach_invite_ttl(),
-                timedelta(minutes=MAX_NEW_ACCOUNT_INVITE_TTL_MINUTES),
-            )
-        elif isinstance(ttl_minutes, bool) or not isinstance(ttl_minutes, int) or ttl_minutes <= 0:
+            ttl = timedelta(minutes=DEFAULT_NEW_ACCOUNT_INVITE_TTL_MINUTES)
+        elif _invalid_ttl(ttl_minutes):
             return {
                 "ok": False,
                 "code": "invalid_ttl",
                 "error": "Invite lifetime must be a positive number of minutes.",
             }
         else:
-            ttl = timedelta(
-                minutes=min(max(ttl_minutes, MIN_INVITE_TTL_MINUTES), MAX_NEW_ACCOUNT_INVITE_TTL_MINUTES)
-            )
+            ttl = timedelta(minutes=_bounded_ttl_minutes(ttl_minutes, MAX_NEW_ACCOUNT_INVITE_TTL_MINUTES))
         raw_token = token_factory() if token_factory else secrets.token_urlsafe(32)
         expires_at = (datetime.now(UTC) + ttl).isoformat()
         if not clean_id:
@@ -112,7 +112,7 @@ def issue_coach_invite(
 
     if ttl_minutes is None:
         ttl = coach_invite_ttl()
-    elif isinstance(ttl_minutes, bool) or not isinstance(ttl_minutes, int) or ttl_minutes <= 0:
+    elif _invalid_ttl(ttl_minutes):
         return {
             "ok": False,
             "code": "invalid_ttl",
