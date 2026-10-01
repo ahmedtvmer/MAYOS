@@ -57,7 +57,7 @@ from database.exercise_library.names import near_miss_exercise_ids
 from service import programs as programs_service
 from service.program_substitution import ProgramSubstitution, substitute_program_exercise
 from utils.logger import MyosLogger
-from utils.equipment_access import equipment_access_allows
+from utils.equipment_access import COMMERCIAL_GYM, equipment_access_allows, map_equipment_access
 from utils.model_downloader import llm, uses_cloud_backend
 from utils.text_scrubber import CoachOutputScrubber, EMPTY_RESPONSE_FALLBACK, PIPELINE_ERROR_RESPONSE, finalize_coach_output
 
@@ -1085,7 +1085,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         msg = "No active routine found in your ledger. Generate a baseline routine first."
         return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
     player_profile = ledger.get_player_profile() or {}
-    equipment_access = player_profile.get("equipment_access", "Commercial gym")
+    equipment_access = map_equipment_access(player_profile.get("equipment_access", COMMERCIAL_GYM))
     experience_level = experience_level_for_training_age(player_profile.get("training_age_years", 0.0))
 
     requested_day_name = _requested_substitution_day(active_program, query)

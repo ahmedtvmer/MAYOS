@@ -203,23 +203,6 @@ class ExerciseLookupMixin:
         query: str,
         limit: int = 5,
         target_muscle: str | None = None,
-    ) -> list[dict[str, Any]]:
-        return self._find_exercises_by_name(query, limit, target_muscle)
-
-    def _find_exercises_by_name_for_access(
-        self,
-        query: str,
-        limit: int,
-        target_muscle: str | None,
-        equipment_access: str,
-    ) -> list[dict[str, Any]]:
-        return self._find_exercises_by_name(query, limit, target_muscle, equipment_access)
-
-    def _find_exercises_by_name(
-        self,
-        query: str,
-        limit: int,
-        target_muscle: str | None,
         equipment_access: str | None = None,
     ) -> list[dict[str, Any]]:
         """Ranked Exercise library matches across source names, display names, and aliases.
@@ -234,7 +217,9 @@ class ExerciseLookupMixin:
         ``target_muscle`` (#162) narrows every tier to one target in the Exercise
         library (case-insensitive ``target_muscle`` column). With a muscle and no name
         query it lists that muscle's exercises, so the logger's Replace search
-        can open pre-filtered before the player types.
+        can open pre-filtered before the player types. ``equipment_access``
+        filters only that unnamed muscle browse; explicit name queries remain
+        unfiltered so players can still find movements outside their usual setup.
         """
         clean = query.strip().lower()
         muscle = (target_muscle or "").strip().lower()
@@ -246,7 +231,11 @@ class ExerciseLookupMixin:
             muscle=muscle,
             muscle_clause="LOWER(e.target_muscle) = ?" if muscle else "1 = 1",
             muscle_params=(muscle,) if muscle else (),
-            equipment_clause=(equipment_access_sql(equipment_access) if equipment_access else None),
+            equipment_clause=(
+                equipment_access_sql(equipment_access)
+                if equipment_access and not clean
+                else None
+            ),
             limit=limit,
         )
         with self._catalog_lock:

@@ -20,6 +20,8 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
+from utils.equipment_access import BODYWEIGHT_ONLY
+
 Archetype = Literal["heavy_compound", "medium_compound", "isolation"]
 ExperienceLevel = Literal["beginner", "intermediate", "advanced"]
 PrescriptionClass = Literal["calf_abs", "isolation", "medium_compound", "heavy_compound"]
@@ -525,10 +527,23 @@ SETS_FAMILY_BY_DAY_FAMILY = {"lower": "leg", "arms": "arms", "upper": "standard"
 #: so fatigue management shaves accessory volume without gutting dense splits.
 MAX_RECOVERY_CUTS_PER_DAY = 4
 
-#: Safe substitutes when a limitation filter empties a slot's candidate pool.
-#: ham_hinge is the only slot whose entire pool is deadlift/good-morning named,
-#: i.e. the only one the back rule can empty; leg curls are low-back friendly.
-SLOT_FALLBACKS: dict[str, tuple[str, ...]] = {"ham_hinge": ("ham_curl",)}
+#: Safe movement-slot substitutes when a limitation or Equipment access filter
+#: empties the original candidate pool. ``None`` applies to every Equipment
+#: access value; named keys apply only to that canonical Equipment access.
+SLOT_FALLBACKS: dict[str, dict[str | None, tuple[str, ...]]] = {
+    # The back limitation can empty this slot's hinge pool; leg curls are safe.
+    "ham_hinge": {None: ("ham_curl",)},
+    # Bodyweight-only libraries cannot fill every gym-specific isolation slot.
+    # Use a nearby bodyweight slot while retaining the existing slot picker.
+    "side_delts": {BODYWEIGHT_ONLY: ("triceps_overhead", "vertical_pull")},
+    "rear_delts": {BODYWEIGHT_ONLY: ("vertical_pull", "triceps_overhead")},
+    "shoulder_press": {BODYWEIGHT_ONLY: ("triceps_overhead", "vertical_pull")},
+    "triceps_pushdown": {BODYWEIGHT_ONLY: ("triceps_overhead", "vertical_pull")},
+    "triceps_overhead": {BODYWEIGHT_ONLY: ("vertical_pull", "biceps_alt")},
+    "biceps_preacher": {BODYWEIGHT_ONLY: ("biceps_alt", "vertical_pull")},
+    "forearm_wrist": {BODYWEIGHT_ONLY: ("biceps_alt", "vertical_pull")},
+    "forearm_reverse": {BODYWEIGHT_ONLY: ("biceps_alt", "vertical_pull")},
+}
 
 
 def resolve_sets_family(day_family: str, explicit: str | None = None) -> str:

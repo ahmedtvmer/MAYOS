@@ -1,6 +1,7 @@
 """Canonical Equipment access values and legacy free-text mapping."""
 
 import re
+from dataclasses import dataclass
 
 COMMERCIAL_GYM = "Commercial gym"
 HOME_GYM = "Home gym"
@@ -18,34 +19,50 @@ _FREE_WEIGHT_EQUIPMENT = frozenset(
 )
 
 
-def equipment_access_filter(access: object) -> tuple[bool, frozenset[str]]:
-    """Return whether an equipment value is allowed for a player's Equipment access.
+@dataclass(frozen=True)
+class EquipmentAccessFilter:
+    """Catalog equipment categories allowed or denied by Equipment access."""
 
-    The boolean says whether the set is an allow-list; otherwise it is a
-    deny-list. Unknown legacy access values retain the safe Commercial gym
-    behavior through :func:`map_equipment_access`.
+    allow_list: bool
+    equipment_values: frozenset[str]
+
+
+def equipment_access_filter(access: object) -> EquipmentAccessFilter:
+    """Return the equipment allow-list or deny-list for a player's Equipment access.
+
+    Unknown legacy access values retain the safe Commercial gym behavior
+    through :func:`map_equipment_access`.
     """
     canonical = map_equipment_access(access)
     if canonical == HOME_GYM:
-        return True, _FREE_WEIGHT_EQUIPMENT | _BAND_EQUIPMENT | (_BODYWEIGHT_EQUIPMENT - {"weighted"})
+        return EquipmentAccessFilter(
+            allow_list=True,
+            equipment_values=_FREE_WEIGHT_EQUIPMENT | _BAND_EQUIPMENT | _BODYWEIGHT_EQUIPMENT,
+        )
     if canonical == BODYWEIGHT_ONLY:
-        return True, _BODYWEIGHT_EQUIPMENT - {"weighted"}
-    return False, _BAND_EQUIPMENT | _BODYWEIGHT_EQUIPMENT
+        return EquipmentAccessFilter(
+            allow_list=True,
+            equipment_values=_BODYWEIGHT_EQUIPMENT - {"weighted"},
+        )
+    return EquipmentAccessFilter(
+        allow_list=False,
+        equipment_values=_BAND_EQUIPMENT | _BODYWEIGHT_EQUIPMENT,
+    )
 
 
 def equipment_access_allows(access: object, equipment: object) -> bool:
     """Whether a catalog exercise's equipment category fits Equipment access."""
-    allow_list, values = equipment_access_filter(access)
+    access_filter = equipment_access_filter(access)
     category = " ".join(str(equipment or "").strip().casefold().split())
-    return category in values if allow_list else category not in values
+    return category in access_filter.equipment_values if access_filter.allow_list else category not in access_filter.equipment_values
 
 
 def equipment_access_sql(access: object, column: str = "equipment") -> str:
     """Build the fixed catalog equipment predicate for an Equipment access value."""
-    allow_list, values = equipment_access_filter(access)
-    ordered = sorted(values)
+    access_filter = equipment_access_filter(access)
+    ordered = sorted(access_filter.equipment_values)
     quoted = ", ".join("'" + value.replace("'", "''") + "'" for value in ordered)
-    operator = "IN" if allow_list else "NOT IN"
+    operator = "IN" if access_filter.allow_list else "NOT IN"
     return f"LOWER({column}) {operator} ({quoted})"
 
 _COMMERCIAL_GYM_HINTS = re.compile(

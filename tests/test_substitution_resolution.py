@@ -427,7 +427,7 @@ def test_followup_hint_uses_real_catalog_name(sub_db, monkeypatch):
     "access,expected_names",
     [
         (COMMERCIAL_GYM, {"Cable Lat Pulldown", "Dumbbell Row"}),
-        (HOME_GYM, {"Dumbbell Row", "Band Lat Pulldown", "Wide Grip Pull Up"}),
+        (HOME_GYM, {"Dumbbell Row", "Band Lat Pulldown", "Weighted Chin Up"}),
         (BODYWEIGHT_ONLY, {"Wide Grip Pull Up"}),
     ],
 )
@@ -444,6 +444,7 @@ def test_unspecified_chat_substitutes_follow_equipment_access(sub_db, monkeypatc
         {"id": "cable", "name": "Cable Lat Pulldown", "target_muscle": "lats", "body_part": "back", "equipment": "cable"},
         {"id": "dumbbell", "name": "Dumbbell Row", "target_muscle": "lats", "body_part": "back", "equipment": "dumbbell"},
         {"id": "band", "name": "Band Lat Pulldown", "target_muscle": "lats", "body_part": "back", "equipment": "band"},
+        {"id": "weighted-pullup", "name": "Weighted Chin Up", "target_muscle": "lats", "body_part": "back", "equipment": "weighted"},
         {"id": "pullup", "name": "Wide Grip Pull Up", "target_muscle": "lats", "body_part": "back", "equipment": "body weight"},
     ]
     monkeypatch.setattr(sub_db, "search_similar_exercises", lambda *_args, **_kwargs: alternatives)
@@ -455,7 +456,10 @@ def test_unspecified_chat_substitutes_follow_equipment_access(sub_db, monkeypatc
 
     shown = {
         name
-        for name in ("Cable Lat Pulldown", "Dumbbell Row", "Band Lat Pulldown", "Wide Grip Pull Up")
+        for name in (
+            "Cable Lat Pulldown", "Dumbbell Row", "Band Lat Pulldown",
+            "Wide Grip Pull Up", "Weighted Chin Up",
+        )
         if name in result["response_content"]
     }
     assert shown == expected_names

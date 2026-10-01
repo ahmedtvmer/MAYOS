@@ -19,6 +19,7 @@ from svc.schemas import (
     SessionPerformedDateCorrectIn,
     SessionPerformedDateCorrectOut,
 )
+from utils.equipment_access import COMMERCIAL_GYM, map_equipment_access
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
 
@@ -83,17 +84,15 @@ async def search_exercises(
     limit = 25 if target_muscle else 10
     equipment_access = None
     if target_muscle and not query:
-        equipment_access = (ledger.get_player_profile() or {}).get(
-            "equipment_access", "Commercial gym"
+        equipment_access = map_equipment_access(
+            (ledger.get_player_profile() or {}).get("equipment_access", COMMERCIAL_GYM)
         )
-    if equipment_access:
-        exercises = db._find_exercises_by_name_for_access(
-            query or "", limit, target_muscle, equipment_access
-        )
-    else:
-        exercises = db.find_exercises_by_name(
-            query or "", limit=limit, target_muscle=target_muscle
-        )
+    exercises = db.find_exercises_by_name(
+        query or "",
+        limit=limit,
+        target_muscle=target_muscle,
+        equipment_access=equipment_access,
+    )
     return {
         # A muscle-only Replace browse suggests options, while a typed name is
         # the player's explicit Exercise library search and remains unfiltered.

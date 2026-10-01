@@ -95,7 +95,7 @@
     },
     "find_exercises_by_name": {
       "kind": "method",
-      "signature": "(self, query: str, limit: int = 5, target_muscle: str | None = None) -> list[dict[str, typing.Any]]"
+      "signature": "(self, query: str, limit: int = 5, target_muscle: str | None = None, equipment_access: str | None = None) -> list[dict[str, typing.Any]]"
     },
     "get_account": {
       "kind": "method",

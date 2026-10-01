@@ -41,6 +41,7 @@ from agent.ProgramState import (
     ProgramExerciseSchema,
     WarmupExerciseSchema,
 )
+from utils.equipment_access import COMMERCIAL_GYM, map_equipment_access
 from utils.logger import MyosLogger
 
 load_dotenv()
@@ -177,9 +178,14 @@ def assemble_deterministic_day(
         candidates = fetch_slot_candidates(slot_key, context.equipment_access, context.limitations, limit=8, ledger=ledger)
         chosen = _pick_candidate(candidates, excluded_ids)
         if chosen is None:
-            # A limitation filter can empty the whole pool (back rule vs hinges):
-            # fall back to a safe substitute slot instead of silently shrinking the day.
-            for fallback_key in SLOT_FALLBACKS.get(slot_key, ()):
+            # A limitation or Equipment access filter can empty the pool; try
+            # the blueprint's safe fallback slots instead of shrinking the day.
+            fallback_options = SLOT_FALLBACKS.get(slot_key, {})
+            fallback_keys = (
+                *fallback_options.get(None, ()),
+                *fallback_options.get(context.equipment_access, ()),
+            )
+            for fallback_key in fallback_keys:
                 fallback_spec = SLOT_SPECS.get(fallback_key)
                 if fallback_spec is None:
                     continue
@@ -380,7 +386,7 @@ def generate_program_pipeline(
     generated_days: list[ProgramDaySchema] = []
     recovery_cut = is_poor_recovery(profile.get("stress_and_sleep"))
     context = DayGenerationContext(
-        equipment_access=profile.get("equipment_access", "commercial gym"),
+        equipment_access=map_equipment_access(profile.get("equipment_access", COMMERCIAL_GYM)),
         limitations=profile.get("injuries_or_limitations", "None"),
         rep_preference=rep_pref,
         recovery_cut=recovery_cut,

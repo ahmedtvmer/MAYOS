@@ -197,7 +197,7 @@ def test_catalog_search_requires_a_query_or_a_muscle(api):
     "access,expected",
     [
         (COMMERCIAL_GYM, {"machine-chest", "dumbbell-chest", "bp", "ib"}),
-        (HOME_GYM, {"dumbbell-chest", "band-chest", "pullup-chest", "bp", "ib"}),
+        (HOME_GYM, {"dumbbell-chest", "band-chest", "pullup-chest", "weighted-chest", "bp", "ib"}),
         (BODYWEIGHT_ONLY, {"pullup-chest"}),
     ],
 )
@@ -212,6 +212,7 @@ def test_logger_muscle_browse_suggests_only_equipment_access_options(api, access
             ("dumbbell-chest", "Dumbbell Chest Press", "dumbbell"),
             ("band-chest", "Band Chest Press", "band"),
             ("pullup-chest", "Pull-up", "body weight"),
+            ("weighted-chest", "Weighted Dip", "weighted"),
         ],
     )
     db.catalog_conn.commit()
