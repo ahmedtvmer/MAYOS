@@ -80,6 +80,7 @@ IntentType = Literal[
     "exercise_history",
     "exercise_substitution",
     "program_mutation",
+    "deload_choice",
     "catalog_search",
     "coaching_qa",
     "composite_intent",
@@ -232,6 +233,16 @@ RE_PROGRAM_MUTATION = re.compile(
     r"\b(?:(?:rebuild|regenerate)(?:\s+(?:my|the))?(?:\s+(?:split|routine|program))?|new\s+split|(?:change|switch|update)\s+(?:(?:my|the)\s+)?(?:split(?!\s+squat)|routine|program))\b",
     re.IGNORECASE,
 )
+RE_DELOAD_UNDO = re.compile(
+    r"^\s*(?:(?:please\s+)?(?:undo|remove|reverse|skip)\s+(?:the\s+)?deload|"
+    r"(?:don't|do not)\s+apply\s+(?:the\s+)?deload)\b[.!? ]*$", re.IGNORECASE
+)
+RE_DELOAD_APPLY = re.compile(
+    r"^\s*(?:(?:please\s+)?(?:apply|use|enable)\s+(?:the\s+)?deload|"
+    r"(?:do|please)\s+(?:apply|use)\s+(?:the\s+)?deload)\b[.!? ]*$", re.IGNORECASE
+)
+RE_DELOAD_UNDO_AR = re.compile(r"(?:الغ[ِي]?|ألغ[ِي]?|لا\s+تطبق|لا\s+تفعّل).{0,18}(?:الديلود|التخفيف)|(?:الديلود|التخفيف).{0,18}(?:الغ[ِي]?|ألغ[ِي]?|إلغاء)")
+RE_DELOAD_APPLY_AR = re.compile(r"(?:طبق|طبّق|فعّل|فعِّل|اعتمد).{0,18}(?:الديلود|التخفيف)|(?:الديلود|التخفيف).{0,18}(?:طبق|طبّق|فعّل|اعتمد)")
 RE_FREQ_DIGIT = re.compile(r"\b([1-5])\s*(?:days?|d/wk|days\s+a\s+week)\b", re.IGNORECASE)
 RE_SEARCH_TOKENS = re.compile(r"\b(search|find|lookup|show me|list exercises)\b", re.IGNORECASE)
 RE_ACTION_HINT = re.compile(
@@ -483,6 +494,11 @@ def _classify_single_clause(clause: str, telemetry: str = "", messages: Sequence
     if RE_NUTRITION.search(c):
         return {"intent": "coaching_qa", "intent_metadata": {}, "query": c}
 
+    if RE_DELOAD_UNDO.fullmatch(c) or RE_DELOAD_UNDO_AR.search(c):
+        return {"intent": "deload_choice", "intent_metadata": {"choice": "undo"}, "query": c}
+    if RE_DELOAD_APPLY.fullmatch(c) or RE_DELOAD_APPLY_AR.search(c):
+        return {"intent": "deload_choice", "intent_metadata": {"choice": "apply"}, "query": c}
+
     if _authorized_action(c, "program_mutation"):
         return {
             "intent": "program_mutation",
@@ -582,6 +598,11 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
 
     query = _get_message_text(messages[-1])
     telemetry = state.get("telemetry_context") or ""
+
+    if RE_DELOAD_UNDO.fullmatch(query) or RE_DELOAD_UNDO_AR.search(query):
+        return {"intent": "deload_choice", "intent_metadata": {"choice": "undo"}}
+    if RE_DELOAD_APPLY.fullmatch(query) or RE_DELOAD_APPLY_AR.search(query):
+        return {"intent": "deload_choice", "intent_metadata": {"choice": "apply"}}
 
     clinical = _clinical_turn_metadata(query)
     if clinical is not None:
@@ -1370,6 +1391,52 @@ def program_mutation_node(state: AssistantState, config: dict[str, Any] | None =
         return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
 
+def deload_choice_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
+    ledger, store = _graph_context(config)
+    choice = (state.get("intent_metadata") or {}).get("choice")
+    if choice not in {"undo", "apply"}:
+        return _response("There is nothing to change.")
+    program = ledger.get_active_program()
+    if program is None or not program.days:
+        return _response("There is nothing to change.")
+    from service import workouts as workouts_service
+
+    prescription = workouts_service.build_prescription(
+        store, str(state.get("trainee_id", ledger.ledger_id)), program.days[0],
+        ledger=ledger, player_account_id=state.get("player_account_id"),
+    )
+    deload = prescription["deload"]
+    accepted_state = "applied" if choice == "undo" else "suggested"
+    if deload["state"] != accepted_state:
+        return _response("There is nothing to change.")
+
+    ledger.set_deload_choice(choice)
+    reason = deload.get("reason") or "fatigue was detected"
+    if choice == "undo":
+        response = f"I’ll undo the applied deload for your next workout only. The fatigue signal is: {reason}"
+    else:
+        response = f"I’ll apply the suggested deload for your next workout only. The fatigue signal is: {reason}"
+
+    account_id = state.get("player_account_id")
+    assignment = store.get_active_assignment_for_player(account_id) if account_id else None
+    if assignment:
+        try:
+            from service.progression_alerts import DELOAD_KIND
+
+            episode = store.get_alert_signal_state(assignment["assignment_id"], DELOAD_KIND, "")
+            if episode and int(episode["active"]):
+                alert = store.get_coach_alert_by_dedupe(
+                    assignment["assignment_id"], DELOAD_KIND, str(episode["episode_key"])
+                )
+                if alert:
+                    details = dict(alert.get("details") or {})
+                    details["player_deload_choice"] = {"choice": choice, "scope": "next_workout_only"}
+                    store.update_coach_alert_details(alert["alert_id"], details)
+        except Exception:
+            logger.exception("Could not add player deload choice to coach alert")
+    return _response(response, program_updated=True)
+
+
 def catalog_search_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     _, store = _graph_context(config)
     query = state.get("intent_metadata", {}).get("search_query") or _get_message_text(state["messages"][-1])
@@ -1614,6 +1681,7 @@ def composite_intent_node(state: AssistantState, config: dict[str, Any] | None =
         "exercise_history": exercise_history_node,
         "exercise_substitution": exercise_substitution_node,
         "program_mutation": program_mutation_node,
+        "deload_choice": deload_choice_node,
         "catalog_search": catalog_search_node,
         "coaching_qa": generation_node,
     }
@@ -1678,6 +1746,7 @@ builder.add_node("telemetry_intercept", _safe_node(telemetry_intercept_node))
 builder.add_node("exercise_history", _safe_node(exercise_history_node))
 builder.add_node("exercise_substitution", _safe_node(exercise_substitution_node))
 builder.add_node("program_mutation", _safe_node(program_mutation_node))
+builder.add_node("deload_choice", _safe_node(deload_choice_node))
 builder.add_node("catalog_search", _safe_node(catalog_search_node))
 builder.add_node("composite_intent", _safe_node(composite_intent_node))
 builder.add_node("generation", _safe_node(generation_node))
@@ -1695,6 +1764,7 @@ builder.add_conditional_edges(
         "exercise_history": "exercise_history",
         "exercise_substitution": "exercise_substitution",
         "program_mutation": "program_mutation",
+        "deload_choice": "deload_choice",
         "catalog_search": "catalog_search",
         "composite_intent": "composite_intent",
         "coaching_qa": "generation",
@@ -1785,6 +1855,7 @@ def stream_assistant_turn(
             "exercise_history": exercise_history_node,
             "exercise_substitution": exercise_substitution_node,
             "program_mutation": program_mutation_node,
+            "deload_choice": deload_choice_node,
             "catalog_search": catalog_search_node,
             "composite_intent": composite_intent_node,
         }

@@ -419,6 +419,7 @@ class CoachAlertOut(BaseModel):
     session_date: str | None = None
     latest_session_id: str | None = None
     latest_session_date: str | None = None
+    player_deload_choice: dict[str, Any] | None = None
 
 
 class CoachAlertListOut(BaseModel):

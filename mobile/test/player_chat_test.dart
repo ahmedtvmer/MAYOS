@@ -17,6 +17,7 @@ import 'package:mayos_mobile/src/core/connectivity_message.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/workout_start_notice_store.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
+import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/sse.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
@@ -412,7 +413,14 @@ void main() {
       (tester) async {
     final InMemoryChatCacheStore store = InMemoryChatCacheStore();
     final InMemoryWorkoutCacheStore workoutCache = InMemoryWorkoutCacheStore();
-    final FakeMayosApi fake = _fakePlayer('alice')..chatProgramUpdated = true;
+    final FakeMayosApi fake = _fakePlayer('alice')
+      ..chatProgramUpdated = true
+      ..prescriptionDeload = <String, dynamic>{
+        'state': 'applied',
+        'reason': 'Acute readiness floor (1/5 logged).',
+        'volume_multiplier': 0.5,
+        'intensity_cap_rpe': 7.0,
+      };
     await _pumpChat(tester, fake,
         store: store, workoutCache: workoutCache, scopeKey: UniqueKey());
     await _acceptDisclosure(tester);
@@ -428,6 +436,15 @@ void main() {
         fake.adapter.requests.any((FakeRequest r) =>
             r.method == 'GET' && r.path == '/programs/active'),
         isTrue);
+    expect(
+      fake.adapter.requests.any((FakeRequest r) =>
+          r.method == 'GET' && r.path == '/workouts/prescription'),
+      isTrue,
+    );
+    expect(
+      (await workoutCache.readPrescription('account-alice', 1))?.deload.state,
+      DeloadState.applied,
+    );
   });
 
   testWidgets('clearing history requires confirmation and clears the service',

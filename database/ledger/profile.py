@@ -11,6 +11,26 @@ from agent.prompts import DEFAULT_ASSISTANT_STYLE
 
 
 class LedgerProfileMixin:
+    def get_deload_choice(self) -> str | None:
+        row = self.conn.execute("SELECT choice FROM deload_choices WHERE id = 1").fetchone()
+        return str(row[0]) if row else None
+
+    def set_deload_choice(self, choice: str) -> None:
+        if choice not in {"undo", "apply"}:
+            raise ValueError("Deload choice must be undo or apply")
+        self.conn.execute(
+            "INSERT INTO deload_choices (id, choice) VALUES (1, ?) "
+            "ON CONFLICT(id) DO UPDATE SET choice = excluded.choice",
+            (choice,),
+        )
+        self._commit_ledger()
+
+    def consume_deload_choice(self) -> str | None:
+        row = self.conn.execute("SELECT choice FROM deload_choices WHERE id = 1").fetchone()
+        self.conn.execute("DELETE FROM deload_choices WHERE id = 1")
+        self._commit_ledger()
+        return str(row[0]) if row else None
+
     def get_player_profile(self, user_id: int = 1) -> dict[str, Any] | None:
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM user_profile WHERE id = ?", (user_id,))

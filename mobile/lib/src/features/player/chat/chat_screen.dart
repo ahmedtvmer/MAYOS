@@ -283,6 +283,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (program == null) return;
       final WorkoutCacheStore cache = ref.read(workoutCacheStoreProvider);
       await cache.writeProgram(accountId, program);
+      for (final ProgramDay day in program.days) {
+        try {
+          final prescription = await ref.read(apiClientProvider).prescription(day.dayOrder);
+          await cache.writePrescription(accountId, day.dayOrder, prescription);
+        } on Object {
+          // Keep the previous day's prescription if a refresh fails.
+        }
+      }
     } on Object {
       // The online Program tab still fetches the authoritative copy.
     }

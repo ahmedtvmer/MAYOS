@@ -536,6 +536,7 @@ class CoachAlert {
     this.acknowledgedAt,
     this.resolvedAt,
     this.resolvedBy,
+    this.playerDeloadChoice,
   });
 
   factory CoachAlert.fromJson(Map<String, dynamic> json) => CoachAlert(
@@ -559,6 +560,10 @@ class CoachAlert {
         acknowledgedAt: json['acknowledged_at'] as String?,
         resolvedAt: json['resolved_at'] as String?,
         resolvedBy: json['resolved_by'] as String?,
+        playerDeloadChoice: json['player_deload_choice'] is Map<String, dynamic>
+            ? Map<String, dynamic>.from(
+                json['player_deload_choice'] as Map<String, dynamic>)
+            : null,
       );
 
   final String alertId;
@@ -581,6 +586,7 @@ class CoachAlert {
   final String? acknowledgedAt;
   final String? resolvedAt;
   final String? resolvedBy;
+  final Map<String, dynamic>? playerDeloadChoice;
 
   static const String followUpDueKind = 'follow_up_due';
   static const String deloadRecommendedKind = 'deload_recommended';
@@ -597,7 +603,13 @@ class CoachAlert {
   /// The alert-centre description, rendered per kind.
   String get description {
     if (isDeloadRecommended) {
-      return 'Deload recommended — ${reason ?? 'Systemic fatigue'}';
+      final String base = 'Deload recommended — ${reason ?? 'Systemic fatigue'}';
+      final String? choice = playerDeloadChoice?['choice'] as String?;
+      if (choice == 'undo' || choice == 'apply') {
+        final String action = choice == 'undo' ? 'undo' : 'apply';
+        return '$base · Player chose to $action it for the next workout only';
+      }
+      return base;
     }
     if (isPerformanceRegression) {
       final String badge = statusBadge ?? 'regression';

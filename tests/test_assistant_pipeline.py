@@ -102,6 +102,20 @@ def test_phase1_tier1_program_mutations():
     logger.info("✅ Phase 1 Tier 1: Program mutations & frequencies verified.")
 
 
+def test_deload_choice_routing_is_deterministic_in_english_and_arabic():
+    cases = [
+        ("undo the deload", "undo"),
+        ("apply the deload", "apply"),
+        ("ألغِ التخفيف", "undo"),
+        ("طبّق التخفيف", "apply"),
+    ]
+    with patch("agent.assistant_graph.llm.with_structured_output", side_effect=AssertionError("model call")):
+        for query, choice in cases:
+            routed = router_node({"messages": [HumanMessage(content=query)]})
+            assert routed["intent"] == "deload_choice"
+            assert routed["intent_metadata"]["choice"] == choice
+
+
 def test_phase1_tier1_catalog_search():
     """Validates catalog movement searches."""
     queries = [

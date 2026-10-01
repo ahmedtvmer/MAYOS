@@ -229,6 +229,10 @@ class SchemaMixin:
                 key TEXT PRIMARY KEY CHECK (key = 'preferred_name'),
                 value TEXT NOT NULL CHECK (length(value) BETWEEN 1 AND 60 AND length(trim(value)) > 0)
             );
+            CREATE TABLE IF NOT EXISTS deload_choices (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                choice TEXT NOT NULL CHECK (choice IN ('undo', 'apply'))
+            );
             CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_history(created_at);
             CREATE INDEX IF NOT EXISTS idx_sets_session ON workout_sets(session_id);
             CREATE INDEX IF NOT EXISTS idx_sets_exercise ON workout_sets(exercise_id);

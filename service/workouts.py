@@ -340,6 +340,11 @@ def build_prescription(
 def _build_prescription(ledger: Any, day_plan: Any, assignment: dict[str, Any] | None) -> dict[str, Any]:
     fatigue_info = evaluate_systemic_fatigue(ledger)
     deload_state = _prescription_deload_state(fatigue_info, assignment)
+    choice = ledger.get_deload_choice() if hasattr(ledger, "get_deload_choice") else None
+    if deload_state["state"] == DELOAD_STATE_APPLIED and choice == "undo":
+        deload_state = {"state": DELOAD_STATE_NONE, "reason": None, "volume_multiplier": 1.0, "intensity_cap_rpe": None}
+    elif deload_state["state"] == DELOAD_STATE_SUGGESTED and choice == "apply":
+        deload_state = {**deload_state, "state": DELOAD_STATE_APPLIED}
     targets = []
     for ex_idx, ex in enumerate(day_plan.exercises, start=1):
         is_barbell = _is_barbell(ex)
@@ -835,6 +840,7 @@ def commit_session(
             _record_checkpoint_review_for_commit(
                 ledger, body, imported_workouts, now_iso
             )
+            ledger.consume_deload_choice()
 
     _run_post_commit_hooks(
         db, account_id, session_id, today_date, body["exercise_summaries"], body["fatigue_post"]
@@ -925,6 +931,7 @@ def commit_logged_session(
                     ledger, body, imported_workouts, now_iso
                 )
                 ledger.record_session_commit(client_session_id, session_id, json.dumps(body), now_iso)
+                ledger.consume_deload_choice()
                 outcome = CommitOutcome(body, created=True)
         except sqlite3.IntegrityError:
             # A concurrent duplicate won the unique index; replay its response.
