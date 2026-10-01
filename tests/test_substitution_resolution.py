@@ -426,9 +426,9 @@ def test_followup_hint_uses_real_catalog_name(sub_db, monkeypatch):
 @pytest.mark.parametrize(
     "access,expected_names",
     [
-        (COMMERCIAL_GYM, {"Cable Lat Pulldown", "Dumbbell Row"}),
-        (HOME_GYM, {"Dumbbell Row", "Band Lat Pulldown", "Weighted Chin Up"}),
-        (BODYWEIGHT_ONLY, {"Wide Grip Pull Up"}),
+        (COMMERCIAL_GYM, {"Wide-Grip Lat Pulldown", "Twin Handle Parallel-Grip Lat Pulldown"}),
+        (HOME_GYM, {"Band Underhand Pulldown", "Wide-Grip Pull-Up"}),
+        (BODYWEIGHT_ONLY, {"Wide-Grip Pull-Up"}),
     ],
 )
 def test_unspecified_chat_substitutes_follow_equipment_access(sub_db, monkeypatch, access, expected_names):
@@ -440,14 +440,18 @@ def test_unspecified_chat_substitutes_follow_equipment_access(sub_db, monkeypatc
         "equipment_access": access, "injuries_or_limitations": "None",
         "stress_and_sleep": "normal",
     })
-    alternatives = [
-        {"id": "cable", "name": "Cable Lat Pulldown", "target_muscle": "lats", "body_part": "back", "equipment": "cable"},
-        {"id": "dumbbell", "name": "Dumbbell Row", "target_muscle": "lats", "body_part": "back", "equipment": "dumbbell"},
-        {"id": "band", "name": "Band Lat Pulldown", "target_muscle": "lats", "body_part": "back", "equipment": "band"},
-        {"id": "weighted-pullup", "name": "Weighted Chin Up", "target_muscle": "lats", "body_part": "back", "equipment": "weighted"},
-        {"id": "pullup", "name": "Wide Grip Pull Up", "target_muscle": "lats", "body_part": "back", "equipment": "body weight"},
+    program = sub_db.ledger.get_active_program().model_dump()
+    program["days"][0]["exercises"][1]["suggested_substitutes"] = [
+        {"exercise_id": "2330", "exercise_name": "Wide-Grip Lat Pulldown"},
+        {"exercise_id": "818", "exercise_name": "Twin Handle Parallel-Grip Lat Pulldown"},
+        {"exercise_id": "1013", "exercise_name": "Band Underhand Pulldown"},
+        {"exercise_id": "1429", "exercise_name": "Wide-Grip Pull-Up"},
     ]
-    monkeypatch.setattr(sub_db, "search_similar_exercises", lambda *_args, **_kwargs: alternatives)
+    sub_db.ledger.save_training_program(program)
+    monkeypatch.setattr(
+        sub_db, "search_similar_exercises",
+        lambda *_args, **_kwargs: pytest.fail("unspecified chat replacement must use suggested Staples"),
+    )
 
     result = exercise_substitution_node(
         _state("reverse grip machine lat pulldown", None),
@@ -455,11 +459,9 @@ def test_unspecified_chat_substitutes_follow_equipment_access(sub_db, monkeypatc
     )
 
     shown = {
-        name
-        for name in (
-            "Cable Lat Pulldown", "Dumbbell Row", "Band Lat Pulldown",
-            "Wide Grip Pull Up", "Weighted Chin Up",
-        )
-        if name in result["response_content"]
+        name for name in (
+            "Wide-Grip Lat Pulldown", "Twin Handle Parallel-Grip Lat Pulldown",
+            "Band Underhand Pulldown", "Wide-Grip Pull-Up",
+        ) if name in result["response_content"]
     }
     assert shown == expected_names

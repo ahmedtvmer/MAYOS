@@ -20,7 +20,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from utils.equipment_access import BODYWEIGHT_ONLY
+from utils.equipment_access import BODYWEIGHT_ONLY, HOME_GYM
 
 Archetype = Literal["heavy_compound", "medium_compound", "isolation"]
 ExperienceLevel = Literal["beginner", "intermediate", "advanced"]
@@ -445,6 +445,39 @@ SLOT_SPECS: dict[str, SlotSpec] = {
     ),
 }
 
+# Ordered Staple exercises by movement slot. IDs are the Exercise library's
+# stable ExerciseDB IDs or MAYOS-authored IDs. Names are documented beside
+# them for readability; generation resolves IDs only.
+SLOT_STAPLES: dict[str, tuple[str, ...]] = {
+    "incline_press": ("314", "757", "47", "1299"),  # incline DB press; Smith Incline Press; BB incline press; machine incline press
+    "flat_press": ("576", "25", "289", "748"),  # machine chest press; BB bench; DB bench; Smith bench
+    "chest_fly": ("596", "171", "1278", "1286"),  # Pec Deck; cable incline fly; DB incline fly; DB chest fly
+    "horizontal_row": ("1350", "606", "327", "2298"),  # machine seated row; lever T-bar row; incline DB row; inverted row
+    "upper_back_pull": ("606", "327", "1331", "3156"),  # lever T-bar row; incline DB row; reverse-grip incline row; bodyweight row
+    "vertical_pull": ("2330", "150", "1429", "652"),  # Wide-Grip Lat Pulldown; Lat Pulldown; wide-grip pull-up; pull-up
+    "pullover": ("184", "2285", "375", "1255"),  # cable pullover; machine pullover; DB pullover; BB pullover
+    "shrug": ("mayos:1", "220", "406", "95", "604"),  # MAYOS Kelso shrug; cable; DB; BB; machine shrug
+    "shoulder_press": ("603", "405", "766", "91"),  # machine shoulder press; seated DB press; Smith press; BB overhead press
+    "side_delts": ("178", "584", "395", "977"),  # cable lateral raise; machine lateral raise; seated DB raise; band raise
+    "rear_delts": ("mayos:3", "602", "225", "359", "993"),  # MAYOS cable Y-raise; Reverse Pec Deck; cable fly; DB fly; band fly
+    "biceps_preacher": ("592", "372", "70", "1633"),  # machine preacher curl; DB preacher curl; BB preacher curl; cable preacher curl
+    "biceps_alt": ("318", "mayos:2", "1630", "31", "1769"),  # Incline DB Curl; MAYOS Bayesian curl; cable/BB curl; bodyweight curl
+    "triceps_pushdown": ("201", "200", "241", "1723"),  # cable pushdown; rope pushdown; V-bar pushdown; one-arm pushdown
+    "triceps_overhead": ("194", "92", "2188", "453", "1771"),  # overhead cable extension; BB/DB/EZ extensions; bodyweight extension
+    "forearm_wrist": ("1412", "401", "247", "125"),  # palms-up BB curl; seated DB curl; cable curl; BB curl
+    "forearm_reverse": ("1411", "385", "210", "82"),  # palms-down BB curl; DB reverse curl; cable reverse curl; BB reverse curl
+    "quad_compound": ("743", "29", "1436", "770", "1476"),  # sled hack squat; front squat; high-bar squat; Smith squat; one-leg squat
+    "quad_lunge": ("336", "3470", "54", "1460"),  # DB lunge; forward lunge; BB lunge; walking lunge
+    "quad_iso": ("585", "3007"),  # machine leg extension; resistance-band leg extension
+    "ham_curl": ("599", "586", "1766", "496", "795"),  # seated curl; lying curl; inverse curl; bench curl; standing curl
+    "ham_hinge": ("85", "1459", "44"),  # BB RDL; DB RDL; BB good morning
+    "glute_thrust": ("mayos:4", "3562", "3236", "3013"),  # MAYOS machine hip thrust; Barbell Hip Thrust; band; glute bridge
+    "glute_iso": ("2286", "597", "3006", "130", "1423", "710", "1774"),  # machine extension/abduction; band abduction; bench extension/reverse hyper; bodyweight abduction
+    "adductors": ("598", "168", "1775", "3667"),  # Hip Adduction; cable adduction; side-plank adduction; side-lying adduction
+    "calf": ("1375", "1372", "1373", "1371"),  # cable standing calf raise; BB standing; bodyweight standing; BB seated
+    "abs": ("175", "595", "274", "267"),  # Cable Crunch; machine crunch; floor crunch; hands-overhead crunch
+}
+
 
 # --- General warm-up block (Belghamdi protocol) ----------------------------
 
@@ -535,14 +568,22 @@ SLOT_FALLBACKS: dict[str, dict[str | None, tuple[str, ...]]] = {
     "ham_hinge": {None: ("ham_curl",)},
     # Bodyweight-only libraries cannot fill every gym-specific isolation slot.
     # Use a nearby bodyweight slot while retaining the existing slot picker.
-    "side_delts": {BODYWEIGHT_ONLY: ("triceps_overhead", "vertical_pull")},
-    "rear_delts": {BODYWEIGHT_ONLY: ("vertical_pull", "triceps_overhead")},
-    "shoulder_press": {BODYWEIGHT_ONLY: ("triceps_overhead", "vertical_pull")},
-    "triceps_pushdown": {BODYWEIGHT_ONLY: ("triceps_overhead", "vertical_pull")},
+    # Bodyweight-only has no direct Staples for these gym-specific slots.
+    "incline_press": {BODYWEIGHT_ONLY: ("flat_press", "quad_lunge")},
+    "flat_press": {BODYWEIGHT_ONLY: ("quad_lunge", "vertical_pull")},
+    "chest_fly": {BODYWEIGHT_ONLY: ("quad_lunge", "vertical_pull")},
+    "pullover": {BODYWEIGHT_ONLY: ("vertical_pull", "horizontal_row")},
+    "shrug": {BODYWEIGHT_ONLY: ("upper_back_pull", "horizontal_row")},
+    "side_delts": {BODYWEIGHT_ONLY: ("upper_back_pull", "vertical_pull")},
+    "rear_delts": {BODYWEIGHT_ONLY: ("upper_back_pull", "horizontal_row")},
+    "shoulder_press": {BODYWEIGHT_ONLY: ("quad_lunge", "vertical_pull")},
+    "triceps_pushdown": {HOME_GYM: ("triceps_overhead",), BODYWEIGHT_ONLY: ("triceps_overhead", "vertical_pull")},
     "triceps_overhead": {BODYWEIGHT_ONLY: ("vertical_pull", "biceps_alt")},
     "biceps_preacher": {BODYWEIGHT_ONLY: ("biceps_alt", "vertical_pull")},
+    "biceps_alt": {BODYWEIGHT_ONLY: ("vertical_pull",)},
     "forearm_wrist": {BODYWEIGHT_ONLY: ("biceps_alt", "vertical_pull")},
     "forearm_reverse": {BODYWEIGHT_ONLY: ("biceps_alt", "vertical_pull")},
+    "quad_iso": {BODYWEIGHT_ONLY: ("quad_lunge", "quad_compound")},
 }
 
 

@@ -1616,6 +1616,13 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         title: 'Replace exercise',
         targetMuscle: muscle,
         excludeExerciseIds: inWorkout,
+        suggestedSubstitutes: <SuggestedSubstitute>[
+          for (final dynamic item
+              in (exercise.exercise['suggested_substitutes'] as List<dynamic>? ??
+                  const <dynamic>[]))
+            if (item is Map<String, dynamic>)
+              SuggestedSubstitute.fromJson(item),
+        ],
       ),
     );
   }

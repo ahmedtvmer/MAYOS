@@ -38,6 +38,9 @@ def program_data():
         "notes": "Old cue",
         "image_path": "old.png",
         "gif_path": "old.gif",
+        "suggested_substitutes": [
+            {"exercise_id": "leg_press_alt", "exercise_name": "Alternative Leg Press"}
+        ],
     }
     return {
         "program_name": "Plan",
@@ -99,6 +102,7 @@ def test_substitution_all_occurrences_preserves_program_structure(program_data, 
             "leg-press.png",
             "leg-press.gif",
         )
+        assert exercise["suggested_substitutes"] == []
         assert (
             exercise["slot_key"],
             exercise["warmup_sets"],

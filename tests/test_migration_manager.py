@@ -47,7 +47,7 @@ def test_schema_version_stamping(temp_db_env):
     assert version == CURRENT_LEDGER_SCHEMA_VERSION
 
 
-def test_v18_to_v19_adds_per_ledger_deload_choice(temp_db_env):
+def test_v18_upgrade_adds_deload_choice(temp_db_env):
     db, ledgers_dir, _ = temp_db_env
     legacy_path = ledgers_dir / "v18lifter.db"
     conn = sqlite3.connect(legacy_path)
@@ -65,7 +65,7 @@ def test_v18_to_v19_adds_per_ledger_deload_choice(temp_db_env):
         default_ledger_id="v18lifter",
     )
     try:
-        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 19
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 20
         assert migrated.ledger.get_deload_choice() is None
         migrated.ledger.set_deload_choice("undo")
         assert migrated.ledger.get_deload_choice() == "undo"
@@ -75,6 +75,24 @@ def test_v18_to_v19_adds_per_ledger_deload_choice(temp_db_env):
         if migrated.ledger_conn is not None:
             migrated.ledger_conn.close()
         migrated.catalog_conn.close()
+
+
+def test_v19_upgrade_adds_staple_substitute_storage_and_backfills_empty_list(temp_db_env):
+    db, _, backups_dir = temp_db_env
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        "CREATE TABLE program_exercises (id TEXT PRIMARY KEY, day_id TEXT NOT NULL, exercise_id TEXT NOT NULL);"
+        "INSERT INTO program_exercises VALUES ('program-exercise-1', 'day-1', '150');"
+        "PRAGMA user_version = 19;"
+    )
+    apply_lazy_migrations(conn, "v19lifter", db.ledgers_dir, backups_dir)
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(program_exercises)")}
+    assert "suggested_substitutes_json" in columns
+    assert conn.execute(
+        "SELECT suggested_substitutes_json FROM program_exercises WHERE id = 'program-exercise-1'"
+    ).fetchone()[0] == "[]"
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
+    conn.close()
 
 
 def test_atomic_backup_and_restore(temp_db_env):

@@ -150,6 +150,7 @@ class SchemaMixin:
                 order_in_day INTEGER NOT NULL,
                 slot_key TEXT,
                 warmup_sets INTEGER DEFAULT 0,
+                suggested_substitutes_json TEXT NOT NULL DEFAULT '[]',
                 target_sets INTEGER NOT NULL,
                 target_reps_min INTEGER NOT NULL,
                 target_reps_max INTEGER NOT NULL,

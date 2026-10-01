@@ -5,6 +5,11 @@ from pydantic import BaseModel, Field
 # --- Pydantic Output Contracts ---
 
 
+class SuggestedSubstitute(BaseModel):
+    exercise_id: str
+    exercise_name: str
+
+
 class ProgramExerciseSchema(BaseModel):
     exercise_id: str = Field(description="Exact ID matching candidate from the database")
     exercise_name: str = Field(description="Exact name of the exercise")
@@ -18,6 +23,10 @@ class ProgramExerciseSchema(BaseModel):
     notes: str | None = Field(default=None, description="Execution steps from the exercise catalog (or a chat-supplied cue)")
     image_path: str | None = Field(default=None, description="Local path or URL to demonstration image")
     gif_path: str | None = Field(default=None, description="Local path or URL to demonstration animated GIF")
+    suggested_substitutes: list[SuggestedSubstitute] = Field(
+        default_factory=list,
+        description="Next Equipment access-compatible Staple exercises for this movement slot",
+    )
 
 
 class WarmupExerciseSchema(BaseModel):

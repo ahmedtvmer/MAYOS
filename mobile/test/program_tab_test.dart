@@ -185,6 +185,7 @@ void main() {
     expect(find.text('Warm-up'), findsOneWidget);
     expect(find.text('Working sets'), findsOneWidget);
     expect(find.text('Bench Press'), findsOneWidget);
+    expect(find.text('Suggested substitutes: Incline DB Press'), findsOneWidget);
     expect(find.textContaining('3 × 5–8'), findsOneWidget);
     expect(find.textContaining('2 warm-up sets · rest 180s'), findsOneWidget);
     expect(find.text('Band Pull-Apart'), findsOneWidget);

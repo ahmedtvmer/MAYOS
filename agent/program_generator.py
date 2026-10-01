@@ -1,4 +1,3 @@
-import random
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -11,6 +10,7 @@ from agent.program_blueprints import (
     ExperienceLevel,
     MAX_RECOVERY_CUTS_PER_DAY,
     SLOT_FALLBACKS,
+    SLOT_STAPLES,
     SLOT_SPECS,
     SlotSpec,
     WARMUP_FAMILIES,
@@ -39,6 +39,7 @@ from agent.ProgramState import (
     GeneratedProgramSchema,
     ProgramDaySchema,
     ProgramExerciseSchema,
+    SuggestedSubstitute,
     WarmupExerciseSchema,
 )
 from utils.equipment_access import COMMERCIAL_GYM, map_equipment_access
@@ -56,7 +57,8 @@ MECHANIC_CUES = {
 }
 
 MIN_EXERCISES_PER_DAY = 3
-POOL_WEIGHTS = (4, 2, 1)
+SLOT_CANDIDATE_LIMIT = 100
+SUGGESTED_SUBSTITUTE_COUNT = 2
 
 
 @dataclass(frozen=True)
@@ -90,7 +92,8 @@ def get_biomechanical_cue(name: str, mechanic: str, experience_level: Experience
 
 
 def _build_program_exercise(
-    candidate: dict[str, Any], prescription: ExercisePrescription
+    candidate: dict[str, Any], prescription: ExercisePrescription,
+    suggested_substitutes: list[SuggestedSubstitute] | None = None,
 ) -> ProgramExerciseSchema:
     spec = prescription.spec
     rep_min, rep_max = apply_rep_preference(spec.reps, prescription.rep_preference)
@@ -107,6 +110,7 @@ def _build_program_exercise(
         notes=candidate.get("instructions") or None,
         image_path=candidate.get("image_path"),
         gif_path=candidate.get("gif_path"),
+        suggested_substitutes=suggested_substitutes or [],
     )
 
 
@@ -148,13 +152,17 @@ def build_warmup_block(
     return warmups
 
 
-def _pick_candidate(candidates: list[dict], excluded_ids: set[str]) -> dict | None:
-    available = [c for c in candidates if str(c["id"]) not in excluded_ids]
+def _ordered_staples(candidates: list[dict], slot_key: str) -> list[dict]:
+    """Return only Equipment access-allowed candidates explicitly listed as Staples."""
+    by_id = {str(candidate["id"]): candidate for candidate in candidates}
+    return [by_id[exercise_id] for exercise_id in SLOT_STAPLES.get(slot_key, ()) if exercise_id in by_id]
+
+
+def _pick_candidate(candidates: list[dict], slot_key: str, excluded_ids: set[str]) -> dict | None:
+    available = [c for c in _ordered_staples(candidates, slot_key) if str(c["id"]) not in excluded_ids]
     if not available:
         return None
-    pool = available[:3]
-    weights = POOL_WEIGHTS[: len(pool)]
-    return random.choices(pool, weights=weights, k=1)[0]
+    return available[0]
 
 
 def assemble_deterministic_day(
@@ -169,14 +177,16 @@ def assemble_deterministic_day(
     sets_family = resolve_sets_family(day.warmup_family, getattr(day, "sets_family", None))
     double_slots = tuple(getattr(day, "double_slots", ()) or ())
     cuts_used = 0
+    staple_options: dict[str, list[dict]] = {}
 
     for slot_key in day.target_slots:
         spec = SLOT_SPECS.get(slot_key)
         if spec is None:
             logger.warning(f"Unknown slot '{slot_key}' in day '{day.day_name}' was skipped.")
             continue
-        candidates = fetch_slot_candidates(slot_key, context.equipment_access, context.limitations, limit=8, ledger=ledger)
-        chosen = _pick_candidate(candidates, excluded_ids)
+        candidates = fetch_slot_candidates(slot_key, context.equipment_access, context.limitations, limit=SLOT_CANDIDATE_LIMIT, ledger=ledger)
+        chosen = _pick_candidate(candidates, slot_key, excluded_ids)
+        resolved_slot = slot_key
         if chosen is None:
             # A limitation or Equipment access filter can empty the pool; try
             # the blueprint's safe fallback slots instead of shrinking the day.
@@ -189,11 +199,12 @@ def assemble_deterministic_day(
                 fallback_spec = SLOT_SPECS.get(fallback_key)
                 if fallback_spec is None:
                     continue
-                fallback_candidates = fetch_slot_candidates(fallback_key, context.equipment_access, context.limitations, limit=8, ledger=ledger)
-                fallback_chosen = _pick_candidate(fallback_candidates, excluded_ids)
+                fallback_candidates = fetch_slot_candidates(fallback_key, context.equipment_access, context.limitations, limit=SLOT_CANDIDATE_LIMIT, ledger=ledger)
+                fallback_chosen = _pick_candidate(fallback_candidates, fallback_key, excluded_ids)
                 if fallback_chosen is not None:
                     logger.info(f"Substituted '{fallback_key}' for limited slot '{slot_key}' (day '{day.day_name}').")
-                    chosen, slot_key, spec = fallback_chosen, fallback_key, fallback_spec
+                    chosen, resolved_slot, spec = fallback_chosen, fallback_key, fallback_spec
+                    candidates = fallback_candidates
                     break
         if chosen is None:
             logger.warning(f"No catalog candidate for slot '{slot_key}' (day '{day.day_name}').")
@@ -201,6 +212,7 @@ def assemble_deterministic_day(
 
         candidate_id = str(chosen["id"])
         excluded_ids.add(candidate_id)
+        staple_options[candidate_id] = _ordered_staples(candidates, resolved_slot)
         apply_cut = (
             context.recovery_cut
             and cuts_used < MAX_RECOVERY_CUTS_PER_DAY
@@ -213,7 +225,7 @@ def assemble_deterministic_day(
             _build_program_exercise(
                 chosen,
                 ExercisePrescription(
-                    movement_slot=slot_key,
+                    movement_slot=resolved_slot,
                     spec=spec,
                     working_sets=slot_working_sets(
                         slot_key, spec.archetype, sets_family, double_slots, recovery_cut=apply_cut
@@ -221,6 +233,7 @@ def assemble_deterministic_day(
                     rep_preference=context.rep_preference,
                     experience_level=context.experience_level,
                 ),
+                [],
             )
         )
 
@@ -231,10 +244,13 @@ def assemble_deterministic_day(
             spec = SLOT_SPECS.get(slot_key)
             if spec is None:
                 continue
-            for candidate in fetch_slot_candidates(slot_key, context.equipment_access, context.limitations, limit=6, ledger=ledger):
+            candidates = fetch_slot_candidates(slot_key, context.equipment_access, context.limitations, limit=SLOT_CANDIDATE_LIMIT, ledger=ledger)
+            ordered_candidates = _ordered_staples(candidates, slot_key)
+            for candidate in ordered_candidates:
                 candidate_id = str(candidate["id"])
                 if any(ex.exercise_id == candidate_id for ex in selected_exercises):
                     continue
+                staple_options[candidate_id] = ordered_candidates
                 selected_exercises.append(
                     _build_program_exercise(
                         candidate,
@@ -245,9 +261,22 @@ def assemble_deterministic_day(
                             rep_preference=context.rep_preference,
                             experience_level=context.experience_level,
                         ),
+                        [],
                     )
                 )
                 break
+
+    prescribed_ids = {exercise.exercise_id for exercise in selected_exercises}
+    for exercise in selected_exercises:
+        alternatives = []
+        for candidate in staple_options.get(exercise.exercise_id, []):
+            candidate_id = str(candidate["id"])
+            if candidate_id == exercise.exercise_id or candidate_id in prescribed_ids:
+                continue
+            alternatives.append(SuggestedSubstitute(exercise_id=candidate_id, exercise_name=str(candidate["name"])))
+            if len(alternatives) == SUGGESTED_SUBSTITUTE_COUNT:
+                break
+        exercise.suggested_substitutes = alternatives
 
     return ProgramDaySchema(
         day_order=day.day_order,

@@ -491,6 +491,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         excludeExerciseIds: <String>{
           for (final ProgramExercise item in day.exercises) item.exerciseId,
         },
+        suggestedSubstitutes: exercise.suggestedSubstitutes,
         emptyFilteredMessage: 'Every match is already in this day.',
       ),
     );
@@ -920,6 +921,13 @@ class _ExerciseRow extends StatelessWidget {
                       color: c.textSecondary,
                     ),
                   ),
+                  if (exercise.suggestedSubstitutes.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 2),
+                    Text(
+                      'Suggested substitutes: ${exercise.suggestedSubstitutes.map((SuggestedSubstitute item) => item.exerciseName).join(', ')}',
+                      style: MayosTypography.caption.copyWith(color: c.textMuted),
+                    ),
+                  ],
                   const SizedBox(height: 2),
                   Text(
                     <String>[

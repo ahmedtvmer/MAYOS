@@ -211,4 +211,5 @@ def _set_replacement(exercise: dict[str, Any], replacement: dict[str, Any]) -> N
         notes=replacement.get("instructions") or "",
         image_path=replacement.get("image_path"),
         gif_path=replacement.get("gif_path"),
+        suggested_substitutes=[],
     )
