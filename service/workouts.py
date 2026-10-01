@@ -277,6 +277,18 @@ def _evaluate_missed_days(db: Any, account_id: str) -> None:
         logger.exception("Missed-day alert evaluation raised unexpectedly after session commit")
 
 
+def _evaluate_stalling(db: Any, account_id: str) -> None:
+    """Best-effort stall-length refresh after a commit; never fails the workout commit."""
+    try:
+        from service import stalling
+
+        stalling.evaluate_for_ledger(db, account_id)
+    except FileNotFoundError:
+        logger.warning("Stall-length evaluation skipped after session commit; player ledger is missing.")
+    except Exception:
+        logger.exception("Stall-length evaluation raised unexpectedly after session commit")
+
+
 def _evaluate_progression_alerts(
     db: Any,
     account_id: str,
@@ -312,6 +324,7 @@ def _run_post_commit_hooks(
     if not account_id:
         return
     _evaluate_missed_days(db, account_id)
+    _evaluate_stalling(db, account_id)
     _evaluate_progression_alerts(db, account_id, session_id, session_date, exercise_summaries, fatigue_post)
 
 

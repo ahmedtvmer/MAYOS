@@ -17,7 +17,8 @@ Keys, in order:
    today, then everything else (no follow-up due yet, or none scheduled).
 5. ``last_workout_on``, oldest first; a player who never trained ranks before
    any date.
-6. ``player_username``, ascending.
+6. ``stall_length``, longest first.
+7. ``player_username``, ascending.
 """
 
 from __future__ import annotations
@@ -40,7 +41,7 @@ def _follow_up_key(next_follow_up_on: Any, today: date) -> tuple[int, str]:
     return 2, ""
 
 
-def roster_urgency_key(entry: Mapping[str, Any], today: date) -> tuple[int, int, int, int, str, str, str]:
+def roster_urgency_key(entry: Mapping[str, Any], today: date) -> tuple[int, int, int, int, str, str, int, str]:
     """The urgency-order sort key for one roster row (pure; no clock, no I/O).
 
     Sort roster rows with ``sorted(rows, key=lambda row: roster_urgency_key(row, today))``.
@@ -57,5 +58,6 @@ def roster_urgency_key(entry: Mapping[str, Any], today: date) -> tuple[int, int,
         -int(entry.get("current_missed_streak") or 0),
         *_follow_up_key(entry.get("next_follow_up_on"), today),
         str(entry.get("last_workout_on") or ""),
+        -int(entry.get("stall_length") or 0),
         str(entry.get("player_username") or ""),
     )

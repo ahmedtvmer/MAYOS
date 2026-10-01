@@ -346,6 +346,7 @@ def list_coach_assignments(db: Any, coach_account_id: str) -> list[dict[str, Any
                 "alerts_new_lapsing": int(badge.get("alerts_new_lapsing", 0)),
                 "alerts_acknowledged": int(badge.get("alerts_acknowledged", 0)),
                 "current_missed_streak": int(badge.get("current_missed_streak", 0)),
+                "stall_length": int(badge.get("stall_length", 0)),
                 "next_follow_up_on": next_follow_up.isoformat() if next_follow_up else None,
                 "pending_requests": int(pending_requests.get(row["assignment_id"], 0)),
                 "last_workout_on": workout.get("last_workout_on"),

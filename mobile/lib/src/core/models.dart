@@ -413,6 +413,7 @@ class CoachRosterEntry {
     this.alertsNew = 0,
     this.alertsAcknowledged = 0,
     this.currentMissedStreak = 0,
+    this.stallLength = 0,
     this.nextFollowUpOn,
     this.pendingRequests = 0,
     this.lastWorkoutOn,
@@ -429,6 +430,7 @@ class CoachRosterEntry {
         alertsAcknowledged: (json['alerts_acknowledged'] as num?)?.toInt() ?? 0,
         currentMissedStreak:
             (json['current_missed_streak'] as num?)?.toInt() ?? 0,
+        stallLength: (json['stall_length'] as num?)?.toInt() ?? 0,
         nextFollowUpOn: json['next_follow_up_on'] as String?,
         pendingRequests: (json['pending_requests'] as num?)?.toInt() ?? 0,
         lastWorkoutOn: json['last_workout_on'] as String?,
@@ -442,6 +444,10 @@ class CoachRosterEntry {
   final int alertsNew;
   final int alertsAcknowledged;
   final int currentMissedStreak;
+
+  /// Consecutive committing sessions without a personal record in the current
+  /// program, cached on the catalog-side roster summary (#203).
+  final int stallLength;
 
   /// The next weekly follow-up due date (`YYYY-MM-DD`), computed catalog-side.
   final String? nextFollowUpOn;

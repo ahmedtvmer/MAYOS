@@ -20,6 +20,7 @@ def _entry(**overrides):
         "alerts_new_lapsing": 0,
         "pending_requests": 0,
         "current_missed_streak": 0,
+        "stall_length": 0,
         "next_follow_up_on": None,
         "last_workout_on": None,
     }
@@ -114,6 +115,13 @@ def test_username_breaks_the_final_tie():
     assert anna < bob
     # Nothing but the username differs.
     assert anna[0:6] == bob[0:6]
+
+
+def test_stall_length_is_the_last_order_key_before_username():
+    longer = roster_urgency_key(_entry(player_username="zoe", stall_length=4), TODAY)
+    shorter = roster_urgency_key(_entry(player_username="ann", stall_length=2), TODAY)
+    assert longer < shorter
+    assert longer[0:6] == shorter[0:6]
 
 
 def test_every_key_only_breaks_ties_in_the_previous_one():

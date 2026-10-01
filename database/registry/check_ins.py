@@ -10,11 +10,12 @@ class RegistryCheckInsMixin:
     def upsert_roster_attendance(
         self,
         assignment_id: str,
-        current_missed_streak: int,
-        now_iso: str,
+        current_missed_streak: int | None = None,
+        now_iso: str | None = None,
         timezone: str | None = None,
         last_workout_on: str | None = None,
         program_name: str | None = None,
+        stall_length: int | None = None,
     ) -> None:
         """Records the latest catalog-side attendance summary for one assignment.
 
@@ -30,22 +31,27 @@ class RegistryCheckInsMixin:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
                 "INSERT INTO roster_attendance"
-                " (assignment_id, current_missed_streak, last_evaluated_at, timezone,"
+                " (assignment_id, current_missed_streak, stall_length, last_evaluated_at, timezone,"
                 " last_workout_on, program_name)"
-                " VALUES (?, ?, ?, ?, ?, ?)"
+                " VALUES (?, COALESCE(?, 0), COALESCE(?, 0), ?, ?, ?, ?)"
                 " ON CONFLICT(assignment_id) DO UPDATE SET"
-                " current_missed_streak = excluded.current_missed_streak,"
-                " last_evaluated_at = excluded.last_evaluated_at,"
+                " current_missed_streak = COALESCE(?, roster_attendance.current_missed_streak),"
+                " stall_length = COALESCE(?, roster_attendance.stall_length),"
+                " last_evaluated_at = COALESCE(?, roster_attendance.last_evaluated_at),"
                 " timezone = COALESCE(excluded.timezone, roster_attendance.timezone),"
                 " last_workout_on = COALESCE(excluded.last_workout_on, roster_attendance.last_workout_on),"
                 " program_name = COALESCE(excluded.program_name, roster_attendance.program_name)",
                 (
                     str(assignment_id),
-                    int(current_missed_streak),
+                    int(current_missed_streak) if current_missed_streak is not None else None,
+                    int(stall_length) if stall_length is not None else None,
                     now_iso,
                     timezone,
                     last_workout_on,
                     program_name,
+                    int(current_missed_streak) if current_missed_streak is not None else None,
+                    int(stall_length) if stall_length is not None else None,
+                    now_iso,
                 ),
             )
             self.catalog_conn.commit()
@@ -95,13 +101,14 @@ class RegistryCheckInsMixin:
             return str(row[0]) if row and row[0] else None
 
     def get_roster_alert_badges(self, coach_account_id: str) -> dict[str, dict[str, int]]:
-        """New alert counts, lapsing count, and streak per assignment (catalog-only)."""
+        """New alert counts, lapsing count, and roster lengths per assignment (catalog-only)."""
         self.ensure_account_schema()
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
                 "SELECT a.assignment_id,"
                 " COALESCE(r.current_missed_streak, 0) AS streak,"
+                " COALESCE(r.stall_length, 0) AS stall_length,"
                 " COALESCE(SUM(CASE WHEN c.state = 'new' THEN 1 ELSE 0 END), 0) AS new_count,"
                 " COALESCE(SUM(CASE WHEN c.state = 'new' AND c.kind IN"
                 " ('missed_expected_days', 'follow_up_due') THEN 1 ELSE 0 END), 0) AS new_lapsing_count,"
@@ -117,9 +124,10 @@ class RegistryCheckInsMixin:
             return {
                 str(row[0]): {
                     "current_missed_streak": int(row[1]),
-                    "alerts_new": int(row[2]),
-                    "alerts_new_lapsing": int(row[3]),
-                    "alerts_acknowledged": int(row[4]),
+                    "stall_length": int(row[2]),
+                    "alerts_new": int(row[3]),
+                    "alerts_new_lapsing": int(row[4]),
+                    "alerts_acknowledged": int(row[5]),
                 }
                 for row in cursor.fetchall()
             }

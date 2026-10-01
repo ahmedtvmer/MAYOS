@@ -466,6 +466,18 @@ class LedgerWorkoutsMixin:
         cursor.execute("SELECT session_date FROM workout_sessions ORDER BY session_date ASC")
         return [str(row[0]) for row in cursor.fetchall()]
 
+    def stall_recount_facts(self, limit: int) -> list[dict[str, Any]]:
+        """Return bounded session facts, including a stored commit response when present."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT s.id AS session_id, s.session_date, s.started_at, s.program_version,"
+            " s.rowid AS session_order, sc.response_json AS commit_response"
+            " FROM workout_sessions s LEFT JOIN session_commits sc ON sc.session_id = s.id"
+            f" ORDER BY s.session_date DESC, {LAST_SESSION_ORDER} LIMIT ?",
+            [max(1, int(limit))],
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
     def get_session_log(self) -> list[dict[str, Any]]:
         """Chronological session→set rows (exercise names resolved) for ledger export.
 

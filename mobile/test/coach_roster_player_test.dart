@@ -109,6 +109,7 @@ Map<String, dynamic> _assignment(
   int? alertsNew,
   int? pendingRequests,
   int missedStreak = 0,
+  int stallLength = 0,
   String? nextFollowUpOn,
   String? lastWorkoutOn,
   String? programName,
@@ -119,6 +120,7 @@ Map<String, dynamic> _assignment(
       'started_at': '2026-09-01T10:00:00Z',
       'status': 'active',
       'current_missed_streak': missedStreak,
+      'stall_length': stallLength,
       if (alertsNew != null) 'alerts_new': alertsNew,
       if (alertsNew != null) 'alerts_acknowledged': 0,
       if (pendingRequests != null) 'pending_requests': pendingRequests,
@@ -248,6 +250,27 @@ void main() {
     expect(find.textContaining(' alert'), findsNothing);
     expect(find.textContaining(' request'), findsNothing);
     expect(find.textContaining('Missed'), findsNothing);
+  });
+
+  testWidgets('roster row displays stall length', (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.assignments.add(_assignment(
+      'assignment-1',
+      'bob',
+      lastWorkoutOn: '2026-09-26',
+      stallLength: 1,
+    ));
+    fake.assignments.add(_assignment(
+      'assignment-2',
+      'sue',
+      lastWorkoutOn: '2026-09-26',
+      stallLength: 4,
+    ));
+    await _pumpApp(tester, fake, InMemoryAppModeStore());
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+
+    expect(find.text('Stalled 1 session'), findsOneWidget);
+    expect(find.text('Stalled 4 sessions'), findsOneWidget);
   });
 
   /// The player page's alert actions: acknowledge and resolve through the
