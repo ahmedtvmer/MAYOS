@@ -249,7 +249,7 @@ void main() {
     await _pumpApp(tester, fake, store: InMemoryThemeModeStore());
     await _openSettings(tester);
 
-    expect(find.text('Become a coach'), findsOneWidget);
+    expect(find.text('Enable coaching'), findsOneWidget);
     expect(find.text('Coach profile'), findsNothing);
     expect(find.text('Alert center'), findsNothing);
     expect(find.byType(ModeAvatarButton), findsNothing);

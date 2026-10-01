@@ -154,9 +154,8 @@ void main() {
 
     await _openSettings(tester);
 
-    expect(find.text('Become a coach'), findsOneWidget);
-    expect(find.text('Enter your MAYOS coach code to unlock Coach mode'),
-        findsOneWidget);
+    expect(find.text('Enable coaching'), findsOneWidget);
+    expect(find.text('Redeem an owner-issued coach code'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.workspace_premium_outlined));
     await _pumpUntilFound(tester, find.text('Enter your MAYOS coach code'));
@@ -186,6 +185,34 @@ void main() {
     await _pumpUntilFound(tester, find.text('Coach profile'));
     expect(fake.coach, isTrue);
     expect(find.byType(ModeAvatarButton), findsOneWidget);
+  });
+
+  testWidgets('an un-onboarded player can become a coach from onboarding',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake(coach: false)
+      ..profileExists = false
+      ..validCoachInviteToken = 'coach-invite-token-123456';
+    await _pumpApp(tester, fake);
+
+    expect(find.text('Before we begin'), findsOneWidget);
+    await tester.tap(find.text("I'm a coach — enter invite code"));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('onboarding_coach_code')));
+
+    await tester.enterText(find.byKey(const Key('onboarding_coach_code')),
+        'wrong-invite-code-123456');
+    await tester.tap(find.byKey(const Key('onboarding_redeem_coach_code')));
+    await _pumpUntilFound(tester, find.text('Invalid or expired invite code.'));
+    expect(find.text('Before we begin'), findsOneWidget);
+    expect(fake.coach, isFalse);
+
+    await tester.enterText(find.byKey(const Key('onboarding_coach_code')),
+        'coach-invite-token-123456');
+    await tester.tap(find.byKey(const Key('onboarding_redeem_coach_code')));
+    await _pumpUntilFound(tester, find.text('Roster'));
+    expect(fake.coach, isTrue);
+    expect(find.text('Before we begin'), findsNothing);
+    expect(find.text('Create my program'), findsNothing);
   });
 
   testWidgets(
@@ -220,14 +247,14 @@ void main() {
     );
   });
 
-  testWidgets('coach account does not see the Become a coach setting',
+  testWidgets('coach account does not see the Enable coaching setting',
       (tester) async {
     final FakeMayosApi fake = _signedInFake(coach: true);
     await _pumpApp(tester, fake);
 
     await _openSettings(tester);
 
-    expect(find.text('Become a coach'), findsNothing);
+    expect(find.text('Enable coaching'), findsNothing);
   });
 
   testWidgets('app resume refreshes live capabilities', (tester) async {
@@ -235,7 +262,7 @@ void main() {
     await _pumpApp(tester, fake);
     await _openSettings(tester);
     // A player has no coach destinations and may still redeem an invite.
-    expect(find.text('Become a coach'), findsOneWidget);
+    expect(find.text('Enable coaching'), findsOneWidget);
     expect(find.byType(ModeAvatarButton), findsNothing);
 
     // A grant happened elsewhere while the app was backgrounded: the settings
@@ -245,10 +272,12 @@ void main() {
     await tester.pump();
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     // The rebuild drops the player-only invite entry once the capability lands.
-    for (int i = 0; i < 40 && find.text('Become a coach').evaluate().isNotEmpty; i++) {
+    for (int i = 0;
+        i < 40 && find.text('Enable coaching').evaluate().isNotEmpty;
+        i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    expect(find.text('Become a coach'), findsNothing);
+    expect(find.text('Enable coaching'), findsNothing);
 
     // Leaving Settings for Player mode now lands in Coach mode: the account
     // gained the capability and has no stored mode, so it defaults to Coach.

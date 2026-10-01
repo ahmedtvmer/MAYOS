@@ -14,6 +14,7 @@ import '../../../core/ui/mayos_card.dart';
 import '../../../core/ui/mayos_logo.dart';
 import '../../../core/ui/mayos_player_column.dart';
 import '../../../core/ui/mayos_progress.dart';
+import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'onboarding_widgets.dart';
@@ -30,6 +31,91 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
+}
+
+class _CoachInviteRedeemDialog extends ConsumerStatefulWidget {
+  const _CoachInviteRedeemDialog();
+
+  @override
+  ConsumerState<_CoachInviteRedeemDialog> createState() =>
+      _CoachInviteRedeemDialogState();
+}
+
+class _CoachInviteRedeemDialogState
+    extends ConsumerState<_CoachInviteRedeemDialog> {
+  final TextEditingController _code = TextEditingController();
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _code.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final String token = _code.text.trim();
+    if (token.length < 10) {
+      setState(() => _error = 'Enter your MAYOS coach code.');
+      return;
+    }
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await ref.read(authControllerProvider.notifier).redeemCoachInvite(token);
+      if (mounted) {
+        Navigator.of(context).pop(true);
+      }
+    } on ApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+          _error = error.message;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Enable coaching'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            const Text('Enter your owner-issued MAYOS coach code.'),
+            const SizedBox(height: MayosSpacing.md),
+            MayosTextField(
+              fieldKey: const Key('onboarding_coach_code'),
+              controller: _code,
+              label: 'MAYOS coach code',
+              autocorrect: false,
+              enableSuggestions: false,
+              errorText: _error,
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed:
+                _submitting ? null : () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('onboarding_redeem_coach_code'),
+            onPressed: _submitting ? null : _submit,
+            child: _submitting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Enable coaching'),
+          ),
+        ],
+      );
 }
 
 enum _OnboardingPhase { loading, error, disclosure, answering }
@@ -353,6 +439,25 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     }
   }
 
+  Future<void> _redeemCoachInvite() async {
+    final bool? redeemed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => const _CoachInviteRedeemDialog(),
+    );
+    if (redeemed == true && mounted) {
+      context.go(coachPath);
+    }
+  }
+
+  Widget _coachInviteEntry() => Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          key: const Key('onboarding_coach_invite_entry'),
+          onPressed: _redeemCoachInvite,
+          child: const Text("I'm a coach — enter invite code"),
+        ),
+      );
+
   void _finishToHome() {
     ref.read(authControllerProvider.notifier).markOnboarded();
     if (mounted) {
@@ -417,6 +522,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             const SizedBox(height: MayosSpacing.md),
             OnboardingInlineError(message: _disclosureError!),
           ],
+          const SizedBox(height: MayosSpacing.md),
+          _coachInviteEntry(),
         ],
       ),
     );
@@ -530,6 +637,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         ),
         const SizedBox(height: MayosSpacing.xl),
         _buildInteraction(field, value),
+        const SizedBox(height: MayosSpacing.md),
+        _coachInviteEntry(),
         if (_stepError != null) ...<Widget>[
           const SizedBox(height: MayosSpacing.md),
           OnboardingInlineError(message: _stepError!),
@@ -651,6 +760,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               'Check your answers. You can edit anything before MAYOS builds '
               'your first program.',
         ),
+        const SizedBox(height: MayosSpacing.sm),
+        _coachInviteEntry(),
         const SizedBox(height: MayosSpacing.xl),
         ReviewSection(
           title: 'About you',
