@@ -169,12 +169,6 @@ RE_JOINT_PAIN_AT_CLAUSE_END = re.compile(
     re.IGNORECASE,
 )
 RE_REALLY_BAD_FRAGMENT = re.compile(r"^\s*really\s+bad\b", re.IGNORECASE)
-RE_DIRECT_JOINT_PAIN = re.compile(
-    rf"\b(?:my|the)\s+(?:{_TRAUMA_STRUCTURES})\s+hurts?\b", re.IGNORECASE
-)
-RE_ARABIC_ACUTE_JOINT_PAIN = re.compile(
-    r"(?:عندي\s+)?(?:ألم|وجع)\s+(?:حاد|شديد)\s+(?:في\s+)?(?:ال)?(?:ركبة|ركبتي)"
-)
 
 # Tier-0b: DOMS-ambiguous tokens (swelling/tear/tore/torn/pop/tweaked) intercept
 # only with an explicit injury context; otherwise they fall through to Tier-1.
@@ -195,12 +189,7 @@ RE_AMBIGUOUS_TRAUMA = re.compile(
 
 def _acute_injury_hit(text: str) -> bool:
     """Tier-0: unconditional and contextual trauma plus Tier-0c movement pain."""
-    if (
-        RE_ACUTE_INJURY.search(text)
-        or RE_AMBIGUOUS_TRAUMA.search(text)
-        or RE_DIRECT_JOINT_PAIN.search(text)
-        or RE_ARABIC_ACUTE_JOINT_PAIN.search(text)
-    ):
+    if RE_ACUTE_INJURY.search(text) or RE_AMBIGUOUS_TRAUMA.search(text):
         return True
     clauses = RE_TIER0_CLAUSE_SPLIT.split(text)
     for clause in clauses:

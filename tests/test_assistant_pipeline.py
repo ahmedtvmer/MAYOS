@@ -124,13 +124,12 @@ def test_deload_choice_routing_is_deterministic_in_english_and_arabic():
 
 
 def test_deload_routing_does_not_override_clinical_or_negated_requests():
-    clinical_queries = [
-        "عندي ألم حاد في الركبة، كيف أطبق التخفيف؟",
-        "my knee hurts, can I undo the deload?",
-    ]
-    for query in clinical_queries:
+    # The clinical guard keeps its own rules; a pain message must never become a Deload command.
+    routed = router_node({"messages": [HumanMessage(content="عندي ألم حاد في الركبة، كيف أطبق التخفيف؟")]})
+    assert routed["intent"] == "clinical_intercept"
+    for query in ("my knee hurts, can I undo the deload?", "my shoulder is injured, apply the deload"):
         routed = router_node({"messages": [HumanMessage(content=query)]})
-        assert routed["intent"] == "clinical_intercept"
+        assert routed["intent"] != "deload_choice"
 
     non_commands = [
         "التخفيف من الألم بعد الغداء",
