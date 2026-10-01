@@ -287,13 +287,23 @@ Point `CHECKPOINT_REVIEW_EVAL_REPORT` at that report. The service and
 `--check-report` use the same validator. It requires `mode: "live"`, a matching
 `prompt_hash`, the configured player `model` and `backend`, passing privacy and
 evaluation gates, and runs whose recorded verdict agrees with the report.
-Changing the prompt, renderer, reduced facts, or configured player model
-invalidates the report. The generated text is stored after its first successful
-read; failed attempts return the fixed template and can retry after ten minutes.
+Changing the prompt, renderer, reduced facts, style descriptions/preference framing,
+or configured player model invalidates the report. The style-aware prompt requires
+a fresh live report; reports for the previous facts-only prompt cannot enable it.
+The eight English/Arabic cases cover all five presets, explicit brevity/reasoning
+expectations, and preferences that conflict with language, numbers, and safety.
+The style checks are deterministic proxies, not proof of subjective tone quality.
+Language checks use English/Arabic script heuristics, not a general language
+classifier: English rejects Arabic script; Arabic requires at least ten Arabic
+letters and at least as many as ASCII Latin letters. Adversarial preferences request the
+opposite supported Display language (English/Arabic).
+The generated player text is stored after its first successful player read; failed attempts return the fixed template and can retry after ten minutes.
 For this call only, cloud inference sets `chat_template_kwargs.enable_thinking`
 to `false`; other player requests keep the configured `LLM_EXTRA_BODY` behavior.
 These calls are metered as player usage with purpose `checkpoint_review` and
-excluded from the player's daily AI-allowance admission total.
+excluded from the player's daily AI-allowance admission total. Saved style changes
+affect only future first generations. Coach reads return a neutral template with
+the stored facts/rating and never generate or return personalized player prose.
 
 ```bash
 export CHECKPOINT_REVIEW_AI_ENABLED=true

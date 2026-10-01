@@ -26,6 +26,17 @@ import '../onboarding/onboarding_widgets.dart'
 /// Mirrors the server's `MAX_PAUSE_DAYS` in `service/schedule.py`; the client
 /// check is only a courtesy, the service stays authoritative.
 const int maxPauseDays = 14;
+const String _profileContractError =
+    'The service needs an update before this profile can be edited. Please try again later.';
+
+const Map<String, String> _profileFieldTypes = <String, String>{
+  'current_goal': 'text',
+  'injuries_or_limitations': 'text',
+  'weight_kg': 'float',
+  'weekly_frequency': 'int',
+  'equipment_access': 'enum',
+  'rep_preference': 'enum',
+};
 
 /// Player Training profile editor. The intake contract supplies the facts the
 /// service considers for a rebuild and the service remains authoritative. When
@@ -117,6 +128,43 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     super.dispose();
   }
 
+  void _validateProfileIntake(OnboardingIntake intake, int savedFrequency) {
+    for (final MapEntry<String, String> entry in _profileFieldTypes.entries) {
+      final IntakeField? field = intake.field(entry.key);
+      if (field == null ||
+          field.type != entry.value ||
+          intake.fields.where((IntakeField f) => f.name == entry.key).length !=
+              1 ||
+          (field.type == 'enum' && !_hasValidChoices(field))) {
+        throw const ApiException(_profileContractError);
+      }
+    }
+    final IntakeField frequency = intake.field('weekly_frequency')!;
+    if (!_hasValidFrequencyRange(frequency, savedFrequency)) {
+      throw const ApiException(_profileContractError);
+    }
+  }
+
+  bool _hasValidChoices(IntakeField field) =>
+      field.allowedValues.isNotEmpty &&
+      field.allowedValues.every((String value) => value.trim().isNotEmpty) &&
+      field.allowedValues.toSet().length == field.allowedValues.length;
+
+  bool _hasValidFrequencyRange(IntakeField field, int savedFrequency) {
+    final double? minimum = field.minimum;
+    final double? maximum = field.maximum;
+    return minimum != null &&
+        maximum != null &&
+        minimum.isFinite &&
+        maximum.isFinite &&
+        minimum == minimum.roundToDouble() &&
+        maximum == maximum.roundToDouble() &&
+        minimum >= 1 &&
+        minimum <= maximum &&
+        savedFrequency >= minimum &&
+        savedFrequency <= maximum;
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -129,7 +177,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         api.trainingSchedule(),
         api.trainingPauses(),
         api.currentAccount(),
-        api.onboardingIntake(),
+        api.onboardingIntake(invalidDataMessage: _profileContractError),
       ]);
       if (!mounted) return;
       final PlayerProfile profile = results[0] as PlayerProfile;
@@ -137,6 +185,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final List<ScheduledPause> pauses = results[2] as List<ScheduledPause>;
       final Account account = results[3] as Account;
       final OnboardingIntake intake = results[4] as OnboardingIntake;
+      _validateProfileIntake(intake, profile.weeklyFrequency);
       final List<String> equipmentOptions =
           intake.field('equipment_access')!.allowedValues;
       final List<String> repOptions =

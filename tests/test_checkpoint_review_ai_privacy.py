@@ -26,6 +26,9 @@ PLAYER_EMAIL = "reviewprivacy@example.com"
 SESSION_NOTE = "PRIVATE_REVIEW_NOTE_31a7"
 PLAYER_CHAT = "PRIVATE_REVIEW_CHAT_78c2"
 ASSISTANT_CHAT = "PRIVATE_REVIEW_CHAT_REPLY_14ed"
+PROFILE_GOAL = "PRIVATE_PROFILE_GOAL"
+PROFILE_LIMITATION = "PRIVATE_PROFILE_LIMITATION"
+PREFERRED_NAME = "PRIVATE_PREFERRED_NAME"
 
 
 class _CapturingReviewModel(BaseChatModel):
@@ -45,6 +48,7 @@ class _CapturingReviewModel(BaseChatModel):
 
 
 def _write_live_report(path: Path) -> Path:
+    # Synthetic fixture used only with the fake model, never live evidence.
     model_id, backend = checkpoint_review_ai.checkpoint_review_model_identity()
     runs = [{"case_id": str(index), "checks": {}, "passed": True} for index in range(8)]
     report = {
@@ -110,6 +114,12 @@ def test_review_model_input_excludes_account_and_ledger_private_text(tmp_path: P
             headers = {"Authorization": f"Bearer {registered.json()['access_token']}"}
             db.set_account_email(account_id, PLAYER_EMAIL)
             with db.open_ledger(PLAYER_USERNAME) as ledger:
+                ledger.upsert_player_profile({
+                    "current_goal": PROFILE_GOAL,
+                    "injuries_or_limitations": PROFILE_LIMITATION,
+                    "long_term_goal": "PRIVATE_LONG_TERM_GOAL",
+                })
+                ledger.set_assistant_memory("preferred_name", PREFERRED_NAME)
                 now = datetime.now(UTC).isoformat()
                 ledger.log_workout_session(
                     "private-review-session",
@@ -145,6 +155,9 @@ def test_review_model_input_excludes_account_and_ledger_private_text(tmp_path: P
                 ledger.add_chat_message("user", PLAYER_CHAT)
                 ledger.add_chat_message("assistant", ASSISTANT_CHAT)
 
+            assert client.put("/profile/persona", headers=headers, json={
+                "coach_tone": "scientific", "custom_instructions": "Explain the evidence briefly.",
+            }).status_code == 200
             response = client.get("/checkpoint-reviews/10", headers=headers)
             assert response.status_code == 200, response.text
             assert response.json()["text_is_template"] is False
@@ -152,8 +165,10 @@ def test_review_model_input_excludes_account_and_ledger_private_text(tmp_path: P
         rendered = "\n".join(
             str(getattr(message, "content", message)) for message in model.payloads[0]
         )
-        for private_value in (PLAYER_USERNAME, PLAYER_EMAIL, SESSION_NOTE, PLAYER_CHAT, ASSISTANT_CHAT, account_id):
+        for private_value in (PLAYER_USERNAME, PLAYER_EMAIL, SESSION_NOTE, PLAYER_CHAT, ASSISTANT_CHAT, account_id,
+                              PROFILE_GOAL, PROFILE_LIMITATION, PREFERRED_NAME, "PRIVATE_LONG_TERM_GOAL"):
             assert private_value not in rendered, private_value
+        assert "Explain the evidence briefly." in rendered
         assert "4200" in rendered
         assert "Steady" in rendered
     finally:

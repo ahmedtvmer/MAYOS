@@ -266,11 +266,10 @@ def create_checkpoint_review(
     )
 
 
-def _review_from_row(row: Any, language: str) -> dict[str, Any]:
+def _neutral_review_from_row(row: Any, language: str) -> dict[str, Any]:
     facts = json.loads(row["facts_json"])
     rating = json.loads(row["rating_json"])
-    is_template = row["text"] is None
-    text = row["text"] or template_text(
+    text = template_text(
         int(row["checkpoint"]),
         int(facts["workouts_in_period"]),
         language,
@@ -283,8 +282,15 @@ def _review_from_row(row: Any, language: str) -> dict[str, Any]:
         "facts": facts,
         "rating": rating,
         "text": text,
-        "text_is_template": is_template,
+        "text_is_template": True,
     }
+
+
+def _review_from_row(row: Any, language: str) -> dict[str, Any]:
+    review = _neutral_review_from_row(row, language)
+    if row["text"] is not None:
+        review.update(text=row["text"] or review["text"], text_is_template=False)
+    return review
 
 
 def _get_review_row(context: _ReviewReadContext, opened_at: str | None = None) -> dict[str, Any] | None:
@@ -324,14 +330,19 @@ def _latest_or_template(context: _ReviewReadContext, fallback: dict[str, Any]) -
 
 
 def _review_generation_request(context: _ReviewReadContext, row: dict[str, Any]) -> Any:
+    from agent.prompts import DEFAULT_ASSISTANT_STYLE
     from service import checkpoint_review_ai
 
+    with ledger_scope(context.db, context.ledger_handle, context.ledger_id) as ledger:
+        profile = ledger.get_player_profile() or {}
     return checkpoint_review_ai.ReviewGenerationRequest(
         db=context.db,
         account_id=context.account_id,
         facts=json.loads(row["facts_json"]),
         rating=json.loads(row["rating_json"]),
         language=context.language,
+        coach_tone=profile.get("coach_tone") or DEFAULT_ASSISTANT_STYLE,
+        custom_instructions=profile.get("custom_instructions") or "",
     )
 
 
@@ -447,11 +458,8 @@ def coach_checkpoint_review(
         return None
     ledger, context = authorized
     with ledger:
-        ledger_id = context["player"]["ledger_id"]
-        player_account_id = context["player"]["account_id"]
-        review = read_checkpoint_review(
-            db, ledger_id, checkpoint, account_id=player_account_id, ledger=ledger
-        )
-        if review is None:
+        row = ledger.get_checkpoint_review_row(checkpoint)
+        if row is None:
             raise CheckpointReviewNotFoundError(checkpoint)
-        return review
+        language = resolve_display_language(context["player"]["account_id"])
+        return _neutral_review_from_row(row, language)

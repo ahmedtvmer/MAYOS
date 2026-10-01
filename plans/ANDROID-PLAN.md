@@ -1,19 +1,23 @@
 # MAYOS — Coaching Platform Trial Delivery Plan
 
-> Status: Client scope revised for the closed trial · Updated: 2026-09-25
+> Status: Shared Flutter surfaces delivered; external trial gates remain · Updated: 2026-10-01
 > Scope: Migrate MAYOS to a cloud-backed **two-capability coaching platform**
 > (coach + player) with an Android Flutter app and one web app serving both
 > capabilities. The iPhone player uses the web app while online; trial coaches
 > have a desktop-capable web console. Fly.io serves the API only (uvicorn).
-> The Streamlit UI is legacy, serves no users, and is scheduled for
-> deletion after client cutover. The local GGUF backend remains available for
+> The shared Flutter client in `mobile/` serves Android and web. The legacy
+> Streamlit client and dependencies were deleted in #242 (ADR 056).
+> The local GGUF backend remains available for
 > development and evaluation; production uses a hosted model selected by the
 > parity gate.
 >
 > The player-only v1 plan is superseded. Phase 0's hosted parity gate passed;
-> the remaining trial path includes C1–C3, workout sync, D, a web-client gate,
-> C5, and P. C4 coach AI can be enabled only after its
-> separate privacy and eval gates. Directory discovery and payments follow a
+> the phase sections below retain the original delivery sequence, not an
+> outstanding implementation queue. Player and coach surfaces, workout sync,
+> Assistant style, Training profile editing, and deload banners are delivered
+> in Flutter. External deployment, device/browser and trial gates still need
+> their own evidence. C4 coach AI requires its separate privacy and eval gates.
+> Directory discovery and payments follow a
 > successful trial. Re-estimate delivery time from this scope before starting.
 >
 > Coaching terms are defined in [CONTEXT.md](../CONTEXT.md). Earlier engine ADRs
@@ -24,7 +28,7 @@
 | Decision           | Choice                                                             |
 |--------------------|--------------------------------------------------------------------|
 | Product model      | One account may train, coach, or both; capabilities are not exclusive |
-| Client packaging   | Android Flutter app plus one capability-aware web app for players and coaches; evaluate Flutter web before choosing its frontend technology |
+| Client packaging   | Shared Flutter client for Android and web, with capability-aware player and coach routes |
 | Player assistant   | DeepSeek-V4-Flash via DeepInfra; #184: 60/65 and 62/65 standard, 15/15 generalization, 96.9% Arabic |
 | Coach assistant    | DeepSeek-V4-Flash via DeepInfra (player-scoped analysis + split help) |
 | Judge LLM          | Qwen3.5-27B via DeepInfra (eval-only; outside production requests)  |
@@ -125,9 +129,10 @@ Two consent paths:
 
 ## 4. Why This Is Feasible (Architecture Evidence)
 
-- The Streamlit UI is a pure HTTP+SSE client (`ui/api_client.py`); the FastAPI
-  service layer already provides a player contract with JWT auth, rate limits,
-  and anti-enumeration. The coach contract and dual-capability identity are new.
+- The Flutter HTTP/SSE client (`mobile/lib/src/core/api_client.dart`) uses the
+  FastAPI player and coach contracts with JWT auth, rate limits, catalog-gated
+  assignments and dual-capability identity. The former `ui/api_client.py` is
+  historical prior art, deleted with Streamlit in #242.
 - Model construction uses the `get_llm()` / `get_judge_llm()` /
   `get_coach_llm()` factories behind a LangChain-standard surface. The cloud
   factory exists in the current worktree; live chat and onboarding inference
@@ -331,10 +336,10 @@ Two consent paths:
   [volume](https://fly.io/docs/volumes/overview/). Disable autostop so idle
   periods do not skip jobs, and disable Fly's
   [default volume snapshots](https://fly.io/docs/volumes/snapshots/).
-- **Existing-user import**: offer an opt-in, audited import for identified real
-  users only. Create new immutable account IDs, use a secure claim path for
-  users without existing credentials, take consistent SQLite snapshots, and
-  verify imported record counts. Never bulk-import local development ledgers.
+- **Existing-user import (retired)**: #242 removed the import/claim scripts and
+  account-claim route under ADR 056. No new imported accounts are created.
+  Existing import audit records still exclude imported history from MAYOS
+  workout counts and are deleted with the account.
 - **Email**: Resend SMTP credentials + SPF/DKIM on the domain (transport
   already exists); add invite-redemption and program-request notice templates.
 - **Deployment**: `Dockerfile.fly` (`python:3.12-slim`, install without
@@ -362,16 +367,17 @@ Two consent paths:
   package boundaries so extracting a second app or a web coach console later is
   cheap.
 - Stack: Riverpod, `dio` (+ auth interceptor, 401 → re-login),
-  `flutter_secure_storage` (JWT → Android Keystore), `drift` (player read cache
-  and workout drafts),
-  `go_router` (capability-gated navigation), OpenAPI → Dart client from
-  `/openapi.json`.
-- SSE: streamed dio parsing of `token` / `done` / `error` frames (mirror
-  `ui/api_client.py:104`).
+  `flutter_secure_storage` (tokens, account-separated read cache and Android
+  workout drafts via `mobile/lib/src/core/workout_storage.dart`),
+  `go_router` (capability-gated navigation). The hand-written transport and wire
+  models are `mobile/lib/src/core/api_client.dart` and `mobile/lib/src/core/models.dart`.
+- SSE: streamed dio parsing of `token` / `done` / `error` frames in
+  `mobile/lib/src/core/api_client.dart`, using `mobile/lib/src/core/sse.dart`.
 - **Player**: auth (login/register/remember-me/forgot/reset), invite-code entry,
   onboarding, dashboard (volume + PR shelves), offline-capable workout logger,
-  program (+ xlsx share),
-  chat, debrief, settings (persona, change-password, request split or exercise
+  program, Progress and Checkpoint reviews,
+  chat, debrief, settings (Assistant style and Training profile editing,
+  change-password, request split or exercise
   substitution, unassign coach, account deletion).
 - **Coach console**: roster with alert badges, player drill-down (sessions,
   telemetry, history), alert center, split assignment, check-in recording,
@@ -387,10 +393,12 @@ Two consent paths:
   device; other offline devices erase them when they next check account status.
   Coach console, chat, and program changes require connectivity. The coach
   console is online-only in the trial.
-- **Legacy UI retirement**: remove Streamlit app, UI transport, and associated
-  dependencies after the four-week trial passes its exit gates and opted-in
-  real-user imports finish, before public launch. Retain service-layer and
-  engine tests independent of Streamlit.
+- **Legacy retirement (completed #242, ADR 056)**: Streamlit and its transport
+  and dependencies, account claim and import scripts, Excel export/openpyxl,
+  profile reset, and the unused profile tool are deleted. CSV/JSON workout
+  history export remains in the API without an app screen. `DELETE /profile`
+  has no reset handler; GET/PUT still exist, so 405 is expected rather than the
+  literal 404 in the original removal criterion. No dummy DELETE route is needed.
 - **Trial communication**: coach and player communicate outside MAYOS.
   Shared check-in records and program-change requests capture the relevant
   actions; direct in-app coach-player messaging is outside the trial.
@@ -404,11 +412,14 @@ Two consent paths:
   publishing, requests, and alerts, with profile, invites, and assignment
   controls. The iPhone player web app supports the Android trial's online
   features. Web does not capture offline workout drafts.
-- Keep failed workout entries in the open tab for explicit retry with an
-  idempotent session key. A closed or reloaded tab does not retain web entries;
-  tell players this before logging.
-- Flutter web feasibility, 2026-09-28 (#126, agent-verified; iPhone Safari
-  checked by hand 2026-09-29):
+- The web logger commits online with an idempotent session key and retains
+  an unfinished Active workout across reloads through browser storage
+  (`mobile/lib/src/core/web_active_workout_store.dart`), with an in-memory
+  fallback when storage is unavailable. Web does not queue Workout drafts.
+- **Historical Flutter web feasibility**, 2026-09-28 (#126, agent-verified;
+  iPhone Safari checked by hand 2026-09-29). These are observations of that
+  build, not the current delivery status; current code uses path URLs and
+  includes coach player routes and online web workout logging:
   - Pass: the JavaScript build (release main.dart.js 1.0 MB gzip), a login
     in desktop Firefox, a session that survives reload, logout, Remember me
     (2h / 720h JWT), and CORS preflights and calls for all verbs from the
@@ -470,8 +481,7 @@ Two consent paths:
    program → handles substitution request → records check-in → handles alert →
    drills down; player records an offline draft and syncs it; revoke and delete
    account. Coach capability deactivation preserves that person's own player
-   data. Test a consented import of one identified real user's local history
-   before cutover.
+   data. New imports and account claim are retired (ADR 056).
 9. Shared web trial path e2e on iPhone Safari and a desktop browser: player
    login, onboarding, program, workout logging and retry after a failed write;
    coach roster, assignment, history, program publication, requests, and
@@ -499,7 +509,7 @@ are verified. Directory flow is tested after the trial, before discovery opens.
 | Player bypasses coach program control with an exercise-swap path | Gate all program writes centrally; player request cannot mutate a coach-controlled program |
 | Offline retry duplicates or misdates a workout | Stable client ID, performed date/timezone, program version, idempotent commit, and reconciliation status |
 | Coach changes program before offline sync | Preserve historical program version on the workout; flag difference; never rewrite the new program |
-| Local development ledgers mistaken for real users | Explicit opt-in import only for identified real accounts; audited record counts and secure claim |
+| Local development ledgers mistaken for real users | New import and claim flows are retired; never deploy development ledgers |
 | Play policy rejection | In-app and external deletion paths, in-app privacy policy, and accurate data-safety form |
 
 ## 8. Prerequisites (Owner Actions)
@@ -512,8 +522,7 @@ are verified. Directory flow is tested after the trial, before discovery opens.
 - [ ] Production domain (API URL, App Links, SPF/DKIM)
 - [ ] Resend account
 - [ ] Cloudflare R2 bucket + credentials
-- [ ] Identify any real local users who want an opt-in history import; exclude
-      development/test ledgers
+- [ ] Exclude development/test ledgers from deployment; import/claim is retired
 
 ## 9. Operating Cost Inputs (< 100 users; verification pending)
 

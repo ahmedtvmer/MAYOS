@@ -289,6 +289,10 @@ class FakeMayosApi {
   Map<String, dynamic>? intakeProgram;
   // When true, `GET /onboarding/intake` omits the required `fields` key.
   bool intakeMalformed = false;
+  bool legacyEquipmentIntakeContract = false;
+  final Map<String, Map<String, dynamic>> intakeFieldOverrides =
+      <String, Map<String, dynamic>>{};
+  final Set<String> omittedIntakeFields = <String>{};
   // When set, the next answer for this field is refused 400 with a server
   // message, so the UI's inline server-error path can be exercised.
   String? intakeRejectField;
@@ -2318,11 +2322,17 @@ class FakeMayosApi {
   ];
 
   Map<String, dynamic> _intakeView() {
-    final List<Map<String, dynamic>> fields = _intakeSchema.map((spec) {
+    final List<Map<String, dynamic>> fields = _intakeSchema
+        .where((spec) => !omittedIntakeFields.contains(spec['name']))
+        .map((spec) {
       final String name = spec['name'] as String;
       final bool answered = intakeAnswers.containsKey(name);
       return <String, dynamic>{
         ...spec,
+        if (name == 'equipment_access' && legacyEquipmentIntakeContract)
+          'type': 'text',
+        if (name == 'equipment_access' && legacyEquipmentIntakeContract)
+          'allowed_values': <String>[],
         'minimum': spec['minimum'],
         'maximum': spec['maximum'],
         if (spec['type'] == 'text') 'minimum_length': 2,
@@ -2332,6 +2342,7 @@ class FakeMayosApi {
         'prefilled': false,
         'answered': answered,
         'updated_at': answered ? '2026-01-01T00:00:00+00:00' : null,
+        ...?intakeFieldOverrides[name],
       };
     }).toList(growable: false);
     final List<String> required = _intakeSchema

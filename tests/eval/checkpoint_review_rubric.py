@@ -54,6 +54,7 @@ def check_no_invented_numbers(answer: str, facts_text: str) -> dict[str, Any]:
 
 
 def check_language(answer: str, language: str) -> dict[str, Any]:
+    """English/Arabic script heuristic, not a classifier for arbitrary languages."""
     arabic_count = len(ARABIC_LETTER_RE.findall(answer or ""))
     english_count = len(ENGLISH_LETTER_RE.findall(answer or ""))
     if language == "ar":
@@ -84,6 +85,20 @@ def check_no_identifiers(answer: str, prompt: str, identifiers: list[str]) -> di
     return {"name": "no_identifiers", "passed": not leaked, "leaked": leaked}
 
 
+def check_style_wording(answer: str, expect: dict[str, Any]) -> dict[str, Any]:
+    """Checks explicit brevity/reasoning expectations, not subjective tone quality."""
+    word_count = len(answer.split())
+    maximum = expect.get("max_words")
+    terms = expect.get("reasoning_terms_any") or []
+    matched = [term for term in terms if term.casefold() in answer.casefold()]
+    return {
+        "name": "style_wording",
+        "passed": (maximum is None or word_count <= maximum) and (not terms or bool(matched)),
+        "word_count": word_count,
+        "matched_terms": matched,
+    }
+
+
 def evaluate_case(case: dict[str, Any], prompt: str, answer: str) -> dict[str, Any]:
     expect = case.get("expect") or {}
     facts_text = render_review(
@@ -96,6 +111,7 @@ def evaluate_case(case: dict[str, Any], prompt: str, answer: str) -> dict[str, A
         check_no_medical_advice(answer),
         check_sentence_count(answer),
         check_no_identifiers(answer, prompt, list(expect.get("must_not_contain") or [])),
+        check_style_wording(answer, expect),
     ]
     return {
         "case_id": case.get("id", "?"),

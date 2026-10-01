@@ -196,7 +196,7 @@ A workout-count landmark in a player's training: the 10th, 25th, 50th and 100th 
 _Avoid_: Milestone, achievement
 
 **Checkpoint review**:
-The written assessment of a player's training since their previous checkpoint, produced once when a checkpoint is reached and never changed. Its rating is computed from recorded facts; the assistant only writes the words around it. An assigned coach can read it while the assignment is active.
+The assessment of a player's training since their previous checkpoint, with a rating computed from recorded facts and player-facing prose written once in their Assistant style and never changed. During an active assignment, the coach reads a neutral assessment of those same facts and rating, unaffected by the player's style or optional instructions.
 _Avoid_: AI rating, performance score
 
 **Coach alert**:

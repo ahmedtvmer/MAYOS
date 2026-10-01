@@ -172,6 +172,13 @@ configured, the following is sent to it:
   tone, custom instructions and preferred name you wrote. It does **not**
   include your username, your recovery email, your coach's name or contact
   details, your coach's private notes, or anything a coach wrote about you.
+- **Checkpoint review wording (when enabled)**: only the reduced training totals
+  and computed rating parts for that Checkpoint, your Display language, your
+  chosen Assistant style, and your trimmed optional wording instructions (up to
+  500 characters). Other profile facts, identity/contact fields, notes and chat
+  are not selected for this request. Instructions you write may themselves
+  contain identifying information. The saved player prose is never rewritten;
+  your assigned coach reads a neutral view of the facts and rating instead.
 - **Onboarding**: the answers you type while setting up, so your profile and
   program can be built.
 - **Program generation**: deterministic in the normal case — day templates,

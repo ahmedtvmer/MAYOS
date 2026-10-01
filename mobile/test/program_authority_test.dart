@@ -168,6 +168,117 @@ void main() {
     expect(find.text('This rebuilds your program'), findsNothing);
   });
 
+  testWidgets('older intake contract shows a service update error instead of hanging',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake()
+      ..legacyEquipmentIntakeContract = true;
+    await _pumpApp(tester, fake);
+    await _openSettings(tester);
+    await tester.tap(find.text('Profile'));
+    await _pumpUntilFound(
+      tester,
+      find.text(
+        'The service needs an update before this profile can be edited. Please try again later.',
+      ),
+    );
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(
+      find.text(
+        'The service needs an update before this profile can be edited. Please try again later.',
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  // Boundary cases: missing editor fields, unsupported field types, empty or
+  // duplicate choices, and absent/reversed numeric bounds must fail before UI setup.
+  final List<(String, String, Map<String, dynamic>?)> invalidContracts =
+      <(String, String, Map<String, dynamic>?)>[
+    ('missing goal', 'current_goal', null),
+    ('missing equipment', 'equipment_access', null),
+    ('missing reps', 'rep_preference', null),
+    ('unsupported goal', 'current_goal', <String, dynamic>{'type': 'enum'}),
+    (
+      'unsupported injuries',
+      'injuries_or_limitations',
+      <String, dynamic>{'type': 'int'}
+    ),
+    ('unsupported weight', 'weight_kg', <String, dynamic>{'type': 'text'}),
+    (
+      'unsupported frequency',
+      'weekly_frequency',
+      <String, dynamic>{'type': 'float'}
+    ),
+    (
+      'empty equipment choices',
+      'equipment_access',
+      <String, dynamic>{'allowed_values': <String>[]}
+    ),
+    ('unsupported reps', 'rep_preference', <String, dynamic>{'type': 'text'}),
+    (
+      'empty rep choices',
+      'rep_preference',
+      <String, dynamic>{'allowed_values': <String>[]}
+    ),
+    (
+      'duplicate rep choices',
+      'rep_preference',
+      <String, dynamic>{
+        'allowed_values': <String>['balanced', 'balanced']
+      }
+    ),
+    (
+      'blank equipment choice',
+      'equipment_access',
+      <String, dynamic>{
+        'allowed_values': <String>['  ']
+      }
+    ),
+    (
+      'missing frequency bound',
+      'weekly_frequency',
+      <String, dynamic>{'minimum': null}
+    ),
+    (
+      'reversed frequency bounds',
+      'weekly_frequency',
+      <String, dynamic>{'minimum': 5, 'maximum': 1}
+    ),
+    (
+      'range excludes saved frequency',
+      'weekly_frequency',
+      <String, dynamic>{'minimum': 1, 'maximum': 3}
+    ),
+    ('malformed field type', 'weight_kg', <String, dynamic>{'type': 42}),
+    ('non-string equipment choice', 'equipment_access', <String, dynamic>{'allowed_values': <Object>[42]}),
+    ('null rep choice', 'rep_preference', <String, dynamic>{'allowed_values': <Object?>[null]}),
+  ];
+  for (final (String description, String field, Map<String, dynamic>? override)
+      in invalidContracts) {
+    testWidgets('invalid Training profile contract: $description',
+        (tester) async {
+      final FakeMayosApi fake = _playerFake();
+      if (override == null) {
+        fake.omittedIntakeFields.add(field);
+      } else {
+        fake.intakeFieldOverrides[field] = override;
+      }
+      await _pumpApp(tester, fake);
+      await _openSettings(tester);
+      await tester.tap(find.text('Profile'));
+      final Finder error = find.text(
+        'The service needs an update before this profile can be edited. Please try again later.',
+      );
+      await _pumpUntilFound(tester, error);
+      expect(error, findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('Save profile'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('saving another fact preserves saved multi-decimal weight',
       (tester) async {
     final FakeMayosApi fake = _playerFake()..weightKg = 82.55;

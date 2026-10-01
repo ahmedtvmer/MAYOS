@@ -1284,14 +1284,17 @@ class IntakeField {
       throw const FormatException(
           'Onboarding intake field is missing its name.');
     }
+    final Object? allowedValues = json['allowed_values'] ?? const <String>[];
+    if (allowedValues is! List ||
+        allowedValues.any((dynamic value) => value is! String)) {
+      throw const FormatException('Onboarding intake choices must be strings.');
+    }
     return IntakeField(
       name: name,
       type: json['type'] as String? ?? 'text',
       isRequired: json['required'] as bool? ?? false,
       profileField: json['profile_field'] as String? ?? '',
-      allowedValues: (json['allowed_values'] as List<dynamic>? ?? const [])
-          .map((dynamic v) => v.toString())
-          .toList(growable: false),
+      allowedValues: List<String>.from(allowedValues),
       minimum: (json['minimum'] as num?)?.toDouble(),
       maximum: (json['maximum'] as num?)?.toDouble(),
       minimumLength: (json['minimum_length'] as num?)?.toInt(),

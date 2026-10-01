@@ -11,6 +11,7 @@ sys.path.append(str(BASE_DIR))
 
 from service.checkpoint_review_ai import (  # noqa: E402
     CONTEXT_VERSION,
+    AssistantStylePreferences,
     bind_review_model,
     build_messages,
     extract_text,
@@ -66,7 +67,13 @@ def run_suite(
     bound_model = bind_review_model(model, backend=model_backend)
     results: list[dict[str, Any]] = []
     for case in cases:
-        messages = build_messages(case.get("facts") or {}, list(case.get("rating") or []), str(case.get("language", "en")))
+        messages = build_messages(
+            case.get("facts") or {}, list(case.get("rating") or []), str(case.get("language", "en")),
+            preferences=AssistantStylePreferences(
+                str(case.get("coach_tone", "direct")),
+                str(case.get("custom_instructions", "")),
+            ),
+        )
         prompt = _prompt_text(messages)
         answer = extract_text(bound_model.invoke(messages))
         result = evaluate_case(case, prompt, answer)

@@ -1148,10 +1148,13 @@ class ApiClient {
   }
 
   /// The structured, resumable intake contract (`GET /onboarding/intake`, #50).
-  Future<OnboardingIntake> onboardingIntake() async {
+  Future<OnboardingIntake> onboardingIntake({
+    String invalidDataMessage =
+        'The service returned invalid onboarding intake data.',
+  }) async {
     final response = await _send(() => _dio.get<dynamic>('/onboarding/intake'));
-    return _parseBody(response.data, OnboardingIntake.fromJson,
-        'The service returned invalid onboarding intake data.');
+    return _parseBody(
+        response.data, OnboardingIntake.fromJson, invalidDataMessage);
   }
 
   /// Acknowledges the hosted-processing disclosure before any answer is saved
