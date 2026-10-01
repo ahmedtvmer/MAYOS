@@ -1,0 +1,172 @@
+[
+  {
+    "path": "mobile/assets/fonts/arabic/Amiri-Bold.ttf",
+    "kind": "added",
+    "sha256": "3cd4a96bf6dca38649c9c7b4ca11a3aed55e272ae377a667f6f2138994c4baec"
+  },
+  {
+    "path": "mobile/assets/fonts/arabic/Amiri-Regular.ttf",
+    "kind": "added",
+    "sha256": "2444788b85996d795f0db7e14f3f6bfc3ea1c985e391267db0269b9e40f3447d"
+  },
+  {
+    "path": "mobile/assets/fonts/arabic/Cairo-Variable.ttf",
+    "kind": "added",
+    "sha256": "667c987182391c91f4e57a2f455b1794fb5e3ee6ca4ef3383e86bb690fa9c964"
+  },
+  {
+    "path": "mobile/assets/fonts/arabic/IBMPlexSansArabic-Bold.ttf",
+    "kind": "added",
+    "sha256": "b74f809dead12442ed56e02a12c3bcc02076c9ad4e32f17d0a9ca6fc1aafc89e"
+  },
+  {
+    "path": "mobile/assets/fonts/arabic/IBMPlexSansArabic-Medium.ttf",
+    "kind": "added",
+    "sha256": "eef162792cf2a6ba5af7943af9f86843b1286ab67aaf615c18c07fd8e97a4a90"
+  },
+  {
+    "path": "mobile/assets/fonts/arabic/IBMPlexSansArabic-Regular.ttf",
+    "kind": "added",
+    "sha256": "8e0f1046c736bf939d4939ee3ae0116acf61cbcd6592deae7656761627080981"
+  },
+  {
+    "path": "mobile/assets/fonts/arabic/IBMPlexSansArabic-SemiBold.ttf",
+    "kind": "added",
+    "sha256": "1d4ab8b6ebadbb9d85f2ecdcb7cb0bb672420a8ff3388ab4f69d7b98056562aa"
+  },
+  {
+    "path": "mobile/assets/fonts/arabic/OFL-Amiri.txt",
+    "kind": "added",
+    "sha256": "72de68e5954f4fdd24702292ef5a32f003ca960ec9330dc86e5eefb5dffb9b22"
+  },
+  {
+    "path": "mobile/assets/fonts/arabic/OFL-Cairo.txt",
+    "kind": "added",
+    "sha256": "a4554e1799d42e1405924b61eb0e0722ae1623b1f1f07f995348f96c496362a9"
+  },
+  {
+    "path": "mobile/assets/fonts/arabic/OFL-IBMPlex.txt",
+    "kind": "added",
+    "sha256": "7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da"
+  },
+  {
+    "path": "mobile/assets/fonts/arabic/OFL-ReemKufi.txt",
+    "kind": "added",
+    "sha256": "3e1dea8822e6e4008fe0ebd2f65f88579683cfee198c0089407fa197535dbe65"
+  },
+  {
+    "path": "mobile/assets/fonts/arabic/ReemKufi-Variable.ttf",
+    "kind": "added",
+    "sha256": "33ead1986cd48c138c4d906c9e5a6341877268461f97623409a2014de1cd4aa4"
+  },
+  {
+    "path": "mobile/assets/fonts/arabic/provenance.json",
+    "kind": "added",
+    "sha256": "59e519202a886313ae88fd10b69cdf4772a02f47610d09762f0faa3e38c04468"
+  },
+  {
+    "path": "mobile/lib/src/app.dart",
+    "kind": "modified",
+    "sha256": "ce08a026cb216dcc6502969b657c0effa574d7887bdef099331986977302b757"
+  },
+  {
+    "path": "mobile/lib/src/core/arabic_prototype.dart",
+    "kind": "added",
+    "sha256": "b9b1b7ceb66ebca5c803dbede736dcc8f4455c1afdc0d1a1dceda0ea41ad46c3"
+  },
+  {
+    "path": "mobile/lib/src/core/theme/mayos_typography.dart",
+    "kind": "modified",
+    "sha256": "7d643bad92e5c1fa195b3caf2316fdbf45a2041b7da48e41fc319763049f3ac3"
+  },
+  {
+    "path": "mobile/lib/src/core/ui/mayos_app_header.dart",
+    "kind": "modified",
+    "sha256": "9dded00931a0a04c5f9bd0b7306d1eaa6b2abcbc6d29103232f17d0580b41283"
+  },
+  {
+    "path": "mobile/lib/src/core/ui/mayos_bottom_navigation.dart",
+    "kind": "modified",
+    "sha256": "504399423698a172281586f17504c683e1afbea731e7e9c6d4d6d05e3fc41912"
+  },
+  {
+    "path": "mobile/lib/src/core/ui/mayos_markdown.dart",
+    "kind": "modified",
+    "sha256": "e03b62dc7fc8c66215284d4cc157eb35807f78d810b3160092e74a05877c5909"
+  },
+  {
+    "path": "mobile/lib/src/features/player/chat/chat_screen.dart",
+    "kind": "modified",
+    "sha256": "ad4cb3ce98b9d1ae39947b07ffe7e8af02508f111a4c131068396ab5f4415573"
+  },
+  {
+    "path": "mobile/lib/src/features/player/dashboard/dashboard_tab.dart",
+    "kind": "modified",
+    "sha256": "e0682d02282729a4b321001cdc13706a790cc81eaeffca7fed9bdbc74a1dcbb4"
+  },
+  {
+    "path": "mobile/lib/src/features/player/shell/player_shell.dart",
+    "kind": "modified",
+    "sha256": "1a67f6b3ead18fc2f8b34c568b589d2e6170fe26f4e0570d2af19b894c6ce47f"
+  },
+  {
+    "path": "mobile/lib/src/features/player/workout/logger_bottom_bar.dart",
+    "kind": "modified",
+    "sha256": "31234ad47d2bdf46db58201558a4b52fabde5b2e9b1c6a29e9cd9ebb8f2456ec"
+  },
+  {
+    "path": "mobile/lib/src/features/player/workout/logger_card_widgets.dart",
+    "kind": "modified",
+    "sha256": "68d7719f2f2731bf75f235435952780af624bcb775cfc763aee5e4ff0a12465a"
+  },
+  {
+    "path": "mobile/lib/src/features/player/workout/logger_keypad.dart",
+    "kind": "modified",
+    "sha256": "c03fe01c9b75a1d0dde68a2136492ba945da9b07df9c3e03b53c928f3d470138"
+  },
+  {
+    "path": "mobile/lib/src/features/player/workout/logger_top_bar.dart",
+    "kind": "modified",
+    "sha256": "1c887e1ca841831090205481e6ce5fef3f2f19acba17343632498762b45df1a3"
+  },
+  {
+    "path": "mobile/lib/src/features/player/workout/workout_logger_screen.dart",
+    "kind": "modified",
+    "sha256": "3c0c3979aaf96460177b07dd2605cbe0bf8820897ef1c1d067ada75c950ee913"
+  },
+  {
+    "path": "mobile/pubspec.yaml",
+    "kind": "modified",
+    "sha256": "f12effbd9c1f9b6e1636e6cbc0cceaf89d23fc84c0a58035c17ecdc50e8628db"
+  },
+  {
+    "path": "mobile/test/visual/arabic_143_capture_test.dart",
+    "kind": "added",
+    "sha256": "b4b428f8afbd7b72cb00c7c42f31ab02ef000bc823076ae7e6d1ac81dd57962f"
+  },
+  {
+    "path": "mobile/tool/prototype143/contact_sheets.py",
+    "kind": "added",
+    "sha256": "3b9a3eed01b9e74e01dd379d225c5ef182032a1775d741ef7fc1959de67b95ea"
+  },
+  {
+    "path": "mobile/tool/prototype143/download_fonts.py",
+    "kind": "added",
+    "sha256": "e1b4cc597afc45530b0d7678b1ef8aa0c1e35989b0cb8a9310a5321bf4175838"
+  },
+  {
+    "path": "mobile/tool/prototype143/package_review.py",
+    "kind": "added",
+    "sha256": "5695c25ca3677c5ec23e9b74c8a1ae88a9d8ec884de4a5e39bfc3ea27121a792"
+  },
+  {
+    "path": "mobile/tool/prototype143/requirements.txt",
+    "kind": "added",
+    "sha256": "2523c3401a8a0df2320ec31c5b003a0f443d1c980600719aed28d6690e8b360d"
+  },
+  {
+    "path": "mobile/tool/prototype143/verify_assets.py",
+    "kind": "added",
+    "sha256": "a6a7654af5f7de8ac67245bcec434a51e1bbb133375dcec491ef1df26f46f291"
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "selectedFamily": "IBMPlexSansArabic",
+  "captures": 28,
+  "captureChecksPassed": 8,
+  "defaultEnglishTestsPassed": 68,
+  "analysis": "no issues",
+  "missingGlyph": {
+    "codepoint": "U+232B",
+    "replacement": "Icons.backspace_outlined"
+  }
+}

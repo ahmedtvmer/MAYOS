@@ -1,0 +1,18 @@
+{
+  "reviewed_on": "2026-10-01",
+  "flutter_analyze": "pass: no issues",
+  "focused_widget_tests": "125 passed",
+  "candidate_A_capture_tests": "8 passed",
+  "candidate_B_capture_tests": "8 passed",
+  "regenerated_screen_pngs": 56,
+  "regenerated_pngs_byte_match_published": true,
+  "original_mobile_and_agent_files_hash_identical": 269,
+  "font_and_numeric_check": "pass",
+  "eval_artifact": "41 unique owner-reviewed cases; distinct clinical, blocking and input-refusal labels",
+  "guard_review": {
+    "clean-code-guard": "No blocking findings for the disposable visual prototype; not a production localization implementation.",
+    "test-guard": "No blocking findings in the capture harness.",
+    "docs-guard": "Corrected unsupported automated ellipsis-check claim; checked relative artifact links."
+  },
+  "full_suite": "Not a green gate: delegate attempt incomplete; two reproduced baseline failures are documented in README."
+}

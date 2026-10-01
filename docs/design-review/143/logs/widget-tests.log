@@ -1,0 +1,127 @@
+00:00 +0: loading /tmp/mayos-arabic-143-prototype/mobile/test/home_screen_test.dart
+00:00 +0: /tmp/mayos-arabic-143-prototype/mobile/test/home_screen_test.dart: home maps the active program, volume, and records
+00:01 +1: /tmp/mayos-arabic-143-prototype/mobile/test/home_screen_test.dart: home maps the active program, volume, and records
+00:01 +2: /tmp/mayos-arabic-143-prototype/mobile/test/home_screen_test.dart: home maps the active program, volume, and records
+00:01 +3: /tmp/mayos-arabic-143-prototype/mobile/test/home_screen_test.dart: home maps the active program, volume, and records
+00:01 +4: /tmp/mayos-arabic-143-prototype/mobile/test/home_screen_test.dart: home maps the active program, volume, and records
+00:01 +5: /tmp/mayos-arabic-143-prototype/mobile/test/home_screen_test.dart: home maps the active program, volume, and records
+00:02 +6: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+00:02 +7: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+00:03 +8: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+00:04 +9: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+00:04 +10: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:04 +11: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: planned exercise detail keeps its prescription and returns to the unchanged Active workout (#217)
+00:05 +12: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: planned exercise detail keeps its prescription and returns to the unchanged Active workout (#217)
+00:05 +13: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: planned exercise detail keeps its prescription and returns to the unchanged Active workout (#217)
+00:05 +14: /tmp/mayos-arabic-143-prototype/mobile/test/player_chat_test.dart: disclosure gates the composer and persists per account
+00:06 +15: /tmp/mayos-arabic-143-prototype/mobile/test/player_chat_test.dart: disclosure gates the composer and persists per account
+00:06 +16: /tmp/mayos-arabic-143-prototype/mobile/test/player_chat_test.dart: disclosure gates the composer and persists per account
+00:07 +17: /tmp/mayos-arabic-143-prototype/mobile/test/player_chat_test.dart: disclosure gates the composer and persists per account
+00:07 +18: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_pictures_test.dart: the picture loads once and is reused on rebuild (#161)
+00:07 +19: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_pictures_test.dart: the picture loads once and is reused on rebuild (#161)
+00:08 +20: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_pictures_test.dart: the picture loads once and is reused on rebuild (#161)
+00:08 +21: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_pictures_test.dart: the picture loads once and is reused on rebuild (#161)
+00:08 +22: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: replacement exercise detail has no program prescription (#217)
+00:08 +23: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: replacement exercise detail has no program prescription (#217)
+00:08 +24: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: prescribed Cardio needs valid minutes and stays outside set progress
+00:09 +25: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: prescribed Cardio needs valid minutes and stays outside set progress
+00:09 +26: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: prescribed Cardio needs valid minutes and stays outside set progress
+00:10 +27: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: prescribed Cardio needs valid minutes and stays outside set progress
+00:11 +28: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: prescribed Cardio needs valid minutes and stays outside set progress
+00:11 +29: /tmp/mayos-arabic-143-prototype/mobile/test/player_chat_test.dart: partial Markdown streams into the same selectable history render at 360 dp
+00:13 +30: /tmp/mayos-arabic-143-prototype/mobile/test/player_chat_test.dart: partial Markdown streams into the same selectable history render at 360 dp
+00:13 +31: /tmp/mayos-arabic-143-prototype/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:13 +32: /tmp/mayos-arabic-143-prototype/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:13 +33: /tmp/mayos-arabic-143-prototype/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:13 +34: /tmp/mayos-arabic-143-prototype/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:14 +35: /tmp/mayos-arabic-143-prototype/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:14 +36: /tmp/mayos-arabic-143-prototype/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:14 +37: /tmp/mayos-arabic-143-prototype/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:14 +38: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+00:14 +39: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+00:14 +40: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+00:15 +41: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+00:15 +42: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+00:15 +43: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+00:15 +44: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+00:15 +45: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+00:15 +46: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+00:16 +47: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+00:16 +48: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+00:16 +49: /tmp/mayos-arabic-143-prototype/mobile/test/theme_and_shell_test.dart: an explicit choice is persisted across a restart
+00:16 +50: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: self-service persists one slot against the workout version
+00:17 +51: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: self-service persists one slot against the workout version
+00:17 +52: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: self-service persists one slot against the workout version
+00:17 +53: /tmp/mayos-arabic-143-prototype/mobile/test/player_chat_test.dart: clearing history requires confirmation and clears the service
+00:17 +54: /tmp/mayos-arabic-143-prototype/mobile/test/theme_and_shell_test.dart: system bar style follows the effective theme
+00:17 +55: /tmp/mayos-arabic-143-prototype/mobile/test/theme_and_shell_test.dart: system bar style follows the effective theme
+00:17 +56: /tmp/mayos-arabic-143-prototype/mobile/test/theme_and_shell_test.dart: system bar style follows the effective theme
+00:18 +57: /tmp/mayos-arabic-143-prototype/mobile/test/theme_and_shell_test.dart: system bar style follows the effective theme
+00:18 +58: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: coach path requires an inline reason before opening the picker
+00:18 +59: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: coach path requires an inline reason before opening the picker
+00:18 +60: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: coach path requires an inline reason before opening the picker
+00:18 +61: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: coach path requires an inline reason before opening the picker
+00:18 +62: /tmp/mayos-arabic-143-prototype/mobile/test/theme_and_shell_test.dart: Settings opens from the header and keeps entry points reachable
+00:19 +63: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: a warm-up row has no previous to borrow and is never filled from one
+00:19 +64: /tmp/mayos-arabic-143-prototype/mobile/test/player_chat_test.dart: saving the schedule offline shows the shared needs-connection message
+00:20 +65: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: authority refusal refreshes coach-controlled state
+00:20 +66: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: authority refusal refreshes coach-controlled state
+00:20 +67: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: authority refusal refreshes coach-controlled state
+00:20 +68: /tmp/mayos-arabic-143-prototype/mobile/test/theme_and_shell_test.dart: shell and settings have no overflow at 360.0x640.0 and 1.5x text
+00:20 +69: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: ticking with no value and no previous opens the keypad there
+00:20 +70: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: authority refusal refreshes coach request into self-service
+00:20 +71: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: authority refusal refreshes coach request into self-service
+00:21 +72: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: the keypad Next order is kg → reps → RIR → the next set
+00:21 +73: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: the keypad Next order is kg → reps → RIR → the next set
+00:21 +74: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: the keypad Next order is kg → reps → RIR → the next set
+00:22 +75: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: the keypad Next order is kg → reps → RIR → the next set
+00:22 +76: /tmp/mayos-arabic-143-prototype/mobile/test/theme_and_shell_test.dart: shell and settings have no overflow at 412.0x915.0 and 1.5x text
+00:22 +77: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: an unplanned exercise never offers a program action
+00:22 +78: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: an unplanned exercise never offers a program action
+00:22 +79: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: an unplanned exercise never offers a program action
+00:22 +80: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: tapping the SET number cycles N ↔ W and mutes the row
+00:23 +81: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: unchecked option replaces only the Active workout
+00:23 +82: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: the Current set is the first unticked working set and moves across exercises, skipping warm-ups (#158)
+00:23 +83: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: version mismatch keeps local replacement and skips program call
+00:23 +84: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: row states: a pending check is outlined, a ticked row is filled, tinted and still editable (#158)
+00:24 +85: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: 409 program version conflict shows the version message
+00:24 +86: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: RIR in the row is a compact selector that opens the existing chips (#158)
+00:24 +87: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: program failure does not roll back the logger replacement
+00:24 +88: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: no overflow at 360dp (light) and the row keeps its 48dp targets (#158)
+00:25 +89: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: logger never creates connectivity controller on Android
+00:25 +90: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: no overflow at 360dp (dark) and the row keeps its 48dp targets (#158)
+00:25 +91: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: the Replace search opens with the target muscle listed before typing, and the pill searches the whole catalog (#162)
+00:25 +92: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: the Replace search opens with the target muscle listed before typing, and the pill searches the whole catalog (#162)
+00:26 +93: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: Finish with nothing ticked is blocked by Log at least one set
+00:26 +94: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: the Replace search never offers an exercise already in this workout, planned or unplanned (#162)
+00:26 +95: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: the unticked-sets sheet offers Keep logging and Discard
+00:26 +96: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: Remove exercise asks before discarding logged sets and takes an untouched one out at once (#162)
+00:27 +97: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: Remove exercise asks before discarding logged sets and takes an untouched one out at once (#162)
+00:27 +98: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: an out-of-window start day is clamped and the player is told
+00:27 +99: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: Undo replace brings the planned exercise back, asking first over logged sets (#162)
+00:28 +100: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: Undo replace brings the planned exercise back, asking first over logged sets (#162)
+00:28 +101: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: unticking a record-earning set clears its badges (#124)
+00:28 +102: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: a keypad focus stays on its own exercise when a card is inserted before it (#162)
+00:29 +103: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: the summary lists the current records and the stats (#124)
+00:29 +104: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: the summary lists the current records and the stats (#124)
+00:29 +105: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: Remove exercise takes an unplanned exercise out of the workout (#162)
+00:30 +106: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_card_menu_test.dart: Remove exercise takes an unplanned exercise out of the workout (#162)
+00:30 +107: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: an offline summary projects pending drafts from its cached status
+00:30 +108: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: a committed Checkpoint shows its review and computed ratings
+00:30 +109: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: a stale cached week hides streak lines but keeps Checkpoint progress
+00:31 +110: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: records and workout summary fit phone and desktop columns
+00:32 +111: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: the summary omits the celebration when nothing earned a record
+00:32 +112: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: a newly earned record vibrates heavily once, and an untick never vibrates
+00:32 +113: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: a cell edit vibrates when it settles, never per keystroke
+00:33 +114: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: turning a ticked warm-up into a working set vibrates (#124)
+00:33 +115: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: the summary snapshot never changes after the rows change (#124)
+00:34 +116: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: the top bar shows Workout time from the start, ticking every second (#159)
+00:34 +117: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: Workout time stays correct across a simulated restart (#159)
+00:34 +118: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: the ⋮ menu discards the workout behind its own confirmation (#159)
+00:35 +119: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: the day heading is the one serif line and the progress line counts exercises and sets (#159)
+00:35 +120: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: the summary shows the workout's total duration, frozen at Finish, with no overflow at 360dp (#159)
+00:36 +121: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: the bottom bar keeps sets progress and Finish in reach while the list scrolls (#160)
+00:36 +122: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: the bottom bar steps aside for the keypad and the last card scrolls clear of it (#160)
+00:37 +123: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: the bottom bar takes the system-nav inset inside its surface and keeps its content above it (#160)
+00:37 +124: /tmp/mayos-arabic-143-prototype/mobile/test/workout_logger_screen_test.dart: a tick clears the Finish nudge and no other message (#160)
+00:37 +125: All tests passed!
