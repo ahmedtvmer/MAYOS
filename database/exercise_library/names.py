@@ -79,7 +79,7 @@ EXERCISE_NAMES: dict[str, ExerciseNameMetadata] = {
     },
     "3562": {
         "display_name": "Barbell Hip Thrust",
-        "aliases": ("barbell hip thrust", "hip thrust barbell"),
+        "aliases": ("barbell hip thrust", "hip thrust barbell", "hip thrust"),
     },
     "757": {
         "display_name": "Smith Incline Press",
