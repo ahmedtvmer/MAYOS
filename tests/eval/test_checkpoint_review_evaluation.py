@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from service import checkpoint_review_ai
 from tests.eval import run_checkpoint_review_evaluation as evaluation
 from tests.eval.checkpoint_review_rubric import check_no_invented_numbers, evaluate_case
@@ -59,3 +61,51 @@ def test_mock_runner_writes_a_report_that_the_live_gate_refuses(tmp_path):
     assert report["backend"] == backend
     assert len(report["runs"]) == 8
     assert checkpoint_review_ai.validate_report(report)[0] is False
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_stderr"),
+    [
+        (
+            {"gates": {}, "pass": None},
+            "  x privacy suite gate is not recorded as passed\n"
+            "  x checkpoint review evaluation gate is not recorded\n"
+            "  x evaluation report does not record pass=true\n",
+        ),
+        (
+            {
+                "gates": {
+                    "privacy": {"pass": True},
+                    "evaluation": {"pass": True, "threshold": 8},
+                },
+                "runs": [],
+                "pass": None,
+            },
+            "  x report has no recorded runs to re-check\n"
+            "  x evaluation report does not record pass=true\n",
+        ),
+    ],
+)
+def test_check_report_preserves_checkpoint_reason_output(tmp_path, capsys, mutation, expected_stderr):
+    model_id, backend = checkpoint_review_ai.checkpoint_review_model_identity()
+    report_path = tmp_path / "report.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "report_version": checkpoint_review_ai.REPORT_VERSION,
+                "mode": "live",
+                "prompt_hash": checkpoint_review_ai.prompt_version_hash(),
+                "model": model_id,
+                "backend": backend,
+                "gates": {},
+                "runs": [],
+                **mutation,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert evaluation.main(["--check-report", str(report_path)]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == "checkpoint review eval report: FAILED\n"
+    assert captured.err == expected_stderr

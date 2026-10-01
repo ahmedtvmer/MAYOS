@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
-import os
-import threading
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from database.registry.model_usage import ALLOWANCE_EXEMPT_PURPOSE
-from utils.env_flags import env_flag
+from service import evaluation_report_gate
+from service.evaluation_report_gate import EvaluationReportConfig, GateStatus, evaluate_gate as _evaluate_gate
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +52,6 @@ CANONICAL_FIXTURE: dict[str, Any] = {
     ],
     "language": "en",
 }
-
-
-@dataclass(frozen=True)
-class GateStatus:
-    requested: bool
-    enabled: bool
-    reason: str
 
 
 @dataclass(frozen=True)
@@ -142,159 +132,53 @@ def bind_review_model(model: Any, *, backend: str | None = None) -> Any:
 def evaluate_gate(
     results: list[dict[str, Any]], expected: int | None = None
 ) -> tuple[bool, list[str], dict[str, Any]]:
-    reasons: list[str] = []
-    expected = len(results) if expected is None else expected
-    stats: dict[str, Any] = {"total": len(results), "passed": 0, "expected": expected, "failed_cases": []}
-    if expected and len(results) != expected:
-        reasons.append(f"incomplete run: {len(results)} of {expected} cases")
-    for result in results:
-        if isinstance(result, dict) and result.get("passed") is True:
-            stats["passed"] += 1
-            continue
-        failure, reason = _failed_case(result)
-        stats["failed_cases"].append(failure)
-        reasons.append(reason)
-    if expected and stats["passed"] < expected:
-        reasons.append(f"score {stats['passed']}/{stats['total']} below required {expected}/{expected}")
-    return not reasons, reasons, stats
+    """Uses the shared Evaluation verdict rules with strict boolean results."""
+    return _evaluate_gate(results, expected, strict=True)
 
 
-def _failed_case(case_run: Any) -> tuple[dict[str, Any], str]:
-    case_id = case_run.get("case_id") if isinstance(case_run, dict) else None
-    checks = case_run.get("checks") if isinstance(case_run, dict) else None
-    failed = [
-        name
-        for name, check in (checks.items() if isinstance(checks, dict) else [])
-        if not isinstance(check, dict) or check.get("passed") is not True
-    ]
-    return {"case_id": case_id, "checks": failed}, f"case {case_id}: failed {', '.join(failed) or 'unknown check'}"
-
-
-def _report_identity_reasons(report: dict[str, Any]) -> list[str]:
-    reasons = []
-    version = report.get("report_version")
-    if isinstance(version, bool) or version != REPORT_VERSION:
-        reasons.append(f"report_version must be {REPORT_VERSION}")
-    if report.get("mode") != "live":
-        reasons.append("report was not produced by a live (non-mock) run")
-    model_id, backend = checkpoint_review_model_identity()
-    if report.get("model") != model_id:
-        reasons.append(f"report model {report.get('model')!r} does not match the configured player model {model_id!r}")
-    if report.get("backend") != backend:
-        reasons.append(f"report backend {report.get('backend')!r} does not match the configured backend {backend!r}")
-    if report.get("prompt_hash") != prompt_version_hash():
-        reasons.append("evaluation report is for a different prompt version (prompt_hash mismatch)")
-    return reasons
-
-
-def _report_runs_error(runs: Any) -> str | None:
-    if not isinstance(runs, list) or not runs:
-        return "report has no recorded runs to re-check"
-    if any(not isinstance(run, dict) for run in runs):
-        return "report contains an invalid evaluation run"
-    return None
-
-
-def _report_gate_inputs(report: dict[str, Any]) -> tuple[list[str], dict[str, Any] | None, list[Any] | None]:
-    gates = report.get("gates")
-    if not isinstance(gates, dict):
-        return ["evaluation report has no gates object"], None, None
-    privacy, evaluation = gates.get("privacy"), gates.get("evaluation")
-    reasons = [] if isinstance(privacy, dict) and privacy.get("pass") is True else [
-        "privacy suite gate is not recorded as passed"
-    ]
-    if not isinstance(evaluation, dict):
-        reasons.append("checkpoint review evaluation gate is not recorded")
-        return reasons, None, None
-    runs = report.get("runs")
-    runs_error = _report_runs_error(runs)
-    if runs_error is not None:
-        reasons.append(runs_error)
-        return reasons, evaluation, None
-    return reasons, evaluation, runs
-
-
-def _evaluation_verdict_reasons(evaluation: dict[str, Any], runs: list[Any]) -> list[str]:
-    reasons = []
-    threshold = evaluation.get("threshold")
-    if not isinstance(threshold, int) or isinstance(threshold, bool) or threshold < 1:
-        reasons.append("evaluation gate has no usable threshold")
-        threshold = len(runs)
-    derived_ok, derived_reasons, _stats = evaluate_gate(runs, threshold)
-    reasons.extend(derived_reasons)
-    if evaluation.get("pass") is not derived_ok:
-        reasons.append("recorded evaluation gate disagrees with the recorded runs")
-    return reasons
+_EVALUATION_REPORT_CONFIG = EvaluationReportConfig(
+    enabled_flag="CHECKPOINT_REVIEW_AI_ENABLED",
+    report_env_var="CHECKPOINT_REVIEW_EVAL_REPORT",
+    model_identity=checkpoint_review_model_identity,
+    prompt_hash=prompt_version_hash,
+    report_version=REPORT_VERSION,
+    suite_name="checkpoint_review",
+    model_label="player",
+    startup_label="Checkpoint review AI",
+    missing_report_reason="CHECKPOINT_REVIEW_EVAL_REPORT is not set; a live passing report is required.",
+    evaluation_gate_name="checkpoint review evaluation gate",
+    strict=True,
+)
 
 
 def validate_report(report: Any) -> tuple[bool, list[str]]:
-    """Validates the same report format written by the evaluation runner."""
-    if not isinstance(report, dict):
-        return False, ["report is not a JSON object"]
-    reasons = _report_identity_reasons(report)
-    gate_reasons, evaluation, runs = _report_gate_inputs(report)
-    reasons.extend(gate_reasons)
-    if evaluation is not None and runs is not None:
-        reasons.extend(_evaluation_verdict_reasons(evaluation, runs))
-    if report.get("pass") is not True:
-        reasons.append("evaluation report does not record pass=true")
-    return not reasons, reasons
+    """Validates the report written by the Checkpoint review runner."""
+    return evaluation_report_gate.validate_report(report, _EVALUATION_REPORT_CONFIG)
 
 
 def _validate_report_file(path: str) -> tuple[bool, str]:
-    try:
-        report = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        return False, f"evaluation report is unreadable: {exc}"
-    ok, reasons = validate_report(report)
-    return (True, "ok") if ok else (False, "; ".join(reasons))
+    return evaluation_report_gate.validate_report_file(path, validate_report)
 
 
-_report_cache: dict[tuple[str, int, int, str, str], tuple[bool, str]] = {}
-_report_cache_lock = threading.Lock()
-_REPORT_CACHE_LIMIT = 8
+_report_cache = evaluation_report_gate._report_cache
+_report_cache_lock = evaluation_report_gate._report_cache_lock
+_REPORT_CACHE_LIMIT = evaluation_report_gate._REPORT_CACHE_LIMIT
 
 
 def _report_passes(path: str) -> tuple[bool, str]:
-    try:
-        stat = os.stat(path)
-    except OSError:
-        return False, f"evaluation report not found at {path}"
-    model_id, backend = checkpoint_review_model_identity()
-    key = (path, stat.st_mtime_ns, stat.st_size, model_id, backend)
-    with _report_cache_lock:
-        cached = _report_cache.get(key)
-    if cached is not None:
-        return cached
-    verdict = _validate_report_file(path)
-    with _report_cache_lock:
-        if len(_report_cache) >= _REPORT_CACHE_LIMIT:
-            _report_cache.clear()
-        _report_cache[key] = verdict
-    return verdict
-
-
-def _flag_on() -> bool:
-    return env_flag("CHECKPOINT_REVIEW_AI_ENABLED", False)
+    return evaluation_report_gate.report_passes(path, _EVALUATION_REPORT_CONFIG, _validate_report_file)
 
 
 def resolve_enable_gate() -> GateStatus:
-    if not _flag_on():
-        return GateStatus(False, False, "CHECKPOINT_REVIEW_AI_ENABLED is off.")
-    report_path = os.getenv("CHECKPOINT_REVIEW_EVAL_REPORT", "").strip()
-    if not report_path:
-        return GateStatus(True, False, "CHECKPOINT_REVIEW_EVAL_REPORT is not set; a live passing report is required.")
-    ok, reason = _report_passes(report_path)
-    if not ok:
-        return GateStatus(True, False, reason)
-    return GateStatus(True, True, "flag on and report accepted")
+    return evaluation_report_gate.resolve_enable_gate(_EVALUATION_REPORT_CONFIG, _validate_report_file)
 
 
 def log_enable_gate_at_startup() -> GateStatus:
-    status = resolve_enable_gate()
-    if status.requested and not status.enabled:
-        logger.error("Checkpoint review AI requested but refused; the feature stays off: %s", status.reason)
-    return status
+    return evaluation_report_gate.log_enable_gate_at_startup(
+        _EVALUATION_REPORT_CONFIG,
+        resolve_enable_gate,
+        logger,
+    )
 
 
 def checkpoint_review_ai_enabled() -> bool:

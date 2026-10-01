@@ -23,14 +23,9 @@ Privacy boundary (ADR 016):
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
-import os
-import threading
 from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 from core.effort import min_rir_label, rir_label
@@ -38,13 +33,14 @@ from service import coach_history as coach_history_service
 from service import dashboard as dashboard_service
 from service import check_ins as check_ins_service
 from service import program_requests as program_requests_service
+from service import evaluation_report_gate
+from service.evaluation_report_gate import EvaluationReportConfig, GateStatus, evaluate_gate
 from service.assignments import authorized_player_ledger
 from service.missed_day_alerts import (
     ALERT_STATES,
     evaluate_ledger_attendance,
     list_alerts as list_coach_alerts,
 )
-from utils.env_flags import env_flag
 
 logger = logging.getLogger(__name__)
 
@@ -196,15 +192,6 @@ def prompt_version_hash() -> str:
 # --------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class GateStatus:
-    """The flag as configured, the effective state, and why they differ."""
-
-    requested: bool
-    enabled: bool
-    reason: str
-
-
 def coach_model_identity() -> tuple[str, str]:
     """``(model id, backend)`` the coach role resolves to right now (ADR 012)."""
     from utils import model_downloader
@@ -212,155 +199,52 @@ def coach_model_identity() -> tuple[str, str]:
     return model_downloader.model_identity("coach")
 
 
-def _flag_on() -> bool:
-    return env_flag("COACH_AI_ENABLED", False)
-
-
-def evaluate_gate(results: list[dict[str, Any]], expected: int | None = None) -> tuple[bool, list[str], dict[str, Any]]:
-    """Decides the evaluation gate: complete run, every rubric dimension passing.
-
-    The single definition of the verdict: the eval runner records it when it
-    writes a report and :func:`validate_report` re-derives it from the runs the
-    report carries, so a hand-edited ``pass`` flag cannot disagree with the
-    recorded results.
-    """
-    reasons: list[str] = []
-    expected = len(results) if expected is None else expected
-    stats: dict[str, Any] = {"total": len(results), "passed": 0, "expected": expected, "failed_cases": []}
-    if expected and len(results) != expected:
-        reasons.append(f"incomplete run: {len(results)} of {expected} cases")
-    for result in results:
-        if result.get("passed"):
-            stats["passed"] += 1
-            continue
-        failed = [name for name, check in (result.get("checks") or {}).items() if not check.get("passed")]
-        stats["failed_cases"].append({"case_id": result.get("case_id"), "checks": failed})
-        reasons.append(f"case {result.get('case_id')}: failed {', '.join(failed) or 'unknown check'}")
-    if expected and stats["passed"] < expected:
-        reasons.append(f"score {stats['passed']}/{stats['total']} below required {expected}/{expected}")
-    return (not reasons, reasons, stats)
+_EVALUATION_REPORT_CONFIG = EvaluationReportConfig(
+    enabled_flag="COACH_AI_ENABLED",
+    report_env_var="COACH_AI_EVAL_REPORT",
+    model_identity=coach_model_identity,
+    prompt_hash=prompt_version_hash,
+    report_version=REPORT_VERSION,
+    suite_name="coach_assistant",
+    model_label="coach",
+    startup_label="Coach AI",
+    missing_report_reason=(
+        "COACH_AI_EVAL_REPORT is not set; a recorded passing privacy and evaluation report is required."
+    ),
+    evaluation_gate_name="coach evaluation gate",
+)
 
 
 def validate_report(report: Any) -> tuple[bool, list[str]]:
-    """Validates a recorded coach eval report; shared by the service and the runner.
-
-    Checks the report shape and provenance (version, live run, the configured
-    coach model and backend, the current prompt hash), then re-derives the
-    evaluation verdict from the recorded runs with :func:`evaluate_gate`. The
-    recorded gate flags must agree with what the runs say (ADR 049).
-    """
-    reasons: list[str] = []
-    if not isinstance(report, dict):
-        return False, ["report is not a JSON object"]
-    if report.get("report_version") != REPORT_VERSION:
-        reasons.append(f"report_version must be {REPORT_VERSION}")
-    if report.get("mode") != "live":
-        reasons.append("report was not produced by a live (non-mock) run")
-    model_id, backend = coach_model_identity()
-    if report.get("model") != model_id:
-        reasons.append(
-            f"report model {report.get('model')!r} does not match the configured coach model {model_id!r}"
-        )
-    if report.get("backend") != backend:
-        reasons.append(f"report backend {report.get('backend')!r} does not match the configured backend {backend!r}")
-    if report.get("prompt_hash") != prompt_version_hash():
-        reasons.append("evaluation report is for a different prompt version (prompt_hash mismatch)")
-
-    gates = report.get("gates")
-    if not isinstance(gates, dict):
-        reasons.append("evaluation report has no gates object")
-        return False, reasons
-    privacy = gates.get("privacy")
-    evaluation = gates.get("evaluation")
-    if not isinstance(privacy, dict) or privacy.get("pass") is not True:
-        reasons.append("privacy suite gate is not recorded as passed")
-    if not isinstance(evaluation, dict):
-        reasons.append("coach evaluation gate is not recorded")
-        return False, reasons
-
-    runs = report.get("runs")
-    if not isinstance(runs, list) or not runs:
-        reasons.append("report has no recorded runs to re-check")
-        return False, reasons
-    threshold = evaluation.get("threshold")
-    if not isinstance(threshold, int) or threshold < 1:
-        reasons.append("evaluation gate has no usable threshold")
-        threshold = len(runs)
-    derived_ok, derived_reasons, _stats = evaluate_gate(runs, threshold)
-    reasons.extend(derived_reasons)
-    if evaluation.get("pass") is not derived_ok:
-        reasons.append("recorded evaluation gate disagrees with the recorded runs")
-    if report.get("pass") is not True:
-        reasons.append("evaluation report does not record pass=true")
-    return (not reasons, reasons)
+    """Validates a recorded Coach AI Evaluation report (ADR 049)."""
+    return evaluation_report_gate.validate_report(report, _EVALUATION_REPORT_CONFIG)
 
 
 def _validate_report_file(path: str) -> tuple[bool, str]:
-    try:
-        report = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        return False, f"evaluation report is unreadable: {exc}"
-    ok, reasons = validate_report(report)
-    return (True, "ok") if ok else (False, "; ".join(reasons))
+    return evaluation_report_gate.validate_report_file(path, validate_report)
 
 
-#: Parsed verdicts keyed on ``(path, mtime, size, model, backend)`` so ``/auth/me`` and each
-#: assistant call do not re-read and re-parse the report every request. A flag-off
-#: deployment never reaches this code, so it still never touches the filesystem.
-_report_cache: dict[tuple[str, int, int, str, str], tuple[bool, str]] = {}
-_report_cache_lock = threading.Lock()
-_REPORT_CACHE_LIMIT = 8
+_report_cache = evaluation_report_gate._report_cache
+_report_cache_lock = evaluation_report_gate._report_cache_lock
+_REPORT_CACHE_LIMIT = evaluation_report_gate._REPORT_CACHE_LIMIT
 
 
 def _report_passes(path: str) -> tuple[bool, str]:
-    try:
-        stat = os.stat(path)
-    except OSError:
-        return False, f"evaluation report not found at {path}"
-    # The verdict is only valid for the model/backend it was checked against, so
-    # those join the cache key (prompt_hash is code-derived and process-stable).
-    model_id, backend = coach_model_identity()
-    key = (path, stat.st_mtime_ns, stat.st_size, model_id, backend)
-    with _report_cache_lock:
-        cached = _report_cache.get(key)
-    if cached is not None:
-        return cached
-    verdict = _validate_report_file(path)
-    with _report_cache_lock:
-        if len(_report_cache) >= _REPORT_CACHE_LIMIT:
-            _report_cache.clear()
-        _report_cache[key] = verdict
-    return verdict
+    return evaluation_report_gate.report_passes(path, _EVALUATION_REPORT_CONFIG, _validate_report_file)
 
 
 def resolve_enable_gate() -> GateStatus:
-    """Evaluates the flag against the recorded report (no logging).
-
-    A flag-off deployment returns before any filesystem access; a flag-on
-    deployment validates the report (cached on path + mtime + size), so a fixed
-    or newly recorded report applies without a restart.
-    """
-    if not _flag_on():
-        return GateStatus(requested=False, enabled=False, reason="COACH_AI_ENABLED is off.")
-    report_path = os.getenv("COACH_AI_EVAL_REPORT", "").strip()
-    if not report_path:
-        return GateStatus(
-            requested=True,
-            enabled=False,
-            reason="COACH_AI_EVAL_REPORT is not set; a recorded passing privacy and evaluation report is required.",
-        )
-    ok, reason = _report_passes(report_path)
-    if not ok:
-        return GateStatus(requested=True, enabled=False, reason=reason)
-    return GateStatus(requested=True, enabled=True, reason="flag on and report accepted")
+    """Evaluates the flag against the recorded report (no logging)."""
+    return evaluation_report_gate.resolve_enable_gate(_EVALUATION_REPORT_CONFIG, _validate_report_file)
 
 
 def log_enable_gate_at_startup() -> GateStatus:
     """Startup check (ADR 049): logs the refusal when the flag cannot be honored."""
-    status = resolve_enable_gate()
-    if status.requested and not status.enabled:
-        logger.error("Coach AI requested but refused; the feature stays off: %s", status.reason)
-    return status
+    return evaluation_report_gate.log_enable_gate_at_startup(
+        _EVALUATION_REPORT_CONFIG,
+        resolve_enable_gate,
+        logger,
+    )
 
 
 def coach_ai_enabled() -> bool:

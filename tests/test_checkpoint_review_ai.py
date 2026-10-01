@@ -250,6 +250,42 @@ def test_validate_report_accepts_only_current_live_verdict(tmp_path: Path):
     assert any("disagrees" in reason for reason in checkpoint_review_ai.validate_report(disagree)[1])
 
 
+@pytest.mark.parametrize(
+    ("mutation", "expected_reason"),
+    [
+        (
+            {"gates": {}, "pass": None},
+            "privacy suite gate is not recorded as passed; checkpoint review evaluation gate is not recorded; "
+            "evaluation report does not record pass=true",
+        ),
+        (
+            {
+                "gates": {
+                    "privacy": {"pass": True},
+                    "evaluation": {"pass": True, "threshold": 8},
+                },
+                "runs": [],
+                "pass": None,
+            },
+            "report has no recorded runs to re-check; evaluation report does not record pass=true",
+        ),
+    ],
+)
+def test_gate_preserves_all_checkpoint_report_reasons(api, monkeypatch, tmp_path, mutation, expected_reason):
+    _client, _db, _tmp = api
+    path = _report(tmp_path / "checkpoint_review_eval.json")
+    report = json.loads(path.read_text(encoding="utf-8"))
+    report.update(mutation)
+    path.write_text(json.dumps(report), encoding="utf-8")
+    monkeypatch.setenv("CHECKPOINT_REVIEW_AI_ENABLED", "true")
+    monkeypatch.setenv("CHECKPOINT_REVIEW_EVAL_REPORT", str(path))
+
+    status = checkpoint_review_ai.resolve_enable_gate()
+
+    assert status.enabled is False
+    assert status.reason == expected_reason
+
+
 def test_gate_off_returns_template_without_calling_model(api, monkeypatch):
     client, db, _tmp_path = api
     headers, _account_id = _register(client, db, "review-off")

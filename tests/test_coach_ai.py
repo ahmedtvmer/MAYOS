@@ -436,6 +436,19 @@ def test_gate_accepts_a_passing_report_for_the_current_prompt(api, monkeypatch, 
     assert coach_ai.coach_ai_enabled() is True
 
 
+def test_gate_rejects_integer_evaluation_pass(api, monkeypatch, tmp_path):
+    _client, _db, _tmp = api
+    path = _enable(monkeypatch, tmp_path)
+    report = json.loads(path.read_text(encoding="utf-8"))
+    report["gates"]["evaluation"]["pass"] = 1
+    path.write_text(json.dumps(report), encoding="utf-8")
+
+    status = coach_ai.resolve_enable_gate()
+
+    assert status.enabled is False
+    assert "recorded evaluation gate disagrees with the recorded runs" in status.reason
+
+
 def test_startup_check_logs_a_refusal_and_never_enables(api, caplog, monkeypatch, tmp_path):
     _client, _db, _tmp = api
     _enable(monkeypatch, tmp_path, {"pass": False})

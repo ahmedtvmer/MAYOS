@@ -399,6 +399,18 @@ def test_check_report_cli_re_checks_without_a_model(tmp_path, capsys):
     assert "prompt_hash" in captured.err
 
 
+def test_check_report_propagates_read_oserror(tmp_path, monkeypatch):
+    path = tmp_path / "report.json"
+    path.write_text("{}", encoding="utf-8")
+
+    def fail_read(_path, *args, **kwargs):
+        raise OSError("read failed")
+
+    monkeypatch.setattr(Path, "read_text", fail_read)
+    with pytest.raises(OSError, match="read failed"):
+        runner.check_report(path)
+
+
 def test_mock_run_is_a_plumbing_check(cases, capsys):
     code = runner.main(["--mock", "--no-privacy"])
     assert code == 0

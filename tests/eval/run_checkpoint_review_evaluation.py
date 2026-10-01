@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import argparse
-import json
-import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -15,26 +11,39 @@ sys.path.append(str(BASE_DIR))
 
 from service.checkpoint_review_ai import (  # noqa: E402
     CONTEXT_VERSION,
-    REPORT_VERSION,
     bind_review_model,
     build_messages,
-    checkpoint_review_model_identity,
-    evaluate_gate,
     extract_text,
-    prompt_version_hash,
     validate_report,
 )
+from service import checkpoint_review_ai as checkpoint_review_ai_service  # noqa: E402
+from tests.eval import evaluation_runner  # noqa: E402
 from tests.eval.checkpoint_review_rubric import evaluate_case  # noqa: E402
+
+REPORT_VERSION = checkpoint_review_ai_service.REPORT_VERSION
+checkpoint_review_model_identity = checkpoint_review_ai_service.checkpoint_review_model_identity
+evaluate_gate = checkpoint_review_ai_service.evaluate_gate
+prompt_version_hash = checkpoint_review_ai_service.prompt_version_hash
 
 DEFAULT_DATASET = Path(__file__).resolve().parent / "datasets" / "checkpoint_review_cases.json"
 PRIVACY_SUITE = "tests/test_checkpoint_review_ai_privacy.py"
+RUNNER_CONFIG = evaluation_runner.EvaluationRunnerConfig(
+    title="checkpoint review",
+    description="Checkpoint review evaluation + enablement report (issue #222)",
+    suite_name="checkpoint_review",
+    dataset_path=DEFAULT_DATASET,
+    dataset_label="checkpoint review",
+    privacy_suite=PRIVACY_SUITE,
+    report_config=checkpoint_review_ai_service._EVALUATION_REPORT_CONFIG,
+    context_version=CONTEXT_VERSION,
+    ensure_ascii=False,
+    no_privacy_help="Skip privacy suite and record the gate as failed.",
+    check_report_help="Validate an existing report without loading a model.",
+)
 
 
 def load_cases(dataset_path: Path = DEFAULT_DATASET) -> list[dict[str, Any]]:
-    cases = json.loads(Path(dataset_path).read_text(encoding="utf-8"))
-    if not isinstance(cases, list) or not cases:
-        raise ValueError(f"checkpoint review eval dataset must be a non-empty list: {dataset_path}")
-    return cases
+    return evaluation_runner.load_cases(dataset_path, "checkpoint review")
 
 
 def _prompt_text(messages: list[Any]) -> str:
@@ -67,14 +76,7 @@ def run_suite(
 
 
 def run_privacy_suite(base_dir: Path = BASE_DIR) -> bool:
-    completed = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", PRIVACY_SUITE],
-        cwd=str(base_dir),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return completed.returncode == 0
+    return evaluation_runner.run_privacy_suite(PRIVACY_SUITE, base_dir)
 
 
 def build_report(
@@ -84,52 +86,21 @@ def build_report(
     privacy_pass: bool,
     dataset_path: Path = DEFAULT_DATASET,
 ) -> dict[str, Any]:
-    model_id, backend = checkpoint_review_model_identity()
-    threshold = len(load_cases(dataset_path))
-    evaluation_ok, reasons, stats = evaluate_gate(results, threshold)
-    report = {
-        "report_version": REPORT_VERSION,
-        "suite": "checkpoint_review",
-        "mode": mode,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "dataset": Path(dataset_path).name,
-        "prompt_hash": prompt_version_hash(),
-        "context_version": CONTEXT_VERSION,
-        "model": model_id,
-        "backend": backend,
-        "gates": {
-            "privacy": {"pass": bool(privacy_pass), "suite": PRIVACY_SUITE},
-            "evaluation": {
-                "pass": bool(evaluation_ok),
-                "total": stats["total"],
-                "passed": stats["passed"],
-                "threshold": threshold,
-            },
-        },
-        "run": stats,
-        "reasons": reasons,
-        "runs": results,
-    }
-    report["pass"] = bool(privacy_pass and evaluation_ok)
-    return report
+    return evaluation_runner.build_report(
+        results,
+        mode=mode,
+        privacy_pass=privacy_pass,
+        dataset_path=dataset_path,
+        config=RUNNER_CONFIG,
+    )
 
 
 def write_report(path: Path, report: dict[str, Any]) -> Path:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-    return path
+    return evaluation_runner.write_report(path, report, ensure_ascii=False)
 
 
 def check_report(report_path: Path) -> tuple[bool, list[str]]:
-    path = Path(report_path)
-    if not path.is_file():
-        return False, [f"report not found: {path}"]
-    try:
-        report = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        return False, [f"report is not valid JSON: {exc}"]
-    return validate_report(report)
+    return evaluation_runner.check_report(report_path, validate_report, strict=RUNNER_CONFIG.report_config.strict)
 
 
 def _mock_model():
@@ -139,53 +110,21 @@ def _mock_model():
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Checkpoint review evaluation + enablement report (issue #222)")
-    parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET, help="Fixture cases JSON.")
-    parser.add_argument("--mock", action="store_true", help="Plumbing run against the in-repo mock model.")
-    parser.add_argument("--write-report", type=Path, default=None, help="Write the enablement report JSON here.")
-    parser.add_argument("--no-privacy", action="store_true", help="Skip privacy suite and record the gate as failed.")
-    parser.add_argument("--check-report", type=Path, default=None, help="Validate an existing report without loading a model.")
-    args = parser.parse_args(argv)
-    if args.check_report is not None:
-        ok, reasons = check_report(args.check_report)
-        print(f"checkpoint review eval report: {'PASSED' if ok else 'FAILED'}")
-        for reason in reasons:
-            print(f"  x {reason}", file=sys.stderr)
-        return 0 if ok else 1
+    def run_cases(cases: list[dict[str, Any]], mock: bool, dataset_path: Path) -> list[dict[str, Any]]:
+        return run_suite(
+            cases,
+            model=_mock_model() if mock else None,
+            model_backend="local" if mock else None,
+            dataset_path=dataset_path,
+        )
 
-    cases = load_cases(args.dataset)
-    mode = "mock" if args.mock else "live"
-    print(f"checkpoint review evaluation: {len(cases)} cases ({mode} mode)")
-    results = run_suite(
-        cases,
-        model=_mock_model() if args.mock else None,
-        model_backend="local" if args.mock else None,
-        dataset_path=args.dataset,
+    return evaluation_runner.run_main(
+        argv,
+        config=RUNNER_CONFIG,
+        base_dir=BASE_DIR,
+        run_cases=run_cases,
+        validator=validate_report,
     )
-    gate_ok, reasons, stats = evaluate_gate(results, len(cases))
-    for result in results:
-        print(f"  [{'pass' if result['passed'] else 'FAIL'}] {result['case_id']}")
-    print(f"evaluation gate: {stats['passed']}/{stats['total']} passed")
-    for reason in reasons:
-        print(f"  x {reason}", file=sys.stderr)
-
-    if args.write_report is not None:
-        privacy_pass = False
-        if args.no_privacy:
-            print("privacy gate: skipped (recorded as failed)", file=sys.stderr)
-        else:
-            print(f"running {PRIVACY_SUITE} ...")
-            privacy_pass = run_privacy_suite()
-            print(f"privacy gate: {'passed' if privacy_pass else 'failed'}")
-        report = build_report(results, mode=mode, privacy_pass=privacy_pass, dataset_path=args.dataset)
-        write_report(args.write_report, report)
-        print(f"report written: {args.write_report} (pass={report['pass']})")
-        if not args.mock and not report["pass"]:
-            return 1
-        return 0
-    if args.mock:
-        return 0 if len(results) == len(cases) else 1
-    return 0 if gate_ok else 1
 
 
 if __name__ == "__main__":
