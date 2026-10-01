@@ -20,7 +20,10 @@ class ExerciseSimilarityMixin:
                 SELECT e.id, {name_expression}, e.body_part,
                        e.target_muscle, e.equipment, e.instructions, m.distance
                 FROM knn_matches m
-                JOIN exercises e ON CAST(e.id AS INTEGER) = m.exercise_id
+                JOIN exercises e ON e.id = CASE
+                    WHEN m.exercise_id < 0 THEN 'mayos:' || CAST(-m.exercise_id AS TEXT)
+                    ELSE CAST(m.exercise_id AS TEXT)
+                END
                 {display_name_join}
                 ORDER BY m.distance ASC;
             """.format(

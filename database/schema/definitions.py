@@ -68,6 +68,16 @@ class SchemaMixin:
                     muscle TEXT NOT NULL,
                     FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
                 );
+                CREATE TABLE IF NOT EXISTS exercise_provenance (
+                    exercise_id TEXT PRIMARY KEY,
+                    provenance TEXT NOT NULL,
+                    FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS exercise_embedding_sources (
+                    exercise_id TEXT PRIMARY KEY,
+                    semantic_text TEXT NOT NULL,
+                    FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
+                );
                 CREATE VIRTUAL TABLE IF NOT EXISTS vec_exercises USING vec0(
                     exercise_id INTEGER PRIMARY KEY,
                     embedding float[{self.EMBEDDING_DIM}] distance_metric=cosine
