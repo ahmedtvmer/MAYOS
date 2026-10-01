@@ -99,7 +99,7 @@ class RegistryAccountsMixin:
         self.ensure_account_schema()
         account_id = uuid.uuid4().hex
         now = datetime.now(UTC).isoformat()
-        with self._catalog_lock:
+        with self.catalog_transaction(immediate=True):
             cursor = self.catalog_conn.cursor()
             try:
                 if not allow_held_username:
@@ -112,10 +112,6 @@ class RegistryAccountsMixin:
                     " VALUES (?, ?, ?, 'active', 1, 0, 1, ?, NULL)",
                     (account_id, clean_id, ledger_id, now),
                 )
-                # Joins an open catalog transaction when there is one (issue
-                # #113 signs an account and its link up atomically); standalone
-                # calls commit exactly as before.
-                self._commit_catalog()
             except sqlite3.IntegrityError:
                 self._rollback_catalog()
                 return None

@@ -91,7 +91,7 @@ def issue_coach_invite(
                 "code": "username_unavailable",
                 "error": "Username is unavailable.",
             }
-        with db.catalog_transaction():
+        with db.catalog_transaction(immediate=True):
             if not db.issue_new_account_coach_invite(hash_token(raw_token), clean_id, expires_at):
                 return {
                     "ok": False,

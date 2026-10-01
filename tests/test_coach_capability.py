@@ -447,6 +447,100 @@ def test_new_account_invite_holds_username_and_registers_coach(api):
     assert profile.json()["display_name"] == "futurecoach"
 
 
+def test_new_account_invite_and_registration_serialize_across_catalog_connections(api, monkeypatch):
+    _, registration_db, users_dir = api
+    issuance_db = DatabaseManager(
+        catalog_path=registration_db.catalog_path,
+        ledgers_dir=users_dir,
+        backups_dir=registration_db.backups_dir,
+    )
+    registration_reached_gap = threading.Event()
+    issuance_started = threading.Event()
+    issuance_saw_free_username = threading.Event()
+    allow_registration = threading.Event()
+    registration_results = {}
+    issuance_results = {}
+    thread_errors = []
+    hold_check = registration_db._username_has_live_coach_invite_hold
+    account_lookup = issuance_db.get_active_account_by_username
+    catalog_transaction = issuance_db.catalog_transaction
+    registration_check_count = 0
+
+    def pause_registration_after_hold_check(username, now_iso):
+        nonlocal registration_check_count
+        held = hold_check(username, now_iso)
+        if username == "raceuser":
+            registration_check_count += 1
+            if registration_check_count == 2:
+                registration_reached_gap.set()
+                if not allow_registration.wait(timeout=10):
+                    raise TimeoutError("Registration did not resume after invite contention")
+        return held
+
+    def pause_issuance_after_free_account_check(username):
+        account = account_lookup(username)
+        if username == "raceuser" and account is None:
+            issuance_saw_free_username.set()
+            if not allow_registration.wait(timeout=10):
+                raise TimeoutError("Invite issuance did not resume after registration contention")
+        return account
+
+    def signal_issuance_transaction(**kwargs):
+        issuance_started.set()
+        return catalog_transaction(**kwargs)
+
+    monkeypatch.setattr(
+        registration_db, "_username_has_live_coach_invite_hold", pause_registration_after_hold_check
+    )
+    monkeypatch.setattr(issuance_db, "get_active_account_by_username", pause_issuance_after_free_account_check)
+    monkeypatch.setattr(issuance_db, "catalog_transaction", signal_issuance_transaction)
+
+    def register():
+        try:
+            registration_results["result"] = auth_service.register_player(
+                registration_db, "raceuser", "correct-horse-1"
+            )
+        except Exception as exc:
+            thread_errors.append(exc)
+
+    def issue():
+        try:
+            issuance_results["result"] = coach_service.issue_coach_invite(
+                issuance_db,
+                " RACEUSER ",
+                new_account=True,
+                token_factory=lambda: "race-code-123456",
+                actor="cli",
+            )
+        except Exception as exc:
+            thread_errors.append(exc)
+
+    registration_thread = threading.Thread(target=register)
+    issuance_thread = threading.Thread(target=issue)
+    try:
+        registration_thread.start()
+        assert registration_reached_gap.wait(timeout=10)
+        issuance_thread.start()
+        assert issuance_started.wait(timeout=10)
+        issuer_preempted_registration = issuance_saw_free_username.wait(timeout=2)
+    finally:
+        allow_registration.set()
+        registration_thread.join(timeout=10)
+        if issuance_thread.ident is not None:
+            issuance_thread.join(timeout=10)
+        issuance_db.catalog_conn.close()
+
+    assert not registration_thread.is_alive()
+    assert not issuance_thread.is_alive()
+    assert thread_errors == []
+    assert issuer_preempted_registration is False
+    assert registration_results["result"]["ok"] is True
+    assert issuance_results["result"]["ok"] is False
+    assert issuance_results["result"]["code"] == "username_unavailable"
+    assert registration_db.get_active_account_by_username("raceuser") is not None
+    assert registration_db.is_username_held("raceuser") is False
+
+
 @pytest.mark.parametrize("case", ["wrong", "account_bound", "different_username", "expired", "used"])
 def test_invalid_new_account_code_creates_nothing(api, monkeypatch, case):
     client, db, _ = api

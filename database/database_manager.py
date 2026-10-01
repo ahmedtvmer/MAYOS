@@ -192,25 +192,29 @@ class DatabaseManager(
 
     # Catalog transactions: re-entrant, catalog-lock-held (ADR 032).
     @contextmanager
-    def catalog_transaction(self) -> Iterator[None]:
+    def catalog_transaction(self, *, immediate: bool = False) -> Iterator[None]:
         """Runs a group of catalog writes atomically.
 
         Re-entrant: nested calls join the outermost transaction. On error the
         whole group is rolled back and the exception re-raised. The catalog lock
         is held for the life of the transaction.
+
+        ``immediate`` reserves SQLite's writer slot before the transaction reads,
+        so a competing connection cannot make a stale decision from the same
+        username state.
         """
         with self._catalog_lock:
             depth = getattr(self._local, "catalog_tx_depth", 0)
             self._local.catalog_tx_depth = depth + 1
             outermost = depth == 0
             original_isolation = self.catalog_conn.isolation_level
-            if outermost:
-                self.catalog_conn.isolation_level = None
-                self.catalog_conn.execute("BEGIN")
             try:
+                if outermost:
+                    self.catalog_conn.isolation_level = None
+                    self.catalog_conn.execute("BEGIN IMMEDIATE" if immediate else "BEGIN")
                 yield
             except Exception:
-                if outermost:
+                if outermost and self.catalog_conn.in_transaction:
                     self.catalog_conn.execute("ROLLBACK")
                 raise
             else:

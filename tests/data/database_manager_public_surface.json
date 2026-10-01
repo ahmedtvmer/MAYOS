@@ -19,7 +19,7 @@
     },
     "catalog_transaction": {
       "kind": "method",
-      "signature": "(self) -> Iterator[NoneType]"
+      "signature": "(self, *, immediate: bool = False) -> Iterator[NoneType]"
     },
     "claim_model_spend_alert": {
       "kind": "method",

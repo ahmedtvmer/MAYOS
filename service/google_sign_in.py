@@ -149,16 +149,15 @@ def complete_signup(db: Any, subject: str, username: Any) -> dict[str, Any]:
     account is ever created for one Google identity.
 
     A retry of a completion that committed the account and the link but died
-    while materialising the ledger heals into that account's session instead
-    of a conflict (:func:`_self_heal`), so a partial completion can never
-    strand the subject.
+    while materialising the ledger heals into that account's session only when
+    the requested username matches the committed account.
     """
     clean = validate_username(username)
-    healed = _self_heal(db, subject)
+    healed = _self_heal(db, subject, clean)
     if healed is not None:
         return healed
     linked_at = datetime.now(UTC).isoformat()
-    with db.catalog_transaction():
+    with db.catalog_transaction(immediate=True):
         existing_id = db.get_linked_sign_in_account_id(PROVIDER, subject)
         if existing_id is not None:
             if db.is_live_account(db.get_account(existing_id)):
@@ -265,20 +264,21 @@ def unlink_account(db: Any, account_id: str) -> dict[str, Any]:
     return {"ok": True, "message": "Google account disconnected."}
 
 
-def _self_heal(db: Any, subject: str) -> dict[str, Any] | None:
-    """Reissues the session for a linked live account whose ledger is missing.
+def _self_heal(db: Any, subject: str, expected_username: str) -> dict[str, Any] | None:
+    """Repairs a completion retry only for its originally requested username.
 
     A completion may have committed the account and the link and then died
-    creating the ledger file. Such a subject must not be stuck behind the
-    ``409 already linked`` path or the registry's ledger-existence gate: the
-    next sign-in (or a retry of complete) recreates the ledger and signs the
-    person in. A healthy linked account is left alone — it keeps answering the
-    normal conflict — and a dead account reports nothing, so the caller falls
-    through to the fresh signup path.
+    creating the ledger file. A retry with the same username recreates the
+    ledger and issues the session; a different username keeps the linked
+    account conflict instead of adopting that account as its own retry.
     """
     account_id = db.get_linked_sign_in_account_id(PROVIDER, subject)
     account = db.get_account(account_id) if account_id else None
-    if not db.is_live_account(account) or db.ledger_exists(account["ledger_id"]):
+    if (
+        not db.is_live_account(account)
+        or account["username"] != expected_username
+        or db.ledger_exists(account["ledger_id"])
+    ):
         return None
     ledger_id = _materialise_ledger(db, account)
     return {

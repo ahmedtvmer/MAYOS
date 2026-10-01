@@ -27,7 +27,7 @@ class RegistryCoachInvitesMixin:
         """Holds a normalized username with a single-use Coach invite."""
         self.ensure_account_schema()
         now = datetime.now(UTC).isoformat()
-        with self.catalog_transaction():
+        with self.catalog_transaction(immediate=True):
             if self.get_active_account_by_username(username) is not None or self.ledger_exists(username):
                 return False
             if self._username_has_live_coach_invite_hold(username, now):
@@ -45,7 +45,7 @@ class RegistryCoachInvitesMixin:
     ) -> dict[str, Any] | None:
         """Registers a Player and grants Coach capability while claiming its hold."""
         self.ensure_account_schema()
-        with self.catalog_transaction():
+        with self.catalog_transaction(immediate=True):
             row = self.catalog_conn.execute(
                 "SELECT username, expires_at, used_at, revoked_at FROM new_account_coach_invites"
                 " WHERE token_hash = ?",

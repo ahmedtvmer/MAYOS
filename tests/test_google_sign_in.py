@@ -533,6 +533,23 @@ def test_retry_of_complete_self_heals_an_account_whose_ledger_never_materialised
     assert client.get("/auth/me", headers=_headers(retry.json()["access_token"])).status_code == 200
 
 
+def test_retry_of_complete_with_different_username_returns_conflict(api, monkeypatch):
+    client, db, _verifier = api
+    _break_next_ledger_creation(monkeypatch)
+    state = _account_without_ledger(api, "mismatch-token:Maria", "maria")
+
+    retry = client.post(
+        "/auth/google/complete",
+        json={"signup_ticket": state["ticket"], "username": "different-name"},
+    )
+
+    assert retry.status_code == 409
+    assert retry.json()["detail"] == google_service.ALREADY_LINKED
+    assert db.get_active_account_by_username("maria")["account_id"] == state["account"]["account_id"]
+    assert db.get_active_account_by_username("different-name") is None
+    assert len(_accounts(client)) == 1 and len(_link_rows(db)) == 1
+
+
 def test_next_google_sign_in_self_heals_an_account_whose_ledger_never_materialised(api, monkeypatch):
     client, db, _verifier = api
     _break_next_ledger_creation(monkeypatch)
