@@ -18,6 +18,7 @@ Work test-first where a seam exists: write a failing test through public behavio
 Other implementers are working on other issues at the same time in separate worktrees. Stay strictly inside this issue's scope so the branches merge cleanly.
 
 <orchestrator_notes>
+Already landed on this branch (build on it, don't redo it): MAYOS-authored exercises with ids "mayos:N" (Kelso shrug, Bayesian curl, cable Y-raise, Machine Hip Thrust) are in the Exercise library; find_exercises_by_name(query, limit, target_muscle, equipment_access=None) is the public library search and applies the Equipment access filter only for the muscle-only browse (a typed name is never filtered); the filter is utils/equipment_access.py (EquipmentAccessFilter). The plain query "hip thrust" must keep resolving to ExerciseDB 3562 (Barbell Hip Thrust) first; tests in tests/test_substitution_resolution.py pin that.
 Display names and aliases already exist (ADR 053, earlier work). Lat pulldown ExerciseDB ids are 2330 and 150.
 Find the exercise search endpoint the Flutter workout logger's Replace sheet calls, and change the muscle-filtered ordering: relevance first, display-named staples ahead of other rows for the same muscle, never ordered by name length, and no relevant row dropped by the result limit.
 Leave untouched: equipment filtering of suggested substitutes, the library seed, generation. Test the ranking through the HTTP endpoint, not internal ranking helpers.

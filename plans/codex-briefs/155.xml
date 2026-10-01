@@ -18,6 +18,7 @@ Work test-first where a seam exists: write a failing test through public behavio
 Other implementers are working on other issues at the same time in separate worktrees. Stay strictly inside this issue's scope so the branches merge cleanly.
 
 <orchestrator_notes>
+Already landed on this branch: sign-up with a coach invite code (#154) — the sign-up screen has an "I have a coach invite code" link, registration accepts the code, and the new-account mode is ADR 050; Settings gained a Training profile section (#238). Your Settings change is only the coach-invite redeem entry's wording; don't move or restyle the Training profile section. Reuse the existing coach-invite redeem API call for the onboarding entry.
 Mobile only. The coach-invite redeem API call and the capability-based routing (a coach who isn't onboarded goes to Coach mode) already exist; reuse them. Do not change backend code, the sign-up screen, or the player's assignment-invite flow on the Coaching assignment screen.
 </orchestrator_notes>
 

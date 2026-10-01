@@ -18,6 +18,7 @@ Work test-first where a seam exists: write a failing test through public behavio
 Other implementers are working on other issues at the same time in separate worktrees. Stay strictly inside this issue's scope so the branches merge cleanly.
 
 <orchestrator_notes>
+Already landed on this branch: Training profile editing (#238) — the profile response the app reads includes program authority, and the intake API exposes the rebuild-trigger field list; the deload applied/suggested state and banner (#240). Reuse these; don't add parallel state.
 Read ADR 055, ADR 031 and ADR 032 in DECISIONS.md, and the Deload / Coach alert / Signal episode glossary entries in CONTEXT.md. The applied/suggested deload state, the banner, and the prescription fields (state, reason, volume multiplier, RPE cap) already exist from earlier work; build on them.
 Spec notes (issue #236, "Deload"): a per-ledger deload choice (`undo` or `apply`) is recorded by the assistant and overrides the default for the next committed workout only. The session commit consumes it inside the same ledger transaction, so an idempotent replay of the same commit does not consume it twice. The router intent is deterministic (no model call) and handles English and Arabic phrasing.
 Do not change the fatigue triggers or the deload size (ADR 004 values). Existing deload detection and progression-alert tests must pass unchanged.
