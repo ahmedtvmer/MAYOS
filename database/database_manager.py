@@ -23,6 +23,7 @@ DEFAULT_BACKUPS_DIR = _DATA_ROOT / "backups"
 from database.migration_manager import apply_lazy_migrations, prune_ledger_backups
 from utils.logger import MyosLogger
 
+from database.schema.definitions import EMBEDDING_DIM as CATALOG_EMBEDDING_DIM
 from database.schema.definitions import SchemaMixin
 from database.account_deletion import AccountDeletionMixin
 from database.registry.accounts import RegistryAccountsMixin
@@ -68,7 +69,7 @@ class DatabaseManager(
     ExerciseSimilarityMixin,
     ExerciseSeedingMixin,
 ):
-    EMBEDDING_DIM = 384
+    EMBEDDING_DIM = CATALOG_EMBEDDING_DIM
 
     def __init__(
         self,

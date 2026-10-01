@@ -1,8 +1,9 @@
-"""MAYOS display names and gym-name aliases for verified ExerciseDB rows."""
+"""MAYOS display names and aliases for rows in the Exercise library."""
 
 import sqlite3
 from typing import TypedDict
 
+from database.exercise_library import authored
 from database.shared import _normalize_exercise_name
 
 
@@ -18,20 +19,28 @@ def near_miss_exercise_ids(query: str) -> frozenset[str]:
 
 
 def apply_curated_exercise_names(cursor: sqlite3.Cursor) -> None:
-    for exercise_id, name_data in EXERCISE_NAMES.items():
+    name_rows = [
+        (exercise_id, name_data["display_name"], name_data["aliases"])
+        for exercise_id, name_data in EXERCISE_NAMES.items()
+    ]
+    name_rows.extend(
+        (exercise["id"], exercise["display_name"], exercise["aliases"])
+        for exercise in authored.MAYOS_AUTHORED_EXERCISES
+    )
+    for exercise_id, display_name, aliases in name_rows:
         if cursor.execute("SELECT 1 FROM exercises WHERE id = ?", (exercise_id,)).fetchone() is None:
             continue
         cursor.execute(
             "INSERT INTO exercise_display_names (exercise_id, display_name) VALUES (?, ?) "
             "ON CONFLICT(exercise_id) DO UPDATE SET display_name = excluded.display_name",
-            (exercise_id, name_data["display_name"]),
+            (exercise_id, display_name),
         )
         cursor.execute("DELETE FROM exercise_aliases WHERE exercise_id = ?", (exercise_id,))
         cursor.executemany(
             "INSERT INTO exercise_aliases (exercise_id, alias, normalized_alias) VALUES (?, ?, ?)",
             [
                 (exercise_id, alias, _normalize_exercise_name(alias))
-                for alias in name_data["aliases"]
+                for alias in aliases
             ],
         )
 
@@ -70,7 +79,7 @@ EXERCISE_NAMES: dict[str, ExerciseNameMetadata] = {
     },
     "3562": {
         "display_name": "Barbell Hip Thrust",
-        "aliases": ("barbell hip thrust", "hip thrust barbell"),
+        "aliases": ("barbell hip thrust", "hip thrust barbell", "hip thrust"),
     },
     "757": {
         "display_name": "Smith Incline Press",

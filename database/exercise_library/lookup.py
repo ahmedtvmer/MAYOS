@@ -147,8 +147,10 @@ class ExerciseLookupMixin:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
                 f"SELECT e.id, {name_expression} AS name, e.body_part, e.target_muscle, "
-                f"e.equipment, e.instructions, e.image_path, e.gif_path "
-                f"FROM exercises e {display_name_join} WHERE e.id = ?",
+                f"e.equipment, e.instructions, e.image_path, e.gif_path, "
+                "COALESCE(p.provenance, 'ExerciseDB') AS provenance "
+                f"FROM exercises e {display_name_join} "
+                f"LEFT JOIN exercise_provenance p ON p.exercise_id = e.id WHERE e.id = ?",
                 (str(exercise_id),),
             )
             row = cursor.fetchone()
@@ -163,6 +165,7 @@ class ExerciseLookupMixin:
             "instructions": row[5],
             "image_path": row[6],
             "gif_path": row[7],
+            "provenance": row[8],
         }
 
     def get_exercise_library_detail(self, exercise_id: str) -> dict[str, Any] | None:
@@ -185,7 +188,7 @@ class ExerciseLookupMixin:
             )
             secondary = [str(row[0]) for row in cursor.fetchall()]
         target = entry.get("target_muscle")
-        return {
+        detail = {
             "id": entry["id"],
             "name": entry["name"],
             "category": entry["body_part"],
@@ -197,6 +200,8 @@ class ExerciseLookupMixin:
             "image_path": entry.get("image_path"),
             "gif_path": entry.get("gif_path"),
         }
+        detail["provenance"] = entry["provenance"]
+        return detail
 
     def find_exercises_by_name(
         self,

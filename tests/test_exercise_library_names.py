@@ -6,6 +6,140 @@ from pathlib import Path
 import pytest
 
 
+def _seed_minimal_library(store, path):
+    with path.open("w", newline="", encoding="utf-8") as seed_file:
+        writer = csv.writer(seed_file)
+        writer.writerow(
+            ["id", "name", "bodyPart", "target", "equipment", "image_path", "gif_path", "instructions"]
+        )
+        writer.writerow(
+            ["9001", "cable row", "back", "lats", "cable", None, None, "Pull the handle to your ribs."]
+        )
+    store.initialize_and_seed(path)
+
+
+def test_mayos_authored_staples_are_searchable_and_have_reviewable_details(tmp_path, monkeypatch):
+    from database.database_manager import DatabaseManager
+    from database.exercise_library import embeddings
+    from database.schema.definitions import EMBEDDING_DIM
+
+    fresh_store = DatabaseManager(
+        catalog_path=tmp_path / "catalog.db",
+        ledgers_dir=tmp_path / "users",
+        backups_dir=tmp_path / "backups",
+    )
+
+    class LocalEmbeddingStub:
+        def embed_query(self, text):
+            return [1.0] + [0.0] * (EMBEDDING_DIM - 1)
+
+    monkeypatch.setattr(embeddings, "_load_embedding_model", lambda: LocalEmbeddingStub())
+    _seed_minimal_library(fresh_store, tmp_path / "seed.csv")
+
+    expected = {
+        "mayos:1": ("Kelso Shrug", "kelso shrug", "back", "traps", ("lats", "rhomboids"), "cable"),
+        "mayos:2": ("Bayesian Curl", "bayesian curl", "upper arms", "biceps", ("forearms",), "cable"),
+        "mayos:3": ("Cable Y-Raise", "cable y raise", "shoulders", "delts", ("traps",), "cable"),
+        "mayos:4": ("Machine Hip Thrust", "machine hip thrust", "upper legs", "glutes", ("hamstrings",), "leverage machine"),
+    }
+    query_vector = [1.0] + [0.0] * (EMBEDDING_DIM - 1)
+    for exercise_id, (display_name, alias, body_part, target, secondary, equipment) in expected.items():
+        detail = fresh_store.get_exercise_library_detail(exercise_id)
+        assert detail["name"] == display_name
+        assert detail["body_part"] == body_part
+        assert detail["primary_muscles"] == [target]
+        assert tuple(detail["secondary_muscles"]) == secondary
+        assert detail["equipment"] == equipment
+        assert detail["instructions"]
+        assert len(detail["instructions"].splitlines()) in (3, 4)
+        assert detail["image_path"] is None
+        assert detail["gif_path"] is None
+        assert detail["provenance"] == "MAYOS"
+        assert any(result["id"] == exercise_id for result in fresh_store.find_exercises_by_name(alias))
+
+        assert any(
+            result["id"] == exercise_id
+            for result in fresh_store.search_similar_exercises(query_vector, limit=20)
+        )
+    fresh_store.catalog_conn.close()
+
+
+def test_mayos_authored_staples_are_upserted_and_keep_their_exercise_ids(tmp_path, monkeypatch):
+    from database.database_manager import DatabaseManager
+    from database.exercise_library import authored
+    from database.exercise_library import embeddings
+    from database.schema.definitions import EMBEDDING_DIM
+
+    fresh_store = DatabaseManager(
+        catalog_path=tmp_path / "catalog.db",
+        ledgers_dir=tmp_path / "users",
+        backups_dir=tmp_path / "backups",
+    )
+
+    class LocalEmbeddingStub:
+        def embed_query(self, text):
+            return [1.0] + [0.0] * (EMBEDDING_DIM - 1)
+
+    monkeypatch.setattr(embeddings, "_load_embedding_model", lambda: LocalEmbeddingStub())
+    current_seed = authored.MAYOS_AUTHORED_EXERCISES
+    older_seed = tuple(
+        {
+            **exercise,
+            "name": "kelso shrug old wording" if exercise["id"] == "mayos:1" else exercise["name"],
+            "display_name": "Old Kelso Shrug" if exercise["id"] == "mayos:1" else exercise["display_name"],
+            "aliases": ("old kelso shrug",) if exercise["id"] == "mayos:1" else exercise["aliases"],
+        }
+        for exercise in current_seed
+    )
+    monkeypatch.setattr(authored, "MAYOS_AUTHORED_EXERCISES", older_seed)
+    _seed_minimal_library(fresh_store, tmp_path / "seed.csv")
+    assert fresh_store.get_exercise_library_entry("mayos:1")["name"] == "Old Kelso Shrug"
+
+    monkeypatch.setattr(authored, "MAYOS_AUTHORED_EXERCISES", current_seed)
+    fresh_store.initialize_and_seed(tmp_path / "seed.csv")
+
+    assert fresh_store.get_exercise_library_entry("mayos:1")["name"] == "Kelso Shrug"
+    assert any(
+        match["id"] == "mayos:1"
+        for match in fresh_store.find_exercises_by_name("kelso shrug", limit=10)
+    )
+    assert all(
+        match["id"] != "mayos:1"
+        for match in fresh_store.find_exercises_by_name("old kelso shrug", limit=10)
+    )
+    fresh_store.catalog_conn.close()
+
+
+def test_existing_vectors_backfill_tracking_without_loading_embedding_model(tmp_path, monkeypatch):
+    from database.database_manager import DatabaseManager
+    from database.exercise_library import embeddings
+    from database.schema.definitions import EMBEDDING_DIM
+
+    fresh_store = DatabaseManager(
+        catalog_path=tmp_path / "catalog.db",
+        ledgers_dir=tmp_path / "users",
+        backups_dir=tmp_path / "backups",
+    )
+
+    class LocalEmbeddingStub:
+        def embed_query(self, text):
+            return [1.0] + [0.0] * (EMBEDDING_DIM - 1)
+
+    monkeypatch.setattr(embeddings, "_load_embedding_model", lambda: LocalEmbeddingStub())
+    _seed_minimal_library(fresh_store, tmp_path / "seed.csv")
+    fresh_store.catalog_conn.execute("DROP TABLE exercise_embedding_sources")
+    fresh_store.catalog_conn.commit()
+
+    def unexpected_model_load():
+        pytest.fail("Existing exercise vectors should not require the embedding model.")
+
+    monkeypatch.setattr(embeddings, "_load_embedding_model", unexpected_model_load)
+    fresh_store.initialize_and_seed(tmp_path / "seed.csv")
+
+    assert fresh_store.get_exercise_library_entry("mayos:1")["name"] == "Kelso Shrug"
+    fresh_store.catalog_conn.close()
+
+
 @pytest.mark.parametrize(
     "query",
     ["frontal lat pulldown", "lat pull-down", "lat pulldown", "wide grip pulldown"],

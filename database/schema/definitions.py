@@ -18,6 +18,8 @@ from database.migration_manager import SESSION_WARMUP_SETS_DDL
 from database.migration_manager import get_ledger_schema_version
 from database.migration_manager import set_ledger_schema_version
 
+EMBEDDING_DIM = 384
+
 
 class SchemaMixin:
     def _ensure_exercise_name_schema(self) -> None:
@@ -68,9 +70,19 @@ class SchemaMixin:
                     muscle TEXT NOT NULL,
                     FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
                 );
+                CREATE TABLE IF NOT EXISTS exercise_provenance (
+                    exercise_id TEXT PRIMARY KEY,
+                    provenance TEXT NOT NULL,
+                    FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS exercise_embedding_sources (
+                    exercise_id TEXT PRIMARY KEY,
+                    semantic_text TEXT NOT NULL,
+                    FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
+                );
                 CREATE VIRTUAL TABLE IF NOT EXISTS vec_exercises USING vec0(
                     exercise_id INTEGER PRIMARY KEY,
-                    embedding float[{self.EMBEDDING_DIM}] distance_metric=cosine
+                    embedding float[{EMBEDDING_DIM}] distance_metric=cosine
                 );
                 CREATE INDEX IF NOT EXISTS idx_secondary_muscles_ex ON exercise_secondary_muscles(exercise_id);
             """)

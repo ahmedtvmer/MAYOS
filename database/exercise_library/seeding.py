@@ -4,6 +4,8 @@ import re
 
 import pandas as pd
 from database.shared import DEFAULT_CSV_PATH
+from database.exercise_library import authored
+from database.exercise_library.embeddings import sync_exercise_embeddings
 from database.exercise_library.names import apply_curated_exercise_names
 from database.exercise_library.schema import EXERCISE_COLUMNS
 
@@ -25,11 +27,21 @@ class ExerciseSeedingMixin:
 
         logger.info("Upserting exercise library from CSV...")
         exercise_rows, muscle_rows = _exercise_seed_rows(df)
+        authored_rows, authored_muscles = _authored_seed_rows()
+        all_rows = [
+            dict(zip(EXERCISE_COLUMNS, row, strict=True))
+            for row in exercise_rows + authored_rows
+        ]
         with self._catalog_lock, self.catalog_conn:
             cursor = self.catalog_conn.cursor()
             _upsert_exercise_rows(cursor, exercise_rows)
             _replace_secondary_muscles(cursor, exercise_rows, muscle_rows)
+            _upsert_exercise_rows(cursor, authored_rows)
+            _replace_secondary_muscles(cursor, authored_rows, authored_muscles)
+            _upsert_provenance(cursor, exercise_rows, "ExerciseDB")
+            _upsert_provenance(cursor, authored_rows, "MAYOS")
             apply_curated_exercise_names(cursor)
+            sync_exercise_embeddings(cursor, all_rows)
 
     EXCLUDED_BIOMECHANICAL_PATTERNS = ("behind neck", "behind the neck", "upright row")
 
@@ -95,3 +107,24 @@ def _secondary_muscle_rows(df, muscle_cols):
         (_sqlite_value(row["id"], column="id"), row["muscle"])
         for row in muscles_df.to_dict(orient="records")
     ]
+
+
+def _authored_seed_rows():
+    rows = []
+    muscles = []
+    for exercise in authored.MAYOS_AUTHORED_EXERCISES:
+        rows.append((
+            exercise["id"], exercise["name"], exercise["body_part"],
+            exercise["target_muscle"], exercise["equipment"], None, None,
+            exercise["instructions"],
+        ))
+        muscles.extend((exercise["id"], muscle) for muscle in exercise["secondary_muscles"])
+    return rows, muscles
+
+
+def _upsert_provenance(cursor, exercise_rows, provenance):
+    cursor.executemany(
+        "INSERT INTO exercise_provenance (exercise_id, provenance) VALUES (?, ?) "
+        "ON CONFLICT(exercise_id) DO UPDATE SET provenance = excluded.provenance",
+        [(row[0], provenance) for row in exercise_rows],
+    )
