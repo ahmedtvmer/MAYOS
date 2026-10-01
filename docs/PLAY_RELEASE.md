@@ -104,14 +104,19 @@ fly secrets set ANDROID_APP_SHA256_CERT_FINGERPRINTS="AA:BB:…,DD:EE:…"
 ```bash
 cd mobile
 flutter pub get
+GOOGLE_WEB_CLIENT_ID="<web-client-id>.apps.googleusercontent.com"
 flutter build appbundle --release \
-  --dart-define=MAYOS_API_BASE_URL=https://<api-host>
+  --dart-define=MAYOS_API_BASE_URL=https://<api-host> \
+  --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID"
 # → build/app/outputs/bundle/release/app-release.aab
 ```
 
 - [ ] `MAYOS_API_BASE_URL` is **required** in release builds
       (`mobile/lib/src/core/config.dart` fails fast without it) and must be
       https.
+- [ ] Set `GOOGLE_WEB_CLIENT_ID` to the Web OAuth client ID configured on the
+      API and pass it as shown above; without the Dart define, the app hides
+      the Google sign-in button (`mobile/lib/src/features/player/auth/google_auth_gateway.dart`).
 - [ ] The bundle is signed with the upload key (`key.properties`), not the
       debug key.
 - [ ] Version code/name come from `mobile/pubspec.yaml`

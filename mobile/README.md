@@ -39,15 +39,28 @@ The API base URL is injected at build time with `--dart-define`. Debug builds
 default to the Android emulator's host loopback (`http://10.0.2.2:8000`) and the
 debug manifest permits cleartext for local development.
 
+Google sign-in appears only when the Web OAuth client ID is supplied as the
+`GOOGLE_WEB_CLIENT_ID` Dart define. Use the same ID configured on the API; omit
+the define for a password-only build.
+
 ```bash
+# Optional build-time Google configuration; do not commit the real value.
+GOOGLE_WEB_CLIENT_ID="<web-client-id>.apps.googleusercontent.com"
+
 # Debug, against a local service on the host machine.
-flutter run --dart-define=MAYOS_API_BASE_URL=http://10.0.2.2:8000
+flutter run \
+  --dart-define=MAYOS_API_BASE_URL=http://10.0.2.2:8000 \
+  --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID"
 
 # Release requires an explicit HTTPS base URL; the app fails fast otherwise.
-flutter build apk --release --dart-define=MAYOS_API_BASE_URL=https://api.example.com
+flutter build apk --release \
+  --dart-define=MAYOS_API_BASE_URL=https://api.example.com \
+  --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID"
 
 # Build the shared web client for an HTTPS API.
-flutter build web --release --dart-define=MAYOS_API_BASE_URL=https://api.example.com
+flutter build web --release \
+  --dart-define=MAYOS_API_BASE_URL=https://api.example.com \
+  --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID"
 ```
 
 For local web development, set the service's `UI_BASE_URL` to the browser

@@ -1091,8 +1091,12 @@ distributing through Play, so debug/CI installs and Play installs both verify.
 
 ```bash
 cd mobile
-flutter build appbundle --release -PappLinkHost=mayos-api.fly.dev
-# or: flutter build apk --debug -PappLinkHost=mayos-api.fly.dev
+GOOGLE_WEB_CLIENT_ID="<web-client-id>.apps.googleusercontent.com"
+flutter build appbundle --release -PappLinkHost=mayos-api.fly.dev \
+  --dart-define=MAYOS_API_BASE_URL=https://mayos-api.fly.dev \
+  --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID"
+# or: flutter build apk --debug -PappLinkHost=mayos-api.fly.dev \
+#   --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID"
 ```
 
 **Verify the association** (after the app is installed on a device/emulator):
