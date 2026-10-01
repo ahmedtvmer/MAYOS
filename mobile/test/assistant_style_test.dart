@@ -71,11 +71,18 @@ Future<void> _openPersonalization(
   await _openSettings(tester, fake);
   final Finder entry = find.byKey(const Key('personalization_entry'));
   await _pumpUntilFound(tester, entry);
+  expect(find.text('Personalization'), findsOneWidget);
+  expect(
+    find.descendant(of: entry, matching: find.text('Assistant style')),
+    findsOneWidget,
+  );
   await tester.tap(entry);
   await _pumpUntilFound(
     tester,
     find.byKey(const Key('assistant_style_direct')),
   );
+  await tester.pumpAndSettle();
+  expect(find.text('Personalization'), findsOneWidget);
 }
 
 FakeMayosApi _signedInFake() {
@@ -89,7 +96,7 @@ FakeMayosApi _signedInFake() {
 }
 
 void main() {
-  testWidgets('Personalization shows bilingual presets and saved selection', (
+  testWidgets('Personalization uses English copy and saves edited style', (
     WidgetTester tester,
   ) async {
     final FakeMayosApi fake = _signedInFake()
@@ -97,12 +104,19 @@ void main() {
       ..assistantInstructions = 'Use short examples.';
     await _openPersonalization(tester, fake);
 
+    expect(find.text('Assistant style'), findsOneWidget);
+    expect(
+      find.text(
+        'Choose how your assistant words its chat replies. Facts, training decisions, safety, and reply language stay the same.',
+      ),
+      findsOneWidget,
+    );
     for (final String label in <String>[
-      'Direct & pragmatic · مباشر وعملي',
-      'Encouraging · مشجّع',
-      'Scientific · علمي',
-      'Tough-love · حازم وداعم',
-      'Concise · موجز',
+      'Direct & pragmatic',
+      'Encouraging',
+      'Scientific',
+      'Tough-love',
+      'Concise',
     ]) {
       expect(find.text(label), findsOneWidget);
     }
@@ -115,28 +129,73 @@ void main() {
       isTrue,
     );
     expect(
-      find.text('Evidence and reasoning. · الأدلة والمنطق.'),
+      find.text('Evidence and reasoning.'),
       findsOneWidget,
     );
     const Map<String, String> descriptions = <String, String>{
-      'Clear and practical. · واضح وعملي.': 'Direct & pragmatic · مباشر وعملي',
-      'Recognizes effort. · يقدّر الجهد.': 'Encouraging · مشجّع',
-      'Evidence and reasoning. · الأدلة والمنطق.': 'Scientific · علمي',
-      'Firm, respectful. · حازم باحترام.': 'Tough-love · حازم وداعم',
-      'Brief, focused replies. · ردود موجزة.': 'Concise · موجز',
+      'Clear and practical.': 'Direct & pragmatic',
+      'Recognizes effort.': 'Encouraging',
+      'Evidence and reasoning.': 'Scientific',
+      'Firm, respectful.': 'Tough-love',
+      'Brief, focused replies.': 'Concise',
     };
     for (final MapEntry<String, String> item in descriptions.entries) {
       expect(find.text(item.key), findsOneWidget, reason: item.value);
     }
     expect(find.text('19/500'), findsOneWidget);
+
+    final Finder instructions =
+        find.byKey(const Key('assistant_style_instructions'));
+    expect(
+      tester.widget<TextField>(instructions).controller!.text,
+      'Use short examples.',
+    );
+    expect(find.text('Optional instructions'), findsOneWidget);
+    expect(find.text('Used for wording only.'), findsOneWidget);
+    await tester.enterText(instructions, '');
+    await tester.pump();
+    expect(
+      find.text('For example: explain terms briefly.'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('assistant_style_concise')));
+    const String arabicInstructions = 'اشرح المصطلحات باختصار.';
+    await tester.enterText(instructions, arabicInstructions);
+    await tester.pump();
+    tester.testTextInput.hide();
+    final Finder save = find.byKey(const Key('assistant_style_save'));
+    await tester.ensureVisible(save);
+    await tester.pumpAndSettle();
+    expect(find.text('Save style'), findsOneWidget);
+    await tester.tap(save);
+    await _pumpUntilFound(tester, find.text('Assistant style saved.'));
+
+    expect(fake.assistantStyle, 'concise');
+    expect(fake.assistantInstructions, arabicInstructions);
+    expect(
+      tester.widget<TextField>(instructions).controller!.text,
+      arabicInstructions,
+    );
   });
 
-  testWidgets('offline save shows the shared message and persists nothing', (
+  testWidgets('offline load retries and offline save persists nothing', (
     WidgetTester tester,
   ) async {
     final FakeMayosApi fake = _signedInFake()
       ..failOffline('PUT', '/profile/persona');
-    await _openPersonalization(tester, fake);
+    await _openSettings(tester, fake);
+    fake.failOffline('GET', '/profile');
+    await tester.tap(find.byKey(const Key('personalization_entry')));
+    await _pumpUntilFound(tester, find.text('Retry'));
+    await tester.pumpAndSettle();
+    expect(find.text('Personalization'), findsOneWidget);
+    fake.offlineRequests.remove('GET /profile');
+    await tester.tap(find.text('Retry'));
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('assistant_style_direct')),
+    );
 
     await tester.tap(find.byKey(const Key('assistant_style_scientific')));
     await tester.enterText(

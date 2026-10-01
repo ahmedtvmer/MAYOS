@@ -31,8 +31,7 @@ class SettingsScreen extends ConsumerWidget {
     final ThemeMode mode = ref.watch(themeModeControllerProvider);
     final AccountSession? session = ref.watch(authControllerProvider).session;
     final bool isCoach = session?.account.isCoach ?? false;
-    final bool hasPlayerProfile =
-        session?.account.capabilities.player ?? false;
+    final bool hasPlayerProfile = session?.account.capabilities.player ?? false;
     final bool offlineDrafts = ref.watch(offlineWorkoutDraftsEnabledProvider);
 
     return MayosScaffold(
@@ -69,14 +68,14 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: MayosSpacing.xl),
           if (hasPlayerProfile) ...<Widget>[
-            const MayosSectionHeader(title: 'Personalization · التخصيص'),
+            const MayosSectionHeader(title: 'Personalization'),
             MayosCard(
               padding: const EdgeInsets.symmetric(
                   horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
               child: MayosSettingsTile(
                 key: const Key('personalization_entry'),
                 icon: Icons.forum_outlined,
-                title: 'Assistant style · أسلوب المساعد',
+                title: 'Assistant style',
                 onTap: () => context.push(personalizationPath),
               ),
             ),

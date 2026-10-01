@@ -371,7 +371,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: personalizationPath,
         builder: (BuildContext context, GoRouterState state) =>
             const MayosScaffold(
-          title: 'Personalization · التخصيص',
+          title: 'Personalization',
           showBack: true,
           body: PersonalizationScreen(),
         ),
@@ -402,12 +402,12 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '$checkpointReviewPath/:checkpoint',
         builder: (BuildContext context, GoRouterState state) => MayosScaffold(
-            title: 'Checkpoint review',
-            showBack: true,
-            body: CheckpointReviewScreen(
-              key: ValueKey<String>(
-                '${state.pathParameters['checkpoint']}:${state.uri.queryParameters['assignment_id'] ?? ''}',
-              ),
+          title: 'Checkpoint review',
+          showBack: true,
+          body: CheckpointReviewScreen(
+            key: ValueKey<String>(
+              '${state.pathParameters['checkpoint']}:${state.uri.queryParameters['assignment_id'] ?? ''}',
+            ),
             checkpoint:
                 int.tryParse(state.pathParameters['checkpoint'] ?? '') ?? 0,
             assignmentId: state.uri.queryParameters['assignment_id'],

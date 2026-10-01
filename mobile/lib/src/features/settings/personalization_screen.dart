@@ -38,28 +38,28 @@ const List<_AssistantStylePreset> _assistantStylePresets =
     <_AssistantStylePreset>[
   _AssistantStylePreset(
     key: defaultAssistantStyle,
-    label: 'Direct & pragmatic · مباشر وعملي',
-    description: 'Clear and practical. · واضح وعملي.',
+    label: 'Direct & pragmatic',
+    description: 'Clear and practical.',
   ),
   _AssistantStylePreset(
     key: 'encouraging',
-    label: 'Encouraging · مشجّع',
-    description: 'Recognizes effort. · يقدّر الجهد.',
+    label: 'Encouraging',
+    description: 'Recognizes effort.',
   ),
   _AssistantStylePreset(
     key: 'scientific',
-    label: 'Scientific · علمي',
-    description: 'Evidence and reasoning. · الأدلة والمنطق.',
+    label: 'Scientific',
+    description: 'Evidence and reasoning.',
   ),
   _AssistantStylePreset(
     key: 'tough_love',
-    label: 'Tough-love · حازم وداعم',
-    description: 'Firm, respectful. · حازم باحترام.',
+    label: 'Tough-love',
+    description: 'Firm, respectful.',
   ),
   _AssistantStylePreset(
     key: 'concise',
-    label: 'Concise · موجز',
-    description: 'Brief, focused replies. · ردود موجزة.',
+    label: 'Concise',
+    description: 'Brief, focused replies.',
   ),
 ];
 
@@ -131,7 +131,8 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
     try {
       final PlayerProfile profile = await ref
           .read(apiClientProvider)
-          .updateAssistantStyle(style: _style, instructions: _instructions.text);
+          .updateAssistantStyle(
+              style: _style, instructions: _instructions.text);
       if (!mounted) return;
       _showSaveSuccess(profile);
     } on ApiException catch (error) {
@@ -145,7 +146,7 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
       _style = profile.assistantStyle;
       _instructions.text = profile.assistantInstructions;
       _status = _PersonalizationStatus.saveSucceeded;
-      _message = 'Assistant style saved. · تم حفظ أسلوب المساعد.';
+      _message = 'Assistant style saved.';
     });
   }
 
@@ -190,7 +191,7 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
           Text(_message ?? 'Could not load Assistant style.'),
           const SizedBox(height: MayosSpacing.md),
           MayosButton(
-            label: 'Retry · إعادة المحاولة',
+            label: 'Retry',
             variant: MayosButtonVariant.secondary,
             onPressed: _load,
           ),
@@ -198,9 +199,9 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
       );
 
   Widget _buildIntroduction() => const MayosSectionHeader(
-        title: 'Assistant style · أسلوب المساعد',
+        title: 'Assistant style',
         subtitle:
-            'Choose how your assistant words its chat replies. Facts, training decisions, safety, and reply language stay the same. · اختر طريقة صياغة ردود المساعد. تبقى الحقائق وقرارات التدريب والسلامة ولغة الرد كما هي.',
+            'Choose how your assistant words its chat replies. Facts, training decisions, safety, and reply language stay the same.',
       );
 
   List<Widget> _buildPresetCards() => <Widget>[
@@ -229,7 +230,7 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
             _buildNotice(),
             MayosButton(
               key: const Key('assistant_style_save'),
-              label: 'Save style · حفظ الأسلوب',
+              label: 'Save style',
               loading: _status == _PersonalizationStatus.saving,
               onPressed:
                   _status == _PersonalizationStatus.saving ? null : _save,
@@ -241,10 +242,9 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
   Widget _buildInstructionsField() => MayosTextField(
         fieldKey: const Key('assistant_style_instructions'),
         controller: _instructions,
-        label: 'Optional instructions · تعليمات اختيارية',
-        hint:
-            'For example: explain terms briefly. · مثال: اشرح المصطلحات باختصار.',
-        helperText: 'Used for wording only. · تُستخدم لتغيير الصياغة فقط.',
+        label: 'Optional instructions',
+        hint: 'For example: explain terms briefly.',
+        helperText: 'Used for wording only.',
         maxLength: maxAssistantStyleInstructions,
         maxLines: 4,
         minLines: 3,
