@@ -36,6 +36,8 @@ Password changes update the ledger credential and advance the account's session 
 
 `POST /auth/register` creates an immutable account id in the catalog registry, creates the account's ledger, stores the bcrypt hash, and immediately issues a JWT. `POST /auth/login` proves possession of the password and issues a JWT whose subject is that immutable account id.
 
+An owner may issue a **Coach invite** for an existing Account (the default CLI mode and the owner dashboard) or use `scripts/issue_coach_invite.py <username> --new-account` to hold a username for a future Account. The latter stores only the code's SHA-256 hash, defaults to 24 hours, and clamps its lifetime to 5 minutes–7 days. A live Account, existing local ledger, or another live hold makes the username unavailable. Registration without that code returns the same 409 body as an already-taken username. On the sign-up screen, **I have a coach invite code** reveals the optional code field. Registration with the code creates an ordinary Player Account, grants Coach capability, and claims the invite in one catalog transaction; the matching is case-insensitive and uses registration's existing username normalization. Wrong, expired, used, username-mismatched, and account-bound codes share `400 This coach invite code isn't valid for this username` and create no Account. The normal recovery-email gate still applies; after it, a new coach opens in Coach mode on Roster without player intake. A Coach invite grants no Assignment.
+
 An imported account (ADR 019) or an enrolled account whose ledger has no `auth_credentials` row uses a one-time claim flow. Claiming requires the **single-use, expiring claim code** the owner issues with `scripts/import_player.py`; only the code's SHA-256 is stored, and the raw code is handed over out of band. There is deliberately no code-less password set by username alone, and a bare local ledger without an account registry entry cannot be claimed through the API (see ADR 015/019):
 
 ```mermaid
@@ -252,7 +254,7 @@ Delivery failures are logged and swallowed; the client response stays generic. T
 
 | Endpoint | Auth | Limits | Notes |
 | :--- | :--- | :--- | :--- |
-| `POST /auth/register` | — | 5/min | 409 if ID taken; 201 + JWT |
+| `POST /auth/register` | — | 5/min | Optional `coach_invite_code`; 409 if username taken or held (identical response); 400 generic invalid Coach invite; 201 + JWT |
 | `POST /auth/login` | — | 5/min | 401 generic; 403 claim required |
 | `POST /auth/google` | — | 5/min | Verifies a Google ID token: linked subject ⇒ `TokenOut` (remember-me lifetime), otherwise `{signup_ticket, suggested_username, existing_account_hint}`; the hint is true only for a verified-email match to a live recovery email; 503 when `GOOGLE_WEB_CLIENT_ID` is unset |
 | `GET /auth/username-available` | signup ticket (Bearer) | 30/min | `{available, reason?}`; clear 400 for a username that breaks the rule; 401 for a missing/expired ticket |

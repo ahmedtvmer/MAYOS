@@ -32,13 +32,18 @@ logger = MyosLogger().get_logger(__name__)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Issue a single-use, account-bound coach invite.")
-    parser.add_argument("username", help="Username of the account receiving the coach capability.")
+    parser = argparse.ArgumentParser(description="Issue a single-use Coach invite.")
+    parser.add_argument("username", help="Account username, or username to hold with --new-account.")
+    parser.add_argument(
+        "--new-account",
+        action="store_true",
+        help="Hold this username for a future account; default mode remains account-bound.",
+    )
     parser.add_argument(
         "--ttl-minutes",
         type=int,
         default=None,
-        help="Invite lifetime in minutes, 5–43200 (default: COACH_INVITE_TTL_MINUTES or 1440).",
+        help="Invite lifetime in minutes, at least 5; maximum 10080 with --new-account or 43200 otherwise.",
     )
     parser.add_argument("--catalog", default=os.getenv("CATALOG_PATH", str(DEFAULT_CATALOG_PATH)))
     parser.add_argument("--users-dir", dest="ledgers_dir", default=os.getenv("USERS_DIR", str(DEFAULT_LEDGERS_DIR)))
@@ -51,15 +56,21 @@ def main(argv: list[str] | None = None) -> int:
     # A fresh store is built per run, so custom dirs apply even in long-lived shells.
     db = DatabaseManager(catalog_path=args.catalog, ledgers_dir=args.ledgers_dir, backups_dir=args.backups_dir)
     try:
-        result = coach_service.issue_coach_invite(db, args.username, ttl_minutes=args.ttl_minutes, actor="cli")
+        result = coach_service.issue_coach_invite(
+            db, args.username, ttl_minutes=args.ttl_minutes, new_account=args.new_account, actor="cli"
+        )
     finally:
         db.catalog_conn.close()
 
     if not result["ok"]:
         print(f"error: {result['error']}")
         return 2
-    logger.info("Issued coach invite for account %s (expires %s).", result["account_id"], result["expires_at"])
-    print(f"Coach invite for '{result['username']}' (account {result['account_id']}).")
+    if args.new_account:
+        logger.info("Issued new-account Coach invite for username %s (expires %s).", result["username"], result["expires_at"])
+        print(f"Coach invite for future account '{result['username']}'.")
+    else:
+        logger.info("Issued coach invite for account %s (expires %s).", result["account_id"], result["expires_at"])
+        print(f"Coach invite for '{result['username']}' (account {result['account_id']}).")
     print(f"Expires at: {result['expires_at']}")
     print("Give this one-time code to the invited person:")
     print(result["token"])

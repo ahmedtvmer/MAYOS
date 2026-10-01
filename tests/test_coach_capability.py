@@ -408,6 +408,121 @@ def test_invite_ttl_is_clamped_to_documented_bounds(api):
     )
 
 
+def test_new_account_invite_holds_username_and_registers_coach(api):
+    client, db, _ = api
+    _register(client, "alreadytaken")
+    issued = coach_service.issue_coach_invite(
+        db,
+        "Future.Coach",
+        new_account=True,
+        token_factory=lambda: "new-coach-code-123",
+        actor="cli",
+    )
+    assert issued["ok"]
+    assert issued["username"] == "futurecoach"
+
+    held = client.post(
+        "/auth/register", json={"trainee_id": "FUTURECOACH", "password": "correct-horse-1"}
+    )
+    taken = client.post(
+        "/auth/register", json={"trainee_id": "alreadytaken", "password": "correct-horse-1"}
+    )
+    assert held.status_code == 409
+    assert (held.status_code, held.json()) == (taken.status_code, taken.json())
+
+    response = client.post(
+        "/auth/register",
+        json={
+            "trainee_id": "FUTURECOACH",
+            "password": "correct-horse-1",
+            "coach_invite_code": issued["token"],
+        },
+    )
+    assert response.status_code == 201, response.text
+    me = client.get("/auth/me", headers=_authed(response.json()["access_token"]))
+    assert me.json()["capabilities"] == {"player": True, "coach": True}
+    assert db.get_coach_profile(me.json()["account_id"])["display_name"] == "futurecoach"
+
+
+@pytest.mark.parametrize("case", ["wrong", "account_bound", "different_username", "expired", "used"])
+def test_invalid_new_account_code_creates_nothing(api, monkeypatch, case):
+    client, db, _ = api
+    issued = coach_service.issue_coach_invite(
+        db, "heldname", new_account=True, token_factory=lambda: "held-code-123456", actor="cli"
+    )
+    code = issued["token"]
+    username = "heldname"
+    if case == "wrong":
+        code = "wrong-code-123456"
+    elif case == "account_bound":
+        _register(client, "existingcoach")
+        code = _issue(db, "existingcoach", actor="cli")["token"]
+    elif case == "different_username":
+        username = "anothername"
+    elif case == "expired":
+        class ExpiredDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime.now(tz) + timedelta(days=8)
+
+        monkeypatch.setattr("service.coach.datetime", ExpiredDateTime)
+        monkeypatch.setattr("service.auth.datetime", ExpiredDateTime)
+        monkeypatch.setattr("database.registry.accounts.datetime", ExpiredDateTime)
+    elif case == "used":
+        first = client.post(
+            "/auth/register",
+            json={"trainee_id": "heldname", "password": "correct-horse-1", "coach_invite_code": code},
+        )
+        assert first.status_code == 201
+        username = "anothername"
+
+    response = client.post(
+        "/auth/register",
+        json={"trainee_id": username, "password": "correct-horse-1", "coach_invite_code": code},
+    )
+    assert response.status_code == 400
+    assert response.json() == {"detail": "This coach invite code isn't valid for this username"}
+    assert db.get_active_account_by_username(username) is None
+
+
+def test_new_account_invite_refusals_and_ttl_bounds(api):
+    client, db, _ = api
+    _register(client, "occupied")
+    existing = coach_service.issue_coach_invite(db, "occupied", new_account=True, actor="cli")
+    assert existing["ok"] is False
+    assert existing["code"] == "username_unavailable"
+
+    now = datetime.now(UTC)
+    first = coach_service.issue_coach_invite(db, "held", new_account=True, ttl_minutes=1, actor="cli")
+    assert first["ok"]
+    assert datetime.fromisoformat(first["expires_at"]) >= now + timedelta(minutes=4)
+    duplicate = coach_service.issue_coach_invite(db, "HELD", new_account=True, actor="cli")
+    assert duplicate["ok"] is False
+    assert duplicate["code"] == "username_unavailable"
+
+    long = coach_service.issue_coach_invite(db, "heldlong", new_account=True, ttl_minutes=999999, actor="cli")
+    assert long["ok"]
+    assert datetime.fromisoformat(long["expires_at"]) <= now + timedelta(days=7, seconds=1)
+
+
+def test_expired_new_account_invite_releases_username(api, monkeypatch):
+    client, db, _ = api
+    coach_service.issue_coach_invite(db, "released", new_account=True, actor="cli")
+
+    class ExpiredDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.now(tz) + timedelta(days=8)
+
+    monkeypatch.setattr("service.coach.datetime", ExpiredDateTime)
+    monkeypatch.setattr("service.auth.datetime", ExpiredDateTime)
+    monkeypatch.setattr("database.registry.accounts.datetime", ExpiredDateTime)
+    response = client.post(
+        "/auth/register", json={"trainee_id": "released", "password": "correct-horse-1"}
+    )
+    assert response.status_code == 201, response.text
+
+
 def test_used_invite_is_listed_until_pruned_after_30_days(api):
     client, db, _ = api
     registered = _register(client, "alice")

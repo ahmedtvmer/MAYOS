@@ -83,7 +83,7 @@ class RegistryAccountsMixin:
                 return candidate
             suffix += 1
 
-    def create_account(self, username: str) -> str | None:
+    def create_account(self, username: str, *, allow_held_username: bool = False) -> str | None:
         """Atomically reserves ``username`` and returns a new immutable account id.
 
         Returns ``None`` when a live account already owns the username. The
@@ -102,6 +102,15 @@ class RegistryAccountsMixin:
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
             try:
+                if not allow_held_username:
+                    now = datetime.now(UTC).isoformat()
+                    held = cursor.execute(
+                        "SELECT 1 FROM new_account_coach_invites"
+                        " WHERE username = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ? LIMIT 1",
+                        (clean_id, now),
+                    ).fetchone()
+                    if held is not None:
+                        return None
                 ledger_id = self._unique_ledger_id(cursor, clean_id, account_id)
                 cursor.execute(
                     "INSERT INTO accounts"

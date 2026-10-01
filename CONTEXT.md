@@ -63,7 +63,7 @@ A single-use invitation issued by a coach. The first player to redeem it may acc
 _Avoid_: Invite code (ambiguous with Coach invite)
 
 **Coach invite**:
-A single-use invitation issued by MAYOS that grants an account the coach capability. It is how a person becomes a coach, and it never creates an assignment.
+A single-use invitation issued by MAYOS that grants an account the coach capability. It can be bound to an existing Account or hold a username for a future Account. It is how a person becomes a Coach, and it never creates an Assignment; an Assignment invite is a separate code issued by a Coach to invite a Player into a coaching relationship.
 _Avoid_: Invite code, redeem coach invite
 
 **Owner dashboard**:

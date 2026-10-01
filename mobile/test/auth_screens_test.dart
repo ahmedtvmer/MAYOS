@@ -5,8 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
+import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
@@ -15,6 +15,7 @@ import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_logo.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_controller.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_widgets.dart';
+import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/features/player/auth/google_auth_gateway.dart';
 import 'package:mayos_mobile/src/features/player/auth/google_sign_in_button.dart';
 import 'package:mayos_mobile/src/features/player/auth/home_screen_install_hint.dart';
@@ -387,6 +388,85 @@ void main() {
     expect(find.byKey(const Key('recovery_email')), findsOneWidget);
   });
 
+  testWidgets('coach code registration passes recovery gate into Coach mode',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..validNewAccountCoachInviteCode = 'coach-code-123456';
+    await _pumpAuth(tester, fake);
+    await tester.tap(find.text('Create an account'));
+    await _pumpUntilFound(tester, find.text('Create account'));
+
+    final Finder toggle = find.byKey(const Key('register_coach_invite_toggle'));
+    expect(find.byKey(const Key('register_coach_invite_code')), findsNothing);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('register_coach_invite_code')), findsOneWidget);
+    final Finder inviteEditable = find.descendant(
+      of: find.byKey(const Key('register_coach_invite_code')),
+      matching: find.byType(EditableText),
+    );
+    expect(
+        tester.widget<EditableText>(inviteEditable).controller.text, isEmpty);
+    await tester.enterText(
+        find.byKey(const Key('register_coach_invite_code')), 'temporary-code');
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('register_coach_invite_code')), findsNothing);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('register_username')), 'coach');
+    await tester.enterText(
+        find.byKey(const Key('register_password')), 'correct-horse-1');
+    await tester.enterText(
+        find.byKey(const Key('register_confirm')), 'correct-horse-1');
+    await tester.enterText(find.byKey(const Key('register_coach_invite_code')),
+        'coach-code-123456');
+    await tester.tap(find.byKey(const Key('register_submit')));
+    await _pumpUntilFound(tester, find.text('Recovery email'));
+    expect(fake.lastRegistrationCoachInviteCode, 'coach-code-123456');
+
+    await tester.enterText(
+        find.byKey(const Key('recovery_email')), 'coach@example.com');
+    await tester.tap(find.byKey(const Key('recovery_submit')));
+    await _pumpUntilFound(tester, find.text('Roster'));
+    final ProviderContainer container =
+        ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+    expect(container.read(authControllerProvider).session!.account.isCoach,
+        isTrue);
+    expect(_routerOf(tester).routeInformationProvider.value.uri.path,
+        coachRosterPath);
+    expect(find.text('Before we begin'), findsNothing);
+
+    await tester.tap(find.byType(ModeAvatarButton));
+    await _pumpUntilFound(tester, find.text('Player mode'));
+    await tester.tap(find.text('Player mode'));
+    await _pumpUntilFound(tester, find.text('Set up your own training'));
+  });
+
+  testWidgets('invalid coach code shows service error and stays at sign-up',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..validNewAccountCoachInviteCode = 'valid-code-123456';
+    await _pumpAuth(tester, fake);
+    await tester.tap(find.text('Create an account'));
+    await _pumpUntilFound(tester, find.text('Create account'));
+    await tester.tap(find.byKey(const Key('register_coach_invite_toggle')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('register_username')), 'coach');
+    await tester.enterText(
+        find.byKey(const Key('register_password')), 'correct-horse-1');
+    await tester.enterText(
+        find.byKey(const Key('register_confirm')), 'correct-horse-1');
+    await tester.enterText(find.byKey(const Key('register_coach_invite_code')),
+        'wrong-code-123456');
+    await tester.tap(find.byKey(const Key('register_submit')));
+    await _pumpUntilFound(tester,
+        find.text("This coach invite code isn't valid for this username"));
+    expect(find.byKey(const Key('register_username')), findsOneWidget);
+    expect(find.byKey(const Key('recovery_email')), findsNothing);
+  });
+
   testWidgets('recovery-email gate shows a server error, then unlocks',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi();
@@ -425,8 +505,10 @@ void main() {
     await tester.tap(find.byKey(const Key('forgot_submit')));
 
     await _pumpUntilFound(tester, find.text(fake.resetConfirmation));
-    expect(find.text("Didn't get an email? Check the address,"), findsOneWidget);
-    expect(find.text('or log in and add a recovery email in Settings.'), findsOneWidget);
+    expect(
+        find.text("Didn't get an email? Check the address,"), findsOneWidget);
+    expect(find.text('or log in and add a recovery email in Settings.'),
+        findsOneWidget);
     expect(find.text('sign up'), findsOneWidget);
     expect(fake.forgotRequests, 1);
 
@@ -566,8 +648,8 @@ void main() {
       'opening the keyboard keeps the focused field alive with Google present',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _loginFake();
-    final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
-        buttonStyle: GoogleSignInButtonStyle.webRendered);
+    final FakeGoogleAuthGateway google =
+        FakeGoogleAuthGateway(buttonStyle: GoogleSignInButtonStyle.webRendered);
     await _pumpAuth(
       tester,
       fake,
@@ -612,8 +694,8 @@ void main() {
   testWidgets(
       'web Google button is centred and capped at the configured maximum',
       (WidgetTester tester) async {
-    final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
-        buttonStyle: GoogleSignInButtonStyle.webRendered);
+    final FakeGoogleAuthGateway google =
+        FakeGoogleAuthGateway(buttonStyle: GoogleSignInButtonStyle.webRendered);
     await _pumpAuth(
       tester,
       _loginFake(),
@@ -623,7 +705,8 @@ void main() {
       ],
     );
 
-    final Rect button = tester.getRect(find.byKey(const Key('fake_google_web_button')));
+    final Rect button =
+        tester.getRect(find.byKey(const Key('fake_google_web_button')));
     final Rect slot = tester.getRect(find.byType(GoogleWebSignInButton));
     expect(google.renderedButtonWidth, MayosLayout.googleButtonMaxWidth);
     expect(button.width, MayosLayout.googleButtonMaxWidth);

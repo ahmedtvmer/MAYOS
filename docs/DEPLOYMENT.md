@@ -878,6 +878,25 @@ fly ssh console -C "python scripts/reset_password.py <trainee_id>"
 The CLI inherits `MAYOS_DATA_DIR` from the Machine and writes to `/data`, so the
 reset lands on the same catalog/ledger the API uses.
 
+### 10.6a Coach invites for new Accounts
+
+The owner can issue a Coach invite before the person has an Account. Run the
+existing CLI in new-account mode with the username the person should use:
+
+```bash
+fly ssh console -C "python scripts/issue_coach_invite.py <new-username> --new-account"
+```
+
+The code is printed once; only its SHA-256 hash is stored. The default lifetime
+is 24 hours, with a 5-minute minimum and 7-day maximum. The username remains
+unavailable to registration without the matching code until the invite expires.
+The person opens **Create account**, chooses **I have a coach invite code**,
+enters the held username and code, then completes the recovery-email gate. Their
+Account has both Player and Coach capabilities and opens in Coach mode on Roster
+without player intake. The existing command without `--new-account`, and the
+owner dashboard's Invites page, continue to issue account-bound Coach invites
+for existing Accounts.
+
 ### 10.7 Daily backups and restore (issue #41)
 
 The daily backup job runs **in-process in this API Machine** (once at startup,

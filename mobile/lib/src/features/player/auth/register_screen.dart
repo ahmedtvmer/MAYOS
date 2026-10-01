@@ -26,7 +26,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
   final TextEditingController _username = TextEditingController();
   final TextEditingController _password = TextEditingController();
   final TextEditingController _confirm = TextEditingController();
+  final TextEditingController _coachInviteCode = TextEditingController();
   bool _rememberMe = false;
+  bool _showCoachInviteCode = false;
   bool _busy = false;
   String? _error;
 
@@ -35,6 +37,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
     _username.dispose();
     _password.dispose();
     _confirm.dispose();
+    _coachInviteCode.dispose();
     super.dispose();
   }
 
@@ -54,6 +57,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
             username: _username.text.trim(),
             password: _password.text,
             rememberMe: _rememberMe,
+            coachInviteCode:
+                _showCoachInviteCode && _coachInviteCode.text.trim().isNotEmpty
+                    ? _coachInviteCode.text.trim()
+                    : null,
           );
       TextInput.finishAutofillContext();
     } on ApiException catch (error) {
@@ -90,6 +97,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
               ? null
               : () => context.go(carryingLocation(context, loginPath)),
         ),
+        AuthLink(
+          key: const Key('register_coach_invite_toggle'),
+          label: _showCoachInviteCode
+              ? 'Hide coach invite code'
+              : 'I have a coach invite code',
+          onPressed: _busy
+              ? null
+              : () => setState(() {
+                    _showCoachInviteCode = !_showCoachInviteCode;
+                    if (!_showCoachInviteCode) _coachInviteCode.clear();
+                  }),
+        ),
       ],
       children: <Widget>[
         GoogleSignInSection(
@@ -107,6 +126,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           keyboardType: TextInputType.text,
           autofillHints: const <String>[AutofillHints.newUsername],
         ),
+        if (_showCoachInviteCode) ...<Widget>[
+          const SizedBox(height: MayosSpacing.md),
+          MayosTextField(
+            fieldKey: const Key('register_coach_invite_code'),
+            controller: _coachInviteCode,
+            label: 'Coach invite code',
+            enabled: !_busy,
+            textInputAction: TextInputAction.next,
+            keyboardType: TextInputType.text,
+            autofillHints: const <String>[],
+          ),
+        ],
         const SizedBox(height: MayosSpacing.md),
         AuthPasswordField(
           fieldKey: const Key('register_password'),

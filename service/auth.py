@@ -38,7 +38,9 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def register_player(db: Any, username: str, password: str) -> dict[str, Any]:
+def register_player(
+    db: Any, username: str, password: str, coach_invite_code: str | None = None
+) -> dict[str, Any]:
     """Creates an immutable account identity plus its ledger.
 
     A username that already has a live account, or an unenrolled local ledger,
@@ -48,13 +50,26 @@ def register_player(db: Any, username: str, password: str) -> dict[str, Any]:
     clean_id = db._sanitize_username(username)
     if not clean_id:
         return {"ok": False, "error": "Trainee ID is empty after sanitization."}
-    if db.get_active_account_by_username(clean_id) is not None or db.ledger_exists(clean_id):
-        return {"ok": False, "error": "This Trainee ID already exists. Please log in."}
     try:
         validate_password(password)
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
-    account_id = db.create_account(clean_id)
+
+    if coach_invite_code is not None:
+        from service.coach import DEFAULT_CAPACITY, GENERIC_NEW_ACCOUNT_INVITE_ERROR
+
+        if not isinstance(coach_invite_code, str) or not (10 <= len(coach_invite_code) <= 128):
+            return {"ok": False, "error": GENERIC_NEW_ACCOUNT_INVITE_ERROR, "code": "invalid_coach_invite"}
+        account = db.redeem_new_account_coach_invite(
+            hash_token(coach_invite_code), clean_id, datetime.now(UTC).isoformat(), DEFAULT_CAPACITY
+        )
+        if account is None:
+            return {"ok": False, "error": GENERIC_NEW_ACCOUNT_INVITE_ERROR, "code": "invalid_coach_invite"}
+        account_id = account["account_id"]
+    else:
+        if db.get_active_account_by_username(clean_id) is not None or db.ledger_exists(clean_id):
+            return {"ok": False, "error": "This Trainee ID already exists. Please log in."}
+        account_id = db.create_account(clean_id)
     if account_id is None:
         return {"ok": False, "error": "This Trainee ID already exists. Please log in."}
     account = db.get_account(account_id) or {}

@@ -219,6 +219,7 @@ class ApiClient {
     required String traineeId,
     required String password,
     bool rememberMe = false,
+    String? coachInviteCode,
   }) async {
     final response = await _send(
       () => _dio.post<dynamic>(
@@ -227,6 +228,7 @@ class ApiClient {
           'trainee_id': traineeId,
           'password': password,
           'remember_me': rememberMe,
+          if (coachInviteCode != null) 'coach_invite_code': coachInviteCode,
         },
         options: Options(extra: {_skipAuth: true}),
       ),

@@ -126,6 +126,7 @@ class TraineeIn(BaseModel):
     trainee_id: str = Field(min_length=1, max_length=60)
     password: str = Field(min_length=8, max_length=128)
     remember_me: bool = False
+    coach_invite_code: str | None = None
 
 
 class ClaimIn(BaseModel):

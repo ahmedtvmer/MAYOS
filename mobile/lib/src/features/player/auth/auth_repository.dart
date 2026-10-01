@@ -52,10 +52,14 @@ class AuthRepository {
     required String username,
     required String password,
     bool rememberMe = false,
+    String? coachInviteCode,
   }) {
     return _establishSession(
       () => _api.register(
-          traineeId: username, password: password, rememberMe: rememberMe),
+          traineeId: username,
+          password: password,
+          rememberMe: rememberMe,
+          coachInviteCode: coachInviteCode),
     );
   }
 

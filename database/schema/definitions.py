@@ -387,6 +387,20 @@ class SchemaMixin:
                 );
                 CREATE INDEX IF NOT EXISTS idx_coach_invites_account ON coach_invites(account_id);
 
+                -- Owner-issued Coach invites may hold a username before its
+                -- Account exists. Keep these separate from account-bound invites
+                -- so the existing dashboard and redemption flow stay unchanged.
+                CREATE TABLE IF NOT EXISTS new_account_coach_invites (
+                    token_hash TEXT PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    used_at TEXT,
+                    revoked_at TEXT,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_new_account_coach_invites_username
+                    ON new_account_coach_invites(username, expires_at);
+
                 -- Coach-authored profile, keyed by the immutable account id and kept
                 -- catalog-side so coach reads never open a player ledger (ADR-007).
                 CREATE TABLE IF NOT EXISTS coach_profiles (

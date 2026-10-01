@@ -29,8 +29,10 @@ MAX_BIO = 1000
 MAX_SPECIALIZATION = 200
 MIN_INVITE_TTL_MINUTES = 5
 MAX_INVITE_TTL_MINUTES = 43200
+MAX_NEW_ACCOUNT_INVITE_TTL_MINUTES = 10080
 
 GENERIC_INVITE_ERROR = "Invalid or expired invite code."
+GENERIC_NEW_ACCOUNT_INVITE_ERROR = "This coach invite code isn't valid for this username"
 
 
 def _bounded_ttl_minutes(minutes: int) -> int:
@@ -54,16 +56,60 @@ def issue_coach_invite(
     ttl_minutes: int | None = None,
     source_ip: str | None = None,
     account_id: str | None = None,
+    new_account: bool = False,
     *,
     actor: str,
 ) -> dict[str, Any]:
-    """Owner-only issuance: mint a single-use coach invite bound to a live account.
+    """Owner-only issuance for an existing Account or a held username.
 
     Returns the raw token exactly once for the operator to hand to the invited
-    person; only its hash is stored. Refuses a username with no live player
-    account so a code can never target a ghost or a non-player.
+    person; only its hash is stored. New-account mode reserves an unowned
+    username until redemption or expiry.
     """
     clean_id = db._sanitize_username(username)
+    if new_account:
+        if ttl_minutes is None:
+            ttl = min(
+                coach_invite_ttl(),
+                timedelta(minutes=MAX_NEW_ACCOUNT_INVITE_TTL_MINUTES),
+            )
+        elif isinstance(ttl_minutes, bool) or not isinstance(ttl_minutes, int) or ttl_minutes <= 0:
+            return {
+                "ok": False,
+                "code": "invalid_ttl",
+                "error": "Invite lifetime must be a positive number of minutes.",
+            }
+        else:
+            ttl = timedelta(
+                minutes=min(max(ttl_minutes, MIN_INVITE_TTL_MINUTES), MAX_NEW_ACCOUNT_INVITE_TTL_MINUTES)
+            )
+        raw_token = token_factory() if token_factory else secrets.token_urlsafe(32)
+        expires_at = (datetime.now(UTC) + ttl).isoformat()
+        if not clean_id:
+            return {
+                "ok": False,
+                "code": "username_unavailable",
+                "error": "Username is unavailable.",
+            }
+        with db.catalog_transaction():
+            if not db.issue_new_account_coach_invite(hash_token(raw_token), clean_id, expires_at):
+                return {
+                    "ok": False,
+                    "code": "username_unavailable",
+                    "error": "Username is unavailable.",
+                }
+            audit_log.write_audit_entry(
+                db,
+                audit_log.AuditEvent(actor=actor, action="coach_invite_issued", source_ip=source_ip),
+            )
+        return {
+            "ok": True,
+            "token": raw_token,
+            "username": clean_id,
+            "expires_at": expires_at,
+            "mode": "new_account",
+        }
+
     if ttl_minutes is None:
         ttl = coach_invite_ttl()
     elif isinstance(ttl_minutes, bool) or not isinstance(ttl_minutes, int) or ttl_minutes <= 0:
