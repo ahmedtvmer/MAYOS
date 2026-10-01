@@ -28,7 +28,6 @@ __all__ = [
     "CardioOut",
     "CheckInIn",
     "CheckInOut",
-    "ClaimIn",
     "CoachAlertListOut",
     "CoachAlertOut",
     "CoachAssistantIn",
@@ -124,15 +123,6 @@ class TraineeIn(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     remember_me: bool = False
     coach_invite_code: str | None = None
-
-
-class ClaimIn(BaseModel):
-    """One-time claim of an imported account with its owner-issued claim code."""
-
-    trainee_id: str = Field(min_length=1, max_length=60)
-    claim_code: str = Field(min_length=1, max_length=128)
-    password: str = Field(min_length=8, max_length=128)
-    remember_me: bool = False
 
 
 class TokenOut(BaseModel):

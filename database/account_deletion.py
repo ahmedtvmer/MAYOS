@@ -221,10 +221,8 @@ class AccountDeletionMixin:
             # link to) a brand-new account, and a replayed deletion clears
             # them too (#114).
             cursor.execute("DELETE FROM linked_sign_ins WHERE account_id = ?", (account_id,))
-            # Import audit and claim codes carry the source file name and the
-            # operator's opt-in reference, so they are removed with the account
-            # rather than kept as an identifying record (ADR 019/015/039).
-            cursor.execute("DELETE FROM account_claim_codes WHERE account_id = ?", (account_id,))
+            # The import audit carries the source file name and operator's
+            # opt-in reference, so it is removed with the account (ADR 015/039).
             cursor.execute("DELETE FROM account_imports WHERE account_id = ?", (account_id,))
             cursor.execute("DELETE FROM coach_profiles WHERE account_id = ?", (account_id,))
             cursor.execute("DELETE FROM account_plans WHERE account_id = ?", (account_id,))

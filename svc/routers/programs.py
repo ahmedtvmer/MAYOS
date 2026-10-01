@@ -1,11 +1,10 @@
-"""Program generation, retrieval, and Excel export."""
+"""Program generation, retrieval, and editing."""
 
 import asyncio
-import io
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 
 from agent.program_generator import generate_program_pipeline
 from service import programs as programs_service
@@ -172,23 +171,3 @@ async def undo_active_program_exercise_substitution(
     if "code" in restoration:
         return _substitution_error_response(restoration)
     return restoration
-
-
-@router.get("/active.xlsx")
-async def export_active_program(
-    player: Annotated[Any, Depends(get_verified_player)],
-    ledger: Annotated[Any, Depends(get_ledger)],
-    db: Annotated[Any, Depends(get_db)],
-):
-    def _run():
-        result = programs_service.export_active_program(db, str(player), ledger=ledger)
-        if result is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active program.")
-        return result
-
-    filename, payload = await asyncio.to_thread(_run)
-    return StreamingResponse(
-        io.BytesIO(payload),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )

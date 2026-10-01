@@ -90,9 +90,3 @@ def update_persona(
     with ledger_scope(db, ledger, ledger_id) as ledger:
         ledger.update_player_persona(coach_tone, custom_instructions)
         return {"profile": ledger.get_player_profile()}
-
-
-def reset_profile(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, Any]:
-    with ledger_scope(db, ledger, ledger_id) as ledger:
-        ledger.clear_player_profile()
-        return {"ok": True}

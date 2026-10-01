@@ -544,7 +544,7 @@ This document records the architectural, algorithmic, and heuristic decisions im
 
 ### ADR 056: Remove the Streamlit client, account claim, Excel export and profile reset (amends ADR 017, supersedes ADR 019)
 
-* **Status**: Accepted design (2026-09-30); not yet implemented
+* **Status**: Implemented (#242, 2026-10-01)
 * **Decision**: Imported accounts are not a real flow, so ADR 017's "after opted-in imports finish" condition no longer holds. Once Assistant style and post-onboarding profile editing exist in the Flutter app, the following are deleted:
   * the Streamlit client (`app.py`, `ui/`)
   * the account claim (`POST /auth/claim`, `scripts/import_player.py`, `scripts/issue_claim_code.py`, and its docs)

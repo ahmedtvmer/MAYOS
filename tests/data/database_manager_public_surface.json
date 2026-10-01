@@ -377,26 +377,6 @@
       "kind": "method",
       "signature": "(self, username: str) -> bool"
     },
-    "consume_claim_code": {
-      "kind": "method",
-      "signature": "(self, token_hash: str, account_id: str, now_iso: str) -> bool"
-    },
-    "create_claim_code": {
-      "kind": "method",
-      "signature": "(self, account_id: str, token_hash: str, expires_at: str, created_at: str | None = None) -> None"
-    },
-    "get_account_import_by_fingerprint": {
-      "kind": "method",
-      "signature": "(self, source_fingerprint: str) -> dict[str, typing.Any] | None"
-    },
-    "prune_claim_codes": {
-      "kind": "method",
-      "signature": "(self, now_iso: str) -> int"
-    },
-    "record_account_import": {
-      "kind": "method",
-      "signature": "(self, *, import_id: str, account_id: str, source_fingerprint: str, source_name: str, counts_json: str, opt_in_reference: str, imported_at: str, claim_token_hash: str, claim_expires_at: str) -> None"
-    },
     "list_program_requests_for_coach": {
       "kind": "method",
       "signature": "(self, coach_account_id: str) -> list[dict[str, typing.Any]]"
@@ -412,10 +392,6 @@
     "set_roster_program_name": {
       "kind": "method",
       "signature": "(self, assignment_id: str, program_name: str | None) -> None"
-    },
-    "account_has_linked_sign_in": {
-      "kind": "method",
-      "signature": "(self, account_id: str) -> bool"
     },
     "get_linked_sign_in_account_id": {
       "kind": "method",

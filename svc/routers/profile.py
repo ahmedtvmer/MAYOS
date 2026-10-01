@@ -73,14 +73,10 @@ async def update_persona(
     )
 
 
-@router.delete("", status_code=status.HTTP_204_NO_CONTENT)
-async def reset_profile(
-    player: Annotated[Any, Depends(get_verified_player)],
-    ledger: Annotated[Any, Depends(get_ledger)],
-    db: Annotated[Any, Depends(get_db)],
-):
-    await asyncio.to_thread(profile_service.reset_profile, db, str(player), ledger)
-    return None
+@router.delete("", include_in_schema=False)
+async def removed_profile_reset():
+    """Keep the retired destructive endpoint observably absent to callers."""
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found.")
 
 
 @router.get("/schedule", response_model=TrainingScheduleOut)

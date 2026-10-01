@@ -36,20 +36,6 @@ class RegistryLinkedSignInsMixin:
             row = cursor.fetchone()
             return str(row[0]) if row is not None else None
 
-    def account_has_linked_sign_in(self, account_id: str) -> bool:
-        """True when any external identity is attached to this account.
-
-        Used to close the claim hole and to keep a Google-only account from
-        reporting ``claim_required`` on password login (issue #113).
-        """
-        if not account_id:
-            return False
-        self.ensure_account_schema()
-        with self._catalog_lock:
-            cursor = self.catalog_conn.cursor()
-            cursor.execute("SELECT 1 FROM linked_sign_ins WHERE account_id = ? LIMIT 1", (str(account_id),))
-            return cursor.fetchone() is not None
-
     def link_sign_in(self, provider: str, subject: str, account_id: str, linked_at: str | None = None) -> None:
         """Inserts the link row; raises :class:`sqlite3.IntegrityError` when already linked.
 

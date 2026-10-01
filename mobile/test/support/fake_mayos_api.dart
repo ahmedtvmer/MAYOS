@@ -36,11 +36,6 @@ class FakeMayosApi {
   String? validResetToken;
   int forgotRequests = 0;
   String? lastForgotEmail;
-  // Imported accounts with no password (#42). The claim flow is out of the
-  // app, but the service still refuses their login with 403 `claim_required`
-  // (svc/routers/auth.py), so the fake mirrors that: usernames listed here and
-  // still without a password answer that 403, every other bad credential 401.
-  final Set<String> importedUsernames = <String>{};
   // Player profile fields written through `PUT /profile` (#27).
   String repPreference = 'balanced';
   int weeklyFrequency = 4;
@@ -683,17 +678,6 @@ class FakeMayosApi {
     final String? username = request.body['trainee_id'] as String?;
     final String? password = request.body['password'] as String?;
     if (username == null || passwords[username] != password) {
-      // An imported account with no password cannot log in: the service
-      // refuses it with 403 `claim_required` before any 401 path
-      // (svc/routers/auth.py::login).
-      if (username != null &&
-          importedUsernames.contains(username) &&
-          !passwords.containsKey(username)) {
-        return const FakeResponse(403, <String, dynamic>{
-          'detail': 'This account must be claimed with its claim code.',
-          'code': 'claim_required',
-        });
-      }
       return const FakeResponse(
         401,
         <String, dynamic>{'detail': 'Invalid username or password.'},

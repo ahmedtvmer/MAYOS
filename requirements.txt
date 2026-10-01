@@ -10,8 +10,6 @@ langchain-openai>=1.0
 langchain-huggingface>=1.2.2
 sentence-transformers>=6.0.1
 langgraph>=1.2.11
-streamlit>=1.63.0
-openpyxl>=3.1.5
 huggingface-hub>=1.30.0
 fastapi>=0.115.0
 python-multipart>=0.0.18
@@ -21,5 +19,4 @@ google-auth[requests]>=2.35.0
 httpx>=0.28.0
 slowapi>=0.1.9
 llama-cpp-python>=0.3.35
-
 

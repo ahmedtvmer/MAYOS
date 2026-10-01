@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage
 
 from database.database_manager import DatabaseManager
-from service._tokens import hash_token
 from svc.app import create_app
 from svc.dependencies import VerifiedPlayer, get_current_player, get_db, get_verified_player
 
@@ -101,44 +100,6 @@ def test_remember_me_token_lifetime(client, monkeypatch):
     assert lifetime_hours(overridden.json()["access_token"]) == 48
 
 
-def test_claim_flow_requires_owner_issued_code_and_is_single_use(client):
-    # Simulate a pre-password ledger: ledger file exists, no hash stored.
-    client.post("/auth/register", json={"trainee_id": "legacy", "password": "correct-horse-1"})
-    db = client.app.state.test_db
-    account = db.get_active_account_by_username("legacy")
-    db.switch_user("legacy")
-    db.conn.execute("DELETE FROM auth_credentials WHERE id = 1")
-    db.conn.commit()
-    claimed_login = client.post("/auth/login", json={"trainee_id": "legacy", "password": "correct-horse-1"})
-    assert claimed_login.status_code == 403
-    assert claimed_login.json()["code"] == "claim_required"
-    # Without a code — or with a wrong one — the claim fails closed and generic.
-    no_code = client.post("/auth/claim", json={"trainee_id": "legacy", "password": "new-horse-22"})
-    assert no_code.status_code in {401, 422}
-    wrong = client.post(
-        "/auth/claim", json={"trainee_id": "legacy", "claim_code": "wrong-code", "password": "new-horse-22"}
-    )
-    assert wrong.status_code == 401
-    raw_code = "single-use-claim-code-123"
-    db.create_claim_code(account["account_id"], hash_token(raw_code), "2999-01-01T00:00:00+00:00")
-    weak = client.post(
-        "/auth/claim", json={"trainee_id": "legacy", "claim_code": raw_code, "password": "short"}
-    )
-    assert weak.status_code in {400, 422}
-    claim = client.post(
-        "/auth/claim", json={"trainee_id": "legacy", "claim_code": raw_code, "password": "new-horse-22"}
-    )
-    assert claim.status_code == 200
-    assert client.post("/auth/login", json={"trainee_id": "legacy", "password": "new-horse-22"}).status_code == 200
-    # Claim is single-use.
-    reused = client.post(
-        "/auth/claim", json={"trainee_id": "legacy", "claim_code": raw_code, "password": "another-33"}
-    )
-    assert reused.status_code == 401
-    # Hash stored, never plaintext.
-    db.switch_user("legacy")
-    stored = db.ledger.get_password_hash()
-    assert stored and stored != "new-horse-22" and stored.startswith("$2")
 
 
 def test_cross_user_isolation_with_real_jwt(tmp_path, monkeypatch):
@@ -448,8 +409,6 @@ def test_profile_crud_without_body_identity(client):
     persona = client.put("/profile/persona", json={"coach_tone": "direct"})
     assert persona.status_code == 200
     assert client.get("/profile").json()["custom_instructions"] == ""
-    assert client.delete("/profile").status_code == 204
-    assert client.get("/profile").status_code == 404
 
 
 def test_assistant_style_api_roundtrip_and_refusals(client):
@@ -705,3 +664,12 @@ def test_onboarding_start_resumes_persisted_progress(client, monkeypatch):
     reset = client.post("/onboarding/step", json={"content": "restart", "reset": True}).json()
     assert reset["messages"] == ["Q2?"]
     assert answered_from[-1] == ["Q1?"]
+
+
+def test_removed_legacy_routes_return_not_found(client):
+    assert client.post(
+        "/auth/claim",
+        json={"trainee_id": "alice", "claim_code": "unused", "password": "new-horse-22"},
+    ).status_code == 404
+    assert client.get("/programs/active.xlsx").status_code == 404
+    assert client.delete("/profile").status_code == 404
