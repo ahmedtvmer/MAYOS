@@ -111,7 +111,7 @@ def test_privacy_page_discloses_coach_access_hosted_ai_and_retention(api):
     assert "never receives your assistant chat" in body
     # Earlier opted-in history imports left an audit record. New imports are no
     # longer accepted, but existing records remain until account deletion.
-    assert "Existing imported-history records may include" in body
+    assert "Imported history (existing records only)" in body
     assert "MAYOS does not accept new history imports" in body
     assert "deleted with your account" in body
     # Retention: live data, the 30-day restricted snapshot, the deletion record.
@@ -210,7 +210,7 @@ def test_policy_source_file_exists_and_every_section_is_served(api):
         "Free text you type can contain identifying information",
         "at most 30 days",
         "/account/delete-request",
-        "Existing imported-history records may include the source file name, a snapshot fingerprint, per-table row counts, the opt-in reference, and the import time",
+        "Imported history (existing records only): these records may include the source file name, a snapshot fingerprint, per-table row counts, the opt-in reference, and the import time",
         "MAYOS does not accept new history imports",
         "deleted with your account",
         "last day you used the app",
