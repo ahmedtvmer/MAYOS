@@ -1,0 +1,132 @@
+   Woah! You appear to be trying to run flutter as root.
+   We strongly recommend running the flutter tool without superuser privileges.
+  /
+📎
+00:00 +0: loading <scratch>/p143/mobile/test/home_screen_test.dart
+00:00 +0: <scratch>/p143/mobile/test/home_screen_test.dart: home maps the active program, volume, and records
+00:02 +1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+00:03 +2: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+00:03 +3: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+00:04 +4: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+00:04 +5: <scratch>/p143/mobile/test/home_screen_test.dart: home opens an unopened Checkpoint review and clears its card
+00:04 +6: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: warm-up movements show prescribed rows and stay outside work progress
+00:05 +7: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: warm-up movements show prescribed rows and stay outside work progress
+00:05 +8: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: warm-up movements show prescribed rows and stay outside work progress
+00:05 +9: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a day without warm-up movements has no warm-up section
+00:06 +10: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: prescribed Cardio needs valid minutes and stays outside set progress
+00:08 +11: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:09 +12: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:09 +13: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: clearing a warm-up weight commits null
+00:10 +14: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Program: the back arrow returns Program
+00:11 +15: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the table is SET · KG · REPS · RIR · ✓ and the baseline rides on the card as the Last: line (#158)
+00:11 +16: <scratch>/p143/mobile/test/workout_logger_back_test.dart: Resume from the prompt: the back arrow returns Home
+00:11 +17: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the Last: line is hidden entirely when there is no history (#158)
+00:11 +18: <scratch>/p143/mobile/test/workout_logger_back_test.dart: cold start with nothing underneath: the back arrow goes Home
+00:12 +19: <scratch>/p143/mobile/test/workout_logger_back_test.dart: cold start with nothing underneath: the back arrow goes Home
+00:12 +20: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a warm-up row has no previous to borrow and is never filled from one
+00:12 +21: <scratch>/p143/mobile/test/workout_logger_back_test.dart: the summary step still intercepts back for the Active workout
+00:13 +22: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: ticking an empty row fills it from the previous values
+00:13 +23: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: ticking with no value and no previous opens the keypad there
+00:14 +24: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the keypad Next order is kg → reps → RIR → the next set
+00:15 +25: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: planned exercise detail keeps its prescription and returns to the unchanged Active workout (#217)
+00:16 +26: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: planned exercise detail keeps its prescription and returns to the unchanged Active workout (#217)
+00:17 +27: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: planned exercise detail keeps its prescription and returns to the unchanged Active workout (#217)
+00:18 +28: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: planned exercise detail keeps its prescription and returns to the unchanged Active workout (#217)
+00:18 +29: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: row states: a pending check is outlined, a ticked row is filled, tinted and still editable (#158)
+00:18 +30: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: replacement exercise detail has no program prescription (#217)
+00:19 +31: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: replacement exercise detail has no program prescription (#217)
+00:19 +32: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: replacement exercise detail has no program prescription (#217)
+00:20 +33: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: replacement exercise detail has no program prescription (#217)
+00:20 +34: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: swiping a middle set row deletes that row only
+00:20 +35: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: unplanned exercise detail has no program prescription (#217)
+00:21 +36: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: unplanned exercise detail has no program prescription (#217)
+00:21 +37: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the unticked-sets sheet offers Keep logging and Discard
+00:21 +38: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: the card menu offers Replace exercise and Rest time…, and Remove only for an unplanned exercise (#162)
+00:22 +39: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the saved draft matches today's shape: ticked sets, warm-up flag, skipped exercise
+00:22 +40: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: replacing with ticked sets asks first, then clears the rows and swaps the card (#162)
+00:23 +41: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: replacing with ticked sets asks first, then clears the rows and swaps the card (#162)
+00:23 +42: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a record badge is solid on the current best, then struck through when a later set beats it
+00:24 +43: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: self-service persists one slot against the workout version
+00:24 +44: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: unticking a record-earning set clears its badges (#124)
+00:25 +45: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: coach path requires an inline reason before opening the picker
+00:26 +46: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the summary lists the current records and the stats (#124)
+00:26 +47: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: authority refusal refreshes coach-controlled state
+00:26 +48: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: authority refusal refreshes coach-controlled state
+00:26 +49: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: an offline summary projects pending drafts from its cached status
+00:27 +50: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: authority refusal refreshes coach request into self-service
+00:27 +51: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a committed Checkpoint shows its review and computed ratings
+00:28 +52: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: failed live program fetch hides the option but Replace works
+00:28 +53: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a stale cached week hides streak lines but keeps Checkpoint progress
+00:29 +54: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: an unplanned exercise never offers a program action
+00:29 +55: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: records and workout summary fit phone and desktop columns
+00:30 +56: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: records and workout summary fit phone and desktop columns
+00:30 +57: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: version mismatch keeps local replacement and skips program call
+00:31 +58: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the summary omits the celebration when nothing earned a record
+00:31 +59: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: 409 program version conflict shows the version message
+00:31 +60: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a newly earned record vibrates heavily once, and an untick never vibrates
+00:32 +61: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: program failure does not roll back the logger replacement
+00:32 +62: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a cell edit vibrates when it settles, never per keystroke
+00:32 +63: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: logger never creates connectivity controller on Android
+00:32 +64: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: turning a ticked warm-up into a working set vibrates (#124)
+00:33 +65: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: the Replace search opens with the target muscle listed before typing, and the pill searches the whole catalog (#162)
+00:33 +66: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the summary snapshot never changes after the rows change (#124)
+00:34 +67: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: the Replace search never offers an exercise already in this workout, planned or unplanned (#162)
+00:34 +68: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: the Replace search never offers an exercise already in this workout, planned or unplanned (#162)
+00:34 +69: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: Workout time stays correct across a simulated restart (#159)
+00:35 +70: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Remove exercise asks before discarding logged sets and takes an untouched one out at once (#162)
+00:36 +71: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Remove exercise asks before discarding logged sets and takes an untouched one out at once (#162)
+00:36 +72: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the day heading is the one serif line and the progress line counts exercises and sets (#159)
+00:36 +73: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Undo replace brings the planned exercise back, asking first over logged sets (#162)
+00:37 +74: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the summary shows the workout's total duration, frozen at Finish, with no overflow at 360dp (#159)
+00:37 +75: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: a keypad focus stays on its own exercise when a card is inserted before it (#162)
+00:38 +76: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the bottom bar keeps sets progress and Finish in reach while the list scrolls (#160)
+00:38 +77: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Rest time… in the menu opens the #125 picker and writes the device override (#162)
+00:39 +78: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the bottom bar steps aside for the keypad and the last card scrolls clear of it (#160)
+00:39 +79: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Remove exercise takes an unplanned exercise out of the workout (#162)
+00:39 +80: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the bottom bar takes the system-nav inset inside its surface and keeps its content above it (#160)
+00:39 +81: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a tick clears the Finish nudge and no other message (#160)
+00:40 +82: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: loaded, failed and missing pictures keep one fixed card layout (#161)
+00:41 +83: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: loaded, failed and missing pictures keep one fixed card layout (#161)
+00:41 +84: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: loaded, failed and missing pictures keep one fixed card layout (#161)
+00:41 +85: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: loaded, failed and missing pictures keep one fixed card layout (#161)
+00:41 +86: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: loaded, failed and missing pictures keep one fixed card layout (#161)
+00:41 +87: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: loaded, failed and missing pictures keep one fixed card layout (#161)
+00:44 +88: <scratch>/p143/mobile/test/player_chat_test.dart: disclosure gates the composer and persists per account
+00:45 +89: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: the picture loads once and is reused on rebuild (#161)
+00:46 +90: <scratch>/p143/mobile/test/player_chat_test.dart: streamed tokens render progressively and done finalizes
+00:46 +91: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: the picture request is public: /media with no bearer token (#161)
+00:47 +92: <scratch>/p143/mobile/test/player_chat_test.dart: partial Markdown streams into the same selectable history render at 360 dp
+00:49 +93: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: no overflow at 360dp, light and dark, pictures settled (#161)
+00:49 +94: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: no overflow at 360dp, light and dark, pictures settled (#161)
+00:49 +95: <scratch>/p143/mobile/test/player_chat_test.dart: offline disables send with a message while cached history renders
+00:50 +96: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+00:50 +97: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+00:51 +98: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+00:51 +99: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+00:51 +100: <scratch>/p143/mobile/test/player_chat_test.dart: offline banner retry reloads history and clears the offline state
+00:51 +101: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: media kill switch: the thumbnail falls back and never asks (#53)
+00:52 +102: <scratch>/p143/mobile/test/player_chat_test.dart: regenerating a program offline shows the shared needs-connection message
+00:52 +103: <scratch>/p143/mobile/test/player_chat_test.dart: saving the schedule offline shows the shared needs-connection message
+00:53 +104: <scratch>/p143/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:55 +105: <scratch>/p143/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:55 +106: <scratch>/p143/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:55 +107: <scratch>/p143/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:55 +108: <scratch>/p143/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:56 +109: <scratch>/p143/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:56 +110: <scratch>/p143/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:56 +111: <scratch>/p143/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:56 +112: <scratch>/p143/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:56 +113: <scratch>/p143/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:56 +114: <scratch>/p143/mobile/test/theme_and_shell_test.dart: an explicit choice is persisted across a restart
+00:58 +115: <scratch>/p143/mobile/test/theme_and_shell_test.dart: system bar style follows the effective theme
+00:58 +116: <scratch>/p143/mobile/test/theme_and_shell_test.dart: bottom navigation exposes Home, Program, and Progress
+00:59 +117: <scratch>/p143/mobile/test/theme_and_shell_test.dart: Settings opens from the header and keeps entry points reachable
+00:59 +118: <scratch>/p143/mobile/test/theme_and_shell_test.dart: a non-coach sees the invite entry, not coach destinations
+01:00 +119: <scratch>/p143/mobile/test/theme_and_shell_test.dart: shell and settings have no overflow at 360.0x640.0 and 1.5x text
+01:00 +120: <scratch>/p143/mobile/test/theme_and_shell_test.dart: shell has no overflow at 360.0x640.0 and 2.0x text
+01:01 +121: <scratch>/p143/mobile/test/theme_and_shell_test.dart: shell and settings have no overflow at 393.0x852.0 and 1.5x text
+01:01 +122: <scratch>/p143/mobile/test/theme_and_shell_test.dart: shell has no overflow at 393.0x852.0 and 2.0x text
+01:01 +123: <scratch>/p143/mobile/test/theme_and_shell_test.dart: shell and settings have no overflow at 412.0x915.0 and 1.5x text
+01:02 +124: <scratch>/p143/mobile/test/theme_and_shell_test.dart: shell has no overflow at 412.0x915.0 and 2.0x text
+01:02 +125: <scratch>/p143/mobile/test/theme_and_shell_test.dart: (tearDownAll)
+01:02 +125: All tests passed!

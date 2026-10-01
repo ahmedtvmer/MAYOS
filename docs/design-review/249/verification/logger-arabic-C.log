@@ -1,0 +1,901 @@
+   Woah! You appear to be trying to run flutter as root.
+   We strongly recommend running the flutter tool without superuser privileges.
+  /
+📎
+00:00 +0: loading <scratch>/p143/mobile/test/workout_logger_screen_test.dart
+00:00 +0: workout logger shows the applied deload and opens the assistant
+00:03 +1: warm-up movements show prescribed rows and stay outside work progress
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with text "Finish workout": []" (used in a call to "tap()") could not
+find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:580:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  warm-up movements show prescribed rows and stay outside work progress
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:06 +1 -1: warm-up movements show prescribed rows and stay outside work progress [E]
+  Test failed. See exception logs above.
+  The test description was: warm-up movements show prescribed rows and stay outside work progress
+  
+00:06 +1 -1: a day without warm-up movements has no warm-up section
+00:07 +2 -1: prescribed Cardio needs valid minutes and stays outside set progress
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with type "FilledButton" that are ancestors of widgets with text "Finish
+workout": []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:645:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  prescribed Cardio needs valid minutes and stays outside set progress
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:10 +2 -2: prescribed Cardio needs valid minutes and stays outside set progress [E]
+  Test failed. See exception logs above.
+  The test description was: prescribed Cardio needs valid minutes and stays outside set progress
+  
+00:10 +2 -2: a linked warm-up name opens library detail without prescription
+00:11 +3 -2: clearing a warm-up weight commits null
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with type "FilledButton" that are ancestors of widgets with text "Finish
+workout": []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:693:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  clearing a warm-up weight commits null
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:14 +3 -3: clearing a warm-up weight commits null [E]
+  Test failed. See exception logs above.
+  The test description was: clearing a warm-up weight commits null
+  
+00:14 +3 -3: the table is SET · KG · REPS · RIR · ✓ and the baseline rides on the card as the Last: line (#158)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: at least one matching candidate
+  Actual: _TextWidgetFinder:<Found 0 widgets with text "SET": []>
+   Which: means none were found but some were expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:725:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart line 725
+The test description was:
+  the table is SET · KG · REPS · RIR · ✓ and the baseline rides on the card as the Last: line (#158)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:15 +3 -4: the table is SET · KG · REPS · RIR · ✓ and the baseline rides on the card as the Last: line (#158) [E]
+  Test failed. See exception logs above.
+  The test description was: the table is SET · KG · REPS · RIR · ✓ and the baseline rides on the card as the Last: line (#158)
+  
+00:15 +3 -4: the Last: line is hidden entirely when there is no history (#158)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TextWidgetFinder:<Found 0 widgets with text "3 sets · 5–8 reps · 60 kg · RIR ≥ 2 · Rest
+3:00": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:794:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart line 794
+The test description was:
+  the Last: line is hidden entirely when there is no history (#158)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:17 +3 -5: the Last: line is hidden entirely when there is no history (#158) [E]
+  Test failed. See exception logs above.
+  The test description was: the Last: line is hidden entirely when there is no history (#158)
+  
+00:17 +3 -5: the exercise card names the movement in primary colour and adds a full-width + Add set (#158)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly 2 matching candidates
+  Actual: _AncestorWidgetFinder:<Found 0 widgets with type "OutlinedButton" that are ancestors of
+widgets with text "+ Add set": []>
+   Which: means none were found but some were expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:818:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart line 818
+The test description was:
+  the exercise card names the movement in primary colour and adds a full-width + Add set (#158)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:19 +3 -6: the exercise card names the movement in primary colour and adds a full-width + Add set (#158) [E]
+  Test failed. See exception logs above.
+  The test description was: the exercise card names the movement in primary colour and adds a full-width + Add set (#158)
+  
+00:19 +3 -6: a warm-up row has no previous to borrow and is never filled from one
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TextWidgetFinder:<Found 0 widgets with text "Bench Press · set 2 · Weight (kg)": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:865:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart line 865
+The test description was:
+  a warm-up row has no previous to borrow and is never filled from one
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:21 +3 -7: a warm-up row has no previous to borrow and is never filled from one [E]
+  Test failed. See exception logs above.
+  The test description was: a warm-up row has no previous to borrow and is never filled from one
+  
+00:21 +3 -7: ticking an empty row fills it from the previous values
+00:21 +4 -7: ticking with no value and no previous opens the keypad there
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TextWidgetFinder:<Found 0 widgets with text "Bench Press · set 3 · Weight (kg)": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:905:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart line 905
+The test description was:
+  ticking with no value and no previous opens the keypad there
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:23 +4 -8: ticking with no value and no previous opens the keypad there [E]
+  Test failed. See exception logs above.
+  The test description was: ticking with no value and no previous opens the keypad there
+  
+00:23 +4 -8: the keypad Next order is kg → reps → RIR → the next set
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TextWidgetFinder:<Found 0 widgets with text "Bench Press · set 1 · Weight (kg)": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:924:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart line 924
+The test description was:
+  the keypad Next order is kg → reps → RIR → the next set
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:25 +4 -9: the keypad Next order is kg → reps → RIR → the next set [E]
+  Test failed. See exception logs above.
+  The test description was: the keypad Next order is kg → reps → RIR → the next set
+  
+00:25 +4 -9: the RIR keypad is one-tap chips 0–5+ and Unrated, and a chip advances
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TextWidgetFinder:<Found 0 widgets with text "Unrated": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:957:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart line 957
+The test description was:
+  the RIR keypad is one-tap chips 0–5+ and Unrated, and a chip advances
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:27 +4 -10: the RIR keypad is one-tap chips 0–5+ and Unrated, and a chip advances [E]
+  Test failed. See exception logs above.
+  The test description was: the RIR keypad is one-tap chips 0–5+ and Unrated, and a chip advances
+  
+00:27 +4 -10: tapping the SET number cycles N ↔ W and mutes the row
+00:28 +5 -10: the Current set is the first unticked working set and moves across exercises, skipping warm-ups (#158)
+00:29 +6 -10: row states: a pending check is outlined, a ticked row is filled, tinted and still editable (#158)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TextWidgetFinder:<Found 0 widgets with text "Bench Press · set 2 · Reps": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1096:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart line 1096
+The test description was:
+  row states: a pending check is outlined, a ticked row is filled, tinted and still editable (#158)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:30 +6 -11: row states: a pending check is outlined, a ticked row is filled, tinted and still editable (#158) [E]
+  Test failed. See exception logs above.
+  The test description was: row states: a pending check is outlined, a ticked row is filled, tinted and still editable (#158)
+  
+00:30 +6 -11: RIR in the row is a compact selector that opens the existing chips (#158)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TextWidgetFinder:<Found 0 widgets with text "Bench Press · set 2 · Weight (kg)": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1128:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart line 1128
+The test description was:
+  RIR in the row is a compact selector that opens the existing chips (#158)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:33 +6 -12: RIR in the row is a compact selector that opens the existing chips (#158) [E]
+  Test failed. See exception logs above.
+  The test description was: RIR in the row is a compact selector that opens the existing chips (#158)
+  
+00:33 +6 -12: no overflow at 360dp (light) and the row keeps its 48dp targets (#158)
+00:33 +7 -12: no overflow at 360dp (dark) and the row keeps its 48dp targets (#158)
+00:34 +8 -12: swiping a middle set row deletes that row only
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: an object with length of <2>
+  Actual: [
+            StatefulElement:Dismissible-[<'set-1790881329183801-81'>](state:
+_DismissibleState#bf292(tickers: tracking 1 ticker)),
+            StatefulElement:Dismissible-[<'set-1790881329183803-82'>](dependencies:
+[Directionality], state: _DismissibleState#88024(tickers: tracking 1 ticker)),
+            StatefulElement:Dismissible-[<'set-1790881329183804-83'>](state:
+_DismissibleState#a733a(tickers: tracking 1 ticker))
+          ]
+   Which: has length of <3>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1160:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart line 1160
+The test description was:
+  swiping a middle set row deletes that row only
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:36 +8 -13: swiping a middle set row deletes that row only [E]
+  Test failed. See exception logs above.
+  The test description was: swiping a middle set row deletes that row only
+  
+00:36 +8 -13: Finish with nothing ticked is blocked by Log at least one set
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with type "FilledButton" that are ancestors of widgets with text "Finish
+workout": []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1174:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  Finish with nothing ticked is blocked by Log at least one set
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:38 +8 -14: Finish with nothing ticked is blocked by Log at least one set [E]
+  Test failed. See exception logs above.
+  The test description was: Finish with nothing ticked is blocked by Log at least one set
+  
+00:38 +8 -14: the unticked-sets sheet offers Keep logging and Discard
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with type "FilledButton" that are ancestors of widgets with text "Finish
+workout": []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1187:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  the unticked-sets sheet offers Keep logging and Discard
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:40 +8 -15: the unticked-sets sheet offers Keep logging and Discard [E]
+  Test failed. See exception logs above.
+  The test description was: the unticked-sets sheet offers Keep logging and Discard
+  
+00:40 +8 -15: the saved draft matches today's shape: ticked sets, warm-up flag, skipped exercise
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with type "FilledButton" that are ancestors of widgets with text "Finish
+workout": []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1250:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  the saved draft matches today's shape: ticked sets, warm-up flag, skipped exercise
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:42 +8 -16: the saved draft matches today's shape: ticked sets, warm-up flag, skipped exercise [E]
+  Test failed. See exception logs above.
+  The test description was: the saved draft matches today's shape: ticked sets, warm-up flag, skipped exercise
+  
+00:42 +8 -16: an out-of-window start day is clamped and the player is told
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with type "FilledButton" that are ancestors of widgets with text "Finish
+workout": []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1311:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  an out-of-window start day is clamped and the player is told
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:44 +8 -17: an out-of-window start day is clamped and the player is told [E]
+  Test failed. See exception logs above.
+  The test description was: an out-of-window start day is clamped and the player is told
+  
+00:44 +8 -17: a record badge is solid on the current best, then struck through when a later set beats it
+00:45 +9 -17: unticking a record-earning set clears its badges (#124)
+00:46 +10 -17: the summary lists the current records and the stats (#124)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with type "FilledButton" that are ancestors of widgets with text "Finish
+workout": []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1408:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  the summary lists the current records and the stats (#124)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:49 +10 -18: the summary lists the current records and the stats (#124) [E]
+  Test failed. See exception logs above.
+  The test description was: the summary lists the current records and the stats (#124)
+  
+00:49 +10 -18: the online summary freezes projected Weekly streak and Checkpoint
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with type "FilledButton" that are ancestors of widgets with text "Finish
+workout": []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      _finishAndOpenSummary (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:370:16)
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1459:11)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  the online summary freezes projected Weekly streak and Checkpoint
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:51 +10 -19: the online summary freezes projected Weekly streak and Checkpoint [E]
+  Test failed. See exception logs above.
+  The test description was: the online summary freezes projected Weekly streak and Checkpoint
+  
+00:51 +10 -19: an offline summary projects pending drafts from its cached status
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with type "FilledButton" that are ancestors of widgets with text "Finish
+workout": []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      _finishAndOpenSummary (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:370:16)
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1519:11)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  an offline summary projects pending drafts from its cached status
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:53 +10 -20: an offline summary projects pending drafts from its cached status [E]
+  Test failed. See exception logs above.
+  The test description was: an offline summary projects pending drafts from its cached status
+  
+00:53 +10 -20: a committed Checkpoint shows its review and computed ratings
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with type "FilledButton" that are ancestors of widgets with text "Finish
+workout": []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      _finishAndOpenSummary (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:370:16)
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1575:11)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  a committed Checkpoint shows its review and computed ratings
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:55 +10 -21: a committed Checkpoint shows its review and computed ratings [E]
+  Test failed. See exception logs above.
+  The test description was: a committed Checkpoint shows its review and computed ratings
+  
+00:55 +10 -21: a stale cached week hides streak lines but keeps Checkpoint progress
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with type "FilledButton" that are ancestors of widgets with text "Finish
+workout": []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      _finishAndOpenSummary (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:370:16)
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1610:11)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  a stale cached week hides streak lines but keeps Checkpoint progress
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:58 +10 -22: a stale cached week hides streak lines but keeps Checkpoint progress [E]
+  Test failed. See exception logs above.
+  The test description was: a stale cached week hides streak lines but keeps Checkpoint progress
+  
+00:58 +10 -22: records and workout summary fit phone and desktop columns
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with type "FilledButton" that are ancestors of widgets with text "Finish
+workout": []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1651:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  records and workout summary fit phone and desktop columns
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:00 +10 -23: records and workout summary fit phone and desktop columns [E]
+  Test failed. See exception logs above.
+  The test description was: records and workout summary fit phone and desktop columns
+  
+01:00 +10 -23: the summary omits the celebration when nothing earned a record
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with type "FilledButton" that are ancestors of widgets with text "Finish
+workout": []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1685:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  the summary omits the celebration when nothing earned a record
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:03 +10 -24: the summary omits the celebration when nothing earned a record [E]
+  Test failed. See exception logs above.
+  The test description was: the summary omits the celebration when nothing earned a record
+  
+01:03 +10 -24: a newly earned record vibrates heavily once, and an untick never vibrates
+01:03 +11 -24: a cell edit vibrates when it settles, never per keystroke
+01:04 +12 -24: turning a ticked warm-up into a working set vibrates (#124)
+01:04 +13 -24: the summary snapshot never changes after the rows change (#124)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with type "FilledButton" that are ancestors of widgets with text "Finish
+workout": []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1791:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  the summary snapshot never changes after the rows change (#124)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:07 +13 -25: the summary snapshot never changes after the rows change (#124) [E]
+  Test failed. See exception logs above.
+  The test description was: the summary snapshot never changes after the rows change (#124)
+  
+01:07 +13 -25: the top bar shows Workout time from the start, ticking every second (#159)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TextWidgetFinder:<Found 0 widgets with text "Log workout · 00:42": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1828:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart line 1828
+The test description was:
+  the top bar shows Workout time from the start, ticking every second (#159)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:10 +13 -26: the top bar shows Workout time from the start, ticking every second (#159) [E]
+  Test failed. See exception logs above.
+  The test description was: the top bar shows Workout time from the start, ticking every second (#159)
+  
+01:10 +13 -26: Workout time stays correct across a simulated restart (#159)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TextWidgetFinder:<Found 0 widgets with text "Log workout · 01:30": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1864:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart line 1864
+The test description was:
+  Workout time stays correct across a simulated restart (#159)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:12 +13 -27: Workout time stays correct across a simulated restart (#159) [E]
+  Test failed. See exception logs above.
+  The test description was: Workout time stays correct across a simulated restart (#159)
+  
+01:12 +13 -27: the ⋮ menu discards the workout behind its own confirmation (#159)
+01:12 +14 -27: the day heading is the one serif line and the progress line counts exercises and sets (#159)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: '0/2 exercises · 0/4 sets'
+  Actual: '⁦0/2⁩ تمارين · ⁦0/4⁩ مجموعات'
+   Which: is different.
+          Expected: 0/2 exerci ...
+            Actual: ⁦0/2⁩ تمار ...
+                    ^
+           Differ at offset 0
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1939:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart line 1939
+The test description was:
+  the day heading is the one serif line and the progress line counts exercises and sets (#159)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:15 +14 -28: the day heading is the one serif line and the progress line counts exercises and sets (#159) [E]
+  Test failed. See exception logs above.
+  The test description was: the day heading is the one serif line and the progress line counts exercises and sets (#159)
+  
+01:15 +14 -28: the summary shows the workout's total duration, frozen at Finish, with no overflow at 360dp (#159)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following StateError was thrown running a test:
+Bad state: No element
+
+When the exception was thrown, this was the stack:
+#0      Iterable.single (dart:core/iterable.dart:694:25)
+#1      WidgetController.element (package:flutter_test/src/controller.dart:888:30)
+#2      WidgetController.ensureVisible (package:flutter_test/src/controller.dart:2389:32)
+#3      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:1984:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  the summary shows the workout's total duration, frozen at Finish, with no overflow at 360dp (#159)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:17 +14 -29: the summary shows the workout's total duration, frozen at Finish, with no overflow at 360dp (#159) [E]
+  Test failed. See exception logs above.
+  The test description was: the summary shows the workout's total duration, frozen at Finish, with no overflow at 360dp (#159)
+  
+01:17 +14 -29: the bottom bar keeps sets progress and Finish in reach while the list scrolls (#160)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TextWidgetFinder:<Found 0 widgets with text "0/4 sets": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:2040:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart line 2040
+The test description was:
+  the bottom bar keeps sets progress and Finish in reach while the list scrolls (#160)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:19 +14 -30: the bottom bar keeps sets progress and Finish in reach while the list scrolls (#160) [E]
+  Test failed. See exception logs above.
+  The test description was: the bottom bar keeps sets progress and Finish in reach while the list scrolls (#160)
+  
+01:19 +14 -30: the bottom bar steps aside for the keypad and the last card scrolls clear of it (#160)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _AncestorWidgetFinder:<Found 0 widgets with type "FilledButton" that are ancestors of
+widgets with text "Finish workout": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:2130:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart line 2130
+The test description was:
+  the bottom bar steps aside for the keypad and the last card scrolls clear of it (#160)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:21 +14 -31: the bottom bar steps aside for the keypad and the last card scrolls clear of it (#160) [E]
+  Test failed. See exception logs above.
+  The test description was: the bottom bar steps aside for the keypad and the last card scrolls clear of it (#160)
+  
+01:21 +14 -31: the bottom bar takes the system-nav inset inside its surface and keeps its content above it (#160)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with type "FilledButton" that are ancestors of widgets with text "Finish
+workout": []" (used in a call to "getBottomRight()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getBottomRight (package:flutter_test/src/controller.dart:2014:12)
+#2      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:2190:14)
+<asynchronous suspension>
+#3      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#4      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  the bottom bar takes the system-nav inset inside its surface and keeps its content above it (#160)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:24 +14 -32: the bottom bar takes the system-nav inset inside its surface and keeps its content above it (#160) [E]
+  Test failed. See exception logs above.
+  The test description was: the bottom bar takes the system-nav inset inside its surface and keeps its content above it (#160)
+  
+01:24 +14 -32: a tick clears the Finish nudge and no other message (#160)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with type "FilledButton" that are ancestors of widgets with text "Finish
+workout": []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file://<scratch>/p143/mobile/test/workout_logger_screen_test.dart:2220:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  a tick clears the Finish nudge and no other message (#160)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:26 +14 -33: a tick clears the Finish nudge and no other message (#160) [E]
+  Test failed. See exception logs above.
+  The test description was: a tick clears the Finish nudge and no other message (#160)
+  
+01:26 +14 -33: Some tests failed.
+
+Failing tests:
+  <scratch>/p143/mobile/test/workout_logger_screen_test.dart: Finish with nothing ticked is blocked by Log at least one set
+  <scratch>/p143/mobile/test/workout_logger_screen_test.dart: RIR in the row is a compact selector that opens the existing chips (#158)
+  <scratch>/p143/mobile/test/workout_logger_screen_test.dart: Workout time stays correct across a simulated restart (#159)
+  <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a committed Checkpoint shows its review and computed ratings
+  ... and 29 more

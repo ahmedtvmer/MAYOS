@@ -1,0 +1,109 @@
+{
+  "flutter": {
+    "version": "3.47.5",
+    "frameworkRevision": "6a19cca564",
+    "dart": "3.13.4"
+  },
+  "snapshot": "selected-source snapshot assembled from prototype-source.tar.gz and selected-source-overrides.tar.gz at b9d1023db10f6164777c5b0136f1536cdf49b6a9",
+  "analysis": {
+    "command": "flutter analyze --no-pub",
+    "passed": true,
+    "result": "No issues found",
+    "log": "analyze.log"
+  },
+  "capture": {
+    "command": "CAPTURE=1 CAPTURE_OUT=<scratch>/captures flutter test --no-pub --dart-define=ARABIC_PAIR=C --tags capture test/visual/arabic_143_capture_test.dart --reporter expanded",
+    "passed": true,
+    "checksPassed": 8,
+    "capturesGenerated": 28,
+    "publishedPngs": 28,
+    "namesMatch": true,
+    "pixelSizesMatch": true,
+    "sha256HashesMatch": true,
+    "comparison": "capture-hash-comparison.txt",
+    "log": "capture.log",
+    "detailCoverage": {
+      "chatDetailImagesAddDistinctCoverage": false,
+      "identicalChatPairs": [
+        [
+          "C-chat-detail-dark-360x640.png",
+          "C-chat-dark-360x640.png"
+        ],
+        [
+          "C-chat-detail-dark-412x915.png",
+          "C-chat-dark-412x915.png"
+        ],
+        [
+          "C-chat-detail-light-360x640.png",
+          "C-chat-light-360x640.png"
+        ],
+        [
+          "C-chat-detail-light-412x915.png",
+          "C-chat-light-412x915.png"
+        ]
+      ],
+      "homeDetailImagesDifferFromHome": true,
+      "evidence": "capture-hash-comparison.txt",
+      "reason": "The capture drag before chat-detail leaves visible content unchanged."
+    }
+  },
+  "focusedWidgetTests": {
+    "command": "flutter test --no-pub --reporter expanded test/home_screen_test.dart test/workout_logger_screen_test.dart test/workout_logger_back_test.dart test/workout_logger_card_menu_test.dart test/workout_logger_pictures_test.dart test/player_chat_test.dart test/theme_and_shell_test.dart test/mayos_markdown_test.dart",
+    "passed": true,
+    "testsPassed": 125,
+    "testsFailed": 0,
+    "log": "widget-tests.log",
+    "build": "default English build; no ARABIC_PAIR=C define",
+    "englishTypography": {
+      "verified": true,
+      "logger": "workout_logger_screen_test.dart checks day heading displayFamily and Log workout \u00b7 mm:ss uiFamily",
+      "markdown": "mayos_markdown_test.dart checks heading and code span families against MayosTypography roles",
+      "roleResolution": "lib/src/core/theme/mayos_typography.dart in selected source bundle maps default build roles to Playfair Display and Inter; only ARABIC_PAIR == C switches families",
+      "screenImageCaptured": false,
+      "themeAndShellHasFontFamilyAssertions": false
+    }
+  },
+  "fullSuite": {
+    "command": "flutter test --no-pub",
+    "complete": true,
+    "passed": false,
+    "testsPassed": 742,
+    "testsSkipped": "approximately 207",
+    "testsFailed": 2,
+    "failureDetails": [
+      {
+        "test": "design_review_54_test.dart: docs/design-review/54/README.md links all resolve",
+        "cause": "the disposable source snapshot contains mobile/ but no docs tree"
+      },
+      {
+        "test": "program_authority_test.dart: older intake contract shows a service update error instead of hanging",
+        "cause": "StateError in profile_screen.dart"
+      }
+    ],
+    "baseline": "Both failures reproduce on the original non-C source; see baseline-original-source.log",
+    "log": "full-suite.log"
+  },
+  "publishedCaptureInventory": "published-capture-inventory.tsv",
+  "baselineComparison": "baseline-original-source.log",
+  "arabicCLoggerOutcomeTests": {
+    "attempted": true,
+    "passed": false,
+    "failures": 30,
+    "log": "logger-arabic-C.log",
+    "reason": "Existing logger behavior tests locate widgets by English copy and therefore do not act as Arabic-build outcome checks.",
+    "verifiedInCBuild": [
+      "27.5 appears after real keypad entry",
+      "RTL delete affordance is shown on the left in held-swipe capture"
+    ],
+    "notVerifiedInCBuild": [
+      "set persistence",
+      "completed swipe deletion"
+    ],
+    "defaultEnglishSharedWidgetBehaviorChecks": "focusedWidgetTests"
+  },
+  "acceptanceVerdicts": {
+    "4": "met with limits: 28 files match published names, dimensions and hashes, but the four chat-detail images duplicate their matching chat images and add no coverage; Home-detail images differ.",
+    "8": "met with limits: C build shows 27.5 keypad entry and RTL delete side; C build does not verify persistence or completed deletion.",
+    "9": "met with limits: default-build role-to-family assertions and source mapping verify English roles; no English image was captured."
+  }
+}

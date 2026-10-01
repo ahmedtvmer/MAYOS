@@ -1,0 +1,1164 @@
+   Woah! You appear to be trying to run flutter as root.
+   We strongly recommend running the flutter tool without superuser privileges.
+  /
+📎
+00:00 +0: loading <scratch>/p143/mobile/test/program_requests_test.dart
+00:00 +0: <scratch>/p143/mobile/test/program_requests_test.dart: player creates a substitution request and sees it pending
+00:00 +1: <scratch>/p143/mobile/test/program_requests_test.dart: player creates a substitution request and sees it pending
+00:00 +2: <scratch>/p143/mobile/test/program_requests_test.dart: player creates a substitution request and sees it pending
+00:00 +3: <scratch>/p143/mobile/test/program_requests_test.dart: player creates a substitution request and sees it pending
+00:00 +4: <scratch>/p143/mobile/test/program_requests_test.dart: player creates a substitution request and sees it pending
+00:00 +5: <scratch>/p143/mobile/test/program_requests_test.dart: player creates a substitution request and sees it pending
+00:04 +6: <scratch>/p143/mobile/test/player_chat_test.dart: disclosure gates the composer and persists per account
+00:04 +7: <scratch>/p143/mobile/test/program_requests_test.dart: player sees the coach decline response
+00:05 +8: <scratch>/p143/mobile/test/player_chat_test.dart: streamed tokens render progressively and done finalizes
+00:05 +9: <scratch>/p143/mobile/test/program_requests_test.dart: player cancels a pending request
+00:05 +10: <scratch>/p143/mobile/test/player_chat_test.dart: partial Markdown streams into the same selectable history render at 360 dp
+00:07 +11: <scratch>/p143/mobile/test/player_chat_test.dart: partial Markdown streams into the same selectable history render at 360 dp
+00:07 +12: <scratch>/p143/mobile/test/player_chat_test.dart: partial Markdown streams into the same selectable history render at 360 dp
+00:08 +13: <scratch>/p143/mobile/test/player_chat_test.dart: error event shows an error state and never persists a partial
+00:08 +14: <scratch>/p143/mobile/test/player_chat_test.dart: offline disables send with a message while cached history renders
+00:09 +15: <scratch>/p143/mobile/test/player_chat_test.dart: offline disables send with a message while cached history renders
+00:09 +16: <scratch>/p143/mobile/test/privacy_policy_test.dart: the signed-out login screen offers the privacy policy
+00:09 +17: <scratch>/p143/mobile/test/privacy_policy_test.dart: the signed-out login screen offers the privacy policy
+00:10 +18: <scratch>/p143/mobile/test/privacy_policy_test.dart: the signed-out login screen offers the privacy policy
+00:10 +19: <scratch>/p143/mobile/test/privacy_policy_test.dart: the signed-out login screen offers the privacy policy
+00:10 +20: <scratch>/p143/mobile/test/player_chat_test.dart: offline banner retry reloads history and clears the offline state
+00:11 +21: <scratch>/p143/mobile/test/privacy_policy_test.dart: the register screen links the policy next to consent
+00:11 +22: <scratch>/p143/mobile/test/player_chat_test.dart: regenerating a program offline shows the shared needs-connection message
+00:11 +23: <scratch>/p143/mobile/test/privacy_policy_test.dart: settings offers the privacy policy to a signed-in account
+00:12 +24: <scratch>/p143/mobile/test/player_chat_test.dart: saving the schedule offline shows the shared needs-connection message
+00:12 +25: <scratch>/p143/mobile/test/privacy_policy_test.dart: a refused launch is reported instead of failing silently
+00:13 +26: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:13 +27: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:13 +28: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:13 +29: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:13 +30: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:13 +31: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:13 +32: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:13 +33: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:13 +34: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:13 +35: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:13 +36: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:13 +37: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:13 +38: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:13 +39: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:13 +40: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:14 +41: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:16 +42: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:16 +43: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:16 +44: <scratch>/p143/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:17 +45: <scratch>/p143/mobile/test/google_sign_in_test.dart: a web ID token signs in and keeps the recovery-email gate
+00:17 +46: <scratch>/p143/mobile/test/program_authority_test.dart: normal profile update announces the rebuild
+00:18 +47: <scratch>/p143/mobile/test/program_authority_test.dart: normal profile update announces the rebuild
+00:18 +48: <scratch>/p143/mobile/test/program_authority_test.dart: normal profile update announces the rebuild
+00:18 +49: <scratch>/p143/mobile/test/google_sign_in_test.dart: a linked Google subject signs in like password login
+00:19 +50: <scratch>/p143/mobile/test/program_authority_test.dart: Training profile pre-fills editable values and saves goal/weight without rebuild
+00:19 +51: <scratch>/p143/mobile/test/google_sign_in_test.dart: Google signup and sign-in keep a cold deep link
+00:20 +52: <scratch>/p143/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging
+00:20 +53: <scratch>/p143/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging
+00:21 +54: <scratch>/p143/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging
+00:21 +55: <scratch>/p143/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging
+00:22 +56: <scratch>/p143/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging
+00:23 +57: <scratch>/p143/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following StateError was thrown running a test:
+Bad state: No element
+
+When the exception was thrown, this was the stack:
+#0      _Array.first (dart:core-patch/array.dart:52:5)
+#1      _ProfileScreenState._load.<anonymous closure> (package:mayos_mobile/src/features/player/profile/profile_screen.dart:154:32)
+#2      State.setState (package:flutter/src/widgets/framework.dart:1201:30)
+#3      _ProfileScreenState._load (package:mayos_mobile/src/features/player/profile/profile_screen.dart:148:7)
+<asynchronous suspension>
+
+The test description was:
+  older intake contract shows a service update error instead of hanging
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:23 +57 -1: <scratch>/p143/mobile/test/google_sign_in_test.dart: an expired signup ticket returns to sign-in with an explanation
+00:23 +57 -1: <scratch>/p143/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging [E]
+  Test failed. See exception logs above.
+  The test description was: older intake contract shows a service update error instead of hanging
+  
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test (but after the test had completed):
+Expected: no matching candidates
+  Actual: _TypeWidgetFinder:<Found 1 widget with type "CircularProgressIndicator": [
+            CircularProgressIndicator(<indeterminate>, state:
+_CircularProgressIndicatorState#65129(ticker active)),
+          ]>
+   Which: means one was found but none were expected
+
+When the exception was thrown, this was the stack:
+#0      fail (package:matcher/src/expect/expect.dart:187:31)
+#1      _expect (package:matcher/src/expect/expect.dart:182:3)
+#2      expect (package:matcher/src/expect/expect.dart:65:3)
+#3      expect (package:flutter_test/src/widget_tester.dart:473:18)
+#4      main.<anonymous closure> (file://<scratch>/p143/mobile/test/program_authority_test.dart:185:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  Test failed. See exception logs above.
+  The test description was: older intake contract shows a service update error instead of hanging
+  
+00:23 +58 -1: <scratch>/p143/mobile/test/program_authority_test.dart: saving another fact preserves saved multi-decimal weight
+00:24 +59 -1: <scratch>/p143/mobile/test/program_authority_test.dart: saving another fact preserves saved multi-decimal weight
+00:24 +60 -1: <scratch>/p143/mobile/test/google_sign_in_test.dart: submitting the picked username signs in and keeps the ADR 007 gate
+00:24 +61 -1: <scratch>/p143/mobile/test/program_authority_test.dart: offline Training profile save changes nothing
+00:25 +62 -1: <scratch>/p143/mobile/test/program_authority_test.dart: offline Training profile save changes nothing
+00:25 +63 -1: <scratch>/p143/mobile/test/google_sign_in_test.dart: a cancelled Google sheet leaves the sign-in screen alone
+00:25 +64 -1: <scratch>/p143/mobile/test/program_authority_test.dart: offline save after rebuild confirmation changes nothing
+00:25 +65 -1: <scratch>/p143/mobile/test/program_authority_test.dart: offline save after rebuild confirmation changes nothing
+00:25 +66 -1: <scratch>/p143/mobile/test/program_authority_test.dart: offline save after rebuild confirmation changes nothing
+00:26 +67 -1: <scratch>/p143/mobile/test/google_sign_in_test.dart: logout signs the Google SDK out
+00:26 +68 -1: <scratch>/p143/mobile/test/program_authority_test.dart: empty saved goal is omitted while saving another profile fact
+00:27 +69 -1: <scratch>/p143/mobile/test/program_authority_test.dart: empty saved goal is omitted while saving another profile fact
+00:27 +70 -1: <scratch>/p143/mobile/test/google_sign_in_test.dart: a 409 for an already-linked Google account goes back to sign-in
+00:27 +71 -1: <scratch>/p143/mobile/test/program_authority_test.dart: invalid weight is rejected before rebuild confirmation
+00:28 +72 -1: <scratch>/p143/mobile/test/google_sign_in_test.dart: a 401 on the availability check exits like an expired ticket
+00:28 +73 -1: <scratch>/p143/mobile/test/program_authority_test.dart: saving the schedule leaves the training-days setting untouched
+00:28 +74 -1: <scratch>/p143/mobile/test/program_authority_test.dart: saving the schedule leaves the training-days setting untouched
+00:28 +75 -1: <scratch>/p143/mobile/test/program_authority_test.dart: saving the schedule leaves the training-days setting untouched
+00:28 +76 -1: <scratch>/p143/mobile/test/program_authority_test.dart: the timezone field is prefilled from the device when no schedule exists
+00:29 +77 -1: <scratch>/p143/mobile/test/program_authority_test.dart: the timezone field is prefilled from the device when no schedule exists
+00:29 +78 -1: <scratch>/p143/mobile/test/program_authority_test.dart: the timezone field is prefilled from the device when no schedule exists
+00:29 +79 -1: <scratch>/p143/mobile/test/program_authority_test.dart: the timezone field is prefilled from the device when no schedule exists
+00:29 +80 -1: <scratch>/p143/mobile/test/program_authority_test.dart: the timezone field is prefilled from the device when no schedule exists
+00:29 +81 -1: <scratch>/p143/mobile/test/program_authority_test.dart: a non-IANA timezone is refused before submit
+00:30 +82 -1: <scratch>/p143/mobile/test/program_authority_test.dart: a prospective pause can be scheduled and is listed
+00:30 +83 -1: <scratch>/p143/mobile/test/program_authority_test.dart: a prospective pause can be scheduled and is listed
+00:30 +84 -1: <scratch>/p143/mobile/test/program_authority_test.dart: a prospective pause can be scheduled and is listed
+00:30 +85 -1: <scratch>/p143/mobile/test/program_authority_test.dart: a prospective pause can be scheduled and is listed
+00:30 +86 -1: <scratch>/p143/mobile/test/program_authority_test.dart: a prospective pause can be scheduled and is listed
+00:30 +87 -1: <scratch>/p143/mobile/test/program_authority_test.dart: a prospective pause can be scheduled and is listed
+00:30 +88 -1: <scratch>/p143/mobile/test/program_authority_test.dart: a prospective pause can be scheduled and is listed
+00:30 +89 -1: <scratch>/p143/mobile/test/program_authority_test.dart: a prospective pause can be scheduled and is listed
+00:31 +90 -1: <scratch>/p143/mobile/test/program_authority_test.dart: a pause starting before today is refused inline
+00:32 +91 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach profile loads, validates, and saves
+00:32 +92 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach profile loads, validates, and saves
+00:32 +93 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach profile loads, validates, and saves
+00:35 +94 -1: <scratch>/p143/mobile/test/player_journey_widget_test.dart: player journey renders through the real app and router
+00:35 +95 -1: <scratch>/p143/mobile/test/player_journey_widget_test.dart: player journey renders through the real app and router
+00:37 +96 -1: <scratch>/p143/mobile/test/player_journey_widget_test.dart: player journey renders through the real app and router
+00:38 +97 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: a committed grant is not reported as failed when a follow-up read would fail
+00:39 +98 -1: <scratch>/p143/mobile/test/ios_safari_detection_test.dart: iPhone Safari matches
+00:39 +99 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +100 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +101 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +102 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +103 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +104 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +105 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +106 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +107 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +108 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +109 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +110 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +111 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +112 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +113 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +114 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +115 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +116 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +117 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +118 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:39 +119 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: coach account does not see the Become a coach setting
+00:40 +120 -1: <scratch>/p143/mobile/test/coach_profile_test.dart: app resume refreshes live capabilities
+
+Warning: A call to tap() with finder "Found 1 widget with widget matching predicate: [
+  RawTooltip-[LabeledGlobalKey<RawTooltipState>#0c548]("Back", hover delay: 0:00:00.000000, touch delay: 0:00:01.500000, dismiss delay: 0:00:00.100000, triggerMode: TooltipTriggerMode.longPress, enableFeedback: true, positionDelegate: Closure: (TooltipPositionContext) => Offset from Function '_getDefaultPositionDelegate@1526220820':., state: RawTooltipState#39af5),
+]" derived an Offset (Offset(44.0, 36.0)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: _RenderLayoutSurrogateProxyBox#54796 relayoutBoundary=up15
+The hit test result at that offset is: HitTestResult(RenderMouseRegion#295c0@Offset(44.0, 36.0), RenderSemanticsAnnotations#df6fb@Offset(44.0, 36.0), RenderPointerListener#14771@Offset(44.0, 36.0), RenderSemanticsGestureHandler#cb245@Offset(44.0, 36.0), RenderExcludeSemantics#80e74@Offset(44.0, 36.0), RenderBlockSemantics#48196@Offset(44.0, 36.0), RenderIgnorePointer#f5312@Offset(44.0, 36.0), _RenderTheater#bad0b@Offset(44.0, 36.0), RenderAbsorbPointer#00910@Offset(44.0, 36.0), RenderPointerListener#5a426@Offset(44.0, 36.0), RenderAnnotatedRegion<SystemUiOverlayStyle>#d50b8@Offset(44.0, 36.0), RenderSemanticsAnnotations#dce7f@Offset(44.0, 36.0), RenderSemanticsAnnotations#a8fcd@Offset(44.0, 36.0), RenderSemanticsAnnotations#0fffa@Offset(44.0, 36.0), RenderTapRegionSurface#c73e4@Offset(44.0, 36.0), RenderSemanticsAnnotations#7c88c@Offset(44.0, 36.0), RenderSemanticsAnnotations#52019@Offset(44.0, 36.0), HitTestEntry<HitTestTarget>#5ad67(_ReusableRenderView#c8c00), HitTestEntry<HitTestTarget>#40c63(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file://<scratch>/p143/mobile/test/coach_profile_test.dart:255:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "tap()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+00:41 +121 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~1 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~2 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~3 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~4 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~5 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~6 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~7 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~8 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~9 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~10 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~11 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~12 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~13 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~14 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~15 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~16 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~17 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~18 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~19 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~20 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~21 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~22 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~23 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~24 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~25 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~26 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~27 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~28 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~29 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~30 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~31 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~32 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~33 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~34 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~35 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~36 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~37 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~38 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~39 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~40 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~41 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~42 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~43 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~44 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~45 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~46 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~47 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~48 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~49 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~50 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~51 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~52 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~53 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~54 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~55 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~56 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~57 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~58 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~59 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~60 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~61 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~62 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~63 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~64 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~65 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~66 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~67 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~68 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~69 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~70 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~71 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~72 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~73 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~74 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~75 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~76 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~77 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~78 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~79 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~80 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~81 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~82 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~83 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~84 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~85 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~86 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~87 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~88 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~89 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~90 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~91 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~92 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~93 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~94 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~95 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~96 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~97 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~98 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~99 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~100 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~101 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~102 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~103 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~104 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~105 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~106 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~107 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~108 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~109 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~110 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~111 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~112 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~113 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~114 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~115 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~116 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~117 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~118 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~119 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~120 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~121 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~122 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~123 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~124 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~125 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~126 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~127 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~128 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~129 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~130 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~131 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~132 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~133 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~134 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~135 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~136 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~137 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~138 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~139 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~140 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~141 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~142 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~143 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~144 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~145 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~146 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~147 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~148 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~149 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~150 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~151 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~152 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~153 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~154 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~155 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~156 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~157 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~158 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~159 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~160 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~161 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~162 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~163 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~164 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~165 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~166 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~167 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~168 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~169 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~170 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~171 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~172 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~173 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~174 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~175 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~176 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~177 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~178 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~179 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~180 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~181 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~182 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~183 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~184 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~185 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~186 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~187 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~188 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~189 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~190 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~191 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~192 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~193 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~194 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~195 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~196 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~197 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~198 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:42 +121 ~199 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:43 +121 ~200 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:43 +121 ~201 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:43 +121 ~202 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:43 +121 ~203 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:43 +121 ~204 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:43 +121 ~205 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:43 +121 ~206 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:43 +121 ~207 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:44 +122 ~207 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Program: the back arrow returns Program
+00:44 +123 ~207 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Program: the back arrow returns Program
+00:44 +124 ~207 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Program: the back arrow returns Program
+00:44 +125 ~207 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: starting from Program: the back arrow returns Program
+00:45 +126 ~207 -1: <scratch>/p143/mobile/test/coach_requests_test.dart: the shell is Roster · Alerts · Requests · Profile with a pending requests badge
+00:46 +127 ~207 -1: <scratch>/p143/mobile/test/coach_requests_test.dart: the shell is Roster · Alerts · Requests · Profile with a pending requests badge
+00:47 +128 ~207 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: cold start with nothing underneath: the back arrow goes Home
+00:47 +129 ~207 -1: <scratch>/p143/mobile/test/coach_requests_test.dart: pending requests are listed before answered ones, oldest pending first
+00:47 +130 ~207 -1: <scratch>/p143/mobile/test/workout_logger_back_test.dart: the summary step still intercepts back for the Active workout
+00:48 +131 ~207 -1: <scratch>/p143/mobile/test/coach_requests_test.dart: the resolve sheet shows the player, swap, reason, and reply counter, and apply refreshes the badge and the roster chip
+00:49 +132 ~207 -1: <scratch>/p143/mobile/test/coach_requests_test.dart: a split-change request offers Apply (rebuilds program)
+00:49 +133 ~207 -1: <scratch>/p143/mobile/test/active_workout_prompt_test.dart: opening the app offers Resume or Discard for a stored workout
+00:50 +134 ~207 -1: <scratch>/p143/mobile/test/active_workout_prompt_test.dart: opening the app offers Resume or Discard for a stored workout
+00:50 +135 ~207 -1: <scratch>/p143/mobile/test/active_workout_prompt_test.dart: opening the app offers Resume or Discard for a stored workout
+00:51 +136 ~207 -1: <scratch>/p143/mobile/test/coach_requests_test.dart: the player page has a Requests (count) segment that resolves through the same sheet and refreshes the badge and roster chip
+00:52 +137 ~207 -1: <scratch>/p143/mobile/test/active_workout_prompt_test.dart: Resume routes to the logger
+00:52 +138 ~207 -1: <scratch>/p143/mobile/test/coach_requests_test.dart: a refusal on the player page refreshes the Requests badge and the roster chip
+00:52 +139 ~207 -1: <scratch>/p143/mobile/test/active_workout_prompt_test.dart: starting a workout while one exists asks to finish or discard it first
+00:53 +140 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: coach tabs have clean URLs and mode switching persists the URL
+00:58 +141 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: coach tabs have clean URLs and mode switching persists the URL
+00:58 +142 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: coach tabs have clean URLs and mode switching persists the URL
+00:58 +143 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: coach tabs have clean URLs and mode switching persists the URL
+00:58 +144 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: coach tabs have clean URLs and mode switching persists the URL
+00:58 +145 ~207 -1: <scratch>/p143/mobile/test/exercise_detail_test.dart: history tab shows real points
+00:59 +146 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: desktop roster selection updates and restores the right pane
+00:59 +147 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: desktop roster selection updates and restores the right pane
+00:59 +148 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: desktop roster selection updates and restores the right pane
+00:59 +149 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: desktop roster selection updates and restores the right pane
+00:59 +150 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: desktop roster selection updates and restores the right pane
+01:00 +151 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: phone roster selection stays over the shell and system back restores it
+01:00 +152 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: phone roster selection stays over the shell and system back restores it
+01:00 +153 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: phone roster selection stays over the shell and system back restores it
+01:00 +154 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: phone roster selection stays over the shell and system back restores it
+01:00 +155 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: phone roster selection stays over the shell and system back restores it
+01:00 +156 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: phone roster selection stays over the shell and system back restores it
+01:00 +157 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: phone roster selection stays over the shell and system back restores it
+01:00 +158 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: phone roster selection stays over the shell and system back restores it
+01:00 +159 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: phone roster selection stays over the shell and system back restores it
+01:00 +160 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: phone roster selection stays over the shell and system back restores it
+01:00 +161 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: phone roster selection stays over the shell and system back restores it
+01:00 +162 ~207 -1: <scratch>/p143/mobile/test/baselines_test.dart: effort at the display boundary (#111) a program target is spoken as RIR, never RPE
+01:00 +163 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: ended and foreign assignment URLs share the generic denial
+01:00 +164 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: ended and foreign assignment URLs share the generic denial
+01:00 +165 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: ended and foreign assignment URLs share the generic denial
+01:00 +166 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: ended and foreign assignment URLs share the generic denial
+01:00 +167 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: ended and foreign assignment URLs share the generic denial
+01:00 +168 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: ended and foreign assignment URLs share the generic denial
+01:00 +169 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: ended and foreign assignment URLs share the generic denial
+01:00 +170 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: ended and foreign assignment URLs share the generic denial
+01:00 +171 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: ended and foreign assignment URLs share the generic denial
+01:00 +172 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: ended and foreign assignment URLs share the generic denial
+01:00 +173 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: ended and foreign assignment URLs share the generic denial
+01:01 +174 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: desktop requests expose URL-addressable detail and actions
+01:01 +175 ~207 -1: <scratch>/p143/mobile/test/coach_desktop_urls_test.dart: desktop back and forward URLs restore both roster selections
+01:02 +176 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: planned exercise detail keeps its prescription and returns to the unchanged Active workout (#217)
+01:02 +177 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: planned exercise detail keeps its prescription and returns to the unchanged Active workout (#217)
+01:03 +178 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: planned exercise detail keeps its prescription and returns to the unchanged Active workout (#217)
+01:05 +179 ~207 -1: <scratch>/p143/mobile/test/responsive_shell_test.dart: Player mode switches layouts, preserves tab state, and centres pushed screens
+01:07 +180 ~207 -1: <scratch>/p143/mobile/test/responsive_shell_test.dart: Player mode switches layouts, preserves tab state, and centres pushed screens
+01:07 +181 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: unplanned exercise detail has no program prescription (#217)
+01:08 +182 ~207 -1: <scratch>/p143/mobile/test/responsive_shell_test.dart: Coach mode uses tabs below 1024 and a full-width rail at and above it
+01:08 +183 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: the card menu offers Replace exercise and Rest time…, and Remove only for an unplanned exercise (#162)
+01:09 +184 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: replacing with ticked sets asks first, then clears the rows and swaps the card (#162)
+01:10 +185 ~207 -1: <scratch>/p143/mobile/test/home_screen_test.dart: home maps the active program, volume, and records
+01:11 +186 ~207 -1: <scratch>/p143/mobile/test/home_screen_test.dart: home maps the active program, volume, and records
+01:11 +187 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: coach path requires an inline reason before opening the picker
+01:12 +188 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: coach path requires an inline reason before opening the picker
+01:12 +189 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: coach path requires an inline reason before opening the picker
+01:12 +190 ~207 -1: <scratch>/p143/mobile/test/home_screen_test.dart: home reads the latest committed session from the ledger
+01:12 +191 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: authority refusal refreshes coach-controlled state
+01:13 +192 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: authority refusal refreshes coach-controlled state
+01:13 +193 ~207 -1: <scratch>/p143/mobile/test/home_screen_test.dart: home renders in light theme without overflow
+01:14 +194 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: authority refusal refreshes coach request into self-service
+01:14 +195 ~207 -1: <scratch>/p143/mobile/test/home_screen_test.dart: home renders in dark theme without overflow
+01:14 +196 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: failed live program fetch hides the option but Replace works
+01:15 +197 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: an unplanned exercise never offers a program action
+01:16 +198 ~207 -1: <scratch>/p143/mobile/test/password_recovery_test.dart: App Link deep link opens the reset screen with the token
+01:16 +199 ~207 -1: <scratch>/p143/mobile/test/password_recovery_test.dart: App Link deep link opens the reset screen with the token
+01:17 +200 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: version mismatch keeps local replacement and skips program call
+01:17 +201 ~207 -1: <scratch>/p143/mobile/test/password_recovery_test.dart: a successful reset routes to login with a success message
+01:18 +202 ~207 -1: <scratch>/p143/mobile/test/password_recovery_test.dart: a successful reset routes to login with a success message
+01:18 +203 ~207 -1: <scratch>/p143/mobile/test/password_recovery_test.dart: a successful reset routes to login with a success message
+01:18 +204 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: logger never creates connectivity controller on Android
+01:19 +205 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: logger never creates connectivity controller on Android
+01:19 +206 ~207 -1: <scratch>/p143/mobile/test/password_recovery_test.dart: forgot-password flow shows the constant confirmation
+01:19 +207 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: the Replace search opens with the target muscle listed before typing, and the pill searches the whole catalog (#162)
+01:20 +208 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: the Replace search opens with the target muscle listed before typing, and the pill searches the whole catalog (#162)
+01:20 +209 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: the Replace search never offers an exercise already in this workout, planned or unplanned (#162)
+01:21 +210 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Remove exercise asks before discarding logged sets and takes an untouched one out at once (#162)
+01:22 +211 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Remove exercise asks before discarding logged sets and takes an untouched one out at once (#162)
+01:22 +212 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Remove exercise asks before discarding logged sets and takes an untouched one out at once (#162)
+01:22 +213 ~207 -1: <scratch>/p143/mobile/test/mayos_markdown_test.dart: renders inline code, code blocks, quotes and paragraphs
+01:22 +214 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Undo replace brings the planned exercise back, asking first over logged sets (#162)
+01:22 +215 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Undo replace brings the planned exercise back, asking first over logged sets (#162)
+01:22 +216 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Undo replace brings the planned exercise back, asking first over logged sets (#162)
+01:22 +217 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Undo replace brings the planned exercise back, asking first over logged sets (#162)
+01:23 +218 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Undo replace brings the planned exercise back, asking first over logged sets (#162)
+01:23 +219 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Undo replace brings the planned exercise back, asking first over logged sets (#162)
+01:23 +220 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Undo replace brings the planned exercise back, asking first over logged sets (#162)
+01:23 +221 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: a keypad focus stays on its own exercise when a card is inserted before it (#162)
+01:24 +222 ~207 -1: <scratch>/p143/mobile/test/onboarding_flow_test.dart: the disclosure gates every answer
+01:25 +223 ~207 -1: <scratch>/p143/mobile/test/onboarding_flow_test.dart: the disclosure gates every answer
+01:25 +224 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Remove exercise takes an unplanned exercise out of the workout (#162)
+01:25 +225 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Remove exercise takes an unplanned exercise out of the workout (#162)
+01:25 +226 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Remove exercise takes an unplanned exercise out of the workout (#162)
+01:26 +227 ~207 -1: <scratch>/p143/mobile/test/onboarding_flow_test.dart: program-building state uses the desktop player column
+01:26 +228 ~207 -1: <scratch>/p143/mobile/test/onboarding_flow_test.dart: each field type selects and saves its answer
+01:27 +229 ~207 -1: <scratch>/p143/mobile/test/onboarding_flow_test.dart: each field type selects and saves its answer
+01:27 +230 ~207 -1: <scratch>/p143/mobile/test/onboarding_flow_test.dart: each field type selects and saves its answer
+01:28 +231 ~207 -1: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: loaded, failed and missing pictures keep one fixed card layout (#161)
+01:28 +232 ~207 -1: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: loaded, failed and missing pictures keep one fixed card layout (#161)
+01:30 +233 ~207 -1: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: loaded, failed and missing pictures keep one fixed card layout (#161)
+01:30 +234 ~207 -1: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: loaded, failed and missing pictures keep one fixed card layout (#161)
+01:30 +235 ~207 -1: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: loaded, failed and missing pictures keep one fixed card layout (#161)
+01:31 +236 ~207 -1: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: loaded, failed and missing pictures keep one fixed card layout (#161)
+01:31 +237 ~207 -1: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: loaded, failed and missing pictures keep one fixed card layout (#161)
+01:31 +238 ~207 -1: <scratch>/p143/mobile/test/onboarding_flow_test.dart: an offline failure keeps the answer on the step
+01:31 +239 ~207 -1: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: the picture loads once and is reused on rebuild (#161)
+01:32 +240 ~207 -1: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: the picture loads once and is reused on rebuild (#161)
+01:32 +241 ~207 -1: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: the picture loads once and is reused on rebuild (#161)
+01:33 +242 ~207 -1: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: the picture loads once and is reused on rebuild (#161)
+01:33 +243 ~207 -1: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: the picture loads once and is reused on rebuild (#161)
+01:33 +244 ~207 -1: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: the picture request is public: /media with no bearer token (#161)
+01:34 +245 ~207 -1: <scratch>/p143/mobile/test/program_tab_test.dart: program shows a suggested deload and opens the assistant
+01:36 +246 ~207 -1: <scratch>/p143/mobile/test/program_tab_test.dart: program shows a suggested deload and opens the assistant
+01:37 +247 ~207 -1: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+01:37 +248 ~207 -1: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+01:38 +249 ~207 -1: <scratch>/p143/mobile/test/workout_logger_pictures_test.dart: an exercise added from the search gets its catalog picture (#53)
+01:38 +250 ~207 -1: <scratch>/p143/mobile/test/program_tab_test.dart: program renders in light theme without overflow
+01:38 +251 ~207 -1: <scratch>/p143/mobile/test/program_tab_test.dart: program renders in light theme without overflow
+01:39 +252 ~207 -1: <scratch>/p143/mobile/test/program_tab_test.dart: substitution picker and other-day option fit 360dp in light theme
+01:40 +253 ~207 -1: <scratch>/p143/mobile/test/coach_history_test.dart: the active assigned player's session shows Cardio minutes
+01:41 +254 ~207 -1: <scratch>/p143/mobile/test/coach_history_test.dart: the active assigned player's session shows Cardio minutes
+01:42 +255 ~207 -1: <scratch>/p143/mobile/test/coach_history_test.dart: the active assigned player's session shows Cardio minutes
+01:42 +256 ~207 -1: <scratch>/p143/mobile/test/program_tab_test.dart: issue 170: previous coach publication leaves the new assignment in direct control
+01:42 +257 ~207 -1: <scratch>/p143/mobile/test/program_tab_test.dart: issue 170: previous coach publication leaves the new assignment in direct control
+01:42 +258 ~207 -1: <scratch>/p143/mobile/test/coach_history_test.dart: coach history lists and opens Checkpoints for the assignment
+01:43 +259 ~207 -1: <scratch>/p143/mobile/test/program_tab_test.dart: coach substitution requests are prefilled and fit 360dp in light theme
+01:43 +260 ~207 -1: <scratch>/p143/mobile/test/coach_history_test.dart: the player history offline banner sits below its app bar
+01:43 +261 ~207 -1: <scratch>/p143/mobile/test/program_tab_test.dart: coach substitution requests are prefilled and fit 360dp in dark theme
+01:44 +262 ~207 -1: <scratch>/p143/mobile/test/program_tab_test.dart: coach substitution requests are prefilled and fit 360dp in dark theme
+01:44 +263 ~207 -1: <scratch>/p143/mobile/test/program_tab_test.dart: coach substitution requests are prefilled and fit 360dp in dark theme
+01:44 +264 ~207 -1: <scratch>/p143/mobile/test/coach_history_test.dart: the drill-down shows a performed-date correction note
+01:44 +265 ~207 -1: <scratch>/p143/mobile/test/program_tab_test.dart: stale request authority refreshes into direct substitution
+01:45 +266 ~207 -1: <scratch>/p143/mobile/test/program_tab_test.dart: stale request authority refreshes into direct substitution
+01:45 +267 ~207 -1: <scratch>/p143/mobile/test/coach_history_test.dart: a denied assignment shows the error state with no training data
+01:45 +268 ~207 -1: <scratch>/p143/mobile/test/program_tab_test.dart: stale direct authority refreshes into a coach request
+01:45 +269 ~207 -1: <scratch>/p143/mobile/test/program_tab_test.dart: stale direct authority refreshes into a coach request
+01:46 +270 ~207 -1: <scratch>/p143/mobile/test/program_tab_test.dart: substitution leaves an active workout frozen and seeds the next one
+01:46 +271 ~207 -1: <scratch>/p143/mobile/test/progress_test.dart: strength maps real history into the chart, rows, and units
+01:47 +272 ~207 -1: <scratch>/p143/mobile/test/progress_test.dart: strength maps real history into the chart, rows, and units
+01:47 +273 ~207 -1: <scratch>/p143/mobile/test/progress_test.dart: Progress lists Checkpoints newest first
+01:48 +274 ~207 -1: <scratch>/p143/mobile/test/progress_test.dart: tapping a chart point shows that session's real values
+01:48 +275 ~207 -1: <scratch>/p143/mobile/test/progress_test.dart: selecting another logged exercise reloads its history
+01:48 +276 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: the coach shell opens on Roster with Roster · Alerts · Profile tabs and an alerts count badge
+01:49 +277 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: the coach shell opens on Roster with Roster · Alerts · Profile tabs and an alerts count badge
+01:49 +278 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: the coach shell opens on Roster with Roster · Alerts · Profile tabs and an alerts count badge
+01:49 +279 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: the coach shell opens on Roster with Roster · Alerts · Profile tabs and an alerts count badge
+01:49 +280 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: the coach shell opens on Roster with Roster · Alerts · Profile tabs and an alerts count badge
+01:49 +281 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: the coach shell opens on Roster with Roster · Alerts · Profile tabs and an alerts count badge
+01:49 +282 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: the coach shell opens on Roster with Roster · Alerts · Profile tabs and an alerts count badge
+01:50 +283 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: the coach shell opens on Roster with Roster · Alerts · Profile tabs and an alerts count badge
+01:51 +284 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: the coach shell opens on Roster with Roster · Alerts · Profile tabs and an alerts count badge
+01:51 +285 ~207 -1: <scratch>/p143/mobile/test/progress_test.dart: progress has no overflow at 360x640 and text scale 2.0
+01:51 +286 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: the mode sheet offers both modes with the current one ticked, plus Settings and Log out
+01:51 +287 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: the mode sheet offers both modes with the current one ticked, plus Settings and Log out
+01:51 +288 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +289 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +290 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +291 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +292 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +293 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +294 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +295 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +296 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +297 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +298 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +299 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +300 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +301 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +302 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +303 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +304 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +305 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +306 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +307 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +308 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:52 +309 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: switching to Player mode lands on the player shell and the badge reads P
+01:53 +310 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: a coach in Player mode without onboarding gets the setup screen with Start intake and Back to Coach mode
+01:53 +311 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: a coach in Player mode without onboarding gets the setup screen with Start intake and Back to Coach mode
+01:53 +312 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: a coach in Player mode without onboarding gets the setup screen with Start intake and Back to Coach mode
+01:53 +313 ~207 -1: <scratch>/p143/mobile/test/coach_shell_test.dart: a coach in Player mode without onboarding gets the setup screen with Start intake and Back to Coach mode
+01:54 +314 ~207 -1: <scratch>/p143/mobile/test/plan_display_test.dart: single-capability player sees Lifter Free and honest benefits
+01:54 +315 ~207 -1: <scratch>/p143/mobile/test/plan_display_test.dart: single-capability player sees Lifter Free and honest benefits
+01:54 +316 ~207 -1: <scratch>/p143/mobile/test/plan_display_test.dart: single-capability player sees Lifter Free and honest benefits
+01:56 +317 ~207 -1: <scratch>/p143/mobile/test/assistant_style_test.dart: Personalization shows bilingual presets and saved selection
+01:57 +318 ~207 -1: <scratch>/p143/mobile/test/assistant_style_test.dart: Personalization shows bilingual presets and saved selection
+01:58 +319 ~207 -1: <scratch>/p143/mobile/test/assistant_style_test.dart: Personalization shows bilingual presets and saved selection
+01:58 +320 ~207 -1: <scratch>/p143/mobile/test/assistant_style_test.dart: offline save shows the shared message and persists nothing
+02:00 +321 ~207 -1: <scratch>/p143/mobile/test/assignment_flow_test.dart: player previews access, consents, then ends the assignment
+02:00 +322 ~207 -1: <scratch>/p143/mobile/test/assignment_flow_test.dart: player previews access, consents, then ends the assignment
+02:01 +323 ~207 -1: <scratch>/p143/mobile/test/assignment_flow_test.dart: player previews access, consents, then ends the assignment
+02:02 +324 ~207 -1: <scratch>/p143/mobile/test/assignment_flow_test.dart: player previews access, consents, then ends the assignment
+02:02 +325 ~207 -1: <scratch>/p143/mobile/test/assignment_flow_test.dart: player previews access, consents, then ends the assignment
+02:02 +326 ~207 -1: <scratch>/p143/mobile/test/assignment_flow_test.dart: player previews access, consents, then ends the assignment
+02:02 +327 ~207 -1: <scratch>/p143/mobile/test/assignment_flow_test.dart: player previews access, consents, then ends the assignment
+02:02 +328 ~207 -1: <scratch>/p143/mobile/test/assignment_flow_test.dart: player previews access, consents, then ends the assignment
+02:03 +329 ~207 -1: <scratch>/p143/mobile/test/account_deletion_test.dart: profile delete flow warning, wrong password error, then login with confirmation
+02:04 +330 ~207 -1: <scratch>/p143/mobile/test/account_deletion_test.dart: profile delete flow warning, wrong password error, then login with confirmation
+02:05 +331 ~207 -1: <scratch>/p143/mobile/test/account_deletion_test.dart: profile delete flow warning, wrong password error, then login with confirmation
+02:06 +332 ~207 -1: <scratch>/p143/mobile/test/assignment_flow_test.dart: coach issues a code, reviews notices, revokes, disables
+02:06 +333 ~207 -1: <scratch>/p143/mobile/test/assignment_flow_test.dart: coach issues a code, reviews notices, revokes, disables
+02:06 +334 ~207 -1: <scratch>/p143/mobile/test/assignment_flow_test.dart: coach issues a code, reviews notices, revokes, disables
+02:06 +335 ~207 -1: <scratch>/p143/mobile/test/assignment_flow_test.dart: coach issues a code, reviews notices, revokes, disables
+02:06 +336 ~207 -1: loading <scratch>/p143/mobile/test/structured_intake_test.dart
+02:07 +336 ~207 -1: <scratch>/p143/mobile/test/structured_intake_test.dart: intake contract, disclosure, answers, and confirmation round-trip
+02:07 +337 ~207 -1: <scratch>/p143/mobile/test/structured_intake_test.dart: invalid answers surface the server field message
+02:07 +338 ~207 -1: <scratch>/p143/mobile/test/structured_intake_test.dart: required intake keys fail parsing instead of defaulting
+02:07 +339 ~207 -1: <scratch>/p143/mobile/test/structured_intake_test.dart: answer field name is URL-encoded in the PUT path
+02:07 +340 ~207 -1: <scratch>/p143/mobile/test/structured_intake_test.dart: confirm requires every required answer
+02:07 +341 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:08 +342 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:08 +343 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:08 +344 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:08 +345 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:08 +346 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:08 +347 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:08 +348 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +349 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +350 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +351 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +352 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +353 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +354 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +355 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +356 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +357 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +358 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +359 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +360 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +361 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +362 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +363 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +364 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +365 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +366 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:09 +367 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:10 +368 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+02:11 +369 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: sign-in methods section a password-only account offers change password and connect
+02:12 +370 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: sign-in methods section a password-only account offers change password and connect
+02:13 +371 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: sign-in methods section a password-only account offers change password and connect
+02:14 +372 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: prescribed Cardio needs valid minutes and stays outside set progress
+02:14 +373 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: sign-in methods section a Google-only account offers set password and a disabled disconnect
+02:15 +374 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a linked warm-up name opens library detail without prescription
+02:16 +375 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a linked warm-up name opens library detail without prescription
+02:16 +376 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: sign-in methods section the connect button stays hidden where Google is unavailable
+02:16 +377 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: clearing a warm-up weight commits null
+02:17 +378 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: connect Google a successful connect posts the ID token and re-reads auth/me
+02:17 +379 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the table is SET · KG · REPS · RIR · ✓ and the baseline rides on the card as the Last: line (#158)
+02:18 +380 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: connect Google the web rendered button posts its ID token to Google link
+02:18 +381 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the Last: line is hidden entirely when there is no history (#158)
+02:18 +382 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: connect Google a second web token is ignored while connect is busy
+02:19 +383 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: connect Google a second web token is ignored while connect is busy
+02:19 +384 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a warm-up row has no previous to borrow and is never filled from one
+02:19 +385 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: connect Google a subject connected to another account is shown clearly
+02:20 +386 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: ticking an empty row fills it from the previous values
+02:20 +387 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: connect Google a different Google account already connected is shown clearly
+02:21 +388 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: connect Google a different Google account already connected is shown clearly
+02:21 +389 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the keypad Next order is kg → reps → RIR → the next set
+02:22 +390 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the keypad Next order is kg → reps → RIR → the next set
+02:22 +391 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: change password replacing a password ends the session with an explanation
+02:23 +392 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: change password replacing a password ends the session with an explanation
+02:23 +393 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: change password replacing a password ends the session with an explanation
+02:23 +394 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the Current set is the first unticked working set and moves across exercises, skipping warm-ups (#158)
+02:24 +395 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: set password refuses a weak password, then sets it and unlocks disconnect
+02:24 +396 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: row states: a pending check is outlined, a ticked row is filled, tinted and still editable (#158)
+02:24 +397 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: delete account a web rendered button confirms Google-only deletion
+02:25 +398 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: delete account a web rendered button confirms Google-only deletion
+
+Warning: A call to drag() with finder "Found 1 widget with type "Scrollable" (ignoring all but first): [
+  Scrollable(axisDirection: down, physics: AlwaysScrollableScrollPhysics, restorationId: null, dependencies: [InheritedCupertinoTheme, MediaQuery, ScrollConfiguration, UnmanagedRestorationScope, _InheritedTheme, _LocalizationsScope-[GlobalKey#a3098]], state: ScrollableState#58f2a(position: ScrollPositionWithSingleContext#dc05a(offset: 0.0, range: 0.0..104.0, viewport: 1132.0, ScrollableState, AlwaysScrollableScrollPhysics -> ClampingScrollPhysics -> RangeMaintainingScrollPhysics, IdleScrollActivity#9a796, ScrollDirection.idle), effective physics: AlwaysScrollableScrollPhysics -> ClampingScrollPhysics -> RangeMaintainingScrollPhysics)),
+]" derived an Offset (Offset(135.0, 634.0)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderClipRect#209bb
+The hit test result at that offset is: HitTestResult(_RenderDecoration#ddad2@Offset(115.0, 43.0), RenderSemanticsAnnotations#41826@Offset(115.0, 43.0), RenderPointerListener#5a466@Offset(115.0, 43.0), RenderSemanticsAnnotations#e110d@Offset(115.0, 43.0), RenderIgnorePointer#e4297@Offset(115.0, 43.0), RenderTapRegion#947e3@Offset(115.0, 43.0), RenderMouseRegion#5d45e@Offset(115.0, 43.0), RenderRepaintBoundary#5cf7b@Offset(115.0, 43.0), RenderIndexedSemantics#990ac@Offset(115.0, 43.0), RenderSliverList@(mainAxis: 566.0, crossAxis: 115.0), RenderSliverPadding@(mainAxis: 566.0, crossAxis: 135.0), RenderViewport#78c39@Offset(135.0, 566.0), RenderIgnorePointer#d83c1@Offset(135.0, 566.0), RenderSemanticsAnnotations#74efd@Offset(135.0, 566.0), RenderPointerListener#b59ef@Offset(135.0, 566.0), RenderSemanticsGestureHandler#ed34e@Offset(135.0, 566.0), RenderPointerListener#af4d6@Offset(135.0, 566.0), _RenderScrollSemantics#b4a0e@Offset(135.0, 566.0), RenderClipRect#53f80@Offset(135.0, 566.0), RenderConstrainedBox#d08a4@Offset(135.0, 566.0), RenderFlex#09d5b@Offset(135.0, 634.0), RenderConstrainedBox#1dfa4@Offset(135.0, 634.0), RenderConstrainedBox#36eba@Offset(135.0, 634.0), RenderPositionedBox#48b77@Offset(135.0, 634.0), RenderFlex#e471c@Offset(135.0, 634.0), RenderPadding#9d632@Offset(135.0, 634.0), RenderCustomMultiChildLayoutBox#4c7cf@Offset(135.0, 634.0), _RenderInkFeatures#4927e@Offset(135.0, 634.0), RenderPhysicalModel#f3732@Offset(135.0, 634.0), RenderSemanticsAnnotations#5de56@Offset(135.0, 634.0), RenderRepaintBoundary#74fb1@Offset(135.0, 634.0), RenderIgnorePointer#7c0a4@Offset(135.0, 634.0), RenderAnimatedOpacity#1d5e7@Offset(135.0, 634.0), RenderAnimatedOpacity#9d28c@Offset(135.0, 634.0), _RenderColoredBox#92556@Offset(135.0, 634.0), RenderAnimatedOpacity#7def6@Offset(135.0, 634.0), RenderIgnorePointer#b50c2@Offset(135.0, 634.0), RenderAnimatedOpacity#c0ce4@Offset(135.0, 634.0), RenderRepaintBoundary#9f70a@Offset(135.0, 634.0), RenderSemanticsAnnotations#44e97@Offset(135.0, 634.0), RenderOffstage#5f491@Offset(135.0, 634.0), RenderSemanticsAnnotations#be105@Offset(135.0, 634.0), _RenderTheater#940f3@Offset(135.0, 634.0), RenderAbsorbPointer#b59a5@Offset(135.0, 634.0), RenderPointerListener#9aa80@Offset(135.0, 634.0), RenderAnnotatedRegion<SystemUiOverlayStyle>#ff3f8@Offset(135.0, 634.0), RenderSemanticsAnnotations#2a04a@Offset(135.0, 634.0), RenderSemanticsAnnotations#d3ea2@Offset(135.0, 634.0), RenderSemanticsAnnotations#23cfd@Offset(135.0, 634.0), RenderTapRegionSurface#eb852@Offset(135.0, 634.0), RenderSemanticsAnnotations#fe6cb@Offset(135.0, 634.0), RenderSemanticsAnnotations#474e1@Offset(135.0, 634.0), HitTestEntry<HitTestTarget>#22a65(_ReusableRenderView#1bf35), HitTestEntry<HitTestTarget>#4cf26(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      WidgetController.dragUntilVisible.<anonymous closure> (package:flutter_test/src/controller.dart:2483:17)
+#4      _rootRun (dart:async/zone_root.dart:35:13)
+#5      _CustomZone.run (dart:async/zone.dart:810:35)
+#6      TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#7      WidgetController.dragUntilVisible (package:flutter_test/src/controller.dart:2476:27)
+#8      WidgetController.scrollUntilVisible.<anonymous closure> (package:flutter_test/src/controller.dart:2439:13)
+#9      _rootRun (dart:async/zone_root.dart:35:13)
+#10     _CustomZone.run (dart:async/zone.dart:810:35)
+#11     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#12     WidgetController.scrollUntilVisible (package:flutter_test/src/controller.dart:2427:27)
+#13     _reveal (file://<scratch>/p143/mobile/test/sign_in_methods_test.dart:139:18)
+#14     main.<anonymous closure>.<anonymous closure> (file://<scratch>/p143/mobile/test/sign_in_methods_test.dart:484:13)
+<asynchronous suspension>
+#15     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#16     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+#17     StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+02:26 +399 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: delete account a web rendered button confirms Google-only deletion
+02:26 +400 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: no overflow at 360dp (dark) and the row keeps its 48dp targets (#158)
+02:26 +401 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: delete account a Google-only account deletes with a fresh Google ID token
+
+Warning: A call to drag() with finder "Found 1 widget with type "Scrollable" (ignoring all but first): [
+  Scrollable(axisDirection: down, physics: AlwaysScrollableScrollPhysics, restorationId: null, dependencies: [InheritedCupertinoTheme, MediaQuery, ScrollConfiguration, UnmanagedRestorationScope, _InheritedTheme, _LocalizationsScope-[GlobalKey#fc365]], state: ScrollableState#95d02(position: ScrollPositionWithSingleContext#a8beb(offset: 0.0, range: 0.0..104.0, viewport: 1132.0, ScrollableState, AlwaysScrollableScrollPhysics -> ClampingScrollPhysics -> RangeMaintainingScrollPhysics, IdleScrollActivity#c5338, ScrollDirection.idle), effective physics: AlwaysScrollableScrollPhysics -> ClampingScrollPhysics -> RangeMaintainingScrollPhysics)),
+]" derived an Offset (Offset(135.0, 634.0)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderClipRect#754fa
+The hit test result at that offset is: HitTestResult(_RenderDecoration#5c037@Offset(115.0, 43.0), RenderSemanticsAnnotations#65106@Offset(115.0, 43.0), RenderPointerListener#4d236@Offset(115.0, 43.0), RenderSemanticsAnnotations#ba7b4@Offset(115.0, 43.0), RenderIgnorePointer#1693b@Offset(115.0, 43.0), RenderTapRegion#19f8a@Offset(115.0, 43.0), RenderMouseRegion#281c5@Offset(115.0, 43.0), RenderRepaintBoundary#c858f@Offset(115.0, 43.0), RenderIndexedSemantics#e16a2@Offset(115.0, 43.0), RenderSliverList@(mainAxis: 566.0, crossAxis: 115.0), RenderSliverPadding@(mainAxis: 566.0, crossAxis: 135.0), RenderViewport#94d19@Offset(135.0, 566.0), RenderIgnorePointer#20e43@Offset(135.0, 566.0), RenderSemanticsAnnotations#fefb9@Offset(135.0, 566.0), RenderPointerListener#84c16@Offset(135.0, 566.0), RenderSemanticsGestureHandler#42a21@Offset(135.0, 566.0), RenderPointerListener#53cd8@Offset(135.0, 566.0), _RenderScrollSemantics#be2ed@Offset(135.0, 566.0), RenderClipRect#aa763@Offset(135.0, 566.0), RenderConstrainedBox#f3bf5@Offset(135.0, 566.0), RenderFlex#950c6@Offset(135.0, 634.0), RenderConstrainedBox#7d74b@Offset(135.0, 634.0), RenderConstrainedBox#f1b7d@Offset(135.0, 634.0), RenderPositionedBox#30011@Offset(135.0, 634.0), RenderFlex#eaace@Offset(135.0, 634.0), RenderPadding#efa38@Offset(135.0, 634.0), RenderCustomMultiChildLayoutBox#4d70c@Offset(135.0, 634.0), _RenderInkFeatures#55790@Offset(135.0, 634.0), RenderPhysicalModel#b374b@Offset(135.0, 634.0), RenderSemanticsAnnotations#e135f@Offset(135.0, 634.0), RenderRepaintBoundary#c8be3@Offset(135.0, 634.0), RenderIgnorePointer#0586f@Offset(135.0, 634.0), RenderAnimatedOpacity#91b6c@Offset(135.0, 634.0), RenderAnimatedOpacity#aaaf7@Offset(135.0, 634.0), _RenderColoredBox#4a235@Offset(135.0, 634.0), RenderAnimatedOpacity#b5b32@Offset(135.0, 634.0), RenderIgnorePointer#27e9f@Offset(135.0, 634.0), RenderAnimatedOpacity#0a39b@Offset(135.0, 634.0), RenderRepaintBoundary#e2f13@Offset(135.0, 634.0), RenderSemanticsAnnotations#345f9@Offset(135.0, 634.0), RenderOffstage#87d42@Offset(135.0, 634.0), RenderSemanticsAnnotations#61bee@Offset(135.0, 634.0), _RenderTheater#99d7a@Offset(135.0, 634.0), RenderAbsorbPointer#da45e@Offset(135.0, 634.0), RenderPointerListener#f7859@Offset(135.0, 634.0), RenderAnnotatedRegion<SystemUiOverlayStyle>#6b188@Offset(135.0, 634.0), RenderSemanticsAnnotations#a6420@Offset(135.0, 634.0), RenderSemanticsAnnotations#72815@Offset(135.0, 634.0), RenderSemanticsAnnotations#6beb2@Offset(135.0, 634.0), RenderTapRegionSurface#ff1e1@Offset(135.0, 634.0), RenderSemanticsAnnotations#0fe32@Offset(135.0, 634.0), RenderSemanticsAnnotations#420e1@Offset(135.0, 634.0), HitTestEntry<HitTestTarget>#67134(_ReusableRenderView#1bf35), HitTestEntry<HitTestTarget>#da5a1(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      WidgetController.dragUntilVisible.<anonymous closure> (package:flutter_test/src/controller.dart:2483:17)
+#4      _rootRun (dart:async/zone_root.dart:35:13)
+#5      _CustomZone.run (dart:async/zone.dart:810:35)
+#6      TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#7      WidgetController.dragUntilVisible (package:flutter_test/src/controller.dart:2476:27)
+#8      WidgetController.scrollUntilVisible.<anonymous closure> (package:flutter_test/src/controller.dart:2439:13)
+#9      _rootRun (dart:async/zone_root.dart:35:13)
+#10     _CustomZone.run (dart:async/zone.dart:810:35)
+#11     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#12     WidgetController.scrollUntilVisible (package:flutter_test/src/controller.dart:2427:27)
+#13     _reveal (file://<scratch>/p143/mobile/test/sign_in_methods_test.dart:139:18)
+#14     main.<anonymous closure>.<anonymous closure> (file://<scratch>/p143/mobile/test/sign_in_methods_test.dart:548:13)
+<asynchronous suspension>
+#15     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#16     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+#17     StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+02:27 +402 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: delete account a Google-only account deletes with a fresh Google ID token
+02:27 +403 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: Finish with nothing ticked is blocked by Log at least one set
+02:27 +404 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: delete account a cancelled Google sheet deletes nothing
+
+Warning: A call to drag() with finder "Found 1 widget with type "Scrollable" (ignoring all but first): [
+  Scrollable(axisDirection: down, physics: AlwaysScrollableScrollPhysics, restorationId: null, dependencies: [InheritedCupertinoTheme, MediaQuery, ScrollConfiguration, UnmanagedRestorationScope, _InheritedTheme, _LocalizationsScope-[GlobalKey#7056e]], state: ScrollableState#ee244(position: ScrollPositionWithSingleContext#abd5a(offset: 0.0, range: 0.0..104.0, viewport: 1132.0, ScrollableState, AlwaysScrollableScrollPhysics -> ClampingScrollPhysics -> RangeMaintainingScrollPhysics, IdleScrollActivity#557da, ScrollDirection.idle), effective physics: AlwaysScrollableScrollPhysics -> ClampingScrollPhysics -> RangeMaintainingScrollPhysics)),
+]" derived an Offset (Offset(135.0, 634.0)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderClipRect#2cccd
+The hit test result at that offset is: HitTestResult(_RenderDecoration#910bb@Offset(115.0, 43.0), RenderSemanticsAnnotations#e5c4c@Offset(115.0, 43.0), RenderPointerListener#fd902@Offset(115.0, 43.0), RenderSemanticsAnnotations#d6376@Offset(115.0, 43.0), RenderIgnorePointer#d7d06@Offset(115.0, 43.0), RenderTapRegion#fed2d@Offset(115.0, 43.0), RenderMouseRegion#960a9@Offset(115.0, 43.0), RenderRepaintBoundary#27077@Offset(115.0, 43.0), RenderIndexedSemantics#4e147@Offset(115.0, 43.0), RenderSliverList@(mainAxis: 566.0, crossAxis: 115.0), RenderSliverPadding@(mainAxis: 566.0, crossAxis: 135.0), RenderViewport#8b19e@Offset(135.0, 566.0), RenderIgnorePointer#84d35@Offset(135.0, 566.0), RenderSemanticsAnnotations#96e67@Offset(135.0, 566.0), RenderPointerListener#4dfc7@Offset(135.0, 566.0), RenderSemanticsGestureHandler#795b6@Offset(135.0, 566.0), RenderPointerListener#e33d3@Offset(135.0, 566.0), _RenderScrollSemantics#e3801@Offset(135.0, 566.0), RenderClipRect#1f53d@Offset(135.0, 566.0), RenderConstrainedBox#ed7cc@Offset(135.0, 566.0), RenderFlex#3e987@Offset(135.0, 634.0), RenderConstrainedBox#6f2f7@Offset(135.0, 634.0), RenderConstrainedBox#ad5a3@Offset(135.0, 634.0), RenderPositionedBox#24f81@Offset(135.0, 634.0), RenderFlex#7f349@Offset(135.0, 634.0), RenderPadding#c102f@Offset(135.0, 634.0), RenderCustomMultiChildLayoutBox#44f4f@Offset(135.0, 634.0), _RenderInkFeatures#cc5af@Offset(135.0, 634.0), RenderPhysicalModel#65207@Offset(135.0, 634.0), RenderSemanticsAnnotations#0a0dc@Offset(135.0, 634.0), RenderRepaintBoundary#6b8e3@Offset(135.0, 634.0), RenderIgnorePointer#425c2@Offset(135.0, 634.0), RenderAnimatedOpacity#1e415@Offset(135.0, 634.0), RenderAnimatedOpacity#197a2@Offset(135.0, 634.0), _RenderColoredBox#b503a@Offset(135.0, 634.0), RenderAnimatedOpacity#35038@Offset(135.0, 634.0), RenderIgnorePointer#913ff@Offset(135.0, 634.0), RenderAnimatedOpacity#93daa@Offset(135.0, 634.0), RenderRepaintBoundary#d6b6c@Offset(135.0, 634.0), RenderSemanticsAnnotations#7d486@Offset(135.0, 634.0), RenderOffstage#a5af5@Offset(135.0, 634.0), RenderSemanticsAnnotations#71f8d@Offset(135.0, 634.0), _RenderTheater#4c3f1@Offset(135.0, 634.0), RenderAbsorbPointer#62846@Offset(135.0, 634.0), RenderPointerListener#88c9f@Offset(135.0, 634.0), RenderAnnotatedRegion<SystemUiOverlayStyle>#17fd9@Offset(135.0, 634.0), RenderSemanticsAnnotations#7dc9a@Offset(135.0, 634.0), RenderSemanticsAnnotations#fe90a@Offset(135.0, 634.0), RenderSemanticsAnnotations#383bb@Offset(135.0, 634.0), RenderTapRegionSurface#ffaed@Offset(135.0, 634.0), RenderSemanticsAnnotations#0843f@Offset(135.0, 634.0), RenderSemanticsAnnotations#7a813@Offset(135.0, 634.0), HitTestEntry<HitTestTarget>#bafe2(_ReusableRenderView#1bf35), HitTestEntry<HitTestTarget>#cc820(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      WidgetController.dragUntilVisible.<anonymous closure> (package:flutter_test/src/controller.dart:2483:17)
+#4      _rootRun (dart:async/zone_root.dart:35:13)
+#5      _CustomZone.run (dart:async/zone.dart:810:35)
+#6      TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#7      WidgetController.dragUntilVisible (package:flutter_test/src/controller.dart:2476:27)
+#8      WidgetController.scrollUntilVisible.<anonymous closure> (package:flutter_test/src/controller.dart:2439:13)
+#9      _rootRun (dart:async/zone_root.dart:35:13)
+#10     _CustomZone.run (dart:async/zone.dart:810:35)
+#11     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#12     WidgetController.scrollUntilVisible (package:flutter_test/src/controller.dart:2427:27)
+#13     _reveal (file://<scratch>/p143/mobile/test/sign_in_methods_test.dart:139:18)
+#14     main.<anonymous closure>.<anonymous closure> (file://<scratch>/p143/mobile/test/sign_in_methods_test.dart:581:13)
+<asynchronous suspension>
+#15     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#16     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+#17     StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+02:28 +405 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the unticked-sets sheet offers Keep logging and Discard
+02:28 +406 ~207 -1: <scratch>/p143/mobile/test/sign_in_methods_test.dart: delete account an account with a password keeps the password prompt
+
+Warning: A call to drag() with finder "Found 1 widget with type "Scrollable" (ignoring all but first): [
+  Scrollable(axisDirection: down, physics: AlwaysScrollableScrollPhysics, restorationId: null, dependencies: [InheritedCupertinoTheme, MediaQuery, ScrollConfiguration, UnmanagedRestorationScope, _InheritedTheme, _LocalizationsScope-[GlobalKey#25759]], state: ScrollableState#92818(position: ScrollPositionWithSingleContext#80e5e(offset: 0.0, range: 0.0..104.0, viewport: 1132.0, ScrollableState, AlwaysScrollableScrollPhysics -> ClampingScrollPhysics -> RangeMaintainingScrollPhysics, IdleScrollActivity#8899c, ScrollDirection.idle), effective physics: AlwaysScrollableScrollPhysics -> ClampingScrollPhysics -> RangeMaintainingScrollPhysics)),
+]" derived an Offset (Offset(135.0, 634.0)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderClipRect#678f9
+The hit test result at that offset is: HitTestResult(RenderPointerListener#11d53@Offset(135.0, 566.0), RenderSemanticsGestureHandler#77f1a@Offset(135.0, 566.0), RenderPointerListener#7d097@Offset(135.0, 566.0), _RenderScrollSemantics#7e8ee@Offset(135.0, 566.0), RenderClipRect#58a1b@Offset(135.0, 566.0), RenderConstrainedBox#0ee74@Offset(135.0, 566.0), RenderFlex#21708@Offset(135.0, 634.0), RenderConstrainedBox#e7f2c@Offset(135.0, 634.0), RenderConstrainedBox#9cfbb@Offset(135.0, 634.0), RenderPositionedBox#cadcc@Offset(135.0, 634.0), RenderFlex#848ee@Offset(135.0, 634.0), RenderPadding#c7771@Offset(135.0, 634.0), RenderCustomMultiChildLayoutBox#77af9@Offset(135.0, 634.0), _RenderInkFeatures#3740d@Offset(135.0, 634.0), RenderPhysicalModel#b4c4c@Offset(135.0, 634.0), RenderSemanticsAnnotations#05ca1@Offset(135.0, 634.0), RenderRepaintBoundary#5a583@Offset(135.0, 634.0), RenderIgnorePointer#1784c@Offset(135.0, 634.0), RenderAnimatedOpacity#24869@Offset(135.0, 634.0), RenderAnimatedOpacity#b25d4@Offset(135.0, 634.0), _RenderColoredBox#99c97@Offset(135.0, 634.0), RenderAnimatedOpacity#17429@Offset(135.0, 634.0), RenderIgnorePointer#04554@Offset(135.0, 634.0), RenderAnimatedOpacity#d18b5@Offset(135.0, 634.0), RenderRepaintBoundary#7b82a@Offset(135.0, 634.0), RenderSemanticsAnnotations#d17f9@Offset(135.0, 634.0), RenderOffstage#6f6cf@Offset(135.0, 634.0), RenderSemanticsAnnotations#924de@Offset(135.0, 634.0), _RenderTheater#a5f42@Offset(135.0, 634.0), RenderAbsorbPointer#f11ea@Offset(135.0, 634.0), RenderPointerListener#90100@Offset(135.0, 634.0), RenderAnnotatedRegion<SystemUiOverlayStyle>#c7811@Offset(135.0, 634.0), RenderSemanticsAnnotations#e83c6@Offset(135.0, 634.0), RenderSemanticsAnnotations#bc7eb@Offset(135.0, 634.0), RenderSemanticsAnnotations#645cf@Offset(135.0, 634.0), RenderTapRegionSurface#ead75@Offset(135.0, 634.0), RenderSemanticsAnnotations#b350c@Offset(135.0, 634.0), RenderSemanticsAnnotations#4ac93@Offset(135.0, 634.0), HitTestEntry<HitTestTarget>#3fd57(_ReusableRenderView#1bf35), HitTestEntry<HitTestTarget>#016c6(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      WidgetController.dragUntilVisible.<anonymous closure> (package:flutter_test/src/controller.dart:2483:17)
+#4      _rootRun (dart:async/zone_root.dart:35:13)
+#5      _CustomZone.run (dart:async/zone.dart:810:35)
+#6      TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#7      WidgetController.dragUntilVisible (package:flutter_test/src/controller.dart:2476:27)
+#8      WidgetController.scrollUntilVisible.<anonymous closure> (package:flutter_test/src/controller.dart:2439:13)
+#9      _rootRun (dart:async/zone_root.dart:35:13)
+#10     _CustomZone.run (dart:async/zone.dart:810:35)
+#11     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#12     WidgetController.scrollUntilVisible (package:flutter_test/src/controller.dart:2427:27)
+#13     _reveal (file://<scratch>/p143/mobile/test/sign_in_methods_test.dart:139:18)
+#14     main.<anonymous closure>.<anonymous closure> (file://<scratch>/p143/mobile/test/sign_in_methods_test.dart:603:13)
+<asynchronous suspension>
+#15     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#16     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+#17     StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+02:29 +407 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the saved draft matches today's shape: ticked sets, warm-up flag, skipped exercise
+02:30 +408 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: an out-of-window start day is clamped and the player is told
+02:30 +409 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a record badge is solid on the current best, then struck through when a later set beats it
+02:30 +410 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a record badge is solid on the current best, then struck through when a later set beats it
+02:31 +411 ~207 -1: <scratch>/p143/mobile/test/wallpaper_test.dart: splash shows the wallpaper photo (light app theme)
+02:31 +412 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: unticking a record-earning set clears its badges (#124)
+02:31 +413 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: unticking a record-earning set clears its badges (#124)
+02:32 +414 ~207 -1: <scratch>/p143/mobile/test/wallpaper_test.dart: /login shows the wallpaper photo (light app theme)
+02:32 +415 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the summary lists the current records and the stats (#124)
+02:32 +416 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the summary lists the current records and the stats (#124)
+02:32 +417 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the summary lists the current records and the stats (#124)
+02:32 +418 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the summary lists the current records and the stats (#124)
+02:32 +419 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the summary lists the current records and the stats (#124)
+02:33 +420 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the summary lists the current records and the stats (#124)
+02:33 +421 ~207 -1: <scratch>/p143/mobile/test/wallpaper_test.dart: signed-in Home has no wallpaper (light app theme)
+02:33 +422 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the online summary freezes projected Weekly streak and Checkpoint
+02:33 +423 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the online summary freezes projected Weekly streak and Checkpoint
+02:33 +424 ~207 -1: <scratch>/p143/mobile/test/wallpaper_test.dart: splash lockup is white (dark app theme)
+02:34 +425 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: an offline summary projects pending drafts from its cached status
+02:34 +426 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: an offline summary projects pending drafts from its cached status
+02:34 +427 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: an offline summary projects pending drafts from its cached status
+02:34 +428 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: an offline summary projects pending drafts from its cached status
+02:34 +429 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: an offline summary projects pending drafts from its cached status
+02:34 +430 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: an offline summary projects pending drafts from its cached status
+02:34 +431 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: an offline summary projects pending drafts from its cached status
+02:34 +432 ~207 -1: <scratch>/p143/mobile/test/wallpaper_test.dart: signed-in Home has no wallpaper (dark app theme)
+02:35 +433 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a committed Checkpoint shows its review and computed ratings
+02:35 +434 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a committed Checkpoint shows its review and computed ratings
+02:35 +435 ~207 -1: <scratch>/p143/mobile/test/wallpaper_test.dart: recovery email lockup still follows the theme
+02:35 +436 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a stale cached week hides streak lines but keeps Checkpoint progress
+02:36 +437 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: records and workout summary fit phone and desktop columns
+02:36 +438 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: records and workout summary fit phone and desktop columns
+02:38 +439 ~207 -1: <scratch>/p143/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+02:38 +440 ~207 -1: <scratch>/p143/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+02:39 +441 ~207 -1: <scratch>/p143/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+02:40 +442 ~207 -1: <scratch>/p143/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+02:40 +443 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: turning a ticked warm-up into a working set vibrates (#124)
+02:40 +444 ~207 -1: <scratch>/p143/mobile/test/theme_and_shell_test.dart: an explicit choice is persisted across a restart
+02:41 +445 ~207 -1: <scratch>/p143/mobile/test/theme_and_shell_test.dart: an explicit choice is persisted across a restart
+02:41 +446 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the top bar shows Workout time from the start, ticking every second (#159)
+02:42 +447 ~207 -1: <scratch>/p143/mobile/test/theme_and_shell_test.dart: system bar style follows the effective theme
+02:42 +448 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: Workout time stays correct across a simulated restart (#159)
+02:42 +449 ~207 -1: <scratch>/p143/mobile/test/theme_and_shell_test.dart: bottom navigation exposes Home, Program, and Progress
+02:42 +450 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the ⋮ menu discards the workout behind its own confirmation (#159)
+02:43 +451 ~207 -1: <scratch>/p143/mobile/test/theme_and_shell_test.dart: Settings opens from the header and keeps entry points reachable
+02:43 +452 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the day heading is the one serif line and the progress line counts exercises and sets (#159)
+02:44 +453 ~207 -1: <scratch>/p143/mobile/test/theme_and_shell_test.dart: a non-coach sees the invite entry, not coach destinations
+02:44 +454 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the summary shows the workout's total duration, frozen at Finish, with no overflow at 360dp (#159)
+02:44 +455 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the summary shows the workout's total duration, frozen at Finish, with no overflow at 360dp (#159)
+02:44 +456 ~207 -1: <scratch>/p143/mobile/test/theme_and_shell_test.dart: shell has no overflow at 360.0x640.0 and 2.0x text
+02:44 +457 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the bottom bar keeps sets progress and Finish in reach while the list scrolls (#160)
+02:45 +458 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the bottom bar keeps sets progress and Finish in reach while the list scrolls (#160)
+02:45 +459 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the bottom bar keeps sets progress and Finish in reach while the list scrolls (#160)
+02:45 +460 ~207 -1: <scratch>/p143/mobile/test/theme_and_shell_test.dart: shell and settings have no overflow at 412.0x915.0 and 1.5x text
+02:46 +461 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the bottom bar steps aside for the keypad and the last card scrolls clear of it (#160)
+02:46 +462 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the bottom bar steps aside for the keypad and the last card scrolls clear of it (#160)
+02:46 +463 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: the bottom bar takes the system-nav inset inside its surface and keeps its content above it (#160)
+02:46 +464 ~207 -1: <scratch>/p143/mobile/test/workout_logger_screen_test.dart: a tick clears the Finish nudge and no other message (#160)
+02:47 +465 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web store restores across instances and isolates account keys
+02:47 +466 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:48 +467 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:48 +468 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:48 +469 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:48 +470 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:48 +471 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:48 +472 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:49 +473 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:49 +474 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:49 +475 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:49 +476 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:49 +477 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:49 +478 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:49 +479 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:49 +480 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:49 +481 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:49 +482 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:49 +483 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:49 +484 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:49 +485 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: web commit sends ticked Warm-up movement rows and Cardio
+02:51 +486 ~207 -1: <scratch>/p143/mobile/test/design_review_54_test.dart: offline Home serves the cached program and renders the next session
+02:51 +487 ~207 -1: <scratch>/p143/mobile/test/design_review_54_test.dart: offline Home serves the cached program and renders the next session
+02:52 +488 ~207 -1: <scratch>/p143/mobile/test/design_review_54_test.dart: offline Home serves the cached program and renders the next session
+02:53 +489 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: retry keeps the original id and commits after a 5xx
+02:53 +490 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: retry keeps the original id and commits after a 5xx
+02:53 +491 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: retry keeps the original id and commits after a 5xx
+02:53 +492 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: retry keeps the original id and commits after a 5xx
+02:53 +493 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: retry keeps the original id and commits after a 5xx
+02:53 +494 ~207 -1: <scratch>/p143/mobile/test/design_review_54_test.dart: chat composer docking docks to the bottom safe area with a short history at 412x915
+02:54 +495 ~207 -1: <scratch>/p143/mobile/test/design_review_54_test.dart: chat composer docking docks to the bottom safe area with a short history at 412x915
+02:54 +496 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: retry reconciles a lost response without posting twice
+02:54 +497 ~207 -1: <scratch>/p143/mobile/test/design_review_54_test.dart: chat composer docking stays above a simulated keyboard inset at 412x915
+02:55 +498 ~207 -1: <scratch>/p143/mobile/test/web_active_workout_test.dart: reload after a failed commit reconciles before another POST
+02:55 +498 ~207 -2: <scratch>/p143/mobile/test/web_active_workout_test.dart: reload after a failed commit reconciles before another POST
+02:55 +498 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: docs/design-review/54/README.md links all resolve [E]
+  Expected: true
+    Actual: <false>
+  review artifact missing
+  
+  package:matcher                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18  expect
+  test/design_review_54_test.dart 363:5               main.<fn>
+  
+02:55 +499 ~207 -2: <scratch>/p143/mobile/test/web_active_workout_test.dart: reload after a failed commit reconciles before another POST
+02:55 +500 ~207 -2: <scratch>/p143/mobile/test/web_active_workout_test.dart: reload after a failed commit reconciles before another POST
+02:55 +501 ~207 -2: <scratch>/p143/mobile/test/web_active_workout_test.dart: reload after a failed commit reconciles before another POST
+02:56 +502 ~207 -2: <scratch>/p143/mobile/test/web_active_workout_test.dart: reload after a failed commit reconciles before another POST
+02:56 +503 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep onboarding proportions and numeric light
+02:56 +504 ~207 -2: <scratch>/p143/mobile/test/web_active_workout_test.dart: network failure keeps the workout and exposes Retry
+02:56 +505 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep home light
+02:56 +506 ~207 -2: <scratch>/p143/mobile/test/web_active_workout_test.dart: 401 keeps the workout and never offers Discard
+02:57 +507 ~207 -2: <scratch>/p143/mobile/test/web_active_workout_test.dart: 401 keeps the workout and never offers Discard
+02:57 +508 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep progress light
+02:58 +509 ~207 -2: <scratch>/p143/mobile/test/web_active_workout_test.dart: 429 keeps the workout and offers Retry
+02:58 +510 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep settings light
+02:59 +511 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep settings light
+02:59 +512 ~207 -2: <scratch>/p143/mobile/test/web_active_workout_test.dart: 4xx shows the server detail and allows discarding
+02:59 +513 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep chat light
+02:59 +514 ~207 -2: <scratch>/p143/mobile/test/web_active_workout_test.dart: first web start notice is remembered for the account
+03:01 +515 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep workout logger light
+03:01 +516 ~207 -2: <scratch>/p143/mobile/test/web_active_workout_test.dart: web logout warns and discards the unfinished workout
+03:02 +517 ~207 -2: <scratch>/p143/mobile/test/web_active_workout_test.dart: web logout warns and discards the unfinished workout
+03:02 +518 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep profile light
+03:03 +519 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep profile light
+03:03 +520 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep profile light
+03:03 +521 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep plan light
+03:03 +522 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep assignment light
+03:04 +523 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: the Ask assistant entry is hidden while the feature is off
+03:04 +524 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: the Ask assistant entry is hidden while the feature is off
+03:05 +525 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: the Ask assistant entry is hidden while the feature is off
+03:05 +526 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: the Ask assistant entry is hidden while the feature is off
+03:05 +527 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: the Ask assistant entry is hidden while the feature is off
+03:05 +528 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: the Ask assistant entry is hidden while the feature is off
+03:05 +529 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: the Ask assistant entry is hidden while the feature is off
+03:05 +530 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: the Ask assistant entry is hidden while the feature is off
+03:05 +531 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: the Ask assistant entry is hidden while the feature is off
+03:06 +532 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: the Ask assistant entry is hidden while the feature is off
+03:06 +533 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: the Ask assistant entry is hidden while the feature is off
+03:06 +534 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep progress dark
+03:07 +535 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: the enabled entry opens the assistant and one exchange works
+03:07 +536 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: the enabled entry opens the assistant and one exchange works
+03:08 +537 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: the enabled entry opens the assistant and one exchange works
+03:08 +538 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep workout logger dark
+03:09 +539 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: assistant Markdown fits at 360 dp in light and dark themes
+03:09 +540 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: assistant Markdown fits at 360 dp in light and dark themes
+03:10 +541 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep profile dark
+03:10 +542 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: the next question carries the previous exchange as history
+03:10 +543 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep plan dark
+03:11 +544 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: only the last 12 transcript turns are sent as history
+03:11 +545 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: only the last 12 transcript turns are sent as history
+03:11 +546 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep coach profile dark
+03:11 +547 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep coach profile dark
+03:11 +548 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep coach profile dark
+03:11 +549 ~207 -2: <scratch>/p143/mobile/test/design_review_54_test.dart: 54 sweep coach profile dark
+03:12 +550 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: opening the assistant for another player clears the transcript
+03:12 +551 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: opening the assistant for another player clears the transcript
+03:12 +552 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: opening the assistant for another player clears the transcript
+03:13 +553 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: a 403 clears the transcript, tells the coach, and closes the assistant
+03:13 +554 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: a 403 clears the transcript, tells the coach, and closes the assistant
+03:13 +555 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: a 403 clears the transcript, tells the coach, and closes the assistant
+03:13 +556 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: a 403 clears the transcript, tells the coach, and closes the assistant
+03:13 +557 ~207 -2: <scratch>/p143/mobile/test/offline_workout_sync_test.dart: draft storage explicit discard removes the draft while keep does not
+03:13 +558 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: a roster refresh that lost the assignment clears the transcript
+03:13 +559 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: a roster refresh that lost the assignment clears the transcript
+03:13 +560 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: a roster refresh that lost the assignment clears the transcript
+03:13 +561 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: a roster refresh that lost the assignment clears the transcript
+03:13 +562 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: a roster refresh that lost the assignment clears the transcript
+03:13 +563 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: a roster refresh that lost the assignment clears the transcript
+03:13 +564 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: a roster refresh that lost the assignment clears the transcript
+03:14 +565 ~207 -2: <scratch>/p143/mobile/test/offline_workout_sync_test.dart: sync engine a synced historical entry shows the version difference
+03:15 +566 ~207 -2: <scratch>/p143/mobile/test/offline_workout_sync_test.dart: sync engine a synced historical entry shows the version difference
+03:16 +567 ~207 -2: <scratch>/p143/mobile/test/offline_workout_sync_test.dart: sync engine a synced historical entry shows the version difference
+03:16 +568 ~207 -2: <scratch>/p143/mobile/test/offline_workout_sync_test.dart: sync engine a synced historical entry shows the version difference
+03:17 +569 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: reopening the assistant for a player revoked meanwhile shows no transcript
+03:17 +570 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: reopening the assistant for a player revoked meanwhile shows no transcript
+03:17 +571 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: reopening the assistant for a player revoked meanwhile shows no transcript
+03:17 +572 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: reopening the assistant for a player revoked meanwhile shows no transcript
+03:17 +573 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: reopening the assistant for a player revoked meanwhile shows no transcript
+03:17 +574 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: reopening the assistant for a player revoked meanwhile shows no transcript
+03:17 +575 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: reopening the assistant for a player revoked meanwhile shows no transcript
+03:17 +576 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: reopening the assistant for a player revoked meanwhile shows no transcript
+03:17 +577 ~207 -2: <scratch>/p143/mobile/test/offline_workout_sync_test.dart: program tab offline fallback falls back to the cached program when offline, with a banner shown only then
+03:17 +578 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: losing coach_ai_enabled or the coach capability clears the transcript
+03:18 +579 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: losing coach_ai_enabled or the coach capability clears the transcript
+03:18 +580 ~207 -2: <scratch>/p143/mobile/test/offline_workout_sync_test.dart: workout logger offline banner no offline banner when the cached program is refreshed online
+03:19 +581 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: revoking the assignment clears the transcript
+03:20 +582 ~207 -2: <scratch>/p143/mobile/test/offline_workout_sync_test.dart: workout logger offline banner offline banner when the program can only be served from cache
+03:20 +583 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: disabling coaching clears the transcript
+03:21 +584 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: disabling coaching clears the transcript
+03:21 +585 ~207 -2: <scratch>/p143/mobile/test/offline_workout_sync_test.dart: web online-only boundary keeps logging available while hiding drafts when disabled
+03:21 +586 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: logout clears the transcript
+03:21 +587 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: logout clears the transcript
+03:22 +588 ~207 -2: <scratch>/p143/mobile/test/offline_workout_sync_test.dart: logout warning keep drafts and log out preserves the draft
+03:22 +589 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: app close clears the transcript (AppLifecycleState.detached)
+03:23 +590 ~207 -2: <scratch>/p143/mobile/test/offline_workout_sync_test.dart: logout warning discard drafts and log out erases them
+03:23 +591 ~207 -2: <scratch>/p143/mobile/test/offline_workout_sync_test.dart: logout warning discard drafts and log out erases them
+03:23 +592 ~207 -2: <scratch>/p143/mobile/test/coach_assistant_test.dart: a 404 from the service reports that the feature is off
+03:23 +593 ~207 -2: <scratch>/p143/mobile/test/offline_workout_sync_test.dart: logging a workout saves a draft and shows the workouts screen
+03:24 +594 ~207 -2: <scratch>/p143/mobile/test/offline_workout_sync_test.dart: logging a workout saves a draft and shows the workouts screen
+03:25 +595 ~207 -2: <scratch>/p143/mobile/test/coach_programs_test.dart: coach publishes a program and sees the published version
+03:28 +596 ~207 -2: <scratch>/p143/mobile/test/coach_programs_test.dart: coach publishes a program and sees the published version
+03:28 +597 ~207 -2: <scratch>/p143/mobile/test/coach_programs_test.dart: coach publishes a program and sees the published version
+03:28 +598 ~207 -2: <scratch>/p143/mobile/test/coach_programs_test.dart: coach publishes a program and sees the published version
+03:28 +599 ~207 -2: <scratch>/p143/mobile/test/coach_programs_test.dart: coach publishes a program and sees the published version
+03:28 +600 ~207 -2: <scratch>/p143/mobile/test/coach_programs_test.dart: coach publishes a program and sees the published version
+03:28 +601 ~207 -2: <scratch>/p143/mobile/test/coach_programs_test.dart: coach publishes a program and sees the published version
+03:28 +602 ~207 -2: <scratch>/p143/mobile/test/coach_programs_test.dart: coach publishes a program and sees the published version
+03:28 +603 ~207 -2: <scratch>/p143/mobile/test/coach_programs_test.dart: coach publishes a program and sees the published version
+03:28 +604 ~207 -2: <scratch>/p143/mobile/test/coach_programs_test.dart: coach publishes a program and sees the published version
+03:28 +605 ~207 -2: <scratch>/p143/mobile/test/coach_programs_test.dart: coach publishes a program and sees the published version
+03:28 +606 ~207 -2: <scratch>/p143/mobile/test/offline_workout_sync_test.dart: performed-date corrections an unsynced draft offers a bounded local date edit
+03:29 +607 ~207 -2: <scratch>/p143/mobile/test/coach_programs_test.dart: profile shows and saves the intake rep preference values
+03:29 +608 ~207 -2: <scratch>/p143/mobile/test/coach_programs_test.dart: profile shows and saves the intake rep preference values
+03:30 +609 ~207 -2: <scratch>/p143/mobile/test/coach_programs_test.dart: profile confirms changed Equipment access and rebuilds
+03:32 +610 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: iPhone Safari sees the hint outside standalone
+03:32 +611 ~207 -2: <scratch>/p143/mobile/test/coach_programs_test.dart: player program hides the version and keeps coach provenance
+03:32 +612 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: standalone and non-Safari browsers do not see the hint
+03:33 +613 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: standalone and non-Safari browsers do not see the hint
+03:33 +614 ~207 -2: <scratch>/p143/mobile/test/coach_programs_test.dart: player sees a program_published notice and can mark it read
+03:33 +615 ~207 -2: <scratch>/p143/mobile/test/coach_programs_test.dart: player sees a program_published notice and can mark it read
+03:33 +616 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: dismissal persists when the login screen is rebuilt
+03:33 +617 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: dismissal persists when the login screen is rebuilt
+03:34 +618 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: without storage the close button still hides the hint, which returns on the next visit
+03:34 +619 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: hint slot preserves the focused field when keyboard opens
+03:35 +620 ~207 -2: <scratch>/p143/mobile/test/not_found_screen_test.dart: an unknown path shows the not-found page
+03:36 +621 ~207 -2: <scratch>/p143/mobile/test/not_found_screen_test.dart: an unknown path shows the not-found page
+03:36 +622 ~207 -2: <scratch>/p143/mobile/test/not_found_screen_test.dart: an unknown path shows the not-found page
+03:37 +623 ~207 -2: <scratch>/p143/mobile/test/not_found_screen_test.dart: an unknown path shows the not-found page
+03:37 +624 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: login shows a loading state while the request is in flight
+03:37 +625 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: login shows a loading state while the request is in flight
+03:37 +626 ~207 -2: <scratch>/p143/mobile/test/not_found_screen_test.dart: a signed-out cold deep link survives password login
+03:38 +627 ~207 -2: <scratch>/p143/mobile/test/not_found_screen_test.dart: a signed-out cold deep link survives password login
+03:38 +628 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: registration success lands on the recovery-email gate
+03:39 +629 ~207 -2: <scratch>/p143/mobile/test/not_found_screen_test.dart: register and return to login keep the requested page
+03:39 +630 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: coach code registration passes recovery gate into Coach mode
+03:40 +631 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: coach code registration passes recovery gate into Coach mode
+03:40 +632 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: invalid coach code shows service error and stays at sign-up
+03:41 +633 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: invalid coach code shows service error and stays at sign-up
+03:41 +634 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: invalid coach code shows service error and stays at sign-up
+03:41 +635 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: invalid coach code shows service error and stays at sign-up
+03:41 +636 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: invalid coach code shows service error and stays at sign-up
+03:41 +637 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: recovery-email gate shows a server error, then unlocks
+03:42 +638 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: recovery-email gate shows a server error, then unlocks
+03:42 +639 ~207 -2: <scratch>/p143/mobile/test/check_ins_test.dart: coach records a check-in and it appears in the list
+03:43 +640 ~207 -2: <scratch>/p143/mobile/test/check_ins_test.dart: coach records a check-in and it appears in the list
+03:43 +641 ~207 -2: <scratch>/p143/mobile/test/check_ins_test.dart: coach records a check-in and it appears in the list
+03:44 +642 ~207 -2: <scratch>/p143/mobile/test/check_ins_test.dart: coach records a check-in and it appears in the list
+03:44 +643 ~207 -2: <scratch>/p143/mobile/test/check_ins_test.dart: coach records a check-in and it appears in the list
+03:44 +644 ~207 -2: <scratch>/p143/mobile/test/check_ins_test.dart: coach records a check-in and it appears in the list
+03:44 +645 ~207 -2: <scratch>/p143/mobile/test/check_ins_test.dart: coach records a check-in and it appears in the list
+03:45 +646 ~207 -2: <scratch>/p143/mobile/test/check_ins_test.dart: coach records a check-in and it appears in the list
+03:45 +647 ~207 -2: <scratch>/p143/mobile/test/check_ins_test.dart: coach records a check-in and it appears in the list
+03:45 +648 ~207 -2: <scratch>/p143/mobile/test/check_ins_test.dart: coach records a check-in and it appears in the list
+03:45 +649 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: on a desktop window the sign-in form keeps a phone-width column
+03:46 +650 ~207 -2: <scratch>/p143/mobile/test/check_ins_test.dart: player sees former coaches' check-ins after unassignment
+03:46 +651 ~207 -2: <scratch>/p143/mobile/test/check_ins_test.dart: player sees former coaches' check-ins after unassignment
+03:46 +652 ~207 -2: <scratch>/p143/mobile/test/check_ins_test.dart: player sees former coaches' check-ins after unassignment
+03:46 +653 ~207 -2: <scratch>/p143/mobile/test/check_ins_test.dart: player sees former coaches' check-ins after unassignment
+03:46 +654 ~207 -2: <scratch>/p143/mobile/test/check_ins_test.dart: player sees former coaches' check-ins after unassignment
+03:47 +655 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: register has no overflow at 360x640 with the keyboard open
+03:47 +656 ~207 -2: <scratch>/p143/mobile/test/check_ins_test.dart: alert center renders a follow-up-due alert
+03:47 +657 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: register has no overflow at 360x640 and 2.0x text
+03:47 +658 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: recovery has no overflow at 360x640 with the keyboard open
+03:47 +659 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: recovery has no overflow at 360x640 and 2.0x text
+03:47 +660 ~207 -2: <scratch>/p143/mobile/test/auth_screens_test.dart: dark theme renders the auth composition
+03:48 +661 ~207 -2: <scratch>/p143/mobile/test/coach_alerts_test.dart: roster row carries the new-alert chip and no acknowledged chip
+03:50 +662 ~207 -2: <scratch>/p143/mobile/test/rest_timer_widget_test.dart: the prescription line shows the program rest length and 2:00 when unset (#125 via the #162 menu)
+03:51 +663 ~207 -2: <scratch>/p143/mobile/test/rest_timer_widget_test.dart: the prescription line shows the program rest length and 2:00 when unset (#125 via the #162 menu)
+03:52 +664 ~207 -2: <scratch>/p143/mobile/test/rest_timer_widget_test.dart: the prescription line shows the program rest length and 2:00 when unset (#125 via the #162 menu)
+03:52 +665 ~207 -2: <scratch>/p143/mobile/test/rest_timer_widget_test.dart: the prescription line shows the program rest length and 2:00 when unset (#125 via the #162 menu)
+03:52 +666 ~207 -2: <scratch>/p143/mobile/test/rest_timer_widget_test.dart: the picker offers Off and 1:00–5:00 in 15-second steps and writes a device override
+03:54 +667 ~207 -2: <scratch>/p143/mobile/test/coach_roster_player_test.dart: roster rows keep the server order and show each urgency chip
+03:55 +668 ~207 -2: <scratch>/p143/mobile/test/rest_timer_widget_test.dart: the bottom bar shows #125's rest controls on a working tick, only while the keypad is hidden, and −15/+15/Skip drive the seam
+03:55 +669 ~207 -2: <scratch>/p143/mobile/test/rest_timer_widget_test.dart: the bottom bar shows #125's rest controls on a working tick, only while the keypad is hidden, and −15/+15/Skip drive the seam
+03:56 +670 ~207 -2: <scratch>/p143/mobile/test/coach_roster_player_test.dart: the player page acts on open alerts and refreshes badge and row
+03:57 +671 ~207 -2: <scratch>/p143/mobile/test/coach_roster_player_test.dart: the player page acts on open alerts and refreshes badge and row
+03:57 +672 ~207 -2: <scratch>/p143/mobile/test/rest_timer_widget_test.dart: the focused row and keypad stay clear at the Safari viewport
+03:58 +673 ~207 -2: <scratch>/p143/mobile/test/coach_roster_player_test.dart: the log check-in sheet requires a channel and saves today
+03:59 +674 ~207 -2: <scratch>/p143/mobile/test/rest_timer_widget_test.dart: tapping a visible row does not recenter the list
+03:59 +675 ~207 -2: <scratch>/p143/mobile/test/coach_roster_player_test.dart: saving a check-in refreshes the page alerts and the badge
+04:00 +676 ~207 -2: <scratch>/p143/mobile/test/rest_timer_widget_test.dart: a warm-up tick never starts the rest timer
+04:00 +677 ~207 -2: <scratch>/p143/mobile/test/coach_roster_player_test.dart: the player page segments History and Check-ins
+04:01 +678 ~207 -2: <scratch>/p143/mobile/test/rest_timer_widget_test.dart: Off rest: a working tick starts no timer
+04:02 +679 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Active workout lifecycle Warm-up movements and Cardio survive an app restart
+04:02 +680 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Active workout lifecycle is created, persisted after changes, and restored on restart
+04:02 +681 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Active workout lifecycle refuses a second start until the current workout is discarded
+04:02 +682 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Active workout lifecycle a target RPE cap is shown as its equivalent minimum RIR (#111)
+04:02 +683 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Active workout lifecycle seeds planned rows like the logger and applies the set operations
+04:02 +684 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Replace exercise (#162) clears the planned exercise in place and adds the replacement
+04:02 +685 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Replace exercise (#162) the draft sends the planned exercise as skipped and the replacement as performed
+04:02 +686 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Replace exercise (#162) never touches the program, and the replacement reads its own frozen baseline
+04:02 +687 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Replace exercise (#162) Remove takes an unplanned exercise out and never a planned one
+04:02 +688 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Replace exercise (#162) undo replace brings the planned exercise back as an ordinary card
+04:02 +689 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Replace exercise (#162) a running rest for the replaced exercise stops like Skip, and one for another exercise keeps running (#162)
+04:02 +690 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Replace exercise (#162) re-picking the exercise being replaced changes nothing (#162)
+04:02 +691 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: card lines (#158) the line uses the effective sets and the frozen projection (#108)
+04:02 +692 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: card lines (#158) one set reads "1 set", and Rest Off keeps the chip words
+04:02 +693 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: card lines (#158) a workout stored before effective sets was kept falls back to the program target
+04:02 +694 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: card lines (#158) the caption helper formats every clause, and only those present
+04:02 +695 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: card lines (#158) the Last: line reads a bodyweight set as BW, never 0kg
+04:02 +696 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Current set (#158) is the first unticked working set of the first exercise
+04:02 +697 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Current set (#158) skips warm-ups and keeps counting past them
+04:02 +698 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Current set (#158) follows the ticks down the exercise and across to the next one
+04:02 +699 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Current set (#158) is null once every working set is ticked
+04:02 +700 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Current set (#158) an empty workout has no current set at all
+04:02 +701 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Workout progress (#159) counts working sets only — warm-ups are excluded on both sides
+04:02 +702 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Workout progress (#159) an exercise completes only when all its working sets are ticked
+04:02 +703 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Workout progress (#159) an exercise with no working rows is excluded from the counts
+04:02 +704 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Workout progress (#159) a fresh workout starts at zero
+04:02 +705 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Workout time (#159) formats as mm:ss, and h:mm:ss once it passes an hour
+04:02 +706 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Workout time (#159) never reads a negative time
+04:02 +707 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Workout time (#159) is derived from the start time, so a restart reads the same clock
+04:02 +708 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: store writes are serialized (#123 item 5) writes land in state order and the latest state wins
+04:02 +709 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +710 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +711 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +712 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +713 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +714 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +715 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +716 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +717 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +718 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +719 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +720 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +721 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +722 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +723 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +724 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +725 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +726 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme light theme uses the black lockup
+04:03 +727 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme an explicit white variant wins over the theme
+04:04 +728 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandMark asset per theme dark theme uses the white mark
+04:04 +729 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandMark asset per theme light theme uses the black mark
+04:04 +730 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: header brand is centred on the screen and at most 24px tall
+04:04 +731 ~207 -2: <scratch>/p143/mobile/test/connectivity_test.dart: a transport failure marks offline and the next response online
+04:04 +732 ~207 -2: <scratch>/p143/mobile/test/connectivity_test.dart: a transport failure marks offline and the next response online
+04:04 +733 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: header brand stays clear of the actions at 320px and 2.0x text
+04:04 +734 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: header brand stays clear of the actions at 320px and 2.0x text
+04:04 +735 ~207 -2: <scratch>/p143/mobile/test/connectivity_test.dart: the offline banner shows while offline and clears when online
+04:04 +736 ~207 -2: <scratch>/p143/mobile/test/connectivity_test.dart: the offline banner shows while offline and clears when online
+04:04 +737 ~207 -2: <scratch>/p143/mobile/test/connectivity_test.dart: the offline banner shows while offline and clears when online
+04:04 +738 ~207 -2: <scratch>/p143/mobile/test/connectivity_test.dart: the offline banner shows while offline and clears when online
+04:06 +739 ~207 -2: <scratch>/p143/mobile/test/connectivity_test.dart: browser events drive the banner below the app header
+04:07 +740 ~207 -2: <scratch>/p143/mobile/test/connectivity_test.dart: the auth banner is at the top of content and keeps its slot
+04:07 +741 ~207 -2: <scratch>/p143/mobile/test/connectivity_test.dart: no banner without the web flag, even when offline
+04:08 +742 ~207 -2: Some tests failed.
+
+Failing tests:
+  <scratch>/p143/mobile/test/design_review_54_test.dart: docs/design-review/54/README.md links all resolve
+  <scratch>/p143/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging

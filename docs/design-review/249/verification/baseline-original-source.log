@@ -1,0 +1,123 @@
+   Woah! You appear to be trying to run flutter as root.
+   We strongly recommend running the flutter tool without superuser privileges.
+  /
+📎
+00:00 +0: loading <scratch>/p143orig/mobile/test/program_authority_test.dart
+00:00 +0: <scratch>/p143orig/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:02 +1: <scratch>/p143orig/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:02 +2: <scratch>/p143orig/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:02 +3: <scratch>/p143orig/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:02 +4: <scratch>/p143orig/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:03 +5: <scratch>/p143orig/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:03 +6: <scratch>/p143orig/mobile/test/design_review_54_test.dart: chat composer docking docks to the bottom safe area with a short history at 412x915
+00:04 +7: <scratch>/p143orig/mobile/test/program_authority_test.dart: normal profile update announces the rebuild
+00:05 +8: <scratch>/p143orig/mobile/test/program_authority_test.dart: normal profile update announces the rebuild
+00:05 +8 -1: <scratch>/p143orig/mobile/test/program_authority_test.dart: normal profile update announces the rebuild
+00:05 +8 -1: <scratch>/p143orig/mobile/test/design_review_54_test.dart: docs/design-review/54/README.md links all resolve [E]
+  Expected: true
+    Actual: <false>
+  review artifact missing
+  
+  package:matcher                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18  expect
+  test/design_review_54_test.dart 363:5               main.<fn>
+  
+00:05 +9 -1: <scratch>/p143orig/mobile/test/program_authority_test.dart: normal profile update announces the rebuild
+00:05 +10 -1: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep auth login light
+00:05 +11 -1: <scratch>/p143orig/mobile/test/program_authority_test.dart: Training profile pre-fills editable values and saves goal/weight without rebuild
+00:05 +12 -1: <scratch>/p143orig/mobile/test/program_authority_test.dart: Training profile pre-fills editable values and saves goal/weight without rebuild
+00:05 +13 -1: <scratch>/p143orig/mobile/test/program_authority_test.dart: Training profile pre-fills editable values and saves goal/weight without rebuild
+00:05 +14 -1: <scratch>/p143orig/mobile/test/program_authority_test.dart: Training profile pre-fills editable values and saves goal/weight without rebuild
+00:06 +15 -1: <scratch>/p143orig/mobile/test/program_authority_test.dart: Training profile pre-fills editable values and saves goal/weight without rebuild
+00:06 +16 -1: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep program light
+00:07 +17 -1: <scratch>/p143orig/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging
+00:07 +18 -1: <scratch>/p143orig/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging
+00:08 +19 -1: <scratch>/p143orig/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging
+00:09 +20 -1: <scratch>/p143orig/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following StateError was thrown running a test:
+Bad state: No element
+
+When the exception was thrown, this was the stack:
+#0      _Array.first (dart:core-patch/array.dart:52:5)
+#1      _ProfileScreenState._load.<anonymous closure> (package:mayos_mobile/src/features/player/profile/profile_screen.dart:154:32)
+#2      State.setState (package:flutter/src/widgets/framework.dart:1201:30)
+#3      _ProfileScreenState._load (package:mayos_mobile/src/features/player/profile/profile_screen.dart:148:7)
+<asynchronous suspension>
+
+The test description was:
+  older intake contract shows a service update error instead of hanging
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:10 +20 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep workout logger light
+00:10 +20 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging [E]
+  Test failed. See exception logs above.
+  The test description was: older intake contract shows a service update error instead of hanging
+  
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test (but after the test had completed):
+Expected: no matching candidates
+  Actual: _TypeWidgetFinder:<Found 1 widget with type "CircularProgressIndicator": [
+            CircularProgressIndicator(<indeterminate>, state:
+_CircularProgressIndicatorState#cd0f6(ticker active)),
+          ]>
+   Which: means one was found but none were expected
+
+When the exception was thrown, this was the stack:
+#0      fail (package:matcher/src/expect/expect.dart:187:31)
+#1      _expect (package:matcher/src/expect/expect.dart:182:3)
+#2      expect (package:matcher/src/expect/expect.dart:65:3)
+#3      expect (package:flutter_test/src/widget_tester.dart:473:18)
+#4      main.<anonymous closure> (file://<scratch>/p143orig/mobile/test/program_authority_test.dart:185:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  Test failed. See exception logs above.
+  The test description was: older intake contract shows a service update error instead of hanging
+  
+00:10 +21 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: saving another fact preserves saved multi-decimal weight
+00:11 +22 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep workout drafts light
+00:11 +23 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: offline Training profile save changes nothing
+00:11 +24 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep profile light
+00:12 +25 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: offline save after rebuild confirmation changes nothing
+00:12 +26 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep plan light
+00:13 +27 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: empty saved goal is omitted while saving another profile fact
+00:13 +28 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep assignment light
+00:13 +29 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: invalid weight is rejected before rebuild confirmation
+00:14 +30 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: invalid weight is rejected before rebuild confirmation
+00:14 +31 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep coach alerts light
+00:14 +32 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: saving the schedule leaves the training-days setting untouched
+00:14 +33 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: saving the schedule leaves the training-days setting untouched
+00:14 +34 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: saving the schedule leaves the training-days setting untouched
+00:14 +35 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: saving the schedule leaves the training-days setting untouched
+00:15 +36 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: saving the schedule leaves the training-days setting untouched
+00:15 +37 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: saving the schedule leaves the training-days setting untouched
+00:15 +38 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep onboarding proportions and numeric dark
+00:15 +39 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: the timezone field is prefilled from the device when no schedule exists
+00:15 +40 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: the timezone field is prefilled from the device when no schedule exists
+00:15 +41 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep program dark
+00:16 +42 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: a non-IANA timezone is refused before submit
+00:16 +43 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep progress dark
+00:16 +44 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: a prospective pause can be scheduled and is listed
+00:17 +45 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: a prospective pause can be scheduled and is listed
+00:17 +46 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep chat dark
+00:17 +47 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: a pause starting before today is refused inline
+00:18 +48 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep workout logger dark
+00:18 +49 -2: <scratch>/p143orig/mobile/test/program_authority_test.dart: null-program confirmation lands home without a fabricated program
+00:18 +50 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep workout drafts dark
+00:18 +51 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep workout drafts dark
+00:19 +52 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep profile dark
+00:19 +53 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep plan dark
+00:20 +54 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep assignment dark
+00:20 +55 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep coach profile dark
+00:21 +56 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep coach alerts dark
+00:21 +57 -2: <scratch>/p143orig/mobile/test/design_review_54_test.dart: 54 sweep coach assignments dark
+00:21 +58 -2: Some tests failed.
+
+Failing tests:
+  <scratch>/p143orig/mobile/test/design_review_54_test.dart: docs/design-review/54/README.md links all resolve
+  <scratch>/p143orig/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging
