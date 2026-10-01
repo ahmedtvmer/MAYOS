@@ -120,8 +120,9 @@ class SettingsScreen extends ConsumerWidget {
                   Divider(height: 1, color: c.border),
                   MayosSettingsTile(
                     icon: Icons.workspace_premium_outlined,
-                    title: 'Enable coaching',
-                    subtitle: 'Redeem an owner-issued coach code',
+                    title: 'Become a coach',
+                    subtitle:
+                        'Enter your MAYOS coach code to unlock Coach mode',
                     onTap: () => context.push(coachInvitePath),
                   ),
                 ],
