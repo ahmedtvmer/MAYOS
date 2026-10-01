@@ -16,6 +16,72 @@ from utils.equipment_access import (
 )
 
 
+@pytest.mark.parametrize("access,frequency", [
+    (COMMERCIAL_GYM, frequency)
+    for frequency in range(1, 6)
+] + [
+    (HOME_GYM, frequency)
+    for frequency in range(1, 6)
+] + [
+    (BODYWEIGHT_ONLY, frequency)
+    for frequency in range(1, 6)
+])
+def test_generated_program_working_sets_fit_equipment_access(fresh_store, access, frequency):
+    from agent.program_generator import generate_program_pipeline
+
+    fresh_store.ledger.upsert_player_profile({
+        "gender": "male", "proportions": "balanced", "age": 30,
+        "weight_kg": 80, "height_cm": 180, "rep_preference": "balanced",
+        "current_goal": "hypertrophy", "long_term_goal": "strength",
+        "weekly_frequency": frequency, "training_age_years": 3,
+        "equipment_access": access, "injuries_or_limitations": "None",
+        "stress_and_sleep": "normal",
+    })
+
+    program, _ = generate_program_pipeline(ledger=fresh_store.ledger)
+
+    free_weights = {"barbell", "dumbbell", "ez barbell", "olympic barbell", "kettlebell", "trap bar"}
+    bands = {"band", "resistance band"}
+    bodyweight = {"body weight", "bodyweight"}
+    expected = (
+        free_weights | bands | bodyweight if access == HOME_GYM
+        else bodyweight if access == BODYWEIGHT_ONLY
+        else None
+    )
+    for day in program.days:
+        assert day.exercises
+        for exercise in day.exercises:
+            entry = fresh_store.get_exercise_library_entry(exercise.exercise_id)
+            category = entry["equipment"].casefold()
+            if expected is None:
+                assert category not in bands | bodyweight | {"weighted"}
+            else:
+                assert category in expected
+
+
+def test_commercial_gym_warmup_movements_keep_bodyweight_options(fresh_store):
+    from agent.program_generator import generate_program_pipeline
+
+    fresh_store.ledger.upsert_player_profile({
+        "gender": "male", "proportions": "balanced", "age": 30,
+        "weight_kg": 80, "height_cm": 180, "rep_preference": "balanced",
+        "current_goal": "hypertrophy", "long_term_goal": "strength",
+        "weekly_frequency": 3, "training_age_years": 3,
+        "equipment_access": COMMERCIAL_GYM, "injuries_or_limitations": "None",
+        "stress_and_sleep": "normal",
+    })
+
+    program, _ = generate_program_pipeline(ledger=fresh_store.ledger)
+
+    assert all(day.warmup_exercises for day in program.days)
+    warmup_categories = {
+        fresh_store.get_exercise_library_entry(movement.exercise_id)["equipment"].casefold()
+        for day in program.days
+        for movement in day.warmup_exercises
+    }
+    assert warmup_categories & {"body weight", "band", "resistance band"}
+
+
 @pytest.mark.parametrize(
     ("free_text", "expected"),
     [

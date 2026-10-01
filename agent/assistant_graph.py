@@ -57,6 +57,7 @@ from database.exercise_library.names import near_miss_exercise_ids
 from service import programs as programs_service
 from service.program_substitution import ProgramSubstitution, substitute_program_exercise
 from utils.logger import MyosLogger
+from utils.equipment_access import equipment_access_allows
 from utils.model_downloader import llm, uses_cloud_backend
 from utils.text_scrubber import CoachOutputScrubber, EMPTY_RESPONSE_FALLBACK, PIPELINE_ERROR_RESPONSE, finalize_coach_output
 
@@ -993,13 +994,20 @@ def _near_miss_refusal(store: Any, target: str, exercise_ids: frozenset[str]) ->
     return {"program_updated": False, "response_content": content, "messages": [AIMessage(content=content)]}
 
 
-def _slot_alternative_lines(db: Any, matched_ex: Any, target_muscle: str, body_part: str) -> list[str]:
+def _slot_alternative_lines(
+    db: Any,
+    matched_ex: Any,
+    target_muscle: str,
+    body_part: str,
+    equipment_access: str,
+) -> list[str]:
     alt_vec = EMBED_MODEL.embed_query(f"{target_muscle} {matched_ex.exercise_name}")
     slot_candidates = db.search_similar_exercises(alt_vec, limit=6)
     return [
         f"- **{c['name'].title()}** (`{c.get('target_muscle', '').title()}` | `{c.get('equipment', '')}`)"
         for c in slot_candidates
         if str(c["id"]) != str(matched_ex.exercise_id)
+        and equipment_access_allows(equipment_access, c.get("equipment"))
         and _muscle_compatible(c, target_muscle, body_part)
     ][:3]
 
@@ -1077,6 +1085,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         msg = "No active routine found in your ledger. Generate a baseline routine first."
         return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
     player_profile = ledger.get_player_profile() or {}
+    equipment_access = player_profile.get("equipment_access", "Commercial gym")
     experience_level = experience_level_for_training_age(player_profile.get("training_age_years", 0.0))
 
     requested_day_name = _requested_substitution_day(active_program, query)
@@ -1153,6 +1162,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         valid_candidates = [
             c for c in raw_candidates
             if str(c["id"]) != str(matched_ex.exercise_id)
+            and equipment_access_allows(equipment_access, c.get("equipment"))
             and (
                 (target_muscle and target_muscle.lower() in c.get("target_muscle", "").lower())
                 or ((cand_body := c.get("body_part", "").lower()) and body_part and cand_body == body_part.lower())
@@ -1212,7 +1222,10 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     if compatible_name_match is not None:
         replacement = compatible_name_match
     elif name_matches:
-        potential = _slot_alternative_lines(store, matched_ex, target_muscle, body_part)
+        potential = _slot_alternative_lines(
+            store, matched_ex, target_muscle, body_part,
+            equipment_access,
+        )
         rejected = name_matches[0]
         msg = (
             f"**{rejected['name'].title()}** is in the exercise database, but it targets "
@@ -1234,6 +1247,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
                 c
                 for c in candidates
                 if str(c["id"]) != str(matched_ex.exercise_id)
+                and equipment_access_allows(equipment_access, c.get("equipment"))
                 and (
                     (
                         target_muscle
@@ -1274,7 +1288,10 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
                     replacement = bb_cand
 
     if not replacement:
-        potential = _slot_alternative_lines(store, matched_ex, target_muscle, body_part)
+        potential = _slot_alternative_lines(
+            store, matched_ex, target_muscle, body_part,
+            equipment_access,
+        )
         msg = (
             f"Could not find a biomechanically suitable match for **'{raw_target or target_desc}'** "
             f"(I couldn't confidently identify it for your `{target_muscle.title()}` slot).\n\n"

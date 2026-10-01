@@ -65,6 +65,7 @@ def _warmup_movements_payload(db: Any, body: SessionCommitIn) -> list[dict[str, 
 async def search_exercises(
     player: Annotated[Any, Depends(get_verified_player)],
     db: Annotated[Any, Depends(get_db)],
+    ledger: Annotated[Any, Depends(get_ledger)],
     query: str | None = None,
     target_muscle: str | None = None,
 ):
@@ -80,10 +81,23 @@ async def search_exercises(
             detail="Provide query, target_muscle, or both.",
         )
     limit = 25 if target_muscle else 10
-    return {
-        "exercises": db.find_exercises_by_name(
+    equipment_access = None
+    if target_muscle and not query:
+        equipment_access = (ledger.get_player_profile() or {}).get(
+            "equipment_access", "Commercial gym"
+        )
+    if equipment_access:
+        exercises = db._find_exercises_by_name_for_access(
+            query or "", limit, target_muscle, equipment_access
+        )
+    else:
+        exercises = db.find_exercises_by_name(
             query or "", limit=limit, target_muscle=target_muscle
         )
+    return {
+        # A muscle-only Replace browse suggests options, while a typed name is
+        # the player's explicit Exercise library search and remains unfiltered.
+        "exercises": exercises,
     }
 
 

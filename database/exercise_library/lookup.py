@@ -9,6 +9,7 @@ from database.exercise_library.schema import (
     EFFECTIVE_EXERCISE_NAME_SQL,
     effective_exercise_name_sql,
 )
+from utils.equipment_access import equipment_access_sql
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class _NameSearch:
     muscle: str
     muscle_clause: str
     muscle_params: tuple[str, ...]
+    equipment_clause: str | None
     limit: int
 
 
@@ -115,8 +117,11 @@ def _token_name_rows(cursor, search: _NameSearch):
 
 def _find_name_rows(cursor, search: _NameSearch):
     if search.muscle and not search.query:
+        where = search.muscle_clause
+        if search.equipment_clause:
+            where += f" AND ({search.equipment_clause})"
         return _exercise_name_rows(
-            cursor, search.muscle_clause, list(search.muscle_params), search.limit
+            cursor, where, list(search.muscle_params), search.limit
         )
     if not search.normalized_query:
         return []
@@ -194,7 +199,28 @@ class ExerciseLookupMixin:
         }
 
     def find_exercises_by_name(
-        self, query: str, limit: int = 5, target_muscle: str | None = None
+        self,
+        query: str,
+        limit: int = 5,
+        target_muscle: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return self._find_exercises_by_name(query, limit, target_muscle)
+
+    def _find_exercises_by_name_for_access(
+        self,
+        query: str,
+        limit: int,
+        target_muscle: str | None,
+        equipment_access: str,
+    ) -> list[dict[str, Any]]:
+        return self._find_exercises_by_name(query, limit, target_muscle, equipment_access)
+
+    def _find_exercises_by_name(
+        self,
+        query: str,
+        limit: int,
+        target_muscle: str | None,
+        equipment_access: str | None = None,
     ) -> list[dict[str, Any]]:
         """Ranked Exercise library matches across source names, display names, and aliases.
 
@@ -220,6 +246,7 @@ class ExerciseLookupMixin:
             muscle=muscle,
             muscle_clause="LOWER(e.target_muscle) = ?" if muscle else "1 = 1",
             muscle_params=(muscle,) if muscle else (),
+            equipment_clause=(equipment_access_sql(equipment_access) if equipment_access else None),
             limit=limit,
         )
         with self._catalog_lock:

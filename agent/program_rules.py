@@ -16,6 +16,8 @@ from agent.program_blueprints import (
     resolve_split_type,
 )
 from agent.ProgramState import CustomDayPlan, DynamicSplitPlan
+from utils.equipment_access import equipment_access_sql
+from utils.equipment_access import BODYWEIGHT_ONLY
 from utils.model_downloader import llm
 
 load_dotenv()
@@ -283,6 +285,7 @@ def _fetch_by_sql(
     limit: int,
     extra_exclude: str = "",
     name_rank: tuple[str, ...] = (),
+    filter_equipment_access: bool = True,
     *,
     ledger: Any,
 ) -> list[dict[str, Any]]:
@@ -293,8 +296,8 @@ def _fetch_by_sql(
     if extra_exclude:
         where.append(f"({extra_exclude})")
     where.append("LOWER(body_part) != 'cardio'")
-    if "gym" in equipment_access.lower() or "commercial" in equipment_access.lower():
-        where.append("LOWER(name) NOT LIKE '%push-up%' AND LOWER(name) NOT LIKE '%pushup%'")
+    if filter_equipment_access:
+        where.append(equipment_access_sql(equipment_access))
     if any(w in limitations.lower() for w in ["back", "lumbar", "spine"]):
         where.append("LOWER(name) NOT LIKE '%deadlift%' AND LOWER(name) NOT LIKE '%good morning%'")
 
@@ -346,9 +349,44 @@ def fetch_slot_candidates(
         name_rank=spec.name_rank,
         ledger=ledger,
     )
+    if not candidates and equipment_access == BODYWEIGHT_ONLY:
+        # Some isolation slots have no bodyweight-named catalog rows (for
+        # example lateral raises). Offer a same-muscle bodyweight movement as
+        # a fallback so a Bodyweight-only player can still generate a day.
+        fallback_sql = _bodyweight_slot_fallback_sql(slot_key)
+        if fallback_sql:
+            candidates = _fetch_by_sql(
+                fallback_sql,
+                ("body weight",),
+                equipment_access,
+                limitations,
+                limit,
+                ledger=ledger,
+            )
     for item in candidates:
         item["slot_key"] = slot_key
     return candidates
+
+
+def _bodyweight_slot_fallback_sql(slot_key: str) -> str | None:
+    """Broader same-muscle fallback for Bodyweight-only isolation slots."""
+    if slot_key in {"side_delts", "rear_delts", "shoulder_press"}:
+        return "LOWER(target_muscle) = 'delts' OR EXISTS (" \
+            "SELECT 1 FROM exercise_secondary_muscles s WHERE s.exercise_id = exercises.id " \
+            "AND LOWER(s.muscle) IN ('shoulders', 'deltoids', 'delts'))"
+    if slot_key.startswith("triceps_"):
+        return "LOWER(target_muscle) = 'triceps' OR EXISTS (" \
+            "SELECT 1 FROM exercise_secondary_muscles s WHERE s.exercise_id = exercises.id " \
+            "AND LOWER(s.muscle) = 'triceps')"
+    if slot_key.startswith("biceps_"):
+        return "LOWER(target_muscle) IN ('biceps', 'brachialis') OR EXISTS (" \
+            "SELECT 1 FROM exercise_secondary_muscles s WHERE s.exercise_id = exercises.id " \
+            "AND LOWER(s.muscle) IN ('biceps', 'brachialis'))"
+    if slot_key.startswith("forearm_"):
+        return "LOWER(target_muscle) = 'forearms' OR EXISTS (" \
+            "SELECT 1 FROM exercise_secondary_muscles s WHERE s.exercise_id = exercises.id " \
+            "AND LOWER(s.muscle) IN ('forearms', 'wrists', 'hands'))"
+    return None
 
 
 def fetch_warmup_candidates(
@@ -371,6 +409,7 @@ def fetch_warmup_candidates(
         limitations,
         limit,
         ledger=ledger,
+        filter_equipment_access=False,
     )
     for item in candidates:
         item["warmup_key"] = warmup_key
@@ -394,16 +433,12 @@ def fetch_filtered_candidates(
         target, f"(LOWER(target_muscle) LIKE '%{target}%' OR LOWER(body_part) LIKE '%{target}%')"
     )
 
-    bodyweight_clause = ""
-    if "gym" in equipment_access.lower() or "commercial" in equipment_access.lower():
-        bodyweight_clause = "AND LOWER(name) NOT LIKE '%push-up%' AND LOWER(name) NOT LIKE '%pushup%'"
-
     query = f"""
         SELECT id, name, body_part, target_muscle, equipment, instructions, image_path, gif_path
         FROM exercises
         WHERE ({where_clause})
           AND LOWER(body_part) != 'cardio'
-          {bodyweight_clause}
+          AND {equipment_access_sql(equipment_access)}
     """
     if any(w in limitations.lower() for w in ["back", "lumbar", "spine"]):
         query += " AND LOWER(name) NOT LIKE '%deadlift%' AND LOWER(name) NOT LIKE '%good morning%'"

@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage
 from agent import assistant_graph
 from agent.assistant_graph import exercise_substitution_node
 from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
+from utils.equipment_access import BODYWEIGHT_ONLY, COMMERCIAL_GYM, HOME_GYM
 
 CHEST_SLOT = "577"  # machine chest press (pectorals | chest)
 REVERSE_LAT_SLOT = "673"  # reverse grip machine lat pulldown (lats | back)
@@ -420,3 +421,41 @@ def test_followup_hint_uses_real_catalog_name(sub_db, monkeypatch):
     active = sub_db.ledger.get_active_program()
     assert active.version == 2
     assert active.published_by_coach_account_id is None
+
+
+@pytest.mark.parametrize(
+    "access,expected_names",
+    [
+        (COMMERCIAL_GYM, {"Cable Lat Pulldown", "Dumbbell Row"}),
+        (HOME_GYM, {"Dumbbell Row", "Band Lat Pulldown", "Wide Grip Pull Up"}),
+        (BODYWEIGHT_ONLY, {"Wide Grip Pull Up"}),
+    ],
+)
+def test_unspecified_chat_substitutes_follow_equipment_access(sub_db, monkeypatch, access, expected_names):
+    sub_db.ledger.upsert_player_profile({
+        "gender": "male", "proportions": "balanced", "age": 30,
+        "weight_kg": 80, "height_cm": 180, "rep_preference": "balanced",
+        "current_goal": "hypertrophy", "long_term_goal": "strength",
+        "weekly_frequency": 3, "training_age_years": 3,
+        "equipment_access": access, "injuries_or_limitations": "None",
+        "stress_and_sleep": "normal",
+    })
+    alternatives = [
+        {"id": "cable", "name": "Cable Lat Pulldown", "target_muscle": "lats", "body_part": "back", "equipment": "cable"},
+        {"id": "dumbbell", "name": "Dumbbell Row", "target_muscle": "lats", "body_part": "back", "equipment": "dumbbell"},
+        {"id": "band", "name": "Band Lat Pulldown", "target_muscle": "lats", "body_part": "back", "equipment": "band"},
+        {"id": "pullup", "name": "Wide Grip Pull Up", "target_muscle": "lats", "body_part": "back", "equipment": "body weight"},
+    ]
+    monkeypatch.setattr(sub_db, "search_similar_exercises", lambda *_args, **_kwargs: alternatives)
+
+    result = exercise_substitution_node(
+        _state("reverse grip machine lat pulldown", None),
+        {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
+    )
+
+    shown = {
+        name
+        for name in ("Cable Lat Pulldown", "Dumbbell Row", "Band Lat Pulldown", "Wide Grip Pull Up")
+        if name in result["response_content"]
+    }
+    assert shown == expected_names
