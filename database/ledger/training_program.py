@@ -115,10 +115,11 @@ class LedgerTrainingProgramMixin:
                         list(exercise_values.values()),
                     )
 
-            self.conn.commit()
+            self._commit_ledger()
             return prog_id
         except Exception as e:
-            self.conn.rollback()
+            if getattr(self._local, "ledger_tx_depth", 0) == 0:
+                self.conn.rollback()
             raise RuntimeError(f"Database error while saving program: {e}")
 
     def _load_program(self, where_sql: str, params: tuple = ()) -> GeneratedProgramSchema | None:

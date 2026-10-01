@@ -105,7 +105,7 @@ class LedgerProfileMixin:
         """,
             params,
         )
-        self.conn.commit()
+        self._commit_ledger()
 
     def update_player_persona(self, coach_tone: str, custom_instructions: str) -> None:
         cursor = self.conn.cursor()

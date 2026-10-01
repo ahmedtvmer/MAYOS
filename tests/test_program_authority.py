@@ -69,6 +69,21 @@ def api(tmp_path: Path, monkeypatch):
         db.catalog_conn.close()
 
 
+@pytest.fixture
+def shipped_library_api(monkeypatch, fresh_store):
+    """API fixture backed by the shipped exercise library for real generation."""
+    monkeypatch.setenv("SKIP_LLM_LOAD", "true")
+    monkeypatch.setenv("TESTING", "1")
+    monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
+    from svc.rate_limit import limiter
+
+    limiter._storage.reset()
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: fresh_store
+    with TestClient(app, raise_server_exceptions=False) as client:
+        yield client, fresh_store
+
+
 def _register(client, username, password="correct-horse-1"):
     resp = client.post("/auth/register", json={"trainee_id": username, "password": password})
     assert resp.status_code == 201, resp.text
@@ -318,6 +333,114 @@ def test_profile_rebuild_allowed_before_publication(api, monkeypatch):
     assert body["program_message"] is None
     assert calls["n"] == 1
     assert _active(db).program_name == "Player Plan"
+
+
+def test_profile_rebuild_quota_refusal_rolls_back_and_can_retry(shipped_library_api, monkeypatch):
+    from service.model_limits import reset_model_limits
+    from agent.program_generator import generate_program_pipeline
+
+    client, db = shipped_library_api
+    registered = _register(client, "quota-player")
+    player_headers = _authed(registered["access_token"])
+    player_account_id = db.get_active_account_by_username("quota-player")["account_id"]
+    db.switch_user("quota-player")
+    db.ledger.upsert_player_profile(
+        {
+            "equipment_access": "Commercial gym",
+            "weekly_frequency": 4,
+            "rep_preference": "balanced",
+            "weight_kg": 82.55,
+        }
+    )
+    generate_program_pipeline(ledger=db.ledger)
+    before_profile = db.ledger.get_player_profile()
+    before_program = _active(db, "quota-player")
+
+    # The inference admission gateway refuses this account under a real
+    # configured daily token limit, before the generation pipeline is called.
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "1")
+    reset_model_limits()
+    db.record_model_usage(
+        account_id=player_account_id,
+        role="player",
+        model="test-model",
+        input_tokens=1,
+        output_tokens=0,
+        cost_usd=0,
+        estimated=True,
+        purpose="test",
+    )
+
+    refused = client.put(
+        "/profile", headers=player_headers, json={"equipment_access": "Home gym"}
+    )
+    assert refused.status_code == 429, refused.text
+    assert db.ledger.get_player_profile() == before_profile
+    after_refusal = _active(db, "quota-player")
+    assert (after_refusal.program_name, after_refusal.version) == (
+        before_program.program_name,
+        before_program.version,
+    )
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "0")
+    retried = client.put(
+        "/profile", headers=player_headers, json={"equipment_access": "Home gym"}
+    )
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["profile"]["equipment_access"] == "Home gym"
+    assert retried.json()["program_rebuilt"] is True
+    rebuilt = _active(db, "quota-player")
+    assert rebuilt.version == before_program.version + 1
+
+
+def test_profile_rebuild_persistence_failure_rolls_back_and_can_retry(shipped_library_api, monkeypatch):
+    from service.model_limits import reset_model_limits
+    from agent.program_generator import generate_program_pipeline
+
+    client, db = shipped_library_api
+    registered = _register(client, "persistence-player")
+    player_headers = _authed(registered["access_token"])
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "0")
+    reset_model_limits()
+    db.switch_user("persistence-player")
+    db.ledger.upsert_player_profile(
+        {
+            "equipment_access": "Commercial gym",
+            "weekly_frequency": 3,
+            "rep_preference": "balanced",
+            "weight_kg": 82.55,
+        }
+    )
+    generate_program_pipeline(ledger=db.ledger)
+    before_profile = db.ledger.get_player_profile()
+    before_program = _active(db, "persistence-player")
+    db.ledger.conn.execute(
+        "CREATE TRIGGER reject_profile_rebuild_program "
+        "BEFORE INSERT ON training_programs "
+        "BEGIN SELECT RAISE(ABORT, 'forced program persistence failure'); END"
+    )
+    db.ledger.conn.commit()
+
+    failed = client.put(
+        "/profile", headers=player_headers, json={"equipment_access": "Home gym"}
+    )
+    assert failed.status_code == 502, failed.text
+    assert db.ledger.get_player_profile() == before_profile
+    after_failure = _active(db, "persistence-player")
+    assert (after_failure.program_name, after_failure.version) == (
+        before_program.program_name,
+        before_program.version,
+    )
+
+    db.ledger.conn.execute("DROP TRIGGER reject_profile_rebuild_program")
+    db.ledger.conn.commit()
+    retried = client.put(
+        "/profile", headers=player_headers, json={"equipment_access": "Home gym"}
+    )
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["profile"]["equipment_access"] == "Home gym"
+    assert retried.json()["program_rebuilt"] is True
+    rebuilt = _active(db, "persistence-player")
+    assert rebuilt.version == before_program.version + 1
 
 
 @pytest.mark.parametrize(

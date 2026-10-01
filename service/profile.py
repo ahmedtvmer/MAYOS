@@ -32,9 +32,10 @@ def update_profile(
 ) -> dict[str, Any]:
     """Upserts the profile; rebuilds when program-shaping inputs change.
 
-    The profile update itself always applies. The rebuild is a player write path,
-    so while an assigned coach owns the active program it is skipped and the
-    response explains that a coach request is needed.
+    Player-controlled rebuild edits save atomically with the replacement program,
+    so a quota refusal or generation failure leaves both unchanged. While an
+    assigned coach owns the active program, profile edits still save without a
+    rebuild and the response explains that a coach request is needed.
     """
     with ledger_scope(db, ledger, ledger_id) as ledger:
         profile = ledger.get_player_profile() or {}
@@ -56,24 +57,28 @@ def update_profile(
         )
         updated = {**profile, **payload}
         ledger.upsert_player_profile(updated)
-        record_profile_change(db, player_account_id, profile, updated)
         program = None
         program_blocked = False
         if rebuild_requested:
             if player_controls_program(db, ledger, player_account_id):
                 from svc.llm import InferenceScope, run_inference_sync
 
-                program, _ = run_inference_sync(
-                    generate_program_pipeline,
-                    rep_preference_override=updated.get("rep_preference", "balanced"),
-                    frequency_override=int(updated.get("weekly_frequency", 4)),
-                    ledger=ledger,
-                    scope=InferenceScope(
-                        account_id=player_account_id, role="player", purpose="profile_rebuild", store=db
-                    ),
-                )
+                with ledger.ledger_transaction():
+                    ledger.upsert_player_profile(updated)
+                    program, _ = run_inference_sync(
+                        generate_program_pipeline,
+                        rep_preference_override=updated.get("rep_preference", "balanced"),
+                        frequency_override=int(updated.get("weekly_frequency", 4)),
+                        ledger=ledger,
+                        scope=InferenceScope(
+                            account_id=player_account_id, role="player", purpose="profile_rebuild", store=db
+                        ),
+                    )
             else:
                 program_blocked = True
+                ledger.upsert_player_profile(updated)
+        else:
+            ledger.upsert_player_profile(updated)
         return {
             "profile": ledger.get_player_profile(),
             "program_rebuilt": program is not None,

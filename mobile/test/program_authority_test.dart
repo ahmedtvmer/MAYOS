@@ -168,6 +168,24 @@ void main() {
     expect(find.text('This rebuilds your program'), findsNothing);
   });
 
+  testWidgets('saving another fact preserves saved multi-decimal weight',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake()..weightKg = 82.55;
+    await _pumpApp(tester, fake);
+    await _openProfile(tester);
+
+    expect(find.text('82.55'), findsOneWidget);
+    await tester.enterText(
+        find.byKey(const Key('current_goal_field')), 'Build muscle');
+    await tester.ensureVisible(find.text('Save profile'));
+    await tester.tap(find.text('Save profile'));
+    await _pumpUntilFound(tester, find.text('Profile saved.'));
+
+    expect(fake.currentGoal, 'Build muscle');
+    expect(fake.weightKg, 82.55);
+    expect(fake.profileUpdateBodies.single.containsKey('weight_kg'), isFalse);
+  });
+
   testWidgets('offline Training profile save changes nothing', (tester) async {
     final FakeMayosApi fake = _playerFake();
     await _pumpApp(tester, fake);

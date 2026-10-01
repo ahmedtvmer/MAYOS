@@ -154,8 +154,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             : equipmentOptions.first;
         _currentGoalController.text = profile.currentGoal;
         _injuriesOrLimitationsController.text = profile.injuriesOrLimitations;
-        _weightController.text = profile.weightKg.toStringAsFixed(
-            profile.weightKg.truncateToDouble() == profile.weightKg ? 0 : 1);
+        _weightController.text = profile.weightKg.toString();
         _repPreference = repOptions.contains(profile.repPreference)
             ? profile.repPreference
             : repOptions.first;
@@ -247,7 +246,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 currentGoal: changedValues['current_goal'] as String?,
                 injuriesOrLimitations:
                     changedValues['injuries_or_limitations'] as String?,
-                weightKg: parsedWeight != saved.weightKg ? parsedWeight : null,
+                weightKg: changedValues.containsKey('weight_kg')
+                    ? parsedWeight
+                    : null,
                 equipmentAccess: changedValues['equipment_access'] as String?,
               );
       if (!mounted) return;
