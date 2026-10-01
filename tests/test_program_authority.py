@@ -447,6 +447,117 @@ def test_coached_profile_edit_saves_equipment_goal_weight_without_rebuild(api, m
     )
 
 
+def test_profile_change_alert_fires_with_only_changed_fields(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, _, _, _ = _assigned_player(api)
+    db.switch_user("p1")
+    db.ledger.upsert_player_profile({
+        "equipment_access": "Commercial gym",
+        "injuries_or_limitations": "None",
+        "current_goal": "Get stronger",
+        "weight_kg": 70,
+    })
+    _profile_generation(db, monkeypatch)
+
+    response = client.put("/profile", headers=player_headers, json={
+        "equipment_access": "Home gym",
+        "injuries_or_limitations": "Left knee pain",
+        "current_goal": "Build muscle",
+        "weight_kg": 74,
+    })
+
+    assert response.status_code == 200, response.text
+    alerts = client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
+    changed = [alert for alert in alerts if alert["kind"] == "profile_change"]
+    assert len(changed) == 1
+    assert changed[0]["profile_changes"] == {
+        "equipment_access": {"before": "Commercial gym", "after": "Home gym"},
+        "injuries_or_limitations": {"before": "None", "after": "Left knee pain"},
+    }
+    assert "current_goal" not in changed[0]["profile_changes"]
+    assert "weight_kg" not in changed[0]["profile_changes"]
+    assert not ({"current_goal", "weight_kg"} & changed[0].keys())
+
+
+def test_profile_change_alert_deduplicates_open_and_reopens_after_resolution(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, _, _, _ = _assigned_player(api)
+    db.switch_user("p1")
+    db.ledger.upsert_player_profile({
+        "equipment_access": "Commercial gym",
+        "injuries_or_limitations": "None",
+    })
+    _profile_generation(db, monkeypatch)
+
+    first = client.put("/profile", headers=player_headers, json={"equipment_access": "Home gym"})
+    second = client.put("/profile", headers=player_headers, json={"injuries_or_limitations": "Left knee pain"})
+    assert first.status_code == second.status_code == 200
+    alerts = [alert for alert in client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
+              if alert["kind"] == "profile_change"]
+    assert len(alerts) == 1
+    assert alerts[0]["profile_changes"] == {
+        "equipment_access": {"before": "Commercial gym", "after": "Home gym"},
+        "injuries_or_limitations": {"before": "None", "after": "Left knee pain"},
+    }
+
+    resolved = client.post(f"/coach/alerts/{alerts[0]['alert_id']}/resolve", headers=coach_headers)
+    assert resolved.status_code == 200
+    third = client.put("/profile", headers=player_headers, json={"equipment_access": "Bodyweight only"})
+    assert third.status_code == 200
+    all_alerts = client.get("/coach/alerts?state=new&state=resolved", headers=coach_headers).json()["alerts"]
+    profile_alerts = [alert for alert in all_alerts if alert["kind"] == "profile_change"]
+    assert len(profile_alerts) == 2
+    assert {alert["state"] for alert in profile_alerts} == {"new", "resolved"}
+
+
+def test_profile_change_alert_does_not_fire_for_goal_weight_or_unassigned(api, monkeypatch):
+    client, db, _ = api
+    _, player_headers, _, _, _ = _assigned_player(api)
+    db.switch_user("p1")
+    db.ledger.upsert_player_profile({
+        "equipment_access": "Commercial gym",
+        "injuries_or_limitations": "None",
+        "current_goal": "Get stronger",
+        "weight_kg": 70,
+    })
+    _profile_generation(db, monkeypatch)
+    for body in ({"current_goal": "Build muscle"}, {"weight_kg": 72}):
+        assert client.put("/profile", headers=player_headers, json=body).status_code == 200
+    assert not [alert for alert in db.list_coach_alerts(
+        db.get_active_account_by_username("coach")["account_id"], ("new", "acknowledged")
+    ) if alert["kind"] == "profile_change"]
+
+    unassigned = _register(client, "unassigned")
+    unassigned_headers = _authed(unassigned["access_token"])
+    db.switch_user("unassigned")
+    db.ledger.upsert_player_profile({"equipment_access": "Commercial gym", "injuries_or_limitations": "None"})
+    _profile_generation(db, monkeypatch)
+    assert client.put("/profile", headers=unassigned_headers,
+                      json={"injuries_or_limitations": "Shoulder limitation"}).status_code == 200
+    assert not [alert for alert in db.list_coach_alerts(
+        db.get_active_account_by_username("coach")["account_id"], ("new", "acknowledged")
+    ) if alert["kind"] == "profile_change"]
+
+
+def test_profile_change_alert_failure_does_not_fail_profile_write(api, monkeypatch):
+    client, db, _ = api
+    _, player_headers, _, _, _ = _assigned_player(api)
+    db.switch_user("p1")
+    db.ledger.upsert_player_profile({
+        "equipment_access": "Commercial gym",
+        "injuries_or_limitations": "None",
+    })
+    _profile_generation(db, monkeypatch)
+
+    def fail_alert(*args, **kwargs):
+        raise RuntimeError("catalog unavailable")
+
+    monkeypatch.setattr(db, "insert_coach_alert", fail_alert)
+    response = client.put("/profile", headers=player_headers, json={"equipment_access": "Home gym"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["profile"]["equipment_access"] == "Home gym"
+
 def test_profile_rebuild_allowed_after_unassignment(api, monkeypatch):
     client, db, _ = api
     coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
