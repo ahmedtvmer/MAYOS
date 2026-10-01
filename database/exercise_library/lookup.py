@@ -142,7 +142,8 @@ class ExerciseLookupMixin:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
                 f"SELECT e.id, {name_expression} AS name, e.body_part, e.target_muscle, "
-                f"e.equipment, e.instructions, e.image_path, e.gif_path, p.provenance "
+                f"e.equipment, e.instructions, e.image_path, e.gif_path, "
+                "COALESCE(p.provenance, 'ExerciseDB') AS provenance "
                 f"FROM exercises e {display_name_join} "
                 f"LEFT JOIN exercise_provenance p ON p.exercise_id = e.id WHERE e.id = ?",
                 (str(exercise_id),),
@@ -194,8 +195,7 @@ class ExerciseLookupMixin:
             "image_path": entry.get("image_path"),
             "gif_path": entry.get("gif_path"),
         }
-        if entry.get("provenance"):
-            detail["provenance"] = entry["provenance"]
+        detail["provenance"] = entry["provenance"]
         return detail
 
     def find_exercises_by_name(

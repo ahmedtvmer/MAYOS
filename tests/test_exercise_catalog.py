@@ -96,6 +96,7 @@ def test_exercise_detail_returns_real_catalog_fields(api):
         "instructions": "Lie on a bench and press the bar up.",
         "image_path": "images/bp.jpg",
         "gif_path": "videos/bp.gif",
+        "provenance": "ExerciseDB",
     }
 
 

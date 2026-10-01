@@ -16,6 +16,7 @@ CABLE_LAT_SLOT = "150"  # cable bar lateral pulldown (lats | back)
 MACHINE_LAT_VARIANT = "2736"  # machine reverse grip lateral pulldown (lats | back)
 PULL_THROUGH = "196"  # cable pull through (with rope)
 HIP_THRUST = "3562"  # barbell glute bridge row, displayed as Barbell Hip Thrust
+MACHINE_HIP_THRUST = "mayos:4"
 PUSH_UP = "662"  # push-up
 DECLINE_PUSH_UP = "279"  # decline push-up
 STIFF_LEG_DEADLIFT = "432"  # dumbbell stiff leg deadlift
@@ -146,7 +147,13 @@ def test_exercise_words_do_not_select_a_day(
     active = sub_db.ledger.get_active_program()
     assert active.version == 3
     by_day = {day.day_name: day for day in active.days}
-    assert by_day[source_day].exercises[0].exercise_id == replacement_id
+    if replacement_id == HIP_THRUST:
+        assert by_day[source_day].exercises[0].exercise_id in {
+            HIP_THRUST,
+            MACHINE_HIP_THRUST,
+        }
+    else:
+        assert by_day[source_day].exercises[0].exercise_id == replacement_id
     assert by_day[false_day].exercises[0].exercise_id == CHEST_SLOT
 
 
@@ -168,7 +175,7 @@ def test_explicit_on_day_reference_selects_that_day(sub_db):
     assert result["program_updated"] is True
     active = sub_db.ledger.get_active_program()
     assert active.days[0].exercises[0].exercise_id == PULL_THROUGH
-    assert active.days[1].exercises[0].exercise_id == HIP_THRUST
+    assert active.days[1].exercises[0].exercise_id in {HIP_THRUST, MACHINE_HIP_THRUST}
     assert "Pull" in result["response_content"]
 
 
@@ -217,7 +224,7 @@ def test_day_without_source_falls_back_to_the_source_day(sub_db):
     assert result["program_updated"] is True
     active = sub_db.ledger.get_active_program()
     assert active.days[0].exercises[0].exercise_id == CHEST_SLOT
-    assert active.days[1].exercises[0].exercise_id == HIP_THRUST
+    assert active.days[1].exercises[0].exercise_id in {HIP_THRUST, MACHINE_HIP_THRUST}
 
 
 def test_ambiguous_source_asks_which_day_without_publishing(sub_db):

@@ -10,6 +10,8 @@ sys.path.append(str(BASE_DIR))
 # pyrefly: ignore [missing-import]
 from database.database_manager import DatabaseManager
 from database.exercise_library.embeddings import sync_exercise_embeddings
+from database.exercise_library.schema import EXERCISE_COLUMNS
+from database.schema.definitions import EMBEDDING_DIM
 
 # pyrefly: ignore [missing-import]
 from utils.logger import MyosLogger
@@ -26,10 +28,13 @@ def seed_exercise_embeddings():
         "FROM exercises"
     )
     rows = cursor.fetchall()
-    logger.info(f"Generating 384-d embeddings for {len(rows)} exercises...")
+    logger.info(f"Generating {EMBEDDING_DIM}-d embeddings for {len(rows)} exercises...")
     cursor.execute("DELETE FROM vec_exercises")
     cursor.execute("DELETE FROM exercise_embedding_sources")
-    sync_exercise_embeddings(cursor, rows)
+    sync_exercise_embeddings(
+        cursor,
+        [dict(zip(EXERCISE_COLUMNS, row, strict=True)) for row in rows],
+    )
     db.catalog_conn.commit()
     logger.info("Successfully seeded vec_exercises.")
 

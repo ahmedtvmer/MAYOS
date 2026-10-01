@@ -4,10 +4,9 @@ import re
 
 import pandas as pd
 from database.shared import DEFAULT_CSV_PATH
-from database.exercise_library.authored import MAYOS_AUTHORED_EXERCISES
+from database.exercise_library import authored
 from database.exercise_library.embeddings import sync_exercise_embeddings
 from database.exercise_library.names import apply_curated_exercise_names
-from database.shared import _normalize_exercise_name
 from database.exercise_library.schema import EXERCISE_COLUMNS
 
 from utils.logger import MyosLogger
@@ -29,7 +28,10 @@ class ExerciseSeedingMixin:
         logger.info("Upserting exercise library from CSV...")
         exercise_rows, muscle_rows = _exercise_seed_rows(df)
         authored_rows, authored_muscles = _authored_seed_rows()
-        all_rows = exercise_rows + authored_rows
+        all_rows = [
+            dict(zip(EXERCISE_COLUMNS, row, strict=True))
+            for row in exercise_rows + authored_rows
+        ]
         with self._catalog_lock, self.catalog_conn:
             cursor = self.catalog_conn.cursor()
             _upsert_exercise_rows(cursor, exercise_rows)
@@ -39,7 +41,6 @@ class ExerciseSeedingMixin:
             _upsert_provenance(cursor, exercise_rows, "ExerciseDB")
             _upsert_provenance(cursor, authored_rows, "MAYOS")
             apply_curated_exercise_names(cursor)
-            _apply_authored_names(cursor)
             sync_exercise_embeddings(cursor, all_rows)
 
     EXCLUDED_BIOMECHANICAL_PATTERNS = ("behind neck", "behind the neck", "upright row")
@@ -111,7 +112,7 @@ def _secondary_muscle_rows(df, muscle_cols):
 def _authored_seed_rows():
     rows = []
     muscles = []
-    for exercise in MAYOS_AUTHORED_EXERCISES:
+    for exercise in authored.MAYOS_AUTHORED_EXERCISES:
         rows.append((
             exercise["id"], exercise["name"], exercise["body_part"],
             exercise["target_muscle"], exercise["equipment"], None, None,
@@ -127,21 +128,3 @@ def _upsert_provenance(cursor, exercise_rows, provenance):
         "ON CONFLICT(exercise_id) DO UPDATE SET provenance = excluded.provenance",
         [(row[0], provenance) for row in exercise_rows],
     )
-
-
-def _apply_authored_names(cursor):
-    for exercise in MAYOS_AUTHORED_EXERCISES:
-        exercise_id = exercise["id"]
-        cursor.execute(
-            "INSERT INTO exercise_display_names (exercise_id, display_name) VALUES (?, ?) "
-            "ON CONFLICT(exercise_id) DO UPDATE SET display_name = excluded.display_name",
-            (exercise_id, exercise["display_name"]),
-        )
-        cursor.execute("DELETE FROM exercise_aliases WHERE exercise_id = ?", (exercise_id,))
-        cursor.executemany(
-            "INSERT INTO exercise_aliases (exercise_id, alias, normalized_alias) VALUES (?, ?, ?)",
-            [
-                (exercise_id, alias, _normalize_exercise_name(alias))
-                for alias in exercise["aliases"]
-            ],
-        )

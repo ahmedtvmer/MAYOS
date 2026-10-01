@@ -18,6 +18,8 @@ from database.migration_manager import SESSION_WARMUP_SETS_DDL
 from database.migration_manager import get_ledger_schema_version
 from database.migration_manager import set_ledger_schema_version
 
+EMBEDDING_DIM = 384
+
 
 class SchemaMixin:
     def _ensure_exercise_name_schema(self) -> None:
@@ -80,7 +82,7 @@ class SchemaMixin:
                 );
                 CREATE VIRTUAL TABLE IF NOT EXISTS vec_exercises USING vec0(
                     exercise_id INTEGER PRIMARY KEY,
-                    embedding float[{self.EMBEDDING_DIM}] distance_metric=cosine
+                    embedding float[{EMBEDDING_DIM}] distance_metric=cosine
                 );
                 CREATE INDEX IF NOT EXISTS idx_secondary_muscles_ex ON exercise_secondary_muscles(exercise_id);
             """)
