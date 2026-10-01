@@ -1,0 +1,75 @@
+<role>
+You are the IMPLEMENTER, not the orchestrator. Write the code yourself, directly, in this working tree.
+The "Delegation policy" / "Delegation execution" sections in AGENTS.md and CLAUDE.md, and the
+opencode-delegate / codex-delegate skills, are instructions for the orchestrating agent that sent you
+this brief. They do not apply to you: do not delegate, do not look for a delegate model or lane, and do
+not stop to ask which model to use. Every other house rule in AGENTS.md (domain docs, glossary terms,
+ADRs, testing conventions) still applies. You cannot ask questions mid-run; when something is genuinely
+ambiguous, make the most conservative choice consistent with the issue and flag it in your report.
+</role>
+
+<task>
+Implement GitHub issue #239 in the MAYOS repository (this working tree). The issue is the source of truth; it is quoted in full below. Every acceptance criterion must be met.
+
+Before coding, read AGENTS.md, the relevant CONTEXT.md glossary entries and the ADRs in DECISIONS.md that the issue or notes mention. Use the glossary's terms in code, tests and docs. If the issue conflicts with an ADR or with the code as it stands, stop and report the conflict instead of guessing.
+
+Work test-first where a seam exists: write a failing test through public behaviour (HTTP responses, assistant replies, generated programs, search results, rendered widgets), make it pass, then refactor. Tests must not assert on private helpers, SQL shape or table rows. Never loosen an existing test to make your change pass; if an existing expectation must change, say why in the report.
+
+Other implementers are working on other issues at the same time in separate worktrees. Stay strictly inside this issue's scope so the branches merge cleanly.
+
+<orchestrator_notes>
+Read CONTEXT.md (Coach alert, Signal episode, Training profile) and ADR 032 in DECISIONS.md; follow how the existing alert kinds register their kind, catalog gate, evidence projection allowlist, dedupe and best-effort notice (look at service/missed_day_alerts.py, service/progression_alerts.py and their tests).
+Already landed: Training profile editing (#238) — service/profile.py applies edits and the server exposes the rebuild-trigger field list; injuries/limitations and equipment access are the program-shaping fields. Fire the alert from that same profile-update path after the write, best-effort.
+Mobile: render the new kind in the coach alert list and on the player page with a readable "before → after" line, following existing alert-kind labels; update the fake API.
+Another implementer is deleting legacy code (Streamlit, account claim, Excel export, DELETE /profile and its service function) in parallel; do not touch or depend on profile reset.
+</orchestrator_notes>
+
+<issue>
+# #239 Profile-change coach alert
+## Parent
+
+#236
+
+## What to build
+
+When a coached player changes their injuries/limitations or equipment access, their coach gets a Coach alert showing what changed, so the coach can adjust the program.
+
+## Acceptance criteria
+
+- [ ] A new coach alert kind, profile change, fires when a player on an active assignment changes injuries/limitations or equipment access. It doesn't fire for a goal or weight change, or for a player without an active assignment.
+- [ ] The alert carries only the before and after values of the changed fields, projected through the existing alert allowlists. No other profile data is included.
+- [ ] While a profile-change alert is open for the assignment, repeated edits update it (keeping the earliest "before" and the latest "after") instead of creating new alerts. After it is resolved, a new edit opens a new one.
+- [ ] Alert creation is best-effort after the profile write and never fails or blocks the edit. It follows the catalog gate like the other alert kinds.
+- [ ] The coach app shows the new kind in the alert list and on the player page with a readable before → after line.
+- [ ] Tests: API tests for firing, non-firing, dedupe and projection; a coach widget test for the rendered alert.
+
+## Blocked by
+
+- #238
+</issue>
+</task>
+
+<verification_loop>
+Run these and make them green before finishing; fix what they surface, don't just report it:
+  ruff check --select E,F,W --ignore E402,E501,EXE002,W291,W292,W293 .
+  SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 -m pytest <the test files you added or changed> -q -p no:cacheprovider   (run often while working)
+  SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 -m pytest tests/ -q -p no:cacheprovider                                   (REQUIRED once, at the end, after your last change)
+  cd mobile && flutter analyze
+  cd mobile && flutter test <the widget test files you added or changed>   (run often while working)
+  cd mobile && flutter test                                                (REQUIRED once, at the end)
+Dataset: data/processed_exercises.csv and a seeded db/catalog.db are present (git-ignored; never modify or commit them). The full Python suite is expected to pass except, possibly, the known flaky tests/test_google_sign_in.py::test_concurrent_completion_creates_one_account_and_one_link (pre-existing race; do not touch it).
+Never skip, disable or weaken a test to get green.
+Confirm `git status` shows only the changes this issue needs.
+</verification_loop>
+
+<action_safety>
+Keep changes scoped to this issue. No unrelated refactors, renames or cleanup. Do NOT run git add, git commit, git push or any branch operation; leave the work uncommitted in the working tree for the orchestrator to review and commit.
+</action_safety>
+
+<structured_output_contract>
+End with a report delimited by lines `=== REPORT ===` and `=== END REPORT ===`, containing:
+  1. What changed and why, mapped to each acceptance criterion (met / not met, with the test that proves it)
+  2. Files touched
+  3. Gate outcomes with counts (ruff, full pytest, flutter analyze/test as applicable)
+  4. Anything you deviated on, left open, or want decided
+</structured_output_contract>

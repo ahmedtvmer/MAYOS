@@ -1,0 +1,75 @@
+<role>
+You are the IMPLEMENTER, not the orchestrator. Write the code yourself, directly, in this working tree.
+The "Delegation policy" / "Delegation execution" sections in AGENTS.md and CLAUDE.md, and the
+opencode-delegate / codex-delegate skills, are instructions for the orchestrating agent that sent you
+this brief. They do not apply to you: do not delegate, do not look for a delegate model or lane, and do
+not stop to ask which model to use. Every other house rule in AGENTS.md (domain docs, glossary terms,
+ADRs, testing conventions) still applies. You cannot ask questions mid-run; when something is genuinely
+ambiguous, make the most conservative choice consistent with the issue and flag it in your report.
+</role>
+
+<task>
+Implement GitHub issue #230 in the MAYOS repository (this working tree). The issue is the source of truth; it is quoted in full below. Every acceptance criterion must be met.
+
+Before coding, read AGENTS.md, the relevant CONTEXT.md glossary entries and the ADRs in DECISIONS.md that the issue or notes mention. Use the glossary's terms in code, tests and docs. If the issue conflicts with an ADR or with the code as it stands, stop and report the conflict instead of guessing.
+
+Work test-first where a seam exists: write a failing test through public behaviour (HTTP responses, assistant replies, generated programs, search results, rendered widgets), make it pass, then refactor. Tests must not assert on private helpers, SQL shape or table rows. Never loosen an existing test to make your change pass; if an existing expectation must change, say why in the report.
+
+Other implementers are working on other issues at the same time in separate worktrees. Stay strictly inside this issue's scope so the branches merge cleanly.
+
+<orchestrator_notes>
+Read ADR 054 and ADR 011 in DECISIONS.md and the Staple exercise / Equipment access glossary entries first.
+Already landed on this branch: Equipment access filtering (utils/equipment_access.py, EquipmentAccessFilter; Commercial gym excludes band, body weight and weighted working sets; Home gym allows free weights, bands, bodyweight and weighted; Bodyweight only uses SLOT_FALLBACKS in agent/program_blueprints.py); display names (150 "Lat Pulldown", 2330 "Wide-Grip Lat Pulldown", 596 pec deck, 602 reverse pec deck, 3562 Barbell Hip Thrust, 757 Smith Incline Press, 175 Cable Crunch, 3541 incline DB Y-raise, 318 incline DB curl, 598 hip adduction); MAYOS-authored staples mayos:1..4 (Kelso shrug, Bayesian curl, cable Y-raise, machine hip thrust).
+Rejected mappings that must never be used as staples for those movements: 744 is not a pendulum squat; 329 is not a Kelso shrug; 190 is not a Bayesian curl.
+Out of scope (later tickets): day templates/exercise ordering within a day and the coach rubric (#232), prescriptions/sets/RIR, weekly volume, the regenerate offer. Existing programs are untouched.
+Keep the full suite green: generation tests, blueprint tests and substitution tests must pass; if an existing test pinned the random pick, update it to the deterministic expectation and say so.
+</orchestrator_notes>
+
+<issue>
+# #230 Staple lists replace the random slot pick
+## Parent
+
+#224
+
+## What to build
+
+Each movement slot carries an ordered list of Staple exercises (ADR 054). Generation prescribes the first staple the player's Equipment access allows, and the next staples become that exercise's suggested substitutes. The weighted random top-three pick is removed, so the same profile always produces the same program. Staple lists favour stretch-biased variants where the library has them.
+
+## Acceptance criteria
+
+- [ ] Vertical pull prescribes the Wide-Grip Lat Pulldown for a Commercial gym player
+- [ ] Every slot has an ordered staple list; the first allowed by Equipment access is prescribed
+- [ ] The next staples on the list are offered as that exercise's suggested substitutes
+- [ ] Generating twice for an identical profile produces an identical program
+- [ ] Stretch-biased variants rank ahead where available (e.g. seated leg curl before lying, overhead cable extension beside pushdowns, incline DB curl beside preacher curls)
+- [ ] ADR 011's code references and rules still hold except where ADR 054 amends them
+
+## Blocked by
+
+- #225
+- #227
+- #229
+</issue>
+</task>
+
+<verification_loop>
+Run these and make them green before finishing; fix what they surface, don't just report it:
+  ruff check --select E,F,W --ignore E402,E501,EXE002,W291,W292,W293 .
+  SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 -m pytest <the test files you added or changed> -q -p no:cacheprovider   (run often while working)
+  SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 -m pytest tests/ -q -p no:cacheprovider                                   (REQUIRED once, at the end, after your last change)
+Dataset: data/processed_exercises.csv and a seeded db/catalog.db are present (git-ignored; never modify or commit them). The full Python suite is expected to pass except, possibly, the known flaky tests/test_google_sign_in.py::test_concurrent_completion_creates_one_account_and_one_link (pre-existing race; do not touch it).
+Never skip, disable or weaken a test to get green.
+Confirm `git status` shows only the changes this issue needs.
+</verification_loop>
+
+<action_safety>
+Keep changes scoped to this issue. No unrelated refactors, renames or cleanup. Do NOT run git add, git commit, git push or any branch operation; leave the work uncommitted in the working tree for the orchestrator to review and commit.
+</action_safety>
+
+<structured_output_contract>
+End with a report delimited by lines `=== REPORT ===` and `=== END REPORT ===`, containing:
+  1. What changed and why, mapped to each acceptance criterion (met / not met, with the test that proves it)
+  2. Files touched
+  3. Gate outcomes with counts (ruff, full pytest, flutter analyze/test as applicable)
+  4. Anything you deviated on, left open, or want decided
+</structured_output_contract>

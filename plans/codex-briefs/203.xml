@@ -1,0 +1,79 @@
+<role>
+You are the IMPLEMENTER, not the orchestrator. Write the code yourself, directly, in this working tree.
+The "Delegation policy" / "Delegation execution" sections in AGENTS.md and CLAUDE.md, and the
+opencode-delegate / codex-delegate skills, are instructions for the orchestrating agent that sent you
+this brief. They do not apply to you: do not delegate, do not look for a delegate model or lane, and do
+not stop to ask which model to use. Every other house rule in AGENTS.md (domain docs, glossary terms,
+ADRs, testing conventions) still applies. You cannot ask questions mid-run; when something is genuinely
+ambiguous, make the most conservative choice consistent with the issue and flag it in your report.
+</role>
+
+<task>
+Implement GitHub issue #203 in the MAYOS repository (this working tree). The issue is the source of truth; it is quoted in full below. Every acceptance criterion must be met.
+
+Before coding, read AGENTS.md, the relevant CONTEXT.md glossary entries and the ADRs in DECISIONS.md that the issue or notes mention. Use the glossary's terms in code, tests and docs. If the issue conflicts with an ADR or with the code as it stands, stop and report the conflict instead of guessing.
+
+Work test-first where a seam exists: write a failing test through public behaviour (HTTP responses, assistant replies, generated programs, search results, rendered widgets), make it pass, then refactor. Tests must not assert on private helpers, SQL shape or table rows. Never loosen an existing test to make your change pass; if an existing expectation must change, say why in the report.
+
+Other implementers are working on other issues at the same time in separate worktrees. Stay strictly inside this issue's scope so the branches merge cleanly.
+
+<orchestrator_notes>
+Read CONTEXT.md "Roster urgency order", "Lapsing" and ADR 024 (with its 2026-09-30 amendment), ADR 025 (roster is catalog-only), ADR 020 (idempotent commits), ADR 042 (personal records match the logger badge) in DECISIONS.md, and the parent spec #201 implementation decisions quoted here: stall length = consecutive committing sessions with no personal record on any exercise in the current program, counted from the later of the latest PR session and the first session under the current program version; recounted (not incremented) by the existing best-effort post-commit hook with a bounded look-back; stored in the catalog-side per-assignment summary beside the missed-day streak; the first session of a new exercise is a baseline, not a PR; one named constant for the look-back.
+CONTEXT.md has no "Stalling" entry yet although #201 says it exists: add a "Stalling" glossary entry (a player who keeps training without a personal record on any exercise in the current program; measured as stall length) and add stall length as the last key before username in the "Roster urgency order" entry.
+Already landed (#202): roster rows carry alerts_new_lapsing and the order's first key is new lapsing alerts. Out of scope: the stall alert (#204) — do not add an alert kind.
+Another implementer is changing the public DatabaseManager surface in parallel (removing legacy methods); if you add public DatabaseManager methods, update tests/data/database_manager_public_surface.json for your methods only.
+</orchestrator_notes>
+
+<issue>
+# #203 Stall length on the roster
+## Parent
+
+#201
+
+## What to build
+
+A coach sees each player's **stall length** on the roster (CONTEXT.md "Stalling"): consecutive committing sessions with no personal record on any exercise in the current program. It counts from the later of the latest personal-record session and the first session under the current program version. After every session commit, the existing best-effort post-commit hook recounts it from the player's ledger with a bounded look-back and stores it in the catalog-side per-assignment roster summary beside the missed-day streak. It is a recount, not an increment. Stall length becomes the roster urgency order's last key before username (longest first). Android and web Coach mode roster rows display it.
+
+## Acceptance criteria
+
+- [ ] Roster rows expose `stall_length`, read from catalog tables only. Listing the roster opens no player ledger.
+- [ ] After N committing sessions without a personal record, the roster shows stall length N (roster API test through the player commit route).
+- [ ] A personal record resets stall length to 0. An exercise's first recorded session is a baseline, not a personal record.
+- [ ] Publishing a new program version starts a fresh count.
+- [ ] Re-syncing the same workout (same client session id) does not change stall length.
+- [ ] A session backdated within the correction window is counted in its correct place.
+- [ ] A failure in the stall recount never fails the workout commit.
+- [ ] Stall length is the last order key before username. Pure ordering tests cover the tie-break.
+- [ ] Android and web roster rows show stall length, with widget tests following the existing Coach mode roster tests.
+- [ ] Schema changes are additive, following the existing roster-summary migration pattern.
+
+## Blocked by
+
+- #202
+</issue>
+</task>
+
+<verification_loop>
+Run these and make them green before finishing; fix what they surface, don't just report it:
+  ruff check --select E,F,W --ignore E402,E501,EXE002,W291,W292,W293 .
+  SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 -m pytest <the test files you added or changed> -q -p no:cacheprovider   (run often while working)
+  SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 -m pytest tests/ -q -p no:cacheprovider                                   (REQUIRED once, at the end, after your last change)
+  cd mobile && flutter analyze
+  cd mobile && flutter test <the widget test files you added or changed>   (run often while working)
+  cd mobile && flutter test                                                (REQUIRED once, at the end)
+Dataset: data/processed_exercises.csv and a seeded db/catalog.db are present (git-ignored; never modify or commit them). The full Python suite is expected to pass except, possibly, the known flaky tests/test_google_sign_in.py::test_concurrent_completion_creates_one_account_and_one_link (pre-existing race; do not touch it).
+Never skip, disable or weaken a test to get green.
+Confirm `git status` shows only the changes this issue needs.
+</verification_loop>
+
+<action_safety>
+Keep changes scoped to this issue. No unrelated refactors, renames or cleanup. Do NOT run git add, git commit, git push or any branch operation; leave the work uncommitted in the working tree for the orchestrator to review and commit.
+</action_safety>
+
+<structured_output_contract>
+End with a report delimited by lines `=== REPORT ===` and `=== END REPORT ===`, containing:
+  1. What changed and why, mapped to each acceptance criterion (met / not met, with the test that proves it)
+  2. Files touched
+  3. Gate outcomes with counts (ruff, full pytest, flutter analyze/test as applicable)
+  4. Anything you deviated on, left open, or want decided
+</structured_output_contract>
