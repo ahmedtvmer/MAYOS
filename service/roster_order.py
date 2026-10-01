@@ -8,14 +8,16 @@ reuse the same key later.
 
 Keys, in order:
 
-1. ``alerts_new + pending_requests``, highest first (acknowledged alerts are
-   not an input, so they never count).
-2. ``current_missed_streak``, longest first.
-3. Follow-up: overdue first (earliest ``next_follow_up_on`` first), then due
+1. ``alerts_new_lapsing``, highest first (only new missed-day and follow-up-due
+   alerts count).
+2. Other new alerts plus ``pending_requests``, highest first (acknowledged
+   alerts are not an input, so they never count).
+3. ``current_missed_streak``, longest first.
+4. Follow-up: overdue first (earliest ``next_follow_up_on`` first), then due
    today, then everything else (no follow-up due yet, or none scheduled).
-4. ``last_workout_on``, oldest first; a player who never trained ranks before
+5. ``last_workout_on``, oldest first; a player who never trained ranks before
    any date.
-5. ``player_username``, ascending.
+6. ``player_username``, ascending.
 """
 
 from __future__ import annotations
@@ -38,7 +40,7 @@ def _follow_up_key(next_follow_up_on: Any, today: date) -> tuple[int, str]:
     return 2, ""
 
 
-def roster_urgency_key(entry: Mapping[str, Any], today: date) -> tuple[int, int, int, str, str, str]:
+def roster_urgency_key(entry: Mapping[str, Any], today: date) -> tuple[int, int, int, int, str, str, str]:
     """The urgency-order sort key for one roster row (pure; no clock, no I/O).
 
     Sort roster rows with ``sorted(rows, key=lambda row: roster_urgency_key(row, today))``.
@@ -47,7 +49,11 @@ def roster_urgency_key(entry: Mapping[str, Any], today: date) -> tuple[int, int,
     raise ``ValueError`` rather than silently reordering the roster.
     """
     return (
-        -(int(entry.get("alerts_new") or 0) + int(entry.get("pending_requests") or 0)),
+        -int(entry.get("alerts_new_lapsing") or 0),
+        -(
+            max(0, int(entry.get("alerts_new") or 0) - int(entry.get("alerts_new_lapsing") or 0))
+            + int(entry.get("pending_requests") or 0)
+        ),
         -int(entry.get("current_missed_streak") or 0),
         *_follow_up_key(entry.get("next_follow_up_on"), today),
         str(entry.get("last_workout_on") or ""),

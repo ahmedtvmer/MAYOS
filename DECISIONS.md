@@ -187,6 +187,7 @@ This document records the architectural, algorithmic, and heuristic decisions im
 ### ADR 024: Constrained cross-player AI for public Coach Pro
 * **Status**: Accepted design; separate privacy and evaluation gate pending
 * **Decision**: The closed trial keeps ADR 016's one-selected-player coach-model boundary. At public launch, Coach Pro may request an on-demand, stateless roster briefing. Deterministic ranking selects at most five consenting players with active assignments to that coach; the model receives only needed de-identified evidence, never raw roster histories or player-assistant chats. The service does not retain a multi-player chat transcript. Players who decline this hosted cross-player use remain visible through ordinary authorized records and deterministic alerts. Updated player disclosure and consent, authorization checks, and a separate privacy and quality evaluation must pass before enabling this feature.
+* **Amendment (2026-09-30)**: Roster ranking stays a fixed, inspectable tuple with no model or predicted probability; new lapsing alerts rank first.
 * **Rationale**: A coach can prioritize the roster with a short model explanation while bounding disclosure and cost. Keeping the roster briefing separate from the single-player assistant avoids carrying one player's context into another's conversation.
 
 ---
