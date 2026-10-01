@@ -55,7 +55,7 @@ Run these and make them green before finishing; fix what they surface, don't jus
   ruff check --select E,F,W --ignore E402,E501,EXE002,W291,W292,W293 .
   SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 -m pytest <the test files you added or changed> -q   (run often while working)
   SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 -m pytest tests/ -q                                   (once, at the end)
-Known environment gap: this checkout has no data/processed_exercises.csv (the real exercise dataset is git-ignored and not available here), so the tests listed in plans/codex-briefs/known-failures.txt (in the orchestrator checkout at /home/user/MAYOS) already fail before your change. Do not try to fix or work around them; do not create a fake dataset. Your change must not add any failure outside that list.
+Dataset: data/processed_exercises.csv (the real exercise dataset) is present in this checkout. It is git-ignored; never modify, move or commit it. With it present, the full Python suite is expected to pass.
 If a gate cannot run in this environment (missing SDK, blocked network, missing model files), say exactly which one and why in the report. Never skip, disable or weaken a test to get green.
 Confirm `git status` shows only the changes this issue needs.
 </verification_loop>
