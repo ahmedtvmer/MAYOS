@@ -24,6 +24,8 @@ sync with the base branch, run `/code-review`, re-run the gates, then commit.
 | 3 | #203 stall length on the roster | post-commit hook, roster summary, coach roster UI | landed |
 | 3 | #239 profile-change coach alert | profile update path, coach alerts, coach UI | landed |
 | 3 | #242 remove legacy features (ADR 056) | deletions across the repo; lands last | landed |
+| 4 | #232 coach-pattern day templates and coach rubric | program generation, LLM split prompt | queued |
+| 4 | #204 stall alert | post-commit evaluation, coach alerts, alert centre UI | queued |
 
 Later chains: #230 → #232 → #233/#234 → #235; #238 → #239, #242; #202 → #203 → #204.
 

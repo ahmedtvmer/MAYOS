@@ -1,0 +1,76 @@
+<role>
+You are the IMPLEMENTER, not the orchestrator. Write the code yourself, directly, in this working tree.
+The "Delegation policy" / "Delegation execution" sections in AGENTS.md and CLAUDE.md, and the
+opencode-delegate / codex-delegate skills, are instructions for the orchestrating agent that sent you
+this brief. They do not apply to you: do not delegate, do not look for a delegate model or lane, and do
+not stop to ask which model to use. Every other house rule in AGENTS.md (domain docs, glossary terms,
+ADRs, testing conventions) still applies. You cannot ask questions mid-run; when something is genuinely
+ambiguous, make the most conservative choice consistent with the issue and flag it in your report.
+</role>
+
+<task>
+Implement GitHub issue #204 in the MAYOS repository (this working tree). The issue is the source of truth; it is quoted in full below. Every acceptance criterion must be met.
+
+Before coding, read AGENTS.md, the relevant CONTEXT.md glossary entries and the ADRs in DECISIONS.md that the issue or notes mention. Use the glossary's terms in code, tests and docs. If the issue conflicts with an ADR or with the code as it stands, stop and report the conflict instead of guessing.
+
+Work test-first where a seam exists: write a failing test through public behaviour (HTTP responses, assistant replies, generated programs, search results, rendered widgets), make it pass, then refactor. Tests must not assert on private helpers, SQL shape or table rows. Never loosen an existing test to make your change pass; if an existing expectation must change, say why in the report.
+
+Other implementers are working on other issues at the same time in separate worktrees. Stay strictly inside this issue's scope so the branches merge cleanly.
+
+<orchestrator_notes>
+Read ADR 032 (signal episodes), ADR 024 with its 2026-09-30 amendment, ADR 025, ADR 020 in DECISIONS.md and CONTEXT.md "Stalling", "Lapsing", "Coach alert", "Signal episode", "Roster urgency order".
+Already landed (#203): stall length is recounted after every commit by service/stalling.py and stored in the catalog roster summary (roster_attendance.stall_length); a new program version or a PR session resets it to 0, each later non-PR committing session adds 1. The missed-day streak lives beside it (service/missed_day_alerts.py). Hang the stall alert off that same post-commit evaluation; one named threshold constant (8).
+Model the kind on the existing signal-episode kinds (service/progression_alerts.py regression/deload episodes): kind constant in its own module, deterministic episode dedupe key via get_coach_alert_by_dedupe and the unique (assignment_id, kind, dedupe_key) guard, catalog gate, evidence projection allowlist (only stall length and window start date), best-effort coach notice with no training detail, system-resolve paths. Acknowledged/resolved stall alerts stay out of the urgency counts; the stall alert is NOT a lapsing kind (alerts_new_lapsing counts only missed-day and follow-up-due).
+Mobile: label the kind in the alert centre (shared Flutter code serves Android and web) and update the fake API; widget tests following the existing coach alert tests.
+Update the CONTEXT.md Coach alert entry if it lists kinds, and add an ADR 032/024 amendment for the stall alert with code references.
+</orchestrator_notes>
+
+<issue>
+# #204 Stall alert
+## Parent
+
+#201
+
+## What to build
+
+A coach gets one **stall alert** when a player stalls. It is a new coach alert kind modelled as a signal episode (ADR 032). It opens when stall length reaches 8 (one named constant) and the player has no missed-day streak, and a best-effort in-app coach notice goes out that carries no training detail. While the alert is open, further stalled sessions update its recorded session count on the same alert. The system resolves it on a personal record, a newly published program version, or the start of a missed-day streak. Coaches acknowledge or resolve it like any other alert. Android and web alert centres show the kind with its own label.
+
+## Acceptance criteria
+
+- [ ] At the 8th committing session without a personal record, with no missed-day streak, exactly one new stall alert opens and one coach notice is sent (API test through the player commit route and the coach alert centre).
+- [ ] Further stalled sessions update the same alert's session count and never create a second alert.
+- [ ] A personal record, a new program version, or a missed-day streak system-resolves the open stall alert.
+- [ ] No stall alert opens while a missed-day streak is running.
+- [ ] Re-processing or re-syncing a session is a no-op for the alert.
+- [ ] Alert evidence holds only stall length and the window start date, with no set detail and no identity.
+- [ ] Acknowledge and resolve work through the existing coach alert routes, and acknowledged or resolved stall alerts stay out of the urgency counts.
+- [ ] Android and web alert centres label the kind, with widget tests.
+- [ ] During the trial every coach receives it. Coach Pro gating is #55's job (see the comment there).
+
+## Blocked by
+
+- #203
+</issue>
+</task>
+
+<verification_loop>
+Run these and make them green before finishing; fix what they surface, don't just report it:
+  ruff check --select E,F,W --ignore E402,E501,EXE002,W291,W292,W293 .
+  SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 -m pytest <the test files you added or changed> -q -p no:cacheprovider   (run often while working)
+  SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 -m pytest tests/ -q -p no:cacheprovider                                   (REQUIRED once, at the end, after your last change)
+Dataset: data/processed_exercises.csv and a seeded db/catalog.db are present (git-ignored; never modify or commit them). The full Python suite is expected to pass except, possibly, the known flaky tests/test_google_sign_in.py::test_concurrent_completion_creates_one_account_and_one_link (pre-existing race; do not touch it).
+Never skip, disable or weaken a test to get green.
+Confirm `git status` shows only the changes this issue needs.
+</verification_loop>
+
+<action_safety>
+Keep changes scoped to this issue. No unrelated refactors, renames or cleanup. Do NOT run git add, git commit, git push or any branch operation; leave the work uncommitted in the working tree for the orchestrator to review and commit.
+</action_safety>
+
+<structured_output_contract>
+End with a report delimited by lines `=== REPORT ===` and `=== END REPORT ===`, containing:
+  1. What changed and why, mapped to each acceptance criterion (met / not met, with the test that proves it)
+  2. Files touched
+  3. Gate outcomes with counts (ruff, full pytest, flutter analyze/test as applicable)
+  4. Anything you deviated on, left open, or want decided
+</structured_output_contract>
