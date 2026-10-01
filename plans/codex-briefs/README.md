@@ -20,10 +20,10 @@ sync with the base branch, run `/code-review`, re-run the gates, then commit.
 | 2 | #226 Replace list ranking | exercise search (after #227, #229) | landed |
 | 2 | #241 deload undo/apply via assistant | assistant router, commit (after #238) | landed |
 | 2 | #155 become a coach from onboarding | Flutter onboarding + Settings (after #154, #238) | landed |
-| 3 | #230 staple lists replace the random pick | program generation | queued |
-| 3 | #203 stall length on the roster | post-commit hook, roster summary, coach roster UI | queued |
-| 3 | #239 profile-change coach alert | profile update path, coach alerts, coach UI | queued |
-| 3 | #242 remove legacy features (ADR 056) | deletions across the repo; lands last | queued |
+| 3 | #230 staple lists replace the random pick | program generation | landed |
+| 3 | #203 stall length on the roster | post-commit hook, roster summary, coach roster UI | landed |
+| 3 | #239 profile-change coach alert | profile update path, coach alerts, coach UI | landed |
+| 3 | #242 remove legacy features (ADR 056) | deletions across the repo; lands last | landed |
 
 Later chains: #230 → #232 → #233/#234 → #235; #238 → #239, #242; #202 → #203 → #204.
 
@@ -42,6 +42,14 @@ Later chains: #230 → #232 → #233/#234 → #235; #238 → #239, #242; #202 �
 - #241 safety: pain messages never route to the Deload action, Arabic patterns are anchored and negation-aware, the clinical check runs first. Ledger schema v18 -> v19 adds deload_choices.
 - #155 uses "I'm a coach — enter coach code" (CONTEXT.md avoids "invite code"), not the issue's literal label.
 - Pre-existing, out of scope: the clinical guard misses compound messages such as "my shoulder is injured, apply the deload" (routes to Q&A; same on the base branch).
+
+## Wave 3 review notes
+
+- #230, #203, #239, #242 went through Codex, two-axis `/code-review`, one Codex correction round, then landed in order #230, #203, #239, #242. One real conflict (tests/test_program_blueprints.py imports: #230 added equipment_access, #242 removed the Excel exporter) resolved by keeping both intents. Combined branch: ruff clean, pytest 2203 passed (lower because #242 deleted the removed features' tests), flutter analyze clean, flutter test 746 passed.
+- #230: staples are explicit Exercise library ids (name-fragment matching picked wrong movements); substitutes are the next allowed staples, offered in the logger Replace sheet and chat. Ledger v19 -> v20.
+- #203 ruling: a new program version or a PR session resets stall length to 0; each later non-PR committing session adds 1 (N sessions show N). One PR source (the logger's new_prs); look-back 32 sessions.
+- #239: own module service/profile_change_alerts.py; deterministic episode dedupe keys; a reverted edit system-resolves the alert.
+- #242: privacy policy keeps a disclosure for existing imported-history audit records (still stored, deleted with the account). DELETE /profile now answers 405 (not a hidden 404 handler). Startup drops the account_claim_codes table (credential material, ADR 056). UI_BASE_URL default is the Flutter web dev origin http://localhost:7357.
 
 ## Environment prerequisites
 
