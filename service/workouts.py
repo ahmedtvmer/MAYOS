@@ -21,6 +21,7 @@ from core.effort import min_rir_label, rir_from_rpe
 from core.deload_choices import DELOAD_CHOICE_APPLY, DELOAD_CHOICE_UNDO
 from core.warmup import calculate_warmup_sets
 from service._base import ledger_scope
+from service import stall_alerts, stalling
 from service import training_status as training_status_service
 from service import checkpoint_reviews as checkpoint_reviews_service
 from service.schedule import latest_schedule_timezone, local_date_in, local_today, parse_iso_date
@@ -277,12 +278,14 @@ def _evaluate_missed_days(db: Any, account_id: str) -> None:
         logger.exception("Missed-day alert evaluation raised unexpectedly after session commit")
 
 
-def _evaluate_stalling(db: Any, account_id: str) -> None:
-    """Best-effort stall-length refresh after a commit; never fails the workout commit."""
+def _evaluate_stalling(db: Any, account_id: str, session_id: str) -> None:
+    """Refresh stall length and its Coach alert after a commit, best-effort."""
     try:
-        from service import stalling
-
-        stalling.evaluate_for_ledger(db, account_id)
+        assignment = db.get_active_assignment_for_player(account_id) if account_id else None
+        if assignment is None:
+            return
+        length, window_start = stalling.recount_assignment(db, assignment)
+        stall_alerts.evaluate_commit(db, assignment, session_id, length, window_start)
     except FileNotFoundError:
         logger.warning("Stall-length evaluation skipped after session commit; player ledger is missing.")
     except Exception:
@@ -324,7 +327,7 @@ def _run_post_commit_hooks(
     if not account_id:
         return
     _evaluate_missed_days(db, account_id)
-    _evaluate_stalling(db, account_id)
+    _evaluate_stalling(db, account_id, session_id)
     _evaluate_progression_alerts(db, account_id, session_id, session_date, exercise_summaries, fatigue_post)
 
 

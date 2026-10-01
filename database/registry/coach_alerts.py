@@ -323,3 +323,24 @@ class RegistryCoachAlertsMixin:
                 (str(assignment_id), str(session_id), now_iso),
             )
             self._commit_catalog()
+
+    def is_stall_session_processed(self, assignment_id: str, session_id: str) -> bool:
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "SELECT 1 FROM stall_alert_sessions WHERE assignment_id = ? AND session_id = ?",
+                (str(assignment_id), str(session_id)),
+            )
+            return cursor.fetchone() is not None
+
+    def mark_stall_session_processed(self, assignment_id: str, session_id: str, now_iso: str) -> None:
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "INSERT OR IGNORE INTO stall_alert_sessions"
+                " (assignment_id, session_id, processed_at) VALUES (?, ?, ?)",
+                (str(assignment_id), str(session_id), now_iso),
+            )
+            self._commit_catalog()

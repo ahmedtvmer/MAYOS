@@ -520,7 +520,7 @@ class CoachAssistantTurn {
 /// `GET /coach/alerts`: one catalog-side alert (ADR 030/031/032).
 ///
 /// `kind` is `missed_expected_days`, `follow_up_due`, `deload_recommended`,
-/// `performance_regression`, or `profile_change`; kind-specific fields are
+/// `performance_regression`, `stall`, or `profile_change`; kind-specific fields are
 /// flattened beside the common fields.
 class CoachAlert {
   const CoachAlert({
@@ -533,6 +533,8 @@ class CoachAlert {
     this.streakStartDate,
     this.lastMissedDate,
     this.missedCount = 0,
+    this.stallLength = 0,
+    this.windowStartDate,
     this.dueOn,
     this.lastCheckInOn,
     this.reason,
@@ -558,6 +560,8 @@ class CoachAlert {
         streakStartDate: json['streak_start_date'] as String?,
         lastMissedDate: json['last_missed_date'] as String?,
         missedCount: (json['missed_count'] as num?)?.toInt() ?? 0,
+        stallLength: (json['stall_length'] as num?)?.toInt() ?? 0,
+        windowStartDate: json['window_start_date'] as String?,
         dueOn: json['due_on'] as String?,
         lastCheckInOn: json['last_check_in_on'] as String?,
         reason: json['reason'] as String?,
@@ -597,6 +601,8 @@ class CoachAlert {
   final String? streakStartDate;
   final String? lastMissedDate;
   final int missedCount;
+  final int stallLength;
+  final String? windowStartDate;
   final String? dueOn;
   final String? lastCheckInOn;
   final String? reason;
@@ -614,6 +620,7 @@ class CoachAlert {
   static const String followUpDueKind = 'follow_up_due';
   static const String deloadRecommendedKind = 'deload_recommended';
   static const String performanceRegressionKind = 'performance_regression';
+  static const String stallKind = 'stall';
   static const String profileChangeKind = 'profile_change';
 
   bool get isNew => state == 'new';
@@ -623,10 +630,15 @@ class CoachAlert {
   bool get isFollowUpDue => kind == followUpDueKind;
   bool get isDeloadRecommended => kind == deloadRecommendedKind;
   bool get isPerformanceRegression => kind == performanceRegressionKind;
+  bool get isStall => kind == stallKind;
   bool get isProfileChange => kind == profileChangeKind;
 
   /// The alert-centre description, rendered per kind.
   String get description {
+    if (isStall) {
+      return 'Stalling — $stallLength sessions without a personal record '
+          '(since ${windowStartDate ?? 'an earlier date'})';
+    }
     if (isDeloadRecommended) {
       final String base = 'Deload recommended — ${reason ?? 'Systemic fatigue'}';
       final String? choice = playerDeloadChoice?['choice'] as String?;

@@ -200,7 +200,7 @@ The written assessment of a player's training since their previous checkpoint, p
 _Avoid_: AI rating, performance score
 
 **Coach alert**:
-A catalog-side notification of a coaching fact about an assigned player, such as a missed-day streak of at least two days or a due follow-up. It has new, acknowledged, and resolved states, and deduplicates on a kind-specific key so retries never duplicate it.
+A catalog-side notification of a coaching fact about an assigned player, such as a missed-day streak of at least two days, a due follow-up, or Stalling at a Stall length of eight. It has new, acknowledged, and resolved states, and deduplicates on a kind-specific key so retries never duplicate it.
 
 **Deload**:
 A temporary cut to a player's prescribed sets and effort, recommended when recorded readiness and effort show fatigue. Without an assigned coach it is applied to the player's workouts automatically; with one it is only suggested, and the coach decides. Either way the player can, through the assistant, undo an applied deload or apply a suggested one for their next workout only, and an assigned coach sees that choice on the deload alert.

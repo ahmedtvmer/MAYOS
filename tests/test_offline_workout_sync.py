@@ -300,15 +300,71 @@ def test_roster_stall_length_recounts_commits_and_replays_through_routes(api, mo
     roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
     assert roster[0]["stall_length"] == 5
 
-    pr = commit("44444444-4444-4444-8444-444444444444", "2026-09-26", weight=110.0)
+    for index in range(3):
+        stall_client_id = f"{index + 1}1111111-1111-4111-8111-111111111111"
+        commit(
+            stall_client_id,
+            f"2026-09-{26 + index}",
+            current=FIXED_NOW + timedelta(days=index),
+        )
+    roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
+    assert roster[0]["stall_length"] == 7
+    assert not [alert for alert in client.get("/coach/alerts", headers=coach_headers).json()["alerts"] if alert["kind"] == "stall"]
+
+    eighth_id = "41111111-1111-4111-8111-111111111111"
+    commit(eighth_id, "2026-09-29", current=FIXED_NOW + timedelta(days=3))
+    stall_alerts = client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
+    stall_alerts = [alert for alert in stall_alerts if alert["kind"] == "stall"]
+    coach_id = db.get_active_account_by_username("coach")["account_id"]
+    assert len(stall_alerts) == 1, (client.get("/coach/assignments", headers=coach_headers).json(), db.get_roster_alert_badges(coach_id))
+    stall_alert = stall_alerts[0]
+    assert stall_alert["stall_length"] == 8
+    assert stall_alert["window_start_date"] == "2026-09-23"
+    assert set(stall_alert) >= {"stall_length", "window_start_date"}
+    assert {key: stall_alert[key] for key in ("stall_length", "window_start_date")} == {
+        "stall_length": 8,
+        "window_start_date": "2026-09-23",
+    }
+    assert stall_alert["session_id"] is None
+    assert stall_alert["exercise_id"] is None
+    assert stall_alert["exercise_name"] is None
+    assert stall_alert["top_load"] is None
+    assert "player_account_id" not in stall_alert
+    coach_id = db.get_active_account_by_username("coach")["account_id"]
+    notices = [notice for notice in db.list_assignment_notices(coach_id) if notice["kind"] == "stall"]
+    assert len(notices) == 1
+    assert "weight" not in notices[0]["message"].lower()
+    acknowledged = client.post(f"/coach/alerts/{stall_alert['alert_id']}/acknowledge", headers=coach_headers)
+    assert acknowledged.status_code == 200
+    badges = db.get_roster_alert_badges(coach_id)[assignment_id]
+    assert badges["alerts_new"] == 0
+    assert badges["alerts_acknowledged"] == 1
+    continued_id = "51111111-1111-4111-8111-111111111111"
+    continued = commit(continued_id, "2026-09-30", current=FIXED_NOW + timedelta(days=4))
+    continued_alerts = [alert for alert in client.get("/coach/alerts", headers=coach_headers).json()["alerts"] if alert["kind"] == "stall"]
+    assert len(continued_alerts) == 1
+    assert continued_alerts[0]["alert_id"] == stall_alert["alert_id"]
+    assert continued_alerts[0]["stall_length"] == 9
+    replay_stall = commit(continued_id, "2026-09-30", current=FIXED_NOW + timedelta(days=4))
+    assert replay_stall.json() == continued.json()
+    assert len([alert for alert in client.get("/coach/alerts", headers=coach_headers).json()["alerts"] if alert["kind"] == "stall"]) == 1
+
+    pr = commit(
+        "44444444-4444-4444-8444-444444444444",
+        "2026-09-30",
+        current=FIXED_NOW + timedelta(days=5),
+        weight=110.0,
+    )
     assert pr.json()["new_prs"]
+    resolved_stalls = client.get("/coach/alerts?state=resolved", headers=coach_headers).json()["alerts"]
+    assert any(alert["alert_id"] == stall_alert["alert_id"] and alert["resolved_by"] == "system" for alert in resolved_stalls)
     roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
     assert roster[0]["stall_length"] == 0
 
     commit(
         "66666666-6666-4666-8666-666666666666",
-        "2026-09-27",
-        current=FIXED_NOW + timedelta(days=1),
+        "2026-10-01",
+        current=FIXED_NOW + timedelta(days=6),
     )
     roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
     assert roster[0]["stall_length"] == 1
@@ -317,8 +373,8 @@ def test_roster_stall_length_recounts_commits_and_replays_through_routes(api, mo
     new_version = db.ledger.get_active_program().version
     commit(
         "77777777-7777-4777-8777-777777777777",
-        "2026-09-28",
-        current=FIXED_NOW + timedelta(days=2),
+        "2026-10-02",
+        current=FIXED_NOW + timedelta(days=7),
         session_version=new_version,
     )
     roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
@@ -327,11 +383,11 @@ def test_roster_stall_length_recounts_commits_and_replays_through_routes(api, mo
     def fail_recount(*_args, **_kwargs):
         raise RuntimeError("recount unavailable")
 
-    monkeypatch.setattr("service.stalling.evaluate_for_ledger", fail_recount)
+    monkeypatch.setattr("service.stalling.recount_assignment", fail_recount)
     committed = commit(
         "88888888-8888-4888-8888-888888888888",
-        "2026-09-29",
-        current=FIXED_NOW + timedelta(days=3),
+        "2026-10-03",
+        current=FIXED_NOW + timedelta(days=8),
         session_version=new_version,
     )
     assert committed.status_code in (200, 201)

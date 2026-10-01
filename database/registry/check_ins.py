@@ -88,6 +88,18 @@ class RegistryCheckInsMixin:
                 return None
             return str(row[0])
 
+    def get_roster_missed_streak(self, assignment_id: str) -> int:
+        """The cached missed-day streak for one assignment (catalog-only)."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "SELECT current_missed_streak FROM roster_attendance WHERE assignment_id = ?",
+                (str(assignment_id),),
+            )
+            row = cursor.fetchone()
+            return int(row[0] or 0) if row else 0
+
     def latest_check_in_on(self, assignment_id: str) -> str | None:
         """The most recent check-in date for an assignment, or ``None`` if never."""
         self.ensure_account_schema()

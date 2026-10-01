@@ -559,6 +559,14 @@ class SchemaMixin:
                     PRIMARY KEY (assignment_id, session_id)
                 );
 
+                -- Catalog-side idempotency marker for stall-alert evaluation.
+                CREATE TABLE IF NOT EXISTS stall_alert_sessions (
+                    assignment_id TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    processed_at TEXT NOT NULL,
+                    PRIMARY KEY (assignment_id, session_id)
+                );
+
                 -- Catalog-side model usage metering (ADR 038, ticket #39). One row per
                 -- model call, keyed by the immutable account id and model. ``account_id``
                 -- is NULL only for an unattributed call (startup/eval), never a live

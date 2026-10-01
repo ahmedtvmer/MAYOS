@@ -21,14 +21,16 @@ def _session_order(session: dict[str, Any]) -> tuple[str, str, int]:
     )
 
 
-def stall_length(sessions: list[dict[str, Any]], program_version: int, exercise_ids: set[str]) -> int:
-    """Recount consecutive sessions from canonical ADR 042 ``new_prs`` commit results."""
+def stalling_facts(
+    sessions: list[dict[str, Any]], program_version: int, exercise_ids: set[str]
+) -> tuple[int, str | None]:
+    """Return Stall length and the start date using canonical ADR 042 PR results."""
     ordered = sorted(sessions, key=_session_order)
     current_version_sessions = [
         session for session in ordered if session.get("program_version") == program_version
     ]
     if not current_version_sessions:
-        return 0
+        return 0, None
     first_program_session = current_version_sessions[0]
     first_order = _session_order(first_program_session)
     latest_record_session = None
@@ -45,24 +47,32 @@ def stall_length(sessions: list[dict[str, Any]], program_version: int, exercise_
             for event in events
         ):
             latest_record_session = session
-    if latest_record_session is not None and _session_order(latest_record_session) >= first_order:
-        reset_order = _session_order(latest_record_session)
-        return sum(1 for session in ordered if _session_order(session) > reset_order)
-    return sum(1 for session in ordered if _session_order(session) >= first_order)
+    reset_order = (
+        _session_order(latest_record_session)
+        if latest_record_session is not None and _session_order(latest_record_session) >= first_order
+        else None
+    )
+    if reset_order is not None:
+        run = [session for session in ordered if _session_order(session) > reset_order]
+    else:
+        run = [session for session in ordered if _session_order(session) >= first_order]
+    length = len(run)
+    window_start = str(run[0].get("session_date")) if run and run[0].get("session_date") else None
+    return length, window_start
 
 
-def evaluate_assignment(db: Any, assignment: dict[str, Any]) -> int:
+def recount_assignment(db: Any, assignment: dict[str, Any]) -> tuple[int, str | None]:
     """Recount one assignment's stall length and write it to the catalog summary."""
     account = db.get_account(assignment["player_account_id"])
     if not db.is_live_account(account):
-        return 0
+        return 0, None
     if not db.ledger_exists(account["ledger_id"]):
         logger.warning("Skipping stall-length recount for account %s; no ledger exists.", assignment["player_account_id"])
-        return 0
+        return 0, None
     with db.open_ledger(account["ledger_id"]) as ledger:
         program = ledger.get_active_program()
         if program is None or program.version is None:
-            length = 0
+            length, window_start = 0, None
         else:
             exercise_ids = sorted(
                 {
@@ -73,12 +83,6 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any]) -> int:
                 }
             )
             sessions = ledger.stall_recount_facts(STALL_LOOKBACK_SESSIONS)
-            length = stall_length(sessions, int(program.version), set(exercise_ids))
+            length, window_start = stalling_facts(sessions, int(program.version), set(exercise_ids))
     db.upsert_roster_attendance(assignment["assignment_id"], stall_length=length)
-    return length
-
-
-def evaluate_for_ledger(db: Any, account_id: str) -> int | None:
-    """Best-effort hook entry point; returns ``None`` without an active assignment."""
-    assignment = db.get_active_assignment_for_player(account_id) if account_id else None
-    return evaluate_assignment(db, assignment) if assignment else None
+    return length, window_start
