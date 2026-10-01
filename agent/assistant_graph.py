@@ -1205,23 +1205,48 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     body_part, target_muscle, _ = target_meta if target_meta else ("", "", "")
 
     if not target_desc:
-        query_vec = EMBED_MODEL.embed_query(f"{target_muscle} {matched_ex.exercise_name}")
-        raw_candidates = store.search_similar_exercises(query_vec, limit=12)
-        valid_candidates = [
-            c for c in raw_candidates
-            if str(c["id"]) != str(matched_ex.exercise_id)
-            and equipment_access_allows(equipment_access, c.get("equipment"))
-            and (
-                (target_muscle and target_muscle.lower() in c.get("target_muscle", "").lower())
-                or ((cand_body := c.get("body_part", "").lower()) and body_part and cand_body == body_part.lower())
-            )
-        ][:3]
+        valid_candidates = []
+        suggested_staples = getattr(matched_ex, "suggested_substitutes", [])
+        has_suggested_staples = isinstance(suggested_staples, list) and bool(suggested_staples)
+        if has_suggested_staples:
+            prescribed_ids = {str(ex.exercise_id) for ex in target_day.exercises}
+            for staple in suggested_staples:
+                staple_id = str(staple.exercise_id)
+                if staple_id == str(matched_ex.exercise_id) or staple_id in prescribed_ids:
+                    continue
+                with store.catalog_locked() as conn:
+                    row = conn.execute(
+                        "SELECT id, name, equipment, target_muscle, body_part FROM exercises WHERE id = ?",
+                        (staple_id,),
+                    ).fetchone()
+                if not row:
+                    continue
+                candidate = dict(zip(("id", "name", "equipment", "target_muscle", "body_part"), row))
+                if not equipment_access_allows(equipment_access, candidate["equipment"]):
+                    continue
+                candidate["name"] = staple.exercise_name
+                valid_candidates.append(candidate)
+        else:
+            # Older saved programs have no Staple suggestions; preserve their
+            # existing semantic alternative flow until a new program is generated.
+            query_vec = EMBED_MODEL.embed_query(f"{target_muscle} {matched_ex.exercise_name}")
+            raw_candidates = store.search_similar_exercises(query_vec, limit=12)
+            valid_candidates = [
+                c for c in raw_candidates
+                if str(c["id"]) != str(matched_ex.exercise_id)
+                and equipment_access_allows(equipment_access, c.get("equipment"))
+                and (
+                    (target_muscle and target_muscle.lower() in c.get("target_muscle", "").lower())
+                    or ((cand_body := c.get("body_part", "").lower()) and body_part and cand_body == body_part.lower())
+                )
+            ][:3]
 
         if not valid_candidates:
             msg = f"No direct biomechanical alternatives found for **{matched_ex.exercise_name.title()}**."
             return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
-        lines = [f"**Biomechanical Alternatives for {matched_ex.exercise_name.title()}** (`{target_muscle.title()}` | `{target_day.day_name}`):"]
+        heading = "Suggested Staple substitutes" if has_suggested_staples else "Biomechanical Alternatives"
+        lines = [f"**{heading} for {matched_ex.exercise_name.title()}** (`{target_muscle.title()}` | `{target_day.day_name}`):"]
         for i, c in enumerate(valid_candidates, start=1):
             is_comp = any(kw in c["name"].lower() for kw in COMPOUND_KEYWORDS) and "calf" not in c["name"].lower()
             cue = get_biomechanical_cue(c["name"], "compound" if is_comp else "isolation", experience_level)

@@ -44,6 +44,12 @@ const ProgramDay _day = ProgramDay(
       targetRepsMax: 8,
       targetRpe: 8.5,
       restSeconds: 180,
+      suggestedSubstitutes: <SuggestedSubstitute>[
+        SuggestedSubstitute(
+          exerciseId: 'incline_db_press',
+          exerciseName: 'Incline DB Press',
+        ),
+      ],
     ),
     ProgramExercise(
       exerciseId: 'incline_press',
@@ -862,6 +868,8 @@ void main() {
     // on screen before the player types anything (#162: `target_muscle`)…
     expect(find.text('Muscle: Chest'), findsOneWidget);
     expect(_muscleFilter(), findsOneWidget);
+    expect(inDialog('Suggested substitutes'), findsOneWidget);
+    expect(inDialog('Incline DB Press'), findsOneWidget);
     expect(inDialog('Cable Fly'), findsOneWidget);
     // …but Bench Press itself is not offered: it is already in this workout.
     expect(inDialog('Bench Press'), findsNothing);

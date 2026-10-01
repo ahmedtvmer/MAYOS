@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from agent.program_blueprints import (
     DEFAULT_SPLIT_BY_FREQUENCY,
     SLOT_SPECS,
+    SLOT_STAPLES,
     SPLIT_DISPLAY_NAMES,
     WARMUP_FAMILIES,
     WARMUP_SPECS,
@@ -285,6 +286,7 @@ def _fetch_by_sql(
     extra_exclude: str = "",
     name_rank: tuple[str, ...] = (),
     filter_equipment_access: bool = True,
+    candidate_ids: tuple[str, ...] = (),
     *,
     ledger: Any,
 ) -> list[dict[str, Any]]:
@@ -292,6 +294,10 @@ def _fetch_by_sql(
     cursor = conn.cursor()
 
     where = [f"({sql})"]
+    params: list[Any] = []
+    if candidate_ids:
+        where[-1] = f"(({sql}) OR e.id IN ({', '.join('?' for _ in candidate_ids)}))"
+        params.extend(candidate_ids)
     if extra_exclude:
         where.append(f"({extra_exclude})")
     where.append("LOWER(body_part) != 'cardio'")
@@ -310,7 +316,7 @@ def _fetch_by_sql(
         ORDER BY {_name_rank_sql(name_rank)}{rank_sql} ASC, id ASC
         LIMIT ?
     """
-    cursor.execute(query, (limit * 4,))
+    cursor.execute(query, (*params, limit * 4))
     rows = cursor.fetchall()
     cols = [col[0] for col in cursor.description]
     candidates = []
@@ -348,6 +354,7 @@ def fetch_slot_candidates(
         limit,
         extra_exclude=spec.exclude_sql,
         name_rank=spec.name_rank,
+        candidate_ids=SLOT_STAPLES.get(slot_key, ()),
         ledger=ledger,
     )
     for item in candidates:

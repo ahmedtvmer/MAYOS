@@ -491,6 +491,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         excludeExerciseIds: <String>{
           for (final ProgramExercise item in day.exercises) item.exerciseId,
         },
+        suggestedSubstitutes: exercise.suggestedSubstitutes,
         emptyFilteredMessage: 'Every match is already in this day.',
       ),
     );

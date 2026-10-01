@@ -44,6 +44,7 @@ class ExercisePickerDialog extends ConsumerStatefulWidget {
     this.title = 'Add unplanned exercise',
     this.targetMuscle,
     this.excludeExerciseIds = const <String>{},
+    this.suggestedSubstitutes = const <SuggestedSubstitute>[],
     this.emptyFilteredMessage = 'Every match is already in this workout.',
   });
 
@@ -59,6 +60,8 @@ class ExercisePickerDialog extends ConsumerStatefulWidget {
   /// offers them, planned or unplanned. Empty for Add exercise, which keeps
   /// offering the whole catalog.
   final Set<String> excludeExerciseIds;
+
+  final List<SuggestedSubstitute> suggestedSubstitutes;
 
   final String emptyFilteredMessage;
 
@@ -153,6 +156,12 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
       )
       .toList(growable: false);
 
+  List<SuggestedSubstitute> get _visibleSuggestions =>
+      widget.suggestedSubstitutes
+          .where((SuggestedSubstitute item) =>
+              !widget.excludeExerciseIds.contains(item.exerciseId))
+          .toList(growable: false);
+
   /// The pill (#162): on, the server lists the target muscle (no name needed);
   /// off, the search goes back to the whole catalog by name — which needs a
   /// query, so an empty one says exactly that instead of showing muscle rows.
@@ -226,11 +235,29 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
                   ),
                 ),
               ),
-            if (visible.isNotEmpty)
+            if (visible.isNotEmpty || _visibleSuggestions.isNotEmpty)
               Flexible(
                 child: ListView(
                   shrinkWrap: true,
                   children: <Widget>[
+                    if (_visibleSuggestions.isNotEmpty) ...<Widget>[
+                      const Padding(
+                        padding: EdgeInsets.only(top: MayosSpacing.sm),
+                        child: Text('Suggested substitutes'),
+                      ),
+                      for (final SuggestedSubstitute item
+                          in _visibleSuggestions)
+                        MayosSettingsTile(
+                          icon: Icons.swap_horiz,
+                          title: item.exerciseName,
+                          onTap: () => Navigator.of(context).pop(
+                            ExerciseCatalogEntry(
+                              id: item.exerciseId,
+                              name: item.exerciseName,
+                            ),
+                          ),
+                        ),
+                    ],
                     for (final ExerciseCatalogEntry entry in visible)
                       MayosSettingsTile(
                         icon: Icons.fitness_center,

@@ -201,13 +201,16 @@ class LedgerTrainingProgramMixin:
                 """,
                     (d_id,),
                 )
+                selected_column_names = [column[0] for column in cursor.description]
                 exercises = []
                 for r in cursor.fetchall():
-                    suggested_substitutes_index = 10 + int(has_slot_key) + int(has_warmup_sets)
                     suggested_substitutes = []
-                    if has_suggested_substitutes:
+                    row_by_column = dict(zip(selected_column_names, r))
+                    if "suggested_substitutes_json" in row_by_column:
                         try:
-                            suggested_substitutes = json.loads(r[suggested_substitutes_index] or "[]")
+                            suggested_substitutes = json.loads(
+                                row_by_column["suggested_substitutes_json"] or "[]"
+                            )
                         except (TypeError, ValueError):
                             logger.warning("Skipping malformed Staple substitute list on %s", r[1])
                     exercises.append(

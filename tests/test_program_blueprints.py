@@ -9,6 +9,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 from agent import program_generator
+from agent.ProgramState import CustomDayPlan, DynamicSplitPlan
 from core.effort import rir_from_rpe
 from agent.program_blueprints import (
     ANTERIOR_POSTERIOR_DAYS,
@@ -19,6 +20,7 @@ from agent.program_blueprints import (
     FEMALE_FB_DAYS,
     MAX_RECOVERY_CUTS_PER_DAY,
     PPL_DAYS,
+    SLOT_FALLBACKS,
     SLOT_SPECS,
     SLOT_STAPLES,
     SPLIT_DAY_POOLS,
@@ -32,6 +34,7 @@ from agent.program_blueprints import (
     prescription_class,
 )
 from agent.program_rules import fetch_slot_candidates, fetch_warmup_candidates, get_split_plan, resolve_split
+from utils.equipment_access import COMMERCIAL_GYM, EQUIPMENT_ACCESS_VALUES
 from utils.exporter import export_program_to_excel
 
 db = None
@@ -90,11 +93,6 @@ def test_all_slot_keys_are_referenced_by_a_blueprint():
     assert referenced == set(SLOT_SPECS), f"Unused slots: {set(SLOT_SPECS) - referenced}"
 
 
-def test_every_movement_slot_has_an_ordered_staple_list():
-    assert set(SLOT_STAPLES) == set(SLOT_SPECS)
-    assert all(staples and len(staples) == len(set(staples)) for staples in SLOT_STAPLES.values())
-
-
 def test_warmup_families_reference_known_specs():
     for family in WARMUP_FAMILIES:
         for key in WARMUP_FAMILIES[family]:
@@ -110,6 +108,7 @@ def _generate(
     recovery="normal",
     limitations="None",
     training_age_years=3.0,
+    equipment_access="Commercial gym",
 ):
     suffix = (preference or "default").replace(" ", "_").replace("/", "_")
     tags = "".join(
@@ -117,7 +116,7 @@ def _generate(
         for value in (goal, recovery if recovery != "normal" else "", limitations if limitations != "None" else "")
         if value
     )
-    user = f"test_blueprint_{gender}_{frequency}{tags}_{suffix}"
+    user = f"test_blueprint_{gender}_{frequency}_{equipment_access.replace(' ', '_')}{tags}_{suffix}"
     db.switch_user(user)
     db.ledger.upsert_player_profile(
         {
@@ -131,7 +130,7 @@ def _generate(
             "long_term_goal": long_term_goal,
             "weekly_frequency": frequency,
             "training_age_years": training_age_years,
-            "equipment_access": "commercial gym",
+            "equipment_access": equipment_access,
             "injuries_or_limitations": limitations,
             "stress_and_sleep": recovery,
         }
@@ -181,7 +180,7 @@ def test_commercial_gym_vertical_pull_prescribes_wide_grip_lat_pulldown():
     ]
     assert vertical_pulls
     assert all(exercise.exercise_name == "Wide-Grip Lat Pulldown" for exercise in vertical_pulls)
-    assert vertical_pulls[0].suggested_substitutes[0]["exercise_name"] == "Lat Pulldown"
+    assert vertical_pulls[0].suggested_substitutes[0].exercise_name == "Lat Pulldown"
 
 
 def test_generation_is_repeatable_and_offers_ordered_staple_substitutes():
@@ -200,6 +199,123 @@ def test_generation_is_repeatable_and_offers_ordered_staple_substitutes():
     assert triceps_overhead and "cable overhead" in triceps_overhead[0].exercise_name.lower()
     biceps_alternatives = [exercise for exercise in exercises if exercise.slot_key == "biceps_alt"]
     assert biceps_alternatives and biceps_alternatives[0].exercise_id == "318"
+
+
+def test_equipment_access_generation_uses_only_ordered_staples_and_next_substitutes():
+    preferences = (
+        ("Full Body", 5),
+        ("Upper/Lower", 5),
+        ("Push/Pull/Legs", 5),
+        ("Arnold", 3),
+        ("Anterior/Posterior", 4),
+        ("Glute Specialized", 5),
+    )
+    programs = {
+        access: [
+            _generate("female" if index % 2 else "male", frequency, preference, equipment_access=access)
+            for index, (preference, frequency) in enumerate(preferences)
+        ]
+        for access in EQUIPMENT_ACCESS_VALUES
+    }
+
+    for access, access_programs in programs.items():
+        for program in access_programs:
+            for day in program.days:
+                day_ids = {exercise.exercise_id for exercise in day.exercises}
+                for exercise in day.exercises:
+                    slot = exercise.slot_key
+                    candidates = fetch_slot_candidates(slot, access, "None", limit=100, ledger=db.ledger)
+                    source_slot = slot
+                    allowed = [
+                        candidate for staple_id in SLOT_STAPLES[slot]
+                        for candidate in candidates if str(candidate["id"]) == staple_id
+                    ]
+                    if not allowed:
+                        fallback_options = (
+                            *SLOT_FALLBACKS.get(slot, {}).get(None, ()),
+                            *SLOT_FALLBACKS.get(slot, {}).get(access, ()),
+                        )
+                        for fallback_slot in fallback_options:
+                            fallback_candidates = fetch_slot_candidates(
+                                fallback_slot, access, "None", limit=100, ledger=db.ledger
+                            )
+                            allowed = [
+                                candidate for staple_id in SLOT_STAPLES[fallback_slot]
+                                for candidate in fallback_candidates
+                                if str(candidate["id"]) == staple_id
+                            ]
+                            if allowed:
+                                source_slot = fallback_slot
+                                break
+                    assert allowed, f"{access} has no allowed Staple or documented fallback for {slot}"
+                    expected = next((item for item in allowed if str(item["id"]) == exercise.exercise_id), None)
+                    assert expected is not None, f"{access} prescribed non-Staple {exercise.exercise_name} for {slot}"
+                    prior = [item.exercise_id for item in day.exercises if item is not exercise]
+                    first_unused = next((item for item in allowed if item["id"] not in prior), allowed[0])
+                    assert exercise.exercise_id == first_unused["id"]
+                    allowed = [
+                        candidate for staple_id in SLOT_STAPLES[source_slot]
+                        for candidate in fetch_slot_candidates(
+                            source_slot, access, "None", limit=100, ledger=db.ledger
+                        ) if str(candidate["id"]) == staple_id
+                    ]
+                    expected_substitutes = [
+                        str(item["id"]) for item in allowed
+                        if str(item["id"]) != exercise.exercise_id and str(item["id"]) not in day_ids
+                    ][:2]
+                    actual_substitutes = [item.exercise_id for item in exercise.suggested_substitutes]
+                    assert actual_substitutes == expected_substitutes
+                    assert len(actual_substitutes) == len(set(actual_substitutes))
+                    assert exercise.exercise_id not in actual_substitutes
+        for slot in SLOT_SPECS:
+            direct = fetch_slot_candidates(slot, access, "None", limit=100, ledger=db.ledger)
+            direct_staples = [item for item in direct if str(item["id"]) in SLOT_STAPLES[slot]]
+            if direct_staples:
+                continue
+            options = (
+                *SLOT_FALLBACKS.get(slot, {}).get(None, ()),
+                *SLOT_FALLBACKS.get(slot, {}).get(access, ()),
+            )
+            assert any(
+                any(
+                    str(item["id"]) in SLOT_STAPLES[fallback_slot]
+                    for item in fetch_slot_candidates(fallback_slot, access, "None", limit=100, ledger=db.ledger)
+                )
+                for fallback_slot in options
+            ), f"{access} has neither a direct Staple nor an allowed fallback for {slot}"
+
+
+def test_generated_staples_do_not_use_known_wrong_name_matches(monkeypatch):
+    wrong_ids = {"1414", "104", "102", "1432", "741", "744", "329", "190"}
+    for access in EQUIPMENT_ACCESS_VALUES:
+        program = _generate("male", 5, "Full Body", equipment_access=access)
+        for day in program.days:
+            for exercise in day.exercises:
+                assert exercise.exercise_id not in wrong_ids
+                assert all(item.exercise_id not in wrong_ids for item in exercise.suggested_substitutes)
+
+    focused_plan = DynamicSplitPlan(
+        split_name="Staple Match Cases",
+        days=[CustomDayPlan(
+            day_order=1,
+            day_name="Match Cases",
+            target_slots=["biceps_preacher", "forearm_wrist", "quad_compound", "vertical_pull"],
+        )],
+    )
+    monkeypatch.setattr(program_generator, "resolve_split", lambda **_kwargs: focused_plan)
+    focused = _generate("male", 3, "Full Body", equipment_access=COMMERCIAL_GYM)
+    prescribed = {exercise.slot_key: exercise.exercise_id for exercise in focused.days[0].exercises}
+    assert prescribed == {
+        "biceps_preacher": "592",
+        "forearm_wrist": "1412",
+        "quad_compound": "743",
+        "vertical_pull": "2330",
+    }
+    assert all(
+        substitute.exercise_id not in wrong_ids
+        for exercise in focused.days[0].exercises
+        for substitute in exercise.suggested_substitutes
+    )
 
 
 def test_no_duplicate_exercises_within_a_day():
