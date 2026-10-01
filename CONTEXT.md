@@ -50,7 +50,7 @@ The fixed, inspectable order of a roster by need for attention. Players are rank
 _Avoid_: priority score
 
 **Lapsing**:
-A player drifting away from training, shown by a new missed-expected-days alert or a new follow-up-due alert.
+A player drifting away from training, shown by a new coach alert for a missed-day streak or a follow-up due.
 
 **Volume review**:
 A per-muscle assessment of a player's weekly working sets, made once at least four weeks of the current program have enough training behind them. Each muscle is judged progressing, stalled, or under-recovered from its primary exercises, which leads to keeping, adding, or removing sets. It is distinct from Stalling, which concerns the whole player.
