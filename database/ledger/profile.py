@@ -5,6 +5,7 @@ Extracted from DatabaseManager; behaviour is unchanged.
 
 from datetime import UTC, datetime
 from typing import Any
+from core.deload_choices import DELOAD_CHOICES
 from utils.equipment_access import map_equipment_access
 
 from agent.prompts import DEFAULT_ASSISTANT_STYLE
@@ -16,7 +17,7 @@ class LedgerProfileMixin:
         return str(row[0]) if row else None
 
     def set_deload_choice(self, choice: str) -> None:
-        if choice not in {"undo", "apply"}:
+        if choice not in DELOAD_CHOICES:
             raise ValueError("Deload choice must be undo or apply")
         self.conn.execute(
             "INSERT INTO deload_choices (id, choice) VALUES (1, ?) "
@@ -26,10 +27,10 @@ class LedgerProfileMixin:
         self._commit_ledger()
 
     def consume_deload_choice(self) -> str | None:
-        row = self.conn.execute("SELECT choice FROM deload_choices WHERE id = 1").fetchone()
+        choice = self.get_deload_choice()
         self.conn.execute("DELETE FROM deload_choices WHERE id = 1")
         self._commit_ledger()
-        return str(row[0]) if row else None
+        return choice
 
     def get_player_profile(self, user_id: int = 1) -> dict[str, Any] | None:
         cursor = self.conn.cursor()

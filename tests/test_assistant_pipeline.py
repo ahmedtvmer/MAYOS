@@ -106,6 +106,13 @@ def test_deload_choice_routing_is_deterministic_in_english_and_arabic():
     cases = [
         ("undo the deload", "undo"),
         ("apply the deload", "apply"),
+        ("can you undo the deload?", "undo"),
+        ("undo deload for today", "undo"),
+        ("please undo the deload for my next workout", "undo"),
+        ("skip my deload this workout", "undo"),
+        ("undo the deload please", "undo"),
+        ("please apply the deload", "apply"),
+        ("skip the deload next workout", "undo"),
         ("ألغِ التخفيف", "undo"),
         ("طبّق التخفيف", "apply"),
     ]
@@ -114,6 +121,58 @@ def test_deload_choice_routing_is_deterministic_in_english_and_arabic():
             routed = router_node({"messages": [HumanMessage(content=query)]})
             assert routed["intent"] == "deload_choice"
             assert routed["intent_metadata"]["choice"] == choice
+
+
+def test_deload_routing_does_not_override_clinical_or_negated_requests():
+    clinical_queries = [
+        "عندي ألم حاد في الركبة، كيف أطبق التخفيف؟",
+        "my knee hurts, can I undo the deload?",
+    ]
+    for query in clinical_queries:
+        routed = router_node({"messages": [HumanMessage(content=query)]})
+        assert routed["intent"] == "clinical_intercept"
+
+    non_commands = [
+        "التخفيف من الألم بعد الغداء",
+        "هل الديلود ضروري؟ لا تطبق شيء الآن",
+        "don't apply the deload",
+    ]
+    for query in non_commands:
+        routed = router_node({"messages": [HumanMessage(content=query)]})
+        assert routed["intent"] != "deload_choice"
+
+
+def test_deload_pipeline_says_nothing_to_change_in_both_wrong_directions(fresh_store):
+    from types import SimpleNamespace
+
+    from agent.assistant_graph import stream_assistant_turn
+
+    ledger = fresh_store.ledger
+    ledger.get_active_program = MagicMock(
+        return_value=SimpleNamespace(days=[SimpleNamespace(day_order=1, exercises=[])])
+    )
+    cases = [
+        ("apply the deload", "applied"),
+        ("undo the deload", "suggested"),
+    ]
+    for query, current_state in cases:
+        state = {
+            "messages": [HumanMessage(content=query)],
+            "trainee_id": "test_user",
+            "player_account_id": None,
+            "coach_tone": "Direct and pragmatic",
+            "custom_instructions": "",
+            "telemetry_context": "",
+            "intent": None,
+            "intent_metadata": {},
+            "program_updated": False,
+            "response_content": None,
+        }
+        prescription = {"deload": {"state": current_state}}
+        with patch("service.workouts.build_prescription", return_value=prescription):
+            rendered = "".join(stream_assistant_turn(state, ledger=ledger, store=fresh_store))
+        assert "There is nothing to change." in rendered
+        assert state["program_updated"] is False
 
 
 def test_phase1_tier1_catalog_search():

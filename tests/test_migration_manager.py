@@ -47,6 +47,36 @@ def test_schema_version_stamping(temp_db_env):
     assert version == CURRENT_LEDGER_SCHEMA_VERSION
 
 
+def test_v18_to_v19_adds_per_ledger_deload_choice(temp_db_env):
+    db, ledgers_dir, _ = temp_db_env
+    legacy_path = ledgers_dir / "v18lifter.db"
+    conn = sqlite3.connect(legacy_path)
+    conn.executescript(
+        "CREATE TABLE user_profile (id INTEGER PRIMARY KEY, current_goal TEXT NOT NULL, updated_at TEXT NOT NULL);"
+        "INSERT INTO user_profile VALUES (1, 'Strength', '2026-01-01T00:00:00+00:00');"
+        "PRAGMA user_version = 18;"
+    )
+    conn.close()
+
+    migrated = DatabaseManager(
+        catalog_path=db.catalog_path,
+        ledgers_dir=ledgers_dir,
+        backups_dir=db.backups_dir,
+        default_ledger_id="v18lifter",
+    )
+    try:
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 19
+        assert migrated.ledger.get_deload_choice() is None
+        migrated.ledger.set_deload_choice("undo")
+        assert migrated.ledger.get_deload_choice() == "undo"
+        assert migrated.ledger.consume_deload_choice() == "undo"
+        assert migrated.ledger.get_deload_choice() is None
+    finally:
+        if migrated.ledger_conn is not None:
+            migrated.ledger_conn.close()
+        migrated.catalog_conn.close()
+
+
 def test_atomic_backup_and_restore(temp_db_env):
     db, ledgers_dir, backups_dir = temp_db_env
     db.ledger.add_chat_message("user", "Hello backup test")
@@ -1180,7 +1210,7 @@ def test_v17_to_v18_resets_assistant_style_and_instructions(tmp_path: Path):
     conn.commit()
     try:
         apply_lazy_migrations(conn, "v17-player", tmp_path, tmp_path / "backups")
-        assert get_ledger_schema_version(conn) == 18
+        assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
         assert conn.execute(
             "SELECT coach_tone, custom_instructions FROM user_profile ORDER BY id"
         ).fetchall() == [("direct", ""), ("direct", "")]

@@ -16,6 +16,8 @@ const List<String> equipmentAccessValues = <String>[
 ];
 const String defaultAssistantStyle = 'direct';
 const int maxAssistantStyleInstructions = 500;
+const String deloadChoiceUndo = 'undo';
+const String deloadChoiceApply = 'apply';
 
 class Capabilities {
   const Capabilities({required this.player, required this.coach});
@@ -605,9 +607,8 @@ class CoachAlert {
     if (isDeloadRecommended) {
       final String base = 'Deload recommended — ${reason ?? 'Systemic fatigue'}';
       final String? choice = playerDeloadChoice?['choice'] as String?;
-      if (choice == 'undo' || choice == 'apply') {
-        final String action = choice == 'undo' ? 'undo' : 'apply';
-        return '$base · Player chose to $action it for the next workout only';
+      if (choice == deloadChoiceUndo || choice == deloadChoiceApply) {
+        return '$base · Player chose to $choice it for the next workout only';
       }
       return base;
     }

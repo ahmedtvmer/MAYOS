@@ -25,6 +25,7 @@ import 'package:mayos_mobile/src/core/ui/mayos_markdown.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_repository.dart';
 import 'package:mayos_mobile/src/providers.dart';
+import 'package:mayos_mobile/src/router.dart';
 
 import 'support/fake_api_adapter.dart';
 import 'support/fake_mayos_api.dart';
@@ -70,6 +71,9 @@ Future<void> _pumpChat(
   FakeMayosApi fake, {
   required InMemoryChatCacheStore store,
   InMemoryWorkoutCacheStore? workoutCache,
+  ActiveWorkoutStore? activeWorkout,
+  DraftStore? drafts,
+  BaselineCacheStore? baselineCache,
   Key? scopeKey,
   ThemeMode? themeMode,
   Size? size,
@@ -77,6 +81,9 @@ Future<void> _pumpChat(
   await _pumpHome(tester, fake,
       chatCache: store,
       workoutCache: workoutCache,
+      activeWorkout: activeWorkout,
+      drafts: drafts,
+      baselineCache: baselineCache,
       scopeKey: scopeKey,
       themeMode: themeMode,
       size: size);
@@ -90,6 +97,9 @@ Future<void> _pumpHome(
   FakeMayosApi fake, {
   InMemoryChatCacheStore? chatCache,
   InMemoryWorkoutCacheStore? workoutCache,
+  ActiveWorkoutStore? activeWorkout,
+  DraftStore? drafts,
+  BaselineCacheStore? baselineCache,
   Key? scopeKey,
   ThemeMode? themeMode,
   Size? size,
@@ -114,8 +124,15 @@ Future<void> _pumpHome(
             .overrideWithValue(chatCache ?? InMemoryChatCacheStore()),
         workoutCacheStoreProvider
             .overrideWithValue(workoutCache ?? InMemoryWorkoutCacheStore()),
+        if (activeWorkout != null)
+          activeWorkoutStoreProvider.overrideWithValue(activeWorkout),
+        if (drafts != null) draftStoreProvider.overrideWithValue(drafts),
+        if (baselineCache != null)
+          baselineCacheStoreProvider.overrideWithValue(baselineCache),
         deviceTimezoneProvider
             .overrideWithValue(Future<String>.value('America/New_York')),
+        deviceTimezoneOrNullProvider
+            .overrideWithValue(Future<String?>.value('America/New_York')),
       ],
       child: const MayosApp(),
     ),
@@ -422,8 +439,17 @@ void main() {
         'intensity_cap_rpe': 7.0,
       };
     await _pumpChat(tester, fake,
-        store: store, workoutCache: workoutCache, scopeKey: UniqueKey());
+        store: store,
+        workoutCache: workoutCache,
+        activeWorkout: InMemoryActiveWorkoutStore(),
+        drafts: InMemoryDraftStore(),
+        baselineCache: InMemoryBaselineCacheStore(),
+        scopeKey: UniqueKey());
     await _acceptDisclosure(tester);
+    final int prescriptionRequestsBeforeChat = fake.adapter.requests
+        .where((FakeRequest r) =>
+            r.method == 'GET' && r.path == '/workouts/prescription')
+        .length;
 
     await tester.enterText(
         find.byKey(const Key('chat_composer')), 'rebuild my routine to 3 days');
@@ -442,9 +468,32 @@ void main() {
       isTrue,
     );
     expect(
+      fake.adapter.requests
+              .where((FakeRequest r) =>
+                  r.method == 'GET' && r.path == '/workouts/prescription')
+              .length -
+          prescriptionRequestsBeforeChat,
+      1,
+    );
+    expect(
       (await workoutCache.readPrescription('account-alice', 1))?.deload.state,
       DeloadState.applied,
     );
+
+    // Start the workout offline from the cache ChatScreen just refreshed. The
+    // logger must reflect that prescription on its Deload banner.
+    fake.prescriptionOffline = true;
+    final ProviderContainer container = ProviderScope.containerOf(
+      tester.element(find.byType(MayosApp)),
+    );
+    container.read(routerProvider).go('$logWorkoutPath/1');
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const ValueKey<String>('logger.progress')),
+    );
+    expect(find.byKey(const ValueKey<String>('logger.progress')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('logger.deload')), findsOneWidget);
+    expect(find.text('Deload applied'), findsOneWidget);
   });
 
   testWidgets('clearing history requires confirmation and clears the service',

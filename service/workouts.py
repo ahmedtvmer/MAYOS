@@ -18,6 +18,7 @@ from agent.progression_engine import (
     set_e1rm,
 )
 from core.effort import min_rir_label, rir_from_rpe
+from core.deload_choices import DELOAD_CHOICE_APPLY, DELOAD_CHOICE_UNDO
 from core.warmup import calculate_warmup_sets
 from service._base import ledger_scope
 from service import training_status as training_status_service
@@ -340,10 +341,12 @@ def build_prescription(
 def _build_prescription(ledger: Any, day_plan: Any, assignment: dict[str, Any] | None) -> dict[str, Any]:
     fatigue_info = evaluate_systemic_fatigue(ledger)
     deload_state = _prescription_deload_state(fatigue_info, assignment)
-    choice = ledger.get_deload_choice() if hasattr(ledger, "get_deload_choice") else None
-    if deload_state["state"] == DELOAD_STATE_APPLIED and choice == "undo":
-        deload_state = {"state": DELOAD_STATE_NONE, "reason": None, "volume_multiplier": 1.0, "intensity_cap_rpe": None}
-    elif deload_state["state"] == DELOAD_STATE_SUGGESTED and choice == "apply":
+    choice = ledger.get_deload_choice()
+    if deload_state["state"] == DELOAD_STATE_APPLIED and choice == DELOAD_CHOICE_UNDO:
+        deload_state = _prescription_deload_state(
+            {**fatigue_info, "deload_recommended": False}, assignment
+        )
+    elif deload_state["state"] == DELOAD_STATE_SUGGESTED and choice == DELOAD_CHOICE_APPLY:
         deload_state = {**deload_state, "state": DELOAD_STATE_APPLIED}
     targets = []
     for ex_idx, ex in enumerate(day_plan.exercises, start=1):

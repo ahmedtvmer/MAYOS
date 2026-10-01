@@ -11,6 +11,7 @@ from database.exercise_library.names import apply_curated_exercise_names
 from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION
 from database.migration_manager import EQUIPMENT_ACCESS_DDL
 from database.migration_manager import CHECKPOINT_REVIEWS_DDL
+from database.migration_manager import DELOAD_CHOICES_DDL
 from database.migration_manager import INTAKE_DDL
 from database.migration_manager import PERFORMED_DATE_CORRECTIONS_DDL
 from database.migration_manager import SESSION_CARDIO_DDL
@@ -229,10 +230,6 @@ class SchemaMixin:
                 key TEXT PRIMARY KEY CHECK (key = 'preferred_name'),
                 value TEXT NOT NULL CHECK (length(value) BETWEEN 1 AND 60 AND length(trim(value)) > 0)
             );
-            CREATE TABLE IF NOT EXISTS deload_choices (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                choice TEXT NOT NULL CHECK (choice IN ('undo', 'apply'))
-            );
             CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_history(created_at);
             CREATE INDEX IF NOT EXISTS idx_sets_session ON workout_sets(session_id);
             CREATE INDEX IF NOT EXISTS idx_sets_exercise ON workout_sets(exercise_id);
@@ -292,6 +289,7 @@ class SchemaMixin:
                 *SESSION_WARMUP_SETS_DDL,
                 *SESSION_CARDIO_DDL,
                 *CHECKPOINT_REVIEWS_DDL,
+                *DELOAD_CHOICES_DDL,
                 *EQUIPMENT_ACCESS_DDL,
             )
         ))
