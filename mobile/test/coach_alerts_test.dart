@@ -128,6 +128,25 @@ Map<String, dynamic> _regressionAlert({String state = 'new'}) =>
       'resolved_by': null,
     };
 
+Map<String, dynamic> _profileChangeAlert() => <String, dynamic>{
+      'alert_id': 'alert-profile-change',
+      'assignment_id': 'assignment-1',
+      'player_username': 'bob',
+      'kind': 'profile_change',
+      'state': 'new',
+      'created_at': '2026-09-22T08:00:00Z',
+      'profile_changes': <String, dynamic>{
+        'injuries_or_limitations': <String, String>{
+          'before': 'None',
+          'after': 'Left knee pain',
+        },
+        'equipment_access': <String, String>{
+          'before': 'Commercial gym',
+          'after': 'Home gym',
+        },
+      },
+    };
+
 /// The coach shell opens on the Roster tab (#119).
 Future<void> _openRoster(WidgetTester tester) async {
   await _pumpUntilFound(tester, find.text('Active assignments'));
@@ -178,6 +197,17 @@ void main() {
     await _pumpUntilFound(tester, find.text('Resolved by coach'));
     expect(find.text('Resolved by coach'), findsOneWidget);
     expect(find.text('Resolve'), findsNothing);
+  });
+
+  testWidgets('coach alert list renders profile changes as before and after',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.coachAlerts.add(_profileChangeAlert());
+    await _pumpApp(tester, fake);
+    await _openAlertCenter(tester);
+
+    expect(find.textContaining('Injuries or limitations: None → Left knee pain'), findsOneWidget);
+    expect(find.textContaining('Equipment access: Commercial gym → Home gym'), findsOneWidget);
   });
 
   testWidgets('deload alert renders its reason and can be resolved',

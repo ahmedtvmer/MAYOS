@@ -4,6 +4,7 @@ from typing import Any
 
 from agent.program_generator import generate_program_pipeline
 from service._base import ledger_scope
+from service.profile_change_alerts import normalize_profile_value, record_profile_change
 from service.programs import COACH_CONTROLLED_ERROR, player_controls_program
 from utils.equipment_access import map_equipment_access
 
@@ -39,6 +40,8 @@ def update_profile(
         profile = ledger.get_player_profile() or {}
         if "equipment_access" in payload:
             payload = {**payload, "equipment_access": map_equipment_access(payload["equipment_access"])}
+        if isinstance(payload.get("injuries_or_limitations"), str):
+            payload = {**payload, "injuries_or_limitations": payload["injuries_or_limitations"].strip()}
         defaults = {
             "injuries_or_limitations": "None",
             "equipment_access": profile.get("equipment_access"),
@@ -47,17 +50,13 @@ def update_profile(
         }
         rebuild_requested = any(
             key in payload
-            and (
-                int(payload[key]) != int(profile.get(key, defaults[key]))
-                if key == "weekly_frequency"
-                else str(payload[key]).strip() != str(profile.get(key, defaults[key]))
-                if key == "injuries_or_limitations"
-                else payload[key] != profile.get(key, defaults[key])
-            )
+            and normalize_profile_value(key, payload[key])
+            != normalize_profile_value(key, profile.get(key, defaults.get(key)))
             for key in PROFILE_REBUILD_FIELDS
         )
         updated = {**profile, **payload}
         ledger.upsert_player_profile(updated)
+        record_profile_change(db, player_account_id, profile, updated)
         program = None
         program_blocked = False
         if rebuild_requested:

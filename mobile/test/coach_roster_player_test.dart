@@ -134,6 +134,7 @@ Map<String, dynamic> _alert(
   String kind = 'missed_expected_days',
   String state = 'new',
   String? dueOn,
+  Map<String, dynamic>? profileChanges,
 }) =>
     <String, dynamic>{
       'alert_id': id,
@@ -148,6 +149,7 @@ Map<String, dynamic> _alert(
         'missed_count': 2,
       },
       if (dueOn != null) 'due_on': dueOn,
+      if (profileChanges != null) 'profile_changes': profileChanges,
       'acknowledged_at': null,
       'resolved_at': null,
       'resolved_by': null,
@@ -352,6 +354,32 @@ void main() {
     expect(find.text('2 alerts'), findsNothing);
     expect(
       find.descendant(of: find.byType(Badge), matching: find.text('1')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the player page renders profile changes as before and after',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.assignments.add(_assignment('assignment-1', 'bob'));
+    fake.coachAlerts.add(_alert(
+      'alert-profile-change',
+      kind: 'profile_change',
+      profileChanges: <String, dynamic>{
+        'injuries_or_limitations': <String, String>{
+          'before': 'None',
+          'after': 'Left knee pain',
+        },
+      },
+    ));
+    await _pumpApp(tester, fake, InMemoryAppModeStore());
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.text('Open alerts'));
+
+    expect(
+      find.textContaining('Injuries or limitations: None → Left knee pain'),
       findsOneWidget,
     );
   });

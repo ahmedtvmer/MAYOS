@@ -517,11 +517,11 @@ class CoachAssistantTurn {
   String toString() => 'CoachAssistantTurn($role)';
 }
 
-/// `GET /coach/alerts`: one catalog-side alert, of more than one kind (ADR 030/031/032).
+/// `GET /coach/alerts`: one catalog-side alert (ADR 030/031/032).
 ///
-/// `kind` is `missed_expected_days`, `follow_up_due`, `deload_recommended`, or
-/// `performance_regression`; the kind-specific fields are flattened beside the
-/// common fields.
+/// `kind` is `missed_expected_days`, `follow_up_due`, `deload_recommended`,
+/// `performance_regression`, or `profile_change`; kind-specific fields are
+/// flattened beside the common fields.
 class CoachAlert {
   const CoachAlert({
     required this.alertId,
@@ -545,6 +545,7 @@ class CoachAlert {
     this.resolvedAt,
     this.resolvedBy,
     this.playerDeloadChoice,
+    this.profileChanges,
   });
 
   factory CoachAlert.fromJson(Map<String, dynamic> json) => CoachAlert(
@@ -572,6 +573,19 @@ class CoachAlert {
             ? Map<String, dynamic>.from(
                 json['player_deload_choice'] as Map<String, dynamic>)
             : null,
+        profileChanges: json['profile_changes'] is Map<String, dynamic>
+            ? (json['profile_changes'] as Map<String, dynamic>).map(
+                (String key, dynamic value) => MapEntry<String, Map<String, String>>(
+                  key,
+                    (value as Map<String, dynamic>).map(
+                    (String part, dynamic text) => MapEntry<String, String>(
+                      part,
+                      text == null || '$text'.isEmpty ? 'Not set' : '$text',
+                    ),
+                  ),
+                ),
+              )
+            : null,
       );
 
   final String alertId;
@@ -595,10 +609,12 @@ class CoachAlert {
   final String? resolvedAt;
   final String? resolvedBy;
   final Map<String, dynamic>? playerDeloadChoice;
+  final Map<String, Map<String, String>>? profileChanges;
 
   static const String followUpDueKind = 'follow_up_due';
   static const String deloadRecommendedKind = 'deload_recommended';
   static const String performanceRegressionKind = 'performance_regression';
+  static const String profileChangeKind = 'profile_change';
 
   bool get isNew => state == 'new';
   bool get isAcknowledged => state == 'acknowledged';
@@ -607,6 +623,7 @@ class CoachAlert {
   bool get isFollowUpDue => kind == followUpDueKind;
   bool get isDeloadRecommended => kind == deloadRecommendedKind;
   bool get isPerformanceRegression => kind == performanceRegressionKind;
+  bool get isProfileChange => kind == profileChangeKind;
 
   /// The alert-centre description, rendered per kind.
   String get description {
@@ -625,6 +642,17 @@ class CoachAlert {
     }
     if (isFollowUpDue) {
       return 'Follow-up due since ${dueOn ?? 'an earlier date'}';
+    }
+    if (isProfileChange) {
+      const Map<String, String> labels = <String, String>{
+        'injuries_or_limitations': 'Injuries or limitations',
+        'equipment_access': 'Equipment access',
+      };
+      final Map<String, Map<String, String>> changes = profileChanges ?? const {};
+      return changes.entries.map((MapEntry<String, Map<String, String>> entry) {
+        final String label = labels[entry.key] ?? entry.key;
+        return '$label: ${entry.value['before'] ?? ''} → ${entry.value['after'] ?? ''}';
+      }).join('\n');
     }
     return 'Missed $missedCount expected training '
         '${missedCount == 1 ? 'day' : 'days'} '

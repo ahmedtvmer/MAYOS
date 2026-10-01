@@ -240,3 +240,166 @@ def test_non_coach_cannot_read_alerts(api):
     response = client.get("/coach/alerts", headers=_authed(player["access_token"]))
     assert response.status_code == 403
     assert response.json()["detail"] == "Coach capability required."
+
+
+def _seed_training_profile(db, player_name="p1", **fields):
+    db.switch_user(player_name)
+    db.ledger.upsert_player_profile(fields)
+
+
+def _stub_profile_rebuild(monkeypatch):
+    monkeypatch.setattr("service.profile.generate_program_pipeline", lambda **kwargs: (None, None))
+
+
+def _profile_alerts(client, coach_headers, states=None):
+    path = "/coach/alerts"
+    if states:
+        path += "?" + "&".join(f"state={state}" for state in states)
+    response = client.get(path, headers=coach_headers)
+    assert response.status_code == 200, response.text
+    return [alert for alert in response.json()["alerts"] if alert["kind"] == "profile_change"]
+
+
+def test_profile_change_alert_projects_only_changed_training_profile_fields(api, monkeypatch):
+    client, db = api
+    coach_headers, player_headers, _, _ = _assign(api)
+    _seed_training_profile(
+        db,
+        equipment_access="Commercial gym",
+        injuries_or_limitations="None",
+        current_goal="Get stronger",
+        weight_kg=70,
+    )
+    _stub_profile_rebuild(monkeypatch)
+
+    response = client.put("/profile", headers=player_headers, json={
+        "equipment_access": "Home gym",
+        "injuries_or_limitations": "Left knee pain",
+        "current_goal": "Build muscle",
+        "weight_kg": 74,
+    })
+
+    assert response.status_code == 200, response.text
+    alerts = _profile_alerts(client, coach_headers)
+    assert len(alerts) == 1
+    assert alerts[0]["profile_changes"] == {
+        "equipment_access": {"before": "Commercial gym", "after": "Home gym"},
+        "injuries_or_limitations": {"before": "None", "after": "Left knee pain"},
+    }
+    assert not ({"current_goal", "weight_kg"} & alerts[0].keys())
+
+
+def test_profile_change_episode_deduplicates_and_starts_new_episode_after_resolution(api, monkeypatch):
+    client, db = api
+    coach_headers, player_headers, assignment_id, _ = _assign(api)
+    _seed_training_profile(db, equipment_access="Commercial gym", injuries_or_limitations="None")
+    _stub_profile_rebuild(monkeypatch)
+
+    for access in ("Home gym", "Bodyweight only"):
+        response = client.put("/profile", headers=player_headers, json={"equipment_access": access})
+        assert response.status_code == 200, response.text
+    alerts = _profile_alerts(client, coach_headers)
+    assert len(alerts) == 1
+    assert alerts[0]["profile_changes"] == {
+        "equipment_access": {"before": "Commercial gym", "after": "Bodyweight only"},
+    }
+
+    resolved = client.post(f"/coach/alerts/{alerts[0]['alert_id']}/resolve", headers=coach_headers)
+    assert resolved.status_code == 200
+    reopened = client.put("/profile", headers=player_headers, json={"equipment_access": "Home gym"})
+    assert reopened.status_code == 200, reopened.text
+    all_alerts = _profile_alerts(client, coach_headers, ("new", "resolved"))
+    assert len(all_alerts) == 2
+    assert {alert["state"] for alert in all_alerts} == {"new", "resolved"}
+    assert len({alert["alert_id"] for alert in all_alerts}) == 2
+
+
+def test_profile_change_revert_system_resolves_empty_episode(api, monkeypatch):
+    client, db = api
+    coach_headers, player_headers, _, _ = _assign(api)
+    _seed_training_profile(db, equipment_access="Commercial gym", injuries_or_limitations="None")
+    _stub_profile_rebuild(monkeypatch)
+
+    for access in ("Home gym", "Commercial gym"):
+        response = client.put("/profile", headers=player_headers, json={"equipment_access": access})
+        assert response.status_code == 200, response.text
+
+    assert _profile_alerts(client, coach_headers) == []
+    resolved = _profile_alerts(client, coach_headers, ("resolved",))
+    assert len(resolved) == 1
+    assert resolved[0]["resolved_by"] == "system"
+    assert resolved[0]["profile_changes"] == {}
+
+
+def test_profile_change_from_unset_injury_value_fires_and_ai_excludes_evidence(api, monkeypatch):
+    client, db = api
+    coach_headers, player_headers, _, coach_account_id = _assign(api)
+    _seed_training_profile(db, equipment_access="Commercial gym")
+    _stub_profile_rebuild(monkeypatch)
+
+    response = client.put(
+        "/profile", headers=player_headers, json={"injuries_or_limitations": "Left knee pain"}
+    )
+    assert response.status_code == 200, response.text
+    alerts = _profile_alerts(client, coach_headers)
+    assert len(alerts) == 1
+    assert alerts[0]["profile_changes"]["injuries_or_limitations"] == {
+        "before": "None", "after": "Left knee pain"
+    }
+
+    from service import coach_ai
+
+    assert "profile_changes" not in coach_ai._ALERT_EVIDENCE_FIELDS
+    rendered = coach_ai._render_alerts({"alerts": alerts})
+    assert "Left knee pain" not in "\n".join(rendered)
+    assert coach_account_id == db.get_active_account_by_username("coach")["account_id"]
+
+
+def test_profile_change_does_not_fire_for_goal_weight_or_unassigned_player(api, monkeypatch):
+    client, db = api
+    coach_headers, player_headers, _, _ = _assign(api)
+    _seed_training_profile(
+        db,
+        equipment_access="Commercial gym",
+        injuries_or_limitations="None",
+        current_goal="Get stronger",
+        weight_kg=70,
+    )
+    _stub_profile_rebuild(monkeypatch)
+    for body in ({"current_goal": "Build muscle"}, {"weight_kg": 72}):
+        assert client.put("/profile", headers=player_headers, json=body).status_code == 200
+    assert _profile_alerts(client, coach_headers) == []
+
+    unassigned = _register(client, "unassigned")
+    unassigned_headers = _authed(unassigned["access_token"])
+    _seed_training_profile(db, "unassigned", equipment_access="Commercial gym")
+    response = client.put(
+        "/profile", headers=unassigned_headers, json={"injuries_or_limitations": "Shoulder limitation"}
+    )
+    assert response.status_code == 200, response.text
+    assert _profile_alerts(client, coach_headers) == []
+
+
+def test_profile_alert_write_failure_does_not_block_training_profile_edit(api, monkeypatch):
+    client, db = api
+    _, player_headers, _, _ = _assign(api)
+    _seed_training_profile(db, equipment_access="Commercial gym", injuries_or_limitations="None")
+    _stub_profile_rebuild(monkeypatch)
+    monkeypatch.setattr(db, "insert_coach_alert", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError()))
+
+    response = client.put("/profile", headers=player_headers, json={"equipment_access": "Home gym"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["profile"]["equipment_access"] == "Home gym"
+
+
+def test_profile_change_compares_structured_equipment_values_by_value():
+    from service.profile_change_alerts import changed_fields
+
+    before = {"equipment_access": {"gym": "home", "options": ["rack", "bench"]}}
+    after = {"equipment_access": {"options": ["rack", "bench"], "gym": "home"}}
+
+    assert changed_fields(before, after) == {}
+    assert changed_fields(
+        {"equipment_access": None}, {"equipment_access": "Home gym"}
+    ) == {"equipment_access": {"before": None, "after": "Home gym"}}

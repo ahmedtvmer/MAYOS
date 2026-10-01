@@ -383,10 +383,11 @@ class CoachAssignmentsOut(BaseModel):
 class CoachAlertOut(BaseModel):
     """One catalog-side alert for the coach alert centre (ADR 030/031/032).
 
-    ``kind`` distinguishes missed-day, follow-up-due, deload, and
-    performance-regression alerts. The kind-specific fields are flattened beside
-    the common ones, so a client can read ``streak_start_date``/``missed_count``,
-    ``due_on``, or the progression evidence directly.
+    ``kind`` distinguishes missed-day, follow-up-due, deload,
+    performance-regression, and profile-change alerts. The kind-specific fields
+    are flattened beside the common ones, so a client can read
+    ``streak_start_date``/``missed_count``, ``due_on``, progression evidence,
+    or the ``profile_changes`` before/after values directly.
     """
 
     alert_id: str
@@ -421,6 +422,7 @@ class CoachAlertOut(BaseModel):
     latest_session_id: str | None = None
     latest_session_date: str | None = None
     player_deload_choice: dict[str, Any] | None = None
+    profile_changes: dict[str, dict[str, Any]] | None = None
 
 
 class CoachAlertListOut(BaseModel):
