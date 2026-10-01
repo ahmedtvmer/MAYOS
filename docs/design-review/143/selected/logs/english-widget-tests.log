@@ -1,0 +1,71 @@
+00:00 +0: loading /tmp/mayos-143-preview/mobile/test/theme_and_shell_test.dart
+00:00 +0: /tmp/mayos-143-preview/mobile/test/theme_and_shell_test.dart: (setUpAll)
+00:00 +0: /tmp/mayos-143-preview/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:01 +1: /tmp/mayos-143-preview/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:01 +2: /tmp/mayos-143-preview/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:01 +3: /tmp/mayos-143-preview/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:01 +4: /tmp/mayos-143-preview/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:01 +5: /tmp/mayos-143-preview/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:02 +6: /tmp/mayos-143-preview/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:02 +7: /tmp/mayos-143-preview/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:02 +8: /tmp/mayos-143-preview/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:02 +9: /tmp/mayos-143-preview/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:02 +10: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: workout logger shows the applied deload and opens the assistant
+00:02 +11: /tmp/mayos-143-preview/mobile/test/theme_and_shell_test.dart: an explicit choice is persisted across a restart
+00:03 +12: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: warm-up movements show prescribed rows and stay outside work progress
+00:03 +13: /tmp/mayos-143-preview/mobile/test/theme_and_shell_test.dart: system bar style follows the effective theme
+00:03 +14: /tmp/mayos-143-preview/mobile/test/theme_and_shell_test.dart: system bar style follows the effective theme
+00:04 +15: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: prescribed Cardio needs valid minutes and stays outside set progress
+00:04 +16: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: prescribed Cardio needs valid minutes and stays outside set progress
+00:04 +17: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: prescribed Cardio needs valid minutes and stays outside set progress
+00:05 +18: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: prescribed Cardio needs valid minutes and stays outside set progress
+00:05 +19: /tmp/mayos-143-preview/mobile/test/theme_and_shell_test.dart: shell and settings have no overflow at 360.0x640.0 and 1.5x text
+00:05 +20: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: a linked warm-up name opens library detail without prescription
+00:05 +21: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: a linked warm-up name opens library detail without prescription
+00:05 +22: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: a linked warm-up name opens library detail without prescription
+00:05 +23: /tmp/mayos-143-preview/mobile/test/theme_and_shell_test.dart: shell has no overflow at 393.0x852.0 and 2.0x text
+00:05 +24: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: clearing a warm-up weight commits null
+00:06 +25: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: clearing a warm-up weight commits null
+00:06 +26: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: clearing a warm-up weight commits null
+00:06 +27: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the table is SET · KG · REPS · RIR · ✓ and the baseline rides on the card as the Last: line (#158)
+00:06 +28: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the Last: line is hidden entirely when there is no history (#158)
+00:07 +29: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the exercise card names the movement in primary colour and adds a full-width + Add set (#158)
+00:07 +30: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: a warm-up row has no previous to borrow and is never filled from one
+00:07 +31: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: ticking an empty row fills it from the previous values
+00:07 +32: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: ticking with no value and no previous opens the keypad there
+00:08 +33: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the keypad Next order is kg → reps → RIR → the next set
+00:08 +34: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the RIR keypad is one-tap chips 0–5+ and Unrated, and a chip advances
+00:09 +35: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: tapping the SET number cycles N ↔ W and mutes the row
+00:09 +36: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the Current set is the first unticked working set and moves across exercises, skipping warm-ups (#158)
+00:09 +37: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: row states: a pending check is outlined, a ticked row is filled, tinted and still editable (#158)
+00:10 +38: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: RIR in the row is a compact selector that opens the existing chips (#158)
+00:10 +39: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: no overflow at 360dp (light) and the row keeps its 48dp targets (#158)
+00:10 +40: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: no overflow at 360dp (dark) and the row keeps its 48dp targets (#158)
+00:10 +41: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: swiping a middle set row deletes that row only
+00:11 +42: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: Finish with nothing ticked is blocked by Log at least one set
+00:11 +43: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the unticked-sets sheet offers Keep logging and Discard
+00:11 +44: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the saved draft matches today's shape: ticked sets, warm-up flag, skipped exercise
+00:12 +45: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: an out-of-window start day is clamped and the player is told
+00:12 +46: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: a record badge is solid on the current best, then struck through when a later set beats it
+00:13 +47: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: unticking a record-earning set clears its badges (#124)
+00:13 +48: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the summary lists the current records and the stats (#124)
+00:14 +49: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the online summary freezes projected Weekly streak and Checkpoint
+00:14 +50: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: an offline summary projects pending drafts from its cached status
+00:15 +51: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: a committed Checkpoint shows its review and computed ratings
+00:15 +52: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: a stale cached week hides streak lines but keeps Checkpoint progress
+00:15 +53: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: records and workout summary fit phone and desktop columns
+00:16 +54: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the summary omits the celebration when nothing earned a record
+00:17 +55: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: a newly earned record vibrates heavily once, and an untick never vibrates
+00:17 +56: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: a cell edit vibrates when it settles, never per keystroke
+00:17 +57: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: turning a ticked warm-up into a working set vibrates (#124)
+00:18 +58: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the summary snapshot never changes after the rows change (#124)
+00:18 +59: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the top bar shows Workout time from the start, ticking every second (#159)
+00:18 +60: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: Workout time stays correct across a simulated restart (#159)
+00:19 +61: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the ⋮ menu discards the workout behind its own confirmation (#159)
+00:19 +62: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the day heading is the one serif line and the progress line counts exercises and sets (#159)
+00:19 +63: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the summary shows the workout's total duration, frozen at Finish, with no overflow at 360dp (#159)
+00:20 +64: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the bottom bar keeps sets progress and Finish in reach while the list scrolls (#160)
+00:20 +65: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the bottom bar steps aside for the keypad and the last card scrolls clear of it (#160)
+00:20 +66: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: the bottom bar takes the system-nav inset inside its surface and keeps its content above it (#160)
+00:21 +67: /tmp/mayos-143-preview/mobile/test/workout_logger_screen_test.dart: a tick clears the Finish nudge and no other message (#160)
+00:21 +68: All tests passed!

@@ -1,0 +1,119 @@
+00:00 +0: loading /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart
+00:00 +0: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:01 +1: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:01 +2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:01 +3: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:01 +4: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:01 +5: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: blocked profile update shows the coach message, not a rebuild
+00:02 +6: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: chat composer docking docks to the bottom safe area with a short history at 412x915
+00:02 +7: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: normal profile update announces the rebuild
+00:03 +8: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: normal profile update announces the rebuild
+00:03 +8 -1: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: normal profile update announces the rebuild
+00:03 +8 -1: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: docs/design-review/54/README.md links all resolve [E]
+  Expected: true
+    Actual: <false>
+  review artifact missing
+  
+  package:matcher                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18  expect
+  test/design_review_54_test.dart 363:5               main.<fn>
+  
+00:03 +9 -1: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: normal profile update announces the rebuild
+00:03 +10 -1: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep auth login light
+00:03 +11 -1: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: Training profile pre-fills editable values and saves goal/weight without rebuild
+00:03 +12 -1: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: Training profile pre-fills editable values and saves goal/weight without rebuild
+00:03 +13 -1: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: Training profile pre-fills editable values and saves goal/weight without rebuild
+00:03 +14 -1: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: Training profile pre-fills editable values and saves goal/weight without rebuild
+00:04 +15 -1: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: Training profile pre-fills editable values and saves goal/weight without rebuild
+00:04 +16 -1: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep program light
+00:04 +17 -1: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging
+00:04 +18 -1: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging
+00:05 +19 -1: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following StateError was thrown running a test:
+Bad state: No element
+
+When the exception was thrown, this was the stack:
+#0      _Array.first (dart:core-patch/array.dart:52:5)
+#1      _ProfileScreenState._load.<anonymous closure> (package:mayos_mobile/src/features/player/profile/profile_screen.dart:154:32)
+#2      State.setState (package:flutter/src/widgets/framework.dart:1201:30)
+#3      _ProfileScreenState._load (package:mayos_mobile/src/features/player/profile/profile_screen.dart:148:7)
+<asynchronous suspension>
+
+The test description was:
+  older intake contract shows a service update error instead of hanging
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:05 +19 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep chat light
+00:05 +19 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging [E]
+  Test failed. See exception logs above.
+  The test description was: older intake contract shows a service update error instead of hanging
+  
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test (but after the test had completed):
+Expected: no matching candidates
+  Actual: _TypeWidgetFinder:<Found 1 widget with type "CircularProgressIndicator": [
+            CircularProgressIndicator(<indeterminate>, state:
+_CircularProgressIndicatorState#34503(ticker active)),
+          ]>
+   Which: means one was found but none were expected
+
+When the exception was thrown, this was the stack:
+#0      fail (package:matcher/src/expect/expect.dart:187:31)
+#1      _expect (package:matcher/src/expect/expect.dart:182:3)
+#2      expect (package:matcher/src/expect/expect.dart:65:3)
+#3      expect (package:flutter_test/src/widget_tester.dart:473:18)
+#4      main.<anonymous closure> (file:///tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart:185:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  Test failed. See exception logs above.
+  The test description was: older intake contract shows a service update error instead of hanging
+  
+00:06 +20 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: saving another fact preserves saved multi-decimal weight
+00:06 +21 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep workout logger light
+00:07 +22 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: offline Training profile save changes nothing
+00:07 +23 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep workout drafts light
+00:07 +24 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: offline save after rebuild confirmation changes nothing
+00:07 +25 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep profile light
+00:08 +26 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: empty saved goal is omitted while saving another profile fact
+00:08 +27 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep plan light
+00:08 +28 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: invalid weight is rejected before rebuild confirmation
+00:09 +29 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep assignment light
+00:09 +30 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: saving the schedule leaves the training-days setting untouched
+00:09 +31 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: saving the schedule leaves the training-days setting untouched
+00:09 +32 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep coach alerts light
+00:09 +33 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: the timezone field is prefilled from the device when no schedule exists
+00:09 +34 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: the timezone field is prefilled from the device when no schedule exists
+00:10 +35 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: the timezone field is prefilled from the device when no schedule exists
+00:10 +36 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: the timezone field is prefilled from the device when no schedule exists
+00:10 +37 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: the timezone field is prefilled from the device when no schedule exists
+00:10 +38 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: the timezone field is prefilled from the device when no schedule exists
+00:10 +39 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: the timezone field is prefilled from the device when no schedule exists
+00:10 +40 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep home dark
+00:10 +41 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: a non-IANA timezone is refused before submit
+00:10 +42 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep program dark
+00:11 +43 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: a prospective pause can be scheduled and is listed
+00:11 +44 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep progress dark
+00:11 +45 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: a pause starting before today is refused inline
+00:11 +46 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: a pause starting before today is refused inline
+00:11 +47 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: a pause starting before today is refused inline
+00:12 +48 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep workout logger dark
+00:12 +49 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep workout logger dark
+00:12 +50 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep workout logger dark
+00:12 +51 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep workout drafts dark
+00:12 +52 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep profile dark
+00:13 +53 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep plan dark
+00:13 +54 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep assignment dark
+00:13 +55 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep coach profile dark
+00:14 +56 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep coach alerts dark
+00:14 +57 -2: /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: 54 sweep coach assignments dark
+00:14 +58 -2: Some tests failed.
+
+Failing tests:
+  /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/design_review_54_test.dart: docs/design-review/54/README.md links all resolve
+  /tmp/mayos-arabic-143-prototype/mobile/.baseline-verification/mobile/test/program_authority_test.dart: older intake contract shows a service update error instead of hanging

@@ -1,0 +1,1 @@
+PASS: all README relative links resolve; all 56 phone PNGs linked; all 288 archive files byte-match final source; no build/.dart_tool/.git/credentials/local properties.

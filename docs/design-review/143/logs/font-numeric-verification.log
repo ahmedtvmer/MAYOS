@@ -1,0 +1,9 @@
+Amiri-Regular.ttf Amiri Version 1.003
+Amiri-Bold.ttf Amiri Version 1.003
+IBMPlexSansArabic-Regular.ttf IBM Plex Sans Arabic Version 1.005
+IBMPlexSansArabic-Medium.ttf IBM Plex Sans Arabic Medm Version 1.005
+IBMPlexSansArabic-SemiBold.ttf IBM Plex Sans Arabic SmBld Version 1.005
+IBMPlexSansArabic-Bold.ttf IBM Plex Sans Arabic Version 1.005
+ReemKufi-Variable.ttf Reem Kufi Version 2.000
+Cairo-Variable.ttf Cairo Version 3.130;gftools[0.9.24]
+PASS: pinned hashes, exact font names, Arabic fixture glyph coverage, no Arabic-Indic/Persian digits

@@ -1,0 +1,12 @@
+00:00 +0: loading /tmp/mayos-arabic-143-prototype/mobile/test/visual/arabic_143_capture_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: actual Arabic home and logger light-360x640
+00:02 +1: actual Arabic mixed chat light-360x640
+00:03 +2: actual Arabic home and logger dark-360x640
+00:04 +3: actual Arabic mixed chat dark-360x640
+00:04 +4: actual Arabic home and logger light-412x915
+00:05 +5: actual Arabic mixed chat light-412x915
+00:05 +6: actual Arabic home and logger dark-412x915
+00:06 +7: actual Arabic mixed chat dark-412x915
+00:07 +8: (tearDownAll)
+00:07 +8: All tests passed!

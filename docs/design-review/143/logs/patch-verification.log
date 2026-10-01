@@ -1,0 +1,1 @@
+PASS: git apply --check and --binary; all 34 prototype modifications/new files byte-match final source, including fonts and original licenses.
