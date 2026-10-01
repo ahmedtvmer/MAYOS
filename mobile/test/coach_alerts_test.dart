@@ -101,6 +101,10 @@ Map<String, dynamic> _deloadAlert({String state = 'new'}) => <String, dynamic>{
       'reason': 'Rolling readiness crash (avg 1.7/5)',
       'severity': 'HIGH',
       'recent_readiness_avg': 1.67,
+      'player_deload_choice': <String, dynamic>{
+        'choice': 'apply',
+        'scope': 'next_workout_only',
+      },
       'acknowledged_at': null,
       'resolved_at': null,
       'resolved_by': null,
@@ -184,7 +188,10 @@ void main() {
     await _openAlertCenter(tester);
 
     expect(
-      find.text('Deload recommended — Rolling readiness crash (avg 1.7/5)'),
+      find.text(
+        'Deload recommended — Rolling readiness crash (avg 1.7/5) · '
+        'Player chose to apply it for the next workout only',
+      ),
       findsOneWidget,
     );
 

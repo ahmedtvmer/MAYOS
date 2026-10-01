@@ -16,7 +16,7 @@ from utils.equipment_access import (
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 18
+CURRENT_LEDGER_SCHEMA_VERSION: int = 19
 
 _EQUIPMENT_ACCESS_NOT_IN = "NEW.equipment_access NOT IN (" + ", ".join(
     "'" + value.replace("'", "''") + "'" for value in EQUIPMENT_ACCESS_VALUES
@@ -118,6 +118,13 @@ CHECKPOINT_REVIEWS_DDL: tuple[str, ...] = (
     " created_at TEXT NOT NULL,"
     " opened_at TEXT,"
     " FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE"
+    ")",
+)
+
+DELOAD_CHOICES_DDL: tuple[str, ...] = (
+    "CREATE TABLE IF NOT EXISTS deload_choices ("
+    " id INTEGER PRIMARY KEY CHECK (id = 1),"
+    " choice TEXT NOT NULL CHECK (choice IN ('undo', 'apply'))"
     ")",
 )
 
@@ -505,6 +512,12 @@ def _migrate_v17_to_v18(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_v18_to_v19(conn: sqlite3.Connection) -> None:
+    """Adds the per-ledger one-workout Deload choice (#241, ADR 055)."""
+    for statement in DELOAD_CHOICES_DDL:
+        conn.execute(statement)
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -608,6 +621,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     15: _migrate_v15_to_v16,
     16: _migrate_v16_to_v17,
     17: _migrate_v17_to_v18,
+    18: _migrate_v18_to_v19,
 }
 
 

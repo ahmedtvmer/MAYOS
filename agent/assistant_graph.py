@@ -23,6 +23,7 @@ sys.path.append(str(BASE_DIR))
 # Re-exported interfaces for pipeline and test compatibility
 from agent.chat_markers import is_session_pointer_text
 from core.effort import rir_label
+from core.deload_choices import DELOAD_CHOICE_APPLY, DELOAD_CHOICE_UNDO, DELOAD_CHOICES
 from agent.clinical_guard import (
     ARABIC_SCRIPT_RE,
     EMBED_MODEL,
@@ -80,6 +81,7 @@ IntentType = Literal[
     "exercise_history",
     "exercise_substitution",
     "program_mutation",
+    "deload_choice",
     "catalog_search",
     "coaching_qa",
     "composite_intent",
@@ -167,6 +169,12 @@ RE_JOINT_PAIN_AT_CLAUSE_END = re.compile(
     re.IGNORECASE,
 )
 RE_REALLY_BAD_FRAGMENT = re.compile(r"^\s*really\s+bad\b", re.IGNORECASE)
+RE_DIRECT_JOINT_PAIN = re.compile(
+    rf"\b(?:my|the)\s+(?:{_TRAUMA_STRUCTURES})\s+hurts?\b", re.IGNORECASE
+)
+RE_ARABIC_ACUTE_JOINT_PAIN = re.compile(
+    r"(?:عندي\s+)?(?:ألم|وجع)\s+(?:حاد|شديد)\s+(?:في\s+)?(?:ال)?(?:ركبة|ركبتي)"
+)
 
 # Tier-0b: DOMS-ambiguous tokens (swelling/tear/tore/torn/pop/tweaked) intercept
 # only with an explicit injury context; otherwise they fall through to Tier-1.
@@ -187,7 +195,12 @@ RE_AMBIGUOUS_TRAUMA = re.compile(
 
 def _acute_injury_hit(text: str) -> bool:
     """Tier-0: unconditional and contextual trauma plus Tier-0c movement pain."""
-    if RE_ACUTE_INJURY.search(text) or RE_AMBIGUOUS_TRAUMA.search(text):
+    if (
+        RE_ACUTE_INJURY.search(text)
+        or RE_AMBIGUOUS_TRAUMA.search(text)
+        or RE_DIRECT_JOINT_PAIN.search(text)
+        or RE_ARABIC_ACUTE_JOINT_PAIN.search(text)
+    ):
         return True
     clauses = RE_TIER0_CLAUSE_SPLIT.split(text)
     for clause in clauses:
@@ -232,6 +245,21 @@ RE_PROGRAM_MUTATION = re.compile(
     r"\b(?:(?:rebuild|regenerate)(?:\s+(?:my|the))?(?:\s+(?:split|routine|program))?|new\s+split|(?:change|switch|update)\s+(?:(?:my|the)\s+)?(?:split(?!\s+squat)|routine|program))\b",
     re.IGNORECASE,
 )
+RE_DELOAD_ENGLISH_CHOICE = re.compile(
+    r"^\s*(?:(?:please|can you|could you|would you|will you|i want to|i'd like to)\s+)*"
+    r"(?P<verb>undo|skip|cancel|remove|reverse|apply|use|enable)\s+(?:my\s+|the\s+)?deload"
+    r"(?:(?:\s+(?:for|until|during))?\s+(?:today|(?:this|my|the)\s+workout|(?:my\s+|the\s+)?next\s+workout))?"
+    r"(?:\s+please)?\s*[.!?؟]*\s*$",
+    re.IGNORECASE,
+)
+RE_ARABIC_DIACRITICS = re.compile(r"[\u064b-\u065f\u0670\u0640]")
+RE_DELOAD_ARABIC_CHOICE = re.compile(
+    r"^\s*(?:(?:من فضلك|لو سمحت)\s+)?(?:(?:هل يمكنك|ممكن)\s+)?(?:أن\s+)?"
+    r"(?P<verb>ألغ|الغ|إلغاء|الغاء|تراجع عن|أوقف|اوقف|وقف|طبق|فعل|اعتمد|استخدم)\s+"
+    r"(?:ال)?(?:ديلود|تخفيف)(?:\s+(?:من فضلك|لو سمحت|اليوم|للتمرين القادم))?\s*[.!?؟]*\s*$"
+)
+RE_ARABIC_NEGATION = re.compile(r"(?:^|\s)(?:لا|لن|ليس|مش|ما)\s")
+DELOAD_NO_CHANGE_RESPONSE = "There is nothing to change."
 RE_FREQ_DIGIT = re.compile(r"\b([1-5])\s*(?:days?|d/wk|days\s+a\s+week)\b", re.IGNORECASE)
 RE_SEARCH_TOKENS = re.compile(r"\b(search|find|lookup|show me|list exercises)\b", re.IGNORECASE)
 RE_ACTION_HINT = re.compile(
@@ -446,6 +474,29 @@ def _clinical_candidate_metadata(candidate: str) -> dict[str, Any] | None:
     return None
 
 
+def _deload_choice(query: str) -> str | None:
+    """Returns an explicit, affirmative one-workout Deload command, if present."""
+    english = RE_DELOAD_ENGLISH_CHOICE.fullmatch(query)
+    if english:
+        return (
+            DELOAD_CHOICE_UNDO
+            if english.group("verb").lower() in {"undo", "skip", "cancel", "remove", "reverse"}
+            else DELOAD_CHOICE_APPLY
+        )
+
+    arabic = RE_ARABIC_DIACRITICS.sub("", query).strip()
+    if RE_ARABIC_NEGATION.search(arabic):
+        return None
+    match = RE_DELOAD_ARABIC_CHOICE.fullmatch(arabic)
+    if not match:
+        return None
+    return (
+        DELOAD_CHOICE_UNDO
+        if match.group("verb") in {"ألغ", "الغ", "إلغاء", "الغاء", "تراجع عن", "أوقف", "اوقف", "وقف"}
+        else DELOAD_CHOICE_APPLY
+    )
+
+
 def _authorized_action(query: str, intent: str) -> bool:
     command = _action_command(query)
     if intent == "program_mutation":
@@ -482,6 +533,10 @@ def _classify_single_clause(clause: str, telemetry: str = "", messages: Sequence
 
     if RE_NUTRITION.search(c):
         return {"intent": "coaching_qa", "intent_metadata": {}, "query": c}
+
+    choice = _deload_choice(c)
+    if choice:
+        return {"intent": "deload_choice", "intent_metadata": {"choice": choice}, "query": c}
 
     if _authorized_action(c, "program_mutation"):
         return {
@@ -586,6 +641,10 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
     clinical = _clinical_turn_metadata(query)
     if clinical is not None:
         return {"intent": "clinical_intercept", "intent_metadata": clinical, "active_intents": []}
+
+    choice = _deload_choice(query)
+    if choice:
+        return {"intent": "deload_choice", "intent_metadata": {"choice": choice}}
 
     history_followup = _last_history_exchange(messages)
     if history_followup is not None and not RE_BANNED_MOVEMENT.search(query) and len(RE_CLAUSE_SPLIT.split(query)) == 1:
@@ -1370,6 +1429,45 @@ def program_mutation_node(state: AssistantState, config: dict[str, Any] | None =
         return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
 
+def deload_choice_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
+    ledger, store = _graph_context(config)
+    choice = (state.get("intent_metadata") or {}).get("choice")
+    if choice not in DELOAD_CHOICES:
+        return _response(DELOAD_NO_CHANGE_RESPONSE)
+    program = ledger.get_active_program()
+    if program is None or not program.days:
+        return _response(DELOAD_NO_CHANGE_RESPONSE)
+    from service import workouts as workouts_service
+
+    prescription = workouts_service.build_prescription(
+        store, str(state.get("trainee_id", ledger.ledger_id)), program.days[0],
+        ledger=ledger, player_account_id=state.get("player_account_id"),
+    )
+    deload = prescription["deload"]
+    accepted_state = "applied" if choice == DELOAD_CHOICE_UNDO else "suggested"
+    if deload["state"] != accepted_state:
+        return _response(DELOAD_NO_CHANGE_RESPONSE)
+
+    ledger.set_deload_choice(choice)
+    reason = deload.get("reason") or "fatigue was detected"
+    action = choice
+    default = "applied" if choice == DELOAD_CHOICE_UNDO else "suggested"
+    response = (
+        f"I’ll {action} the {default} deload for your next workout only. "
+        f"The fatigue signal is: {reason}"
+    )
+
+    account_id = state.get("player_account_id")
+    if account_id:
+        try:
+            from service.progression_alerts import note_player_deload_choice
+
+            note_player_deload_choice(store, account_id, choice)
+        except Exception:
+            logger.exception("Could not add player deload choice to coach alert")
+    return _response(response, program_updated=True)
+
+
 def catalog_search_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     _, store = _graph_context(config)
     query = state.get("intent_metadata", {}).get("search_query") or _get_message_text(state["messages"][-1])
@@ -1614,6 +1712,7 @@ def composite_intent_node(state: AssistantState, config: dict[str, Any] | None =
         "exercise_history": exercise_history_node,
         "exercise_substitution": exercise_substitution_node,
         "program_mutation": program_mutation_node,
+        "deload_choice": deload_choice_node,
         "catalog_search": catalog_search_node,
         "coaching_qa": generation_node,
     }
@@ -1678,6 +1777,7 @@ builder.add_node("telemetry_intercept", _safe_node(telemetry_intercept_node))
 builder.add_node("exercise_history", _safe_node(exercise_history_node))
 builder.add_node("exercise_substitution", _safe_node(exercise_substitution_node))
 builder.add_node("program_mutation", _safe_node(program_mutation_node))
+builder.add_node("deload_choice", _safe_node(deload_choice_node))
 builder.add_node("catalog_search", _safe_node(catalog_search_node))
 builder.add_node("composite_intent", _safe_node(composite_intent_node))
 builder.add_node("generation", _safe_node(generation_node))
@@ -1695,6 +1795,7 @@ builder.add_conditional_edges(
         "exercise_history": "exercise_history",
         "exercise_substitution": "exercise_substitution",
         "program_mutation": "program_mutation",
+        "deload_choice": "deload_choice",
         "catalog_search": "catalog_search",
         "composite_intent": "composite_intent",
         "coaching_qa": "generation",
@@ -1785,6 +1886,7 @@ def stream_assistant_turn(
             "exercise_history": exercise_history_node,
             "exercise_substitution": exercise_substitution_node,
             "program_mutation": program_mutation_node,
+            "deload_choice": deload_choice_node,
             "catalog_search": catalog_search_node,
             "composite_intent": composite_intent_node,
         }

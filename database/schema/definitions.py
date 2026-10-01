@@ -11,6 +11,7 @@ from database.exercise_library.names import apply_curated_exercise_names
 from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION
 from database.migration_manager import EQUIPMENT_ACCESS_DDL
 from database.migration_manager import CHECKPOINT_REVIEWS_DDL
+from database.migration_manager import DELOAD_CHOICES_DDL
 from database.migration_manager import INTAKE_DDL
 from database.migration_manager import PERFORMED_DATE_CORRECTIONS_DDL
 from database.migration_manager import SESSION_CARDIO_DDL
@@ -288,6 +289,7 @@ class SchemaMixin:
                 *SESSION_WARMUP_SETS_DDL,
                 *SESSION_CARDIO_DDL,
                 *CHECKPOINT_REVIEWS_DDL,
+                *DELOAD_CHOICES_DDL,
                 *EQUIPMENT_ACCESS_DDL,
             )
         ))

@@ -1,6 +1,7 @@
 """``GET /workouts/baselines``: shape, aggregates shared with commit, caller isolation (#122, ADR 042)."""
 
 import sqlite3
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from agent.progression_engine import calculate_e1rm
 from database.database_manager import DatabaseManager
+from service import coach as coach_service
 from service import workouts as workouts_service
 from svc.app import create_app
 from svc.dependencies import get_db
@@ -263,6 +265,99 @@ def test_exercise_logged_only_with_zero_kg_sets_has_no_baseline(api):
     assert rows[0]["max_weight_kg"] == 60.0
     assert rows[0]["last_session"]["performed_date"] == "2026-09-26"
 
+
+def test_assistant_deload_choice_is_one_workout_and_replay_safe(api, monkeypatch):
+    client, db = api
+    headers, version = _prepare_player(client, db, "deload-player")
+    monkeypatch.setattr(workouts_service, "evaluate_systemic_fatigue", lambda _ledger: {
+        "deload_recommended": True, "reason": "Acute readiness floor (1/5) detected.",
+        "volume_multiplier": 0.5, "intensity_cap_rpe": 7.0,
+    })
+
+    before = client.get("/workouts/prescription?day_order=1", headers=headers).json()
+    assert before["deload"]["state"] == "applied"
+
+    unchanged = client.post("/chat/messages", headers=headers, json={"content": "apply the deload"})
+    unchanged_events = [json.loads(line[6:]) for line in unchanged.text.splitlines() if line.startswith("data: ")]
+    unchanged_done = next(event for event in unchanged_events if event.get("done"))
+    assert unchanged_done["program_updated"] is False
+    assert "nothing to change" in unchanged_done["response_content"].lower()
+
+    stream = client.post("/chat/messages", headers=headers, json={"content": "undo the deload"})
+    assert stream.status_code == 200, stream.text
+    events = [json.loads(line[6:]) for line in stream.text.splitlines() if line.startswith("data: ")]
+    done = next(event for event in events if event.get("done"))
+    assert done["program_updated"] is True
+    assert "Acute readiness floor" in done["response_content"]
+    assert "next workout only" in done["response_content"]
+    assert client.get("/workouts/prescription?day_order=1", headers=headers).json()["deload"]["state"] == "none"
+
+    first_commit = _commit(
+        client, headers, version, _session_one_sets(), client_session_id=CLIENT_A,
+        performed_date="2026-09-25", captured_at="2026-09-25T11:00:00+00:00",
+    )
+    assert client.get("/workouts/prescription?day_order=1", headers=headers).json()["deload"]["state"] == "applied"
+
+    # A replay from before the new choice must not consume that later choice.
+    stream = client.post("/chat/messages", headers=headers, json={"content": "undo the deload"})
+    assert stream.status_code == 200, stream.text
+    replay = client.post(
+        "/workouts/sessions", headers=headers,
+        json={
+            "day_order": 1, "readiness": 4, "session_notes": "", "sets": _session_one_sets(),
+            "client_session_id": CLIENT_A, "performed_date": "2026-09-25", "performed_timezone": "UTC",
+            "program_version": version, "captured_at": "2026-09-25T11:00:00+00:00",
+        },
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == first_commit
+    assert client.get("/workouts/prescription?day_order=1", headers=headers).json()["deload"]["state"] == "none"
+
+
+def test_apply_suggested_deload_adds_note_to_open_coach_alert(api, monkeypatch):
+    client, db = api
+    coach_response = client.post("/auth/register", json={"trainee_id": "deload-coach", "password": "correct-horse-1"})
+    coach_headers = {"Authorization": f"Bearer {coach_response.json()['access_token']}"}
+    issued = coach_service.issue_coach_invite(db, "deload-coach", actor="cli")
+    assert issued["ok"]
+    assert client.post("/coach/invite/redeem", headers=coach_headers, json={"token": issued["token"]}).status_code == 200
+    assert client.put(
+        "/coach/profile", headers=coach_headers,
+        json={"display_name": "Coach", "bio": "b", "specialization": "s", "capacity": 10},
+    ).status_code == 200
+    invitation = client.post("/coach/assignments/invites", headers=coach_headers)
+    player_headers, version = _prepare_player(client, db, "deload-assigned-player")
+    redeemed = client.post(
+        "/assignments/invites/redeem", headers=player_headers,
+        json={"token": invitation.json()["token"], "consent": True},
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    monkeypatch.setattr(workouts_service, "evaluate_systemic_fatigue", lambda _ledger: {
+        "deload_recommended": True, "reason": "Rolling readiness crash across recent sessions.",
+        "volume_multiplier": 0.5, "intensity_cap_rpe": 7.0,
+    })
+
+    _commit(
+        client, player_headers, version, _session_one_sets(), client_session_id=CLIENT_A,
+        performed_date="2026-09-25", captured_at="2026-09-25T11:00:00+00:00",
+    )
+    prescription = client.get("/workouts/prescription?day_order=1", headers=player_headers).json()
+    assert prescription["deload"]["state"] == "suggested"
+    unchanged = client.post("/chat/messages", headers=player_headers, json={"content": "undo the deload"})
+    unchanged_events = [json.loads(line[6:]) for line in unchanged.text.splitlines() if line.startswith("data: ")]
+    unchanged_done = next(event for event in unchanged_events if event.get("done"))
+    assert unchanged_done["program_updated"] is False
+    assert "nothing to change" in unchanged_done["response_content"].lower()
+    stream = client.post("/chat/messages", headers=player_headers, json={"content": "apply the deload"})
+    assert stream.status_code == 200, stream.text
+    refreshed = client.get("/workouts/prescription?day_order=1", headers=player_headers).json()
+    assert refreshed["deload"]["state"] == "applied"
+    assert all(target["effective_sets"] == 2 for target in refreshed["targets"])
+
+    alerts = client.get("/coach/alerts", headers=coach_headers)
+    assert alerts.status_code == 200, alerts.text
+    deload_alert = next(row for row in alerts.json()["alerts"] if row["kind"] == "deload_recommended")
+    assert deload_alert["player_deload_choice"] == {"choice": "apply", "scope": "next_workout_only"}
 
 def test_zero_kg_bodyweight_session_is_still_previous_performance(api):
     client, db = api

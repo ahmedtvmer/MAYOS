@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from core.deload_choices import DELOAD_CHOICES
 from service.coach_notices import notify_coach, player_display_name
 
 logger = logging.getLogger(__name__)
@@ -146,6 +147,28 @@ def signals_from_commit(
             )
         )
     return signals
+
+
+def note_player_deload_choice(db: Any, player_account_id: str, choice: str) -> bool:
+    """Adds the player's one-workout Deload choice to its open Coach alert episode."""
+    if choice not in DELOAD_CHOICES:
+        return False
+    assignment = db.get_active_assignment_for_player(player_account_id)
+    if assignment is None:
+        return False
+
+    assignment_id = str(assignment["assignment_id"])
+    with db.catalog_transaction():
+        episode = db.get_alert_signal_state(assignment_id, DELOAD_KIND, "")
+        if episode is None or not int(episode["active"]):
+            return False
+        dedupe_key = str(episode["episode_key"])
+        alert = db.get_coach_alert_by_dedupe(assignment_id, DELOAD_KIND, dedupe_key)
+        if alert is None:
+            return False
+        details = dict(alert.get("details") or {})
+        details["player_deload_choice"] = {"choice": choice, "scope": "next_workout_only"}
+        return bool(db.update_coach_alert_details(alert["alert_id"], details))
 
 
 def _dedupe_key(subject: str, episode_key: str) -> str:
