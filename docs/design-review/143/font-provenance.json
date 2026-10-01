@@ -1,0 +1,110 @@
+[
+  {
+    "file": "Amiri-Regular.ttf",
+    "repository": "aliftype/amiri",
+    "commit": "6331fc82b0d20d9439a0792e21a9294ca015a93f",
+    "upstream_path": "fonts/Amiri-Regular.ttf",
+    "url": "https://raw.githubusercontent.com/aliftype/amiri/6331fc82b0d20d9439a0792e21a9294ca015a93f/fonts/Amiri-Regular.ttf",
+    "sha256": "2444788b85996d795f0db7e14f3f6bfc3ea1c985e391267db0269b9e40f3447d",
+    "bytes": 612940
+  },
+  {
+    "file": "Amiri-Bold.ttf",
+    "repository": "aliftype/amiri",
+    "commit": "6331fc82b0d20d9439a0792e21a9294ca015a93f",
+    "upstream_path": "fonts/Amiri-Bold.ttf",
+    "url": "https://raw.githubusercontent.com/aliftype/amiri/6331fc82b0d20d9439a0792e21a9294ca015a93f/fonts/Amiri-Bold.ttf",
+    "sha256": "3cd4a96bf6dca38649c9c7b4ca11a3aed55e272ae377a667f6f2138994c4baec",
+    "bytes": 588208
+  },
+  {
+    "file": "OFL-Amiri.txt",
+    "repository": "aliftype/amiri",
+    "commit": "6331fc82b0d20d9439a0792e21a9294ca015a93f",
+    "upstream_path": "OFL.txt",
+    "url": "https://raw.githubusercontent.com/aliftype/amiri/6331fc82b0d20d9439a0792e21a9294ca015a93f/OFL.txt",
+    "sha256": "72de68e5954f4fdd24702292ef5a32f003ca960ec9330dc86e5eefb5dffb9b22",
+    "bytes": 4389
+  },
+  {
+    "file": "IBMPlexSansArabic-Regular.ttf",
+    "repository": "IBM/plex",
+    "commit": "763c36ef9117782905ae010056dfbe8fd2653a25",
+    "upstream_path": "packages/plex-sans-arabic/fonts/complete/ttf/IBMPlexSansArabic-Regular.ttf",
+    "url": "https://raw.githubusercontent.com/IBM/plex/763c36ef9117782905ae010056dfbe8fd2653a25/packages/plex-sans-arabic/fonts/complete/ttf/IBMPlexSansArabic-Regular.ttf",
+    "sha256": "8e0f1046c736bf939d4939ee3ae0116acf61cbcd6592deae7656761627080981",
+    "bytes": 236708
+  },
+  {
+    "file": "IBMPlexSansArabic-Medium.ttf",
+    "repository": "IBM/plex",
+    "commit": "763c36ef9117782905ae010056dfbe8fd2653a25",
+    "upstream_path": "packages/plex-sans-arabic/fonts/complete/ttf/IBMPlexSansArabic-Medium.ttf",
+    "url": "https://raw.githubusercontent.com/IBM/plex/763c36ef9117782905ae010056dfbe8fd2653a25/packages/plex-sans-arabic/fonts/complete/ttf/IBMPlexSansArabic-Medium.ttf",
+    "sha256": "eef162792cf2a6ba5af7943af9f86843b1286ab67aaf615c18c07fd8e97a4a90",
+    "bytes": 243028
+  },
+  {
+    "file": "IBMPlexSansArabic-SemiBold.ttf",
+    "repository": "IBM/plex",
+    "commit": "763c36ef9117782905ae010056dfbe8fd2653a25",
+    "upstream_path": "packages/plex-sans-arabic/fonts/complete/ttf/IBMPlexSansArabic-SemiBold.ttf",
+    "url": "https://raw.githubusercontent.com/IBM/plex/763c36ef9117782905ae010056dfbe8fd2653a25/packages/plex-sans-arabic/fonts/complete/ttf/IBMPlexSansArabic-SemiBold.ttf",
+    "sha256": "1d4ab8b6ebadbb9d85f2ecdcb7cb0bb672420a8ff3388ab4f69d7b98056562aa",
+    "bytes": 245544
+  },
+  {
+    "file": "IBMPlexSansArabic-Bold.ttf",
+    "repository": "IBM/plex",
+    "commit": "763c36ef9117782905ae010056dfbe8fd2653a25",
+    "upstream_path": "packages/plex-sans-arabic/fonts/complete/ttf/IBMPlexSansArabic-Bold.ttf",
+    "url": "https://raw.githubusercontent.com/IBM/plex/763c36ef9117782905ae010056dfbe8fd2653a25/packages/plex-sans-arabic/fonts/complete/ttf/IBMPlexSansArabic-Bold.ttf",
+    "sha256": "b74f809dead12442ed56e02a12c3bcc02076c9ad4e32f17d0a9ca6fc1aafc89e",
+    "bytes": 247896
+  },
+  {
+    "file": "OFL-IBMPlex.txt",
+    "repository": "IBM/plex",
+    "commit": "763c36ef9117782905ae010056dfbe8fd2653a25",
+    "upstream_path": "LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/IBM/plex/763c36ef9117782905ae010056dfbe8fd2653a25/LICENSE.txt",
+    "sha256": "7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da",
+    "bytes": 4456
+  },
+  {
+    "file": "ReemKufi-Variable.ttf",
+    "repository": "google/fonts",
+    "commit": "9710da1eacb3be272583c3224dcb70f9da6eadbb",
+    "upstream_path": "ofl/reemkufi/ReemKufi[wght].ttf",
+    "url": "https://raw.githubusercontent.com/google/fonts/9710da1eacb3be272583c3224dcb70f9da6eadbb/ofl/reemkufi/ReemKufi%5Bwght%5D.ttf",
+    "sha256": "33ead1986cd48c138c4d906c9e5a6341877268461f97623409a2014de1cd4aa4",
+    "bytes": 127152
+  },
+  {
+    "file": "OFL-ReemKufi.txt",
+    "repository": "google/fonts",
+    "commit": "9710da1eacb3be272583c3224dcb70f9da6eadbb",
+    "upstream_path": "ofl/reemkufi/OFL.txt",
+    "url": "https://raw.githubusercontent.com/google/fonts/9710da1eacb3be272583c3224dcb70f9da6eadbb/ofl/reemkufi/OFL.txt",
+    "sha256": "3e1dea8822e6e4008fe0ebd2f65f88579683cfee198c0089407fa197535dbe65",
+    "bytes": 4434
+  },
+  {
+    "file": "Cairo-Variable.ttf",
+    "repository": "google/fonts",
+    "commit": "9710da1eacb3be272583c3224dcb70f9da6eadbb",
+    "upstream_path": "ofl/cairo/Cairo[slnt,wght].ttf",
+    "url": "https://raw.githubusercontent.com/google/fonts/9710da1eacb3be272583c3224dcb70f9da6eadbb/ofl/cairo/Cairo%5Bslnt%2Cwght%5D.ttf",
+    "sha256": "667c987182391c91f4e57a2f455b1794fb5e3ee6ca4ef3383e86bb690fa9c964",
+    "bytes": 599548
+  },
+  {
+    "file": "OFL-Cairo.txt",
+    "repository": "google/fonts",
+    "commit": "9710da1eacb3be272583c3224dcb70f9da6eadbb",
+    "upstream_path": "ofl/cairo/OFL.txt",
+    "url": "https://raw.githubusercontent.com/google/fonts/9710da1eacb3be272583c3224dcb70f9da6eadbb/ofl/cairo/OFL.txt",
+    "sha256": "a4554e1799d42e1405924b61eb0e0722ae1623b1f1f07f995348f96c496362a9",
+    "bytes": 4473
+  }
+]

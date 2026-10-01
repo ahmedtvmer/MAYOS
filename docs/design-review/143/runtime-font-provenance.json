@@ -1,0 +1,26 @@
+[
+  {
+    "file": "PlayfairDisplay-Variable.ttf",
+    "sha256": "c40f2293766a503bc70cce9e512ef844a4ccb7cbcde792fe2ea31d191917d8d6",
+    "bytes": 300724,
+    "family": "Playfair Display",
+    "version": "Version 1.203",
+    "source": "supplied mobile snapshot"
+  },
+  {
+    "file": "Inter-Variable.ttf",
+    "sha256": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031",
+    "bytes": 876576,
+    "family": "Inter",
+    "version": "Version 4.001;git-66647c0bb",
+    "source": "supplied mobile snapshot"
+  },
+  {
+    "file": "MaterialIcons-Regular.otf",
+    "sha256": "d9865b671a09d683d13a863089d8825e0f61a37696ce5d7d448bc8023aa62453",
+    "bytes": 1645184,
+    "family": "Material Icons",
+    "version": "2022-09-06T15:00:38.819903",
+    "source": "Flutter 3.47.5 framework 6a19cca564 test bundle fonts/MaterialIcons-Regular.otf"
+  }
+]
