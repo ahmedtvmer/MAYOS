@@ -1031,18 +1031,25 @@ class ApiClient {
     );
   }
 
-  /// Updates the player's profile. Changes to training days or rep preference
-  /// can trigger a rebuild, so a coach-controlled program may leave it unchanged
-  /// while still applying the profile update.
+  /// Updates the player's Training profile. Program-shaping changes may trigger
+  /// a rebuild, so a coach-controlled program may stay unchanged while the
+  /// profile update still applies.
   Future<ProfileUpdateResult> updateProfile({
     int? weeklyFrequency,
     String? repPreference,
     String? equipmentAccess,
+    String? currentGoal,
+    String? injuriesOrLimitations,
+    double? weightKg,
   }) async {
     final Map<String, dynamic> body = <String, dynamic>{
       if (weeklyFrequency != null) 'weekly_frequency': weeklyFrequency,
       if (repPreference != null) 'rep_preference': repPreference,
       if (equipmentAccess != null) 'equipment_access': equipmentAccess,
+      if (currentGoal != null) 'current_goal': currentGoal,
+      if (injuriesOrLimitations != null)
+        'injuries_or_limitations': injuriesOrLimitations,
+      if (weightKg != null) 'weight_kg': weightKg,
     };
     final response = await _send(
       () => _dio.put<dynamic>('/profile', data: body),

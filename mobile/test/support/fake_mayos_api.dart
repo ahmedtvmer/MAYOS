@@ -45,8 +45,12 @@ class FakeMayosApi {
   String repPreference = 'balanced';
   int weeklyFrequency = 4;
   String equipmentAccess = equipmentAccessCommercialGym;
+  String currentGoal = 'Get stronger';
+  String injuriesOrLimitations = 'None';
+  double weightKg = 75;
   final List<Map<String, dynamic>> profileUpdateBodies = <Map<String, dynamic>>[];
   int profileRebuildCalls = 0;
+  int _profileProgramRevision = 0;
   String assistantStyle = defaultAssistantStyle;
   String assistantInstructions = '';
   // Forces a coach-controlled profile-update response even with no publication.
@@ -1922,8 +1926,12 @@ class FakeMayosApi {
         'rep_preference': repPreference,
         'weekly_frequency': weeklyFrequency,
         'equipment_access': equipmentAccess,
+        'current_goal': currentGoal,
+        'injuries_or_limitations': injuriesOrLimitations,
+        'weight_kg': weightKg,
         'coach_tone': assistantStyle,
         'custom_instructions': assistantInstructions,
+        'player_controls_program': !coachControlsProgram,
       };
 
   FakeResponse _profilePersona(FakeRequest request) {
@@ -1949,12 +1957,31 @@ class FakeMayosApi {
     final int? frequency = (request.body['weekly_frequency'] as num?)?.toInt();
     final String? preference = request.body['rep_preference'] as String?;
     final String? access = request.body['equipment_access'] as String?;
-    final bool rebuildWarranted =
-        (frequency != null && frequency != weeklyFrequency) ||
-            (preference != null && preference != repPreference);
+    final String? injuries = request.body['injuries_or_limitations'] as String?;
+    final Map<String, Object?> proposed = <String, Object?>{
+      'weekly_frequency': frequency,
+      'rep_preference': preference,
+      'equipment_access': access,
+      'injuries_or_limitations': injuries,
+    };
+    final Map<String, Object?> before = <String, Object?>{
+      'weekly_frequency': weeklyFrequency,
+      'rep_preference': repPreference,
+      'equipment_access': equipmentAccess,
+      'injuries_or_limitations': injuriesOrLimitations,
+    };
+    final bool rebuildWarranted = _profileRebuildFields.any(
+      (String field) =>
+          proposed[field] != null && proposed[field] != before[field],
+    );
     if (frequency != null) weeklyFrequency = frequency;
     if (preference != null) repPreference = preference;
     if (access != null) equipmentAccess = access;
+    if (injuries != null) injuriesOrLimitations = injuries;
+    final String? goal = request.body['current_goal'] as String?;
+    final num? weight = request.body['weight_kg'] as num?;
+    if (goal != null) currentGoal = goal;
+    if (weight != null) weightKg = weight.toDouble();
 
     if (rebuildWarranted && (coachControlsProgram || profileBlocked)) {
       return FakeResponse(200, <String, dynamic>{
@@ -1966,7 +1993,10 @@ class FakeMayosApi {
             'Your assigned coach controls your program. Ask your coach for changes.',
       });
     }
-    if (rebuildWarranted) profileRebuildCalls++;
+    if (rebuildWarranted) {
+      profileRebuildCalls++;
+      _profileProgramRevision++;
+    }
     return FakeResponse(200, <String, dynamic>{
       'profile': _profileBody(),
       'program_rebuilt': rebuildWarranted,
@@ -2154,6 +2184,13 @@ class FakeMayosApi {
   }
 
   // The named decision contract mirrored from service/intake.py (#50).
+  static const List<String> _profileRebuildFields = <String>[
+    'injuries_or_limitations',
+    'equipment_access',
+    'weekly_frequency',
+    'rep_preference',
+  ];
+
   static const List<Map<String, dynamic>> _intakeSchema =
       <Map<String, dynamic>>[
     <String, dynamic>{
@@ -2304,6 +2341,8 @@ class FakeMayosApi {
         ...spec,
         'minimum': spec['minimum'],
         'maximum': spec['maximum'],
+        if (spec['type'] == 'text') 'minimum_length': 2,
+        if (spec['type'] == 'text') 'maximum_length': 500,
         'explanation': spec['explanation'],
         'answer': intakeAnswers[name],
         'prefilled': false,
@@ -2328,6 +2367,7 @@ class FakeMayosApi {
       'status': intakeStatus,
       'disclosure_acknowledged': intakeDisclosureAcknowledged,
       'fields': fields,
+      'profile_rebuild_fields': _profileRebuildFields,
       'progress': <String, dynamic>{
         'answered_required': answeredRequired,
         'required_total': required.length,
@@ -2485,7 +2525,9 @@ class FakeMayosApi {
   }
 
   Map<String, dynamic> _activeProgramBody() => <String, dynamic>{
-        'program_name': 'Upper/Lower 4x',
+        'program_name': _profileProgramRevision == 0
+            ? 'Upper/Lower 4x'
+            : 'Rebuilt program $_profileProgramRevision',
         'split_type': 'Upper/Lower',
         'weekly_frequency': 4,
         'instructions': '',
@@ -3303,6 +3345,10 @@ class FakeMayosApi {
       recoveryEmail = null;
       repPreference = 'balanced';
       weeklyFrequency = 4;
+      equipmentAccess = equipmentAccessCommercialGym;
+      currentGoal = 'Get stronger';
+      injuriesOrLimitations = 'None';
+      weightKg = 75;
       profileBlocked = false;
       coachDisplayName = '';
       coachBio = '';

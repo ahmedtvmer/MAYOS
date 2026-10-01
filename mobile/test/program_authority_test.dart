@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
+import 'package:mayos_mobile/src/core/connectivity_message.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
@@ -111,10 +112,13 @@ void main() {
       (tester) async {
     final FakeMayosApi fake = _playerFake();
     fake.profileBlocked = true;
+    fake.coachControlsProgram = true;
     await _pumpApp(tester, fake);
 
     await _changeTrainingDays(tester);
     await tester.tap(find.text('Save profile'));
+    expect(find.text('This rebuilds your program'), findsNothing);
+    expect(fake.profileUpdateBodies, isEmpty);
     await _pumpUntilFound(tester, find.text(_coachMessage));
 
     expect(find.text(_coachMessage), findsOneWidget);
@@ -129,11 +133,103 @@ void main() {
 
     await _changeTrainingDays(tester);
     await tester.tap(find.text('Save profile'));
+    await _pumpUntilFound(tester, find.text('This rebuilds your program'));
+    await tester.tap(find.byKey(const Key('profile_rebuild_confirm_button')));
     await _pumpUntilFound(tester, find.text('Program rebuilt.'));
 
     expect(find.text('Program rebuilt.'), findsOneWidget);
     expect(find.text(_coachMessage), findsNothing);
     expect(fake.weeklyFrequency, 3);
+  });
+
+  testWidgets('Training profile pre-fills editable values and saves goal/weight without rebuild',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake();
+    fake.currentGoal = 'Build muscle';
+    fake.injuriesOrLimitations = 'Right shoulder limitation';
+    fake.weightKg = 82.5;
+    await _pumpApp(tester, fake);
+    await _openProfile(tester);
+
+    expect(find.text('Build muscle'), findsOneWidget);
+    expect(find.text('Right shoulder limitation'), findsOneWidget);
+    expect(find.text('82.5'), findsOneWidget);
+
+    await tester.enterText(
+        find.byKey(const Key('current_goal_field')), 'Get stronger');
+    await tester.enterText(find.byKey(const Key('weight_kg_field')), '83');
+    await tester.ensureVisible(find.text('Save profile'));
+    await tester.tap(find.text('Save profile'));
+    await _pumpUntilFound(tester, find.text('Profile saved.'));
+
+    expect(fake.currentGoal, 'Get stronger');
+    expect(fake.weightKg, 83);
+    expect(fake.profileRebuildCalls, 0);
+    expect(find.text('This rebuilds your program'), findsNothing);
+  });
+
+  testWidgets('offline Training profile save changes nothing', (tester) async {
+    final FakeMayosApi fake = _playerFake();
+    await _pumpApp(tester, fake);
+    await _openProfile(tester);
+    await tester.enterText(
+        find.byKey(const Key('current_goal_field')), 'Prepare for a marathon');
+    fake.failOffline('PUT', '/profile');
+    await tester.ensureVisible(find.text('Save profile'));
+    await tester.tap(find.text('Save profile'));
+    await _pumpUntilFound(tester, find.text(needsConnectionMessage));
+
+    expect(fake.currentGoal, 'Get stronger');
+    expect(fake.profileUpdateBodies, isEmpty);
+    expect(find.text(needsConnectionMessage), findsOneWidget);
+  });
+
+  testWidgets('offline save after rebuild confirmation changes nothing',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake();
+    await _pumpApp(tester, fake);
+    await _changeTrainingDays(tester);
+    await tester.tap(find.text('Save profile'));
+    await _pumpUntilFound(tester, find.text('This rebuilds your program'));
+    await tester.tap(find.byKey(const Key('profile_rebuild_confirm_button')));
+    fake.failOffline('PUT', '/profile');
+    await _pumpUntilFound(tester, find.text(needsConnectionMessage));
+
+    expect(fake.weeklyFrequency, 4);
+    expect(fake.profileUpdateBodies, isEmpty);
+    expect(find.text(needsConnectionMessage), findsOneWidget);
+  });
+
+  testWidgets('empty saved goal is omitted while saving another profile fact',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake()..currentGoal = '';
+    await _pumpApp(tester, fake);
+    await _openProfile(tester);
+    await tester.enterText(find.byKey(const Key('weight_kg_field')), '80');
+    await tester.ensureVisible(find.text('Save profile'));
+    await tester.tap(find.text('Save profile'));
+    await _pumpUntilFound(tester, find.text('Profile saved.'));
+
+    expect(fake.currentGoal, '');
+    expect(fake.weightKg, 80);
+    expect(
+        fake.profileUpdateBodies.single.containsKey('current_goal'), isFalse);
+  });
+
+  testWidgets('invalid weight is rejected before rebuild confirmation',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake();
+    await _pumpApp(tester, fake);
+    await _openProfile(tester);
+    await tester.enterText(find.byKey(const Key('weight_kg_field')), '251');
+    await tester.ensureVisible(find.text('Save profile'));
+    await tester.tap(find.text('Save profile'));
+    await _pumpUntilFound(
+        tester, find.text('Weight must be between 30 and 250 kg.'));
+
+    expect(find.text('This rebuilds your program'), findsNothing);
+    expect(find.text('Weight must be between 30 and 250 kg.'), findsOneWidget);
+    expect(fake.profileUpdateBodies, isEmpty);
   });
 
   testWidgets('saving the schedule leaves the training-days setting untouched',
@@ -242,6 +338,8 @@ void main() {
     await _openProfile(tester);
     await _pumpUntilFound(tester, find.text('Training pause'));
 
+    await tester.drag(find.byType(ListView).first, const Offset(0, -1100));
+    await tester.pump();
     await tester.ensureVisible(find.byKey(const Key('pause_start_button')));
     await tester.tap(find.byKey(const Key('pause_start_button')));
     await tester.pump(const Duration(milliseconds: 300));

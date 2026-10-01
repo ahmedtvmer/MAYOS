@@ -27,6 +27,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from service import onboarding as onboarding_service
+from service.profile import PROFILE_REBUILD_FIELDS
 from service._base import ledger_scope
 from utils.equipment_access import (
     BODYWEIGHT_ONLY,
@@ -440,6 +441,8 @@ def build_view(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, 
                 "allowed_values": list(spec.allowed),
                 "minimum": spec.minimum,
                 "maximum": spec.maximum,
+                "minimum_length": MIN_TEXT_LENGTH if spec.kind == "text" else None,
+                "maximum_length": MAX_TEXT_LENGTH if spec.kind == "text" else None,
                 "profile_field": spec.profile_key,
                 "explanation": spec.explanation,
                 "hint": spec.hint,
@@ -462,6 +465,7 @@ def build_view(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, 
         }
     return {
         "status": status,
+        "profile_rebuild_fields": list(PROFILE_REBUILD_FIELDS),
         "disclosure_acknowledged": bool(state.get("disclosure_acknowledged")),
         "fields": fields,
         "progress": {

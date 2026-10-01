@@ -105,6 +105,9 @@ _Avoid_: User database, user DB
 **Training program**:
 The player's current structured selection of training days and exercises.
 
+**Training profile**:
+The editable facts a player can update after onboarding: current goal, Equipment access, injuries or limitations, and weight. Body proportions remain onboarding-only.
+
 **Body proportions**:
 A player's self-reported comparison of leg and torso length, recorded as coaching context.
 

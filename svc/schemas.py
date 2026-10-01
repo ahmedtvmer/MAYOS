@@ -2,14 +2,11 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from agent.ProgramState import GeneratedProgramSchema, ProgramExerciseSchema
 from agent.prompts import ASSISTANT_STYLE_KEYS, MAX_ASSISTANT_STYLE_INSTRUCTIONS
-from utils.equipment_access import EQUIPMENT_ACCESS_VALUES
-
 AssistantStyleKey = Literal[*ASSISTANT_STYLE_KEYS]
-EquipmentAccessLiteral = Literal.__getitem__(EQUIPMENT_ACCESS_VALUES)
 
 __all__ = [
     "ActiveProgramOut",
@@ -718,15 +715,38 @@ class ResetPasswordIn(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
-    proportions: str | None = None
-    # The intake's allowed values (service/intake.py); anything else would be
-    # stored and then silently read as "balanced" by the program generator.
-    rep_preference: Literal["low", "balanced", "high"] | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    rep_preference: str | None = None
     current_goal: str | None = None
-    weekly_frequency: int | None = Field(default=None, ge=1, le=5)
-    equipment_access: EquipmentAccessLiteral | None = None
+    weekly_frequency: int | None = None
+    equipment_access: str | None = None
     injuries_or_limitations: str | None = None
-    weight_kg: float | None = Field(default=None, ge=30.0, le=250.0)
+    weight_kg: float | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_training_profile_against_intake(cls, value: Any) -> Any:
+        """Use the onboarding catalog for every editable intake field."""
+        if not isinstance(value, dict):
+            return value
+        from service.intake import IntakeValidationError, validate_answer
+
+        normalized = dict(value)
+        for field_name in (
+            "current_goal",
+            "equipment_access",
+            "injuries_or_limitations",
+            "weight_kg",
+            "weekly_frequency",
+            "rep_preference",
+        ):
+            if field_name in normalized and normalized[field_name] is not None:
+                try:
+                    normalized[field_name] = validate_answer(field_name, normalized[field_name])
+                except IntakeValidationError as exc:
+                    raise ValueError(str(exc)) from None
+        return normalized
 
 
 class PersonaUpdate(BaseModel):
@@ -1060,6 +1080,8 @@ class IntakeFieldOut(BaseModel):
     allowed_values: list[str] = []
     minimum: float | None = None
     maximum: float | None = None
+    minimum_length: int | None = None
+    maximum_length: int | None = None
     profile_field: str
     explanation: str | None = None
     hint: str | None = None
@@ -1095,6 +1117,7 @@ class IntakeOut(BaseModel):
     status: str
     disclosure_acknowledged: bool
     fields: list[IntakeFieldOut]
+    profile_rebuild_fields: list[str] = []
     progress: IntakeProgressOut
     program: IntakeProgramOut | None = None
 

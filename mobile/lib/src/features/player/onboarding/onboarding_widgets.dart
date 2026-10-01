@@ -145,10 +145,7 @@ bool isFieldAnswerValid(IntakeField field, Object? value) {
   }
   switch (field.type) {
     case 'enum':
-      final List<String> allowed = field.name == 'equipment_access'
-          ? equipmentAccessValues
-          : field.allowedValues;
-      return value is String && allowed.contains(value);
+      return value is String && field.allowedValues.contains(value);
     case 'int':
     case 'float':
       final num? number = value is num ? value : num.tryParse('$value');
@@ -168,7 +165,10 @@ bool isFieldAnswerValid(IntakeField field, Object? value) {
       }
       return true;
     default:
-      return value is String && value.trim().length >= 2;
+      if (value is! String) return false;
+      final int length = value.trim().length;
+      return (field.minimumLength == null || length >= field.minimumLength!) &&
+          (field.maximumLength == null || length <= field.maximumLength!);
   }
 }
 

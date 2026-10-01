@@ -6,6 +6,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from service import profile as profile_service
+from service.programs import player_controls_program
 from service import schedule as schedule_service
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
 from svc.schemas import (
@@ -31,7 +32,12 @@ async def read_profile(
     profile = await asyncio.to_thread(profile_service.get_profile, db, str(player), ledger)
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No profile yet; complete onboarding.")
-    return profile
+    return {
+        **profile,
+        "player_controls_program": await asyncio.to_thread(
+            player_controls_program, db, ledger, account_id_of(player)
+        ),
+    }
 
 
 @router.put("")
@@ -42,10 +48,17 @@ async def update_profile(
     db: Annotated[Any, Depends(get_db)],
 ):
     payload = {key: value for key, value in body.model_dump().items() if value is not None}
-    return await asyncio.to_thread(
+    result = await asyncio.to_thread(
         profile_service.update_profile,
         db, str(player), payload, account_id_of(player), ledger,
     )
+    result["profile"] = {
+        **(result.get("profile") or {}),
+        "player_controls_program": await asyncio.to_thread(
+            player_controls_program, db, ledger, account_id_of(player)
+        ),
+    }
+    return result
 
 
 @router.put("/persona")
