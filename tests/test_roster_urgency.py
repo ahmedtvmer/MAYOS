@@ -187,7 +187,14 @@ def _create_request(api, coach_headers, player, monkeypatch):
     return created.json()
 
 
-def _seed_alert(db, coach_account_id, player, state="new"):
+def _seed_alert(
+    db,
+    coach_account_id,
+    player,
+    state="new",
+    kind="missed_expected_days",
+    dedupe_key="2026-09-01",
+):
     """Writes one catalog-side coach alert directly, in the requested state."""
     now_iso = datetime.now(UTC).isoformat()
     alert_id = uuid.uuid4().hex
@@ -196,14 +203,17 @@ def _seed_alert(db, coach_account_id, player, state="new"):
         player["assignment_id"],
         coach_account_id,
         player["account_id"],
-        "missed_expected_days",
-        "2026-09-01",
+        kind,
+        dedupe_key,
         {"streak_start_date": "2026-09-01", "last_missed_date": "2026-09-02", "missed_count": 2},
         now_iso,
     )
     if state == "acknowledged":
         acknowledged = db.acknowledge_coach_alert(alert_id, coach_account_id, now_iso)
         assert acknowledged is not None and acknowledged["state"] == "acknowledged"
+    elif state == "resolved":
+        resolved = db.resolve_coach_alert(alert_id, coach_account_id, now_iso, "coach")
+        assert resolved is not None and resolved["state"] == "resolved"
     return alert_id
 
 
@@ -274,6 +284,44 @@ def test_roster_read_with_new_fields_mounts_no_player_ledger(api, monkeypatch):
     assert mounted == ["coach"]
 
 
+def test_one_new_lapsing_alert_ranks_above_two_new_regression_alerts(api):
+    client, db, _ = api
+    coach_headers, coach_account_id = _make_coach(client, db, "coach", capacity=5)
+    lapsing = _assign(api, "zoe", coach_headers)
+    regressions = _assign(api, "ann", coach_headers)
+
+    _seed_alert(db, coach_account_id, lapsing, kind="missed_expected_days")
+    _seed_alert(db, coach_account_id, regressions, kind="performance_regression", dedupe_key="s1")
+    _seed_alert(db, coach_account_id, regressions, kind="performance_regression", dedupe_key="s2")
+
+    rows = _roster(client, coach_headers)
+    assert [(row["player_username"], row["alerts_new"], row["alerts_new_lapsing"]) for row in rows] == [
+        ("zoe", 1, 1),
+        ("ann", 2, 0),
+    ]
+
+
+def test_lapsing_count_includes_only_new_missed_day_and_follow_up_alerts(api):
+    client, db, _ = api
+    coach_headers, coach_account_id = _make_coach(client, db, "coach", capacity=5)
+    player = _assign(api, "p1", coach_headers)
+
+    _seed_alert(db, coach_account_id, player, kind="missed_expected_days", dedupe_key="missed-new")
+    _seed_alert(db, coach_account_id, player, kind="follow_up_due", dedupe_key="follow-new")
+    _seed_alert(
+        db, coach_account_id, player, state="acknowledged", kind="missed_expected_days", dedupe_key="missed-ack"
+    )
+    _seed_alert(
+        db, coach_account_id, player, state="resolved", kind="follow_up_due", dedupe_key="follow-resolved"
+    )
+    _seed_alert(db, coach_account_id, player, kind="performance_regression", dedupe_key="regression-new")
+
+    rows = _roster(client, coach_headers)
+    assert rows[0]["alerts_new"] == 3
+    assert rows[0]["alerts_new_lapsing"] == 2
+    assert rows[0]["alerts_acknowledged"] == 1
+
+
 def test_assignment_redemption_seeds_the_last_workout_date_immediately(api):
     client, db, _ = api
     coach_headers, _ = _make_coach(client, db, "coach", capacity=5)
@@ -317,6 +365,12 @@ def test_pending_requests_and_new_alerts_rank_first_and_acknowledged_do_not(api,
         ("carol", 0, 1),
         ("alice", 0, 0),
         ("dave", 0, 0),
+    ]
+    assert [(row["player_username"], row["alerts_new_lapsing"]) for row in rows] == [
+        ("bob", 1),
+        ("carol", 0),
+        ("alice", 0),
+        ("dave", 0),
     ]
 
 

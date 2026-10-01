@@ -95,7 +95,7 @@ class RegistryCheckInsMixin:
             return str(row[0]) if row and row[0] else None
 
     def get_roster_alert_badges(self, coach_account_id: str) -> dict[str, dict[str, int]]:
-        """New/acknowledged alert counts and streak length per active assignment (catalog-only)."""
+        """New alert counts, lapsing count, and streak per assignment (catalog-only)."""
         self.ensure_account_schema()
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
@@ -103,6 +103,8 @@ class RegistryCheckInsMixin:
                 "SELECT a.assignment_id,"
                 " COALESCE(r.current_missed_streak, 0) AS streak,"
                 " COALESCE(SUM(CASE WHEN c.state = 'new' THEN 1 ELSE 0 END), 0) AS new_count,"
+                " COALESCE(SUM(CASE WHEN c.state = 'new' AND c.kind IN"
+                " ('missed_expected_days', 'follow_up_due') THEN 1 ELSE 0 END), 0) AS new_lapsing_count,"
                 " COALESCE(SUM(CASE WHEN c.state = 'acknowledged' THEN 1 ELSE 0 END), 0) AS ack_count"
                 " FROM assignments a"
                 " LEFT JOIN roster_attendance r ON r.assignment_id = a.assignment_id"
@@ -116,7 +118,8 @@ class RegistryCheckInsMixin:
                 str(row[0]): {
                     "current_missed_streak": int(row[1]),
                     "alerts_new": int(row[2]),
-                    "alerts_acknowledged": int(row[3]),
+                    "alerts_new_lapsing": int(row[3]),
+                    "alerts_acknowledged": int(row[4]),
                 }
                 for row in cursor.fetchall()
             }

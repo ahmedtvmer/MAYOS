@@ -365,6 +365,7 @@ class CoachRosterEntryOut(BaseModel):
     started_at: str
     status: str
     alerts_new: int = 0
+    alerts_new_lapsing: int = 0
     alerts_acknowledged: int = 0
     current_missed_streak: int = 0
     next_follow_up_on: str | None = None
