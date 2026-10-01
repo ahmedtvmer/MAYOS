@@ -51,18 +51,43 @@ def stall_length(sessions: list[dict[str, Any]], program_version: int, exercise_
     return sum(1 for session in ordered if _session_order(session) >= first_order)
 
 
-def evaluate_assignment(db: Any, assignment: dict[str, Any]) -> int:
+def stall_window_start(sessions: list[dict[str, Any]], program_version: int, exercise_ids: set[str]) -> str | None:
+    """Date of the first session in the current consecutive no-record run."""
+    ordered = sorted(sessions, key=_session_order)
+    current = [session for session in ordered if session.get("program_version") == program_version]
+    if not current:
+        return None
+    first = current[0]
+    latest_record = None
+    for session in ordered:
+        response = session.get("commit_response")
+        if not response:
+            continue
+        try:
+            events = json.loads(response).get("new_prs", [])
+        except (TypeError, ValueError):
+            events = []
+        if any(isinstance(event, dict) and str(event.get("exercise_id")) in exercise_ids for event in events):
+            latest_record = session
+    start_order = _session_order(latest_record) if latest_record and _session_order(latest_record) >= _session_order(first) else _session_order(first)
+    run = [session for session in ordered if _session_order(session) > start_order]
+    if start_order == _session_order(first):
+        run.insert(0, first)
+    return str(run[0].get("session_date")) if run else None
+
+
+def evaluate_assignment_facts(db: Any, assignment: dict[str, Any]) -> tuple[int, str | None]:
     """Recount one assignment's stall length and write it to the catalog summary."""
     account = db.get_account(assignment["player_account_id"])
     if not db.is_live_account(account):
-        return 0
+        return 0, None
     if not db.ledger_exists(account["ledger_id"]):
         logger.warning("Skipping stall-length recount for account %s; no ledger exists.", assignment["player_account_id"])
-        return 0
+        return 0, None
     with db.open_ledger(account["ledger_id"]) as ledger:
         program = ledger.get_active_program()
         if program is None or program.version is None:
-            length = 0
+            length, window_start = 0, None
         else:
             exercise_ids = sorted(
                 {
@@ -74,8 +99,14 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any]) -> int:
             )
             sessions = ledger.stall_recount_facts(STALL_LOOKBACK_SESSIONS)
             length = stall_length(sessions, int(program.version), set(exercise_ids))
+            window_start = stall_window_start(sessions, int(program.version), set(exercise_ids))
     db.upsert_roster_attendance(assignment["assignment_id"], stall_length=length)
-    return length
+    return length, window_start
+
+
+def evaluate_assignment(db: Any, assignment: dict[str, Any]) -> int:
+    """Recount one assignment's stall length and write it to the catalog summary."""
+    return evaluate_assignment_facts(db, assignment)[0]
 
 
 def evaluate_for_ledger(db: Any, account_id: str) -> int | None:

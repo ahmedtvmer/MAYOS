@@ -147,6 +147,20 @@ Map<String, dynamic> _profileChangeAlert() => <String, dynamic>{
       },
     };
 
+Map<String, dynamic> _stallAlert({String state = 'new'}) => <String, dynamic>{
+      'alert_id': 'alert-stall',
+      'assignment_id': 'assignment-1',
+      'player_username': 'bob',
+      'kind': 'stall',
+      'stall_length': 8,
+      'window_start_date': '2026-09-15',
+      'state': state,
+      'created_at': '2026-09-22T08:00:00Z',
+      'acknowledged_at': null,
+      'resolved_at': null,
+      'resolved_by': null,
+    };
+
 /// The coach shell opens on the Roster tab (#119).
 Future<void> _openRoster(WidgetTester tester) async {
   await _pumpUntilFound(tester, find.text('Active assignments'));
@@ -228,6 +242,22 @@ void main() {
     await tester.tap(find.text('Resolve'));
     await _pumpUntilFound(tester, find.text('Resolve'));
     expect(fake.coachAlerts.single['state'], 'resolved');
+  });
+
+  testWidgets('stall alert has its own label and can be acknowledged',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.coachAlerts.add(_stallAlert());
+    await _pumpApp(tester, fake);
+    await _openAlertCenter(tester);
+
+    expect(
+      find.text('Stalling — 8 sessions without a personal record (since 2026-09-15)'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Acknowledge'));
+    await _pumpUntilFound(tester, find.text('Acknowledged'));
+    expect(fake.coachAlerts.single['state'], 'acknowledged');
   });
 
   testWidgets('performance regression alert renders exercise and e1RM delta',

@@ -51,6 +51,13 @@ def publish_program(
         if published is None:
             raise RuntimeError("Published program is missing from the player ledger after save.")
 
+        # A new Program version closes any previous Stalling episode.
+        from service import stall_alerts
+
+        stall_alerts.resolve_for_assignment(
+            db, context["assignment"]["assignment_id"], datetime.now(UTC)
+        )
+
         db.create_assignment_notice(
             context["player"]["account_id"],
             context["assignment"]["assignment_id"],

@@ -374,10 +374,10 @@ class CoachAlertOut(BaseModel):
     """One catalog-side alert for the coach alert centre (ADR 030/031/032).
 
     ``kind`` distinguishes missed-day, follow-up-due, deload,
-    performance-regression, and profile-change alerts. The kind-specific fields
+    performance-regression, stall, and profile-change alerts. The kind-specific fields
     are flattened beside the common ones, so a client can read
     ``streak_start_date``/``missed_count``, ``due_on``, progression evidence,
-    or the ``profile_changes`` before/after values directly.
+    ``stall_length``/``window_start_date``, or the ``profile_changes`` before/after values directly.
     """
 
     alert_id: str
@@ -392,6 +392,8 @@ class CoachAlertOut(BaseModel):
     streak_start_date: str | None = None
     last_missed_date: str | None = None
     missed_count: int = 0
+    stall_length: int | None = None
+    window_start_date: str | None = None
     due_on: str | None = None
     last_check_in_on: str | None = None
     severity: str | None = None

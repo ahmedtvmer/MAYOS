@@ -15,6 +15,7 @@ from agent.ProgramState import ProgramDaySchema, ProgramExerciseSchema
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
 from service import progression_alerts as progression
+from service import stall_alerts
 from service import workouts as workouts_service
 from service.assignments import DENIED_ERROR
 from svc.app import create_app
@@ -732,3 +733,36 @@ def test_alert_signal_state_episode_columns_exist(api):
         "episode_key",
         "updated_at",
     }
+
+
+def test_stall_alert_waits_for_no_missed_streak_and_system_resolves_on_streak(api):
+    _, db = api
+    _, _, assignment_id, _, player_account_id = _assign(api)
+    assignment = db.get_active_assignment_for_player(player_account_id)
+    db.upsert_roster_attendance(assignment_id, current_missed_streak=1)
+
+    result = stall_alerts.evaluate_commit(
+        db, player_account_id, "stall-session-1", "2026-09-20", 8, "2026-09-13"
+    )
+    assert result["alerts_created"] == 0
+    assert not [
+        alert for alert in db.list_coach_alerts(assignment["coach_account_id"], ("new",))
+        if alert["kind"] == stall_alerts.STALL_KIND
+    ]
+
+    db.upsert_roster_attendance(assignment_id, current_missed_streak=0)
+    opened = stall_alerts.evaluate_commit(
+        db, player_account_id, "stall-session-2", "2026-09-21", 8, "2026-09-14"
+    )
+    assert opened["alerts_created"] == 1
+    alert = [
+        alert for alert in db.list_coach_alerts(assignment["coach_account_id"], ("new",))
+        if alert["kind"] == stall_alerts.STALL_KIND
+    ][0]
+
+    db.upsert_roster_attendance(assignment_id, current_missed_streak=1)
+    resolved = stall_alerts.evaluate_commit(
+        db, player_account_id, "stall-session-3", "2026-09-22", 9, "2026-09-14"
+    )
+    assert resolved["alerts_resolved"] == 1
+    assert db.get_coach_alert(alert["alert_id"])["resolved_by"] == "system"

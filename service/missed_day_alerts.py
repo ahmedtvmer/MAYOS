@@ -162,6 +162,15 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any], now: datetime | Non
         return {"evaluated": True, "skipped": False, "alerts_created": 0, "alerts_resolved": 0, "streak": 0}
 
     streak = evaluation.trailing_streak_length
+    if streak > 0:
+        # A missed-day streak ends an open Stalling episode immediately, even
+        # before the streak reaches the separate Lapsing alert threshold.
+        try:
+            from service import stall_alerts
+
+            stall_alerts.resolve_for_assignment(db, assignment_id, now)
+        except Exception:
+            logger.exception("Stall alert resolution raised unexpectedly during missed-day evaluation")
     created = 0
     if streak >= STREAK_ALERT_THRESHOLD:
         streak_start = evaluation.trailing_streak_start.isoformat()
