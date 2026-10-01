@@ -20,10 +20,17 @@ class _NameSearch:
     muscle_clause: str
     muscle_params: tuple[str, ...]
     equipment_clause: str | None
-    limit: int
+    limit: int | None
 
 
-def _exercise_name_rows(cursor, where_sql: str, params: list[str], limit: int | None):
+def _exercise_name_rows(
+    cursor,
+    where_sql: str,
+    params: list[str],
+    limit: int | None,
+    *,
+    order_by: str = "LENGTH(e.name)",
+):
     name_expression, display_name_join = effective_exercise_name_sql()
     query = """
         SELECT e.id AS id, {name_expression} AS display_name, e.body_part AS body_part,
@@ -32,11 +39,12 @@ def _exercise_name_rows(cursor, where_sql: str, params: list[str], limit: int | 
         FROM exercises e
         {display_name_join}
         WHERE {where_sql}
-        ORDER BY LENGTH(e.name)
+        ORDER BY {order_by}
     """.format(
         name_expression=name_expression,
         display_name_join=display_name_join,
         where_sql=where_sql,
+        order_by=order_by,
     )
     if limit is not None:
         query += " LIMIT ?"
@@ -121,7 +129,14 @@ def _find_name_rows(cursor, search: _NameSearch):
         if search.equipment_clause:
             where += f" AND ({search.equipment_clause})"
         return _exercise_name_rows(
-            cursor, where, list(search.muscle_params), search.limit
+            cursor,
+            where,
+            list(search.muscle_params),
+            search.limit,
+            order_by=(
+                "CASE WHEN d.display_name IS NULL THEN 1 ELSE 0 END, "
+                "LOWER(COALESCE(d.display_name, e.name)), e.id"
+            ),
         )
     if not search.normalized_query:
         return []
@@ -228,7 +243,7 @@ class ExerciseLookupMixin:
         """
         clean = query.strip().lower()
         muscle = (target_muscle or "").strip().lower()
-        if limit <= 0 or (not clean and not muscle):
+        if (limit is not None and limit <= 0) or (not clean and not muscle):
             return []
         search = _NameSearch(
             query=clean,

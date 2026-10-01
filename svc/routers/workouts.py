@@ -73,15 +73,16 @@ async def search_exercises(
     """Catalog exercises matching ``query`` (#34), optionally narrowed to one target muscle (#162).
 
     ``query`` may be omitted when ``target_muscle`` is given, so the logger's Replace
-    search opens listing that muscle's exercises before the player types. The muscle
-    listing browses a wider page (25) than the name search's 10.
+    search opens listing that muscle's exercises before the player types. The
+    muscle-only Replace browse returns every matching Exercise library row; name
+    searches remain limited to 10 results.
     """
     if not (query or target_muscle):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Provide query, target_muscle, or both.",
         )
-    limit = 25 if target_muscle else 10
+    limit = None if target_muscle and not query else 10
     equipment_access = None
     if target_muscle and not query:
         equipment_access = map_equipment_access(
