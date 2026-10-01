@@ -195,7 +195,7 @@ void main() {
     await _pumpApp(tester, fake);
 
     expect(find.text('Before we begin'), findsOneWidget);
-    await tester.tap(find.text("I'm a coach — enter invite code"));
+    await tester.tap(find.text("I'm a coach — enter coach code"));
     await _pumpUntilFound(
         tester, find.byKey(const Key('onboarding_coach_code')));
 
