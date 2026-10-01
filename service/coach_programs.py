@@ -8,11 +8,15 @@ with ``None``. Publication is durable — the program is retained, with its
 authority, even after the assignment ends.
 """
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
 from agent.program_generator import generate_program_pipeline
 from service.assignments import authorized_player_ledger
+from service import stall_alerts
+
+logger = logging.getLogger(__name__)
 
 
 def publish_program(
@@ -52,11 +56,12 @@ def publish_program(
             raise RuntimeError("Published program is missing from the player ledger after save.")
 
         # A new Program version closes any previous Stalling episode.
-        from service import stall_alerts
-
-        stall_alerts.resolve_for_assignment(
-            db, context["assignment"]["assignment_id"], datetime.now(UTC)
-        )
+        try:
+            stall_alerts.resolve_for_assignment(
+                db, context["assignment"]["assignment_id"], datetime.now(UTC)
+            )
+        except Exception:
+            logger.warning("Stall alert resolution failed after program publication", exc_info=True)
 
         db.create_assignment_notice(
             context["player"]["account_id"],

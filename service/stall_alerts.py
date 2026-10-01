@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 from service.coach_notices import notify_coach, player_display_name
-
-logger = logging.getLogger(__name__)
 
 STALL_KIND = "stall"
 STALL_ALERT_THRESHOLD = 8
@@ -35,27 +32,20 @@ def resolve_for_assignment(db: Any, assignment_id: str, now: datetime | None = N
 
 def evaluate_commit(
     db: Any,
-    account_id: str,
+    assignment: dict[str, Any],
     session_id: str,
-    session_date: str,
     stall_length: int,
     window_start_date: str | None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Open, extend, or close the one stall episode for a committing session."""
-    if not account_id:
-        return {"evaluated": False, "alerts_created": 0, "alerts_resolved": 0}
-    assignment = db.get_active_assignment_for_player(account_id)
-    if assignment is None:
-        return {"evaluated": False, "alerts_created": 0, "alerts_resolved": 0}
     now_iso = (now or datetime.now(UTC)).isoformat()
     assignment_id = str(assignment["assignment_id"])
     notices = False
     with db.catalog_transaction():
-        if db._is_stall_session_processed(assignment_id, session_id):
+        if db.is_stall_session_processed(assignment_id, session_id):
             return {"evaluated": False, "alerts_created": 0, "alerts_resolved": 0}
-        badges = db.get_roster_alert_badges(assignment["coach_account_id"])
-        missed_streak = int(badges.get(assignment_id, {}).get("current_missed_streak", 0))
+        missed_streak = db.get_roster_missed_streak(assignment_id)
         created = 0
         resolved = 0
         state = db.get_alert_signal_state(assignment_id, STALL_KIND, "")
@@ -66,7 +56,7 @@ def evaluate_commit(
             # opens this episode is its stable key; the displayed window date
             # remains reduced evidence on the alert itself.
             dedupe_key = session_id
-            details = {"stall_length": int(stall_length), "window_start_date": window_start_date}
+            details = {"stall_length": int(stall_length), "window_start_date": str(window_start_date)}
             inserted = db.insert_coach_alert(
                 uuid.uuid4().hex,
                 assignment_id,
@@ -87,9 +77,9 @@ def evaluate_commit(
             if alert is not None:
                 db.update_coach_alert_details(
                     alert["alert_id"],
-                    {"stall_length": int(stall_length), "window_start_date": str(alert["details"].get("window_start_date", dedupe_key))},
+                    {"stall_length": int(stall_length), "window_start_date": alert["details"]["window_start_date"]},
                 )
-        db._mark_stall_session_processed(assignment_id, session_id, now_iso)
+        db.mark_stall_session_processed(assignment_id, session_id, now_iso)
     if notices:
         notify_coach(
             db,

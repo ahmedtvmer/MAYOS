@@ -324,7 +324,7 @@ class RegistryCoachAlertsMixin:
             )
             self._commit_catalog()
 
-    def _is_stall_session_processed(self, assignment_id: str, session_id: str) -> bool:
+    def is_stall_session_processed(self, assignment_id: str, session_id: str) -> bool:
         self.ensure_account_schema()
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
@@ -334,7 +334,7 @@ class RegistryCoachAlertsMixin:
             )
             return cursor.fetchone() is not None
 
-    def _mark_stall_session_processed(self, assignment_id: str, session_id: str, now_iso: str) -> None:
+    def mark_stall_session_processed(self, assignment_id: str, session_id: str, now_iso: str) -> None:
         self.ensure_account_schema()
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()

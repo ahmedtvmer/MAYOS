@@ -456,6 +456,18 @@
     "register_account_with_coach_invite": {
       "kind": "method",
       "signature": "(self, token_hash: str, username: str, now_iso: str, default_capacity: int) -> dict[str, typing.Any] | None"
+    },
+    "get_roster_missed_streak": {
+      "kind": "method",
+      "signature": "(self, assignment_id: str) -> int"
+    },
+    "is_stall_session_processed": {
+      "kind": "method",
+      "signature": "(self, assignment_id: str, session_id: str) -> bool"
+    },
+    "mark_stall_session_processed": {
+      "kind": "method",
+      "signature": "(self, assignment_id: str, session_id: str, now_iso: str) -> None"
     }
   },
   "module_names": [

@@ -392,7 +392,7 @@ class CoachAlertOut(BaseModel):
     streak_start_date: str | None = None
     last_missed_date: str | None = None
     missed_count: int = 0
-    stall_length: int | None = None
+    stall_length: int = 0
     window_start_date: str | None = None
     due_on: str | None = None
     last_check_in_on: str | None = None

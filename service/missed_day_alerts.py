@@ -28,6 +28,7 @@ from typing import Any
 from service.attendance import AttendanceEvaluation, evaluate_attendance
 from service.coach_notices import notify_coach, player_display_name
 from service.schedule import local_date_in, timezone_for_versions
+from service import stall_alerts
 
 logger = logging.getLogger(__name__)
 
@@ -166,8 +167,6 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any], now: datetime | Non
         # A missed-day streak ends an open Stalling episode immediately, even
         # before the streak reaches the separate Lapsing alert threshold.
         try:
-            from service import stall_alerts
-
             stall_alerts.resolve_for_assignment(db, assignment_id, now)
         except Exception:
             logger.exception("Stall alert resolution raised unexpectedly during missed-day evaluation")

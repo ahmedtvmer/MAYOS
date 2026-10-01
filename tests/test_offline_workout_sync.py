@@ -300,18 +300,19 @@ def test_roster_stall_length_recounts_commits_and_replays_through_routes(api, mo
     roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
     assert roster[0]["stall_length"] == 5
 
-    stall_commits = []
-    stall_client_ids = []
-    for index in range(4):
+    for index in range(3):
         stall_client_id = f"{index + 1}1111111-1111-4111-8111-111111111111"
-        stall_client_ids.append(stall_client_id)
-        stall_commits.append(
-            commit(
-                stall_client_id,
-                "2026-09-26",
-                current=FIXED_NOW + timedelta(days=index),
-            )
+        commit(
+            stall_client_id,
+            f"2026-09-{26 + index}",
+            current=FIXED_NOW + timedelta(days=index),
         )
+    roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
+    assert roster[0]["stall_length"] == 7
+    assert not [alert for alert in client.get("/coach/alerts", headers=coach_headers).json()["alerts"] if alert["kind"] == "stall"]
+
+    eighth_id = "41111111-1111-4111-8111-111111111111"
+    commit(eighth_id, "2026-09-29", current=FIXED_NOW + timedelta(days=3))
     stall_alerts = client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
     stall_alerts = [alert for alert in stall_alerts if alert["kind"] == "stall"]
     coach_id = db.get_active_account_by_username("coach")["account_id"]
@@ -320,8 +321,15 @@ def test_roster_stall_length_recounts_commits_and_replays_through_routes(api, mo
     assert stall_alert["stall_length"] == 8
     assert stall_alert["window_start_date"] == "2026-09-23"
     assert set(stall_alert) >= {"stall_length", "window_start_date"}
-    stored_stall = db.get_coach_alert(stall_alert["alert_id"])
-    assert stored_stall["details"] == {"stall_length": 8, "window_start_date": "2026-09-23"}
+    assert {key: stall_alert[key] for key in ("stall_length", "window_start_date")} == {
+        "stall_length": 8,
+        "window_start_date": "2026-09-23",
+    }
+    assert stall_alert["session_id"] is None
+    assert stall_alert["exercise_id"] is None
+    assert stall_alert["exercise_name"] is None
+    assert stall_alert["top_load"] is None
+    assert "player_account_id" not in stall_alert
     coach_id = db.get_active_account_by_username("coach")["account_id"]
     notices = [notice for notice in db.list_assignment_notices(coach_id) if notice["kind"] == "stall"]
     assert len(notices) == 1
@@ -332,12 +340,12 @@ def test_roster_stall_length_recounts_commits_and_replays_through_routes(api, mo
     assert badges["alerts_new"] == 0
     assert badges["alerts_acknowledged"] == 1
     continued_id = "51111111-1111-4111-8111-111111111111"
-    continued = commit(continued_id, "2026-09-27", current=FIXED_NOW + timedelta(days=4))
+    continued = commit(continued_id, "2026-09-30", current=FIXED_NOW + timedelta(days=4))
     continued_alerts = [alert for alert in client.get("/coach/alerts", headers=coach_headers).json()["alerts"] if alert["kind"] == "stall"]
     assert len(continued_alerts) == 1
     assert continued_alerts[0]["alert_id"] == stall_alert["alert_id"]
     assert continued_alerts[0]["stall_length"] == 9
-    replay_stall = commit(continued_id, "2026-09-27", current=FIXED_NOW + timedelta(days=4))
+    replay_stall = commit(continued_id, "2026-09-30", current=FIXED_NOW + timedelta(days=4))
     assert replay_stall.json() == continued.json()
     assert len([alert for alert in client.get("/coach/alerts", headers=coach_headers).json()["alerts"] if alert["kind"] == "stall"]) == 1
 
@@ -375,7 +383,7 @@ def test_roster_stall_length_recounts_commits_and_replays_through_routes(api, mo
     def fail_recount(*_args, **_kwargs):
         raise RuntimeError("recount unavailable")
 
-    monkeypatch.setattr("service.stalling.evaluate_assignment_facts", fail_recount)
+    monkeypatch.setattr("service.stalling.recount_assignment", fail_recount)
     committed = commit(
         "88888888-8888-4888-8888-888888888888",
         "2026-10-03",
