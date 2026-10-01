@@ -202,8 +202,8 @@ def coach_model_identity() -> tuple[str, str]:
 _EVALUATION_REPORT_CONFIG = EvaluationReportConfig(
     enabled_flag="COACH_AI_ENABLED",
     report_env_var="COACH_AI_EVAL_REPORT",
-    model_identity=lambda: coach_model_identity(),
-    prompt_hash=lambda: prompt_version_hash(),
+    model_identity=coach_model_identity,
+    prompt_hash=prompt_version_hash,
     report_version=REPORT_VERSION,
     suite_name="coach_assistant",
     model_label="coach",

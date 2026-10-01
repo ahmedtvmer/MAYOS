@@ -65,6 +65,7 @@ RUNNER_CONFIG = evaluation_runner.EvaluationRunnerConfig(
     ensure_ascii=True,
     no_privacy_help="Do not run the privacy suite; records the privacy gate as failed.",
     check_title="coach",
+    check_report_help="Re-check an existing report without loading any model.",
 )
 
 
@@ -136,7 +137,7 @@ def check_report(report_path: Path) -> tuple[bool, list[str]]:
     Delegates to the service's shared validator, so ``--check-report`` and the
     startup gate accept and reject exactly the same reports.
     """
-    return evaluation_runner.check_report(report_path, validate_report)
+    return evaluation_runner.check_report(report_path, validate_report, strict=RUNNER_CONFIG.report_config.strict)
 
 
 def _mock_model():

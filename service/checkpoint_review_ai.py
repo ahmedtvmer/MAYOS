@@ -139,18 +139,15 @@ def evaluate_gate(
 _EVALUATION_REPORT_CONFIG = EvaluationReportConfig(
     enabled_flag="CHECKPOINT_REVIEW_AI_ENABLED",
     report_env_var="CHECKPOINT_REVIEW_EVAL_REPORT",
-    model_identity=lambda: checkpoint_review_model_identity(),
-    prompt_hash=lambda: prompt_version_hash(),
+    model_identity=checkpoint_review_model_identity,
+    prompt_hash=prompt_version_hash,
     report_version=REPORT_VERSION,
     suite_name="checkpoint_review",
     model_label="player",
     startup_label="Checkpoint review AI",
     missing_report_reason="CHECKPOINT_REVIEW_EVAL_REPORT is not set; a live passing report is required.",
     evaluation_gate_name="checkpoint review evaluation gate",
-    reject_boolean_version=True,
-    reject_boolean_threshold=True,
-    reject_invalid_runs=True,
-    require_true_pass_values=True,
+    strict=True,
 )
 
 

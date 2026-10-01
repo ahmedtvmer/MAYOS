@@ -36,10 +36,7 @@ class EvaluationReportConfig:
     startup_label: str
     missing_report_reason: str
     evaluation_gate_name: str
-    reject_boolean_version: bool = False
-    reject_boolean_threshold: bool = False
-    reject_invalid_runs: bool = False
-    require_true_pass_values: bool = False
+    strict: bool = False
 
 
 # The path + file identity + configured model key is intentionally shared by
@@ -53,27 +50,33 @@ _REPORT_CACHE_LIMIT = 8
 def evaluate_gate(
     results: list[dict[str, Any]], expected: int | None = None, *, strict: bool = False
 ) -> tuple[bool, list[str], dict[str, Any]]:
-    """Derives the evaluation verdict and summary from the recorded runs."""
+    """Single definition of the evaluation verdict for runners and validation.
+
+    The runner records this verdict and report validation re-derives it from
+    the recorded runs, so the recorded gate cannot disagree with its evidence.
+    """
     reasons: list[str] = []
     expected = len(results) if expected is None else expected
     stats: dict[str, Any] = {"total": len(results), "passed": 0, "expected": expected, "failed_cases": []}
     if expected and len(results) != expected:
         reasons.append(f"incomplete run: {len(results)} of {expected} cases")
     for result in results:
-        passed = isinstance(result, dict) and (
-            result.get("passed") is True if strict else bool(result.get("passed"))
-        )
-        if passed:
+        if strict and isinstance(result, dict) and result.get("passed") is True:
+            stats["passed"] += 1
+            continue
+        if not strict and result.get("passed"):
             stats["passed"] += 1
             continue
         case_id = result.get("case_id") if isinstance(result, dict) else None
         checks = result.get("checks") if isinstance(result, dict) else None
-        failed = [
-            name
-            for name, check in (checks.items() if isinstance(checks, dict) else [])
-            if not isinstance(check, dict)
-            or (check.get("passed") is not True if strict else not check.get("passed"))
-        ]
+        if strict:
+            failed = [
+                name
+                for name, check in (checks.items() if isinstance(checks, dict) else [])
+                if not isinstance(check, dict) or check.get("passed") is not True
+            ]
+        else:
+            failed = [name for name, check in (result.get("checks") or {}).items() if not check.get("passed")]
         stats["failed_cases"].append({"case_id": case_id, "checks": failed})
         reasons.append(f"case {case_id}: failed {', '.join(failed) or 'unknown check'}")
     if expected and stats["passed"] < expected:
@@ -88,7 +91,7 @@ def validate_report(report: Any, config: EvaluationReportConfig) -> tuple[bool, 
 
     reasons: list[str] = []
     version = report.get("report_version")
-    if (config.reject_boolean_version and isinstance(version, bool)) or version != config.report_version:
+    if (config.strict and isinstance(version, bool)) or version != config.report_version:
         reasons.append(f"report_version must be {config.report_version}")
     if report.get("mode") != "live":
         reasons.append("report was not produced by a live (non-mock) run")
@@ -106,6 +109,8 @@ def validate_report(report: Any, config: EvaluationReportConfig) -> tuple[bool, 
     gates = report.get("gates")
     if not isinstance(gates, dict):
         reasons.append("evaluation report has no gates object")
+        if config.strict and report.get("pass") is not True:
+            reasons.append("evaluation report does not record pass=true")
         return False, reasons
     privacy = gates.get("privacy")
     if not isinstance(privacy, dict) or privacy.get("pass") is not True:
@@ -113,33 +118,34 @@ def validate_report(report: Any, config: EvaluationReportConfig) -> tuple[bool, 
     evaluation = gates.get("evaluation")
     if not isinstance(evaluation, dict):
         reasons.append(f"{config.evaluation_gate_name} is not recorded")
+        if config.strict and report.get("pass") is not True:
+            reasons.append("evaluation report does not record pass=true")
         return False, reasons
 
     runs = report.get("runs")
     if not isinstance(runs, list) or not runs:
         reasons.append("report has no recorded runs to re-check")
+        if config.strict and report.get("pass") is not True:
+            reasons.append("evaluation report does not record pass=true")
         return False, reasons
-    if config.reject_invalid_runs and any(not isinstance(run, dict) for run in runs):
+    if config.strict and any(not isinstance(run, dict) for run in runs):
         reasons.append("report contains an invalid evaluation run")
+        if report.get("pass") is not True:
+            reasons.append("evaluation report does not record pass=true")
         return False, reasons
 
     threshold = evaluation.get("threshold")
-    invalid_boolean = config.reject_boolean_threshold and isinstance(threshold, bool)
+    invalid_boolean = config.strict and isinstance(threshold, bool)
     if not isinstance(threshold, int) or invalid_boolean or threshold < 1:
         reasons.append("evaluation gate has no usable threshold")
         threshold = len(runs)
     derived_ok, derived_reasons, _stats = evaluate_gate(
         runs,
         threshold,
-        strict=config.require_true_pass_values,
+        strict=config.strict,
     )
     reasons.extend(derived_reasons)
-    recorded_pass = evaluation.get("pass")
-    if config.require_true_pass_values:
-        agrees = recorded_pass is derived_ok
-    else:
-        agrees = recorded_pass == derived_ok
-    if not agrees:
+    if evaluation.get("pass") is not derived_ok:
         reasons.append("recorded evaluation gate disagrees with the recorded runs")
     if report.get("pass") is not True:
         reasons.append("evaluation report does not record pass=true")
@@ -163,13 +169,19 @@ def report_passes(
     config: EvaluationReportConfig,
     validator_file: Callable[[str], tuple[bool, str]],
 ) -> tuple[bool, str]:
+    """Uses one cached verdict per path, file identity, model, and backend.
+
+    The prompt hash is code-derived and stable for the process, so it is
+    checked when parsing a report and deliberately stays out of the cache-hit
+    path. Suite and version distinguish feature contexts that share a path.
+    """
     try:
         stat = os.stat(path)
     except OSError:
         return False, f"evaluation report not found at {path}"
     model_id, backend = config.model_identity()
     key = (path, stat.st_mtime_ns, stat.st_size, model_id, backend)
-    context = (config.suite_name, config.report_version, config.prompt_hash())
+    context = (config.suite_name, config.report_version)
     with _report_cache_lock:
         cached = _report_cache.get(key)
     if cached is not None and cached[0] == context:
@@ -186,6 +198,7 @@ def resolve_enable_gate(
     config: EvaluationReportConfig,
     validator_file: Callable[[str], tuple[bool, str]],
 ) -> GateStatus:
+    # A flag-off deployment never reads or stats the report file.
     if not env_flag(config.enabled_flag, False):
         return GateStatus(False, False, f"{config.enabled_flag} is off.")
     report_path = os.getenv(config.report_env_var, "").strip()

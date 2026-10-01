@@ -27,7 +27,7 @@ class EvaluationRunnerConfig:
     ensure_ascii: bool
     no_privacy_help: str
     check_title: str | None = None
-    check_report_help: str = "Re-check an existing report without loading a model."
+    check_report_help: str = "Re-check an existing report without loading any model."
 
 
 def load_cases(dataset_path: Path, dataset_label: str) -> list[dict[str, Any]]:
@@ -61,7 +61,7 @@ def build_report(
     evaluation_ok, reasons, stats = evaluate_gate(
         results,
         threshold,
-        strict=config.report_config.require_true_pass_values,
+        strict=config.report_config.strict,
     )
     report = {
         "report_version": config.report_config.report_version,
@@ -100,15 +100,20 @@ def write_report(path: Path, report: dict[str, Any], *, ensure_ascii: bool) -> P
 def check_report(
     report_path: Path,
     validator: Callable[[Any], tuple[bool, list[str]]],
+    *,
+    strict: bool,
 ) -> tuple[bool, list[str]]:
     path = Path(report_path)
     if not path.is_file():
         return False, [f"report not found: {path}"]
     try:
         report = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        prefix = "report is not valid JSON" if isinstance(exc, ValueError) else "report is unreadable"
-        return False, [f"{prefix}: {exc}"]
+    except ValueError as exc:
+        return False, [f"report is not valid JSON: {exc}"]
+    except OSError as exc:
+        if strict:
+            return False, [f"report is not valid JSON: {exc}"]
+        raise
     return validator(report)
 
 
@@ -129,7 +134,7 @@ def run_main(
     args = parser.parse_args(argv)
 
     if args.check_report is not None:
-        ok, reasons = check_report(args.check_report, validator)
+        ok, reasons = check_report(args.check_report, validator, strict=config.report_config.strict)
         print(f"{config.check_title or config.title} eval report: {'PASSED' if ok else 'FAILED'}")
         for reason in reasons:
             print(f"  x {reason}", file=sys.stderr)
@@ -142,7 +147,7 @@ def run_main(
     gate_ok, reasons, stats = evaluate_gate(
         results,
         len(cases),
-        strict=config.report_config.require_true_pass_values,
+        strict=config.report_config.strict,
     )
     for result in results:
         mark = "pass" if result["passed"] else "FAIL"

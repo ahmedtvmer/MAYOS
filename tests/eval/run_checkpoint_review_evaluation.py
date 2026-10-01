@@ -38,6 +38,7 @@ RUNNER_CONFIG = evaluation_runner.EvaluationRunnerConfig(
     context_version=CONTEXT_VERSION,
     ensure_ascii=False,
     no_privacy_help="Skip privacy suite and record the gate as failed.",
+    check_report_help="Validate an existing report without loading a model.",
 )
 
 
@@ -99,7 +100,7 @@ def write_report(path: Path, report: dict[str, Any]) -> Path:
 
 
 def check_report(report_path: Path) -> tuple[bool, list[str]]:
-    return evaluation_runner.check_report(report_path, validate_report)
+    return evaluation_runner.check_report(report_path, validate_report, strict=RUNNER_CONFIG.report_config.strict)
 
 
 def _mock_model():
