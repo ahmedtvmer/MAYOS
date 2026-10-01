@@ -73,12 +73,6 @@ async def update_persona(
     )
 
 
-@router.delete("", include_in_schema=False)
-async def removed_profile_reset():
-    """Keep the retired destructive endpoint observably absent to callers."""
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found.")
-
-
 @router.get("/schedule", response_model=TrainingScheduleOut)
 async def read_schedule(
     player: Annotated[Any, Depends(get_verified_player)],

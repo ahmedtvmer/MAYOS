@@ -354,10 +354,6 @@ def test_schema_round_trip_persists_warmups_and_slots():
             assert stored_ex.notes == generated_ex.notes
 
 
-
-
-
-
 def test_split_day_pools_cover_all_defined_days():
     for split_type, pool in SPLIT_DAY_POOLS.items():
         for day in pool:

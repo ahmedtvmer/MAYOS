@@ -667,9 +667,14 @@ def test_onboarding_start_resumes_persisted_progress(client, monkeypatch):
 
 
 def test_removed_legacy_routes_return_not_found(client):
+    client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
+    assert client.put("/profile", json={"current_goal": "Strength"}).status_code == 200
+    profile_before = client.get("/profile").json()
+
     assert client.post(
         "/auth/claim",
         json={"trainee_id": "alice", "claim_code": "unused", "password": "new-horse-22"},
     ).status_code == 404
     assert client.get("/programs/active.xlsx").status_code == 404
-    assert client.delete("/profile").status_code == 404
+    assert client.delete("/profile").status_code == 405
+    assert client.get("/profile").json() == profile_before

@@ -55,7 +55,7 @@ def web_origins() -> list[str]:
     local development origin. A browser's ``Origin`` never has a trailing slash,
     so one is stripped to keep a pasted URL from silently failing every request.
     """
-    raw = os.getenv("UI_BASE_URL", "http://localhost:8501")
+    raw = os.getenv("UI_BASE_URL", "http://localhost:7357")
     return [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
 
 _ready = {"model": False, "catalog": False, "storage": False, "draining": False}

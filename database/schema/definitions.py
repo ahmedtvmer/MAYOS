@@ -643,7 +643,7 @@ class SchemaMixin:
                 CREATE INDEX IF NOT EXISTS idx_linked_sign_ins_account
                     ON linked_sign_ins(account_id);
             """)
-            # Remove claim-code material left by catalogs from before ADR 056.
+            # ADR 056 removes claim-code credential material with the claim flow.
             self.catalog_conn.execute("DROP TABLE IF EXISTS account_claim_codes")
             self._create_coach_alerts_schema()
             self._ensure_accounts_last_seen_at()

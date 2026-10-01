@@ -19,7 +19,7 @@ def test_web_origins_splits_trims_and_drops_trailing_slash(monkeypatch):
 
 def test_web_origins_defaults_to_local_dev(monkeypatch):
     monkeypatch.delenv("UI_BASE_URL", raising=False)
-    assert web_origins() == ["http://localhost:8501"]
+    assert web_origins() == ["http://localhost:7357"]
 
 
 def test_cors_allows_each_listed_origin_and_rejects_others(monkeypatch):

@@ -131,7 +131,7 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `ADMIN_TOTP_SECRET` | unset | Owner authenticator secret in Base32; generate it with `.venv/bin/python scripts/admin_credentials.py` and add its URI to an authenticator app |
 | `JWT_EXPIRY_HOURS` | `2` | Access-token lifetime |
 | `GOOGLE_WEB_CLIENT_ID` | unset (⇒ `/auth/google*` returns 503) | **Secret-ish config**: the OAuth web client ID Google ID tokens are verified against (issue #113). Use the *Web* client ID from the Google Cloud console; Android requests its ID token with this value as `serverClientId`, so it is the only audience the API needs. Unset disables Google sign-in only — password auth is unaffected |
-| `UI_BASE_URL` | `http://localhost:8501` | CORS origins: one, or several comma-separated (web app host + local dev). Not used for reset links |
+| `UI_BASE_URL` | `http://localhost:7357` | CORS origins: one, or several comma-separated (web app host + local Flutter web dev). Not used for reset links |
 | `RESET_LINK_BASE_URL` | `http://localhost:8000` | Reset-link / App Link base; must match the App Link host |
 | `ANDROID_APP_PACKAGE` | `com.mayos.mayos_mobile` | App Link `assetlinks.json` package |
 | `ANDROID_APP_SHA256_CERT_FINGERPRINTS` | unset (⇒ 404) | App Link signing-cert SHA-256 fingerprints (case/colons optional; normalised) |
@@ -342,31 +342,12 @@ services:
         reservations:
           devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
 
-  myos-engine:
-    build: { context: ., dockerfile: Dockerfile }
-    container_name: myos_engine
-    restart: unless-stopped
-    stop_grace_period: 60s
-    ports: ["8501:8501"]
-    volumes:
-      - ./logs:/app/logs
-    environment:
-      - API_BASE_URL=http://myos-api:8000
-    depends_on:
-      myos-api: { condition: service_healthy }
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 60s
-
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: myos_tunnel
     restart: unless-stopped
-    command: tunnel --no-autoupdate --url http://myos-engine:8501
-    depends_on: [myos-engine]
+    command: tunnel --no-autoupdate --url http://myos-api:8000
+    depends_on: [myos-api]
 ```
 
 ### Cloudflare Tunnel Operations
