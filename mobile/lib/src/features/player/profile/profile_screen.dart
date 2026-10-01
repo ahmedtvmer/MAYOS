@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -24,9 +26,10 @@ import '../onboarding/onboarding_widgets.dart' show optionLabel;
 /// check is only a courtesy, the service stays authoritative.
 const int maxPauseDays = 14;
 
-/// Player training-profile editor. Changing training days or rep preference can
-/// trigger a program rebuild. When an assigned coach owns the active program,
-/// the service leaves it unchanged and explains that a coach request is needed.
+/// Player Training profile editor. Changing Equipment access, injuries,
+/// training days or rep preference can trigger a program rebuild. When an
+/// assigned coach owns the active program, the service leaves it unchanged and
+/// explains that a coach request is needed.
 ///
 /// Below the profile card, the player separately owns an expected training
 /// schedule (weekdays + timezone) and prospective pauses. Setting either never
@@ -46,9 +49,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     'high',
   ];
   int _weeklyFrequency = 4;
+  int _savedWeeklyFrequency = 4;
   String _repPreference = 'balanced';
+  String _savedRepPreference = 'balanced';
   String _equipmentAccess = equipmentAccessCommercialGym;
   String _savedEquipmentAccess = equipmentAccessCommercialGym;
+  final TextEditingController _currentGoal = TextEditingController();
+  final TextEditingController _injuriesOrLimitations =
+      TextEditingController(text: 'None');
+  final TextEditingController _weightKg = TextEditingController(text: '75');
+  String _savedInjuriesOrLimitations = 'None';
 
   bool _loading = true;
   bool _saving = false;
@@ -103,6 +113,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   void dispose() {
     _timezone.dispose();
+    _currentGoal.dispose();
+    _injuriesOrLimitations.dispose();
+    _weightKg.dispose();
     _deletePassword.dispose();
     _currentPassword.dispose();
     _newPassword.dispose();
@@ -134,16 +147,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _weeklyFrequency = profile.weeklyFrequency;
+        _savedWeeklyFrequency = profile.weeklyFrequency;
         _equipmentAccess =
             equipmentAccessValues.contains(profile.equipmentAccess)
                 ? profile.equipmentAccess
                 : equipmentAccessCommercialGym;
         _savedEquipmentAccess = _equipmentAccess;
+        _currentGoal.text = profile.currentGoal;
+        _injuriesOrLimitations.text = profile.injuriesOrLimitations;
+        _savedInjuriesOrLimitations = profile.injuriesOrLimitations;
+        _weightKg.text = profile.weightKg.toStringAsFixed(
+            profile.weightKg.truncateToDouble() == profile.weightKg ? 0 : 1);
         // A value this screen once offered by mistake (`strength`,
         // `hypertrophy`) is shown as the generator reads it: balanced.
         _repPreference = _repPreferences.contains(profile.repPreference)
             ? profile.repPreference
             : 'balanced';
+        _savedRepPreference = _repPreference;
         _schedule = schedule;
         _pauses = pauses;
         _account = account;
@@ -163,6 +183,41 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _save() async {
+    final double? parsedWeight = double.tryParse(_weightKg.text.trim());
+    final bool rebuildRequested =
+        _weeklyFrequency != _savedWeeklyFrequency ||
+            _repPreference != _savedRepPreference ||
+            _equipmentAccess != _savedEquipmentAccess ||
+            _injuriesOrLimitations.text.trim() !=
+                _savedInjuriesOrLimitations.trim();
+    if (rebuildRequested) {
+      final bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext context) => AlertDialog(
+          title: const Text('Confirm program rebuild'),
+          content: const Text('This rebuilds your program'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const Key('profile_rebuild_confirm_button'),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+    if (parsedWeight == null || parsedWeight < 30 || parsedWeight > 250) {
+      setState(() {
+        _notice = 'Weight must be between 30 and 250 kg.';
+        _noticeIsError = true;
+      });
+      return;
+    }
     setState(() {
       _saving = true;
       _notice = null;
@@ -173,14 +228,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           await ref.read(apiClientProvider).updateProfile(
                 weeklyFrequency: _weeklyFrequency,
                 repPreference: _repPreference,
+                currentGoal: _currentGoal.text.trim(),
+                injuriesOrLimitations: _injuriesOrLimitations.text.trim(),
+                weightKg: parsedWeight,
                 equipmentAccess: _equipmentAccess == _savedEquipmentAccess
                     ? null
                     : _equipmentAccess,
               );
       if (!mounted) return;
+      if (result.programRebuilt) unawaited(_refreshProgramCache());
       setState(() {
         _saving = false;
+        _savedWeeklyFrequency = _weeklyFrequency;
+        _savedRepPreference = _repPreference;
         _savedEquipmentAccess = _equipmentAccess;
+        _savedInjuriesOrLimitations = _injuriesOrLimitations.text.trim();
         _notice = result.programBlocked
             ? result.programMessage
             : result.programRebuilt
@@ -194,6 +256,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _notice = mutationFailureMessage(error);
         _noticeIsError = true;
       });
+    }
+  }
+
+  Future<void> _refreshProgramCache() async {
+    final String? accountId = _account?.accountId;
+    if (accountId == null) return;
+    final ApiClient api = ref.read(apiClientProvider);
+    final cache = ref.read(workoutCacheStoreProvider);
+    try {
+      final TrainingProgram? program = await api.activeProgram();
+      if (program != null) {
+        await cache.writeProgram(accountId, program);
+      }
+    } on Object {
+      // The online program read remains authoritative if the cache write fails.
     }
   }
 
@@ -871,9 +948,33 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         const MayosSectionHeader(
           title: 'Training profile',
           subtitle:
-              'Changes to training days or rep preference can rebuild your program.',
+              'Changes to equipment, injuries, training days or rep preference can rebuild your program.',
         ),
         const SizedBox(height: MayosSpacing.md),
+        MayosTextField(
+          fieldKey: const Key('current_goal_field'),
+          controller: _currentGoal,
+          label: 'Current goal',
+          enabled: !_saving,
+          textCapitalization: TextCapitalization.sentences,
+        ),
+        const SizedBox(height: MayosSpacing.sm),
+        MayosTextField(
+          fieldKey: const Key('injuries_or_limitations_field'),
+          controller: _injuriesOrLimitations,
+          label: 'Injuries or limitations',
+          enabled: !_saving,
+          textCapitalization: TextCapitalization.sentences,
+        ),
+        const SizedBox(height: MayosSpacing.sm),
+        MayosTextField(
+          fieldKey: const Key('weight_kg_field'),
+          controller: _weightKg,
+          label: 'Weight (kg)',
+          enabled: !_saving,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        ),
+        const SizedBox(height: MayosSpacing.sm),
         DropdownButtonFormField<int>(
           initialValue: _weeklyFrequency,
           isExpanded: true,

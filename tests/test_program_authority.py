@@ -320,6 +320,64 @@ def test_profile_rebuild_allowed_before_publication(api, monkeypatch):
     assert _active(db).program_name == "Player Plan"
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "rebuilds"),
+    [
+        ("equipment_access", "Home gym", True),
+        ("injuries_or_limitations", "Left knee pain", True),
+        ("weekly_frequency", 3, True),
+        ("rep_preference", "high", True),
+        ("current_goal", "Lose fat", False),
+        ("weight_kg", 71, False),
+    ],
+)
+def test_profile_edit_rebuild_triggers(api, monkeypatch, field, value, rebuilds):
+    client, db, _ = api
+    _, player_headers, _, _, _ = _assigned_player(api)
+    db.switch_user("p1")
+    db.ledger.upsert_player_profile(
+        {
+            "equipment_access": "Commercial gym",
+            "injuries_or_limitations": "None",
+            "weekly_frequency": 4,
+            "rep_preference": "balanced",
+            "current_goal": "Get stronger",
+            "weight_kg": 70,
+        }
+    )
+    _, calls = _profile_generation(db, monkeypatch)
+
+    response = client.put("/profile", headers=player_headers, json={field: value})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["program_rebuilt"] is rebuilds
+    assert calls["n"] == int(rebuilds)
+    assert response.json()["profile"][field] == value
+
+
+def test_profile_refuses_proportions_and_onboarding_only_fields(api):
+    client, _, _ = api
+    _, player_headers, _, _, _ = _assigned_player(api)
+
+    for field in ("proportions", "height_cm", "age", "gender", "long_term_goal"):
+        response = client.put("/profile", headers=player_headers, json={field: "balanced"})
+        assert response.status_code == 422, (field, response.text)
+
+
+def test_profile_edit_uses_intake_catalog_validation(api):
+    client, _, _ = api
+    _, player_headers, _, _, _ = _assigned_player(api)
+
+    for body in (
+        {"weight_kg": 29.9},
+        {"weight_kg": 250.1},
+        {"current_goal": "x"},
+        {"injuries_or_limitations": "x"},
+    ):
+        response = client.put("/profile", headers=player_headers, json=body)
+        assert response.status_code == 422, (body, response.text)
+
+
 def test_profile_rebuild_blocked_during_control(api, monkeypatch):
     client, db, _ = api
     coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)

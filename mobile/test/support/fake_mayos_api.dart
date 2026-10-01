@@ -45,6 +45,9 @@ class FakeMayosApi {
   String repPreference = 'balanced';
   int weeklyFrequency = 4;
   String equipmentAccess = equipmentAccessCommercialGym;
+  String currentGoal = 'Get stronger';
+  String injuriesOrLimitations = 'None';
+  double weightKg = 75;
   final List<Map<String, dynamic>> profileUpdateBodies = <Map<String, dynamic>>[];
   int profileRebuildCalls = 0;
   String assistantStyle = defaultAssistantStyle;
@@ -136,6 +139,7 @@ class FakeMayosApi {
   // When true, `GET /programs/active` fails with a transient 500 (offline
   // simulation for the Program tab's cache fallback, ADR 020/033).
   bool activeProgramFails = false;
+  int activeProgramCalls = 0;
   bool coachControlsProgram = false;
   bool substitutionVersionConflict = false;
   // When true `GET /programs/active` returns an empty body (no active program).
@@ -1911,6 +1915,9 @@ class FakeMayosApi {
         'rep_preference': repPreference,
         'weekly_frequency': weeklyFrequency,
         'equipment_access': equipmentAccess,
+        'current_goal': currentGoal,
+        'injuries_or_limitations': injuriesOrLimitations,
+        'weight_kg': weightKg,
         'coach_tone': assistantStyle,
         'custom_instructions': assistantInstructions,
       };
@@ -1938,12 +1945,21 @@ class FakeMayosApi {
     final int? frequency = (request.body['weekly_frequency'] as num?)?.toInt();
     final String? preference = request.body['rep_preference'] as String?;
     final String? access = request.body['equipment_access'] as String?;
+    final String? injuries =
+        request.body['injuries_or_limitations'] as String?;
     final bool rebuildWarranted =
         (frequency != null && frequency != weeklyFrequency) ||
-            (preference != null && preference != repPreference);
+            (preference != null && preference != repPreference) ||
+            (access != null && access != equipmentAccess) ||
+            (injuries != null && injuries != injuriesOrLimitations);
     if (frequency != null) weeklyFrequency = frequency;
     if (preference != null) repPreference = preference;
     if (access != null) equipmentAccess = access;
+    if (injuries != null) injuriesOrLimitations = injuries;
+    final String? goal = request.body['current_goal'] as String?;
+    final num? weight = request.body['weight_kg'] as num?;
+    if (goal != null) currentGoal = goal;
+    if (weight != null) weightKg = weight.toDouble();
 
     if (rebuildWarranted && (coachControlsProgram || profileBlocked)) {
       return FakeResponse(200, <String, dynamic>{
@@ -2591,6 +2607,7 @@ class FakeMayosApi {
       };
 
   FakeResponse _activeProgram(FakeRequest request) {
+    activeProgramCalls++;
     if (!_authorized(request)) {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
@@ -3292,6 +3309,10 @@ class FakeMayosApi {
       recoveryEmail = null;
       repPreference = 'balanced';
       weeklyFrequency = 4;
+      equipmentAccess = equipmentAccessCommercialGym;
+      currentGoal = 'Get stronger';
+      injuriesOrLimitations = 'None';
+      weightKg = 75;
       profileBlocked = false;
       coachDisplayName = '';
       coachBio = '';

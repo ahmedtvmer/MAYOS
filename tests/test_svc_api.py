@@ -435,10 +435,14 @@ def test_profile_crud_without_body_identity(client):
     client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
     assert client.get("/profile").status_code == 404
     # A body-supplied identity must be ignored: schemas reject it and the JWT subject wins.
-    update = client.put("/profile", json={"current_goal": "Strength", "trainee_id": "bob"})
-    assert update.status_code in {200, 422}
+    identity_attempt = client.put(
+        "/profile", json={"current_goal": "Strength", "trainee_id": "bob"}
+    )
+    assert identity_attempt.status_code == 422
+    update = client.put("/profile", json={"current_goal": "Strength"})
+    assert update.status_code == 200
     profile = client.get("/profile").json()
-    assert profile["current_goal"] == ("Strength" if update.status_code == 200 else profile["current_goal"])
+    assert profile["current_goal"] == "Strength"
     assert profile["coach_tone"] == "direct"
     assert profile["custom_instructions"] == ""
     persona = client.put("/profile/persona", json={"coach_tone": "direct"})

@@ -20,7 +20,7 @@ def update_profile(
     player_account_id: str | None = None,
     ledger: Any | None = None,
 ) -> dict[str, Any]:
-    """Upserts the profile; rebuilds the routine when frequency/rep-bias/limits change.
+    """Upserts the profile; rebuilds when program-shaping inputs change.
 
     The profile update itself always applies. The rebuild is a player write path,
     so while an assigned coach owns the active program it is skipped and the
@@ -39,11 +39,14 @@ def update_profile(
         limits_changed = str(payload.get("injuries_or_limitations", profile.get("injuries_or_limitations", "None"))).strip() != str(
             profile.get("injuries_or_limitations", "None")
         )
+        equipment_changed = payload.get("equipment_access", profile.get("equipment_access")) != profile.get(
+            "equipment_access"
+        )
         updated = {**profile, **payload}
         ledger.upsert_player_profile(updated)
         program = None
         program_blocked = False
-        if freq_changed or rep_changed or limits_changed:
+        if freq_changed or rep_changed or limits_changed or equipment_changed:
             if player_controls_program(db, ledger, player_account_id):
                 from svc.llm import InferenceScope, run_inference_sync
 

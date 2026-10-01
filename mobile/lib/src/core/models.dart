@@ -1398,6 +1398,9 @@ class PlayerProfile {
     this.repPreference = 'balanced',
     this.weeklyFrequency = 4,
     this.equipmentAccess = equipmentAccessCommercialGym,
+    this.currentGoal = '',
+    this.injuriesOrLimitations = 'None',
+    this.weightKg = 75,
     this.assistantStyle = defaultAssistantStyle,
     this.assistantInstructions = '',
   });
@@ -1407,6 +1410,10 @@ class PlayerProfile {
         weeklyFrequency: (json['weekly_frequency'] as num?)?.toInt() ?? 4,
         equipmentAccess:
             json['equipment_access'] as String? ?? equipmentAccessCommercialGym,
+        currentGoal: json['current_goal'] as String? ?? '',
+        injuriesOrLimitations:
+            json['injuries_or_limitations'] as String? ?? 'None',
+        weightKg: (json['weight_kg'] as num?)?.toDouble() ?? 75,
         assistantStyle:
             json['coach_tone'] as String? ?? defaultAssistantStyle,
         assistantInstructions: json['custom_instructions'] as String? ?? '',
@@ -1415,6 +1422,9 @@ class PlayerProfile {
   final String repPreference;
   final int weeklyFrequency;
   final String equipmentAccess;
+  final String currentGoal;
+  final String injuriesOrLimitations;
+  final double weightKg;
   final String assistantStyle;
   final String assistantInstructions;
 }
