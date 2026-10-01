@@ -1,8 +1,8 @@
 """Roster urgency order unit tests (ticket #118, CONTEXT.md "Roster urgency order").
 
 Each key is asserted on its own plus its tie-break into the next one, so the
-strict ordering (no weights) is pinned: new alerts plus pending requests, missed
-streak, follow-up bucket, last workout, username.
+strict ordering (no weights) is pinned: lapsing alerts, other new alerts plus
+pending requests, missed streak, follow-up bucket, last workout, username.
 """
 
 from datetime import date
@@ -17,6 +17,7 @@ def _entry(**overrides):
         "assignment_id": "a1",
         "player_username": "p1",
         "alerts_new": 0,
+        "alerts_new_lapsing": 0,
         "pending_requests": 0,
         "current_missed_streak": 0,
         "next_follow_up_on": None,
@@ -26,7 +27,11 @@ def _entry(**overrides):
     return entry
 
 
-def test_new_alerts_plus_pending_requests_rank_highest_first():
+def test_lapsing_then_other_alerts_and_pending_requests_rank_highest_first():
+    lapsing = roster_urgency_key(_entry(alerts_new=1, alerts_new_lapsing=1), TODAY)
+    other_alerts = roster_urgency_key(_entry(alerts_new=2), TODAY)
+    assert lapsing < other_alerts
+
     both = roster_urgency_key(_entry(alerts_new=2, pending_requests=2), TODAY)
     alerts_only = roster_urgency_key(_entry(alerts_new=3), TODAY)
     requests_only = roster_urgency_key(_entry(pending_requests=3), TODAY)
@@ -36,6 +41,14 @@ def test_new_alerts_plus_pending_requests_rank_highest_first():
     assert alerts_only == requests_only
     assert both < alerts_only
     assert quiet > requests_only
+
+
+def test_other_alerts_plus_requests_break_equal_lapsing_count():
+    fewer_other = roster_urgency_key(_entry(alerts_new=2, alerts_new_lapsing=1), TODAY)
+    more_other = roster_urgency_key(
+        _entry(alerts_new=3, alerts_new_lapsing=1, pending_requests=1), TODAY
+    )
+    assert more_other < fewer_other
 
 
 def test_acknowledged_alerts_never_count():
@@ -61,7 +74,7 @@ def test_follow_up_buckets_are_overdue_then_today_then_not_due():
     assert overdue < due_today < future
     # No follow-up due yet and none scheduled share the last bucket; the
     # username key decides between them.
-    assert future[2] == unscheduled[2] == 2
+    assert future[3] == unscheduled[3] == 2
 
 
 def test_earliest_overdue_follow_up_comes_first():
@@ -72,9 +85,9 @@ def test_earliest_overdue_follow_up_comes_first():
 
 def test_today_parameter_decides_overdue_due_and_not_due():
     entry = _entry(next_follow_up_on="2026-09-28")
-    assert roster_urgency_key(entry, date(2026, 9, 27))[2] == 2
-    assert roster_urgency_key(entry, TODAY)[2] == 1
-    assert roster_urgency_key(entry, date(2026, 9, 29))[2] == 0
+    assert roster_urgency_key(entry, date(2026, 9, 27))[3] == 2
+    assert roster_urgency_key(entry, TODAY)[3] == 1
+    assert roster_urgency_key(entry, date(2026, 9, 29))[3] == 0
 
 
 def test_follow_up_key_outranks_last_workout():
@@ -100,7 +113,7 @@ def test_username_breaks_the_final_tie():
     bob = roster_urgency_key(_entry(player_username="bob"), TODAY)
     assert anna < bob
     # Nothing but the username differs.
-    assert anna[0:5] == bob[0:5]
+    assert anna[0:6] == bob[0:6]
 
 
 def test_every_key_only_breaks_ties_in_the_previous_one():
