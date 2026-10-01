@@ -70,7 +70,7 @@ async def search_exercises(
     query: str | None = None,
     target_muscle: str | None = None,
 ):
-    """Catalog exercises matching ``query`` (#34), optionally narrowed to one target muscle (#162).
+    """Search the Exercise library by ``query`` (#34), optionally narrowed to one target muscle (#162).
 
     ``query`` may be omitted when ``target_muscle`` is given, so the logger's Replace
     search opens listing that muscle's exercises before the player types. The
@@ -82,9 +82,12 @@ async def search_exercises(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Provide query, target_muscle, or both.",
         )
-    limit = None if target_muscle and not query else 10
+    muscle_browse = bool(target_muscle and not (query or "").strip())
+    # This is unbounded by design: one muscle has at most a few hundred rows,
+    # and the Replace list must not drop relevant rows because of a page limit.
+    limit = None if muscle_browse else 10
     equipment_access = None
-    if target_muscle and not query:
+    if muscle_browse:
         equipment_access = map_equipment_access(
             (ledger.get_player_profile() or {}).get("equipment_access", COMMERCIAL_GYM)
         )
@@ -93,6 +96,7 @@ async def search_exercises(
         limit=limit,
         target_muscle=target_muscle,
         equipment_access=equipment_access,
+        muscle_browse=muscle_browse,
     )
     return {
         # A muscle-only Replace browse suggests options, while a typed name is

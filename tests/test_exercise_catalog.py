@@ -155,8 +155,8 @@ def test_catalog_search_by_muscle_lists_that_muscle_without_a_name_query(api):
     assert [m["id"] for m in resp.json()["exercises"]] == ["sq", "lp"]
 
 
-def test_replace_browse_ranks_display_named_staples_and_returns_every_match(api):
-    """Replace's muscle browse puts Exercise display names first and does not
+def test_replace_browse_ranks_display_named_exercises_and_returns_every_match(api):
+    """Replace's muscle browse puts exercises with Exercise display names first and does not
     truncate the Exercise library at the old page size (#226)."""
     client, db = api
     token = _register(client, "lat-browse")["access_token"]
