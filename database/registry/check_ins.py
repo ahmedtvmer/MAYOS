@@ -95,13 +95,14 @@ class RegistryCheckInsMixin:
             return str(row[0]) if row and row[0] else None
 
     def get_roster_alert_badges(self, coach_account_id: str) -> dict[str, dict[str, int]]:
-        """New alert counts, lapsing count, and streak per assignment (catalog-only)."""
+        """New alert counts, lapsing count, and roster lengths per assignment (catalog-only)."""
         self.ensure_account_schema()
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
                 "SELECT a.assignment_id,"
                 " COALESCE(r.current_missed_streak, 0) AS streak,"
+                " COALESCE(r.stall_length, 0) AS stall_length,"
                 " COALESCE(SUM(CASE WHEN c.state = 'new' THEN 1 ELSE 0 END), 0) AS new_count,"
                 " COALESCE(SUM(CASE WHEN c.state = 'new' AND c.kind IN"
                 " ('missed_expected_days', 'follow_up_due') THEN 1 ELSE 0 END), 0) AS new_lapsing_count,"
@@ -117,12 +118,25 @@ class RegistryCheckInsMixin:
             return {
                 str(row[0]): {
                     "current_missed_streak": int(row[1]),
-                    "alerts_new": int(row[2]),
-                    "alerts_new_lapsing": int(row[3]),
-                    "alerts_acknowledged": int(row[4]),
+                    "stall_length": int(row[2]),
+                    "alerts_new": int(row[3]),
+                    "alerts_new_lapsing": int(row[4]),
+                    "alerts_acknowledged": int(row[5]),
                 }
                 for row in cursor.fetchall()
             }
+
+    def update_roster_stall_length(self, assignment_id: str, stall_length: int, now_iso: str) -> None:
+        """Stores the latest stall-length recount in the catalog-side roster summary."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            self.catalog_conn.execute(
+                "INSERT INTO roster_attendance (assignment_id, stall_length, last_evaluated_at)"
+                " VALUES (?, ?, ?) ON CONFLICT(assignment_id) DO UPDATE SET"
+                " stall_length = excluded.stall_length, last_evaluated_at = excluded.last_evaluated_at",
+                (str(assignment_id), max(0, int(stall_length)), str(now_iso)),
+            )
+            self.catalog_conn.commit()
 
     _CHECK_IN_COLUMNS = (
         "check_in_id, assignment_id, coach_account_id, player_account_id,"

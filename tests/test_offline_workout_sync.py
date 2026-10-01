@@ -223,6 +223,97 @@ def _sync_body(*, client_session_id=CLIENT_ID, version, day_order=1, performed_d
     }
 
 
+def test_roster_stall_length_recounts_commits_and_replays_through_routes(api, monkeypatch):
+    client, db = api
+    coach_headers = _make_coach(client, db, "coach")
+    player = _register(client, "p1")
+    player_headers = _authed(player["access_token"])
+    assignment_id = _assign(client, coach_headers, player_headers)
+    db.switch_user("p1")
+    db.ledger.upsert_player_profile({"current_goal": "Strength"})
+    db.ledger.save_training_program(_program_payload())
+    version = db.ledger.get_active_program().version
+
+    def commit(session_id, performed_date, *, current=FIXED_NOW, weight=100.0, session_version=version):
+        monkeypatch.setattr(workouts_service, "_now", lambda: current)
+        body = _sync_body(
+            client_session_id=session_id,
+            version=session_version,
+            performed_date=performed_date,
+            captured_at=current.isoformat(),
+        )
+        body["sets"][0]["sets"][0]["weight_kg"] = weight
+        response = client.post("/workouts/sessions", headers=player_headers, json=body)
+        assert response.status_code in (200, 201), response.text
+        return response
+
+    baseline = commit(CLIENT_ID, "2026-09-23")
+    assert baseline.json()["new_prs"] == []
+    after_baseline = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
+    assert after_baseline[0]["assignment_id"] == assignment_id
+    assert after_baseline[0]["stall_length"] == 0
+
+    commit("22222222-2222-4222-8222-222222222222", "2026-09-24")
+    next_response = commit("33333333-3333-4333-8333-333333333333", "2026-09-25")
+    assert next_response.json()["new_prs"] == []
+    roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
+    assert roster[0]["stall_length"] == 2
+
+    # Re-syncing the same client session id returns the stored commit and does
+    # not advance the recount.
+    replay = commit("33333333-3333-4333-8333-333333333333", "2026-09-25")
+    assert replay.json() == next_response.json()
+    roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
+    assert roster[0]["stall_length"] == 2
+
+    # A new personal record on a current-program exercise resets the count.
+    pr = commit("44444444-4444-4444-8444-444444444444", "2026-09-26", weight=110.0)
+    assert pr.json()["new_prs"]
+    roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
+    assert roster[0]["stall_length"] == 0
+
+    # This session is committed later but performed before the record session;
+    # a recount places it by performed date and keeps the later record as reset.
+    commit("55555555-5555-4555-8555-555555555555", "2026-09-24")
+    roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
+    assert roster[0]["stall_length"] == 0
+
+    commit(
+        "66666666-6666-4666-8666-666666666666",
+        "2026-09-27",
+        current=FIXED_NOW + timedelta(days=1),
+    )
+    roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
+    assert roster[0]["stall_length"] == 1
+
+    # The first committing session after publishing a new program version is
+    # its baseline and starts a fresh count.
+    db.ledger.save_training_program(_program_payload_v2())
+    new_version = db.ledger.get_active_program().version
+    commit(
+        "77777777-7777-4777-8777-777777777777",
+        "2026-09-28",
+        current=FIXED_NOW + timedelta(days=2),
+        session_version=new_version,
+    )
+    roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
+    assert roster[0]["stall_length"] == 0
+
+    def fail_recount(*_args, **_kwargs):
+        raise RuntimeError("recount unavailable")
+
+    monkeypatch.setattr("service.stalling.evaluate_for_ledger", fail_recount)
+    committed = commit(
+        "88888888-8888-4888-8888-888888888888",
+        "2026-09-29",
+        current=FIXED_NOW + timedelta(days=3),
+        session_version=new_version,
+    )
+    assert committed.status_code in (200, 201)
+    roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
+    assert roster[0]["stall_length"] == 0
+
+
 def _freeze_training_status_now(monkeypatch, instant):
     class FixedDateTime(datetime):
         @classmethod

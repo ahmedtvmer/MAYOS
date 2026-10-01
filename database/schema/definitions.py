@@ -663,6 +663,7 @@ class SchemaMixin:
             self._ensure_roster_attendance_timezone()
             self._ensure_roster_attendance_last_workout_on()
             self._ensure_roster_attendance_program_name()
+            self._ensure_roster_attendance_stall_length()
             self._ensure_model_spend_alert_columns()
             self._ensure_linked_sign_in_account_provider()
             self._ensure_coach_invites_revoked_at()
@@ -813,6 +814,13 @@ class SchemaMixin:
         columns = self._table_columns(cursor, "roster_attendance")
         if columns and "program_name" not in columns:
             cursor.execute("ALTER TABLE roster_attendance ADD COLUMN program_name TEXT")
+
+    def _ensure_roster_attendance_stall_length(self) -> None:
+        """Additive ``stall_length`` column on the catalog-side roster summary (#203)."""
+        cursor = self.catalog_conn.cursor()
+        columns = self._table_columns(cursor, "roster_attendance")
+        if columns and "stall_length" not in columns:
+            cursor.execute("ALTER TABLE roster_attendance ADD COLUMN stall_length INTEGER NOT NULL DEFAULT 0")
 
     def _ensure_model_spend_alert_columns(self) -> None:
         """Additive ``fired_at``/``notified_at`` on an existing ``model_spend_alerts`` (ADR 038)."""

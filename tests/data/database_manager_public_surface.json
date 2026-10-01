@@ -373,6 +373,10 @@
       "kind": "method",
       "signature": "(self, assignment_id: str, current_missed_streak: int, now_iso: str, timezone: str | None = None, last_workout_on: str | None = None, program_name: str | None = None) -> None"
     },
+    "update_roster_stall_length": {
+      "kind": "method",
+      "signature": "(self, assignment_id: str, stall_length: int, now_iso: str) -> None"
+    },
     "ledger_exists": {
       "kind": "method",
       "signature": "(self, username: str) -> bool"

@@ -46,11 +46,17 @@ A recorded act of coaching by a coach for a player on an active assignment: reco
 A coach's list of players on active assignments. It opens most urgent first, by the roster urgency order.
 
 **Roster urgency order**:
-The fixed, inspectable order of a roster by need for attention. Players are ranked first by new lapsing alerts, then by other new coach alerts plus pending program requests, then by longest missed-day streak, then by the most overdue follow-up, then by the oldest last workout. Username breaks any remaining tie. It uses no weights and no model scores. Acknowledged alerts do not count.
+The fixed, inspectable order of a roster by need for attention. Players are ranked first by new lapsing alerts, then by other new coach alerts plus pending program requests, then by longest missed-day streak, then by the most overdue follow-up, then by the oldest last workout, then by longest stall length. Username breaks any remaining tie. It uses no weights and no model scores. Acknowledged alerts do not count.
 _Avoid_: priority score
 
 **Lapsing**:
 A player drifting away from training, shown by a new coach alert for a missed-day streak or a follow-up due.
+
+**Stalling**:
+A player who keeps training without a personal record on any exercise in the current program. It is measured as stall length.
+
+**Stall length**:
+The number of consecutive committing sessions since the later of the latest personal-record session on an exercise in the current program and the first session under the current program version, with a session containing a personal record counted as the reset point (zero).
 
 **Volume review**:
 A per-muscle assessment of a player's weekly working sets, made once at least four weeks of the current program have enough training behind them. Each muscle is judged progressing, stalled, or under-recovered from its primary exercises, which leads to keeping, adding, or removing sets. It is distinct from Stalling, which concerns the whole player.

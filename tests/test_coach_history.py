@@ -306,6 +306,7 @@ def test_roster_listing_is_catalog_only_and_shape_unchanged(api, monkeypatch):
         "alerts_new_lapsing",
         "alerts_acknowledged",
         "current_missed_streak",
+        "stall_length",
         "next_follow_up_on",
         "pending_requests",
         "last_workout_on",

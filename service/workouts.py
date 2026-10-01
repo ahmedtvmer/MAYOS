@@ -312,6 +312,12 @@ def _run_post_commit_hooks(
     if not account_id:
         return
     _evaluate_missed_days(db, account_id)
+    try:
+        from service import stalling
+
+        stalling.evaluate_after_commit(db, account_id)
+    except Exception:
+        logger.exception("Stall-length hook raised unexpectedly after session commit")
     _evaluate_progression_alerts(db, account_id, session_id, session_date, exercise_summaries, fatigue_post)
 
 

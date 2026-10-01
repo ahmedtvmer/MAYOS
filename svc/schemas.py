@@ -369,6 +369,7 @@ class CoachRosterEntryOut(BaseModel):
     alerts_new_lapsing: int = 0
     alerts_acknowledged: int = 0
     current_missed_streak: int = 0
+    stall_length: int = 0
     next_follow_up_on: str | None = None
     pending_requests: int = 0
     last_workout_on: str | None = None
