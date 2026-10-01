@@ -313,7 +313,8 @@ def end_assignment(db: Any, account_id: str, assignment_id: Any, ended_by: str) 
 def list_coach_assignments(db: Any, coach_account_id: str) -> list[dict[str, Any]]:
     """Active assignments for a coach in roster urgency order (ticket #118).
 
-    Each row carries the urgency inputs — alert badges, pending program request
+    Each row carries the urgency inputs — alert badges including the lapsing
+    split, pending program request
     count, missed streak, follow-up date, the latest workout date, and the
     cached program name — so the client neither sorts nor fetches anything per
     player. Every input comes from catalog tables only, so listing the roster
@@ -342,6 +343,7 @@ def list_coach_assignments(db: Any, coach_account_id: str) -> list[dict[str, Any
                 "started_at": row["started_at"],
                 "status": row["status"],
                 "alerts_new": int(badge.get("alerts_new", 0)),
+                "alerts_new_lapsing": int(badge.get("alerts_new_lapsing", 0)),
                 "alerts_acknowledged": int(badge.get("alerts_acknowledged", 0)),
                 "current_missed_streak": int(badge.get("current_missed_streak", 0)),
                 "next_follow_up_on": next_follow_up.isoformat() if next_follow_up else None,
