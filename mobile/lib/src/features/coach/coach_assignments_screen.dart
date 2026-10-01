@@ -251,7 +251,11 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
         coachPillChip(
             context, 'Missed ${entry.currentMissedStreak}d', c.danger),
       if (entry.stallLength > 0)
-        coachPillChip(context, 'Stalled ${entry.stallLength} sessions', c.warning),
+        coachPillChip(
+          context,
+          'Stalled ${entry.stallLength} session${entry.stallLength == 1 ? '' : 's'}',
+          c.warning,
+        ),
       if (followUp != null) coachPillChip(context, followUp, c.warning),
       if (entry.alertsNew > 0)
         coachPillChip(

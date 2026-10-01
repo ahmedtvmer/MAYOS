@@ -56,7 +56,7 @@ A player drifting away from training, shown by a new coach alert for a missed-da
 A player who keeps training without a personal record on any exercise in the current program. It is measured as stall length.
 
 **Stall length**:
-The number of consecutive committing sessions since the later of the latest personal-record session on an exercise in the current program and the first session under the current program version, with a session containing a personal record counted as the reset point (zero).
+The number of consecutive committing sessions without a personal record on any exercise in the current program. A personal-record session resets it to zero; otherwise the first session under a new program version counts as one.
 
 **Volume review**:
 A per-muscle assessment of a player's weekly working sets, made once at least four weeks of the current program have enough training behind them. Each muscle is judged progressing, stalled, or under-recovered from its primary exercises, which leads to keeping, adding, or removing sets. It is distinct from Stalling, which concerns the whole player.

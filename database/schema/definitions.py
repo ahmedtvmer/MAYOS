@@ -513,7 +513,8 @@ class SchemaMixin:
                     last_evaluated_at TEXT,
                     timezone TEXT,
                     last_workout_on TEXT,
-                    program_name TEXT
+                    program_name TEXT,
+                    stall_length INTEGER NOT NULL DEFAULT 0
                 );
 
                 -- Coach-recorded check-ins (ADR 031, ticket #32). Catalog-side immutable

@@ -41,7 +41,7 @@ def _follow_up_key(next_follow_up_on: Any, today: date) -> tuple[int, str]:
     return 2, ""
 
 
-def roster_urgency_key(entry: Mapping[str, Any], today: date) -> tuple[int, int, int, int, str, int, str]:
+def roster_urgency_key(entry: Mapping[str, Any], today: date) -> tuple[int, int, int, int, str, str, int, str]:
     """The urgency-order sort key for one roster row (pure; no clock, no I/O).
 
     Sort roster rows with ``sorted(rows, key=lambda row: roster_urgency_key(row, today))``.

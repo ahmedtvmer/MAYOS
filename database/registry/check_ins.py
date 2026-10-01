@@ -10,11 +10,12 @@ class RegistryCheckInsMixin:
     def upsert_roster_attendance(
         self,
         assignment_id: str,
-        current_missed_streak: int,
-        now_iso: str,
+        current_missed_streak: int | None = None,
+        now_iso: str | None = None,
         timezone: str | None = None,
         last_workout_on: str | None = None,
         program_name: str | None = None,
+        stall_length: int | None = None,
     ) -> None:
         """Records the latest catalog-side attendance summary for one assignment.
 
@@ -30,22 +31,27 @@ class RegistryCheckInsMixin:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
                 "INSERT INTO roster_attendance"
-                " (assignment_id, current_missed_streak, last_evaluated_at, timezone,"
+                " (assignment_id, current_missed_streak, stall_length, last_evaluated_at, timezone,"
                 " last_workout_on, program_name)"
-                " VALUES (?, ?, ?, ?, ?, ?)"
+                " VALUES (?, COALESCE(?, 0), COALESCE(?, 0), ?, ?, ?, ?)"
                 " ON CONFLICT(assignment_id) DO UPDATE SET"
-                " current_missed_streak = excluded.current_missed_streak,"
-                " last_evaluated_at = excluded.last_evaluated_at,"
+                " current_missed_streak = COALESCE(?, roster_attendance.current_missed_streak),"
+                " stall_length = COALESCE(?, roster_attendance.stall_length),"
+                " last_evaluated_at = COALESCE(?, roster_attendance.last_evaluated_at),"
                 " timezone = COALESCE(excluded.timezone, roster_attendance.timezone),"
                 " last_workout_on = COALESCE(excluded.last_workout_on, roster_attendance.last_workout_on),"
                 " program_name = COALESCE(excluded.program_name, roster_attendance.program_name)",
                 (
                     str(assignment_id),
-                    int(current_missed_streak),
+                    int(current_missed_streak) if current_missed_streak is not None else None,
+                    int(stall_length) if stall_length is not None else None,
                     now_iso,
                     timezone,
                     last_workout_on,
                     program_name,
+                    int(current_missed_streak) if current_missed_streak is not None else None,
+                    int(stall_length) if stall_length is not None else None,
+                    now_iso,
                 ),
             )
             self.catalog_conn.commit()
@@ -125,18 +131,6 @@ class RegistryCheckInsMixin:
                 }
                 for row in cursor.fetchall()
             }
-
-    def update_roster_stall_length(self, assignment_id: str, stall_length: int, now_iso: str) -> None:
-        """Stores the latest stall-length recount in the catalog-side roster summary."""
-        self.ensure_account_schema()
-        with self._catalog_lock:
-            self.catalog_conn.execute(
-                "INSERT INTO roster_attendance (assignment_id, stall_length, last_evaluated_at)"
-                " VALUES (?, ?, ?) ON CONFLICT(assignment_id) DO UPDATE SET"
-                " stall_length = excluded.stall_length, last_evaluated_at = excluded.last_evaluated_at",
-                (str(assignment_id), max(0, int(stall_length)), str(now_iso)),
-            )
-            self.catalog_conn.commit()
 
     _CHECK_IN_COLUMNS = (
         "check_in_id, assignment_id, coach_account_id, player_account_id,"

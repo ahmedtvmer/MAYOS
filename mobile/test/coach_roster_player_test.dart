@@ -258,11 +258,18 @@ void main() {
       'assignment-1',
       'bob',
       lastWorkoutOn: '2026-09-26',
+      stallLength: 1,
+    ));
+    fake.assignments.add(_assignment(
+      'assignment-2',
+      'sue',
+      lastWorkoutOn: '2026-09-26',
       stallLength: 4,
     ));
     await _pumpApp(tester, fake, InMemoryAppModeStore());
     await _pumpUntilFound(tester, find.text('Active assignments'));
 
+    expect(find.text('Stalled 1 session'), findsOneWidget);
     expect(find.text('Stalled 4 sessions'), findsOneWidget);
   });
 

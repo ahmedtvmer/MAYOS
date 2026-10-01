@@ -3,7 +3,6 @@
 Extracted from DatabaseManager; behaviour is unchanged.
 """
 
-import json
 import uuid
 from pathlib import Path
 from datetime import UTC, datetime
@@ -25,17 +24,6 @@ WORKING_SET_PREDICATE = "ws.is_warmup = 0 AND ws.weight_kg > 0 AND ws.reps > 0"
 #: ``session_date`` only, so they can never move this ordering; sharing it
 #: keeps ``get_last_performance`` and the baseline ``last_session`` agreeing.
 LAST_SESSION_ORDER = "s.started_at DESC, s.rowid DESC"
-
-
-def _stall_session_key(row: Any) -> dict[str, Any] | None:
-    if row is None:
-        return None
-    return {
-        "session_id": str(row[0]),
-        "session_date": str(row[1]),
-        "started_at": str(row[2]),
-        "session_order": int(row[3]),
-    }
 
 
 class LedgerWorkoutsMixin:
@@ -478,130 +466,17 @@ class LedgerWorkoutsMixin:
         cursor.execute("SELECT session_date FROM workout_sessions ORDER BY session_date ASC")
         return [str(row[0]) for row in cursor.fetchall()]
 
-    def stall_recount_facts(self, program_version: int, exercise_ids: list[str], limit: int) -> dict[str, Any]:
-        """Recent committed sessions and reset points for the active program's stall length.
-
-        The bounded session window is supplied by the stall evaluator. The two
-        anchors are queried across the full ledger so a long-running program or
-        an older personal record still gives the correct start point.
-        """
-        if not exercise_ids:
-            return {"first_program_session": None, "latest_record_session": None, "sessions": []}
-        placeholders = ",".join("?" for _ in exercise_ids)
+    def stall_recount_facts(self, limit: int) -> list[dict[str, Any]]:
+        """Return bounded session facts, including a stored commit response when present."""
         cursor = self.conn.cursor()
         cursor.execute(
-            "SELECT id, session_date, started_at, rowid FROM workout_sessions"
-            " WHERE program_version = ? ORDER BY session_date, started_at, rowid LIMIT 1",
-            (int(program_version),),
-        )
-        first_row = cursor.fetchone()
-        cursor.execute(
-            "SELECT s.id, s.session_date, s.started_at, s.program_version, s.rowid"
-            " FROM workout_sessions s ORDER BY s.session_date DESC, s.started_at DESC, s.rowid DESC LIMIT ?",
+            "SELECT s.id AS session_id, s.session_date, s.started_at, s.program_version,"
+            " s.rowid AS session_order, sc.response_json AS commit_response"
+            " FROM workout_sessions s LEFT JOIN session_commits sc ON sc.session_id = s.id"
+            f" ORDER BY s.session_date DESC, {LAST_SESSION_ORDER} LIMIT ?",
             [max(1, int(limit))],
         )
-        sessions = [
-            {
-                "session_id": str(row[0]),
-                "session_date": str(row[1]),
-                "started_at": str(row[2]),
-                "program_version": row[3],
-                "session_order": int(row[4]),
-                "has_record": False,
-            }
-            for row in cursor.fetchall()
-        ]
-        e1rm_record_sessions: set[str] = set()
-        prior_weight: dict[str, float] = {}
-        session_weights: dict[str, dict[str, float]] = {}
-        if sessions:
-            earliest = sessions[-1]
-            before_window = (
-                "(s.session_date < ? OR (s.session_date = ? AND s.started_at < ?)"
-                " OR (s.session_date = ? AND s.started_at = ? AND s.rowid < ?))"
-            )
-            cursor.execute(
-                "SELECT ws.exercise_id, MAX(ws.weight_kg)"
-                " FROM workout_sets ws JOIN workout_sessions s ON s.id = ws.session_id"
-                f" WHERE ws.exercise_id IN ({placeholders}) AND {WORKING_SET_PREDICATE}"
-                f" AND {before_window} GROUP BY ws.exercise_id",
-                [
-                    *exercise_ids,
-                    earliest["session_date"],
-                    earliest["session_date"],
-                    earliest["started_at"],
-                    earliest["session_date"],
-                    earliest["started_at"],
-                    earliest["session_order"],
-                ],
-            )
-            prior_weight = {str(exercise_id): float(value) for exercise_id, value in cursor.fetchall()}
-            cursor.execute(
-                "SELECT DISTINCT pr.session_id"
-                " FROM personal_records pr JOIN workout_sessions s ON s.id = pr.session_id"
-                f" WHERE pr.exercise_id IN ({placeholders}) AND pr.record_type = 'max_e1rm'"
-                " AND s.id IN (" + ",".join("?" for _ in sessions) + ")"
-                " ORDER BY s.session_date, s.started_at, s.rowid",
-                [*exercise_ids, *[session["session_id"] for session in sessions]],
-            )
-            e1rm_record_sessions = {str(row[0]) for row in cursor.fetchall()}
-            cursor.execute(
-                "SELECT ws.session_id, ws.exercise_id, MAX(ws.weight_kg)"
-                " FROM workout_sets ws"
-                f" WHERE ws.exercise_id IN ({placeholders}) AND {WORKING_SET_PREDICATE}"
-                " AND ws.session_id IN (" + ",".join("?" for _ in sessions) + ")"
-                " GROUP BY ws.session_id, ws.exercise_id",
-                [*exercise_ids, *[session["session_id"] for session in sessions]],
-            )
-            for session_id, exercise_id, max_weight in cursor.fetchall():
-                session_weights.setdefault(str(session_id), {})[str(exercise_id)] = float(max_weight)
-            latest_rows = sorted(sessions, key=lambda session: (session["session_date"], session["started_at"], session["session_order"]))
-            for session in latest_rows:
-                for exercise_id, value in session_weights.get(session["session_id"], {}).items():
-                    if exercise_id in prior_weight and value > prior_weight[exercise_id]:
-                        session["has_record"] = True
-                    prior_weight[exercise_id] = max(prior_weight.get(exercise_id, value), value)
-                if session["session_id"] in e1rm_record_sessions:
-                    session["has_record"] = True
-        session_ids = [session["session_id"] for session in sessions]
-        if session_ids:
-            session_placeholders = ",".join("?" for _ in session_ids)
-            cursor.execute(
-                "SELECT session_id, response_json FROM session_commits"
-                f" WHERE session_id IN ({session_placeholders})",
-                session_ids,
-            )
-            committed_records: dict[str, set[str]] = {}
-            for session_id, response_json in cursor.fetchall():
-                try:
-                    events = json.loads(response_json).get("new_prs", [])
-                except (TypeError, ValueError):
-                    events = []
-                committed_records[str(session_id)] = {
-                    str(event.get("exercise_id"))
-                    for event in events
-                    if isinstance(event, dict) and event.get("exercise_id")
-                }
-            for session in sessions:
-                if session["session_id"] in committed_records:
-                    session["has_record"] = bool(
-                        committed_records[session["session_id"]].intersection(exercise_ids)
-                    )
-        latest_record = next((session for session in sessions if session["has_record"]), None)
-        return {
-            "first_program_session": _stall_session_key(first_row),
-            "latest_record_session": _stall_session_key(
-                (
-                    latest_record["session_id"],
-                    latest_record["session_date"],
-                    latest_record["started_at"],
-                    latest_record["session_order"],
-                )
-                if latest_record
-                else None
-            ),
-            "sessions": sessions,
-        }
+        return [dict(row) for row in cursor.fetchall()]
 
     def get_session_log(self) -> list[dict[str, Any]]:
         """Chronological session→set rows (exercise names resolved) for ledger export.
