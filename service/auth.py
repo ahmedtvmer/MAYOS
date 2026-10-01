@@ -1,10 +1,8 @@
-"""Player registration, login, opt-in claim, and first password. Returns plain dicts; no session state.
+"""Player registration, login, and first password. Returns plain dicts; no session state.
 
 Proof level is password possession. Unknown users and wrong passwords are
 indistinguishable (``Invalid credentials.``); only registration reveals
-ID-taken, which is inherent to signup. Claiming an imported account requires the
-owner-issued single-use claim code, and every claim failure shares one generic
-error.
+ID-taken, which is inherent to signup.
 """
 
 from datetime import UTC, datetime
@@ -19,7 +17,6 @@ from service._tokens import hash_token
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 128
 INVALID_CREDENTIALS = "Invalid credentials."
-INVALID_CLAIM = "Invalid or expired claim code."
 MIN_COACH_INVITE_CODE_LENGTH = 10
 MAX_COACH_INVITE_CODE_LENGTH = 128
 USERNAME_TAKEN = "This Trainee ID already exists. Please log in."
@@ -106,11 +103,7 @@ def login_player(db: Any, username: str, password: str) -> dict[str, Any]:
     with db.open_ledger(account["ledger_id"]) as ledger:
         stored = ledger.get_password_hash()
         if stored is None:
-            # A Linked sign-in account has no password to set or claim (#113):
-            # it answers exactly like a wrong password, never claim_required.
-            if db.account_has_linked_sign_in(account["account_id"]):
-                return {"ok": False, "error": INVALID_CREDENTIALS}
-            return {"ok": False, "error": INVALID_CREDENTIALS, "code": "claim_required"}
+            return {"ok": False, "error": INVALID_CREDENTIALS}
         if not isinstance(password, str) or not verify_password(password, stored):
             return {"ok": False, "error": INVALID_CREDENTIALS}
         profile = ledger.get_player_profile()
@@ -123,49 +116,6 @@ def login_player(db: Any, username: str, password: str) -> dict[str, Any]:
             "profile": profile,
             "active_program": ledger.get_active_program() if profile else None,
         }
-
-
-def claim_player(db: Any, username: str, claim_code: str, password: str) -> dict[str, Any]:
-    """One-time password claim for an imported account whose ledger has no password.
-
-    Requires the owner-issued, account-bound, single-use, expiring claim code
-    (ADR 019). Only an enrolled live player account with a password-less ledger
-    can be claimed; a bare local ledger is refused so it is never silently
-    adopted into a cloud account. Every failure — unknown account, wrong/expired/
-    reused code, already-claimed ledger — returns one generic error so the
-    endpoint cannot be used to enumerate accounts or probe claim state.
-    """
-    generic = {"ok": False, "error": INVALID_CLAIM}
-    clean_id = db._sanitize_username(username)
-    if not clean_id or not isinstance(claim_code, str) or not claim_code:
-        return generic
-    try:
-        validate_password(password)
-    except ValueError as exc:
-        return {"ok": False, "error": str(exc), "code": "weak_new"}
-    account = db.get_active_account_by_username(clean_id)
-    if account is None or not account["is_player"] or not db.ledger_exists(account["ledger_id"]):
-        return generic
-    if db.account_has_linked_sign_in(account["account_id"]):
-        # An account that signs in with a Linked sign-in never takes a password
-        # this way (issue #113). The refusal is this endpoint's own generic
-        # claim error — never login's "Invalid credentials." — so /auth/claim
-        # still answers identically for every failure and cannot be used to
-        # discover that an account is Google-linked.
-        return generic
-    now_iso = datetime.now(UTC).isoformat()
-    with db.open_ledger(account["ledger_id"]) as ledger:
-        if ledger.get_password_hash() is not None:
-            return generic
-        if not db.consume_claim_code(hash_token(claim_code), account["account_id"], now_iso):
-            return generic
-        ledger.set_password_hash(hash_password(password))
-    return {
-        "ok": True,
-        "trainee_id": account["ledger_id"],
-        "account_id": account["account_id"],
-        "session_epoch": account["session_epoch"],
-    }
 
 
 def account_has_password(db: Any, account: dict[str, Any] | None) -> bool:
@@ -241,7 +191,7 @@ def change_password(
     with ledger_scope(db, ledger, account["ledger_id"]) as handle:
         stored = handle.get_password_hash()
         if stored is None:
-            return {"ok": False, "error": "No password set yet. Claim this ledger first.", "code": "claim_required"}
+            return {"ok": False, "error": "No password is set on this account.", "code": "password_missing"}
         if not isinstance(current_password, str) or not verify_password(current_password, stored):
             return {"ok": False, "error": "Current password is incorrect.", "code": "bad_current"}
         try:

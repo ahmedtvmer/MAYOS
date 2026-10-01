@@ -109,6 +109,11 @@ def test_privacy_page_discloses_coach_access_hosted_ai_and_retention(api):
     assert "hosted, OpenAI-compatible model provider" in body
     assert "Free text you type can contain identifying information" in body
     assert "never receives your assistant chat" in body
+    # Earlier opted-in history imports left an audit record. New imports are no
+    # longer accepted, but existing records remain until account deletion.
+    assert "Existing imported-history records may include" in body
+    assert "MAYOS does not accept new history imports" in body
+    assert "deleted with your account" in body
     # Retention: live data, the 30-day restricted snapshot, the deletion record.
     assert "at most **30 days**" not in body  # emphasis is rendered, not literal
     assert "30 days" in body
@@ -118,8 +123,6 @@ def test_privacy_page_discloses_coach_access_hosted_ai_and_retention(api):
     assert "Settings &rarr; Profile &rarr; Delete account" in body or "Settings → Profile → Delete account" in body
     # Analytics honesty: none are sent today.
     assert "does not send product analytics in this release" in body
-    # Imported history (ADR 045) is disclosed where the collection is listed.
-    assert "Imported history, only if you opt in" in body
     # Coach-visible fields from the coach history/roster schemas.
     assert "time zone" in body
     assert "performed-date corrections" in body
@@ -207,7 +210,9 @@ def test_policy_source_file_exists_and_every_section_is_served(api):
         "Free text you type can contain identifying information",
         "at most 30 days",
         "/account/delete-request",
-        "Imported history, only if you opt in",
+        "Existing imported-history records may include the source file name, a snapshot fingerprint, per-table row counts, the opt-in reference, and the import time",
+        "MAYOS does not accept new history imports",
+        "deleted with your account",
         "last day you used the app",
         "owner-only admin page",
         "Recovery-email lookups and owner actions are audited",
@@ -339,7 +344,7 @@ def _spy_verify(monkeypatch) -> list:
 
 
 def _passwordless_account(db, username: str) -> str:
-    """An imported-but-unclaimed style account (ADR 045): ledger, no hash."""
+    """An existing account whose ledger has no password hash."""
     account_id = db.create_account(username)
     assert account_id is not None
     ledger_id = db.get_account(account_id)["ledger_id"]
@@ -350,7 +355,7 @@ def _passwordless_account(db, username: str) -> str:
 
 
 def test_missing_password_hash_spends_one_bcrypt(api, monkeypatch):
-    """The no-hash path (imported, never claimed) must cost the same as a wrong one."""
+    """The no-hash path must cost the same as a wrong password."""
     client, db = api
     account_id = _passwordless_account(db, "ghost")
 

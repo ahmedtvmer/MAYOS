@@ -73,16 +73,6 @@ async def update_persona(
     )
 
 
-@router.delete("", status_code=status.HTTP_204_NO_CONTENT)
-async def reset_profile(
-    player: Annotated[Any, Depends(get_verified_player)],
-    ledger: Annotated[Any, Depends(get_ledger)],
-    db: Annotated[Any, Depends(get_db)],
-):
-    await asyncio.to_thread(profile_service.reset_profile, db, str(player), ledger)
-    return None
-
-
 @router.get("/schedule", response_model=TrainingScheduleOut)
 async def read_schedule(
     player: Annotated[Any, Depends(get_verified_player)],

@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 
 from database.database_manager import DatabaseManager
 from service import google_sign_in as google_service
-from service._tokens import hash_token
 from svc.app import create_app
 from svc.auth import SIGNUP_TICKET_AUDIENCE, SIGNUP_TICKET_TYPE, create_signup_ticket, token_claims
 from svc.dependencies import GoogleIdentity, GoogleIdentityError, GOOGLE_CLOCK_SKEW_SECONDS, get_db, get_google_verifier
@@ -609,7 +608,7 @@ def test_link_row_is_unique_per_provider_and_subject(api):
         db.link_sign_in("google", "sub-unique", second)
 
 
-def test_claim_and_password_login_on_a_google_only_account_are_refused(api):
+def test_password_login_for_google_only_account_is_refused(api):
     client, db, _verifier = api
     signup = _sign_in_for_ticket(client, "gina-token:Gina")
     assert client.post(
@@ -618,28 +617,11 @@ def test_claim_and_password_login_on_a_google_only_account_are_refused(api):
     account = db.get_active_account_by_username("gina")
     assert account is not None
 
-    # Password login: plain invalid credentials, never claim_required.
+    # Password login for a Google-only account has no local password.
     login = client.post("/auth/login", json={"trainee_id": "gina", "password": "correct-horse-1"})
     assert login.status_code == 401
     assert login.json() == {"detail": "Invalid credentials."}
 
-    # Even a genuine, unused claim code must not take such an account over —
-    # and the refusal must be indistinguishable from any other claim failure,
-    # so the endpoint cannot reveal that the account is Google-linked.
-    raw_code = "single-use-claim-code-123"
-    db.create_claim_code(account["account_id"], hash_token(raw_code), "2999-01-01T00:00:00+00:00")
-    claim = client.post(
-        "/auth/claim",
-        json={"trainee_id": "gina", "claim_code": raw_code, "password": "new-horse-22"},
-    )
-    assert claim.status_code == 401
-    assert claim.json() == {"detail": "Invalid or expired claim code."}
-    ghost = client.post(
-        "/auth/claim",
-        json={"trainee_id": "ghost", "claim_code": raw_code, "password": "new-horse-22"},
-    )
-    assert ghost.status_code == claim.status_code
-    assert ghost.json() == claim.json()
     with db.open_ledger(account["ledger_id"]) as ledger:
         assert ledger.get_password_hash() is None
     assert client.post("/auth/login", json={"trainee_id": "gina", "password": "new-horse-22"}).status_code == 401

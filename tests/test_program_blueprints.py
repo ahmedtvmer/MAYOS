@@ -1,4 +1,4 @@
-"""Blueprint-level guarantees: slot resolution, weekly coverage, Arabic schema and export."""
+"""Blueprint-level guarantees: slot resolution, weekly coverage and Arabic schema."""
 
 import sys
 from pathlib import Path
@@ -35,7 +35,6 @@ from agent.program_blueprints import (
 )
 from agent.program_rules import fetch_slot_candidates, fetch_warmup_candidates, get_split_plan, resolve_split
 from utils.equipment_access import COMMERCIAL_GYM, EQUIPMENT_ACCESS_VALUES
-from utils.exporter import export_program_to_excel
 
 db = None
 
@@ -506,50 +505,6 @@ def test_schema_round_trip_persists_warmups_and_slots():
             assert stored_ex.slot_key == generated_ex.slot_key
             assert stored_ex.warmup_sets == generated_ex.warmup_sets
             assert stored_ex.notes == generated_ex.notes
-
-
-def test_excel_export_uses_english_sheet_layout():
-    program = _generate("male", 3)
-    payload = export_program_to_excel(program)
-    assert payload[:2] == b"PK"
-    import io
-
-    import openpyxl
-
-    workbook = openpyxl.load_workbook(io.BytesIO(payload))
-    assert workbook.sheetnames[0].startswith("Day 1")
-    day_sheet = workbook[workbook.sheetnames[0]]
-    headers = [cell.value for cell in day_sheet[1]]
-    assert headers[:7] == ["Day", "Exercise", "Warm-up Sets", "Working Sets", "Reps", "Min RIR", "Rest"]
-    # The effort column is the target's equivalent *minimum* RIR — a whole
-    # number rounded up — never the stored RPE (#111).
-    effort_values = [
-        row[5]
-        for row in day_sheet.iter_rows(min_row=2, values_only=True)
-        if isinstance(row[5], (int, float))
-    ]
-    assert effort_values
-    assert all(0.0 <= value <= 5.0 for value in effort_values)
-
-
-def test_excel_export_renders_cardio_once():
-    program = _generate("male", 4)
-    assert any(day.cardio for day in program.days), "UL blueprint should include cardio notes"
-    payload = export_program_to_excel(program)
-    import io
-
-    import openpyxl
-
-    workbook = openpyxl.load_workbook(io.BytesIO(payload))
-    for day, sheet_name in zip(program.days, workbook.sheetnames, strict=True):
-        sheet = workbook[sheet_name]
-        cardio_rows = sum(
-            1
-            for row in sheet.iter_rows(min_row=2, values_only=True)
-            if day.cardio and row[1] == day.cardio
-        )
-        expected = 1 if day.cardio else 0
-        assert cardio_rows == expected, f"{day.day_name}: expected {expected} cardio row(s), got {cardio_rows}"
 
 
 def test_split_day_pools_cover_all_defined_days():

@@ -627,21 +627,6 @@ class SchemaMixin:
                 CREATE INDEX IF NOT EXISTS idx_account_imports_account
                     ON account_imports(account_id);
 
-                -- Owner-issued, account-bound single-use claim code for an imported
-                -- account (ADR 019, ticket #42). Only the SHA-256 of the code is
-                -- stored; the raw code is shown once by scripts/import_player.py.
-                -- Redemption is atomic and sets the account's first password.
-                -- Removed with the account, like its import audit row (ADR 045).
-                CREATE TABLE IF NOT EXISTS account_claim_codes (
-                    token_hash TEXT PRIMARY KEY,
-                    account_id TEXT NOT NULL,
-                    expires_at TEXT NOT NULL,
-                    used_at TEXT,
-                    created_at TEXT NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_account_claim_codes_account
-                    ON account_claim_codes(account_id);
-
                 -- Linked sign-in (CONTEXT.md): an external identity attached to
                 -- exactly one account, keyed on (provider, subject) where the
                 -- subject is the provider's immutable subject (Google's ``sub``).
@@ -660,6 +645,8 @@ class SchemaMixin:
                 CREATE INDEX IF NOT EXISTS idx_linked_sign_ins_account
                     ON linked_sign_ins(account_id);
             """)
+            # ADR 056 removes claim-code credential material with the claim flow.
+            self.catalog_conn.execute("DROP TABLE IF EXISTS account_claim_codes")
             self._create_coach_alerts_schema()
             self._ensure_accounts_last_seen_at()
             self._ensure_roster_attendance_timezone()

@@ -107,11 +107,6 @@ class LedgerProfileMixin:
         )
         self.conn.commit()
 
-    def clear_player_profile(self, user_id: int = 1) -> None:
-        cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM user_profile WHERE id = ?", (user_id,))
-        self.conn.commit()
-
     def update_player_persona(self, coach_tone: str, custom_instructions: str) -> None:
         cursor = self.conn.cursor()
         cursor.execute(

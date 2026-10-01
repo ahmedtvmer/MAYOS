@@ -324,7 +324,7 @@ def test_inactive_status_without_deletion_timestamp_is_not_active(api):
     with db._catalog_lock:
         db.catalog_conn.execute("UPDATE accounts SET status = 'deleted' WHERE account_id = ?", (account_id,))
         db.catalog_conn.commit()
-    # Login/claim/reset resolve accounts through get_active_account_by_username.
+    # Login resolves accounts through get_active_account_by_username.
     assert db.get_active_account_by_username("alice") is None
     assert client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}).status_code == 401
     assert client.get("/dashboard/exercises", headers=_authed(registered["access_token"])).status_code == 401

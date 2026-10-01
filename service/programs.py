@@ -1,10 +1,9 @@
-"""Program generation, retrieval, and export."""
+"""Program generation, retrieval, and editing."""
 
 from typing import Any
 
 from agent.program_generator import generate_program_pipeline
 from service._base import ledger_scope
-from utils.exporter import export_program_to_excel
 
 COACH_CONTROLLED_ERROR = "Your assigned coach controls your program. Ask your coach for changes."
 
@@ -54,12 +53,3 @@ def ensure_active_program(
             rep_preference_override=profile.get("rep_preference", "balanced"), ledger=ledger
         )
         return program
-
-
-def export_active_program(db: Any, ledger_id: str, ledger: Any | None = None) -> tuple[str, bytes] | None:
-    with ledger_scope(db, ledger, ledger_id) as ledger:
-        program = ledger.get_active_program()
-        if program is None:
-            return None
-        filename = f"{program.program_name.replace(' ', '_').lower()}.xlsx"
-        return filename, export_program_to_excel(program)

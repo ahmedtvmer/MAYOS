@@ -47,8 +47,7 @@ def _reset_link_base_url() -> str:
 
     ``RESET_LINK_BASE_URL`` must be the public host that serves both
     ``/reset-password`` and ``/.well-known/assetlinks.json``. There is no
-    ``UI_BASE_URL`` fallback: the legacy Streamlit UI does not serve the reset
-    path (ADR 037). The localhost default is for development only.
+    ``UI_BASE_URL`` fallback. The localhost default is for development only.
     """
     return os.getenv("RESET_LINK_BASE_URL", "http://localhost:8000").rstrip("/")
 
@@ -57,8 +56,7 @@ def build_reset_link(token: str) -> str:
     """Builds the reset link as ``<base>/reset-password?token=<token>``.
 
     The path is an https Android App Link when installed, and the API's hosted
-    fallback page otherwise. The legacy ``?reset_token=`` Streamlit link was
-    retired with the Streamlit client (ADR 017/022/037).
+    fallback page otherwise. The reset path is served by the API and the Flutter app.
     """
     return f"{_reset_link_base_url()}/reset-password?token={token}"
 

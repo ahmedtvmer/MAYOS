@@ -50,18 +50,14 @@ Your training record is stored privately for your account and includes:
   published them.
 - **Workouts**: sessions, sets, weights, reps, effort ratings (RIR/RPE),
   readiness, personal records, and any notes you log.
+- **Imported history (existing records only)**: these records may include the source file name, a
+  snapshot fingerprint, per-table row counts, the opt-in reference, and the
+  import time. MAYOS does not accept new history imports. These records are
+  deleted with your account; a restricted whole-catalog recovery snapshot may
+  retain deleted rows for up to 30 days.
 - Your **training schedule** and any schedule pauses.
 - Your **assistant chat** (your messages and the assistant's replies).
 - **Offline workout drafts** held on your device until they sync.
-- **Imported history, only if you opt in.** If you ask to bring earlier training
-  history into MAYOS from a file on your device, the operator imports a copy of
-  that **one** file for you — never a folder, never a bulk import — into a brand
-  new account with a new identity. We keep a short import record alongside the
-  account (the file's name, a fingerprint of its contents, row counts, and any
-  reference you wrote confirming you asked for it) plus a single-use claim code
-  you redeem to set your first password. That record is deleted with your
-  account, the source file you provided is never modified or deleted by us, and
-  importing the same file twice is refused while the account lives.
 
 ### Coaching data (shared only while an assignment is active)
 

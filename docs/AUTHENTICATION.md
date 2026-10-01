@@ -32,44 +32,12 @@ Password changes update the ledger credential and advance the account's session 
 
 ---
 
-## 3. Registration, Login & the Legacy Claim Flow
+## 3. Registration & Login
 
 `POST /auth/register` creates an immutable account id in the catalog registry, creates the account's ledger, stores the bcrypt hash, and immediately issues a JWT. `POST /auth/login` proves possession of the password and issues a JWT whose subject is that immutable account id.
 
-An owner may issue a **Coach invite** for an existing Account (the default CLI mode and the owner dashboard) or use `scripts/issue_coach_invite.py <username> --new-account` to hold a username for a future Account. The latter stores only the code's SHA-256 hash, defaults to 24 hours, and clamps its lifetime to 5 minutes–7 days. A live Account, existing local ledger, or another live hold makes the username unavailable. Registration without that code returns the same 409 body as an already-taken username. On the sign-up screen, **I have a coach invite code** reveals the optional code field. Registration with the code creates an ordinary Player Account, grants Coach capability, and claims the invite in one catalog transaction; the matching is case-insensitive and uses registration's existing username normalization. Wrong, expired, used, username-mismatched, and account-bound codes share `400 This coach invite code isn't valid for this username` and create no Account. The normal recovery-email gate still applies; after it, a new coach opens in Coach mode on Roster without player intake. A Coach invite grants no Assignment.
+An owner may issue a **Coach invite** for an existing Account (the default CLI mode and the owner dashboard) or use `scripts/issue_coach_invite.py <username> --new-account` to hold a username for a future Account. The latter stores only the code's SHA-256 hash, defaults to 24 hours, and clamps its lifetime to 5 minutes–7 days. A live Account, existing local ledger, or another live hold makes the username unavailable. Registration without that code returns the same 409 body as an already-taken username. On the sign-up screen, **I have a coach invite code** reveals the optional code field. Registration with the code creates an ordinary Player Account, grants Coach capability, and claims the invite in one catalog transaction; the matching is case-insensitive and uses registration's existing username normalization. Wrong, expired, used, username-mismatched, and account-bound codes share `400 This coach invite code isn't valid for this username` and create no Account. Recovery email is configured in the Flutter app; after registration, a new coach opens in Coach mode on Roster without player intake. A Coach invite grants no Assignment.
 
-An imported account (ADR 019) or an enrolled account whose ledger has no `auth_credentials` row uses a one-time claim flow. Claiming requires the **single-use, expiring claim code** the owner issues with `scripts/import_player.py`; only the code's SHA-256 is stored, and the raw code is handed over out of band. There is deliberately no code-less password set by username alone, and a bare local ledger without an account registry entry cannot be claimed through the API (see ADR 015/019):
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant UI as Flutter app
-    participant API as FastAPI /auth
-    participant SVC as service/auth.py
-    participant DB as User Ledger
-
-    UI->>API: POST /auth/login {trainee_id, password}
-    API->>SVC: login_player()
-    SVC->>DB: open_ledger + get_password_hash()
-    alt No stored hash (imported / password-less account)
-        SVC-->>API: code = claim_required
-        API-->>UI: 403 "This ledger predates passwords. Set one to continue."
-        Note over UI: The owner hands the claim code over out of band.
-        UI->>API: POST /auth/claim {trainee_id, claim_code, password}
-        API->>SVC: claim_player()
-        SVC->>DB: consume_claim_code(hash) + set_password_hash(bcrypt)
-        SVC-->>UI: JWT issued
-    else Hash present
-        SVC->>SVC: bcrypt.checkpw(password, hash)
-        alt Match
-            SVC-->>UI: JWT (sub, jti, tv)
-        else Mismatch or unknown user
-            SVC-->>UI: 401 "Invalid credentials." (identical shape)
-        end
-    end
-```
-
-Claim is **single-use and account-bound**: redeeming the code marks it used, and once a hash exists further `/auth/claim` calls return `401 Invalid or expired claim code.` Unknown account, wrong/expired/reused code, an already-claimed ledger, **and an account with a Linked sign-in (Section 13)** all return that same generic 401 — including when the caller does hold a valid code — so `/auth/claim` itself does not distinguish them. Note that `/auth/login` still returns `403 claim_required` for a password-less ledger by design, so the fact that an account is waiting to be claimed is observable to a caller who already knows its username — except for a Google-only account, which always answers the plain generic `401 Invalid credentials.` (Section 13). A too-weak password is a plain `400`.
 
 ---
 
@@ -147,11 +115,11 @@ Both tables are provisioned idempotently at catalog boot (`ensure_account_schema
 
 Live recovery rows are keyed by the immutable account id; **legacy username-keyed rows are ignored by lookup**. A stale email mapping or unredeemed token therefore cannot target a new account that reuses a deleted account's username (Section 7).
 
-The legacy Streamlit client gates its dashboard and onboarding on a saved recovery email. The API provides `GET /auth/email` and `POST /auth/email`; it does not enforce that client gate. The Flutter client is the product client under development (ADR 017).
+The Flutter app is the product client. The API provides `GET /auth/email` and `POST /auth/email`; recovery-email setup is part of the app onboarding and is not an API access gate.
 
 ```mermaid
 flowchart LR
-    Login["Login / Claim / Register"] --> Check{"GET /auth/email"}
+    Login["Login / Register"] --> Check{"GET /auth/email"}
     Check -- "email present" --> Dashboard["Dashboard / Onboarding"]
     Check -- "email missing" --> Gate["Email Gate (blocking)"]
     Gate -- "POST /auth/email" --> Dashboard
@@ -195,16 +163,15 @@ sequenceDiagram
 
 Defensive details:
 
-* A well-formed address that has no live MAYOS account receives a short **“No MAYOS account uses this email”** email with a sign-up link and advice to try the registered address or add a recovery email in Settings. The link uses `RESET_LINK_BASE_URL/register`, the same host as reset links. `GET /register` redirects to the first configured `UI_BASE_URL` origin's `/register` route; when no web origin is configured, the API serves a self-contained page asking the person to open the MAYOS app. The app opens that route through its Android App Link. Malformed addresses send no email. Unknown-address notices share the SMTP/console sender and are limited to one per address every 24 hours using a keyed hash. Expired hashes are pruned during forgot-password requests; no startup or scheduled cleanup exists, so inactive rows can remain until another request. The address itself is never stored for this limit.
+* A well-formed address that has no live MAYOS account receives a short **“No MAYOS account uses this email”** email with a sign-up link and advice to try the registered address or add a recovery email in Settings. The link uses `RESET_LINK_BASE_URL/register`, the same host as reset links. When no web origin is configured, the API serves a self-contained page asking the person to open the MAYOS app. Malformed addresses send no email. Unknown-address notices share the SMTP/console sender and are limited to one per address every 24 hours using a keyed hash. Expired hashes are pruned during forgot-password requests; no startup or scheduled cleanup exists, so inactive rows can remain until another request. The address itself is never stored for this limit.
 * The forgot-password endpoint returns its usual generic 202 before lookup or email work begins. FastAPI `BackgroundTasks` runs the same lookup, hashing, and pruning path for every valid address; the catalog store is passed explicitly to that task. The app keeps the generic success message because the email notification can reach someone other than the person using the device; a different on-screen response would reveal whether an account exists.
 * Weak new passwords are rejected **before** token consumption — a failed attempt does not burn the link.
 * Unknown, expired, reused, and fabricated tokens all share one generic `400 Invalid or expired reset code.`
 * Expired and consumed tokens are pruned on each request.
-* The reset link is `RESET_LINK_BASE_URL/reset-password?token=…`. There is no `UI_BASE_URL` fallback for reset links: the retired Streamlit UI does not serve `/reset-password`, so an unset `RESET_LINK_BASE_URL` defaults to the API's own local base (`http://localhost:8000`) for development only. The path is an **Android App Link** when the app is installed and a **hosted fallback page** otherwise. In production the host must be identical in all three places: `RESET_LINK_BASE_URL`, the Android App Link intent-filter host (`-PappLinkHost`), and where `/.well-known/assetlinks.json` is served.
+* The reset link is `RESET_LINK_BASE_URL/reset-password?token=…`. An unset `RESET_LINK_BASE_URL` defaults to the API's own local base (`http://localhost:8000`) for development only. The path is an **Android App Link** when the app is installed and a **hosted fallback page** otherwise. In production the host must be identical in all three places: `RESET_LINK_BASE_URL`, the Android App Link intent-filter host (`-PappLinkHost`), and where `/.well-known/assetlinks.json` is served.
   * `GET /reset-password` on the API serves a self-contained HTML page (strict nonce CSP, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`) that reads the token from `location`, immediately scrubs it from the URL with `history.replaceState(null, '', location.pathname)`, and POSTs to `/auth/reset-password`; the token is never reflected into the HTML. A non-string error body (for example a 422 validation list) falls back to the generic message.
   * `GET /.well-known/assetlinks.json` serves the Digital Asset Links statement (`ANDROID_APP_PACKAGE`, `ANDROID_APP_SHA256_CERT_FINGERPRINTS`). Each fingerprint may use upper/lower case and colons or not; it is normalised to the uppercase colon-separated 32-byte form, invalid entries are skipped with a logged warning, and no valid fingerprint returns 404 rather than an invalid file.
   * The API installs an `uvicorn.access` log filter (`svc/app.py::RedactResetTokenFilter`) that rewrites any `token=…` query value to `token=[REDACTED]`, so the single-use token never lands in access logs regardless of the uvicorn CLI flags.
-* The legacy `UI_BASE_URL/?reset_token=…` link for the retired Streamlit Recover Access tab is no longer emitted (ADR 037).
 * A **Google-only account** uses this flow unchanged (#114): it sets a recovery email with `POST /auth/email`, redeems the emailed token, and gets its first password. The Linked sign-in is untouched, so afterwards the account can sign in with either method (and may then disconnect Google).
 
 ---
@@ -255,7 +222,7 @@ Delivery failures are logged and swallowed; the client response stays generic. T
 | Endpoint | Auth | Limits | Notes |
 | :--- | :--- | :--- | :--- |
 | `POST /auth/register` | — | 5/min | Optional `coach_invite_code`; 409 if username taken or held (identical response); 400 generic invalid Coach invite; 201 + JWT |
-| `POST /auth/login` | — | 5/min | 401 generic; 403 claim required |
+| `POST /auth/login` | — | 5/min | 401 generic for unknown usernames and invalid passwords |
 | `POST /auth/google` | — | 5/min | Verifies a Google ID token: linked subject ⇒ `TokenOut` (remember-me lifetime), otherwise `{signup_ticket, suggested_username, existing_account_hint}`; the hint is true only for a verified-email match to a live recovery email; 503 when `GOOGLE_WEB_CLIENT_ID` is unset |
 | `GET /auth/username-available` | signup ticket (Bearer) | 30/min | `{available, reason?}`; clear 400 for a username that breaks the rule; 401 for a missing/expired ticket |
 | `POST /auth/google/complete` | — | 5/min | One catalog transaction: account + link; 400 invalid username, 409 taken or already linked |
@@ -263,7 +230,6 @@ Delivery failures are logged and swallowed; the client response stays generic. T
 | `DELETE /auth/google/link` | Bearer | 10/min | Disconnects Google; **409 unless the account has a password** (an account always keeps one way to sign in); idempotent; 503 when unconfigured |
 | `POST /auth/set-password` | Bearer | 10/min | First password only (e.g. a Google-only account); 409 pointing at `change-password` when one exists; no epoch bump |
 | `GET /auth/me` | Bearer | — | Identity, capabilities, plans, plus `has_password` and `linked_sign_ins` (provider names only, never a subject) |
-| `POST /auth/claim` | — | 5/min | Requires owner-issued single-use claim code; 401 generic |
 | `POST /auth/logout` | Bearer | — | Revokes presenting `jti`; 204 |
 | `POST /auth/change-password` | Bearer | 10/min | Revokes **all** sessions; 400 on failure |
 | `DELETE /auth/account` | Bearer | 10/min | Exactly one proof: `password` **or** a fresh `google_id_token` (ADR 039); 400 generic on any failure |
@@ -284,7 +250,7 @@ Rate-limit keys combine the client IP with a bearer-token suffix when present, s
 | `JWT_SECRET` | **required** | HS256 signing/verification key; service refuses to start signing without it |
 | `JWT_EXPIRY_HOURS` | `2` | Access-token lifetime |
 | `GOOGLE_WEB_CLIENT_ID` | unset (⇒ `/auth/google*` returns 503) | The **only** audience Google ID tokens are verified against (Section 13); the same value the Android client passes as `serverClientId` |
-| `UI_BASE_URL` | `http://localhost:8501` | CORS origin(s), comma-separated; when set, the first origin is the `GET /register` web target (not used for reset links) |
+| `UI_BASE_URL` | `http://localhost:7357` | CORS origin(s), comma-separated; when set, the first origin is the `GET /register` web target (not used for reset links) |
 | `RESET_LINK_BASE_URL` | `http://localhost:8000` | Reset-link / App Link base (`<base>/reset-password?token=…`) |
 | `ANDROID_APP_PACKAGE` | `com.mayos.mayos_mobile` | Package name in `assetlinks.json` |
 | `ANDROID_APP_SHA256_CERT_FINGERPRINTS` | unset (⇒ 404) | Comma-separated signing-cert SHA-256 fingerprints (case/colons optional; normalised) |
@@ -391,7 +357,7 @@ sequenceDiagram
 * `GET /auth/username-available?username=…` answers `{available, reason?}` (`reason` is `"taken"`). The same rule the completion enforces applies here: a username outside `3–30 × a–z 0–9 _ -` after lowercasing is a clear `400`, never a silent rewrite.
 * `POST /auth/google/complete {signup_ticket, username}` validates the picked username and then, **in one catalog transaction**, creates the account exactly as `register_player` does (player capability, its own ledger, no password hash) and inserts the link. A taken username returns `409`; if the same subject is linked concurrently, the `UNIQUE(provider, subject)` constraint aborts the transaction so the losing request creates no second account. Success returns `TokenOut`, again with the remember-me lifetime, and materialises the ledger before the token is handed out so the session passes the normal registry gate.
 
-**Google-only accounts.** A Google account has no password and must never be claimable: `/auth/claim` refuses it with the claim flow's own generic `401 Invalid or expired claim code.` — identical to every other claim failure, so the endpoint cannot reveal that the account is Google-linked — and `/auth/login` returns the plain generic `401 Invalid credentials.` — never `403 claim_required` (Section 3).
+**Google-only accounts.** A Google account has no password until its owner sets one through the authenticated `POST /auth/set-password` flow. Password login returns the same generic `401 Invalid credentials.` used for every invalid credential.
 
 **Managing sign-in methods (#114).** `GET /auth/me` reports the current state as `has_password` plus `linked_sign_ins` — provider names only, never a subject — so a client can render "Connected: Google" without ever seeing the `sub`. The glossary rule holds throughout: **an account always keeps at least one way to sign in** ([`CONTEXT.md`](../CONTEXT.md)).
 

@@ -37,7 +37,7 @@ sudo apt-get update && sudo apt-get install -y \
 
 ## 2. Docker Architecture & Container Topology
 
-The deployment is **two application services sharing one image** plus an optional tunnel:
+The deployment is **one FastAPI service** plus an optional tunnel:
 
 ```
 +-----------------------------------------------------------------------------------+
@@ -48,21 +48,21 @@ The deployment is **two application services sharing one image** plus an optiona
 |   ├── ./db/      ------> /app/db      (catalog.db + users/ + backups/)            |
 |   └── ./logs/    ------> /app/logs    (structured telemetry log)                  |
 |                                                                                   |
-|   +----------------------------------+   +-------------------------------------+  |
-|   |  Container: myos_api             |   |  Container: myos_engine             |  |
-|   |  uvicorn svc.app:app  (:8000)    |<--|  Streamlit UI          (:8501)      |  |
-|   |  JWT auth, rate limits, SSE      |   |  Thin HTTP client only              |  |
-|   |  LangGraph + SafeChatLlamaCpp    |   +-------------------------------------+  |
-|   |  DatabaseManager (thread-local)  |                     ^                      |
-|   +----------------------------------+                     |                      |
-|                                                            |                      |
-|                                              +-----------------------------+       |
-|                                              | cloudflared tunnel (optional)|       |
-|                                              +-----------------------------+       |
+|   +----------------------------------+                                             |
+|   |  Container: myos_api             |                                             |
+|   |  uvicorn svc.app:app  (:8000)    |                                             |
+|   |  JWT auth, rate limits, SSE      |                                             |
+|   |  LangGraph + SafeChatLlamaCpp    |                                             |
+|   |  DatabaseManager (thread-local)  |                                             |
+|   +----------------------------------+                                             |
+|                         ^                                                         |
+|             +-----------------------------+                                       |
+|             | cloudflared tunnel (optional)|                                       |
+|             +-----------------------------+                                       |
 +-----------------------------------------------------------------------------------+
 ```
 
-Only `myos-api` holds the model, the databases, and the assistant graph. `myos-engine` is a pure presentation client that talks to `API_BASE_URL`. The shared image is built from the actual `Dockerfile` *(abridged — see the file itself for verbatim comments)*:
+The API holds the model, databases, and assistant graph. The image is built from the actual `Dockerfile` *(abridged — see the file itself for verbatim comments)*:
 
 ```dockerfile
 FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
@@ -105,11 +105,9 @@ RUN uv pip install --system -r requirements.txt
 
 COPY . .
 
-EXPOSE 8000 8501
+EXPOSE 8000
 
-# Default CMD serves the Streamlit UI; compose overrides per service.
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0", \
-     "--server.enableCORS=false", "--server.enableXsrfProtection=false"]
+CMD ["uvicorn", "svc.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
 ```
 
 > **CPU-only hosts:** swap the base image for `python:3.12-slim-bookworm`, install the CPU wheel (`--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu`), and set `N_GPU_LAYERS=0`. No NVIDIA runtime is required.
@@ -133,12 +131,11 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `ADMIN_TOTP_SECRET` | unset | Owner authenticator secret in Base32; generate it with `.venv/bin/python scripts/admin_credentials.py` and add its URI to an authenticator app |
 | `JWT_EXPIRY_HOURS` | `2` | Access-token lifetime |
 | `GOOGLE_WEB_CLIENT_ID` | unset (⇒ `/auth/google*` returns 503) | **Secret-ish config**: the OAuth web client ID Google ID tokens are verified against (issue #113). Use the *Web* client ID from the Google Cloud console; Android requests its ID token with this value as `serverClientId`, so it is the only audience the API needs. Unset disables Google sign-in only — password auth is unaffected |
-| `UI_BASE_URL` | `http://localhost:8501` | CORS origins: one, or several comma-separated (web app host + local dev). Not used for reset links |
+| `UI_BASE_URL` | `http://localhost:7357` | CORS origins: one, or several comma-separated (web app host + local Flutter web dev). Not used for reset links |
 | `RESET_LINK_BASE_URL` | `http://localhost:8000` | Reset-link / App Link base; must match the App Link host |
 | `ANDROID_APP_PACKAGE` | `com.mayos.mayos_mobile` | App Link `assetlinks.json` package |
 | `ANDROID_APP_SHA256_CERT_FINGERPRINTS` | unset (⇒ 404) | App Link signing-cert SHA-256 fingerprints (case/colons optional; normalised) |
-| `API_BASE_URL` | `http://localhost:8000` | Streamlit → API base (compose sets `http://myos-api:8000`) |
-| `RESET_TOKEN_TTL_MINUTES` | `30` | Reset-link lifetime (clamped 5–120) |
+| | `RESET_TOKEN_TTL_MINUTES` | `30` | Reset-link lifetime (clamped 5–120) |
 | `SMTP_HOST` | unset | **Unset ⇒ console-dev backend** (reset links logged, not sent). Configure for real deployments |
 | `SMTP_PORT` / `SMTP_USE_TLS` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | `587` / `true` / — / — / `no-reply@myos.local` | SMTP transport |
 | `RATE_LIMIT_LOGIN` / `_REGISTER` / `_PASSWORD` / `_RESET` / `_CHAT` / `_ONBOARDING` | `5/min` / `5/min` / `10/min` / `3/hour` / `30/min` / `30/min` | Per-route limits |
@@ -345,31 +342,12 @@ services:
         reservations:
           devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
 
-  myos-engine:
-    build: { context: ., dockerfile: Dockerfile }
-    container_name: myos_engine
-    restart: unless-stopped
-    stop_grace_period: 60s
-    ports: ["8501:8501"]
-    volumes:
-      - ./logs:/app/logs
-    environment:
-      - API_BASE_URL=http://myos-api:8000
-    depends_on:
-      myos-api: { condition: service_healthy }
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 60s
-
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: myos_tunnel
     restart: unless-stopped
-    command: tunnel --no-autoupdate --url http://myos-engine:8501
-    depends_on: [myos-engine]
+    command: tunnel --no-autoupdate --url http://myos-api:8000
+    depends_on: [myos-api]
 ```
 
 ### Cloudflare Tunnel Operations
@@ -670,14 +648,13 @@ sqlite3 db/backups/daily/20260928/ledgers/<ledger_id>.db "PRAGMA user_version;"
 
 The closed Android trial is designed to run **one always-on FastAPI writer** in
 Frankfurt (`fra`) on a `shared-cpu-1x` Machine with a **10 GB volume** mounted at
-`/data`. Streamlit is legacy and is not deployed as a product service
-(retirement: #46); the image is FastAPI only.
+`/data`. The Flutter app is the product client; the image serves the FastAPI API.
 
 ### 10.1 Topology
 
 | Piece | Setting | Why |
 | :--- | :--- | :--- |
-| Image | `Dockerfile.fly` + `requirements-fly.txt` | `python:3.12-slim`, CPU-only PyTorch, no `llama-cpp-python`/CUDA/Streamlit |
+| Image | `Dockerfile.fly` + `requirements-fly.txt` | `python:3.12-slim`, CPU-only PyTorch, no `llama-cpp-python`/CUDA |
 | Inference | `LLM_BACKEND=openai` | hosted OpenAI-compatible endpoint (ADR 012); no GGUF in the image |
 | Process | `uvicorn svc.app:app --workers 1` | SQLite is a single writer and the Machine owns the volume |
 | Region/VM | `primary_region = "fra"`, `shared-cpu-1x`, 2 GB | within the locked trial size (ANDROID-PLAN §1); 2 GB is chosen to leave headroom for the CPU BGE embedding model, which measured near 1 GB RSS in local development — confirm headroom on the deployed Machine |
@@ -1146,67 +1123,6 @@ both player and coach capabilities; the same app/login serves both):
 7. Confirm no access-log line contains the token
    (`fly logs | grep reset-password` shows `token=[REDACTED]`), and the hosted
    response carries `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
-
-### 10.10 Opt-in import of a consenting person's training ledger (issue #42, ADR 019)
-
-The owner imports **one** consenting person's legacy ledger at a time. There is
-no bulk mode and no override for a source that looks like development/test data:
-the local data root mixes real histories with dev/test ledgers, so importing it
-wholesale would create unwanted and insecure cloud accounts. The script takes a
-consistent SQLite snapshot, migrates it, creates a new immutable account,
-rewrites the ledger's embedded identity to the new ledger id, verifies per-table
-record counts against the raw source, clears any source password (the person must
-claim), and prints a single-use, expiring claim code exactly once.
-
-**Snapshot locally first.** The source is usually a WAL database. Copying only
-its `.db` file loses every committed row still in the `-wal` file, so take a
-consistent single-file snapshot before uploading anything:
-
-```bash
-# 0a. Locally, snapshot the WAL database into one self-contained file.
-sqlite3 source.db ".backup source-snapshot.db"
-# or: python -c "import sqlite3; \
-#   s=sqlite3.connect('source.db'); d=sqlite3.connect('source-snapshot.db'); s.backup(d); d.close()"
-
-# 0b. Upload the snapshot (out of band; never commit it) to a path OUTSIDE
-#     /data/users, which is the live ledger directory and is refused as a source.
-fly ssh console -a "$APP" -C "mkdir -p /tmp/import"
-fly sftp shell -a "$APP"
-#   put /local/path/source-snapshot.db /tmp/import/source-snapshot.db
-
-# 1. Import. The opt-in reference records how and when the person consented.
-fly ssh console -a "$APP" -C \
-  "python scripts/import_player.py /tmp/import/source-snapshot.db \
-     --username <new-username> \
-     --opt-in-reference '<how/when the person consented>' \
-     --ttl-hours 72"
-
-# 2. Hand the printed claim code to the person out of band. They redeem it in the
-#    app's "Claim imported account" screen with their chosen password.
-```
-
-Notes:
-
-- The script refuses a source named like a fixture (`test*`, `demo*`, `eval*`,
-  `bughunt*`, `seed*`, `fixture*`, `ci_test*`; `default`/`bootstrap`/`alice`/
-  `bob`/`bp` exactly or with a trailing `_`; any `*_default`), a source inside
-  the repo's `tests/` or `data/` directories or inside the live `/data/users`
-  directory, and a source whose snapshot fingerprint was already imported. This
-  is only an accidental-import guard: renaming a file bypasses it, and one
-  explicit file per run is the real guard. It may refuse a real name like
-  `bob.db`; in that case rename the copied snapshot.
-- The script also refuses a new username whose destination ledger file already
-  exists, so it never overwrites an unenrolled `users/<id>.db`.
-- A rolled-back import is a normal durable deletion and leaves an
-  `account_deletions` record plus a deleted `accounts` row (ADR 015/039); the
-  audit row is removed with the account. Re-importing the **same** source after
-  its account was deleted is a genuinely new account.
-- If any per-table record count differs between the raw source snapshot and the
-  imported ledger, the import rolls the new account back through the normal
-  durable deletion path and exits non-zero, so a failed import never leaves a
-  half-imported live account and never deletes or modifies the source.
-- The audit row stores no training data and no contact details. Remove the copied
-  snapshot from `/tmp` after the import.
 
 ### 10.11 Android release for the Play closed trial (issue #43)
 

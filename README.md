@@ -6,7 +6,6 @@
 [![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Service_Layer-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-1.2.11-000000?style=for-the-badge&logo=langchain&logoColor=white)](https://github.com/langchain-ai/langgraph)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.63+-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![sqlite-vec](https://img.shields.io/badge/sqlite--vec-0.1.9-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://github.com/asg017/sqlite-vec)
 [![License](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)](LICENSE)
 
@@ -46,7 +45,7 @@ Mayos bridges this gap:
 * **Deterministic Fast-Path Router**: Clinical trauma halts, movement swaps, and split mutations are resolved by compiled regex and ledger logic in **0.014–0.075 ms** — up to **375,000× faster** than an LLM classification call — while a Tier-1 semantic guard keeps colloquial injury reports safe.
 * **Biomechanical Auto-Regulation**: Quantizes weights to 2.5 kg Olympic increments, calculates dynamic RPE-adjusted effective 1RMs, and tracks synergists fractionally (0.5 sets).
 * **JWT-Secured Multi-Tenant Ledgers**: The FastAPI service checks HS256 tokens against a durable account registry for status, player capability, and session epoch, then checks the ledger revocation list. Each user has an isolated SQLite ledger in WAL mode with an in-process `sqlite-vec` semantic catalog.
-* **Self-Service Account Recovery**: Recovery-email endpoints, single-use hashed reset tokens with anti-enumeration responses, revoke-all password changes, and an operator CLI backstop. The legacy Streamlit client requires a recovery email before dashboard access.
+* **Self-Service Account Recovery**: Recovery-email endpoints, single-use hashed reset tokens with anti-enumeration responses, revoke-all password changes, and an operator CLI backstop. The Flutter app guides a Player through recovery-email setup.
 
 ---
 
@@ -67,48 +66,12 @@ Detailed architectural specifications, benchmarks, and mathematical proofs are m
 
 ## System Architecture
 
-```
-                    +-----------------------------------------+
-                    |             Streamlit UI                |
-                    |  (Dashboard | Logger | Chat Assistant)  |
-                    +--------------------+--------------------+
-                                         |
-                                         v
-                    +-----------------------------------------+
-                    |         FastAPI Service Layer           |
-                    |  JWT Guard | Rate Limits | SSE Streams  |
-                    +--------------------+--------------------+
-                                         |
-                                         v
-                    +-----------------------------------------+
-                    |         LangGraph Assistant Graph       |
-                    |         (Deterministic Fast-Path)       |
-                    +----+-------------------------------+----+
-                         |                               |
-        (Regex Match)    v                               v    (Pass-Through)
-    +---------------------------------+        +---------------------------------+
-    |  Deterministic Engine Nodes     |        |     SafeChatLlamaCpp Engine     |
-    |  - Clinical Tier-0a/0b (<0.02ms)|        |    - Qwen3.5-4B GGUF (Q4_K_M)   |
-    |  - Explicit Swap / Candidate    |        |    - 6-Message Context Window   |
-    |  - Frequency Split Mutation     |        |    - Compact Telemetry Snapshot |
-    +----------------+----------------+        +----------------+----------------+
-                     |                                          |
-                     +-------------------+----------------------+
-                                         |
-                                         v
-                    +-----------------------------------------+
-                    |      DatabaseManager (Thread-Local)     |
-                    +--------------------+--------------------+
-                                         |
-               +-------------------------+-------------------------+
-               |                                                   |
-               v                                                   v
-    +----------------------+                            +----------------------+
-    |  Private User Ledger |                            | Shared Catalog DB    |
-    |  - Mode: WAL         |                            | - sqlite-vec Ext     |
-    |  - Schema v3         |                            | - Exercise Corpus    |
-    |  - Revoked Tokens    |                            | - Account Recovery   |
-    +----------------------+                            +----------------------+
+```mermaid
+flowchart LR
+    Flutter[Flutter app] --> API[FastAPI service]
+    API --> Assistant[Assistant and training services]
+    API --> Ledger[Player Training ledger]
+    API --> Catalog[Shared catalog]
 ```
 
 > For detailed sequence diagrams, state machines, and the service-layer request lifecycle, refer to [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -151,13 +114,13 @@ docker compose run --rm myos-api python scripts/seed_vectors.py
 docker compose up -d
 ```
 
-Open **`http://localhost:8501`**, register a Trainee ID, set a recovery email when prompted, and complete the onboarding intake. The production GGUF (`Qwen3.5-4B-Q4_K_M.gguf`) downloads automatically on first launch if not present in `./models/` — or stage it manually for air-gapped hosts (see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) §7).
+The FastAPI service is available at **`http://localhost:8000`** and its OpenAPI page at **`http://localhost:8000/docs`**. Connect the Flutter app to that API and complete Player onboarding there. The production GGUF (`Qwen3.5-4B-Q4_K_M.gguf`) downloads automatically when needed if it is not present in `./models/` — or stage it manually for air-gapped hosts (see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) §7).
 
 <details>
   <summary><b>Local Python Installation (Native, two processes)</b></summary>
   <br />
 
-  The engine runs as two processes: the FastAPI service (`svc/`) and the Streamlit client (`app.py`).
+  Run the FastAPI service directly:
 
   ```bash
   uv venv
@@ -168,12 +131,10 @@ Open **`http://localhost:8501`**, register a Trainee ID, set a recovery email wh
   uv run python scripts/intialize_db.py
   uv run python scripts/seed_vectors.py
 
-  # Terminal 1 — API (set JWT_SECRET first)
+  # Set JWT_SECRET first, then start the API
   export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
   uv run uvicorn svc.app:app --host 0.0.0.0 --port 8000 --workers 1
 
-  # Terminal 2 — UI
-  uv run streamlit run app.py
   ```
 </details>
 
@@ -199,7 +160,7 @@ Mayos ships a complete self-hosted identity layer — no cloud IdP, no external 
 * **JWT sessions (HS256)**: `sub` + `jti` + `tv` (session epoch) claims, 2-hour default expiry, per-token revocation on logout.
 * **Optional remember-me sessions**: with explicit consent, the browser stores a sign-in cookie; remembered tokens last 30 days (`JWT_REMEMBER_ME_HOURS`) so refreshes keep you logged in. Password changes and logout still revoke them instantly (ADR 010).
 * **Revoke-all password changes**: for enrolled accounts, password changes and resets advance the catalog registry session epoch, invalidating existing sessions (ADR 006/015). The operator CLI also supports bare local ledgers through their ledger token version.
-* **Recovery-email gate**: the legacy Streamlit client requires a recovery address before dashboard or onboarding access; the API exposes recovery-email endpoints without enforcing that client gate.
+* **Recovery email**: the Flutter app collects a recovery address, and the API exposes recovery-email endpoints without treating it as an access gate.
 * **Forgot / reset password**: single-use SHA-256-hashed tokens (30-min TTL, atomic consumption, weak passwords rejected before the token is burned), with identical responses for known and unknown emails.
 * **Anti-enumeration posture**: unknown users and wrong passwords are indistinguishable; recovery requests never reveal whether an address is linked.
 * **Strict rate limits**: 5/min login & register, 3/hour recovery, 10/min password operations, 30/min chat.

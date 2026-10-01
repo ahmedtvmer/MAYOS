@@ -85,7 +85,6 @@ LEGACY_IDENTIFIERS = {
     # trainee → player
     "register_trainee",
     "login_trainee",
-    "claim_trainee",
     "get_current_trainee",
     "simulate_trainee_session",
     "get_trainee_email",

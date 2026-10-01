@@ -1,12 +1,8 @@
-import io
 import json
-import re
 from typing import Any
 
 import pandas as pd
 
-from agent.ProgramState import GeneratedProgramSchema
-from core.effort import min_rir_from_rpe
 
 SESSION_CSV_COLUMNS = [
     "session_date",
@@ -24,88 +20,6 @@ SESSION_CSV_COLUMNS = [
     "logged_at",
     "session_id",
 ]
-
-PROGRAM_COLUMNS = [
-    "Day",
-    "Exercise",
-    "Warm-up Sets",
-    "Working Sets",
-    "Reps",
-    "Min RIR",
-    "Rest",
-    "W1 Load (kg)",
-    "W1 Reps",
-    "W2 Load (kg)",
-    "W2 Reps",
-    "W3 Load (kg)",
-    "W3 Reps",
-    "W4 Load (kg)",
-    "W4 Reps",
-]
-
-
-def format_rest(seconds: int) -> str:
-    if seconds < 60:
-        return f"{seconds}s"
-    return f"{seconds / 60:g} min"
-
-
-def sanitize_sheet_title(title: str) -> str:
-    r"""
-    Strips Excel-illegal characters (\ / ? * : [ ]) and trims to 31 chars.
-    """
-    clean_title = re.sub(r"[\\/*?:\[\]]", "-", title)
-    return clean_title.strip()[:31]
-
-
-def export_program_to_excel(program: GeneratedProgramSchema) -> bytes:
-    """
-    Exports a GeneratedProgramSchema into an in-memory Excel workbook (.xlsx)
-    with one sheet per training day: a warm-up block, followed by the movement
-    table (warm-up sets, working sets, reps, min RIR, rest) and 4-week load logging.
-    """
-    output = io.BytesIO()
-
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        for day in program.days:
-            rows: list[dict[str, Any]] = []
-            for warmup in day.warmup_exercises:
-                rows.append(
-                    {
-                        "Day": "WARM UPS",
-                        "Exercise": warmup.exercise_name,
-                        "Warm-up Sets": "-",
-                        "Working Sets": warmup.sets,
-                        "Reps": warmup.reps,
-                        "Min RIR": "",
-                        "Rest": format_rest(warmup.rest_seconds),
-                    }
-                )
-            for ex in day.exercises:
-                rows.append(
-                    {
-                        "Day": "",
-                        "Exercise": ex.exercise_name,
-                        "Warm-up Sets": ex.warmup_sets if ex.warmup_sets else "-",
-                        "Working Sets": ex.target_sets,
-                        "Reps": f"{ex.target_reps_min}~{ex.target_reps_max}",
-                        # Display boundary (#111): the target is stored as RPE and
-                        # exported as its equivalent *minimum* RIR — a whole
-                        # number rounded up, so a cap is never understated.
-                        "Min RIR": min_rir_from_rpe(ex.target_rpe) if ex.target_rpe is not None else "",
-                        "Rest": format_rest(ex.rest_seconds),
-                    }
-                )
-            if day.cardio:
-                rows.append({"Day": "", "Exercise": day.cardio})
-
-            df = pd.DataFrame(rows, columns=PROGRAM_COLUMNS).fillna("")
-            raw_title = f"Day {day.day_order} - {day.day_name}"
-            sheet_name = sanitize_sheet_title(raw_title)
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
-
-    return output.getvalue()
-
 
 def export_sessions_to_csv(rows: list[dict[str, Any]]) -> bytes:
     """Flattens set-level ledger rows into a UTF-8 CSV with a fixed column order."""

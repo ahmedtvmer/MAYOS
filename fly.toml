@@ -1,7 +1,6 @@
 # Fly.io closed-trial topology: one always-on API writer with a durable volume.
 #
-# This app deploys the FastAPI service only. Streamlit is legacy and is not a
-# product service (retirement: #46). There is intentionally NO [deploy]
+# This app deploys the FastAPI service only. There is intentionally NO [deploy]
 # release_command: the release Machine cannot mount the volume, so catalog
 # initialization and vector seeding run once inside the API Machine (see
 # docs/DEPLOYMENT.md). Daily backups (#41) run inside this same always-on
