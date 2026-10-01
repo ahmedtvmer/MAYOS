@@ -511,10 +511,11 @@ class CoachAssistantTurn {
   String toString() => 'CoachAssistantTurn($role)';
 }
 
-/// `GET /coach/alerts`: one catalog-side alert, of more than one kind (ADR 030/031/032).
+/// `GET /coach/alerts`: one catalog-side alert (ADR 030/031/032).
 ///
-/// `kind` includes `profile_change`; kind-specific fields are flattened beside
-/// the common fields.
+/// `kind` is `missed_expected_days`, `follow_up_due`, `deload_recommended`,
+/// `performance_regression`, or `profile_change`; kind-specific fields are
+/// flattened beside the common fields.
 class CoachAlert {
   const CoachAlert({
     required this.alertId,
@@ -570,8 +571,11 @@ class CoachAlert {
             ? (json['profile_changes'] as Map<String, dynamic>).map(
                 (String key, dynamic value) => MapEntry<String, Map<String, String>>(
                   key,
-                  (value as Map<String, dynamic>).map(
-                    (String part, dynamic text) => MapEntry<String, String>(part, '$text'),
+                    (value as Map<String, dynamic>).map(
+                    (String part, dynamic text) => MapEntry<String, String>(
+                      part,
+                      text == null || '$text'.isEmpty ? 'Not set' : '$text',
+                    ),
                   ),
                 ),
               )
