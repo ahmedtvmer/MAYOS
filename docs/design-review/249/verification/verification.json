@@ -102,8 +102,8 @@
     "defaultEnglishSharedWidgetBehaviorChecks": "focusedWidgetTests"
   },
   "acceptanceVerdicts": {
-    "4": "met with limits: 28 files match published names, dimensions and hashes, but the four chat-detail images duplicate their matching chat images and add no coverage; Home-detail images differ.",
-    "8": "met with limits: C build shows 27.5 keypad entry and RTL delete side; C build does not verify persistence or completed deletion.",
+    "4": "partial: 28 files match published names, dimensions and hashes, but the four chat-detail images duplicate their matching chat images and add no coverage; Home-detail images differ.",
+    "8": "partial: C build shows 27.5 keypad entry and RTL delete side; C build does not verify persistence or completed deletion.",
     "9": "met with limits: default-build role-to-family assertions and source mapping verify English roles; no English image was captured."
   }
 }
