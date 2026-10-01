@@ -303,6 +303,7 @@ def test_roster_listing_is_catalog_only_and_shape_unchanged(api, monkeypatch):
         "started_at",
         "status",
         "alerts_new",
+        "alerts_new_lapsing",
         "alerts_acknowledged",
         "current_missed_streak",
         "next_follow_up_on",
