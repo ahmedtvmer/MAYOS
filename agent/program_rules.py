@@ -16,6 +16,7 @@ from agent.program_blueprints import (
     resolve_split_type,
 )
 from agent.ProgramState import CustomDayPlan, DynamicSplitPlan
+from utils.equipment_access import COMMERCIAL_GYM, equipment_access_sql
 from utils.model_downloader import llm
 
 load_dotenv()
@@ -283,6 +284,7 @@ def _fetch_by_sql(
     limit: int,
     extra_exclude: str = "",
     name_rank: tuple[str, ...] = (),
+    filter_equipment_access: bool = True,
     *,
     ledger: Any,
 ) -> list[dict[str, Any]]:
@@ -293,8 +295,8 @@ def _fetch_by_sql(
     if extra_exclude:
         where.append(f"({extra_exclude})")
     where.append("LOWER(body_part) != 'cardio'")
-    if "gym" in equipment_access.lower() or "commercial" in equipment_access.lower():
-        where.append("LOWER(name) NOT LIKE '%push-up%' AND LOWER(name) NOT LIKE '%pushup%'")
+    if filter_equipment_access:
+        where.append(equipment_access_sql(equipment_access))
     if any(w in limitations.lower() for w in ["back", "lumbar", "spine"]):
         where.append("LOWER(name) NOT LIKE '%deadlift%' AND LOWER(name) NOT LIKE '%good morning%'")
 
@@ -326,7 +328,7 @@ def _fetch_by_sql(
 
 def fetch_slot_candidates(
     slot_key: str,
-    equipment_access: str = "commercial gym",
+    equipment_access: str = COMMERCIAL_GYM,
     limitations: str = "None",
     limit: int = 6,
     *,
@@ -353,7 +355,7 @@ def fetch_slot_candidates(
 
 def fetch_warmup_candidates(
     warmup_key: str,
-    equipment_access: str = "commercial gym",
+    equipment_access: str = COMMERCIAL_GYM,
     limitations: str = "None",
     limit: int = 4,
     *,
@@ -371,6 +373,7 @@ def fetch_warmup_candidates(
         limitations,
         limit,
         ledger=ledger,
+        filter_equipment_access=False,
     )
     for item in candidates:
         item["warmup_key"] = warmup_key
@@ -379,7 +382,7 @@ def fetch_warmup_candidates(
 
 def fetch_filtered_candidates(
     muscle_group: str | None = None,
-    equipment_access: str = "commercial gym",
+    equipment_access: str = COMMERCIAL_GYM,
     limitations: str = "None",
     limit: int = 4,
     body_part: str | None = None,
@@ -394,16 +397,12 @@ def fetch_filtered_candidates(
         target, f"(LOWER(target_muscle) LIKE '%{target}%' OR LOWER(body_part) LIKE '%{target}%')"
     )
 
-    bodyweight_clause = ""
-    if "gym" in equipment_access.lower() or "commercial" in equipment_access.lower():
-        bodyweight_clause = "AND LOWER(name) NOT LIKE '%push-up%' AND LOWER(name) NOT LIKE '%pushup%'"
-
     query = f"""
         SELECT id, name, body_part, target_muscle, equipment, instructions, image_path, gif_path
         FROM exercises
         WHERE ({where_clause})
           AND LOWER(body_part) != 'cardio'
-          {bodyweight_clause}
+          AND {equipment_access_sql(equipment_access)}
     """
     if any(w in limitations.lower() for w in ["back", "lumbar", "spine"]):
         query += " AND LOWER(name) NOT LIKE '%deadlift%' AND LOWER(name) NOT LIKE '%good morning%'"

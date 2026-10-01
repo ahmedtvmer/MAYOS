@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from database.database_manager import DatabaseManager
 from svc.app import create_app
 from svc.dependencies import get_db
+from utils.equipment_access import BODYWEIGHT_ONLY, COMMERCIAL_GYM, HOME_GYM
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
 
@@ -190,3 +191,83 @@ def test_catalog_search_requires_a_query_or_a_muscle(api):
         params={"query": "", "target_muscle": ""},
     )
     assert resp.status_code == 400, resp.text
+
+
+@pytest.mark.parametrize(
+    "access,expected",
+    [
+        (COMMERCIAL_GYM, {"machine-chest", "dumbbell-chest", "bp", "ib"}),
+        (HOME_GYM, {"dumbbell-chest", "band-chest", "pullup-chest", "weighted-chest", "bp", "ib"}),
+        (BODYWEIGHT_ONLY, {"pullup-chest"}),
+    ],
+)
+def test_logger_muscle_browse_suggests_only_equipment_access_options(api, access, expected):
+    client, db = api
+    username = f"browse-{access.lower().replace(' ', '-')}"
+    token = _register(client, username)["access_token"]
+    db.catalog_conn.executemany(
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) VALUES (?, ?, 'Chest', 'Chest', ?)",
+        [
+            ("machine-chest", "Machine Chest Press", "leverage machine"),
+            ("dumbbell-chest", "Dumbbell Chest Press", "dumbbell"),
+            ("band-chest", "Band Chest Press", "band"),
+            ("pullup-chest", "Pull-up", "body weight"),
+            ("weighted-chest", "Weighted Dip", "weighted"),
+        ],
+    )
+    db.catalog_conn.commit()
+    with db.open_ledger(username) as ledger:
+        ledger.upsert_player_profile({"equipment_access": access})
+
+    browse = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params={"target_muscle": "Chest"},
+    )
+    assert browse.status_code == 200, browse.text
+    assert {item["id"] for item in browse.json()["exercises"]} == expected
+
+    # A typed name is the player's explicit Exercise library search, so it can
+    # still find a bodyweight movement and use it as an Unplanned exercise.
+    explicit = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params={"query": "pull-up"},
+    )
+    assert explicit.status_code == 200, explicit.text
+    assert "pullup-chest" in {item["id"] for item in explicit.json()["exercises"]}
+
+    # The Commercial gym player can choose that explicit result and record it.
+    planned = [
+        {"exercise_id": exercise_id, "exercise_name": name, "target_reps_min": 8, "target_reps_max": 12}
+        for exercise_id, name in (
+            ("pullup-chest", "Pull-up"),
+            ("dumbbell-chest", "Dumbbell Chest Press"),
+            ("machine-chest", "Machine Chest Press"),
+        )
+    ]
+    with db.open_ledger(username) as ledger:
+        ledger.save_training_program({
+            "program_name": "Explicit choice",
+            "weekly_frequency": 1,
+            "split_type": "Custom",
+            "days": [{"day_name": "Day 1", "day_order": 1, "exercises": planned}],
+        })
+    logged = client.post(
+        "/workouts/sessions",
+        headers=_authed(token),
+        json={
+            "day_order": 1,
+            "readiness": 3,
+            "sets": [{
+                "exercise": {
+                    "exercise_id": "pullup-chest",
+                    "exercise_name": "Pull-up",
+                    "target_reps_min": 8,
+                    "target_reps_max": 12,
+                },
+                "sets": [{"weight_kg": 0, "reps": 5}],
+            }],
+        },
+    )
+    assert logged.status_code == 201, logged.text

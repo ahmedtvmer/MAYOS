@@ -9,6 +9,7 @@ from database.exercise_library.schema import (
     EFFECTIVE_EXERCISE_NAME_SQL,
     effective_exercise_name_sql,
 )
+from utils.equipment_access import equipment_access_sql
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class _NameSearch:
     muscle: str
     muscle_clause: str
     muscle_params: tuple[str, ...]
+    equipment_clause: str | None
     limit: int
 
 
@@ -115,8 +117,11 @@ def _token_name_rows(cursor, search: _NameSearch):
 
 def _find_name_rows(cursor, search: _NameSearch):
     if search.muscle and not search.query:
+        where = search.muscle_clause
+        if search.equipment_clause:
+            where += f" AND ({search.equipment_clause})"
         return _exercise_name_rows(
-            cursor, search.muscle_clause, list(search.muscle_params), search.limit
+            cursor, where, list(search.muscle_params), search.limit
         )
     if not search.normalized_query:
         return []
@@ -194,7 +199,11 @@ class ExerciseLookupMixin:
         }
 
     def find_exercises_by_name(
-        self, query: str, limit: int = 5, target_muscle: str | None = None
+        self,
+        query: str,
+        limit: int = 5,
+        target_muscle: str | None = None,
+        equipment_access: str | None = None,
     ) -> list[dict[str, Any]]:
         """Ranked Exercise library matches across source names, display names, and aliases.
 
@@ -208,7 +217,9 @@ class ExerciseLookupMixin:
         ``target_muscle`` (#162) narrows every tier to one target in the Exercise
         library (case-insensitive ``target_muscle`` column). With a muscle and no name
         query it lists that muscle's exercises, so the logger's Replace search
-        can open pre-filtered before the player types.
+        can open pre-filtered before the player types. ``equipment_access``
+        filters only that unnamed muscle browse; explicit name queries remain
+        unfiltered so players can still find movements outside their usual setup.
         """
         clean = query.strip().lower()
         muscle = (target_muscle or "").strip().lower()
@@ -220,6 +231,11 @@ class ExerciseLookupMixin:
             muscle=muscle,
             muscle_clause="LOWER(e.target_muscle) = ?" if muscle else "1 = 1",
             muscle_params=(muscle,) if muscle else (),
+            equipment_clause=(
+                equipment_access_sql(equipment_access)
+                if equipment_access and not clean
+                else None
+            ),
             limit=limit,
         )
         with self._catalog_lock:
