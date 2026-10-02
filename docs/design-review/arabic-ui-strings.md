@@ -653,8 +653,8 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | Coaching | التدريب مع مدرب |
 | Coaching assignment | علاقة التدريب |
 | Your coach and check-ins | مدربك وسجلات التواصل |
-| Become a coach | كن مدربًا |
-| Enter your MAYOS coach code to unlock Coach mode | أدخل رمز مدرب MAYOS لتفعيل وضع المدرب |
+| Enable coaching | تفعيل وضع المدرب |
+| Redeem an owner-issued coach code | أدخل رمز المدرب الصادر من المالك |
 | Training | التدريب |
 | Assistant | المساعد |
 | Chat about your training | تحدث عن تدريبك |

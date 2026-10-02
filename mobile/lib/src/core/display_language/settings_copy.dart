@@ -29,10 +29,11 @@ class SettingsCopy {
       isArabic ? 'علاقة التدريب' : 'Coaching assignment';
   String get coachingSubtitle =>
       isArabic ? 'مدربك وسجلات التواصل' : 'Your coach and check-ins';
-  String get becomeCoach => isArabic ? 'كن مدربًا' : 'Become a coach';
-  String get becomeCoachSubtitle => isArabic
-      ? 'أدخل رمز مدرب MAYOS لتفعيل وضع المدرب'
-      : 'Enter your MAYOS coach code to unlock Coach mode';
+  String get enableCoaching =>
+      isArabic ? 'تفعيل وضع المدرب' : 'Enable coaching';
+  String get enableCoachingSubtitle => isArabic
+      ? 'أدخل رمز المدرب الصادر من المالك'
+      : 'Redeem an owner-issued coach code';
   String get training => isArabic ? 'التدريب' : 'Training';
   String get assistant => isArabic ? 'المساعد' : 'Assistant';
   String get assistantSubtitle =>

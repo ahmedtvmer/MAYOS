@@ -136,8 +136,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   Divider(height: 1, color: c.border),
                   MayosSettingsTile(
                     icon: Icons.workspace_premium_outlined,
-                    title: ui.becomeCoach,
-                    subtitle: ui.becomeCoachSubtitle,
+                    title: ui.enableCoaching,
+                    subtitle: ui.enableCoachingSubtitle,
                     onTap: () => context.push(coachInvitePath),
                   ),
                 ],
