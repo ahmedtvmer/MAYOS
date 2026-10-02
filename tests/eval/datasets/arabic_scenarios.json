@@ -1,0 +1,459 @@
+{
+  "version": 1,
+  "cases": {
+    "ar-inj-01": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-inj-02": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-inj-03": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-inj-04": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-inj-05": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-inj-06": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-inj-07": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-inj-08": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-inj-09": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-sore-01": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-sore-02": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-sore-03": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-sore-04": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-prog-01": {
+      "expected_program_effect": {
+        "kind": "substitution",
+        "source": "barbell bench press",
+        "target": "dumbbell bench press",
+        "day": "Full A",
+        "seed_weekly_frequency": 4
+      }
+    },
+    "ar-prog-02": {
+      "expected_program_effect": {
+        "kind": "substitution",
+        "source": "barbell squat",
+        "target": "leg press",
+        "day": "Full A",
+        "seed_weekly_frequency": 4
+      }
+    },
+    "ar-prog-03": {
+      "expected_program_effect": {
+        "kind": "rebuild_frequency",
+        "target_weekly_frequency": 3,
+        "seed_weekly_frequency": 4
+      }
+    },
+    "ar-prog-04": {
+      "expected_program_effect": {
+        "kind": "rebuild_split",
+        "target_weekly_frequency": 4,
+        "target_split_type": "Upper/Lower",
+        "seed_weekly_frequency": 3,
+        "seed_split_type": "Full Body"
+      },
+      "seed_program_overrides": {
+        "weekly_frequency": 3
+      }
+    },
+    "ar-prog-05": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-prog-06": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-prog-07": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-log-01": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-log-02": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-log-03": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      },
+      "plumbing_reply": "RIR هو عدد التكرارات التي كان يمكنك إكمالها قبل الفشل.",
+      "quality_expectations": {
+        "required_reply_terms": [
+          "RIR"
+        ]
+      }
+    },
+    "ar-log-04": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-log-05": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-log-06": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-hist-01": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      },
+      "history": {
+        "exercise": "Squat",
+        "seed_workouts": [
+          {
+            "exercise": "barbell squat",
+            "weight_kg": 100,
+            "reps": 5
+          }
+        ],
+        "expectation": {
+          "kind": "fact",
+          "exercise": "Squat",
+          "aliases": [
+            "squat",
+            "سكوات"
+          ],
+          "metric": "weight_kg",
+          "value": 100,
+          "unit": "kg"
+        }
+      },
+      "plumbing_reply": "في آخر حصة، سجلت في Squat وزن 100 kg لعدد 5 تكرارات."
+    },
+    "ar-hist-02": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      },
+      "history": {
+        "exercise": "Deadlift",
+        "seed_workouts": [],
+        "expectation": {
+          "kind": "missing_data",
+          "exercise": "Deadlift",
+          "aliases": [
+            "deadlift"
+          ],
+          "no_data_markers": [
+            "لا توجد",
+            "لا أملك بيانات",
+            "لا تتوفر",
+            "لا توجد لدي بيانات",
+            "no recorded data",
+            "no data"
+          ]
+        }
+      },
+      "plumbing_reply": "لا توجد لدي بيانات مسجلة عن Deadlift في سجل تدريبك."
+    },
+    "ar-hist-03": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      },
+      "history": {
+        "exercise": "Squat",
+        "seed_workouts": [
+          {
+            "exercise": "barbell squat",
+            "weight_kg": 100,
+            "reps": 5
+          },
+          {
+            "exercise": "barbell squat",
+            "weight_kg": 105,
+            "reps": 5
+          }
+        ],
+        "expectation": {
+          "kind": "comparison",
+          "exercise": "Squat",
+          "aliases": [
+            "squat",
+            "سكوات"
+          ],
+          "facts": [
+            {
+              "weight_kg": 105,
+              "reps": 5
+            },
+            {
+              "weight_kg": 100,
+              "reps": 5
+            }
+          ],
+          "comparison_markers": [
+            "مقارنة",
+            "الحصتين",
+            "من",
+            "إلى",
+            "compare",
+            "from",
+            "to"
+          ],
+    "direction": "decrease",
+    "limitation_markers": [
+      "لا أستطيع المقارنة",
+      "لا يمكنني المقارنة",
+      "لا تتوفر بيانات كافية",
+      "cannot compare",
+      "comparison is unavailable"
+    ]
+        }
+      },
+      "plumbing_reply": "في الحصتين المسجلتين، Squat انخفض من 105 kg × 5 تكرارات إلى 100 kg × 5 تكرارات."
+    },
+    "ar-hist-04": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      },
+      "history": {
+        "exercise": "Bench Press",
+        "seed_workouts": [
+          {
+            "exercise": "barbell bench press",
+            "weight_kg": 80,
+            "reps": 5
+          }
+        ],
+        "expectation": {
+          "kind": "unsupported_monthly_scope",
+          "exercise": "Bench Press",
+          "aliases": [
+            "bench press"
+          ],
+          "scope_markers": [
+            "شهري",
+            "الشهر",
+            "monthly",
+            "month"
+          ],
+          "limitation_markers": [
+            "لا تتوفر",
+            "لا أستطيع",
+            "غير متاح",
+            "cannot",
+            "unavailable"
+          ]
+        }
+      },
+      "plumbing_reply": "لا تتوفر لدي بيانات شهرية كافية عن Bench press، لذلك لا أستطيع تأكيد تحسن خلال الشهر الماضي."
+    },
+    "ar-hist-05": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      },
+      "history": {
+        "exercise": "session_summary",
+        "seed_workouts": [
+          {
+            "exercise": "barbell bench press",
+            "weight_kg": 80,
+            "reps": 5
+          },
+          {
+            "exercise": "barbell squat",
+            "weight_kg": 100,
+            "reps": 5
+          }
+        ],
+        "expectation": {
+          "kind": "fact",
+          "exercise": "Bench Press",
+          "aliases": [
+            "bench press"
+          ],
+          "metric": "weight_kg",
+          "value": 80,
+          "unit": "kg"
+        }
+      },
+      "plumbing_reply": "في آخر حصة، سجلت في Bench Press وزن 80 kg لعدد 5 تكرارات."
+    },
+    "ar-gen-01": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "ar-gen-02": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "fr-inj-01": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "fr-inj-02": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "fr-inj-03": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "fr-inj-04": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "fr-inj-05": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "fr-benign-01": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "fr-benign-02": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "fr-benign-03": {
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    }
+  },
+  "smoke_scenarios": {
+    "synthetic-program-mutation": {
+      "text": "change routine to 4 days a week",
+      "expected_intent": "program_mutation",
+      "expected_program_effect": {
+        "kind": "rebuild_frequency",
+        "target_weekly_frequency": 4
+      },
+      "seed_program_overrides": {
+        "weekly_frequency": 3
+      }
+    },
+    "synthetic-history-last-workout": {
+      "text": "How did I do on bench press in my last workout?",
+      "expected_intent": "exercise_history",
+      "expected_program_effect": {
+        "kind": "no_change"
+      },
+      "history": {
+        "exercise": "Bench Press",
+        "seed_workouts": [
+          {
+            "exercise": "barbell bench press",
+            "weight_kg": 80,
+            "reps": 5
+          }
+        ],
+        "expectation": {
+          "kind": "fact",
+          "exercise": "Bench Press",
+          "aliases": [
+            "bench press"
+          ],
+          "metric": "weight_kg",
+          "value": 80,
+          "unit": "kg"
+        }
+      },
+      "plumbing_reply": "Your last logged Bench Press: 80 kg × 5 reps."
+    },
+    "synthetic-advice": {
+      "text": "Should I change my routine if progress stalls?",
+      "expected_intent": "coaching_qa",
+      "expected_program_effect": {
+        "kind": "no_change"
+      },
+      "plumbing_reply": "يمكننا مناقشة الخيارات، ولن أغير البرنامج دون طلب واضح."
+    },
+    "english-numeric-gym": {
+      "text": "bench 80kg 5 reps RIR 2",
+      "expected_intent": "coaching_qa",
+      "expected_program_effect": {
+        "kind": "no_change"
+      }
+    },
+    "synthetic-program-mutation-coach-authority": {
+      "case_id": "synthetic-program-mutation",
+      "expected_program_effect": {
+        "kind": "no_change"
+      },
+      "coach_authority": true,
+      "inherits": "synthetic-program-mutation",
+      "seed_program_overrides": {
+        "weekly_frequency": 3
+      }
+    }
+  },
+  "default_seed_program": {
+    "weekly_frequency": 4,
+    "split_type": "Full Body",
+    "exercise_names": [
+      "barbell bench press",
+      "barbell squat",
+      "barbell row"
+    ]
+  }
+}

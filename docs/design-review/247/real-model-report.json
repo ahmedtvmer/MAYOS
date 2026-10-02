@@ -1,0 +1,26 @@
+{
+  "suite": "arabic_reviewed_41",
+  "status": "runner_error",
+  "mode": "real_configured_model",
+  "real_model_run": false,
+  "generated_at": "2026-10-02T02:47:10.153910+00:00",
+  "model": {
+    "provider": "local",
+    "model": "local:unsloth/Qwen3.5-4B-GGUF",
+    "artifact": "/home/user/MAYOS/models/Qwen3.5-4B-Q4_K_M.gguf",
+    "revision": null
+  },
+  "prompt_hash_sha256": "e0b0ea99f69bd06bf0ef835b4f2cf09b8f44021c472f4847fb927aea57babcda",
+  "context_identity_sha256": "8e0d39254175787049928d3bd7539768df34a43d1c4e497e6ea37da39c7cf072",
+  "dataset": "tests/eval/datasets/arabic_reviewed_cases.json",
+  "total_expected": 41,
+  "total_recorded": 0,
+  "accepted_false_positive_ids": [],
+  "missed_blocking_ids": [],
+  "runs": [
+    {
+      "case_status": "runner_error",
+      "error": "Configured local player model file is missing."
+    }
+  ]
+}
