@@ -1,21 +1,77 @@
 import 'models.dart';
 import 'checkpoint_ordinal.dart' as ordinal;
 
-/// Projects the cached status into the immutable lines shown at Finish.
-List<String> projectTrainingStatusSummary({
+/// One typed fact projected for the workout summary.
+sealed class TrainingStatusSummaryLine {
+  const TrainingStatusSummaryLine();
+
+  /// The existing English presentation, retained byte-for-byte for the
+  /// English app and for callers that need the legacy line text.
+  String get englishText;
+}
+
+final class WeeklyStreakSummaryLine extends TrainingStatusSummaryLine {
+  const WeeklyStreakSummaryLine(this.weeks);
+
+  final int weeks;
+
+  @override
+  String get englishText =>
+      'Weekly streak: $weeks ${weeks == 1 ? 'week' : 'weeks'}';
+}
+
+final class WeeklyCompletionSummaryLine extends TrainingStatusSummaryLine {
+  const WeeklyCompletionSummaryLine({
+    required this.completed,
+    required this.target,
+  });
+
+  final int completed;
+  final int target;
+
+  @override
+  String get englishText => 'This week: $completed of $target done';
+}
+
+final class CheckpointProgressSummaryLine extends TrainingStatusSummaryLine {
+  const CheckpointProgressSummaryLine({
+    required this.remaining,
+    required this.checkpoint,
+  });
+
+  final int remaining;
+  final int checkpoint;
+
+  @override
+  String get englishText =>
+      '$remaining ${remaining == 1 ? 'workout' : 'workouts'} to your ${checkpointOrdinal(checkpoint)}';
+}
+
+final class CheckpointReachedSummaryLine extends TrainingStatusSummaryLine {
+  const CheckpointReachedSummaryLine(this.number);
+
+  final int number;
+
+  @override
+  String get englishText => 'Your ${checkpointOrdinal(number)} workout!';
+}
+
+/// Projects cached status and unsynced drafts into typed summary facts.
+List<TrainingStatusSummaryLine> projectTrainingStatusSummary({
   required TrainingStatus? status,
   required List<WorkoutDraft> drafts,
   required DateTime now,
 }) {
   if (status == null) {
-    return const <String>[];
+    return const <TrainingStatusSummaryLine>[];
   }
 
   final List<WorkoutDraft> unsynced = drafts
       .where((WorkoutDraft draft) => draft.isUnsynced)
       .toList(growable: false);
   final int mayosWorkouts = status.mayosWorkouts + unsynced.length + 1;
-  return List<String>.unmodifiable(<String>[
+  return List<
+      TrainingStatusSummaryLine>.unmodifiable(<TrainingStatusSummaryLine>[
     ..._weeklyLines(status, unsynced, now),
     _checkpointLine(mayosWorkouts),
   ]);
@@ -32,21 +88,20 @@ int? projectedCheckpointNumber({
   return _isCheckpoint(count) ? count : null;
 }
 
-List<String> _weeklyLines(
+List<TrainingStatusSummaryLine> _weeklyLines(
   TrainingStatus status,
   List<WorkoutDraft> unsynced,
   DateTime now,
 ) {
   if (_weekStartIso(now) != status.weekStart) {
-    return const <String>[];
+    return const <TrainingStatusSummaryLine>[];
   }
   final int done =
       status.weekDone + _pendingThisWeek(unsynced, status.weekStart) + 1;
   final int streak = _projectedStreak(status, done);
-  final String weekWord = streak == 1 ? 'week' : 'weeks';
-  return <String>[
-    'Weekly streak: $streak $weekWord',
-    'This week: $done of ${status.weekTarget} done',
+  return <TrainingStatusSummaryLine>[
+    WeeklyStreakSummaryLine(streak),
+    WeeklyCompletionSummaryLine(completed: done, target: status.weekTarget),
   ];
 }
 
@@ -65,14 +120,15 @@ int _projectedStreak(TrainingStatus status, int projectedDone) {
   return status.weeklyStreak + 1;
 }
 
-String _checkpointLine(int mayosWorkouts) {
+TrainingStatusSummaryLine _checkpointLine(int mayosWorkouts) {
   if (_isCheckpoint(mayosWorkouts)) {
-    return 'Your ${checkpointOrdinal(mayosWorkouts)} workout!';
+    return CheckpointReachedSummaryLine(mayosWorkouts);
   }
   final int checkpoint = _nextCheckpoint(mayosWorkouts);
-  final int remaining = checkpoint - mayosWorkouts;
-  final String workoutWord = remaining == 1 ? 'workout' : 'workouts';
-  return '$remaining $workoutWord to your ${checkpointOrdinal(checkpoint)}';
+  return CheckpointProgressSummaryLine(
+    remaining: checkpoint - mayosWorkouts,
+    checkpoint: checkpoint,
+  );
 }
 
 DateTime _saturdayWeekStart(DateTime day) {

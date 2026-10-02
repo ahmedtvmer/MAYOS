@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -57,6 +58,7 @@ class LoggerBottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final WorkoutCopy copy = workoutCopyOf(context);
     return Container(
       decoration: BoxDecoration(
         color: c.surface,
@@ -79,14 +81,29 @@ class LoggerBottomBar extends StatelessWidget {
                   // The counts, in the label role; `Flexible` so an enormous
                   // text scale ellipsizes instead of overflowing the row.
                   Flexible(
-                    child: Text(
-                      '$setsTicked/$setsTotal sets',
-                      key: const ValueKey<String>('logger.bottomBar.progress'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: MayosTypography.label
-                          .copyWith(color: c.textSecondary),
-                    ),
+                    child: copy.isArabic
+                        ? Directionality(
+                            textDirection: TextDirection.ltr,
+                            child: Text(
+                              copy.setsProgress(setsTicked, setsTotal),
+                              key: const ValueKey<String>(
+                                  'logger.bottomBar.progress'),
+                              textAlign: TextAlign.end,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: MayosTypography.label
+                                  .copyWith(color: c.textSecondary),
+                            ),
+                          )
+                        : Text(
+                            copy.setsProgress(setsTicked, setsTotal),
+                            key: const ValueKey<String>(
+                                'logger.bottomBar.progress'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: MayosTypography.label
+                                .copyWith(color: c.textSecondary),
+                          ),
                   ),
                   const SizedBox(width: MayosSpacing.sm),
                   Expanded(
@@ -97,10 +114,10 @@ class LoggerBottomBar extends StatelessWidget {
             ),
             if (restControls != null) restControls!,
             Padding(
-              padding: const EdgeInsets.fromLTRB(MayosSpacing.lg,
+              padding: const EdgeInsetsDirectional.fromSTEB(MayosSpacing.lg,
                   MayosSpacing.xxs, MayosSpacing.lg, MayosSpacing.sm),
               child: MayosButton(
-                label: 'Finish workout',
+                label: copy.finishWorkout,
                 icon: Icons.check,
                 onPressed: onFinish,
               ),

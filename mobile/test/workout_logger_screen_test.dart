@@ -12,6 +12,7 @@ import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
+import 'package:mayos_mobile/src/core/display_language/workout_copy.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/performed_date_window.dart';
 import 'package:mayos_mobile/src/core/personal_records.dart';
@@ -309,13 +310,19 @@ Future<void> _pumpApp(WidgetTester tester,
 
 /// The app-open Resume prompt, then the logger — the real entry into the
 /// table logger (#123).
-Future<void> _resumeFromPrompt(WidgetTester tester) async {
-  await _pumpUntilFound(tester, find.text('Home'));
-  await tester.pumpAndSettle();
-  expect(find.text('Unfinished workout'), findsOneWidget);
-  await tester.tap(find.text('Resume'));
+Future<void> _resumeFromPrompt(
+  WidgetTester tester, {
+  String languageCode = 'en',
+}) async {
+  final bool arabic = languageCode == 'ar';
+  final String homeLabel = arabic ? 'الرئيسية' : 'Home';
+  final String promptTitle = arabic ? 'حصة غير مكتملة' : 'Unfinished workout';
+  final String resumeLabel = arabic ? 'استئناف' : 'Resume';
+  await _pumpUntilFound(tester, find.text(homeLabel));
+  await _pumpUntilFound(tester, find.text(promptTitle));
+  expect(find.text(promptTitle), findsOneWidget);
+  await tester.tap(find.text(resumeLabel));
   await _pumpUntilFound(tester, find.byType(WorkoutLoggerScreen));
-  await tester.pumpAndSettle();
 }
 
 /// The signed-in app with a stored Active workout, opened through the
@@ -332,10 +339,13 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
   ProgramDay day = _day,
   FakeMayosApi? fakeApi,
   bool webDirectCommit = false,
+  String? languageCode,
 }) async {
   _usePhoneView(tester);
 
   final FakeMayosApi fake = fakeApi ?? _signedInFake(baselines: baselines);
+  final String effectiveLanguage = languageCode ?? fake.displayLanguage;
+  if (languageCode != null) fake.displayLanguage = languageCode;
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
   // Seeding talks to the (fake) API on real timers, so it runs outside the
@@ -362,7 +372,7 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
       webDirectCommit: webDirectCommit,
     ),
   );
-  await _resumeFromPrompt(tester);
+  await _resumeFromPrompt(tester, languageCode: effectiveLanguage);
   return store;
 }
 
@@ -1669,6 +1679,66 @@ void main() {
 
       await tester.pumpWidget(const SizedBox.shrink());
     }
+  });
+
+  testWidgets('Arabic workout summary keeps server names and Western digits',
+      (WidgetTester tester) async {
+    await _openLogger(
+      tester,
+      languageCode: 'ar',
+      clock: () => DateTime(2026, 9, 28, 8, 20),
+    );
+
+    await _typeCell(tester, 0, 0, 'kg', '105');
+    await tester.ensureVisible(_tick(0, 0));
+    for (int i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.tap(_tick(0, 0));
+    await _pumpUntilFound(tester, _badge(0, 0, PrRecordKind.weight));
+    await _pumpUntilFound(tester, _badge(0, 0, PrRecordKind.e1rm));
+
+    final Finder finish = find.widgetWithText(FilledButton, 'إنهاء الحصة');
+    await tester.ensureVisible(finish);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(finish);
+    // Let the unticked-sets sheet finish opening before tapping its action.
+    await tester.pump(const Duration(milliseconds: 500));
+    final Finder discardUnticked =
+        find.widgetWithText(FilledButton, 'حذف غير المحدد وإنهاء الحصة');
+    expect(discardUnticked, findsOneWidget);
+    await tester.ensureVisible(discardUnticked);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(discardUnticked, warnIfMissed: true);
+    await tester.pump(const Duration(milliseconds: 100));
+    await _pumpUntilFound(tester, find.text('ملخص الحصة'));
+
+    const WorkoutCopy copy = WorkoutCopy('ar');
+    final Finder recordsHeading = find.text(copy.personalRecords);
+    await _pumpUntilFound(tester, recordsHeading);
+    expect(recordsHeading, findsOneWidget);
+    await tester.ensureVisible(recordsHeading);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('التمارين المكتملة'), findsOneWidget);
+    expect(find.text('مجموعات التدريب المحددة'), findsOneWidget);
+    expect(find.text('إجمالي الوزن المرفوع'), findsOneWidget);
+    expect(find.text('المدة'), findsOneWidget);
+    expect(find.text('Bench Press · رقم قياسي 105 kg'), findsOneWidget);
+    final MayosSettingsTile dateTile =
+        tester.widget<MayosSettingsTile>(find.byType(MayosSettingsTile).first);
+    expect(dateTile.subtitle, matches(RegExp(r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$')));
+    expect(dateTile.subtitleTextDirection, TextDirection.ltr);
+    expect(
+      Directionality.of(tester.element(find.text('ملخص الحصة'))),
+      TextDirection.rtl,
+    );
+    final String renderedText = find
+        .byType(Text)
+        .evaluate()
+        .map((Element element) => (element.widget as Text).data ?? '')
+        .join('\n');
+    expect(renderedText, isNot(matches(RegExp(r'[٠-٩۰-۹]'))));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('the summary omits the celebration when nothing earned a record',

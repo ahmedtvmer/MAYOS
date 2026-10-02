@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show immutable;
 
 import 'active_workout.dart';
 import 'baselines.dart';
+import 'training_status_projection.dart';
 
 /// The two exercise-wide records a player is told about (ADR 042, #124):
 /// heaviest working-set weight and best working-set e1RM.
@@ -252,9 +253,8 @@ WorkoutSummaryStats workoutSummaryStats(ActiveWorkout workout) {
     exercisesDone: exercisesDone,
     workingSets: workingSets,
     totalVolumeKg: round2(volume),
-    cardioMinutes: workout.cardio?.isCommitted == true
-        ? workout.cardio!.minutes
-        : null,
+    cardioMinutes:
+        workout.cardio?.isCommitted == true ? workout.cardio!.minutes : null,
   );
 }
 
@@ -267,7 +267,7 @@ class WorkoutSummary {
     required this.records,
     required this.stats,
     required this.duration,
-    this.trainingLines = const <String>[],
+    this.trainingLines = const <TrainingStatusSummaryLine>[],
   });
 
   /// [now] is the caller's clock, read where Finish runs: the duration is a
@@ -275,20 +275,22 @@ class WorkoutSummary {
   factory WorkoutSummary.of(
     ActiveWorkout workout, {
     required DateTime now,
-    List<String> trainingLines = const <String>[],
+    List<TrainingStatusSummaryLine> trainingLines =
+        const <TrainingStatusSummaryLine>[],
   }) =>
       WorkoutSummary(
         records: workoutRecords(workout),
         stats: workoutSummaryStats(workout),
         duration: workoutElapsed(workout, now: now),
-        trainingLines: List<String>.unmodifiable(trainingLines),
+        trainingLines:
+            List<TrainingStatusSummaryLine>.unmodifiable(trainingLines),
       );
 
   final List<WorkoutRecord> records;
   final WorkoutSummaryStats stats;
 
   /// Weekly streak and Checkpoint lines captured with this summary at Finish.
-  final List<String> trainingLines;
+  final List<TrainingStatusSummaryLine> trainingLines;
 
   /// The total Workout time, captured when Finish opens the summary (#159).
   /// It is part of the snapshot: once taken it never changes, whatever the

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -67,14 +68,18 @@ class LoggerCoachRequestReasonPrompt extends StatelessWidget {
               maxLength: 500,
               textCapitalization: TextCapitalization.sentences,
               decoration: InputDecoration(
-                labelText: 'Reason for your coach',
-                errorText: reasonRequired ? 'Add a reason to continue.' : null,
+                labelText: workoutCopyOf(context).reasonForCoach,
+                errorText: reasonRequired
+                    ? workoutCopyOf(context).addReasonToContinue
+                    : null,
               ),
             ),
             const SizedBox(height: MayosSpacing.xs),
             MayosButton(
               key: const ValueKey<String>('logger.refreshedCoachSubmit'),
-              label: submitting ? 'Sending…' : 'Send request',
+              label: submitting
+                  ? workoutCopyOf(context).sending
+                  : workoutCopyOf(context).sendRequest,
               onPressed: submitting ? null : onSubmit,
             ),
           ],
@@ -97,18 +102,17 @@ class _LoggerReplaceConfirmationDialogState
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension colors = MayosTheme.of(context);
+    final WorkoutCopy copy = workoutCopyOf(context);
     final int ticked = widget.tickedSetCount;
     final String optionLabel = widget.coachControlled
-        ? 'Ask my coach to make this permanent'
-        : 'Keep this swap in my program';
+        ? copy.askCoachToMakePermanent
+        : copy.keepSwapInProgram;
     final bool asksCoach = widget.coachControlled && _keepInProgram;
     return AlertDialog(
       key: const ValueKey<String>('logger.replaceConfirmation'),
       title: Text(ticked == 0
-          ? 'Replace exercise?'
-          : ticked == 1
-              ? 'Replace and discard 1 logged set?'
-              : 'Replace and discard $ticked logged sets?'),
+          ? copy.replaceQuestion
+          : copy.discardSetsQuestion(ticked)),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 360),
         child: SingleChildScrollView(
@@ -120,7 +124,7 @@ class _LoggerReplaceConfirmationDialogState
                 Padding(
                   padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
                   child: Text(
-                    "The sets you've logged on this exercise will be cleared.",
+                    copy.loggedSetsCleared,
                     style: MayosTypography.bodySecondary
                         .copyWith(color: colors.textPrimary),
                   ),
@@ -151,9 +155,9 @@ class _LoggerReplaceConfirmationDialogState
                   maxLength: 500,
                   textCapitalization: TextCapitalization.sentences,
                   decoration: InputDecoration(
-                    labelText: 'Reason for your coach',
+                    labelText: copy.reasonForCoach,
                     errorText:
-                        _reasonRequired ? 'Add a reason to continue.' : null,
+                        _reasonRequired ? copy.addReasonToContinue : null,
                   ),
                   onChanged: (_) {
                     if (_reasonRequired && _reason.text.trim().isNotEmpty) {
@@ -168,7 +172,7 @@ class _LoggerReplaceConfirmationDialogState
       ),
       actions: <Widget>[
         MayosButton(
-          label: ticked == 0 ? 'Cancel' : 'Keep logging',
+          label: ticked == 0 ? copy.cancel : copy.keepLogging,
           variant: MayosButtonVariant.secondary,
           expand: false,
           onPressed: () => Navigator.of(context).pop(
@@ -176,7 +180,7 @@ class _LoggerReplaceConfirmationDialogState
           ),
         ),
         MayosButton(
-          label: 'Replace',
+          label: copy.replace,
           destructive: ticked > 0,
           expand: false,
           onPressed: () {

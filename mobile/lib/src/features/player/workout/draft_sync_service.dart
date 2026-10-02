@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
 import '../../../core/models.dart';
 import '../../../core/workout_storage.dart';
 
@@ -258,18 +259,36 @@ class DraftSyncService extends ChangeNotifier {
       String clientSessionId, String performedDate) async {
     final String? accountId = _accountId;
     if (accountId == null) {
-      throw const ApiException('You are not signed in.');
+      throw const ApiException(
+        'You are not signed in.',
+        failureMessage: AppFailureMessage(
+          AppFailureId.draftNotSignedIn,
+          'You are not signed in.',
+        ),
+      );
     }
     final List<WorkoutDraft> current = await _store.read(accountId);
     final int index = current
         .indexWhere((WorkoutDraft d) => d.clientSessionId == clientSessionId);
     if (index < 0) {
-      throw const ApiException('That workout is no longer available.');
+      throw const ApiException(
+        'That workout is no longer available.',
+        failureMessage: AppFailureMessage(
+          AppFailureId.draftUnavailable,
+          'That workout is no longer available.',
+        ),
+      );
     }
     final WorkoutDraft draft = current[index];
     final String? sessionId = draft.serverSessionId;
     if (!draft.isSynced || sessionId == null) {
-      throw const ApiException('Only a synced workout can be corrected.');
+      throw const ApiException(
+        'Only a synced workout can be corrected.',
+        failureMessage: AppFailureMessage(
+          AppFailureId.draftMustBeSynced,
+          'Only a synced workout can be corrected.',
+        ),
+      );
     }
     final Map<String, dynamic> result =
         await _api.correctSessionPerformedDate(sessionId, performedDate);
@@ -464,6 +483,11 @@ class DraftSyncService extends ChangeNotifier {
         status: DraftStatus.needsReconciliation,
         lastError:
             'The service returned an unexpected status (${result.statusCode}).',
+        lastErrorFailure: AppFailureMessage(
+          AppFailureId.unexpectedSyncStatus,
+          'The service returned an unexpected status (${result.statusCode}).',
+          value: result.statusCode,
+        ),
         updatedAt: _iso(),
       );
     } on ApiException catch (error) {
@@ -471,10 +495,14 @@ class DraftSyncService extends ChangeNotifier {
         return draft.copyWith(
           status: DraftStatus.needsReconciliation,
           lastError: error.message,
+          lastErrorFailure: error.failureMessage is AppFailureMessage
+              ? error.failureMessage! as AppFailureMessage
+              : null,
+          clearLastErrorFailure: error.failureMessage is! AppFailureMessage,
           updatedAt: _iso(),
         );
       }
-      return _backedOff(draft, error.message);
+      return _backedOff(draft, error);
     }
   }
 
@@ -486,8 +514,8 @@ class DraftSyncService extends ChangeNotifier {
     Map<String, dynamic> response,
   ) {
     return draft.copyWith(
-      performedDate: (response['session_date'] as String?) ??
-          draft.performedDate,
+      performedDate:
+          (response['session_date'] as String?) ?? draft.performedDate,
       status: DraftStatus.synced,
       serverResponse: response,
       lastError: null,
@@ -498,12 +526,16 @@ class DraftSyncService extends ChangeNotifier {
     );
   }
 
-  WorkoutDraft _backedOff(WorkoutDraft draft, String error) {
+  WorkoutDraft _backedOff(WorkoutDraft draft, ApiException error) {
     final int attempt = draft.attempt + 1;
     final DateTime nextAttemptAt = _now().add(_backoffFor(attempt));
     return draft.copyWith(
       status: DraftStatus.pending,
-      lastError: error,
+      lastError: error.message,
+      lastErrorFailure: error.failureMessage is AppFailureMessage
+          ? error.failureMessage! as AppFailureMessage
+          : null,
+      clearLastErrorFailure: error.failureMessage is! AppFailureMessage,
       attempt: attempt,
       nextAttemptAt: nextAttemptAt.toIso8601String(),
       updatedAt: _iso(),

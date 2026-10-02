@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config.dart';
+import '../../core/display_language/feature_copy_context.dart';
+import '../../core/display_language/settings_copy.dart';
 import '../../core/privacy_policy.dart';
 
 /// The media credit, shown from Settings → About → Credits.
@@ -14,17 +16,15 @@ import '../../core/privacy_policy.dart';
 /// (`docs/design-review/53/MEDIA-PROVENANCE.md`).
 Future<void> showMediaCredits(BuildContext context, WidgetRef ref) {
   final UrlLauncherFn openUrl = ref.read(privacyUrlLauncherProvider);
+  final SettingsCopy copy = settingsCopyOf(context);
   return showDialog<void>(
     context: context,
     builder: (BuildContext context) => AlertDialog(
-      title: const Text('Credits'),
+      title: Text(copy.credits),
       content: Text(
-        'Exercise media (the catalog pictures and GIFs) is credited as '
-        'required by its terms:\n\n'
-        '$gymVisualCredit\n\n'
-        'The media is shown at its native size, never larger than 180 × 180, '
-        'with this credit, while MAYOS\'s own licence from Gym visual is '
-        'pending.',
+        copy.creditsBody(gymVisualCredit),
+        textDirection: copy.isArabic ? TextDirection.ltr : null,
+        textAlign: copy.isArabic ? TextAlign.end : null,
       ),
       actions: <Widget>[
         TextButton(
@@ -32,16 +32,18 @@ Future<void> showMediaCredits(BuildContext context, WidgetRef ref) {
             final bool opened = await openUrl(gymVisualUrl);
             if (!opened && context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content: Text('Could not open gymvisual.com.')),
+                SnackBar(content: Text(copy.couldNotOpenCredits)),
               );
             }
           },
-          child: const Text('gymvisual.com'),
+          child: const Text(
+            'gymvisual.com',
+            textDirection: TextDirection.ltr,
+          ),
         ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
+          child: Text(copy.close),
         ),
       ],
     ),

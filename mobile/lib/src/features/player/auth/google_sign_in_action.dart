@@ -1,6 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/app_failure.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'auth_controller.dart';
@@ -24,8 +27,8 @@ mixin GoogleSignInAction<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   /// Routes first sign-in to its nudge or picker, a refusal to an inline
   /// notice, and ignores a dismissal or a session the router already handles.
   Future<void> continueWithGoogle() async {
-    await _runGoogleFlow(() =>
-        ref.read(authControllerProvider.notifier).continueWithGoogle());
+    await _runGoogleFlow(
+        () => ref.read(authControllerProvider.notifier).continueWithGoogle());
   }
 
   /// Handles Google's `authenticationEvents` when the web button completes.
@@ -52,8 +55,12 @@ mixin GoogleSignInAction<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       switch (result) {
         case GoogleSignUpPrompt():
           context.go(carryingLocation(context, googleSignupPath));
-        case GoogleSignInRefused(:final message):
-          setState(() => _googleError = message);
+        case GoogleSignInRefused(:final message, :final failureMessage):
+          setState(() => _googleError = MayosCopy(
+                ref.read(displayLanguageProvider),
+              ).failureMessage(
+                failureMessage ?? ServerFailureMessage(message),
+              ));
         case GoogleSignInDone():
         case GoogleSignInDismissed():
           break;

@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
+import '../../../core/display_language/profile_copy.dart';
 import '../../../core/device_timezone.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
@@ -35,6 +37,10 @@ import '../onboarding/onboarding_widgets.dart'
 const int maxPauseDays = 14;
 const String _profileContractError =
     'The service needs an update before this profile can be edited. Please try again later.';
+const AppFailureMessage _profileContractFailure = AppFailureMessage(
+  AppFailureId.profileUpdateRequired,
+  _profileContractError,
+);
 
 const Map<String, String> _profileFieldTypes = <String, String>{
   'current_goal': 'text',
@@ -66,7 +72,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   String _equipmentAccess = equipmentAccessCommercialGym;
   final TextEditingController _currentGoalController = TextEditingController();
   final TextEditingController _injuriesOrLimitationsController =
-      TextEditingController(text: 'None');
+      TextEditingController();
   final TextEditingController _weightController =
       TextEditingController(text: '75');
   PlayerProfile? _savedProfile;
@@ -106,6 +112,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   String? _pauseNotice;
   bool _pauseNoticeIsError = false;
 
+  ProfileCopy get _copy => ProfileCopy(ref.read(displayLanguageProvider));
+
+  String _mutationFailure(ApiException error) =>
+      MayosCopy(ref.read(displayLanguageProvider))
+          .failureMessage(mutationFailureMessage(error));
+
   static DateTime _today() {
     final DateTime now = DateTime.now();
     return DateTime(now.year, now.month, now.day);
@@ -119,6 +131,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _injuriesOrLimitationsController.text = _copy.none;
     _load();
   }
 
@@ -143,12 +156,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           intake.fields.where((IntakeField f) => f.name == entry.key).length !=
               1 ||
           (field.type == 'enum' && !_hasValidChoices(field))) {
-        throw const ApiException(_profileContractError);
+        throw const ApiException(
+          _profileContractError,
+          failureMessage: _profileContractFailure,
+        );
       }
     }
     final IntakeField frequency = intake.field('weekly_frequency')!;
     if (!_hasValidFrequencyRange(frequency, savedFrequency)) {
-      throw const ApiException(_profileContractError);
+      throw const ApiException(
+        _profileContractError,
+        failureMessage: _profileContractFailure,
+      );
     }
   }
 
@@ -227,7 +246,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _loadError = error.message;
+        _loadError = MayosCopy(ref.read(displayLanguageProvider))
+            .failureMessage(apiFailureMessage(error));
       });
     }
   }
@@ -272,17 +292,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final bool? confirmed = await showDialog<bool>(
         context: context,
         builder: (BuildContext context) => AlertDialog(
-          title: const Text('Confirm program rebuild'),
-          content: const Text('This rebuilds your program'),
+          title: Text(_copy.confirmProgramRebuild),
+          content: Text(_copy.rebuildsProgram),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
+              child: Text(_copy.cancel),
             ),
             FilledButton(
               key: const Key('profile_rebuild_confirm_button'),
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Continue'),
+              child: Text(_copy.continueAction),
             ),
           ],
         ),
@@ -324,32 +344,39 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _notice = result.programBlocked
             ? result.programMessage
             : result.programRebuilt
-                ? 'Program rebuilt.'
-                : 'Profile saved.';
+                ? _copy.programRebuilt
+                : _copy.profileSaved;
       });
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _notice = mutationFailureMessage(error);
+        _notice = _mutationFailure(error);
         _noticeIsError = true;
       });
     }
   }
 
   String _validationMessage(IntakeField? field) {
-    if (field == null) return 'Check your profile details and try again.';
+    if (field == null) return _copy.checkProfileAndRetry;
     if (field.name == 'weight_kg' &&
         field.minimum != null &&
         field.maximum != null) {
-      return 'Weight must be between ${field.minimum!.toStringAsFixed(0)} and '
-          '${field.maximum!.toStringAsFixed(0)} kg.';
+      return _copy.weightRange(
+        field.minimum!.toStringAsFixed(0),
+        field.maximum!.toStringAsFixed(0),
+      );
     }
     if (field.type == 'enum') {
-      return 'Choose an allowed ${optionLabel('', field.name)}.';
+      return _copy.chooseAllowed(
+        _copy.profileFieldName(field.name, optionLabel('', field.name)),
+      );
     }
     return field.hint ??
-        'Check your ${optionLabel('', field.name).toLowerCase()} and try again.';
+        _copy.checkFieldAndRetry(
+          _copy.profileFieldName(
+              field.name, optionLabel('', field.name).toLowerCase()),
+        );
   }
 
   Future<void> _refreshProgramCache() async {
@@ -371,7 +398,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final String timezone = _timezone.text.trim();
     if (timezone.isEmpty || (!timezone.contains('/') && timezone != 'UTC')) {
       setState(() {
-        _scheduleNotice = 'Enter an IANA timezone, e.g. Europe/London or UTC.';
+        _scheduleNotice = _copy.timezoneExample;
         _scheduleNoticeIsError = true;
       });
       return;
@@ -392,14 +419,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _savingSchedule = false;
-        _scheduleNotice = 'Training schedule saved.';
+        _scheduleNotice = _copy.scheduleSaved;
         _schedule = refreshed;
       });
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
         _savingSchedule = false;
-        _scheduleNotice = mutationFailureMessage(error);
+        _scheduleNotice = _mutationFailure(error);
         _scheduleNoticeIsError = true;
       });
     }
@@ -434,11 +461,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         DateTime(_pauseEnd.year, _pauseEnd.month, _pauseEnd.day);
     String? validation;
     if (start.isBefore(today)) {
-      validation = 'A pause must start today or later.';
+      validation = _copy.pauseMustStartToday;
     } else if (end.isBefore(start)) {
-      validation = 'A pause must end on or after it starts.';
+      validation = _copy.pauseMustEndAfterStart;
     } else if (end.difference(start).inDays + 1 > maxPauseDays) {
-      validation = 'A pause can last at most $maxPauseDays days.';
+      validation = _copy.pauseMaximumDays(maxPauseDays);
     }
     if (validation != null) {
       setState(() {
@@ -462,15 +489,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       setState(() {
         _schedulingPause = false;
         _pauseNotice = result.noticeSent
-            ? 'Pause scheduled; your coach was notified.'
-            : 'Pause scheduled.';
+            ? _copy.pauseScheduledCoachNotified
+            : _copy.pauseScheduled;
         _pauses = <ScheduledPause>[result.pause, ..._pauses];
       });
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
         _schedulingPause = false;
-        _pauseNotice = mutationFailureMessage(error);
+        _pauseNotice = _mutationFailure(error);
         _pauseNoticeIsError = true;
       });
     }
@@ -487,7 +514,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
-        _methodNotice = mutationFailureMessage(error);
+        _methodNotice = _mutationFailure(error);
         _methodNoticeIsError = true;
       });
     }
@@ -526,12 +553,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       switch (result) {
         case GoogleConnectDone():
-          _setMethodNotice('Google account connected.', error: false);
+          _setMethodNotice(_copy.googleConnected, error: false);
           await _refreshSignInMethods();
         case GoogleConnectDismissed():
           break;
-        case GoogleConnectRefused(:final message):
-          _setMethodNotice(message, error: true);
+        case GoogleConnectRefused(:final message, :final failureMessage):
+          _setMethodNotice(
+            MayosCopy(ref.read(displayLanguageProvider)).failureMessage(
+                failureMessage ?? ServerFailureMessage(message)),
+            error: true,
+          );
       }
     } finally {
       if (mounted) {
@@ -547,21 +578,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('Disconnect Google?'),
-        content: const Text(
-          'You will no longer be able to sign in with Google. Your password '
-          'stays as the other way to sign in.',
-        ),
+        title: Text(_copy.disconnectGoogleQuestion),
+        content: Text(_copy.disconnectGoogleLead),
         actions: <Widget>[
           MayosButton(
-            label: 'Cancel',
+            label: _copy.cancel,
             variant: MayosButtonVariant.tertiary,
             expand: false,
             onPressed: () => Navigator.of(dialogContext).pop(false),
           ),
           MayosButton(
             key: const Key('disconnect_google_confirm_button'),
-            label: 'Disconnect',
+            label: _copy.disconnect,
             destructive: true,
             expand: false,
             onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -578,11 +606,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     try {
       await ref.read(authControllerProvider.notifier).disconnectGoogle();
       if (!mounted) return;
-      _setMethodNotice('Google disconnected.', error: false);
+      _setMethodNotice(_copy.googleDisconnected, error: false);
       await _refreshSignInMethods();
     } on ApiException catch (error) {
       if (!mounted) return;
-      _setMethodNotice(mutationFailureMessage(error), error: true);
+      _setMethodNotice(_mutationFailure(error), error: true);
     } finally {
       if (mounted) {
         setState(() => _methodBusy = false);
@@ -593,16 +621,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   /// The first password for a Google-only account (`POST /auth/set-password`),
   /// worded by the app's shared password rule (#114/#116).
   Future<void> _promptSetPassword() => _promptPasswordDialog(
-        title: 'Set a password',
-        intro: 'Choose a password so you can sign in without Google. '
-            'Once it is set you can disconnect Google.',
+        title: _copy.setPassword,
+        intro: _copy.choosePasswordForGoogle,
         askCurrent: false,
-        confirmLabel: 'Set password',
+        confirmLabel: _copy.setPasswordAction,
         currentKey: null,
         passwordKey: const Key('set_password_field'),
         confirmFieldKey: const Key('set_password_confirm_field'),
         submitKey: const Key('set_password_confirm_button'),
-        successNotice: 'Password set. You can now disconnect Google.',
+        successNotice: _copy.passwordSetDisconnectGoogle,
         onSubmit: (String current, String password) => ref
             .read(authControllerProvider.notifier)
             .setInitialPassword(password),
@@ -613,10 +640,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   /// explanation on the sign-in screen (ADR 006): there is no [successNotice]
   /// and nothing to re-read.
   Future<void> _promptChangePassword() => _promptPasswordDialog(
-        title: 'Change password',
-        intro: 'Changing your password signs you out of every device.',
+        title: _copy.changePassword,
+        intro: _copy.changePasswordSignsOut,
         askCurrent: true,
-        confirmLabel: 'Change password',
+        confirmLabel: _copy.changePasswordAction,
         currentKey: const Key('change_password_current_field'),
         passwordKey: const Key('change_password_new_field'),
         confirmFieldKey: const Key('change_password_confirm_field'),
@@ -670,25 +697,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   AuthPasswordField(
                     controller: _currentPassword,
                     fieldKey: currentKey,
-                    label: 'Current password',
+                    label: _copy.currentPassword,
                   ),
                   const SizedBox(height: MayosSpacing.sm),
                 ],
                 AuthPasswordField(
                   controller: _newPassword,
                   fieldKey: passwordKey,
-                  label: 'New password',
+                  label: _copy.newPassword,
                 ),
                 const SizedBox(height: MayosSpacing.sm),
                 AuthPasswordField(
                   controller: _newPasswordConfirm,
                   fieldKey: confirmFieldKey,
-                  label: 'Confirm new password',
+                  label: _copy.confirmNewPassword,
                 ),
                 if (error != null) ...<Widget>[
                   const SizedBox(height: MayosSpacing.sm),
                   Text(
                     error!,
+                    textDirection: _copy.isArabic ? TextDirection.ltr : null,
+                    textAlign: _copy.isArabic ? TextAlign.end : null,
                     style: MayosTypography.bodySecondary
                         .copyWith(color: MayosTheme.of(context).danger),
                   ),
@@ -698,7 +727,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
           actions: <Widget>[
             MayosButton(
-              label: 'Cancel',
+              label: _copy.cancel,
               variant: MayosButtonVariant.tertiary,
               expand: false,
               onPressed: busy ? null : () => Navigator.of(dialogContext).pop(),
@@ -713,7 +742,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   : () async {
                       if (askCurrent && _currentPassword.text.isEmpty) {
                         setDialogState(
-                            () => error = 'Enter your current password.');
+                            () => error = _copy.enterCurrentPassword);
                         return;
                       }
                       final NewPasswordValidation? invalid =
@@ -740,7 +769,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       } on ApiException catch (failure) {
                         setDialogState(() {
                           busy = false;
-                          error = mutationFailureMessage(failure);
+                          error = _mutationFailure(failure);
                         });
                       }
                     },
@@ -778,32 +807,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       builder: (BuildContext dialogContext) => StatefulBuilder(
         builder: (BuildContext context, StateSetter setDialogState) =>
             AlertDialog(
-          title: const Text('Delete account?'),
+          title: Text(_copy.confirmDeleteAccount),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Text(
-                  'This permanently deletes your account and its active data: '
-                  'training history, program, coaching assignment, recovery '
-                  'email, and any unsynced drafts on this device. '
-                  'This cannot be undone.',
-                ),
+                Text(_copy.deleteAccountDetails),
                 const SizedBox(height: MayosSpacing.md),
                 if (googleOnly)
-                  const Text(
-                    'There is no password on this account, so confirm by '
-                    'signing in with Google: you will be asked to prove the '
-                    'Google account connected to this MAYOS account.',
-                  )
+                  Text(_copy.googleOnlyDeleteProof)
                 else ...<Widget>[
                   MayosTextField(
                     fieldKey: const Key('delete_account_password_field'),
                     controller: _deletePassword,
                     obscureText: true,
                     enabled: !busy,
-                    label: 'Password',
+                    label: _copy.password,
                   ),
                 ],
                 if (webGoogle) ...<Widget>[
@@ -833,6 +853,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   const SizedBox(height: MayosSpacing.sm),
                   Text(
                     error!,
+                    textDirection: _copy.isArabic ? TextDirection.ltr : null,
+                    textAlign: _copy.isArabic ? TextAlign.end : null,
                     style: MayosTypography.bodySecondary
                         .copyWith(color: MayosTheme.of(context).danger),
                   ),
@@ -842,7 +864,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
           actions: <Widget>[
             MayosButton(
-              label: 'Cancel',
+              label: _copy.cancel,
               variant: MayosButtonVariant.tertiary,
               expand: false,
               onPressed: busy ? null : () => Navigator.of(dialogContext).pop(),
@@ -850,7 +872,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             if (!webGoogle)
               MayosButton(
                 key: const Key('delete_account_confirm_button'),
-                label: 'Delete account',
+                label: _copy.deleteAccount,
                 destructive: true,
                 expand: false,
                 loading: busy,
@@ -887,7 +909,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         } on ApiException catch (failure) {
                           setDialogState(() {
                             busy = false;
-                            error = mutationFailureMessage(failure);
+                            error = _mutationFailure(failure);
                           });
                         }
                       },
@@ -907,12 +929,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (isBusy()) return;
     updateDialog(true, null);
     final DeleteWithGoogleResult result = await delete();
-    if (result case DeleteWithGoogleRefused(:final message)) {
-      updateDialog(false, message);
+    if (result
+        case DeleteWithGoogleRefused(
+          :final message,
+          :final failureMessage,
+        )) {
+      updateDialog(
+        false,
+        MayosCopy(ref.read(displayLanguageProvider))
+            .failureMessage(failureMessage ?? ServerFailureMessage(message)),
+      );
       return;
     }
     if (result is DeleteWithGoogleDismissed) {
-      updateDialog(false, kGoogleDeleteCancelledMessage);
+      updateDialog(
+        false,
+        MayosCopy(ref.read(displayLanguageProvider)).failureMessage(
+          const AppFailureMessage(
+            AppFailureId.googleDeleteCancelled,
+            kGoogleDeleteCancelledMessage,
+          ),
+        ),
+      );
       return;
     }
     if (dialogContext.mounted) {
@@ -942,13 +980,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 color: c.accent,
               ),
             ),
-            title: 'Password',
-            status: hasPassword ? 'Password set' : 'No password yet',
+            title: _copy.passwordTitle,
+            status: hasPassword ? _copy.passwordSet : _copy.noPasswordYet,
             action: MayosButton(
               key: Key(hasPassword
                   ? 'change_password_button'
                   : 'set_password_button'),
-              label: hasPassword ? 'Change password' : 'Set password',
+              label:
+                  hasPassword ? _copy.changePassword : _copy.setPasswordAction,
               variant: MayosButtonVariant.secondary,
               onPressed: _methodBusy
                   ? null
@@ -963,13 +1002,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           _SignInMethodRow(
             leading: const MayosIconChip(
                 child: GoogleGLogo(size: MayosIconSizes.medium)),
-            title: 'Google',
-            status: googleLinked ? 'Connected' : 'Not connected',
-            hint: googleLinked && !hasPassword ? 'Set a password first' : null,
+            title: _copy.google,
+            status: googleLinked ? _copy.connected : _copy.notConnected,
+            hint: googleLinked && !hasPassword ? _copy.setPasswordFirst : null,
             action: googleLinked
                 ? MayosButton(
                     key: const Key('disconnect_google_button'),
-                    label: 'Disconnect Google',
+                    label: _copy.disconnectGoogle,
                     variant: MayosButtonVariant.secondary,
                     onPressed: _methodBusy || !hasPassword
                         ? null
@@ -985,7 +1024,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           )
                         : MayosButton(
                             key: const Key('connect_google_button'),
-                            label: 'Connect Google',
+                            label: _copy.connectGoogle,
                             variant: MayosButtonVariant.secondary,
                             loading: _methodBusy,
                             onPressed: _methodBusy ? null : _connectGoogle,
@@ -998,6 +1037,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ProfileCopy copy = ProfileCopy(ref.watch(displayLanguageProvider));
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -1009,10 +1049,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Text(_loadError!, textAlign: TextAlign.center),
+              Text(
+                _loadError!,
+                textDirection: copy.isArabic ? TextDirection.ltr : null,
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: MayosSpacing.md),
               MayosButton(
-                label: 'Retry',
+                label: copy.retry,
                 variant: MayosButtonVariant.secondary,
                 expand: false,
                 onPressed: _load,
@@ -1025,9 +1069,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return ListView(
       padding: MayosSpacing.screen,
       children: <Widget>[
-        const MayosSectionHeader(
-          title: 'Sign-in methods',
-          padding: EdgeInsets.only(bottom: MayosSpacing.xxs),
+        MayosSectionHeader(
+          title: copy.signInMethods,
+          padding: const EdgeInsets.only(bottom: MayosSpacing.xxs),
         ),
         const SizedBox(height: MayosSpacing.xxs),
         if (_account != null) _buildSignInMethods(c),
@@ -1035,22 +1079,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           const SizedBox(height: MayosSpacing.sm),
           Text(
             _methodNotice!,
+            textDirection: copy.isArabic ? TextDirection.ltr : null,
+            textAlign: copy.isArabic ? TextAlign.end : null,
             style: _methodNoticeIsError
                 ? MayosTypography.bodySecondary.copyWith(color: c.danger)
                 : MayosTypography.body,
           ),
         ],
         const SizedBox(height: MayosSpacing.lg),
-        const MayosSectionHeader(
-          title: 'Training profile',
-          subtitle:
-              'Update the profile facts used to personalize your training.',
+        MayosSectionHeader(
+          title: copy.trainingProfile,
+          subtitle: copy.profileLead,
         ),
         const SizedBox(height: MayosSpacing.md),
         MayosTextField(
           fieldKey: const Key('current_goal_field'),
           controller: _currentGoalController,
-          label: 'Current goal',
+          label: copy.currentGoal,
           enabled: !_saving,
           textCapitalization: TextCapitalization.sentences,
         ),
@@ -1058,24 +1103,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         MayosTextField(
           fieldKey: const Key('injuries_or_limitations_field'),
           controller: _injuriesOrLimitationsController,
-          label: 'Injuries or limitations',
+          label: copy.injuriesLimitations,
           enabled: !_saving,
           textCapitalization: TextCapitalization.sentences,
         ),
         const SizedBox(height: MayosSpacing.sm),
-        MayosTextField(
-          fieldKey: const Key('weight_kg_field'),
-          controller: _weightController,
-          label: 'Weight (kg)',
-          enabled: !_saving,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: MayosTextField(
+            fieldKey: const Key('weight_kg_field'),
+            controller: _weightController,
+            label: copy.weightKg,
+            enabled: !_saving,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
         ),
         const SizedBox(height: MayosSpacing.sm),
         DropdownButtonFormField<int>(
           initialValue: _weeklyFrequency,
           isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'Training days per week',
+          decoration: InputDecoration(
+            labelText: copy.trainingDaysPerWeek,
             border: OutlineInputBorder(),
           ),
           items: <DropdownMenuItem<int>>[
@@ -1083,7 +1131,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     _intake!.field('weekly_frequency')!.minimum!.toInt();
                 days <= _intake!.field('weekly_frequency')!.maximum!.toInt();
                 days++)
-              DropdownMenuItem<int>(value: days, child: Text('$days')),
+              DropdownMenuItem<int>(
+                value: days,
+                child: Text('$days', textDirection: TextDirection.ltr),
+              ),
           ],
           onChanged: _saving
               ? null
@@ -1094,8 +1145,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         DropdownButtonFormField<String>(
           initialValue: _repPreference,
           isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'Rep preference',
+          decoration: InputDecoration(
+            labelText: copy.repPreference,
             border: OutlineInputBorder(),
           ),
           items: <DropdownMenuItem<String>>[
@@ -1103,7 +1154,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 in _intake!.field('rep_preference')!.allowedValues)
               DropdownMenuItem<String>(
                   value: preference,
-                  child: Text(optionLabel('rep_preference', preference),
+                  child: Text(copy.repPreferenceValue(preference),
                       overflow: TextOverflow.ellipsis)),
           ],
           onChanged: _saving
@@ -1116,14 +1167,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           key: const Key('equipment_access_dropdown'),
           initialValue: _equipmentAccess,
           isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'Equipment access',
+          decoration: InputDecoration(
+            labelText: copy.equipmentAccess,
             border: OutlineInputBorder(),
           ),
           items: <DropdownMenuItem<String>>[
             for (final String access
                 in _intake!.field('equipment_access')!.allowedValues)
-              DropdownMenuItem<String>(value: access, child: Text(access)),
+              DropdownMenuItem<String>(
+                  value: access, child: Text(copy.equipmentValue(access))),
           ],
           onChanged: _saving
               ? null
@@ -1135,6 +1187,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           const SizedBox(height: MayosSpacing.sm),
           Text(
             _notice!,
+            textDirection: copy.isArabic ? TextDirection.ltr : null,
+            textAlign: copy.isArabic ? TextAlign.end : null,
             style: _noticeIsError
                 ? MayosTypography.bodySecondary.copyWith(color: c.danger)
                 : MayosTypography.body,
@@ -1142,17 +1196,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ],
         const SizedBox(height: MayosSpacing.lg),
         MayosButton(
-          label: 'Save profile',
+          label: copy.saveProfile,
           loading: _saving,
           onPressed: _saving ? null : _save,
         ),
         const SizedBox(height: MayosSpacing.xxl),
         const Divider(),
         const SizedBox(height: MayosSpacing.sm),
-        const MayosSectionHeader(
-          title: 'Training schedule',
-          subtitle:
-              'Expected weekdays and timezone, separate from your program.',
+        MayosSectionHeader(
+          title: copy.trainingSchedule,
+          subtitle: copy.scheduleLead,
         ),
         const SizedBox(height: MayosSpacing.md),
         Wrap(
@@ -1162,7 +1215,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             for (int day = 1; day <= 7; day++)
               FilterChip(
                 key: Key('weekday_chip_$day'),
-                label: Text(weekdayLabels[day - 1]),
+                label: Text(copy.weekday(day)),
                 selected: _weekdays.contains(day),
                 onSelected: _savingSchedule
                     ? null
@@ -1177,16 +1230,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ],
         ),
         const SizedBox(height: MayosSpacing.sm),
-        MayosTextField(
-          fieldKey: const Key('timezone_field'),
-          controller: _timezone,
-          enabled: !_savingSchedule,
-          label: 'Timezone',
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: MayosTextField(
+            fieldKey: const Key('timezone_field'),
+            controller: _timezone,
+            enabled: !_savingSchedule,
+            label: copy.timezone,
+          ),
         ),
         if (_scheduleNotice != null) ...<Widget>[
           const SizedBox(height: MayosSpacing.sm),
           Text(
             _scheduleNotice!,
+            textDirection: copy.isArabic ? TextDirection.ltr : null,
+            textAlign: copy.isArabic ? TextAlign.end : null,
             style: _scheduleNoticeIsError
                 ? MayosTypography.bodySecondary.copyWith(color: c.danger)
                 : MayosTypography.body,
@@ -1195,32 +1253,43 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         const SizedBox(height: MayosSpacing.sm),
         MayosButton(
           key: const Key('save_schedule_button'),
-          label: 'Save schedule',
+          label: copy.saveSchedule,
           loading: _savingSchedule,
           onPressed: _savingSchedule ? null : _saveSchedule,
         ),
         const SizedBox(height: MayosSpacing.xl),
-        const MayosSectionHeader(title: 'Training pause'),
+        MayosSectionHeader(title: copy.trainingPause),
         Row(
           children: <Widget>[
             Expanded(
-              child: MayosButton(
-                key: const Key('pause_start_button'),
-                label: 'Start: ${_formatDate(_pauseStart)}',
-                variant: MayosButtonVariant.secondary,
-                onPressed:
-                    _schedulingPause ? null : () => _pickPauseDate(start: true),
+              child: Directionality(
+                textDirection: copy.isArabic
+                    ? TextDirection.ltr
+                    : Directionality.of(context),
+                child: MayosButton(
+                  key: const Key('pause_start_button'),
+                  label: copy.pauseStart(_formatDate(_pauseStart)),
+                  variant: MayosButtonVariant.secondary,
+                  onPressed: _schedulingPause
+                      ? null
+                      : () => _pickPauseDate(start: true),
+                ),
               ),
             ),
             const SizedBox(width: MayosSpacing.xs),
             Expanded(
-              child: MayosButton(
-                key: const Key('pause_end_button'),
-                label: 'End: ${_formatDate(_pauseEnd)}',
-                variant: MayosButtonVariant.secondary,
-                onPressed: _schedulingPause
-                    ? null
-                    : () => _pickPauseDate(start: false),
+              child: Directionality(
+                textDirection: copy.isArabic
+                    ? TextDirection.ltr
+                    : Directionality.of(context),
+                child: MayosButton(
+                  key: const Key('pause_end_button'),
+                  label: copy.pauseEnd(_formatDate(_pauseEnd)),
+                  variant: MayosButtonVariant.secondary,
+                  onPressed: _schedulingPause
+                      ? null
+                      : () => _pickPauseDate(start: false),
+                ),
               ),
             ),
           ],
@@ -1229,6 +1298,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           const SizedBox(height: MayosSpacing.sm),
           Text(
             _pauseNotice!,
+            textDirection: copy.isArabic ? TextDirection.ltr : null,
+            textAlign: copy.isArabic ? TextAlign.end : null,
             style: _pauseNoticeIsError
                 ? MayosTypography.bodySecondary.copyWith(color: c.danger)
                 : MayosTypography.body,
@@ -1237,34 +1308,34 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         const SizedBox(height: MayosSpacing.sm),
         MayosButton(
           key: const Key('schedule_pause_button'),
-          label: 'Schedule pause',
+          label: copy.schedulePause,
           loading: _schedulingPause,
           onPressed: _schedulingPause ? null : _schedulePause,
         ),
         const SizedBox(height: MayosSpacing.sm),
         if (_pauses.isEmpty)
-          Text('No scheduled pauses.',
+          Text(copy.noScheduledPauses,
               style: MayosTypography.bodySecondary
                   .copyWith(color: c.textSecondary))
         else
           for (final ScheduledPause pause in _pauses)
             Text(
-              'Pause: ${pause.startsOn} → ${pause.endsOn}',
+              copy.pauseRange(pause.startsOn, pause.endsOn),
+              textDirection: copy.isArabic ? TextDirection.ltr : null,
+              textAlign: copy.isArabic ? TextAlign.end : null,
               style: MayosTypography.body.copyWith(color: c.textPrimary),
             ),
         const SizedBox(height: MayosSpacing.xl),
         const Divider(),
         const SizedBox(height: MayosSpacing.sm),
-        const MayosSectionHeader(
-          title: 'Danger zone',
-          subtitle: 'Deleting your account permanently removes it and its '
-              'active data, including unsynced drafts on this device. It '
-              'cannot be undone.',
+        MayosSectionHeader(
+          title: copy.dangerZone,
+          subtitle: copy.dangerZoneLead,
         ),
         const SizedBox(height: MayosSpacing.sm),
         MayosButton(
           key: const Key('delete_account_button'),
-          label: 'Delete account',
+          label: copy.deleteAccount,
           icon: Icons.delete_forever_outlined,
           variant: MayosButtonVariant.secondary,
           destructive: true,

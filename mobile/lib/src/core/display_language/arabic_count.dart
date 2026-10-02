@@ -14,6 +14,13 @@ enum ArabicCountNoun {
     dualOblique: 'مجموعتين',
     many: 'مجموعة',
   ),
+  trainingSet(
+    zeroAndFew: 'مجموعات تدريب',
+    one: 'مجموعة تدريب واحدة',
+    dualNominative: 'مجموعتا تدريب',
+    dualOblique: 'مجموعتي تدريب',
+    many: 'مجموعة تدريب',
+  ),
   warmupSet(
     zeroAndFew: 'مجموعات إحماء',
     one: 'مجموعة إحماء واحدة',
@@ -27,6 +34,13 @@ enum ArabicCountNoun {
     dualNominative: 'حصتان',
     dualOblique: 'حصتين',
     many: 'حصة',
+  ),
+  trainingSession(
+    zeroAndFew: 'حصص تدريبية',
+    one: 'حصة تدريبية واحدة',
+    dualNominative: 'حصتان تدريبيتان',
+    dualOblique: 'حصتين تدريبيتين',
+    many: 'حصة تدريبية',
   ),
   workoutDraft(
     zeroAndFew: 'مسودات تدريبية',

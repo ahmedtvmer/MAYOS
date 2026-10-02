@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
 import '../../core/connectivity_message.dart';
+import '../../core/display_language/catalog.dart';
+import '../../core/display_language/controller.dart';
+import '../../core/display_language/settings_copy.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
@@ -23,44 +26,18 @@ enum _PersonalizationStatus {
 }
 
 class _AssistantStylePreset {
-  const _AssistantStylePreset({
-    required this.key,
-    required this.label,
-    required this.description,
-  });
+  const _AssistantStylePreset(this.key);
 
   final String key;
-  final String label;
-  final String description;
 }
 
 const List<_AssistantStylePreset> _assistantStylePresets =
     <_AssistantStylePreset>[
-  _AssistantStylePreset(
-    key: defaultAssistantStyle,
-    label: 'Direct & pragmatic',
-    description: 'Clear and practical.',
-  ),
-  _AssistantStylePreset(
-    key: 'encouraging',
-    label: 'Encouraging',
-    description: 'Recognizes effort.',
-  ),
-  _AssistantStylePreset(
-    key: 'scientific',
-    label: 'Scientific',
-    description: 'Evidence and reasoning.',
-  ),
-  _AssistantStylePreset(
-    key: 'tough_love',
-    label: 'Tough-love',
-    description: 'Firm, respectful.',
-  ),
-  _AssistantStylePreset(
-    key: 'concise',
-    label: 'Concise',
-    description: 'Brief, focused replies.',
-  ),
+  _AssistantStylePreset(defaultAssistantStyle),
+  _AssistantStylePreset('encouraging'),
+  _AssistantStylePreset('scientific'),
+  _AssistantStylePreset('tough_love'),
+  _AssistantStylePreset('concise'),
 ];
 
 class PersonalizationScreen extends ConsumerStatefulWidget {
@@ -73,6 +50,8 @@ class PersonalizationScreen extends ConsumerStatefulWidget {
 
 class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
   final TextEditingController _instructions = TextEditingController();
+
+  SettingsCopy get _copy => SettingsCopy(ref.read(displayLanguageProvider));
 
   String _style = defaultAssistantStyle;
   _PersonalizationStatus _status = _PersonalizationStatus.loading;
@@ -119,7 +98,8 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
   void _showLoadFailure(ApiException error) {
     setState(() {
       _status = _PersonalizationStatus.loadFailed;
-      _message = error.message;
+      _message = MayosCopy(ref.read(displayLanguageProvider))
+          .failureMessage(apiFailureMessage(error));
     });
   }
 
@@ -146,19 +126,21 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
       _style = profile.assistantStyle;
       _instructions.text = profile.assistantInstructions;
       _status = _PersonalizationStatus.saveSucceeded;
-      _message = 'Assistant style saved.';
+      _message = _copy.styleSaved;
     });
   }
 
   void _showSaveFailure(ApiException error) {
     setState(() {
       _status = _PersonalizationStatus.saveFailed;
-      _message = mutationFailureMessage(error);
+      _message = MayosCopy(ref.read(displayLanguageProvider))
+          .failureMessage(mutationFailureMessage(error));
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(displayLanguageProvider);
     if (_status == _PersonalizationStatus.loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -188,20 +170,19 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Text(_message ?? 'Could not load Assistant style.'),
+          Text(_message ?? _copy.styleLoadFailed),
           const SizedBox(height: MayosSpacing.md),
           MayosButton(
-            label: 'Retry',
+            label: _copy.retry,
             variant: MayosButtonVariant.secondary,
             onPressed: _load,
           ),
         ],
       );
 
-  Widget _buildIntroduction() => const MayosSectionHeader(
-        title: 'Assistant style',
-        subtitle:
-            'Choose how your assistant words its chat replies. Facts, training decisions, safety, and reply language stay the same.',
+  Widget _buildIntroduction() => MayosSectionHeader(
+        title: _copy.assistantStyle,
+        subtitle: _copy.styleLead,
       );
 
   List<Widget> _buildPresetCards() => <Widget>[
@@ -209,8 +190,8 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
             in _assistantStylePresets) ...<Widget>[
           MayosChoiceCard(
             key: Key('assistant_style_${preset.key}'),
-            title: preset.label,
-            subtitle: preset.description,
+            title: _copy.stylePresetLabel(preset.key),
+            subtitle: _copy.stylePresetDescription(preset.key),
             selected: _style == preset.key,
             onTap: _status == _PersonalizationStatus.saving
                 ? null
@@ -230,7 +211,7 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
             _buildNotice(),
             MayosButton(
               key: const Key('assistant_style_save'),
-              label: 'Save style',
+              label: _copy.saveStyle,
               loading: _status == _PersonalizationStatus.saving,
               onPressed:
                   _status == _PersonalizationStatus.saving ? null : _save,
@@ -242,9 +223,9 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
   Widget _buildInstructionsField() => MayosTextField(
         fieldKey: const Key('assistant_style_instructions'),
         controller: _instructions,
-        label: 'Optional instructions',
-        hint: 'For example: explain terms briefly.',
-        helperText: 'Used for wording only.',
+        label: _copy.optionalInstructions,
+        hint: _copy.instructionsExample,
+        helperText: _copy.wordingOnly,
         maxLength: maxAssistantStyleInstructions,
         maxLines: 4,
         minLines: 3,

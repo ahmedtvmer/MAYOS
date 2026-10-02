@@ -9,9 +9,14 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../core/active_workout.dart';
 import '../../../core/active_program.dart';
 import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
 import '../../../core/baselines.dart';
 import '../../../core/client_session_id.dart';
+import '../../../core/connectivity_message.dart';
 import '../../../core/device_timezone.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
+import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/models.dart';
 import '../../../core/performed_date_window.dart';
 import '../../../core/personal_records.dart';
@@ -52,8 +57,6 @@ import 'web_workout_committer.dart';
 /// tick itself clears (#160): it is the Finish bar's own nudge, shown right
 /// above that bar, so it must not outlive the state it describes. Other
 /// errors (a failed save, an offline refusal) stay until they are fixed.
-const String _kFinishBlockedError = 'Log at least one set';
-
 /// The message slot's cap (#160/#45): at most this share of the screen
 /// height, scrolling inside itself, so a long line at a large text scale
 /// can never push the bottom bar (or the keypad) off the screen.
@@ -65,8 +68,7 @@ void openLoggerExerciseDetail(
   required String exerciseId,
   int? dayOrder,
 }) {
-  final String path =
-      '$exerciseDetailPath/${Uri.encodeComponent(exerciseId)}';
+  final String path = '$exerciseDetailPath/${Uri.encodeComponent(exerciseId)}';
   context.push(
     dayOrder == null ? '$path?library=1' : '$path?day=$dayOrder',
   );
@@ -163,6 +165,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   int? _checkpointNumber;
   CheckpointReview? _checkpointReview;
   bool _saving = false;
+  WorkoutCopy get _copy => WorkoutCopy(ref.read(displayLanguageProvider));
   _SummaryAction _summaryAction = _SummaryAction.save;
   LoggerCellFocus? _focus;
   final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
@@ -315,7 +318,13 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     if (accountId == null) {
       setState(() {
         _loading = false;
-        _loadError = 'You are not signed in.';
+        _loadError =
+            MayosCopy(ref.read(displayLanguageProvider)).failureMessage(
+          const AppFailureMessage(
+            AppFailureId.draftNotSignedIn,
+            'You are not signed in.',
+          ),
+        );
       });
       return;
     }
@@ -345,7 +354,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         if (!mounted) return;
         setState(() {
           _loading = false;
-          _loadError = 'This training day is not available offline.';
+          _loadError = _copy.trainingDayUnavailableOffline;
           _fromCache = fromCache;
         });
         return;
@@ -402,9 +411,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     final DateTime clamped = performedDateWindow().clamp(started);
     _performedDate = clamped;
     if (formatPerformedDate(clamped) != formatPerformedDate(started)) {
-      _notice = 'This workout started on ${formatPerformedDate(started)}, '
-          'outside the allowed entry window, so its performed date was set '
-          'to ${formatPerformedDate(clamped)}.';
+      _notice = _copy.dateWindowClamped(
+        formatPerformedDate(started),
+        formatPerformedDate(clamped),
+      );
     }
   }
 
@@ -417,13 +427,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   /// Why Finish is blocked beyond "no sets ticked", or null.
   String? get _blockReason {
     if (_timezone == null) {
-      return 'Your device timezone could not be determined, so the workout '
-          'date cannot be recorded truthfully. Check your device time-zone '
-          'settings and try again.';
+      return _copy.timezoneUnavailable;
     }
     if (_workout?.programVersion == null && _workout != null) {
-      return 'Your program is unavailable. Reconnect to refresh it before '
-          'logging this workout.';
+      return _copy.programUnavailable;
     }
     return null;
   }
@@ -522,8 +529,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     if (rowObject is! RenderBox || viewportObject is! RenderBox) {
       return;
     }
-    final Rect rowRect =
-        rowObject.localToGlobal(Offset.zero) & rowObject.size;
+    final Rect rowRect = rowObject.localToGlobal(Offset.zero) & rowObject.size;
     final Rect viewportRect =
         viewportObject.localToGlobal(Offset.zero) & viewportObject.size;
     final ScrollPositionAlignmentPolicy policy;
@@ -711,7 +717,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     if (workout == null) {
       return;
     }
-    if (_error == _kFinishBlockedError) {
+    if (_error == _copy.workoutProgressBlocked) {
       // The Finish bar's own nudge, sitting right above that bar: a tick
       // makes it untrue, so it goes. Every other message — a save failure,
       // an offline refusal — is never dismissed by ticking (#160).
@@ -822,8 +828,12 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       int setsTicked,
       int setsTotal,
     }) progress = workoutProgressOf(workout);
-    return '${progress.exercisesCompleted}/${progress.exercisesTotal} '
-        'exercises · ${progress.setsTicked}/${progress.setsTotal} sets';
+    return _copy.workoutProgress(
+      exercisesDone: progress.exercisesCompleted,
+      exercisesTotal: progress.exercisesTotal,
+      setsDone: progress.setsTicked,
+      setsTotal: progress.setsTotal,
+    );
   }
 
   /// Finish opens the workout summary (#124): the unticked-sets sheet first,
@@ -843,7 +853,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       ),
     );
     if (!anyWorking) {
-      setState(() => _error = _kFinishBlockedError);
+      setState(() => _error = _copy.workoutProgressBlocked);
       return;
     }
     final int unticked = _untickedCount(workout);
@@ -872,7 +882,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     if (!mounted || _workout?.id != finished.id) {
       return;
     }
-    final List<String> trainingLines = projectTrainingStatusSummary(
+    final List<TrainingStatusSummaryLine> trainingLines =
+        projectTrainingStatusSummary(
       status: trainingStatus,
       drafts: drafts,
       now: now,
@@ -882,7 +893,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       drafts: drafts,
     );
     if (checkpointNumber != null) {
-      trainingLines.remove('Your ${checkpointOrdinal(checkpointNumber)} workout!');
+      trainingLines.removeWhere(
+        (TrainingStatusSummaryLine line) =>
+            line is CheckpointReachedSummaryLine,
+      );
     }
     setState(() {
       _summary = WorkoutSummary.of(
@@ -919,21 +933,21 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               Text(
-                unticked == 1
-                    ? "1 set isn't ticked"
-                    : "$unticked sets aren't ticked",
+                _copy.untickedSetQuestion(unticked),
+                textDirection: _copy.isArabic ? TextDirection.ltr : null,
+                textAlign: _copy.isArabic ? TextAlign.end : null,
                 style: MayosTypography.sectionHeading,
               ),
               const SizedBox(height: MayosSpacing.xs),
-              const Text('Only ticked sets are saved to the workout.'),
+              Text(_copy.onlyTickedSetsSaved),
               const SizedBox(height: MayosSpacing.md),
               MayosButton(
-                label: 'Discard unticked sets and finish',
+                label: _copy.discardUntickedAndFinish,
                 onPressed: () => Navigator.of(context).pop(true),
               ),
               const SizedBox(height: MayosSpacing.sm),
               MayosButton(
-                label: 'Keep logging',
+                label: _copy.keepLogging,
                 variant: MayosButtonVariant.secondary,
                 onPressed: () => Navigator.of(context).pop(false),
               ),
@@ -987,8 +1001,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       );
       if (draft == null) {
         setState(() {
-          _error = 'Your program is unavailable offline. Connect once to '
-              'refresh it before saving this workout.';
+          _error = _copy.connectToRefresh;
         });
         return;
       }
@@ -1004,7 +1017,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Workout saved to your drafts.')),
+        SnackBar(content: Text(_copy.saveDraftNotice)),
       );
       context.go(workoutsPath);
     } on Object catch (error) {
@@ -1064,19 +1077,19 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
           case WebWorkoutCommitStatus.committed:
             _summaryAction = _SummaryAction.done;
             _error = null;
-            _notice = 'Workout saved to your training history.';
+            _notice = _copy.savedToHistory;
             break;
           case WebWorkoutCommitStatus.retryable:
             _summaryAction = _SummaryAction.retry;
-            _error = result.message;
+            _error = _webWorkoutCommitFailure(result);
             break;
           case WebWorkoutCommitStatus.sessionProblem:
             _summaryAction = _SummaryAction.retry;
-            _error = result.message;
+            _error = _webWorkoutCommitFailure(result);
             break;
           case WebWorkoutCommitStatus.refused:
             _summaryAction = _SummaryAction.discardWorkout;
-            _error = result.message;
+            _error = _webWorkoutCommitFailure(result);
             break;
         }
       });
@@ -1084,8 +1097,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       if (mounted) {
         setState(() {
           _summaryAction = _SummaryAction.retry;
-          _error = "Couldn't reach MAYOS. Your workout is kept in "
-              'this browser.';
+          _error = _copy.couldNotReachMayos;
         });
       }
     } finally {
@@ -1098,14 +1110,32 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   /// How a failed save is reported: the service's own message when it has one,
   /// otherwise a line that promises the workout is still on screen (#123
   /// item 6).
-  static String _saveFailureMessage(Object error) => error is ApiException
-      ? error.message
-      : 'The workout could not be saved. Nothing was lost — try again.';
+  String _saveFailureMessage(Object error) => error is ApiException
+      ? MayosCopy(ref.read(displayLanguageProvider))
+          .failureMessage(apiFailureMessage(error))
+      : _copy.saveFailedNoLoss;
+
+  String? _webWorkoutCommitFailure(WebWorkoutCommitResult result) {
+    final FailureMessage? failure = result.failureMessage;
+    if (failure != null) {
+      return MayosCopy(ref.read(displayLanguageProvider))
+          .failureMessage(failure);
+    }
+    return switch (result.messageType) {
+      WebWorkoutCommitMessage.reopenWorkout => _copy.reopenWorkoutToSave,
+      WebWorkoutCommitMessage.refreshProgram => _copy.programRefreshBeforeSave,
+      WebWorkoutCommitMessage.connection => _copy.couldNotReachMayos,
+      WebWorkoutCommitMessage.busy => _copy.mayosBusy,
+      null => result.message,
+    };
+  }
 
   Future<void> _addUnplanned() async {
     final ExerciseCatalogEntry? entry = await showDialog<ExerciseCatalogEntry>(
       context: context,
-      builder: (BuildContext context) => const ExercisePickerDialog(),
+      builder: (BuildContext context) => ExercisePickerDialog(
+        title: _copy.addUnplannedExercise,
+      ),
     );
     if (entry == null) {
       return;
@@ -1131,16 +1161,16 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     final bool? discard = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: const Text('Discard this workout?'),
-        content: const Text('Its sets will be removed from this browser.'),
+        title: Text(_copy.confirmDiscardTitle),
+        content: Text(_copy.discardBrowserSets),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(_copy.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Discard'),
+            child: Text(_copy.discard),
           ),
         ],
       ),
@@ -1176,6 +1206,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(displayLanguageProvider);
     final ActiveWorkoutState active = ref.watch(
       activeWorkoutControllerProvider,
     );
@@ -1273,9 +1304,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
               _kMessageSlotMaxHeightFraction,
         ),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.only(
-            left: MayosSpacing.lg,
-            right: MayosSpacing.lg,
+          padding: const EdgeInsetsDirectional.only(
+            start: MayosSpacing.lg,
+            end: MayosSpacing.lg,
             top: MayosSpacing.xs,
           ),
           child: Column(
@@ -1355,6 +1386,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   }
 
   Widget _buildActive(ActiveWorkout workout) {
+    final WorkoutCopy copy = _copy;
     final Set<String> currentSetIds = <String>{
       for (final ActiveWorkoutExercise exercise in workout.exercises)
         for (final ActiveWorkoutSet set in exercise.sets) set.id,
@@ -1385,6 +1417,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
           Text(
             _progressLine(workout),
             key: const ValueKey<String>('logger.progress'),
+            textDirection: copy.isArabic ? TextDirection.ltr : null,
+            textAlign: copy.isArabic ? TextAlign.end : null,
             style: MayosTypography.bodySecondary.copyWith(
               color: c.textSecondary,
             ),
@@ -1403,9 +1437,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
           ],
           const SizedBox(height: MayosSpacing.md),
           if (workout.warmupMovements.isNotEmpty) ...<Widget>[
-            const MayosSectionHeader(
+            MayosSectionHeader(
               key: ValueKey<String>('logger.warmup.section'),
-              title: 'Warm-up',
+              title: _copy.warmup,
               padding: EdgeInsets.zero,
             ),
             const SizedBox(height: MayosSpacing.xs),
@@ -1424,8 +1458,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
                     ? null
                     : () => openLoggerExerciseDetail(
                           context,
-                          exerciseId:
-                              workout.warmupMovements[i].exerciseId!,
+                          exerciseId: workout.warmupMovements[i].exerciseId!,
                         ),
               ),
           ],
@@ -1446,7 +1479,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
           // fixed bottom bar (#160), so it never needs scrolling to.
           MayosButton(
             key: const ValueKey<String>('logger.addExercise'),
-            label: 'Add exercise',
+            label: _copy.addExercise,
             icon: Icons.add,
             variant: MayosButtonVariant.secondary,
             onPressed: _addUnplanned,
@@ -1613,13 +1646,13 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     return showDialog<ExerciseCatalogEntry>(
       context: context,
       builder: (BuildContext context) => ExercisePickerDialog(
-        title: 'Replace exercise',
+        title: _copy.replaceExercise,
         targetMuscle: muscle,
         excludeExerciseIds: inWorkout,
         suggestedSubstitutes: <SuggestedSubstitute>[
-          for (final dynamic item
-              in (exercise.exercise['suggested_substitutes'] as List<dynamic>? ??
-                  const <dynamic>[]))
+          for (final dynamic item in (exercise.exercise['suggested_substitutes']
+                  as List<dynamic>? ??
+              const <dynamic>[]))
             if (item is Map<String, dynamic>)
               SuggestedSubstitute.fromJson(item),
         ],
@@ -1672,13 +1705,15 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   }) async {
     final TrainingProgram? program = _loggerProgram;
     if (program == null) {
-      _showProgramSwapError('The active program could not be loaded.');
+      _showProgramSwapError(_copy.exerciseCatalogUnavailable,
+          knownLocalDetail: true);
       return;
     }
     final ProgramDay? day = _programDayForWorkout(program, pick.workout);
     if (day == null || !_programContains(day, pick.exercise.exerciseId)) {
       _showProgramSwapError(
-        '${pick.exercise.exerciseName} is no longer in this program day.',
+        _copy.exerciseNoLongerInProgram(pick.exercise.exerciseName),
+        knownLocalDetail: true,
       );
       return;
     }
@@ -1707,7 +1742,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         _pendingCoachReasonRequired = false;
         _pendingCoachRequestSubmitting = false;
         _refreshedCoachReason.clear();
-        _notice = result.message;
+        _notice = _substitutionMessage(result);
         _error = null;
       });
       return;
@@ -1715,8 +1750,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     if (result.error) {
       _showProgramSwapError(
         result.message,
-        workoutVersionMessage:
-            result.message == loggerProgramVersionChangedMessage,
+        messageType: result.messageType,
+        failureMessage: result.failureMessage,
       );
     } else {
       setState(() {
@@ -1725,7 +1760,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         _pendingCoachRequestSubmitting = false;
         _refreshedCoachReason.clear();
       });
-      _showProgramSwapNotice(result.message);
+      _showProgramSwapNotice(result.message, result.messageType);
     }
   }
 
@@ -1748,24 +1783,61 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
 
   void _showProgramSwapError(
     String detail, {
-    bool workoutVersionMessage = false,
+    LoggerProgramSubstitutionMessage? messageType,
+    FailureMessage? failureMessage,
+    bool knownLocalDetail = false,
   }) {
     if (!mounted) return;
+    final String localizedDetail = failureMessage != null
+        ? MayosCopy(ref.read(displayLanguageProvider))
+            .failureMessage(failureMessage)
+        : messageType == null
+            ? detail
+            : _substitutionText(messageType);
     setState(() {
-      _error = workoutVersionMessage
-          ? detail
-          : 'The workout swap is saved, but the program was not changed. $detail';
+      _error = messageType == LoggerProgramSubstitutionMessage.versionChanged
+          ? localizedDetail
+          : _copy.swapSavedButProgramUnchanged(
+              knownLocalDetail ? detail : localizedDetail,
+            );
       _notice = null;
     });
   }
 
-  void _showProgramSwapNotice(String message) {
+  void _showProgramSwapNotice(
+    String message,
+    LoggerProgramSubstitutionMessage? messageType,
+  ) {
     if (!mounted) return;
     setState(() {
-      _notice = message;
+      _notice = messageType == null ? message : _substitutionText(messageType);
       _error = null;
     });
   }
+
+  String _substitutionMessage(LoggerProgramSubstitutionResult result) =>
+      result.failureMessage != null
+          ? MayosCopy(ref.read(displayLanguageProvider))
+              .failureMessage(result.failureMessage!)
+          : result.messageType == null
+              ? result.message
+              : _substitutionText(result.messageType!);
+
+  String _substitutionText(LoggerProgramSubstitutionMessage type) =>
+      switch (type) {
+        LoggerProgramSubstitutionMessage.versionChanged => _copy.versionChanged,
+        LoggerProgramSubstitutionMessage.swapSaved => _copy.swapSaved,
+        LoggerProgramSubstitutionMessage.coachReasonRequired =>
+          _copy.reasonBeforeCoachRequest,
+        LoggerProgramSubstitutionMessage.coachRequestSent =>
+          _copy.coachAskedPermanentSwap,
+        LoggerProgramSubstitutionMessage.refreshProgramTab =>
+          _copy.programChangedSubstituteFromTab,
+        LoggerProgramSubstitutionMessage.coachNowControlsProgram =>
+          _copy.coachNowControlsProgram,
+        LoggerProgramSubstitutionMessage.activeProgramUnavailable =>
+          _copy.exerciseCatalogUnavailable,
+      };
 
   /// The exercise's target muscle, read from the catalog detail the app
   /// already has a call for (`GET /workouts/exercises/{id}`): its first
@@ -1840,23 +1912,21 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       context: context,
       builder: (BuildContext context) => AlertDialog(
         title: Text(
-          ticked == 1
-              ? 'Remove and discard 1 logged set?'
-              : 'Remove and discard $ticked logged sets?',
+          _copy.setsWereRemoved(ticked, undo: confirm == 'Undo replace'),
         ),
         content: Text(
-          "The sets you've logged on this exercise will be discarded.",
+          _copy.loggedSetsDiscarded,
           style: MayosTypography.bodySecondary.copyWith(color: c.textPrimary),
         ),
         actions: <Widget>[
           MayosButton(
-            label: 'Keep logging',
+            label: _copy.keepLogging,
             variant: MayosButtonVariant.secondary,
             expand: false,
             onPressed: () => Navigator.of(context).pop(false),
           ),
           MayosButton(
-            label: confirm,
+            label: confirm == 'Remove' ? _copy.removeAction : _copy.undoReplace,
             destructive: true,
             expand: false,
             onPressed: () => Navigator.of(context).pop(true),
@@ -1962,10 +2032,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         ? _SummaryAction.retry
         : _summaryAction;
     final String actionLabel = switch (action) {
-      _SummaryAction.save => 'Save workout',
-      _SummaryAction.retry => 'Retry',
-      _SummaryAction.discardWorkout => 'Discard workout',
-      _SummaryAction.done => 'Done',
+      _SummaryAction.save => _copy.saveWorkout,
+      _SummaryAction.retry => _copy.retry,
+      _SummaryAction.discardWorkout => _copy.discardWorkout,
+      _SummaryAction.done => _copy.done,
     };
     final VoidCallback actionHandler = switch (action) {
       _SummaryAction.save || _SummaryAction.retry => _save,
@@ -1982,12 +2052,12 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
               if (!_saving)
                 IconButton(
                   key: const ValueKey<String>('logger.save.back'),
-                  tooltip: 'Back to workout',
+                  tooltip: _copy.backToWorkout,
                   onPressed: _backFromSummary,
                   icon: const Icon(Icons.arrow_back),
                 ),
               Text(
-                'Workout summary',
+                _copy.workoutSummary,
                 style: MayosTypography.sectionHeading.copyWith(
                   color: c.textPrimary,
                 ),
@@ -2013,14 +2083,15 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
             padding: EdgeInsets.zero,
             child: MayosSettingsTile(
               icon: Icons.event_outlined,
-              title: 'Performed date',
+              title: _copy.performedDate,
               subtitle: date,
+              subtitleTextDirection: _copy.isArabic ? TextDirection.ltr : null,
               trailing: Icon(Icons.edit_outlined, size: 20, color: c.textMuted),
               onTap: _pickDate,
             ),
           ),
           const SizedBox(height: MayosSpacing.lg),
-          MayosSectionHeader(title: 'Readiness: $_readiness/5'),
+          _readinessHeader(),
           Slider(
             value: _readiness.toDouble(),
             min: 1,
@@ -2034,7 +2105,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
           MayosTextField(
             controller: _notes,
             maxLines: 3,
-            label: 'Notes (pumps, joint aches, fatigue)',
+            label: _copy.notesHint,
           ),
           if (_blockReason != null) _MessageLine(_blockReason!),
           if (_error != null) _MessageLine(_error!),
@@ -2065,7 +2136,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           Text(
-            'Personal records',
+            _copy.personalRecords,
             style: MayosTypography.exerciseTitle.copyWith(color: c.accent),
           ),
           const SizedBox(height: MayosSpacing.xs),
@@ -2073,12 +2144,50 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
             Padding(
               padding: const EdgeInsets.only(bottom: MayosSpacing.xxs),
               child: Text(
-                record.line,
+                workoutCopyOf(context).recordCelebration(
+                  record.exerciseName,
+                  record.kind.name,
+                  formatRecordKg(record.value),
+                ),
+                textDirection:
+                    workoutCopyOf(context).isArabic ? TextDirection.ltr : null,
                 style: MayosTypography.bodySecondary.copyWith(
                   color: c.textPrimary,
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _readinessHeader() {
+    if (!_copy.isArabic) {
+      return MayosSectionHeader(title: _copy.readinessOutOfFive(_readiness));
+    }
+    final TextStyle? style = Theme.of(context).textTheme.headlineSmall;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                text: '${_copy.readiness}: ',
+                children: <InlineSpan>[
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.baseline,
+                    baseline: TextBaseline.alphabetic,
+                    child: Directionality(
+                      textDirection: TextDirection.ltr,
+                      child: Text('$_readiness/5', style: style),
+                    ),
+                  ),
+                ],
+              ),
+              style: style,
+            ),
+          ),
         ],
       ),
     );
@@ -2094,12 +2203,12 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Your ${checkpointOrdinal(checkpoint)} workout!',
+            workoutCopyOf(context).checkpointWorkout(checkpoint),
             style: MayosTypography.exerciseTitle.copyWith(color: c.accent),
           ),
           const SizedBox(height: MayosSpacing.xs),
           if (review == null) ...<Widget>[
-            const Text('Your review will appear on your dashboard'),
+            Text(workoutCopyOf(context).reviewWillAppear),
           ] else ...<Widget>[
             Text(review.text),
             for (final CheckpointRatingPart part in review.rating)
@@ -2119,21 +2228,41 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   /// 360dp minimum without shrinking the figures.
   Widget _buildStats(WorkoutSummary summary) {
     final WorkoutSummaryStats stats = summary.stats;
+    final WorkoutCopy copy = _copy;
+    Widget stat({
+      Key? key,
+      required String value,
+      required String label,
+      String? unit,
+    }) {
+      final MayosStat child = MayosStat(
+        key: key,
+        value: value,
+        label: label,
+        unit: unit,
+        alignment:
+            copy.isArabic ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      );
+      return copy.isArabic
+          ? Directionality(textDirection: TextDirection.ltr, child: child)
+          : child;
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Row(
           children: <Widget>[
             Expanded(
-              child: MayosStat(
+              child: stat(
                 value: '${stats.exercisesDone}',
-                label: 'Exercises done',
+                label: copy.exercisesDone,
               ),
             ),
             Expanded(
-              child: MayosStat(
+              child: stat(
                 value: '${stats.workingSets}',
-                label: 'Ticked working sets',
+                label: copy.workingSets,
               ),
             ),
           ],
@@ -2142,17 +2271,17 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         Row(
           children: <Widget>[
             Expanded(
-              child: MayosStat(
+              child: stat(
                 value: stats.volumeLabel,
-                label: 'Total volume',
+                label: copy.totalVolume,
                 unit: 'kg',
               ),
             ),
             Expanded(
-              child: MayosStat(
+              child: stat(
                 key: const ValueKey<String>('logger.summary.duration'),
                 value: formatWorkoutTime(summary.duration),
-                label: 'Duration',
+                label: copy.duration,
               ),
             ),
           ],
@@ -2162,11 +2291,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
           Row(
             children: <Widget>[
               Expanded(
-                child: MayosStat(
+                child: stat(
                   key: const ValueKey<String>('logger.summary.cardio'),
                   value: '${stats.cardioMinutes}',
-                  label: 'Cardio',
-                  unit: 'min',
+                  label: copy.cardio,
+                  unit: copy.minutesUnit,
                 ),
               ),
               const Expanded(child: SizedBox.shrink()),
@@ -2177,8 +2306,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     );
   }
 
-  Widget _buildTrainingStatus(List<String> lines) {
+  Widget _buildTrainingStatus(List<TrainingStatusSummaryLine> lines) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final WorkoutCopy copy = _copy;
     return MayosCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2189,8 +2319,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
                 bottom: index == lines.length - 1 ? 0 : MayosSpacing.xs,
               ),
               child: Text(
-                lines[index],
+                copy.trainingStatusLine(lines[index]),
                 key: ValueKey<String>('logger.summary.training.$index'),
+                textAlign: copy.isArabic ? TextAlign.end : null,
                 style: MayosTypography.bodySecondary.copyWith(
                   color: c.textPrimary,
                 ),
@@ -2249,7 +2380,7 @@ class _OfflineLoggerNotice extends StatelessWidget {
           const SizedBox(width: MayosSpacing.xs),
           Expanded(
             child: Text(
-              'Offline: showing your cached program.',
+              workoutCopyOf(context).offlineCachedProgram,
               style: MayosTypography.bodySecondary.copyWith(
                 color: c.textSecondary,
               ),

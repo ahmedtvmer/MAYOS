@@ -51,7 +51,12 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
     ),
   );
   await _pumpUntilFound(
-      tester, find.text(fake.coach ? 'Roster' : 'Home'));
+      tester,
+      find.text(fake.displayLanguage == 'ar'
+          ? 'الرئيسية'
+          : fake.coach
+              ? 'Roster'
+              : 'Home'));
 }
 
 FakeMayosApi _signedInFake({required bool coach}) {
@@ -75,6 +80,116 @@ Future<void> _openSettings(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+      'Arabic settings and assignment surfaces keep server text and Western dates',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake(coach: false)
+      ..displayLanguage = 'ar'
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Alice'
+      ..activeCoachSpecialization = 'Powerlifting';
+    fake.playerNotices.add(<String, dynamic>{
+      'notice_id': 'notice-1',
+      'assignment_id': 'assignment-1',
+      'kind': 'program_published',
+      'message': 'Coach note: keep the current program this week.',
+      'created_at': '2026-09-26T12:00:00Z',
+      'read_at': null,
+    });
+    fake.checkIns.add(<String, dynamic>{
+      'check_in_id': 'check-in-1',
+      'assignment_id': 'assignment-1',
+      'checked_in_on': '2026-09-26',
+      'channel': 'in_app',
+      'note': 'Discuss sleep at the next check-in.',
+      'created_at': '2026-09-26T12:00:00Z',
+      'coach_username': 'alice',
+      'assignment_status': 'active',
+    });
+    await _pumpApp(tester, fake);
+
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await _pumpUntilFound(tester, find.text('المظهر'));
+    expect(find.text('الحساب'), findsOneWidget);
+    expect(find.text('الملف الشخصي'), findsOneWidget);
+    expect(
+      Directionality.of(tester.element(find.text('المظهر'))),
+      TextDirection.rtl,
+    );
+
+    await tester.tap(find.byKey(const Key('personalization_entry')));
+    await _pumpUntilFound(tester, find.text('مباشر وعملي'));
+    expect(
+      find.text(
+        'اختر طريقة صياغة ردود المساعد في المحادثة. تبقى الحقائق وقرارات التدريب والسلامة ولغة الرد كما هي.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      Directionality.of(tester.element(find.text('مباشر وعملي'))),
+      TextDirection.rtl,
+    );
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await _pumpUntilFound(tester, find.text('المظهر'));
+
+    await tester.tap(find.byIcon(Icons.badge_outlined));
+    await _pumpUntilFound(tester, find.text('علاقة التدريب مع المدرب'));
+    expect(find.text('مدربك'), findsOneWidget);
+    expect(find.text('طلبات البرنامج التدريبي'), findsOneWidget);
+    expect(find.text('لا توجد طلبات للبرنامج التدريبي بعد.'), findsOneWidget);
+    expect(find.text('Coach note: keep the current program this week.'),
+        findsOneWidget);
+    final Finder checkInNote =
+        find.textContaining('Discuss sleep at the next check-in.');
+    expect(checkInNote, findsOneWidget);
+    expect(
+      tester.widget<Text>(checkInNote).data,
+      endsWith('Discuss sleep at the next check-in.'),
+    );
+    expect(find.textContaining('2026-09-26'), findsNWidgets(2));
+    expect(find.textContaining('٢٠٢٦'), findsNothing);
+    expect(
+      Directionality.of(tester.element(find.text('مدربك'))),
+      TextDirection.rtl,
+    );
+    final Text dateAndChannel = tester.widget<Text>(
+      find.text('2026-09-26 · داخل التطبيق'),
+    );
+    expect(dateAndChannel.textDirection, TextDirection.ltr);
+  });
+
+  testWidgets('Arabic player profile labels keep profile data and digits',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake(coach: false)
+      ..displayLanguage = 'ar'
+      ..currentGoal = 'Build strength.';
+    await _pumpApp(tester, fake);
+
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await _pumpUntilFound(tester, find.text('المظهر'));
+    await tester.tap(find.byIcon(Icons.person_outline));
+    await _pumpUntilFound(tester, find.byKey(const Key('weight_kg_field')));
+
+    expect(find.text('الملف التدريبي'), findsOneWidget);
+    expect(find.text('جدول التدريب'), findsOneWidget);
+    expect(find.text('طرق تسجيل الدخول'), findsOneWidget);
+    expect(find.text('Build strength.'), findsOneWidget);
+    final TextField weightField =
+        tester.widget<TextField>(find.byKey(const Key('weight_kg_field')));
+    // The English and Arabic fields both use profile.weightKg.toString(), so
+    // this Double value stays `75.0` in Western digits in either language.
+    expect(weightField.controller!.text, '75.0');
+    expect(
+      Directionality.of(tester.element(find.text('الملف التدريبي'))),
+      TextDirection.rtl,
+    );
+    expect(
+      Directionality.of(
+          tester.element(find.byKey(const Key('weight_kg_field')))),
+      TextDirection.ltr,
+    );
+  });
+
   testWidgets('player previews access, consents, then ends the assignment',
       (tester) async {
     final FakeMayosApi fake = _signedInFake(coach: false);

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/active_workout.dart';
+import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
@@ -30,40 +31,41 @@ Future<ActiveWorkoutPromptChoice?> showActiveWorkoutPrompt(
   required bool forNewStart,
 }) {
   final MayosThemeExtension c = MayosTheme.of(context);
+  final WorkoutCopy copy = workoutCopyOf(context);
   return showDialog<ActiveWorkoutPromptChoice>(
     context: context,
     builder: (BuildContext context) => AlertDialog(
       title: Text(
-          forNewStart ? 'Finish your current workout' : 'Unfinished workout'),
+          forNewStart ? copy.finishCurrentWorkout : copy.unfinishedWorkout),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            '${activeWorkout.dayName} · started ${_startedLabel(activeWorkout)}',
+            copy.startedWorkoutLabel(
+                activeWorkout.dayName, _startedLabel(activeWorkout)),
+            textDirection: copy.isArabic ? TextDirection.ltr : null,
+            textAlign: copy.isArabic ? TextAlign.end : null,
             style:
                 MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.sm),
           Text(
-            forNewStart
-                ? 'This device is already logging a workout. Resume it, or '
-                    'discard it to start a new one.'
-                : 'Resume where you left off, or discard this workout.',
+            forNewStart ? copy.resumeOrDiscardNewStart : copy.resumeOrDiscard,
             style: MayosTypography.bodySecondary.copyWith(color: c.textPrimary),
           ),
         ],
       ),
       actions: <Widget>[
         MayosButton(
-          label: 'Discard',
+          label: copy.discard,
           variant: MayosButtonVariant.tertiary,
           expand: false,
           onPressed: () =>
               Navigator.of(context).pop(ActiveWorkoutPromptChoice.discard),
         ),
         MayosButton(
-          label: 'Resume',
+          label: copy.resume,
           expand: false,
           onPressed: () =>
               Navigator.of(context).pop(ActiveWorkoutPromptChoice.resume),
@@ -89,23 +91,24 @@ String _startedLabel(ActiveWorkout activeWorkout) {
 /// logging" and any dismissal keep the workout.
 Future<bool> confirmDiscardWorkout(BuildContext context) async {
   final MayosThemeExtension c = MayosTheme.of(context);
+  final WorkoutCopy copy = workoutCopyOf(context);
   final bool? discard = await showDialog<bool>(
     context: context,
     builder: (BuildContext context) => AlertDialog(
-      title: const Text('Discard this workout?'),
+      title: Text(copy.confirmDiscardTitle),
       content: Text(
-        "The sets you've logged in this workout will be lost.",
+        copy.discardSetsLost,
         style: MayosTypography.bodySecondary.copyWith(color: c.textPrimary),
       ),
       actions: <Widget>[
         MayosButton(
-          label: 'Keep logging',
+          label: copy.keepLogging,
           variant: MayosButtonVariant.secondary,
           expand: false,
           onPressed: () => Navigator.of(context).pop(false),
         ),
         MayosButton(
-          label: 'Discard',
+          label: copy.discard,
           destructive: true,
           expand: false,
           onPressed: () => Navigator.of(context).pop(true),
@@ -230,14 +233,12 @@ Future<bool> _showFirstWebWorkoutNotice(
   final bool? acknowledged = await showDialog<bool>(
     context: context,
     builder: (BuildContext context) => AlertDialog(
-      title: const Text('Logging workouts on web'),
-      content: const Text(
-        'You need a connection to finish saving. An unfinished workout is kept only in this browser.',
-      ),
+      title: Text(workoutCopyOf(context).webWorkoutNoticeTitle),
+      content: Text(workoutCopyOf(context).webWorkoutNotice),
       actions: <Widget>[
         FilledButton(
           onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Continue logging'),
+          child: Text(workoutCopyOf(context).continueLogging),
         ),
       ],
     ),

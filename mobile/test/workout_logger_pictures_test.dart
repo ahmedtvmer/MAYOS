@@ -133,8 +133,7 @@ Future<InMemoryActiveWorkoutStore> _seedThroughController({
 }
 
 /// The phone canvas: 1080×2400 by default, 360×640 for the small-phone run.
-void _usePhoneView(WidgetTester tester,
-    {Size size = const Size(1080, 2400)}) {
+void _usePhoneView(WidgetTester tester, {Size size = const Size(1080, 2400)}) {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
@@ -153,8 +152,7 @@ List<Override> _appOverrides({
       themeModeStoreProvider
           .overrideWithValue(InMemoryThemeModeStore(themeMode)),
       draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
-      workoutCacheStoreProvider
-          .overrideWithValue(InMemoryWorkoutCacheStore()),
+      workoutCacheStoreProvider.overrideWithValue(InMemoryWorkoutCacheStore()),
       chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
       baselineCacheStoreProvider
           .overrideWithValue(InMemoryBaselineCacheStore()),
@@ -181,13 +179,16 @@ Future<void> _pumpApp(WidgetTester tester,
   ));
 }
 
-Future<void> _resumeFromPrompt(WidgetTester tester) async {
-  await _pumpUntilFound(tester, find.text('Home'));
-  await tester.pumpAndSettle();
-  expect(find.text('Unfinished workout'), findsOneWidget);
-  await tester.tap(find.text('Resume'));
+Future<void> _resumeFromPrompt(WidgetTester tester,
+    {String languageCode = 'en'}) async {
+  final bool arabic = languageCode == 'ar';
+  await _pumpUntilFound(tester, find.text(arabic ? 'الرئيسية' : 'Home'));
+  final String promptTitle = arabic ? 'حصة غير مكتملة' : 'Unfinished workout';
+  final String resumeLabel = arabic ? 'استئناف' : 'Resume';
+  await _pumpUntilFound(tester, find.text(promptTitle));
+  expect(find.text(promptTitle), findsOneWidget);
+  await tester.tap(find.text(resumeLabel));
   await _pumpUntilFound(tester, find.byType(WorkoutLoggerScreen));
-  await tester.pumpAndSettle();
 }
 
 /// The signed-in app with a stored Active workout, opened through the
@@ -196,10 +197,12 @@ Future<void> _openLogger(
   WidgetTester tester, {
   ThemeMode themeMode = ThemeMode.light,
   Size size = const Size(1080, 2400),
+  String languageCode = 'en',
 }) async {
   _usePhoneView(tester, size: size);
 
   final FakeMayosApi fake = _signedInFake();
+  fake.displayLanguage = languageCode;
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
   // Seeding talks to the (fake) API on real timers, so it runs outside the
@@ -217,7 +220,7 @@ Future<void> _openLogger(
       themeMode: themeMode,
     ),
   );
-  await _resumeFromPrompt(tester);
+  await _resumeFromPrompt(tester, languageCode: languageCode);
 }
 
 /// Lets the picture requests, decodes and frames land. The decode runs on
@@ -225,8 +228,8 @@ Future<void> _openLogger(
 /// pumps — the same reason seeding runs outside the test's zone.
 Future<void> _settlePictures(WidgetTester tester) async {
   for (int i = 0; i < 5; i++) {
-    await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 60)));
+    await tester
+        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 60)));
     await tester.pump(const Duration(milliseconds: 100));
   }
 }
@@ -234,28 +237,72 @@ Future<void> _settlePictures(WidgetTester tester) async {
 Finder _card(int exercise) => find.byType(ExerciseLoggingCard).at(exercise);
 
 Finder _thumb(int exercise) => find
-    .descendant(of: _card(exercise), matching: find.byType(ExerciseCatalogThumbnail))
+    .descendant(
+        of: _card(exercise), matching: find.byType(ExerciseCatalogThumbnail))
     .first;
 
 /// The image provider the card is actually loading, unwrapped from the
 /// `cacheWidth` resize Flutter adds for a fixed-size thumbnail.
 ImageProvider _providerOf(WidgetTester tester, int exercise) {
-  ImageProvider provider = tester.widget<Image>(_imageOf(tester, exercise)).image;
+  ImageProvider provider =
+      tester.widget<Image>(_imageOf(tester, exercise)).image;
   if (provider is ResizeImage) {
     provider = provider.imageProvider;
   }
   return provider;
 }
 
-Finder _imageOf(WidgetTester tester, int exercise) => find
-    .descendant(of: _card(exercise), matching: find.byType(Image));
+Finder _imageOf(WidgetTester tester, int exercise) =>
+    find.descendant(of: _card(exercise), matching: find.byType(Image));
 
 bool _hasFallback(WidgetTester tester, int exercise) => find
-    .descendant(of: _card(exercise), matching: find.byIcon(Icons.fitness_center))
+    .descendant(
+        of: _card(exercise), matching: find.byIcon(Icons.fitness_center))
     .evaluate()
     .isNotEmpty;
 
 void main() {
+  testWidgets('Arabic workout logger uses translated UI and Western digits',
+      (WidgetTester tester) async {
+    await _openLogger(tester, languageCode: 'ar');
+
+    expect(find.byType(WorkoutLoggerScreen), findsOneWidget);
+    expect(find.text('مجموعة'), findsWidgets);
+    expect(find.text('تكرارات'), findsWidgets);
+    expect(find.text('Incline Press'), findsOneWidget);
+    expect(find.text('٣'), findsNothing);
+    final Finder progress =
+        find.byKey(const ValueKey<String>('logger.bottomBar.progress'));
+    expect(progress, findsOneWidget);
+    final Text progressText = tester.widget<Text>(progress);
+    expect(progressText.data, contains('مجموعات'));
+    expect(progressText.data, matches(RegExp(r'^[0-9/]+')));
+    expect(
+      Directionality.of(tester.element(find.text('مجموعة').first)),
+      TextDirection.rtl,
+    );
+    expect(Directionality.of(tester.element(progress)), TextDirection.ltr);
+    expect(
+      Directionality.of(tester.element(find.byType(WorkoutLoggerScreen))),
+      TextDirection.rtl,
+    );
+
+    await tester.tap(find.byKey(const ValueKey<String>('logger.cell.0.0.kg')));
+    await _pumpUntilFound(
+        tester, find.byKey(const ValueKey<String>('logger.key.1')));
+    expect(
+      Directionality.of(
+          tester.element(find.byKey(const ValueKey<String>('logger.key.1')))),
+      TextDirection.ltr,
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey<String>('logger.key.1'))).dx,
+      lessThan(tester
+          .getTopLeft(find.byKey(const ValueKey<String>('logger.key.2')))
+          .dx),
+    );
+  });
+
   /// Wraps one widget test in a cold fake `/media`: the hook is installed
   /// for the body and removed before the test framework checks the painting
   /// debug variables it owns.
@@ -307,7 +354,10 @@ void main() {
     // ever requested and the same fallback sits in the same box.
     expect(_imageOf(tester, 2), findsNothing);
     expect(_hasFallback(tester, 2), isTrue);
-    expect(media.requests.any((FakeMediaRequest r) => r.uri.path.contains('cable_fly')), isFalse);
+    expect(
+        media.requests
+            .any((FakeMediaRequest r) => r.uri.path.contains('cable_fly')),
+        isFalse);
 
     // The three states measure identically: a fixed thumbnail box…
     final Size box = tester.getSize(_thumb(0));
@@ -339,8 +389,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  mediaTest(
-      'the picture request is public: /media with no bearer token (#161)',
+  mediaTest('the picture request is public: /media with no bearer token (#161)',
       (WidgetTester tester, FakeMediaCatalog media) async {
     await _openLogger(tester);
     await _settlePictures(tester);
@@ -370,8 +419,7 @@ void main() {
     }
   });
 
-  mediaTest(
-      'an exercise added from the search gets its catalog picture (#53)',
+  mediaTest('an exercise added from the search gets its catalog picture (#53)',
       (WidgetTester tester, FakeMediaCatalog media) async {
     // The picture the fake `/media` serves for the exercise the search picks.
     media.serve('images/bicep_curl.jpg');
@@ -403,8 +451,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  mediaTest(
-      'media kill switch: the thumbnail falls back and never asks (#53)',
+  mediaTest('media kill switch: the thumbnail falls back and never asks (#53)',
       (WidgetTester tester, FakeMediaCatalog media) async {
     await tester.pumpWidget(MaterialApp(
       theme: MayosTheme.light,

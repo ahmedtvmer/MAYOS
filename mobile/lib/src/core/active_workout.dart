@@ -264,11 +264,29 @@ String prescriptionCaption({
   if (rir != null) 'RIR ${formatMinRir(rir)}',
 ].join(' · ');
 
-/// The card's prescription line (#158): [prescriptionCaption] over the
-/// effective prescription the rows were seeded from — so it never says
-/// "3 sets" over 4 seeded rows — plus the rest length the player is using
-/// right now (#125), e.g. `4 sets · 6–8 reps · 62.5 kg · RIR ≥ 2 · Rest 2:00`.
-String exercisePrescriptionLine(
+/// Language-neutral facts shown in the logger's prescription line.
+@immutable
+class ExercisePrescriptionProjection {
+  const ExercisePrescriptionProjection({
+    required this.setCount,
+    required this.minimumReps,
+    required this.maximumReps,
+    required this.restSeconds,
+    this.projectedWeightKg,
+    this.rir,
+  });
+
+  final int setCount;
+  final int minimumReps;
+  final int maximumReps;
+  final int restSeconds;
+  final double? projectedWeightKg;
+  final double? rir;
+}
+
+/// Projects the exact stored prescription once for both English and Arabic
+/// renderers; only their labels and word order differ.
+ExercisePrescriptionProjection projectExercisePrescription(
   ActiveWorkoutExercise exercise, {
   required int restSeconds,
 }) {
@@ -279,17 +297,36 @@ String exercisePrescriptionLine(
   final double? rir =
       exercise.prescriptionHint?.rir ??
       (targetRpe == null ? null : rirFromRpe(clampRpe(targetRpe)));
-  final String caption = prescriptionCaption(
+  return ExercisePrescriptionProjection(
     setCount: exercise.effectiveSetCount,
-    minReps: minReps,
-    maxReps: maxReps,
-    // #108: the projection the prescription froze for this workout.
+    minimumReps: minReps,
+    maximumReps: maxReps,
     projectedWeightKg: exercise.prescriptionHint?.weightKg,
     rir: rir,
+    restSeconds: restSeconds,
   );
-  final String rest = restSeconds <= 0
+}
+
+/// The card's prescription line (#158): [prescriptionCaption] over the
+/// effective prescription the rows were seeded from — so it never says
+/// "3 sets" over 4 seeded rows — plus the rest length the player is using
+/// right now (#125), e.g. `4 sets · 6–8 reps · 62.5 kg · RIR ≥ 2 · Rest 2:00`.
+String exercisePrescriptionLine(
+  ActiveWorkoutExercise exercise, {
+  required int restSeconds,
+}) {
+  final ExercisePrescriptionProjection projection =
+      projectExercisePrescription(exercise, restSeconds: restSeconds);
+  final String caption = prescriptionCaption(
+    setCount: projection.setCount,
+    minReps: projection.minimumReps,
+    maxReps: projection.maximumReps,
+    projectedWeightKg: projection.projectedWeightKg,
+    rir: projection.rir,
+  );
+  final String rest = projection.restSeconds <= 0
       ? 'Rest Off'
-      : 'Rest ${restMmSs(restSeconds)}';
+      : 'Rest ${restMmSs(projection.restSeconds)}';
   return '$caption · $rest';
 }
 

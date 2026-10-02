@@ -30,8 +30,7 @@ WorkoutDraft _draft({
   int programVersion = 1,
   String? clientSessionId,
   String capturedAt = '2026-09-26T11:00:00.000Z',
-  List<WarmupMovementDraft> warmupMovements =
-      const <WarmupMovementDraft>[],
+  List<WarmupMovementDraft> warmupMovements = const <WarmupMovementDraft>[],
   WorkoutCardio? cardio,
 }) =>
     WorkoutDraft(
@@ -309,7 +308,7 @@ void main() {
       };
       final TokenStore tokens = await _authedTokens(fake);
       final InMemoryDraftStore store = InMemoryDraftStore();
-      List<String>? summaryLines;
+      List<TrainingStatusSummaryLine>? summaryLines;
       final DraftSyncService service = _service(
         fake: fake,
         tokens: tokens,
@@ -334,7 +333,9 @@ void main() {
       await service.syncNow();
 
       expect(
-        summaryLines,
+        summaryLines!
+            .map((TrainingStatusSummaryLine line) => line.englishText)
+            .toList(),
         containsAll(<String>[
           'This week: 3 of 3 done',
           'Your 25th workout!',
@@ -786,8 +787,7 @@ void main() {
       await tester.tap(find.text('Log workout'));
       await _pumpUntilFound(tester, find.text('Bench Press'));
 
-      final Finder finish =
-          find.widgetWithText(FilledButton, 'Finish workout');
+      final Finder finish = find.widgetWithText(FilledButton, 'Finish workout');
       expect(finish, findsOneWidget);
       expect(tester.widget<FilledButton>(finish).onPressed, isNull);
       expect(
@@ -888,7 +888,8 @@ void main() {
     await _pumpUntilFound(tester, find.text('Bench Press'));
 
     // The tick fills the empty cells from the frozen baseline's previous set.
-    final Finder firstTick = find.byKey(const ValueKey<String>('logger.tick.0.0'));
+    final Finder firstTick =
+        find.byKey(const ValueKey<String>('logger.tick.0.0'));
     await tester.ensureVisible(firstTick);
     await tester.pump(const Duration(milliseconds: 100));
     await tester.tap(firstTick);
@@ -913,6 +914,51 @@ void main() {
     expect(drafts, hasLength(1));
     expect(drafts.single.exercises, isNotEmpty);
     expect(fake.commitRequests, 1);
+  });
+
+  testWidgets('Arabic workout drafts keep server details and Western dates',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..displayLanguage = 'ar'
+      ..commitRefusalStatusCode = 422
+      ..commitRefusalMessage = 'The service is unavailable. Please retry.';
+    final InMemoryDraftStore store = InMemoryDraftStore();
+    await store.write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
+
+    await _pumpApp(tester, fake, draftStore: store);
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await _pumpUntilFound(tester, find.text('المظهر'));
+    final Finder draftsEntry = find.text('مسودات الحصص');
+    await tester.ensureVisible(draftsEntry);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(draftsEntry);
+    await _pumpUntilFound(tester, find.text('مزامنة الآن'));
+    await _pumpUntilFound(
+      tester,
+      find.text('The service is unavailable. Please retry.'),
+    );
+
+    expect(find.textContaining('بانتظار المزامنة'), findsOneWidget);
+    expect(find.textContaining('تحتاج إلى مراجعة'), findsOneWidget);
+    expect(find.textContaining('مجموعة تدريب'), findsOneWidget);
+    expect(find.text('Upper 1 · 2026-09-26'), findsOneWidget);
+    expect(
+        find.text('The service is unavailable. Please retry.'), findsOneWidget);
+    expect(
+      Directionality.of(tester.element(find.text('مزامنة الآن'))),
+      TextDirection.rtl,
+    );
+    expect(
+      tester.widget<Text>(find.text('Upper 1 · 2026-09-26')).textDirection,
+      TextDirection.ltr,
+    );
+    final String renderedText = find
+        .byType(Text)
+        .evaluate()
+        .map((Element element) => (element.widget as Text).data ?? '')
+        .join('\n');
+    expect(renderedText, isNot(matches(RegExp(r'[٠-٩۰-۹]'))));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('an unplanned exercise is picked from the catalog with a real id',
@@ -942,7 +988,8 @@ void main() {
 
     // One ticked working set is enough to finish; the unplanned exercise is
     // kept as a skipped exercise because nothing of it was ticked.
-    final Finder firstTick = find.byKey(const ValueKey<String>('logger.tick.0.0'));
+    final Finder firstTick =
+        find.byKey(const ValueKey<String>('logger.tick.0.0'));
     await tester.ensureVisible(firstTick);
     await tester.pump(const Duration(milliseconds: 100));
     await tester.tap(firstTick);
@@ -1278,5 +1325,8 @@ Future<void> _pumpApp(
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Home'));
+  await _pumpUntilFound(
+    tester,
+    find.text(fake.displayLanguage == 'ar' ? 'الرئيسية' : 'Home'),
+  );
 }

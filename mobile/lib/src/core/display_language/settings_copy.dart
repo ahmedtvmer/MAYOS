@@ -1,0 +1,130 @@
+import 'arabic_count.dart';
+
+/// App-owned settings labels, personalization copy, and logout prompts.
+class SettingsCopy {
+  const SettingsCopy(this.languageCode);
+
+  final String languageCode;
+  bool get isArabic => languageCode == 'ar';
+
+  String get appearance => isArabic ? 'المظهر' : 'Appearance';
+  String get appearanceLead => isArabic
+      ? 'اختر مظهر MAYOS. يتبع خيار النظام إعداد جهازك.'
+      : 'Choose how MAYOS looks. System follows your device.';
+  String get system => isArabic ? 'النظام' : 'System';
+  String get light => isArabic ? 'فاتح' : 'Light';
+  String get dark => isArabic ? 'داكن' : 'Dark';
+  String get personalization => isArabic ? 'التخصيص' : 'Personalization';
+  String get assistantStyle => isArabic ? 'أسلوب المساعد' : 'Assistant style';
+  String get account => isArabic ? 'الحساب' : 'Account';
+  String get profile => isArabic ? 'الملف الشخصي' : 'Profile';
+  String get profileSubtitle => isArabic
+      ? 'تفضيلات التدريب والجدول والحساب'
+      : 'Training preferences, schedule, and account';
+  String get plan => isArabic ? 'الخطة' : 'Plan';
+  String get planSubtitle =>
+      isArabic ? 'حالة خطتي اللاعب والمدرب' : 'Lifter and Coach plan states';
+  String get coaching => isArabic ? 'التدريب مع مدرب' : 'Coaching';
+  String get coachingAssignment =>
+      isArabic ? 'علاقة التدريب' : 'Coaching assignment';
+  String get coachingSubtitle =>
+      isArabic ? 'مدربك وسجلات التواصل' : 'Your coach and check-ins';
+  String get becomeCoach => isArabic ? 'كن مدربًا' : 'Become a coach';
+  String get becomeCoachSubtitle => isArabic
+      ? 'أدخل رمز مدرب MAYOS لتفعيل وضع المدرب'
+      : 'Enter your MAYOS coach code to unlock Coach mode';
+  String get training => isArabic ? 'التدريب' : 'Training';
+  String get assistant => isArabic ? 'المساعد' : 'Assistant';
+  String get assistantSubtitle =>
+      isArabic ? 'تحدث عن تدريبك' : 'Chat about your training';
+  String get workoutDrafts => isArabic ? 'مسودات الحصص' : 'Workout drafts';
+  String get workouts => isArabic ? 'الحصص التدريبية' : 'Workouts';
+  String get workoutDraftsSubtitle => isArabic
+      ? 'محفوظة على هذا الجهاز وتتم مزامنتها عند الاتصال'
+      : 'Saved on this device, syncing when online';
+  String get about => isArabic ? 'حول التطبيق' : 'About';
+  String get privacyPolicy => isArabic ? 'سياسة الخصوصية' : 'Privacy policy';
+  String get privacySubtitle => isArabic
+      ? 'ما يجمعه MAYOS، ومن يمكنه الاطلاع عليه، وكيفية الحذف'
+      : 'What MAYOS collects, who can see it, and deletion';
+  String get credits => isArabic ? 'الاعتمادات' : 'Credits';
+  String get logOut => isArabic ? 'تسجيل الخروج' : 'Log out';
+  String get styleLead => isArabic
+      ? 'اختر طريقة صياغة ردود المساعد في المحادثة. تبقى الحقائق وقرارات التدريب والسلامة ولغة الرد كما هي.'
+      : 'Choose how your assistant words its chat replies. Facts, training decisions, safety, and reply language stay the same.';
+  String stylePresetLabel(String key) => switch (key) {
+        'direct' => directPragmatic,
+        'encouraging' => encouraging,
+        'scientific' => scientific,
+        'tough_love' => toughLove,
+        'concise' => concise,
+        _ => isArabic ? 'أسلوب آخر' : 'Assistant style',
+      };
+  String stylePresetDescription(String key) => switch (key) {
+        'direct' => directPragmaticDescription,
+        'encouraging' => encouragingDescription,
+        'scientific' => scientificDescription,
+        'tough_love' => toughLoveDescription,
+        'concise' => conciseDescription,
+        _ => isArabic ? 'وصف الأسلوب' : 'Style description',
+      };
+  String get directPragmatic => isArabic ? 'مباشر وعملي' : 'Direct & pragmatic';
+  String get directPragmaticDescription =>
+      isArabic ? 'واضح وعملي.' : 'Clear and practical.';
+  String get encouraging => isArabic ? 'مشجع' : 'Encouraging';
+  String get encouragingDescription =>
+      isArabic ? 'يقدّر الجهد.' : 'Recognizes effort.';
+  String get scientific => isArabic ? 'علمي' : 'Scientific';
+  String get scientificDescription =>
+      isArabic ? 'يعتمد على الأدلة والتعليل.' : 'Evidence and reasoning.';
+  String get toughLove => isArabic ? 'حازم باحترام' : 'Tough-love';
+  String get toughLoveDescription =>
+      isArabic ? 'حازم ومحترم.' : 'Firm, respectful.';
+  String get concise => isArabic ? 'موجز' : 'Concise';
+  String get conciseDescription =>
+      isArabic ? 'ردود قصيرة ومركزة.' : 'Brief, focused replies.';
+  String get styleSaved =>
+      isArabic ? 'حُفظ أسلوب المساعد.' : 'Assistant style saved.';
+  String get styleLoadFailed => isArabic
+      ? 'تعذر تحميل أسلوب المساعد.'
+      : 'Could not load Assistant style.';
+  String get retry => isArabic ? 'إعادة المحاولة' : 'Retry';
+  String get saveStyle => isArabic ? 'حفظ الأسلوب' : 'Save style';
+  String get optionalInstructions =>
+      isArabic ? 'تعليمات اختيارية' : 'Optional instructions';
+  String get instructionsExample => isArabic
+      ? 'مثلًا: اشرح المصطلحات باختصار.'
+      : 'For example: explain terms briefly.';
+  String get wordingOnly =>
+      isArabic ? 'تُستخدم لصياغة الردود فقط.' : 'Used for wording only.';
+  String creditsBody(String requiredCredit) => isArabic
+      ? 'تُنسب صور التمارين ومقاطع GIF في المكتبة وفق شروط استخدامها:\n\n'
+          '$requiredCredit\n\n'
+          'تُعرض الوسائط بحجمها الأصلي وبحد أقصى 180 × 180 مع هذا الاعتماد، بينما لا يزال ترخيص MAYOS الخاص من Gym visual قيد الانتظار.'
+      : 'Exercise media (the catalog pictures and GIFs) is credited as '
+          'required by its terms:\n\n'
+          '$requiredCredit\n\n'
+          'The media is shown at its native size, never larger than 180 × 180, '
+          'with this credit, while MAYOS\'s own licence from Gym visual is '
+          'pending.';
+  String get couldNotOpenCredits =>
+      isArabic ? 'تعذر فتح gymvisual.com.' : 'Could not open gymvisual.com.';
+  String get close => isArabic ? 'إغلاق' : 'Close';
+  String get unsyncedWorkouts =>
+      isArabic ? 'حصص غير متزامنة' : 'Unsynced workouts';
+  String unsyncedDraftWarning(int count) => isArabic
+      ? 'لديك ${arabicCountPhrase(count, ArabicCountNoun.workoutDraft)} غير متزامنة. ستبقى على هذا الجهاز حتى تتم مزامنتها؛ تسجيل الخروج لن يحذفها.'
+      : 'You have $count unsynced workout ${count == 1 ? 'draft' : 'drafts'}. They stay on this device until they sync; logging out will not delete them.';
+  String get discardDraftsAndLogOut =>
+      isArabic ? 'حذف المسودات وتسجيل الخروج' : 'Discard drafts and log out';
+  String get keepDraftsAndLogOut =>
+      isArabic ? 'الاحتفاظ بالمسودات وتسجيل الخروج' : 'Keep drafts and log out';
+  String get discardUnfinishedWorkout =>
+      isArabic ? 'حذف الحصة غير المكتملة؟' : 'Discard unfinished workout?';
+  String get logoutDiscardsBrowserWorkout => isArabic
+      ? 'سيؤدي تسجيل الخروج إلى حذف هذه الحصة من هذا المتصفح.'
+      : 'Logging out will discard this workout from this browser.';
+  String get discardAndLogOut =>
+      isArabic ? 'حذف وتسجيل الخروج' : 'Discard and log out';
+  String get cancel => isArabic ? 'إلغاء' : 'Cancel';
+}

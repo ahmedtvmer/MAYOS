@@ -1,4 +1,5 @@
 import 'api_client.dart';
+import 'app_failure.dart';
 
 /// One consistent message for an action that mutates program/schedule state on
 /// the server but cannot reach it (spec AC3, ADR 036).
@@ -16,13 +17,16 @@ const String needsConnectionMessage =
 /// definition of "offline" and needs no connectivity package.
 bool isNetworkFailure(ApiException error) => error.statusCode == null;
 
-/// The message to show for a failed program-changing action: the shared
-/// connectivity line for a transport failure, otherwise the server's own
-/// message.
-String mutationFailureMessage(
-  ApiException error, {
-  String? connectionMessage,
-}) =>
+/// Keeps API failures typed until a display-language catalog renders them.
+FailureMessage apiFailureMessage(ApiException error) =>
+    error.failureMessage ?? ServerFailureMessage(error.message);
+
+/// A failed mutation gets its stronger app-authored connectivity message;
+/// every service refusal retains the original server detail or typed code.
+FailureMessage mutationFailureMessage(ApiException error) =>
     isNetworkFailure(error)
-        ? connectionMessage ?? needsConnectionMessage
-        : error.message;
+        ? const AppFailureMessage(
+            AppFailureId.mutationNeedsConnection,
+            needsConnectionMessage,
+          )
+        : apiFailureMessage(error);

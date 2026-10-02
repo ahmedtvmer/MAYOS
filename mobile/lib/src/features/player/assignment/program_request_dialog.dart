@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/mayos_spacing.dart';
+import '../../../core/display_language/assignment_copy.dart';
+import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_button.dart';
@@ -90,7 +92,7 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
   }
 
   void _submit() {
-    final String? error = _validationError();
+    final String? error = _validationError(context);
     if (error != null) {
       setState(() => _localError = error);
       return;
@@ -98,13 +100,14 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
     Navigator.of(context).pop(_buildDraft());
   }
 
-  String? _validationError() {
-    if (_reason.text.trim().isEmpty) return 'A reason is required.';
+  String? _validationError(BuildContext context) {
+    final AssignmentCopy copy = assignmentCopyOf(context);
+    if (_reason.text.trim().isEmpty) return copy.reasonRequired;
     if (_kind == 'exercise_substitution' &&
         (_day.text.trim().isEmpty ||
             _exercise.text.trim().isEmpty ||
             _replacement.text.trim().isEmpty)) {
-      return 'Pick the day, the exercise, and its replacement.';
+      return copy.chooseSubstitutionValues;
     }
     return null;
   }
@@ -122,135 +125,161 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
             _kind == 'split_change' ? _preference.text.trim() : null,
       );
 
-  Widget _buildRequestTypeField() => DropdownButtonFormField<String>(
-        key: const Key('program_request_kind_field'),
-        initialValue: _kind,
-        decoration: const InputDecoration(
-            labelText: 'Request type', border: OutlineInputBorder()),
-        items: const <DropdownMenuItem<String>>[
-          DropdownMenuItem<String>(
-              value: 'exercise_substitution',
-              child: Text('Exercise substitution')),
-          DropdownMenuItem<String>(
-              value: 'split_change', child: Text('Split change')),
-        ],
-        onChanged: (String? value) => setState(() {
-          _kind = value ?? _kind;
-          _localError = null;
-        }),
-      );
+  Widget _buildRequestTypeField(BuildContext context) {
+    final AssignmentCopy copy = assignmentCopyOf(context);
+    return DropdownButtonFormField<String>(
+      key: const Key('program_request_kind_field'),
+      initialValue: _kind,
+      decoration: InputDecoration(
+          labelText: copy.requestType, border: OutlineInputBorder()),
+      items: <DropdownMenuItem<String>>[
+        DropdownMenuItem<String>(
+            value: 'exercise_substitution',
+            child: Text(copy.exerciseSubstitutionRequest)),
+        DropdownMenuItem<String>(
+            value: 'split_change', child: Text(copy.splitChange)),
+      ],
+      onChanged: (String? value) => setState(() {
+        _kind = value ?? _kind;
+        _localError = null;
+      }),
+    );
+  }
 
-  Widget _buildReadOnlyValue(String label, String value) => InputDecorator(
+  Widget _buildReadOnlyValue(
+          BuildContext context, String label, String value) =>
+      InputDecorator(
         decoration: InputDecoration(
           labelText: label,
           border: const OutlineInputBorder(),
         ),
         child: Align(
-          alignment: Alignment.centerLeft,
+          alignment: AlignmentDirectional.centerStart,
           child: Text(
             value,
             style: MayosTypography.body.copyWith(
               color: MayosTheme.of(context).textPrimary,
             ),
+            textDirection: TextDirection.ltr,
           ),
         ),
       );
 
   List<Widget> _buildSubstitutionFields() {
+    final AssignmentCopy copy = assignmentCopyOf(context);
     final ProgramSubstitutionRequestPrefill? prefill = widget.substitution;
     if (prefill != null) {
       return <Widget>[
-        _buildReadOnlyValue('Day', prefill.dayName),
+        _buildReadOnlyValue(context, copy.day, prefill.dayName),
         const SizedBox(height: MayosSpacing.md),
-        _buildReadOnlyValue('Exercise', prefill.exerciseName),
+        _buildReadOnlyValue(context, copy.exercise, prefill.exerciseName),
         const SizedBox(height: MayosSpacing.md),
-        _buildReadOnlyValue('Replacement', prefill.replacementName),
+        _buildReadOnlyValue(context, copy.replacement, prefill.replacementName),
       ];
     }
     return <Widget>[
       MayosTextField(
         fieldKey: const Key('program_request_day_field'),
         controller: _day,
-        label: 'Day name',
+        label: copy.dayName,
       ),
       const SizedBox(height: MayosSpacing.md),
-      MayosTextField(
-        fieldKey: const Key('program_request_exercise_field'),
-        controller: _exercise,
-        label: 'Current exercise id',
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: MayosTextField(
+          fieldKey: const Key('program_request_exercise_field'),
+          controller: _exercise,
+          label: copy.currentExerciseId,
+        ),
       ),
       const SizedBox(height: MayosSpacing.md),
-      MayosTextField(
-        fieldKey: const Key('program_request_replacement_field'),
-        controller: _replacement,
-        label: 'Replacement exercise id',
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: MayosTextField(
+          fieldKey: const Key('program_request_replacement_field'),
+          controller: _replacement,
+          label: copy.replacementExerciseId,
+        ),
       ),
     ];
   }
 
-  List<Widget> _buildSplitChangeFields() => <Widget>[
-        DropdownButtonFormField<int>(
-          key: const Key('program_request_frequency_field'),
-          initialValue: _frequency,
-          decoration: const InputDecoration(
-              labelText: 'Days per week', border: OutlineInputBorder()),
-          items: <DropdownMenuItem<int>>[
-            for (int day = 1; day <= 5; day++)
-              DropdownMenuItem<int>(value: day, child: Text('$day')),
-          ],
-          onChanged: (int? value) =>
-              setState(() => _frequency = value ?? _frequency),
-        ),
-        const SizedBox(height: MayosSpacing.md),
-        MayosTextField(
-          fieldKey: const Key('program_request_split_field'),
-          controller: _preference,
-          label: 'Split preference (optional)',
-        ),
-      ];
-
-  List<Widget> _buildReasonFields(MayosThemeExtension colors) => <Widget>[
-        MayosTextField(
-          fieldKey: const Key('program_request_reason_field'),
-          controller: _reason,
-          maxLines: 2,
-          label: 'Reason',
-        ),
-        if (_localError != null) ...<Widget>[
-          const SizedBox(height: MayosSpacing.sm),
-          Text(
-            _localError!,
-            style: MayosTypography.bodySecondary.copyWith(color: colors.danger),
-          ),
+  List<Widget> _buildSplitChangeFields() {
+    final AssignmentCopy copy = assignmentCopyOf(context);
+    return <Widget>[
+      DropdownButtonFormField<int>(
+        key: const Key('program_request_frequency_field'),
+        initialValue: _frequency,
+        decoration: InputDecoration(
+            labelText: copy.daysPerWeek, border: OutlineInputBorder()),
+        items: <DropdownMenuItem<int>>[
+          for (int day = 1; day <= 5; day++)
+            DropdownMenuItem<int>(
+                value: day,
+                child: Text('$day', textDirection: TextDirection.ltr)),
         ],
-      ];
+        onChanged: (int? value) =>
+            setState(() => _frequency = value ?? _frequency),
+      ),
+      const SizedBox(height: MayosSpacing.md),
+      MayosTextField(
+        fieldKey: const Key('program_request_split_field'),
+        controller: _preference,
+        label: copy.splitPreferenceOptional,
+      ),
+    ];
+  }
 
-  List<Widget> _buildActions() => <Widget>[
-        MayosButton(
-          label: 'Cancel',
-          variant: MayosButtonVariant.tertiary,
-          expand: false,
-          onPressed: () => Navigator.of(context).pop(),
+  List<Widget> _buildReasonFields(
+      BuildContext context, MayosThemeExtension colors) {
+    final AssignmentCopy copy = assignmentCopyOf(context);
+    return <Widget>[
+      MayosTextField(
+        fieldKey: const Key('program_request_reason_field'),
+        controller: _reason,
+        maxLines: 2,
+        label: copy.reason,
+      ),
+      if (_localError != null) ...<Widget>[
+        const SizedBox(height: MayosSpacing.sm),
+        Text(
+          _localError!,
+          style: MayosTypography.bodySecondary.copyWith(color: colors.danger),
         ),
-        MayosButton(
-          key: const Key('program_request_submit_button'),
-          label: 'Submit request',
-          expand: false,
-          onPressed: _submit,
-        ),
-      ];
+      ],
+    ];
+  }
+
+  List<Widget> _buildActions() {
+    final AssignmentCopy copy = assignmentCopyOf(context);
+    return <Widget>[
+      MayosButton(
+        label: copy.cancel,
+        variant: MayosButtonVariant.tertiary,
+        expand: false,
+        onPressed: () => Navigator.of(context).pop(),
+      ),
+      MayosButton(
+        key: const Key('program_request_submit_button'),
+        label: copy.submitRequest,
+        expand: false,
+        onPressed: _submit,
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension colors = MayosTheme.of(context);
+    final AssignmentCopy copy = assignmentCopyOf(context);
     return AlertDialog(
-      title: const Text('Request a program change'),
+      title: Text(copy.programChangeRequest),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             if (widget.substitution == null) ...<Widget>[
-              _buildRequestTypeField(),
+              _buildRequestTypeField(context),
               const SizedBox(height: MayosSpacing.md),
             ],
             if (_kind == 'exercise_substitution')
@@ -258,7 +287,7 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
             else
               ..._buildSplitChangeFields(),
             const SizedBox(height: MayosSpacing.md),
-            ..._buildReasonFields(colors),
+            ..._buildReasonFields(context, colors),
           ],
         ),
       ),

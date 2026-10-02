@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/active_workout.dart';
+import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/rest_length.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
@@ -15,53 +16,58 @@ import '../../../providers.dart';
 Future<int?> showRestLengthPicker(
   BuildContext context, {
   required int initial,
-}) => showModalBottomSheet<int>(
-  context: context,
-  showDragHandle: true,
-  builder: (BuildContext context) => SafeArea(
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 560),
-      child: ListView.builder(
-        shrinkWrap: true,
-        itemCount: kRestLengthOptions.length,
-        itemBuilder: (BuildContext context, int index) {
-          final int seconds = kRestLengthOptions[index];
-          final bool selected = seconds == initial;
-          return InkWell(
-            key: ValueKey<String>('rest.option.$seconds'),
-            onTap: () => Navigator.of(context).pop(seconds),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: MayosSpacing.lg,
-                vertical: MayosSpacing.sm,
-              ),
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Text(
-                      seconds <= 0 ? 'Off' : restMmSs(seconds),
-                      style: selected
-                          ? MayosTypography.bodySecondary.copyWith(
-                              color: MayosTheme.of(context).accent,
-                            )
-                          : MayosTypography.bodySecondary,
-                    ),
+}) =>
+    showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (BuildContext context) => SafeArea(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 560),
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: kRestLengthOptions.length,
+            itemBuilder: (BuildContext context, int index) {
+              final int seconds = kRestLengthOptions[index];
+              final bool selected = seconds == initial;
+              return InkWell(
+                key: ValueKey<String>('rest.option.$seconds'),
+                onTap: () => Navigator.of(context).pop(seconds),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: MayosSpacing.lg,
+                    vertical: MayosSpacing.sm,
                   ),
-                  if (selected)
-                    Icon(
-                      Icons.check,
-                      size: MayosIconSizes.medium,
-                      color: MayosTheme.of(context).accent,
-                    ),
-                ],
-              ),
-            ),
-          );
-        },
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          seconds <= 0
+                              ? workoutCopyOf(context).restOff
+                              : restMmSs(seconds),
+                          textDirection:
+                              seconds <= 0 ? null : TextDirection.ltr,
+                          style: selected
+                              ? MayosTypography.bodySecondary.copyWith(
+                                  color: MayosTheme.of(context).accent,
+                                )
+                              : MayosTypography.bodySecondary,
+                        ),
+                      ),
+                      if (selected)
+                        Icon(
+                          Icons.check,
+                          size: MayosIconSizes.medium,
+                          color: MayosTheme.of(context).accent,
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
       ),
-    ),
-  ),
-);
+    );
 
 /// #125's rest controls — **−15 · m:ss + "Rest · <exercise>" · +15 ·
 /// Skip** — with a draining fill behind them, as the logger's persistent
@@ -144,25 +150,30 @@ class _RestTimerControlsState extends ConsumerState<RestTimerControls> {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final WorkoutCopy copy = workoutCopyOf(context);
     // A full 48dp target for every action (#45): the label sits centred in
     // the minimum target rather than sizing the target from the text.
     Widget action(String label, VoidCallback onTap, {Key? key}) => InkWell(
-      key: key,
-      onTap: onTap,
-      borderRadius: MayosRadii.smallRadius,
-      child: SizedBox(
-        height: kMayosMinTapTarget,
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: MayosSpacing.sm),
-            child: Text(
-              label,
-              style: MayosTypography.label.copyWith(color: c.accent),
+          key: key,
+          onTap: onTap,
+          borderRadius: MayosRadii.smallRadius,
+          child: SizedBox(
+            height: kMayosMinTapTarget,
+            child: Center(
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: MayosSpacing.sm),
+                child: Text(
+                  label,
+                  textDirection: label == '−15' || label == '+15'
+                      ? TextDirection.ltr
+                      : null,
+                  style: MayosTypography.label.copyWith(color: c.accent),
+                ),
+              ),
             ),
           ),
-        ),
-      ),
-    );
+        );
 
     return Container(
       key: const ValueKey<String>('rest.controls'),
@@ -174,7 +185,7 @@ class _RestTimerControlsState extends ConsumerState<RestTimerControls> {
           // The draining fill: the time still left, from the left edge.
           Positioned.fill(
             child: FractionallySizedBox(
-              alignment: Alignment.centerLeft,
+              alignment: AlignmentDirectional.centerStart,
               widthFactor: _fill,
               // The draining fill: the rest's own accent wash, a token rather
               // than a raw alpha (DESIGN.md).
@@ -199,12 +210,13 @@ class _RestTimerControlsState extends ConsumerState<RestTimerControls> {
                     children: <Widget>[
                       Text(
                         restMmSs(_remainingSeconds),
+                        textDirection: TextDirection.ltr,
                         style: MayosTypography.numericMedium.copyWith(
                           color: c.textPrimary,
                         ),
                       ),
                       Text(
-                        'Rest · ${widget.rest.exerciseName}',
+                        copy.restForExercise(widget.rest.exerciseName),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: MayosTypography.caption.copyWith(
@@ -220,7 +232,7 @@ class _RestTimerControlsState extends ConsumerState<RestTimerControls> {
                   key: const ValueKey<String>('rest.plus'),
                 ),
                 action(
-                  'Skip',
+                  copy.skipRest,
                   widget.onSkip,
                   key: const ValueKey<String>('rest.skip'),
                 ),

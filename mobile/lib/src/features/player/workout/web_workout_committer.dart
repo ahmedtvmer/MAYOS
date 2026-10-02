@@ -1,5 +1,6 @@
 import '../../../core/active_workout.dart';
 import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import 'active_workout_controller.dart';
 
@@ -10,12 +11,22 @@ enum WebWorkoutCommitStatus {
   refused,
 }
 
+enum WebWorkoutCommitMessage {
+  reopenWorkout,
+  refreshProgram,
+  connection,
+  busy,
+}
+
 class WebWorkoutCommitResult {
-  const WebWorkoutCommitResult(this.status, {this.message, this.response});
+  const WebWorkoutCommitResult(this.status,
+      {this.message, this.response, this.messageType, this.failureMessage});
 
   final WebWorkoutCommitStatus status;
   final String? message;
   final Map<String, dynamic>? response;
+  final WebWorkoutCommitMessage? messageType;
+  final FailureMessage? failureMessage;
 }
 
 /// Owns the web direct-commit policy: durable attempt marking, reconciliation,
@@ -47,6 +58,7 @@ class WebWorkoutCommitter {
         return const WebWorkoutCommitResult(
           WebWorkoutCommitStatus.sessionProblem,
           message: 'Reopen this workout and try saving again.',
+          messageType: WebWorkoutCommitMessage.reopenWorkout,
         );
       }
       final Map<String, dynamic>? body = current.buildCommitBody(
@@ -60,6 +72,7 @@ class WebWorkoutCommitter {
         return const WebWorkoutCommitResult(
           WebWorkoutCommitStatus.sessionProblem,
           message: 'Refresh your program before saving this workout.',
+          messageType: WebWorkoutCommitMessage.refreshProgram,
         );
       }
 
@@ -94,6 +107,7 @@ class WebWorkoutCommitter {
       return const WebWorkoutCommitResult(
         WebWorkoutCommitStatus.retryable,
         message: "Couldn't reach MAYOS. Your workout is kept in this browser.",
+        messageType: WebWorkoutCommitMessage.connection,
       );
     }
   }
@@ -115,17 +129,22 @@ class WebWorkoutCommitter {
         message: status == null || status == 408
             ? "Couldn't reach MAYOS. Your workout is kept in this browser."
             : 'MAYOS is busy. Your workout is kept in this browser.',
+        messageType: status == null || status == 408
+            ? WebWorkoutCommitMessage.connection
+            : WebWorkoutCommitMessage.busy,
       );
     }
     if (status == 401 || status == 403) {
       return WebWorkoutCommitResult(
         WebWorkoutCommitStatus.sessionProblem,
         message: error.message,
+        failureMessage: apiFailureMessage(error),
       );
     }
     return WebWorkoutCommitResult(
       WebWorkoutCommitStatus.refused,
       message: error.message,
+      failureMessage: apiFailureMessage(error),
     );
   }
 }

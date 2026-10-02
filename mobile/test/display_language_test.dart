@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/display_language.dart';
+import 'package:mayos_mobile/src/core/display_language/assignment_copy.dart';
+import 'package:mayos_mobile/src/core/display_language/workout_copy.dart';
 import 'package:mayos_mobile/src/core/browser_key_value_store.dart';
+import 'package:mayos_mobile/src/core/training_status_projection.dart';
 
 class _BrowserStore implements BrowserKeyValueStore {
   final Map<String, String> values = <String, String>{};
@@ -21,6 +24,78 @@ class _FailingStore extends InMemoryDisplayLanguageStore {
 }
 
 void main() {
+  test('Arabic workout prescription isolates numeric spans', () {
+    const WorkoutCopy copy = WorkoutCopy('ar');
+    expect(copy.prescriptionReps(6, 8), contains('\u{2066}6–8\u{2069}'));
+    expect(
+        copy.prescriptionWeight('62.5'), contains('\u{2066}62.5 kg\u{2069}'));
+  });
+
+  test('workout status copy renders typed facts in both languages', () {
+    const WorkoutCopy arabic = WorkoutCopy('ar');
+    const WorkoutCopy english = WorkoutCopy('en');
+    const WeeklyStreakSummaryLine streak = WeeklyStreakSummaryLine(3);
+    const WeeklyCompletionSummaryLine completion =
+        WeeklyCompletionSummaryLine(completed: 2, target: 3);
+    const CheckpointProgressSummaryLine checkpoint =
+        CheckpointProgressSummaryLine(remaining: 3, checkpoint: 10);
+
+    expect(english.trainingStatusLine(streak), 'Weekly streak: 3 weeks');
+    expect(
+      english.trainingStatusLine(checkpoint),
+      '3 workouts to your 10th',
+    );
+    expect(
+      arabic.trainingStatusLine(streak),
+      'أسابيع الالتزام المتتالية: \u{2066}3\u{2069}',
+    );
+    expect(
+      arabic.trainingStatusLine(completion),
+      'هذا الأسبوع: \u{2066}2\u{2069} من \u{2066}3\u{2069} مكتملة',
+    );
+    expect(
+      arabic.trainingStatusLine(checkpoint),
+      '\u{2066}3\u{2069} حصص تدريبية للوصول إلى محطة التقدم رقم \u{2066}10\u{2069}',
+    );
+  });
+
+  test('assignment copy keeps substitution requests distinct from swaps', () {
+    const AssignmentCopy arabic = AssignmentCopy('ar');
+    const AssignmentCopy english = AssignmentCopy('en');
+
+    expect(arabic.exerciseSubstitutionRequest, 'طلب تبديل تمرين من المدرب');
+    expect(english.exerciseSubstitutionRequest, 'Exercise substitution');
+    expect(
+      arabic.programRequestDescription(
+        kind: 'exercise_substitution',
+        exercise: 'Bench Press',
+        day: 'Upper A',
+        replacement: 'Incline Press',
+        frequency: null,
+        preference: null,
+      ),
+      'طلب تبديل تمرين من المدرب: Bench Press في Upper A إلى Incline Press',
+    );
+    expect(
+      english.programRequestDescription(
+        kind: 'exercise_substitution',
+        exercise: 'Bench Press',
+        day: 'Upper A',
+        replacement: 'Incline Press',
+        frequency: null,
+        preference: null,
+      ),
+      'Substitute Bench Press on Upper A with Incline Press',
+    );
+  });
+
+  test('unplanned exercise dialog title is localized by workout copy', () {
+    expect(
+        const WorkoutCopy('ar').addUnplannedExercise, 'إضافة تمرين غير مخطط');
+    expect(
+        const WorkoutCopy('en').addUnplannedExercise, 'Add unplanned exercise');
+  });
+
   testWidgets('system Arabic initializes selector to Arabic', (tester) async {
     final store = InMemoryDisplayLanguageStore();
     final container = ProviderContainer(overrides: [

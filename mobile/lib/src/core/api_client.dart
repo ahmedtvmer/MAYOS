@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
+import 'app_failure.dart';
 import 'baselines.dart';
 import 'chat_models.dart';
 import 'models.dart';
@@ -13,13 +14,21 @@ import 'token_store.dart';
 /// Raised for any failed service call, carrying the HTTP status when there was
 /// a response and a human-readable message from the service `detail` field.
 class ApiException implements Exception {
-  const ApiException(this.message, {this.statusCode, this.errorCode});
+  const ApiException(
+    this.message, {
+    this.statusCode,
+    this.errorCode,
+    this.failureMessage,
+  });
 
   final String message;
   final int? statusCode;
 
   /// A machine-readable `error` code from the service, when it sent one.
   final String? errorCode;
+
+  /// Keeps app failures typed and server `detail` values explicitly raw.
+  final FailureMessage? failureMessage;
 
   @override
   String toString() => 'ApiException($statusCode): $message';
@@ -117,6 +126,30 @@ class ApiClient {
       'The service returned invalid baseline data.';
   static const String _invalidTrainingStatus =
       'The service returned invalid training status data.';
+  static const AppFailureMessage _invalidCheckInsFailure = AppFailureMessage(
+    AppFailureId.invalidCheckInData,
+    _invalidCheckIns,
+  );
+  static const AppFailureMessage _invalidNoticesFailure = AppFailureMessage(
+    AppFailureId.invalidAssignmentNotices,
+    _invalidNotices,
+  );
+  static const AppFailureMessage _invalidProgramRequestsFailure =
+      AppFailureMessage(
+    AppFailureId.invalidProgramRequestData,
+    _invalidProgramRequests,
+  );
+  static const AppFailureMessage _invalidProfileFailure = AppFailureMessage(
+    AppFailureId.invalidProfileData,
+    _invalidProfile,
+  );
+  static const AppFailureMessage _invalidScheduleFailure = AppFailureMessage(
+    AppFailureId.invalidTrainingScheduleData,
+    _invalidSchedule,
+  );
+
+  static AppFailureMessage _invalidServiceDataFailure(String message) =>
+      AppFailureMessage(AppFailureId.invalidServiceData, message);
 
   final TokenStore _tokens;
   late final Dio _dio;
@@ -172,30 +205,56 @@ class ApiClient {
     if (data is Map) {
       final Map<String, dynamic> body = Map<String, dynamic>.from(data);
       if (body['detail'] is String) {
+        final String detail = body['detail'] as String;
         return ApiException(
-          body['detail'] as String,
+          detail,
           statusCode: status,
           errorCode: _machineCode(body),
+          failureMessage: ServerFailureMessage(detail),
         );
       }
       if (body['error'] is String) {
         final String code = body['error'] as String;
+        final String message = _messageForError(code);
         return ApiException(
-          _messageForError(code),
+          message,
           statusCode: status,
           errorCode: code,
+          failureMessage: AppFailureMessage(
+            code == 'program_version_mismatch'
+                ? AppFailureId.programVersionMismatch
+                : AppFailureId.serviceRejected,
+            message,
+          ),
         );
       }
     }
     if (status == null) {
       return const ApiException(
-          'Cannot reach the service. Check your connection.');
+        'Cannot reach the service. Check your connection.',
+        failureMessage: AppFailureMessage(
+          AppFailureId.cannotReachService,
+          'Cannot reach the service. Check your connection.',
+        ),
+      );
     }
     if (status >= 500) {
       return ApiException('The service is unavailable. Please retry.',
-          statusCode: status);
+          statusCode: status,
+          failureMessage: const AppFailureMessage(
+            AppFailureId.serviceUnavailable,
+            'The service is unavailable. Please retry.',
+          ));
     }
-    return ApiException('Request failed ($status).', statusCode: status);
+    return ApiException(
+      'Request failed ($status).',
+      statusCode: status,
+      failureMessage: AppFailureMessage(
+        AppFailureId.requestFailed,
+        'Request failed ($status).',
+        value: status,
+      ),
+    );
   }
 
   /// The machine-readable code from a service error body, whether it arrives as
@@ -274,8 +333,12 @@ class ApiClient {
     );
     final dynamic data = response.data;
     if (data is! Map<String, dynamic>) {
-      throw const ApiException(
-          'The service returned an invalid Google sign-in answer.');
+      const String message =
+          'The service returned an invalid Google sign-in answer.';
+      throw ApiException(
+        message,
+        failureMessage: _invalidServiceDataFailure(message),
+      );
     }
     final dynamic ticket = data['signup_ticket'];
     if (ticket is String) {
@@ -308,8 +371,11 @@ class ApiClient {
     );
     final dynamic data = response.data;
     if (data is! Map<String, dynamic>) {
-      throw const ApiException(
-          'The service returned an invalid username answer.');
+      const String message = 'The service returned an invalid username answer.';
+      throw ApiException(
+        message,
+        failureMessage: _invalidServiceDataFailure(message),
+      );
     }
     return data['available'] == true;
   }
@@ -360,27 +426,33 @@ class ApiClient {
   T _parseBody<T>(
     dynamic responseData,
     T Function(Map<String, dynamic>) parse,
-    String invalidMessage,
-  ) {
+    String invalidMessage, {
+    AppFailureMessage? failureMessage,
+  }) {
+    final AppFailureMessage failure =
+        failureMessage ?? _invalidServiceDataFailure(invalidMessage);
     if (responseData is! Map<String, dynamic>) {
-      throw ApiException(invalidMessage);
+      throw ApiException(invalidMessage, failureMessage: failure);
     }
     try {
       return parse(responseData);
     } on FormatException {
-      throw ApiException(invalidMessage);
+      throw ApiException(invalidMessage, failureMessage: failure);
     } on TypeError {
-      throw ApiException(invalidMessage);
+      throw ApiException(invalidMessage, failureMessage: failure);
     }
   }
 
   List<T> _parseBodyList<T>(
     dynamic responseData,
     T Function(Map<String, dynamic>) parse,
-    String invalidMessage,
-  ) {
+    String invalidMessage, {
+    AppFailureMessage? failureMessage,
+  }) {
+    final AppFailureMessage failure =
+        failureMessage ?? _invalidServiceDataFailure(invalidMessage);
     if (responseData is! List<dynamic>) {
-      throw ApiException(invalidMessage);
+      throw ApiException(invalidMessage, failureMessage: failure);
     }
     try {
       return responseData.map((dynamic item) {
@@ -390,9 +462,9 @@ class ApiClient {
         return parse(item);
       }).toList(growable: false);
     } on FormatException {
-      throw ApiException(invalidMessage);
+      throw ApiException(invalidMessage, failureMessage: failure);
     } on TypeError {
-      throw ApiException(invalidMessage);
+      throw ApiException(invalidMessage, failureMessage: failure);
     }
   }
 
@@ -594,7 +666,10 @@ class ApiClient {
     );
     final dynamic data = response.data;
     if (data is! Map<String, dynamic> || data['alerts'] is! List<dynamic>) {
-      throw const ApiException(_invalidAlerts);
+      throw ApiException(
+        _invalidAlerts,
+        failureMessage: _invalidServiceDataFailure(_invalidAlerts),
+      );
     }
     return _parseBodyList(data['alerts'], CoachAlert.fromJson, _invalidAlerts);
   }
@@ -640,7 +715,11 @@ class ApiClient {
       ),
     );
     return _parseBody(
-        response.data, CheckInCreation.fromJson, _invalidCheckIns);
+      response.data,
+      CheckInCreation.fromJson,
+      _invalidCheckIns,
+      failureMessage: _invalidCheckInsFailure,
+    );
   }
 
   /// Lists the player's check-ins across all assignments, including ended ones.
@@ -653,10 +732,17 @@ class ApiClient {
   List<CheckIn> _parseCheckInList(dynamic responseData) {
     if (responseData is! Map<String, dynamic> ||
         responseData['check_ins'] is! List<dynamic>) {
-      throw const ApiException(_invalidCheckIns);
+      throw const ApiException(
+        _invalidCheckIns,
+        failureMessage: _invalidCheckInsFailure,
+      );
     }
     return _parseBodyList(
-        responseData['check_ins'], CheckIn.fromJson, _invalidCheckIns);
+      responseData['check_ins'],
+      CheckIn.fromJson,
+      _invalidCheckIns,
+      failureMessage: _invalidCheckInsFailure,
+    );
   }
 
   /// Publishes a coach-authored program for an assigned player (ADR 026).
@@ -690,10 +776,17 @@ class ApiClient {
         await _send(() => _dio.get<dynamic>('/assignments/notices'));
     final dynamic data = response.data;
     if (data is! Map<String, dynamic> || data['notices'] is! List<dynamic>) {
-      throw const ApiException(_invalidNotices);
+      throw const ApiException(
+        _invalidNotices,
+        failureMessage: _invalidNoticesFailure,
+      );
     }
     return _parseBodyList(
-        data['notices'], AssignmentNotice.fromJson, _invalidNotices);
+      data['notices'],
+      AssignmentNotice.fromJson,
+      _invalidNotices,
+      failureMessage: _invalidNoticesFailure,
+    );
   }
 
   /// Marks all of the player's notices read, returning how many were marked.
@@ -702,7 +795,10 @@ class ApiClient {
         await _send(() => _dio.post<dynamic>('/assignments/notices/read'));
     final dynamic data = response.data;
     if (data is! Map<String, dynamic> || data['marked_read'] is! num) {
-      throw const ApiException(_invalidNotices);
+      throw const ApiException(
+        _invalidNotices,
+        failureMessage: _invalidNoticesFailure,
+      );
     }
     return (data['marked_read'] as num).toInt();
   }
@@ -741,7 +837,11 @@ class ApiClient {
       () => _dio.post<dynamic>('/assignments/me/program-requests', data: body),
     );
     return _parseBody(
-        response.data, ProgramRequest.fromJson, _invalidProgramRequests);
+      response.data,
+      ProgramRequest.fromJson,
+      _invalidProgramRequests,
+      failureMessage: _invalidProgramRequestsFailure,
+    );
   }
 
   /// Cancels the player's own pending request.
@@ -751,7 +851,11 @@ class ApiClient {
           .post<dynamic>('/assignments/me/program-requests/$requestId/cancel'),
     );
     return _parseBody(
-        response.data, ProgramRequest.fromJson, _invalidProgramRequests);
+      response.data,
+      ProgramRequest.fromJson,
+      _invalidProgramRequests,
+      failureMessage: _invalidProgramRequestsFailure,
+    );
   }
 
   /// Lists an actively assigned player's program requests for the coach.
@@ -783,7 +887,11 @@ class ApiClient {
       ),
     );
     return _parseBody(
-        response.data, ProgramRequest.fromJson, _invalidProgramRequests);
+      response.data,
+      ProgramRequest.fromJson,
+      _invalidProgramRequests,
+      failureMessage: _invalidProgramRequestsFailure,
+    );
   }
 
   /// Declines a pending request with the player-visible reason (ADR 027: the
@@ -801,7 +909,11 @@ class ApiClient {
       ),
     );
     return _parseBody(
-        httpResponse.data, ProgramRequest.fromJson, _invalidProgramRequests);
+      httpResponse.data,
+      ProgramRequest.fromJson,
+      _invalidProgramRequests,
+      failureMessage: _invalidProgramRequestsFailure,
+    );
   }
 
   /// One coach question about [assignmentId] with the client-held transcript
@@ -828,18 +940,28 @@ class ApiClient {
     );
     final dynamic data = response.data;
     if (data is! Map<String, dynamic> || data['answer'] is! String) {
-      throw const ApiException(
-          'The service returned an invalid assistant answer.');
+      const String message = 'The service returned an invalid assistant answer.';
+      throw ApiException(
+        message,
+        failureMessage: _invalidServiceDataFailure(message),
+      );
     }
     return data['answer'] as String;
   }
 
   List<ProgramRequest> _parseProgramRequestList(dynamic data) {
     if (data is! Map<String, dynamic> || data['requests'] is! List<dynamic>) {
-      throw const ApiException(_invalidProgramRequests);
+      throw const ApiException(
+        _invalidProgramRequests,
+        failureMessage: _invalidProgramRequestsFailure,
+      );
     }
     return _parseBodyList(
-        data['requests'], ProgramRequest.fromJson, _invalidProgramRequests);
+      data['requests'],
+      ProgramRequest.fromJson,
+      _invalidProgramRequests,
+      failureMessage: _invalidProgramRequestsFailure,
+    );
   }
 
   /// Regenerates the player's own program (self-service), refused 403 while an
@@ -956,7 +1078,12 @@ class ApiClient {
     final persistedEmail = (response.data as Map<String, dynamic>)['email'];
     if (persistedEmail is! String || persistedEmail.isEmpty) {
       throw const ApiException(
-          'Could not confirm the recovery email. Please retry.');
+        'Could not confirm the recovery email. Please retry.',
+        failureMessage: AppFailureMessage(
+          AppFailureId.recoveryEmailNotConfirmed,
+          'Could not confirm the recovery email. Please retry.',
+        ),
+      );
     }
     return persistedEmail;
   }
@@ -1010,7 +1137,12 @@ class ApiClient {
   /// The player's stored training profile.
   Future<PlayerProfile> profile() async {
     final response = await _send(() => _dio.get<dynamic>('/profile'));
-    return _parseBody(response.data, PlayerProfile.fromJson, _invalidProfile);
+    return _parseBody(
+      response.data,
+      PlayerProfile.fromJson,
+      _invalidProfile,
+      failureMessage: _invalidProfileFailure,
+    );
   }
 
   /// Saves the player's Assistant style and optional wording instructions.
@@ -1033,12 +1165,16 @@ class ApiClient {
   PlayerProfile _parseAssistantStyleResponse(dynamic responseBody) {
     if (responseBody is! Map<String, dynamic> ||
         responseBody['profile'] is! Map<String, dynamic>) {
-      throw const ApiException(_invalidProfile);
+      throw const ApiException(
+        _invalidProfile,
+        failureMessage: _invalidProfileFailure,
+      );
     }
     return _parseBody(
       responseBody['profile'],
       PlayerProfile.fromJson,
       _invalidProfile,
+      failureMessage: _invalidProfileFailure,
     );
   }
 
@@ -1066,14 +1202,22 @@ class ApiClient {
       () => _dio.put<dynamic>('/profile', data: body),
     );
     return _parseBody(
-        response.data, ProfileUpdateResult.fromJson, _invalidProfile);
+      response.data,
+      ProfileUpdateResult.fromJson,
+      _invalidProfile,
+      failureMessage: _invalidProfileFailure,
+    );
   }
 
   /// The player's current expected training schedule, all versions, and active pauses.
   Future<TrainingSchedule> trainingSchedule() async {
     final response = await _send(() => _dio.get<dynamic>('/profile/schedule'));
     return _parseBody(
-        response.data, TrainingSchedule.fromJson, _invalidSchedule);
+      response.data,
+      TrainingSchedule.fromJson,
+      _invalidSchedule,
+      failureMessage: _invalidScheduleFailure,
+    );
   }
 
   /// The player's current Weekly streak and Checkpoint progress (#220).
@@ -1103,7 +1247,11 @@ class ApiClient {
       () => _dio.put<dynamic>('/profile/schedule', data: body),
     );
     return _parseBody(
-        response.data, TrainingScheduleSetResult.fromJson, _invalidSchedule);
+      response.data,
+      TrainingScheduleSetResult.fromJson,
+      _invalidSchedule,
+      failureMessage: _invalidScheduleFailure,
+    );
   }
 
   /// All pauses the player has scheduled, newest-first.
@@ -1112,10 +1260,17 @@ class ApiClient {
         await _send(() => _dio.get<dynamic>('/profile/schedule/pauses'));
     final dynamic data = response.data;
     if (data is! Map<String, dynamic> || data['pauses'] is! List<dynamic>) {
-      throw const ApiException(_invalidSchedule);
+      throw const ApiException(
+        _invalidSchedule,
+        failureMessage: _invalidScheduleFailure,
+      );
     }
     return _parseBodyList(
-        data['pauses'], ScheduledPause.fromJson, _invalidSchedule);
+      data['pauses'],
+      ScheduledPause.fromJson,
+      _invalidSchedule,
+      failureMessage: _invalidScheduleFailure,
+    );
   }
 
   /// Stores a prospective pause (max 14 days, no reason); the assigned coach is
@@ -1131,7 +1286,11 @@ class ApiClient {
       ),
     );
     return _parseBody(
-        response.data, TrainingPauseCreateResult.fromJson, _invalidSchedule);
+      response.data,
+      TrainingPauseCreateResult.fromJson,
+      _invalidSchedule,
+      failureMessage: _invalidScheduleFailure,
+    );
   }
 
   Future<OnboardingState> startOnboarding() async {
@@ -1326,7 +1485,10 @@ class ApiClient {
     );
     final dynamic data = response.data;
     if (data is! Map<String, dynamic> || data['baselines'] is! List) {
-      throw const ApiException(_invalidBaselines);
+      throw ApiException(
+        _invalidBaselines,
+        failureMessage: _invalidServiceDataFailure(_invalidBaselines),
+      );
     }
     return _parseBodyList(
         data['baselines'], BaselineExercise.fromJson, _invalidBaselines);
@@ -1351,10 +1513,20 @@ class ApiClient {
     );
     final dynamic data = response.data;
     if (data is! Map<String, dynamic> || data['exercises'] is! List) {
-      throw const ApiException('The service returned invalid exercise data.');
+      const String message = 'The service returned invalid exercise data.';
+      throw ApiException(
+        message,
+        failureMessage: _invalidServiceDataFailure(message),
+      );
     }
-    return _parseBodyList(data['exercises'], ExerciseCatalogEntry.fromJson,
-        'The service returned invalid exercise data.');
+    const String invalidExercises =
+        'The service returned invalid exercise data.';
+    return _parseBodyList(
+      data['exercises'],
+      ExerciseCatalogEntry.fromJson,
+      invalidExercises,
+      failureMessage: _invalidServiceDataFailure(invalidExercises),
+    );
   }
 
   /// Read-only catalog detail for one exercise (`GET /workouts/exercises/{id}`, #53).
@@ -1398,7 +1570,11 @@ class ApiClient {
       );
       final dynamic data = response.data;
       if (data is! Map<String, dynamic>) {
-        throw const ApiException('The service returned invalid session data.');
+        const String message = 'The service returned invalid session data.';
+        throw ApiException(
+          message,
+          failureMessage: _invalidServiceDataFailure(message),
+        );
       }
       return LatestSession.fromJson(data);
     } on ApiException catch (error) {
@@ -1420,7 +1596,11 @@ class ApiClient {
     );
     final dynamic data = response.data;
     if (data is! Map<String, dynamic>) {
-      throw const ApiException('The service returned invalid session data.');
+      const String message = 'The service returned invalid session data.';
+      throw ApiException(
+        message,
+        failureMessage: _invalidServiceDataFailure(message),
+      );
     }
     return WorkoutCommitResult(
       statusCode: response.statusCode ?? 201,
@@ -1441,7 +1621,11 @@ class ApiClient {
       );
       final dynamic data = response.data;
       if (data is! Map<String, dynamic>) {
-        throw const ApiException('The service returned invalid session data.');
+        const String message = 'The service returned invalid session data.';
+        throw ApiException(
+          message,
+          failureMessage: _invalidServiceDataFailure(message),
+        );
       }
       return data;
     } on ApiException catch (error) {
@@ -1467,7 +1651,11 @@ class ApiClient {
     );
     final dynamic data = response.data;
     if (data is! Map<String, dynamic>) {
-      throw const ApiException('The service returned invalid session data.');
+      const String message = 'The service returned invalid session data.';
+      throw ApiException(
+        message,
+        failureMessage: _invalidServiceDataFailure(message),
+      );
     }
     return data;
   }
@@ -1478,9 +1666,17 @@ class ApiClient {
     final response = await _send(() => _dio.get<dynamic>('/chat/history'));
     final dynamic data = response.data;
     if (data is! List<dynamic>) {
-      throw const ApiException(_invalidChat);
+      throw ApiException(
+        _invalidChat,
+        failureMessage: _invalidServiceDataFailure(_invalidChat),
+      );
     }
-    return _parseBodyList(data, ChatMessage.fromJson, _invalidChat);
+    return _parseBodyList(
+      data,
+      ChatMessage.fromJson,
+      _invalidChat,
+      failureMessage: _invalidServiceDataFailure(_invalidChat),
+    );
   }
 
   /// Clears the player's assistant-chat history (`DELETE /chat/history`).
@@ -1574,7 +1770,12 @@ class ApiClient {
       try {
         final dynamic decoded = jsonDecode(trimmed);
         if (decoded is Map && decoded['detail'] is String) {
-          return ApiException(decoded['detail'] as String, statusCode: status);
+          final String detail = decoded['detail'] as String;
+          return ApiException(
+            detail,
+            statusCode: status,
+            failureMessage: ServerFailureMessage(detail),
+          );
         }
       } on FormatException {
         // Fall through to the status-based message below.
@@ -1582,9 +1783,21 @@ class ApiClient {
     }
     if (status >= 500) {
       return ApiException('The service is unavailable. Please retry.',
-          statusCode: status);
+          statusCode: status,
+          failureMessage: const AppFailureMessage(
+            AppFailureId.serviceUnavailable,
+            'The service is unavailable. Please retry.',
+          ));
     }
-    return ApiException('Request failed ($status).', statusCode: status);
+    return ApiException(
+      'Request failed ($status).',
+      statusCode: status,
+      failureMessage: AppFailureMessage(
+        AppFailureId.requestFailed,
+        'Request failed ($status).',
+        value: status,
+      ),
+    );
   }
 
   ChatStreamEvent? _parseChatEvent(SseEvent event) {

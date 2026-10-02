@@ -1,3 +1,4 @@
+import '../app_failure.dart';
 import '../password_policy.dart';
 import '../checkpoint_ordinal.dart';
 import '../effort.dart';
@@ -151,6 +152,62 @@ class MayosCopy {
   String get connectionFailure => isArabic
       ? 'يتطلب هذا اتصالًا بالإنترنت. لم يتغير شيء.'
       : 'This needs a connection. Nothing was changed.';
+
+  /// Renders typed app failures in one place and preserves server details.
+  String failureMessage(FailureMessage failure) => switch (failure) {
+        ServerFailureMessage(:final detail) => detail,
+        AppFailureMessage(:final id, :final englishMessage, :final value) =>
+          !isArabic
+              ? englishMessage
+              : switch (id) {
+                  AppFailureId.cannotReachService =>
+                    'تعذر الاتصال بالخدمة. تحقق من اتصالك بالإنترنت.',
+                  AppFailureId.serviceUnavailable =>
+                    'الخدمة غير متاحة. حاول مجددًا.',
+                  AppFailureId.requestFailed =>
+                    'فشل الطلب (\u2066$value\u2069).',
+                  AppFailureId.serviceRejected => 'رفضت الخدمة هذا الطلب.',
+                  AppFailureId.mutationNeedsConnection => connectionFailure,
+                  AppFailureId.invalidServiceData =>
+                    'أعادت الخدمة بيانات بصيغة غير صالحة.',
+                  AppFailureId.recoveryEmailNotConfirmed =>
+                    'تعذر تأكيد البريد الإلكتروني للاسترداد. حاول مجددًا.',
+                  AppFailureId.programVersionMismatch =>
+                    'سُجلت هذه الحصة على إصدار أقدم من البرنامج.',
+                  AppFailureId.invalidCheckInData =>
+                    'أعادت الخدمة بيانات سجلات التواصل بصيغة غير صالحة.',
+                  AppFailureId.invalidAssignmentNotices =>
+                    'أعادت الخدمة بيانات الإشعارات بصيغة غير صالحة.',
+                  AppFailureId.invalidProgramRequestData =>
+                    'أعادت الخدمة بيانات طلبات البرنامج التدريبي بصيغة غير صالحة.',
+                  AppFailureId.invalidProfileData =>
+                    'أعادت الخدمة بيانات الملف الشخصي بصيغة غير صالحة.',
+                  AppFailureId.invalidTrainingScheduleData =>
+                    'أعادت الخدمة بيانات جدول التدريب بصيغة غير صالحة.',
+                  AppFailureId.profileUpdateRequired =>
+                    'تحتاج الخدمة إلى تحديث قبل تعديل هذا الملف. حاول مجددًا لاحقًا.',
+                  AppFailureId.draftNotSignedIn => 'لم تسجل الدخول.',
+                  AppFailureId.draftUnavailable => 'لم تعد هذه الحصة متاحة.',
+                  AppFailureId.draftMustBeSynced =>
+                    'لا يمكن تصحيح إلا الحصص المتزامنة.',
+                  AppFailureId.unexpectedSyncStatus =>
+                    'أعادت الخدمة حالة غير متوقعة (\u2066$value\u2069).',
+                  AppFailureId.googleUseWebButton =>
+                    'استخدم زر تسجيل الدخول عبر Google للمتابعة.',
+                  AppFailureId.googleNotConfigured =>
+                    'تسجيل الدخول عبر Google غير مهيأ في هذا الإصدار.',
+                  AppFailureId.googleUnavailable =>
+                    'تسجيل الدخول عبر Google غير متاح على هذا الجهاز.',
+                  AppFailureId.googleFailed =>
+                    'فشل تسجيل الدخول عبر Google. حاول مجددًا.',
+                  AppFailureId.googleMissingToken =>
+                    'لم يُعِد Google رمز تسجيل الدخول. حاول مجددًا.',
+                  AppFailureId.googleCannotReach =>
+                    'تعذر الاتصال بـ Google. تحقق من اتصالك وحاول مجددًا.',
+                  AppFailureId.googleDeleteCancelled =>
+                    'أُلغي تسجيل الدخول عبر Google. لم يُحذف حسابك.',
+                },
+      };
   String warmupPrescription(int sets, int reps, int restSeconds) => isArabic
       ? '$sets × $reps · ${restTime(restSeconds)}'
       : '$sets × $reps · rest ${restSeconds}s';

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/models.dart';
@@ -47,9 +48,10 @@ final class GoogleSignInDismissed extends ContinueWithGoogleResult {
 
 /// The SDK refused; [message] explains it on the sign-in screen.
 final class GoogleSignInRefused extends ContinueWithGoogleResult {
-  const GoogleSignInRefused(this.message);
+  const GoogleSignInRefused(this.message, {this.failureMessage});
 
   final String message;
+  final FailureMessage? failureMessage;
 }
 
 /// What `POST /auth/google/complete` produced (#115).
@@ -74,9 +76,10 @@ final class GoogleSignupTicketExpired extends CompleteGoogleSignupResult {
 
 /// Any other refusal; [message] explains it on the picker.
 final class GoogleSignupRefused extends CompleteGoogleSignupResult {
-  const GoogleSignupRefused(this.message);
+  const GoogleSignupRefused(this.message, {this.failureMessage});
 
   final String message;
+  final FailureMessage? failureMessage;
 }
 
 /// The subject turned out to be linked after all: the ticket is dead and the
@@ -107,9 +110,10 @@ final class GoogleConnectDismissed extends ConnectGoogleResult {
 /// The SDK or the service refused; [message] explains it in the section. Both
 /// connect conflicts (409) arrive here verbatim (#114).
 final class GoogleConnectRefused extends ConnectGoogleResult {
-  const GoogleConnectRefused(this.message);
+  const GoogleConnectRefused(this.message, {this.failureMessage});
 
   final String message;
+  final FailureMessage? failureMessage;
 }
 
 /// What deleting a Google-only account produced (#116).
@@ -129,9 +133,10 @@ final class DeleteWithGoogleDismissed extends DeleteWithGoogleResult {
 
 /// The SDK or the service refused; [message] explains it in the dialog.
 final class DeleteWithGoogleRefused extends DeleteWithGoogleResult {
-  const DeleteWithGoogleRefused(this.message);
+  const DeleteWithGoogleRefused(this.message, {this.failureMessage});
 
   final String message;
+  final FailureMessage? failureMessage;
 }
 
 /// The deletion dialog's line for a dismissed Google sheet (#116).
@@ -301,7 +306,10 @@ class AuthController extends StateNotifier<AuthState> {
     return _handleGoogleOutcome(
       outcome,
       onCanceled: () => const GoogleSignInDismissed(),
-      onFailed: (String message) => GoogleSignInRefused(message),
+      onFailed: (GoogleAuthFailed failure) => GoogleSignInRefused(
+        failure.message,
+        failureMessage: failure.failureMessage,
+      ),
       onIdToken: _continueWithGoogleToken,
     );
   }
@@ -323,7 +331,10 @@ class AuthController extends StateNotifier<AuthState> {
       );
       return const GoogleSignUpPrompt();
     } on ApiException catch (error) {
-      return GoogleSignInRefused(error.message);
+      return GoogleSignInRefused(
+        error.message,
+        failureMessage: apiFailureMessage(error),
+      );
     }
   }
 
@@ -369,7 +380,10 @@ class AuthController extends StateNotifier<AuthState> {
         }
         return const GoogleUsernameTaken();
       }
-      return GoogleSignupRefused(error.message);
+      return GoogleSignupRefused(
+        error.message,
+        failureMessage: apiFailureMessage(error),
+      );
     }
   }
 
@@ -415,7 +429,10 @@ class AuthController extends StateNotifier<AuthState> {
     return _handleGoogleOutcome(
       outcome,
       onCanceled: () => const DeleteWithGoogleDismissed(),
-      onFailed: (String message) => DeleteWithGoogleRefused(message),
+      onFailed: (GoogleAuthFailed failure) => DeleteWithGoogleRefused(
+        failure.message,
+        failureMessage: failure.failureMessage,
+      ),
       onIdToken: _deleteAccountWithGoogleToken,
     );
   }
@@ -425,7 +442,11 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       await _repository.deleteAccountWithGoogle(googleIdToken: googleIdToken);
     } on ApiException catch (error) {
-      return DeleteWithGoogleRefused(mutationFailureMessage(error));
+      final FailureMessage failure = mutationFailureMessage(error);
+      return DeleteWithGoogleRefused(
+        failure.englishText,
+        failureMessage: failure,
+      );
     }
     await _google.clearSdkState();
     state = const AuthState.unauthenticated(
@@ -447,7 +468,10 @@ class AuthController extends StateNotifier<AuthState> {
     return _handleGoogleOutcome(
       outcome,
       onCanceled: () => const GoogleConnectDismissed(),
-      onFailed: (String message) => GoogleConnectRefused(message),
+      onFailed: (GoogleAuthFailed failure) => GoogleConnectRefused(
+        failure.message,
+        failureMessage: failure.failureMessage,
+      ),
       onIdToken: _connectGoogleToken,
     );
   }
@@ -455,14 +479,14 @@ class AuthController extends StateNotifier<AuthState> {
   Future<T> _handleGoogleOutcome<T>(
     GoogleAuthOutcome outcome, {
     required T Function() onCanceled,
-    required T Function(String message) onFailed,
+    required T Function(GoogleAuthFailed failure) onFailed,
     required Future<T> Function(String idToken) onIdToken,
   }) async {
     if (outcome is GoogleAuthCanceled) {
       return onCanceled();
     }
     if (outcome is GoogleAuthFailed) {
-      return onFailed(outcome.message);
+      return onFailed(outcome);
     }
     return onIdToken((outcome as GoogleAuthIdToken).idToken);
   }
@@ -472,7 +496,10 @@ class AuthController extends StateNotifier<AuthState> {
       await _repository.linkGoogle(idToken: googleIdToken);
       return const GoogleConnectDone();
     } on ApiException catch (error) {
-      return GoogleConnectRefused(error.message);
+      return GoogleConnectRefused(
+        error.message,
+        failureMessage: apiFailureMessage(error),
+      );
     }
   }
 

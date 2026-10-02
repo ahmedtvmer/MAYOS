@@ -6,6 +6,7 @@ import '../../core/config.dart';
 import '../../core/api_client.dart';
 import '../../core/display_language/catalog.dart';
 import '../../core/display_language/controller.dart';
+import '../../core/display_language/settings_copy.dart';
 import '../../core/display_language/choices.dart';
 import '../../core/models.dart';
 import '../../core/privacy_policy.dart';
@@ -47,6 +48,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final bool offlineDrafts = ref.watch(offlineWorkoutDraftsEnabledProvider);
     final String language = ref.watch(displayLanguageProvider);
     final MayosCopy copy = MayosCopy(language);
+    final SettingsCopy ui = SettingsCopy(language);
 
     return MayosScaffold(
       title: copy.settings,
@@ -54,48 +56,48 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       body: ListView(
         padding: MayosSpacing.screen,
         children: <Widget>[
-          const MayosSectionHeader(
-            title: 'Appearance',
-            subtitle: 'Choose how MAYOS looks. System follows your device.',
+          MayosSectionHeader(
+            title: ui.appearance,
+            subtitle: ui.appearanceLead,
           ),
           MayosSegmentedControl<ThemeMode>(
             selected: mode,
             onChanged: (ThemeMode value) =>
                 ref.read(themeModeControllerProvider.notifier).setMode(value),
-            segments: const <MayosSegment<ThemeMode>>[
+            segments: <MayosSegment<ThemeMode>>[
               MayosSegment<ThemeMode>(
                 value: ThemeMode.system,
-                label: 'System',
+                label: ui.system,
                 icon: Icons.brightness_auto_outlined,
               ),
               MayosSegment<ThemeMode>(
                 value: ThemeMode.light,
-                label: 'Light',
+                label: ui.light,
                 icon: Icons.light_mode_outlined,
               ),
               MayosSegment<ThemeMode>(
                 value: ThemeMode.dark,
-                label: 'Dark',
+                label: ui.dark,
                 icon: Icons.dark_mode_outlined,
               ),
             ],
           ),
           const SizedBox(height: MayosSpacing.xl),
           if (hasPlayerProfile) ...<Widget>[
-            const MayosSectionHeader(title: 'Personalization'),
+            MayosSectionHeader(title: ui.personalization),
             MayosCard(
               padding: const EdgeInsets.symmetric(
                   horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
               child: MayosSettingsTile(
                 key: const Key('personalization_entry'),
                 icon: Icons.forum_outlined,
-                title: 'Assistant style',
+                title: ui.assistantStyle,
                 onTap: () => context.push(personalizationPath),
               ),
             ),
             const SizedBox(height: MayosSpacing.xl),
           ],
-          const MayosSectionHeader(title: 'Account'),
+          MayosSectionHeader(title: ui.account),
           MayosCard(
             padding: const EdgeInsets.symmetric(
                 horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
@@ -103,22 +105,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               children: <Widget>[
                 MayosSettingsTile(
                   icon: Icons.person_outline,
-                  title: 'Profile',
-                  subtitle: 'Training preferences, schedule, and account',
+                  title: ui.profile,
+                  subtitle: ui.profileSubtitle,
                   onTap: () => context.push(profilePath),
                 ),
                 Divider(height: 1, color: c.border),
                 MayosSettingsTile(
                   icon: Icons.card_membership_outlined,
-                  title: 'Plan',
-                  subtitle: 'Lifter and Coach plan states',
+                  title: ui.plan,
+                  subtitle: ui.planSubtitle,
                   onTap: () => context.push(planPath),
                 ),
               ],
             ),
           ),
           const SizedBox(height: MayosSpacing.xl),
-          const MayosSectionHeader(title: 'Coaching'),
+          MayosSectionHeader(title: ui.coaching),
           MayosCard(
             padding: const EdgeInsets.symmetric(
                 horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
@@ -126,17 +128,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               children: <Widget>[
                 MayosSettingsTile(
                   icon: Icons.badge_outlined,
-                  title: 'Coaching assignment',
-                  subtitle: 'Your coach and check-ins',
+                  title: ui.coachingAssignment,
+                  subtitle: ui.coachingSubtitle,
                   onTap: () => context.push(assignmentPath),
                 ),
                 if (!isCoach) ...<Widget>[
                   Divider(height: 1, color: c.border),
                   MayosSettingsTile(
                     icon: Icons.workspace_premium_outlined,
-                    title: 'Become a coach',
-                    subtitle:
-                        'Enter your MAYOS coach code to unlock Coach mode',
+                    title: ui.becomeCoach,
+                    subtitle: ui.becomeCoachSubtitle,
                     onTap: () => context.push(coachInvitePath),
                   ),
                 ],
@@ -144,7 +145,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           const SizedBox(height: MayosSpacing.xl),
-          const MayosSectionHeader(title: 'Training'),
+          MayosSectionHeader(title: ui.training),
           MayosCard(
             padding: const EdgeInsets.symmetric(
                 horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
@@ -152,16 +153,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               children: <Widget>[
                 MayosSettingsTile(
                   icon: Icons.forum_outlined,
-                  title: 'Assistant',
-                  subtitle: 'Chat about your training',
+                  title: ui.assistant,
+                  subtitle: ui.assistantSubtitle,
                   onTap: () => context.push(chatPath),
                 ),
                 if (offlineDrafts) ...<Widget>[
                   Divider(height: 1, color: c.border),
                   MayosSettingsTile(
                     icon: Icons.cloud_upload_outlined,
-                    title: 'Workout drafts',
-                    subtitle: 'Saved on this device, syncing when online',
+                    title: ui.workoutDrafts,
+                    subtitle: ui.workoutDraftsSubtitle,
                     onTap: () => context.push(workoutsPath),
                   ),
                 ],
@@ -169,7 +170,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           const SizedBox(height: MayosSpacing.xl),
-          const MayosSectionHeader(title: 'About'),
+          MayosSectionHeader(title: ui.about),
           MayosCard(
             padding: const EdgeInsets.symmetric(
                 horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
@@ -177,14 +178,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               children: <Widget>[
                 MayosSettingsTile(
                   icon: Icons.privacy_tip_outlined,
-                  title: 'Privacy policy',
-                  subtitle: 'What MAYOS collects, who can see it, and deletion',
+                  title: ui.privacyPolicy,
+                  subtitle: ui.privacySubtitle,
                   onTap: () => openPrivacyPolicy(context, ref),
                 ),
                 Divider(height: 1, color: c.border),
                 MayosSettingsTile(
                   icon: Icons.image_outlined,
-                  title: 'Credits',
+                  title: ui.credits,
                   subtitle: gymVisualCreditShort,
                   onTap: () => showMediaCredits(context, ref),
                 ),
@@ -197,7 +198,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
             child: MayosSettingsTile(
               icon: Icons.logout,
-              title: 'Log out',
+              title: ui.logOut,
               destructive: true,
               onTap: () => confirmLogout(context, ref),
             ),

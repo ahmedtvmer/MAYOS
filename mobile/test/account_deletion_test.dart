@@ -272,7 +272,8 @@ void main() {
         fail('expected an ApiException');
       } on ApiException catch (error) {
         expect(isNetworkFailure(error), isTrue);
-        expect(mutationFailureMessage(error), needsConnectionMessage);
+        expect(
+            mutationFailureMessage(error).englishText, needsConnectionMessage);
       }
 
       expect(await drafts.read(_accountAlice), hasLength(1));

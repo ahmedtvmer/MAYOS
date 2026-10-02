@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
+import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
+import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/models.dart';
 import '../../../core/performed_date_window.dart';
 import '../../../core/theme/mayos_spacing.dart';
@@ -24,12 +29,13 @@ class WorkoutDraftsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final WorkoutCopy copy = workoutCopyOf(context);
     if (!ref.watch(offlineWorkoutDraftsEnabledProvider)) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(MayosSpacing.xl),
           child: Text(
-            'Offline workout drafts are available in the Android app.',
+            copy.androidDraftsUnavailable,
             textAlign: TextAlign.center,
             style: MayosTypography.body.copyWith(color: c.textSecondary),
           ),
@@ -43,8 +49,8 @@ class WorkoutDraftsScreen extends ConsumerWidget {
     return Column(
       children: <Widget>[
         Padding(
-          padding: const EdgeInsets.fromLTRB(MayosSpacing.lg, MayosSpacing.md,
-              MayosSpacing.lg, MayosSpacing.xs),
+          padding: const EdgeInsetsDirectional.fromSTEB(MayosSpacing.lg,
+              MayosSpacing.md, MayosSpacing.lg, MayosSpacing.xs),
           child: Wrap(
             spacing: MayosSpacing.sm,
             runSpacing: MayosSpacing.xs,
@@ -53,13 +59,15 @@ class WorkoutDraftsScreen extends ConsumerWidget {
             children: <Widget>[
               Text(
                 drafts.isEmpty
-                    ? 'No drafts yet.'
-                    : '$pending pending · $synced synced',
+                    ? copy.noDraftsYet
+                    : copy.draftsCounts(pending, synced),
+                textDirection: copy.isArabic ? TextDirection.ltr : null,
+                textAlign: copy.isArabic ? TextAlign.end : null,
                 style: MayosTypography.bodySecondary
                     .copyWith(color: c.textSecondary),
               ),
               MayosButton(
-                label: 'Sync now',
+                label: copy.syncNow,
                 icon: Icons.sync,
                 variant: MayosButtonVariant.secondary,
                 expand: false,
@@ -75,7 +83,7 @@ class WorkoutDraftsScreen extends ConsumerWidget {
                   child: Padding(
                     padding: const EdgeInsets.all(MayosSpacing.xl),
                     child: Text(
-                      'Workouts you log offline appear here until they sync.',
+                      copy.offlineDraftsExplanation,
                       textAlign: TextAlign.center,
                       style:
                           MayosTypography.body.copyWith(color: c.textSecondary),
@@ -83,7 +91,7 @@ class WorkoutDraftsScreen extends ConsumerWidget {
                   ),
                 )
               : ListView(
-                  padding: const EdgeInsets.fromLTRB(
+                  padding: const EdgeInsetsDirectional.fromSTEB(
                       MayosSpacing.lg, 0, MayosSpacing.lg, MayosSpacing.xxl),
                   children: <Widget>[
                     for (final WorkoutDraft draft in drafts)
@@ -104,9 +112,11 @@ class _DraftTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final WorkoutCopy copy = workoutCopyOf(context);
+    final MayosCopy displayCopy = MayosCopy(ref.watch(displayLanguageProvider));
     final DraftSyncService sync = ref.watch(draftSyncServiceProvider);
     return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+      padding: const EdgeInsetsDirectional.only(bottom: MayosSpacing.sm),
       child: MayosCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -124,26 +134,41 @@ class _DraftTile extends ConsumerWidget {
                         '${draft.dayName} · ${draft.performedDate}',
                         style: MayosTypography.exerciseTitle
                             .copyWith(color: c.textPrimary),
+                        textDirection: TextDirection.ltr,
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '${draft.workingSetCount} working sets · ${draft.statusLabel}',
+                        '${copy.workingSetCount(draft.workingSetCount)} · ${copy.draftStatus(draft.status)}',
                         style: MayosTypography.bodySecondary
                             .copyWith(color: c.textSecondary),
+                        textDirection: copy.isArabic ? TextDirection.ltr : null,
+                        textAlign: copy.isArabic ? TextAlign.end : null,
                       ),
                       if (draft.versionDifferenceLabel != null) ...<Widget>[
                         const SizedBox(height: 2),
                         Text(
-                          draft.versionDifferenceLabel!,
+                          draft.isHistoricalProgram &&
+                                  draft.activeProgramVersionAtSync != null
+                              ? copy.historicalProgram(
+                                  draft.programVersion,
+                                  draft.activeProgramVersionAtSync!,
+                                )
+                              : draft.versionDifferenceLabel!,
                           style: MayosTypography.caption
                               .copyWith(color: c.textMuted),
+                          textDirection:
+                              copy.isArabic ? TextDirection.ltr : null,
+                          textAlign: copy.isArabic ? TextAlign.end : null,
                         ),
                       ],
                       if (draft.lastError != null &&
                           draft.needsAttention) ...<Widget>[
                         const SizedBox(height: 2),
                         Text(
-                          draft.lastError!,
+                          displayCopy.failureMessage(
+                            draft.lastErrorFailure ??
+                                ServerFailureMessage(draft.lastError!),
+                          ),
                           style:
                               MayosTypography.caption.copyWith(color: c.danger),
                         ),
@@ -160,25 +185,25 @@ class _DraftTile extends ConsumerWidget {
                 if (!draft.isSynced && !draft.inFlight)
                   IconButton(
                     icon: const Icon(Icons.edit_calendar_outlined),
-                    tooltip: 'Edit date',
+                    tooltip: copy.editDate,
                     onPressed: () => _editPendingDate(context, ref),
                   ),
                 if (draft.needsAttention)
                   IconButton(
                     icon: const Icon(Icons.refresh),
-                    tooltip: 'Retry',
+                    tooltip: copy.retry,
                     onPressed: () => sync.retryDraft(draft.clientSessionId),
                   ),
                 if (draft.isSynced && draft.serverSessionId != null)
                   IconButton(
                     icon: const Icon(Icons.history_toggle_off),
-                    tooltip: 'Correct date',
+                    tooltip: copy.correctDate,
                     onPressed: () => _correctSyncedDate(context, ref),
                   ),
                 if (draft.isUnsynced)
                   IconButton(
                     icon: const Icon(Icons.delete_outline),
-                    tooltip: 'Discard draft',
+                    tooltip: copy.discardDraft,
                     onPressed: () => sync.discardDraft(draft.clientSessionId),
                   ),
               ],
@@ -209,13 +234,18 @@ class _DraftTile extends ConsumerWidget {
           draft.clientSessionId, formatPerformedDate(picked));
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Date corrected.')),
+          SnackBar(content: Text(workoutCopyOf(context).dateCorrected)),
         );
       }
     } on ApiException catch (error) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error.message)),
+          SnackBar(
+            content: Text(
+              MayosCopy(ref.read(displayLanguageProvider))
+                  .failureMessage(apiFailureMessage(error)),
+            ),
+          ),
         );
       }
     }

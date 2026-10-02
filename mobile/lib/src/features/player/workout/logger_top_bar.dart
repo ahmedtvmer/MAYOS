@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/active_workout.dart';
+import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/personal_records.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -82,6 +83,7 @@ class _LoggerTopBarState extends ConsumerState<LoggerTopBar> {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final WorkoutCopy copy = workoutCopyOf(context);
     final ActiveWorkout? workout =
         ref.watch(activeWorkoutControllerProvider).workout;
     final DateTime now = ref.watch(clockProvider)();
@@ -89,20 +91,38 @@ class _LoggerTopBarState extends ConsumerState<LoggerTopBar> {
     // instead of the clock (#159): no live tick beside the frozen "Duration"
     // stat. Dropping the snapshot — Back to the logger — resumes the tick.
     final WorkoutSummary? summary = ref.watch(loggerSummaryProvider);
-    final String label = workout == null
-        ? 'Log workout'
-        : 'Log workout · '
-            '${formatWorkoutTime(summary?.duration ?? workoutElapsed(workout, now: now))}';
+    final String? time = workout == null
+        ? null
+        : formatWorkoutTime(
+            summary?.duration ?? workoutElapsed(workout, now: now));
     return MayosAppHeader(
       showBack: true,
       // Sans, one line: the serif display role belongs to the day heading
       // alone (#157 typography).
-      titleWidget: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: MayosTypography.sectionHeading.copyWith(color: c.textPrimary),
-      ),
+      titleWidget: time == null || !copy.isArabic
+          ? Text(
+              time == null ? copy.logWorkout : copy.logWorkoutTime(time),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style:
+                  MayosTypography.sectionHeading.copyWith(color: c.textPrimary),
+            )
+          : Text.rich(
+              TextSpan(children: <InlineSpan>[
+                TextSpan(text: copy.logWorkout),
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.middle,
+                  child: Directionality(
+                    textDirection: TextDirection.ltr,
+                    child: Text(' · $time'),
+                  ),
+                ),
+              ]),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style:
+                  MayosTypography.sectionHeading.copyWith(color: c.textPrimary),
+            ),
       actions: <Widget>[
         if (workout != null)
           PopupMenuButton<String>(
@@ -117,7 +137,7 @@ class _LoggerTopBarState extends ConsumerState<LoggerTopBar> {
                 key: LoggerTopBar.discardKey,
                 value: 'discard',
                 child: Text(
-                  'Discard workout',
+                  copy.discardWorkout,
                   style: MayosTypography.body,
                 ),
               ),

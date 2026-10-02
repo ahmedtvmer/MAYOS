@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/active_workout.dart';
+import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -9,10 +10,11 @@ import '../../../core/theme/mayos_typography.dart';
 enum LoggerField { kg, reps, rir }
 
 /// The keypad's caption for one field: `Bench Press · set 1 · Weight (kg)`.
-String loggerFieldLabel(LoggerField field) => switch (field) {
-      LoggerField.kg => 'Weight (kg)',
-      LoggerField.reps => 'Reps',
-      LoggerField.rir => 'Reps in reserve',
+String loggerFieldLabel(LoggerField field, {WorkoutCopy? copy}) =>
+    switch (field) {
+      LoggerField.kg => copy?.weightKg ?? 'Weight (kg)',
+      LoggerField.reps => copy?.repetitions ?? 'Reps',
+      LoggerField.rir => copy?.repsInReserve ?? 'Reps in reserve',
     };
 
 /// One focused table cell, addressed by position in the Active workout.
@@ -158,6 +160,7 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final WorkoutCopy copy = workoutCopyOf(context);
     final double rowHeight = _keyHeight + 2 * _keyPadding;
 
     Widget key(String label,
@@ -207,14 +210,14 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
           ),
           Row(
             children: <Widget>[
-              key('Unrated',
+              key(copy.unrated,
                   key: const ValueKey<String>('logger.rir.unrated'),
                   onTap: () => widget.onRir?.call(null)),
-              key('Hide',
+              key(copy.hideKeypad,
                   key: const ValueKey<String>('logger.key.hide'),
                   onTap: widget.onHide,
                   bg: c.secondarySurface),
-              key('Next',
+              key(copy.next,
                   key: const ValueKey<String>('logger.key.next'),
                   onTap: widget.onNext,
                   bg: c.accent,
@@ -271,7 +274,7 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
             child: Column(
               children: <Widget>[
                 Row(children: <Widget>[
-                  key('Hide',
+                  key(copy.hideKeypad,
                       key: const ValueKey<String>('logger.key.hide'),
                       onTap: widget.onHide,
                       bg: c.secondarySurface),
@@ -291,7 +294,7 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
                               borderRadius: MayosRadii.mediumRadius,
                               onTap: widget.onNext,
                               child: Center(
-                                child: Text('Next',
+                                child: Text(copy.next,
                                     style: MayosTypography.label
                                         .copyWith(color: c.onAccent)),
                               ),
@@ -322,22 +325,25 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
         // The route Scaffold may clear padding while retaining viewPadding.
         maintainBottomViewPadding: true,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(MayosSpacing.xs,
+          padding: const EdgeInsetsDirectional.fromSTEB(MayosSpacing.xs,
               MayosSpacing.xs, MayosSpacing.xs, MayosSpacing.xs),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               Padding(
-                padding: const EdgeInsets.fromLTRB(
+                padding: const EdgeInsetsDirectional.fromSTEB(
                     MayosSpacing.xs, 0, MayosSpacing.xs, MayosSpacing.xs),
                 child: Text(
-                  '${widget.exerciseName} · set ${widget.setNumber} · '
-                  '${loggerFieldLabel(widget.field)}',
+                  copy.keypadCaption(widget.exerciseName, widget.setNumber,
+                      loggerFieldLabel(widget.field, copy: copy)),
                   style: MayosTypography.caption.copyWith(color: c.textMuted),
                 ),
               ),
-              body,
+              Directionality(
+                textDirection: TextDirection.ltr,
+                child: body,
+              ),
             ],
           ),
         ),

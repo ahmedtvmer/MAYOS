@@ -12,6 +12,7 @@ class MayosSettingsTile extends StatelessWidget {
     required this.icon,
     required this.title,
     this.subtitle,
+    this.subtitleTextDirection,
     this.onTap,
     this.trailing,
     this.destructive = false,
@@ -21,6 +22,7 @@ class MayosSettingsTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String? subtitle;
+  final TextDirection? subtitleTextDirection;
   final VoidCallback? onTap;
   final Widget? trailing;
   final bool destructive;
@@ -70,6 +72,7 @@ class MayosSettingsTile extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           subtitle!,
+                          textDirection: subtitleTextDirection,
                           style: text.bodySmall?.copyWith(color: c.textMuted),
                         ),
                       ],

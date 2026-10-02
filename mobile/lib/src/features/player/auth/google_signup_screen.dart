@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/theme/mayos_spacing.dart';
@@ -200,8 +201,9 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
           context.go(_loginLocation());
         case GoogleSignupTicketExpired():
           context.go(_loginLocation());
-        case GoogleSignupRefused(:final message):
-          setState(() => _error = message);
+        case GoogleSignupRefused(:final message, :final failureMessage):
+          setState(() => _error = MayosCopy(ref.read(displayLanguageProvider))
+              .failureMessage(failureMessage ?? ServerFailureMessage(message)));
       }
     } finally {
       if (mounted) {

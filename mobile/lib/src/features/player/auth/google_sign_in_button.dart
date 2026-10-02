@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/app_failure.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/theme/mayos_spacing.dart';
@@ -119,7 +120,12 @@ class _GoogleWebSignInButtonState extends ConsumerState<GoogleWebSignInButton> {
         onError: (Object error, StackTrace stack) {
           if (mounted) {
             unawaited(widget.onOutcome(const GoogleAuthFailed(
-                'Could not reach Google. Check your connection and try again.')));
+              'Could not reach Google. Check your connection and try again.',
+              failureMessage: AppFailureMessage(
+                AppFailureId.googleCannotReach,
+                'Could not reach Google. Check your connection and try again.',
+              ),
+            )));
           }
         },
       );

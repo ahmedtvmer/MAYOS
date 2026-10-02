@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/app_mode.dart';
+import 'core/display_language/catalog.dart';
+import 'core/display_language/controller.dart';
 import 'core/models.dart';
+import 'core/display_language/settings_copy.dart';
 import 'core/ui/mayos_scaffold.dart';
 import 'features/coach/coach_alerts_screen.dart';
 import 'features/coach/coach_invite_screen.dart';
@@ -286,6 +289,21 @@ String coachRequestLocation(String id) =>
 String _locationWithCarry(String route, String target) =>
     '$route?from=${Uri.encodeComponent(target)}';
 
+Widget _localizedPlayerPage({
+  required String Function(String languageCode) title,
+  required Widget body,
+}) =>
+    Consumer(
+      builder: (BuildContext context, WidgetRef ref, Widget? child) {
+        final String languageCode = ref.watch(displayLanguageProvider);
+        return MayosScaffold(
+          title: title(languageCode),
+          showBack: true,
+          body: body,
+        );
+      },
+    );
+
 final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   final ValueNotifier<int> refresh = ValueNotifier<int>(0);
   // Either dependency can change the destination. Which listener fires first
@@ -370,27 +388,25 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: personalizationPath,
         builder: (BuildContext context, GoRouterState state) =>
-            const MayosScaffold(
-          title: 'Personalization',
-          showBack: true,
-          body: PersonalizationScreen(),
+            _localizedPlayerPage(
+          title: (String languageCode) =>
+              SettingsCopy(languageCode).personalization,
+          body: const PersonalizationScreen(),
         ),
       ),
       GoRoute(
         path: planPath,
         builder: (BuildContext context, GoRouterState state) =>
-            const MayosScaffold(
-          title: 'Plan',
-          showBack: true,
-          body: PlanScreen(),
+            _localizedPlayerPage(
+          title: (String languageCode) => SettingsCopy(languageCode).plan,
+          body: const PlanScreen(),
         ),
       ),
       GoRoute(
         path: profilePath,
         builder: (BuildContext context, GoRouterState state) =>
-            const MayosScaffold(
-          title: 'Profile',
-          showBack: true,
+            _localizedPlayerPage(
+          title: (String languageCode) => SettingsCopy(languageCode).profile,
           body: ProfileScreen(),
         ),
       ),
@@ -401,9 +417,10 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '$checkpointReviewPath/:checkpoint',
-        builder: (BuildContext context, GoRouterState state) => MayosScaffold(
-          title: 'Checkpoint review',
-          showBack: true,
+        builder: (BuildContext context, GoRouterState state) =>
+            _localizedPlayerPage(
+          title: (String languageCode) =>
+              MayosCopy(languageCode).checkpointReview,
           body: CheckpointReviewScreen(
             key: ValueKey<String>(
               '${state.pathParameters['checkpoint']}:${state.uri.queryParameters['assignment_id'] ?? ''}',
@@ -489,19 +506,17 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: assignmentPath,
         builder: (BuildContext context, GoRouterState state) =>
-            const MayosScaffold(
-          title: 'Coaching',
-          showBack: true,
-          body: PlayerAssignmentScreen(),
+            _localizedPlayerPage(
+          title: (String languageCode) => SettingsCopy(languageCode).coaching,
+          body: const PlayerAssignmentScreen(),
         ),
       ),
       GoRoute(
         path: workoutsPath,
         builder: (BuildContext context, GoRouterState state) =>
-            const MayosScaffold(
-          title: 'Workouts',
-          showBack: true,
-          body: WorkoutDraftsScreen(),
+            _localizedPlayerPage(
+          title: (String languageCode) => SettingsCopy(languageCode).workouts,
+          body: const WorkoutDraftsScreen(),
         ),
       ),
       GoRoute(

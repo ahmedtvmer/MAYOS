@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/personal_records.dart';
+import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -49,7 +50,7 @@ class PersonalRecordBadge extends StatelessWidget {
             Icon(Icons.emoji_events, size: 12, color: fg),
             const SizedBox(width: MayosSpacing.xxs),
             Text(
-              kind.badgeLabel,
+              workoutCopyOf(context).recordBadge(kind.name),
               style: MayosTypography.captionStrong.copyWith(
                 color: fg,
                 decoration: beaten ? TextDecoration.lineThrough : null,

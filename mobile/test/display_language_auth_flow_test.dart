@@ -802,10 +802,15 @@ Future<void> _logout(WidgetTester tester) async {
   } else {
     await tester.tap(find.byKey(const Key('mode_avatar_button')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Settings'));
+    final Finder settingsLabel = find.text('Settings').evaluate().isNotEmpty
+        ? find.text('Settings')
+        : find.text('الإعدادات');
+    await tester.tap(settingsLabel);
   }
   await tester.pumpAndSettle();
-  final Finder logOut = find.text('Log out');
+  final Finder logOut = find.text('Log out').evaluate().isNotEmpty
+      ? find.text('Log out')
+      : find.text('تسجيل الخروج');
   await tester.scrollUntilVisible(logOut, 250,
       scrollable: find.byType(Scrollable).first);
   await tester.tap(logOut);

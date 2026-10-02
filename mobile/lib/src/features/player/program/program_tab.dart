@@ -225,10 +225,8 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       if (!mounted) return;
       setState(() {
         _generating = false;
-        _actionError = mutationFailureMessage(
-          error,
-          connectionMessage: displayCopyOf(context).connectionFailure,
-        );
+        _actionError = displayCopyOf(context)
+            .failureMessage(mutationFailureMessage(error));
       });
     }
   }
@@ -653,10 +651,8 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   }
 
   void _showSwapError(ApiException error) {
-    final String message = mutationFailureMessage(
-      error,
-      connectionMessage: displayCopyOf(context).connectionFailure,
-    );
+    final String message =
+        displayCopyOf(context).failureMessage(mutationFailureMessage(error));
     setState(() {
       _substituting = false;
       _actionError = message;

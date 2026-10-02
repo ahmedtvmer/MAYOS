@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import '../../../core/app_failure.dart';
 import 'google_web_button.dart';
 
 /// How a screen offers Google sign-in on this build (#115, #127).
@@ -40,9 +41,10 @@ final class GoogleAuthCanceled extends GoogleAuthOutcome {
 /// The SDK refused (misconfiguration, dropped connection). [message] is safe to
 /// show.
 final class GoogleAuthFailed extends GoogleAuthOutcome {
-  const GoogleAuthFailed(this.message);
+  const GoogleAuthFailed(this.message, {this.failureMessage});
 
   final String message;
+  final AppFailureMessage? failureMessage;
 }
 
 /// The seam between the sign-in screens and `google_sign_in` (#115).
@@ -102,8 +104,7 @@ class GoogleSdkAuthGateway implements GoogleAuthGateway {
       return;
     }
     await _initialize();
-    yield* _mapAuthenticationEvents(
-        GoogleSignIn.instance.authenticationEvents);
+    yield* _mapAuthenticationEvents(GoogleSignIn.instance.authenticationEvents);
   }
 
   @override
@@ -131,11 +132,21 @@ class GoogleSdkAuthGateway implements GoogleAuthGateway {
   Future<GoogleAuthOutcome> authenticate() async {
     if (kIsWeb) {
       return const GoogleAuthFailed(
-          'Use the Google sign-in button to continue.');
+        'Use the Google sign-in button to continue.',
+        failureMessage: AppFailureMessage(
+          AppFailureId.googleUseWebButton,
+          'Use the Google sign-in button to continue.',
+        ),
+      );
     }
     if (!_configured) {
       return const GoogleAuthFailed(
-          'Google sign-in is not set up on this build.');
+        'Google sign-in is not set up on this build.',
+        failureMessage: AppFailureMessage(
+          AppFailureId.googleNotConfigured,
+          'Google sign-in is not set up on this build.',
+        ),
+      );
     }
     try {
       await _initialize();
@@ -144,7 +155,12 @@ class GoogleSdkAuthGateway implements GoogleAuthGateway {
       final String? idToken = account.authentication.idToken;
       if (idToken == null || idToken.isEmpty) {
         return const GoogleAuthFailed(
-            'Google did not return a sign-in token. Please try again.');
+          'Google did not return a sign-in token. Please try again.',
+          failureMessage: AppFailureMessage(
+            AppFailureId.googleMissingToken,
+            'Google did not return a sign-in token. Please try again.',
+          ),
+        );
       }
       return GoogleAuthIdToken(idToken);
     } on GoogleSignInException catch (error) {
@@ -152,10 +168,18 @@ class GoogleSdkAuthGateway implements GoogleAuthGateway {
           error.code == GoogleSignInExceptionCode.interrupted) {
         return const GoogleAuthCanceled();
       }
-      return GoogleAuthFailed(_messageFor(error.code));
+      return GoogleAuthFailed(
+        _messageFor(error.code),
+        failureMessage: _failureMessageFor(error.code),
+      );
     } on Object {
       return const GoogleAuthFailed(
-          'Could not reach Google. Check your connection and try again.');
+        'Could not reach Google. Check your connection and try again.',
+        failureMessage: AppFailureMessage(
+          AppFailureId.googleCannotReach,
+          'Could not reach Google. Check your connection and try again.',
+        ),
+      );
     }
   }
 
@@ -175,10 +199,9 @@ class GoogleSdkAuthGateway implements GoogleAuthGateway {
 
   /// The one `initialize()` call; every later entry reuses it. The SDK is
   /// only touched from a button tap, so this stays lazy.
-  Future<void> _initialize() =>
-      _ready ??= kIsWeb
-          ? GoogleSignIn.instance.initialize(clientId: webClientId)
-          : GoogleSignIn.instance.initialize(serverClientId: webClientId);
+  Future<void> _initialize() => _ready ??= kIsWeb
+      ? GoogleSignIn.instance.initialize(clientId: webClientId)
+      : GoogleSignIn.instance.initialize(serverClientId: webClientId);
 
   static String _messageFor(GoogleSignInExceptionCode code) => switch (code) {
         GoogleSignInExceptionCode.clientConfigurationError =>
@@ -188,8 +211,20 @@ class GoogleSdkAuthGateway implements GoogleAuthGateway {
         _ => 'Google sign-in failed. Please try again.',
       };
 
+  static AppFailureMessage _failureMessageFor(GoogleSignInExceptionCode code) =>
+      AppFailureMessage(
+        switch (code) {
+          GoogleSignInExceptionCode.clientConfigurationError =>
+            AppFailureId.googleNotConfigured,
+          GoogleSignInExceptionCode.providerConfigurationError =>
+            AppFailureId.googleUnavailable,
+          _ => AppFailureId.googleFailed,
+        },
+        _messageFor(code),
+      );
+
   static Stream<GoogleAuthOutcome> _mapAuthenticationEvents(
-      Stream<GoogleSignInAuthenticationEvent> events) =>
+          Stream<GoogleSignInAuthenticationEvent> events) =>
       events.transform<GoogleAuthOutcome>(
         StreamTransformer<GoogleSignInAuthenticationEvent,
             GoogleAuthOutcome>.fromHandlers(
@@ -208,7 +243,12 @@ class GoogleSdkAuthGateway implements GoogleAuthGateway {
     final String? token = event.user.authentication.idToken;
     return token == null || token.isEmpty
         ? const GoogleAuthFailed(
-            'Google did not return a sign-in token. Please try again.')
+            'Google did not return a sign-in token. Please try again.',
+            failureMessage: AppFailureMessage(
+              AppFailureId.googleMissingToken,
+              'Google did not return a sign-in token. Please try again.',
+            ),
+          )
         : GoogleAuthIdToken(token);
   }
 
@@ -219,7 +259,10 @@ class GoogleSdkAuthGateway implements GoogleAuthGateway {
           error.code == GoogleSignInExceptionCode.interrupted) {
         sink.add(const GoogleAuthCanceled());
       } else {
-        sink.add(GoogleAuthFailed(_messageFor(error.code)));
+        sink.add(GoogleAuthFailed(
+          _messageFor(error.code),
+          failureMessage: _failureMessageFor(error.code),
+        ));
       }
       return;
     }

@@ -1,6 +1,7 @@
 import '../../../core/active_workout.dart';
 import '../../../core/active_program.dart';
 import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/models.dart';
 import '../../../core/workout_storage.dart';
@@ -8,6 +9,16 @@ import '../program/program_authority_recovery.dart';
 
 const String loggerProgramVersionChangedMessage =
     'Your program changed since this workout started; substitute it from the Program tab';
+
+enum LoggerProgramSubstitutionMessage {
+  versionChanged,
+  swapSaved,
+  coachReasonRequired,
+  coachRequestSent,
+  refreshProgramTab,
+  coachNowControlsProgram,
+  activeProgramUnavailable,
+}
 
 class LoggerProgramSwap {
   const LoggerProgramSwap({
@@ -33,12 +44,16 @@ class LoggerProgramSubstitutionResult {
     this.error = false,
     this.program,
     this.coachReasonRequired = false,
+    this.messageType,
+    this.failureMessage,
   });
 
   final String message;
   final bool error;
   final TrainingProgram? program;
   final bool coachReasonRequired;
+  final LoggerProgramSubstitutionMessage? messageType;
+  final FailureMessage? failureMessage;
 }
 
 /// Applies a logger's optional program action without ever changing its
@@ -61,6 +76,7 @@ class LoggerProgramSubstitutionController {
         loggerProgramVersionChangedMessage,
         error: true,
         program: null,
+        messageType: LoggerProgramSubstitutionMessage.versionChanged,
       );
     }
     try {
@@ -83,6 +99,7 @@ class LoggerProgramSubstitutionController {
       return const LoggerProgramSubstitutionResult(
         loggerProgramVersionChangedMessage,
         error: true,
+        messageType: LoggerProgramSubstitutionMessage.versionChanged,
       );
     }
     if (swap.program.playerControlsProgram) {
@@ -99,6 +116,7 @@ class LoggerProgramSubstitutionController {
       return LoggerProgramSubstitutionResult(
         'The swap was saved to your program.',
         program: result.program,
+        messageType: LoggerProgramSubstitutionMessage.swapSaved,
       );
     }
     final String reason = swap.reason?.trim() ?? '';
@@ -107,12 +125,14 @@ class LoggerProgramSubstitutionController {
         'Add a reason before asking your coach.',
         error: true,
         program: swap.program,
+        messageType: LoggerProgramSubstitutionMessage.coachReasonRequired,
       );
     }
     await _createCoachRequest(swap, reason);
     return LoggerProgramSubstitutionResult(
       'Your coach was asked to make this swap permanent.',
       program: swap.program,
+      messageType: LoggerProgramSubstitutionMessage.coachRequestSent,
     );
   }
 
@@ -153,6 +173,7 @@ class LoggerProgramSubstitutionController {
           loggerProgramVersionChangedMessage,
           error: true,
           program: refreshed,
+          messageType: LoggerProgramSubstitutionMessage.versionChanged,
         );
       }
       final ProgramDay? day = _findDay(refreshed, original.day.dayName);
@@ -163,6 +184,7 @@ class LoggerProgramSubstitutionController {
           'The program changed. Substitute this exercise from the Program tab.',
           error: true,
           program: refreshed,
+          messageType: LoggerProgramSubstitutionMessage.refreshProgramTab,
         );
       }
       if (route == ProgramAuthorityRoute.coach &&
@@ -172,6 +194,7 @@ class LoggerProgramSubstitutionController {
           error: true,
           program: refreshed,
           coachReasonRequired: true,
+          messageType: LoggerProgramSubstitutionMessage.coachNowControlsProgram,
         );
       }
       return await _applyForAuthority(LoggerProgramSwap(
@@ -203,12 +226,15 @@ class LoggerProgramSubstitutionController {
         loggerProgramVersionChangedMessage,
         error: true,
         program: null,
+        messageType: LoggerProgramSubstitutionMessage.versionChanged,
       );
     }
+    final FailureMessage failure = mutationFailureMessage(error);
     return LoggerProgramSubstitutionResult(
-      mutationFailureMessage(error),
+      failure.englishText,
       error: true,
       program: program,
+      failureMessage: failure,
     );
   }
 }

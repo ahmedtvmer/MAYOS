@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/assignment_copy.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
@@ -47,6 +50,16 @@ class _PlayerAssignmentScreenState
   String? _cancellingRequestId;
   String? _requestError;
 
+  AssignmentCopy get _copy => AssignmentCopy(ref.read(displayLanguageProvider));
+
+  String _mutationFailure(ApiException error) =>
+      MayosCopy(ref.read(displayLanguageProvider))
+          .failureMessage(mutationFailureMessage(error));
+
+  String _rawFailure(ApiException error) =>
+      MayosCopy(ref.read(displayLanguageProvider))
+          .failureMessage(apiFailureMessage(error));
+
   @override
   void initState() {
     super.initState();
@@ -85,7 +98,7 @@ class _PlayerAssignmentScreenState
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = error.message;
+        _error = _rawFailure(error);
       });
     }
   }
@@ -105,7 +118,7 @@ class _PlayerAssignmentScreenState
   Future<void> _previewCode() async {
     final String token = _code.text.trim();
     if (token.length < 10) {
-      setState(() => _error = 'Enter the invite code from your coach.');
+      setState(() => _error = _copy.enterInviteCode);
       return;
     }
     setState(() {
@@ -131,7 +144,7 @@ class _PlayerAssignmentScreenState
       if (!mounted) return;
       setState(() {
         _previewing = false;
-        _error = error.message;
+        _error = _rawFailure(error);
       });
     }
   }
@@ -159,13 +172,13 @@ class _PlayerAssignmentScreenState
         _assignment = assignment;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Assignment accepted.')),
+        SnackBar(content: Text(_copy.assignmentAccepted)),
       );
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
         _redeeming = false;
-        _error = error.message;
+        _error = _rawFailure(error);
       });
     }
   }
@@ -174,18 +187,17 @@ class _PlayerAssignmentScreenState
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: const Text('End assignment?'),
-        content: const Text(
-            'Your coach will immediately lose access to your training history.'),
+        title: Text(_copy.endAssignmentQuestion),
+        content: Text(_copy.endAssignmentLead),
         actions: <Widget>[
           MayosButton(
-            label: 'Cancel',
+            label: _copy.cancel,
             variant: MayosButtonVariant.tertiary,
             expand: false,
             onPressed: () => Navigator.of(context).pop(false),
           ),
           MayosButton(
-            label: 'End assignment',
+            label: _copy.endAssignment,
             expand: false,
             onPressed: () => Navigator.of(context).pop(true),
           ),
@@ -205,13 +217,13 @@ class _PlayerAssignmentScreenState
         _assignment = null;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Assignment ended.')),
+        SnackBar(content: Text(_copy.assignmentEnded)),
       );
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
         _ending = false;
-        _error = error.message;
+        _error = _rawFailure(error);
       });
     }
   }
@@ -223,7 +235,7 @@ class _PlayerAssignmentScreenState
       await _load();
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() => _error = error.message);
+      setState(() => _error = _rawFailure(error));
     }
   }
 
@@ -257,7 +269,7 @@ class _PlayerAssignmentScreenState
       if (!mounted) return;
       setState(() {
         _requestingChange = false;
-        _requestError = mutationFailureMessage(error);
+        _requestError = _mutationFailure(error);
       });
     }
   }
@@ -283,13 +295,14 @@ class _PlayerAssignmentScreenState
       if (!mounted) return;
       setState(() {
         _cancellingRequestId = null;
-        _requestError = mutationFailureMessage(error);
+        _requestError = _mutationFailure(error);
       });
     }
   }
 
   Widget _programRequestsCard(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final AssignmentCopy copy = _copy;
     return Padding(
       padding: const EdgeInsets.only(top: MayosSpacing.lg),
       child: MayosCard(
@@ -297,10 +310,10 @@ class _PlayerAssignmentScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             MayosSectionHeader(
-              title: 'Program requests',
+              title: copy.programRequests,
               padding: EdgeInsets.zero,
               trailing: MayosButton(
-                label: 'Request a change',
+                label: copy.requestChange,
                 icon: Icons.add,
                 variant: MayosButtonVariant.tertiary,
                 expand: false,
@@ -311,13 +324,15 @@ class _PlayerAssignmentScreenState
             if (_requestError != null) ...<Widget>[
               Text(
                 _requestError!,
+                textDirection: copy.isArabic ? TextDirection.ltr : null,
+                textAlign: copy.isArabic ? TextAlign.end : null,
                 style: MayosTypography.bodySecondary.copyWith(color: c.danger),
               ),
               const SizedBox(height: MayosSpacing.sm),
             ],
             if (_programRequests.isEmpty)
               Text(
-                'No program requests yet.',
+                copy.noProgramRequests,
                 style: MayosTypography.bodySecondary
                     .copyWith(color: c.textSecondary),
               )
@@ -330,31 +345,46 @@ class _PlayerAssignmentScreenState
                     children: <Widget>[
                       Row(
                         children: <Widget>[
-                          Chip(label: Text(request.statusLabel)),
+                          Chip(label: Text(copy.requestStatus(request.status))),
                           const SizedBox(width: MayosSpacing.xs),
                           Expanded(
                             child: Text(
-                              request.description,
+                              copy.programRequestDescription(
+                                kind: request.kind,
+                                exercise: request.exerciseId,
+                                day: request.dayName,
+                                replacement: request.replacementExerciseId,
+                                frequency: request.desiredWeeklyFrequency,
+                                preference: request.desiredSplitPreference,
+                              ),
                               style: MayosTypography.body
                                   .copyWith(color: c.textPrimary),
+                              textDirection:
+                                  copy.isArabic ? TextDirection.ltr : null,
+                              textAlign: copy.isArabic ? TextAlign.end : null,
                             ),
                           ),
                         ],
                       ),
                       Text(
-                        'Reason: ${request.reason}',
+                        '${copy.reasonPrefix}${request.reason}',
+                        textDirection: copy.isArabic ? TextDirection.ltr : null,
+                        textAlign: copy.isArabic ? TextAlign.end : null,
                         style: MayosTypography.caption
                             .copyWith(color: c.textMuted),
                       ),
                       if (request.hasResponse)
                         Text(
-                          'Coach: ${request.response}',
+                          '${copy.coachPrefix}${request.response}',
+                          textDirection:
+                              copy.isArabic ? TextDirection.ltr : null,
+                          textAlign: copy.isArabic ? TextAlign.end : null,
                           style: MayosTypography.caption
                               .copyWith(color: c.textSecondary),
                         ),
                       if (request.isPending)
                         MayosButton(
-                          label: 'Cancel request',
+                          label: copy.cancelRequest,
                           variant: MayosButtonVariant.tertiary,
                           expand: false,
                           onPressed: _cancellingRequestId == request.requestId
@@ -375,6 +405,7 @@ class _PlayerAssignmentScreenState
       return const SizedBox.shrink();
     }
     final MayosThemeExtension c = MayosTheme.of(context);
+    final AssignmentCopy copy = _copy;
     final int unread =
         _notices.where((AssignmentNotice notice) => notice.isUnread).length;
     return Padding(
@@ -384,11 +415,11 @@ class _PlayerAssignmentScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             MayosSectionHeader(
-              title: 'Notices',
+              title: copy.notices,
               padding: EdgeInsets.zero,
               trailing: unread > 0
                   ? MayosButton(
-                      label: 'Mark all read',
+                      label: copy.markAllRead,
                       variant: MayosButtonVariant.tertiary,
                       expand: false,
                       onPressed: _markNoticesRead,
@@ -405,8 +436,15 @@ class _PlayerAssignmentScreenState
                       : Icons.notifications_none,
                   color: notice.isUnread ? c.accent : c.textMuted,
                 ),
-                title: Text(notice.message),
-                subtitle: Text('${notice.kind} · ${notice.createdAt}'),
+                title: Text(
+                  notice.message,
+                  textDirection: copy.isArabic ? TextDirection.ltr : null,
+                  textAlign: copy.isArabic ? TextAlign.end : null,
+                ),
+                subtitle: Text(
+                  '${notice.kind} · ${notice.createdAt}',
+                  textDirection: TextDirection.ltr,
+                ),
               ),
           ],
         ),
@@ -419,29 +457,36 @@ class _PlayerAssignmentScreenState
       return const SizedBox.shrink();
     }
     final MayosThemeExtension c = MayosTheme.of(context);
+    final AssignmentCopy copy = _copy;
     return Padding(
       padding: const EdgeInsets.only(top: MayosSpacing.lg),
       child: MayosCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            MayosSectionHeader(title: 'Check-ins', padding: EdgeInsets.zero),
+            MayosSectionHeader(title: copy.checkIns, padding: EdgeInsets.zero),
             for (final CheckIn checkIn in _checkIns)
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(Icons.handshake_outlined, color: c.textSecondary),
-                title: Text('${checkIn.checkedInOn} · ${checkIn.channelLabel}'),
+                title: Text(
+                  '${checkIn.checkedInOn} · ${copy.checkInChannel(checkIn.channel)}',
+                  textDirection: TextDirection.ltr,
+                ),
                 subtitle: Text(
                   <String>[
                     if (checkIn.coachUsername != null)
                       checkIn.coachUsername == 'Former coach'
-                          ? 'Former coach'
-                          : 'Coach ${checkIn.coachUsername}',
-                    if (checkIn.assignmentStatus == 'ended') 'assignment ended',
+                          ? copy.formerCoach
+                          : copy.coachUsername(checkIn.coachUsername!),
+                    if (checkIn.assignmentStatus == 'ended')
+                      copy.assignmentEndedStatus,
                     if (checkIn.note != null && checkIn.note!.isNotEmpty)
                       checkIn.note!,
                   ].join(' · '),
+                  textDirection: copy.isArabic ? TextDirection.ltr : null,
+                  textAlign: copy.isArabic ? TextAlign.end : null,
                 ),
               ),
           ],
@@ -458,6 +503,8 @@ class _PlayerAssignmentScreenState
       padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
       child: Text(
         _error!,
+        textDirection: _copy.isArabic ? TextDirection.ltr : null,
+        textAlign: _copy.isArabic ? TextAlign.end : null,
         style: MayosTypography.bodySecondary
             .copyWith(color: MayosTheme.of(context).danger),
       ),
@@ -469,7 +516,7 @@ class _PlayerAssignmentScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const MayosSectionHeader(title: 'Your coach'),
+        MayosSectionHeader(title: _copy.yourCoach),
         MayosCard(
           child: ListTile(
             contentPadding: EdgeInsets.zero,
@@ -477,20 +524,19 @@ class _PlayerAssignmentScreenState
             title: Text(assignment.coach.displayName),
             subtitle: Text(
               assignment.coach.specialization.isEmpty
-                  ? 'Coaching assignment active'
+                  ? _copy.activeAssignment
                   : assignment.coach.specialization,
             ),
           ),
         ),
         const SizedBox(height: MayosSpacing.sm),
         Text(
-          'While this assignment is active, your coach can view your current and '
-          'historical training data. Ending it revokes that access immediately.',
+          _copy.activeAssignmentAccess,
           style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
         ),
         const SizedBox(height: MayosSpacing.lg),
         MayosButton(
-          label: 'End assignment',
+          label: _copy.endAssignment,
           icon: Icons.link_off,
           variant: MayosButtonVariant.secondary,
           expand: false,
@@ -508,10 +554,9 @@ class _PlayerAssignmentScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const MayosSectionHeader(title: 'Coach assignment'),
+        MayosSectionHeader(title: _copy.coachAssignment),
         Text(
-          'Enter the invite code from your coach. Your coach can only see your training data '
-          'after you accept, and access ends when either of you ends the assignment.',
+          _copy.inviteExplanation,
           style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
         ),
         const SizedBox(height: MayosSpacing.md),
@@ -521,18 +566,18 @@ class _PlayerAssignmentScreenState
           autocorrect: false,
           enableSuggestions: false,
           onChanged: _onCodeChanged,
-          label: 'Invite code from your coach',
+          label: _copy.inviteCodeFromCoach,
         ),
         const SizedBox(height: MayosSpacing.sm),
         MayosButton(
-          label: 'Preview access',
+          label: _copy.previewAccess,
           loading: _previewing,
           onPressed: _previewing || _redeeming ? null : _previewCode,
         ),
         if (preview != null) ...<Widget>[
           const Divider(height: MayosSpacing.xxl),
           Text(
-            'Your coach will be ${preview.coach.displayName}',
+            _copy.coachWillBe(preview.coach.displayName),
             style:
                 MayosTypography.sectionHeading.copyWith(color: c.textPrimary),
           ),
@@ -552,7 +597,7 @@ class _PlayerAssignmentScreenState
               style: MayosTypography.body.copyWith(color: c.textPrimary)),
           const SizedBox(height: MayosSpacing.md),
           MayosButton(
-            label: 'Accept assignment',
+            label: _copy.acceptAssignment,
             icon: Icons.check,
             loading: _redeeming,
             onPressed: _redeeming ? null : _consent,
@@ -564,6 +609,7 @@ class _PlayerAssignmentScreenState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(displayLanguageProvider);
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }

@@ -52,7 +52,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       TextInput.finishAutofillContext();
     } on ApiException catch (error) {
       if (mounted) {
-        setState(() => _error = mutationFailureMessage(error));
+        setState(() => _error = MayosCopy(ref.read(displayLanguageProvider))
+            .failureMessage(mutationFailureMessage(error)));
       }
     } finally {
       if (mounted) {

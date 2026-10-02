@@ -130,10 +130,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       }
       setState(() {
         _phase = _OnboardingPhase.error;
-        _error = mutationFailureMessage(
-          error,
-          connectionMessage: displayCopyOf(context).connectionFailure,
-        );
+        _error = displayCopyOf(context)
+            .failureMessage(mutationFailureMessage(error));
       });
     }
   }
@@ -295,10 +293,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       }
       setState(() {
         _disclosureSaving = false;
-        _disclosureError = mutationFailureMessage(
-          error,
-          connectionMessage: displayCopyOf(context).connectionFailure,
-        );
+        _disclosureError = displayCopyOf(context)
+            .failureMessage(mutationFailureMessage(error));
       });
     }
   }
@@ -343,10 +339,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       // Offline/network: keep the answer on screen so it can be retried.
       setState(() {
         _saving = false;
-        _stepError = mutationFailureMessage(
-          error,
-          connectionMessage: displayCopyOf(context).connectionFailure,
-        );
+        _stepError = displayCopyOf(context)
+            .failureMessage(mutationFailureMessage(error));
       });
     }
   }
@@ -383,10 +377,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       }
       setState(() {
         _submitting = false;
-        _confirmError = mutationFailureMessage(
-          error,
-          connectionMessage: displayCopyOf(context).connectionFailure,
-        );
+        _confirmError = displayCopyOf(context)
+            .failureMessage(mutationFailureMessage(error));
       });
     }
   }

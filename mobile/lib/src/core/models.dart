@@ -3,6 +3,7 @@
 library;
 
 import 'config.dart';
+import 'app_failure.dart';
 import 'display_language/catalog.dart';
 import 'effort.dart';
 import 'rest_length.dart';
@@ -2471,6 +2472,7 @@ class WorkoutDraft {
     this.notes = '',
     this.status = DraftStatus.pending,
     this.lastError,
+    this.lastErrorFailure,
     this.serverResponse,
     required this.updatedAt,
     this.attempt = 0,
@@ -2502,6 +2504,11 @@ class WorkoutDraft {
         notes: json['notes'] as String? ?? '',
         status: json['status'] as String? ?? DraftStatus.pending,
         lastError: json['last_error'] as String?,
+        lastErrorFailure: AppFailureMessage.fromStored(
+          id: json['last_error_failure_id'] as String?,
+          englishMessage: json['last_error'] as String?,
+          value: (json['last_error_failure_value'] as num?)?.toInt(),
+        ),
         serverResponse: json['server_response'] as Map<String, dynamic>?,
         updatedAt: json['updated_at'] as String? ?? '',
         attempt: (json['attempt'] as num?)?.toInt() ?? 0,
@@ -2523,6 +2530,7 @@ class WorkoutDraft {
   final String notes;
   final String status;
   final String? lastError;
+  final AppFailureMessage? lastErrorFailure;
   final Map<String, dynamic>? serverResponse;
   final String updatedAt;
 
@@ -2581,12 +2589,14 @@ class WorkoutDraft {
     String? performedDate,
     String? status,
     String? lastError,
+    AppFailureMessage? lastErrorFailure,
     Map<String, dynamic>? serverResponse,
     String? updatedAt,
     int? attempt,
     String? nextAttemptAt,
     bool clearNextAttempt = false,
     bool clearLastError = false,
+    bool clearLastErrorFailure = false,
   }) =>
       WorkoutDraft(
         clientSessionId: clientSessionId,
@@ -2604,6 +2614,9 @@ class WorkoutDraft {
         notes: notes,
         status: status ?? this.status,
         lastError: clearLastError ? null : (lastError ?? this.lastError),
+        lastErrorFailure: clearLastError || clearLastErrorFailure
+            ? null
+            : (lastErrorFailure ?? this.lastErrorFailure),
         serverResponse: serverResponse ?? this.serverResponse,
         updatedAt: updatedAt ?? this.updatedAt,
         attempt: attempt ?? this.attempt,
@@ -2662,6 +2675,10 @@ class WorkoutDraft {
         'notes': notes,
         'status': status,
         'last_error': lastError,
+        if (lastErrorFailure != null) ...<String, Object?>{
+          'last_error_failure_id': lastErrorFailure!.id.name,
+          'last_error_failure_value': lastErrorFailure!.value,
+        },
         'server_response': serverResponse,
         'updated_at': updatedAt,
         'attempt': attempt,

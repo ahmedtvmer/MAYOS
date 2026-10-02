@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/active_workout.dart';
+import '../../core/display_language/feature_copy_context.dart';
+import '../../core/display_language/settings_copy.dart';
 import '../../providers.dart';
 import '../player/workout/active_workout_controller.dart';
 import '../player/workout/draft_sync_service.dart';
@@ -29,27 +31,28 @@ Future<void> confirmLogout(BuildContext context, WidgetRef ref) async {
   if (!context.mounted) return;
 
   if (unsynced > 0) {
+    final SettingsCopy copy = settingsCopyOf(context);
     final _LogoutChoice? choice = await showDialog<_LogoutChoice>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: const Text('Unsynced workouts'),
+        title: Text(copy.unsyncedWorkouts),
         content: Text(
-          'You have $unsynced unsynced workout '
-          '${unsynced == 1 ? 'draft' : 'drafts'}. '
-          'They stay on this device until they sync; logging out will not delete them.',
+          copy.unsyncedDraftWarning(unsynced),
+          textDirection: copy.isArabic ? TextDirection.ltr : null,
+          textAlign: copy.isArabic ? TextAlign.end : null,
         ),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: Text(copy.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(_LogoutChoice.discard),
-            child: const Text('Discard drafts and log out'),
+            child: Text(copy.discardDraftsAndLogOut),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(_LogoutChoice.keep),
-            child: const Text('Keep drafts and log out'),
+            child: Text(copy.keepDraftsAndLogOut),
           ),
         ],
       ),
@@ -85,18 +88,16 @@ Future<bool> _confirmWebLogout(
   final bool? discard = await showDialog<bool>(
     context: context,
     builder: (BuildContext context) => AlertDialog(
-      title: const Text('Discard unfinished workout?'),
-      content: const Text(
-        'Logging out will discard this workout from this browser.',
-      ),
+      title: Text(settingsCopyOf(context).discardUnfinishedWorkout),
+      content: Text(settingsCopyOf(context).logoutDiscardsBrowserWorkout),
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
+          child: Text(settingsCopyOf(context).cancel),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Discard and log out'),
+          child: Text(settingsCopyOf(context).discardAndLogOut),
         ),
       ],
     ),
