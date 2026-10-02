@@ -19,8 +19,8 @@ abstract final class MayosTheme {
   /// Dark tokens tuned for the logged-out surfaces drawn on the gym photo
   /// (#110). Links, progress and focused field edges use a lighter blue so they
   /// clear WCAG AA / non-text contrast against the photo.
-  static ThemeData get wallpaper =>
-      _build(MayosThemeExtension.wallpaper, linkColor: MayosPalette.wallpaperLink);
+  static ThemeData get wallpaper => _build(MayosThemeExtension.wallpaper,
+      linkColor: MayosPalette.wallpaperLink);
 
   /// The active MAYOS semantic tokens.
   static MayosThemeExtension of(BuildContext context) =>
@@ -105,6 +105,7 @@ abstract final class MayosTheme {
       scaffoldBackgroundColor: c.canvas,
       canvasColor: c.canvas,
       fontFamily: MayosTypography.uiFamily,
+      fontFamilyFallback: MayosTypography.fontFamilyFallback,
       textTheme: textTheme,
       primaryTextTheme: textTheme,
       splashFactory: InkSparkle.splashFactory,

@@ -20,6 +20,34 @@ the official Google Fonts OFL sources:
 Licenses: `assets/fonts/OFL-PlayfairDisplay.txt`, `assets/fonts/OFL-Inter.txt`
 (SIL Open Font License 1.1).
 
+### Arabic glyph fallback
+
+Flutter web's CanvasKit renderer cannot use the operating system's Arabic
+fonts, so the app bundles **IBM Plex Sans Arabic** as a glyph fallback for all
+MAYOS typography roles and Material's base theme. The primary families remain
+Playfair Display for display headings and Inter for interface text; Latin text
+continues to use those families. This is a glyph coverage fix, not the full
+"IBM Plex for every role in the Arabic version" rollout tracked separately in
+issue #245.
+
+The static Regular, Medium, SemiBold and Bold faces are registered as family
+`IBMPlexSansArabic` at weights 400, 500, 600 and 700. They come from
+[`IBM/plex`](https://github.com/IBM/plex), commit
+`763c36ef9117782905ae010056dfbe8fd2653a25`, in
+`packages/plex-sans-arabic/fonts/complete/ttf/`. Their SHA-256 hashes are:
+
+| File | SHA-256 |
+| --- | --- |
+| `assets/fonts/arabic/IBMPlexSansArabic-Regular.ttf` | `8e0f1046c736bf939d4939ee3ae0116acf61cbcd6592deae7656761627080981` |
+| `assets/fonts/arabic/IBMPlexSansArabic-Medium.ttf` | `eef162792cf2a6ba5af7943af9f86843b1286ab67aaf615c18c07fd8e97a4a90` |
+| `assets/fonts/arabic/IBMPlexSansArabic-SemiBold.ttf` | `1d4ab8b6ebadbb9d85f2ecdcb7cb0bb672420a8ff3388ab4f69d7b98056562aa` |
+| `assets/fonts/arabic/IBMPlexSansArabic-Bold.ttf` | `b74f809dead12442ed56e02a12c3bcc02076c9ad4e32f17d0a9ca6fc1aafc89e` |
+| `assets/fonts/arabic/OFL-IBMPlex.txt` | `7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da` |
+
+The font is licensed under the SIL Open Font License 1.1; the upstream license
+is kept at `assets/fonts/arabic/OFL-IBMPlex.txt`. The checked-in source and
+hashes are also recorded in `docs/design-review/143/font-provenance.json`.
+
 **Approximation note.** Playfair Display is chosen as the closest widely
 licensed match to the reference's high-contrast, transitional-style editorial
 serif (the `Good morning, Ahmed.` hero and the serif wordmark feel); Inter is

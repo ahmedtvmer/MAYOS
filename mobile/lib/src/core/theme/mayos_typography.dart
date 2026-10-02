@@ -13,6 +13,8 @@ import 'mayos_theme_extension.dart';
 abstract final class MayosTypography {
   static const String displayFamily = 'PlayfairDisplay';
   static const String uiFamily = 'Inter';
+  static const String arabicFallbackFamily = 'IBMPlexSansArabic';
+  static const List<String> fontFamilyFallback = <String>[arabicFallbackFamily];
 
   static const List<FontVariation> _serifSemiBold = <FontVariation>[
     FontVariation('wght', 600),
@@ -43,6 +45,7 @@ abstract final class MayosTypography {
   /// Hero / display heading.
   static const TextStyle display = TextStyle(
     fontFamily: displayFamily,
+    fontFamilyFallback: fontFamilyFallback,
     fontSize: 40,
     height: 1.08,
     fontWeight: FontWeight.w600,
@@ -53,6 +56,7 @@ abstract final class MayosTypography {
   /// Page heading (e.g. a section's editorial title).
   static const TextStyle pageHeading = TextStyle(
     fontFamily: displayFamily,
+    fontFamilyFallback: fontFamilyFallback,
     fontSize: 28,
     height: 1.15,
     fontWeight: FontWeight.w600,
@@ -63,6 +67,7 @@ abstract final class MayosTypography {
   /// Section heading inside a page (sans, confident but quiet).
   static const TextStyle sectionHeading = TextStyle(
     fontFamily: uiFamily,
+    fontFamilyFallback: fontFamilyFallback,
     fontSize: 18,
     height: 1.3,
     fontWeight: FontWeight.w600,
@@ -73,6 +78,7 @@ abstract final class MayosTypography {
   /// Exercise / card title.
   static const TextStyle exerciseTitle = TextStyle(
     fontFamily: uiFamily,
+    fontFamilyFallback: fontFamilyFallback,
     fontSize: 16,
     height: 1.3,
     fontWeight: FontWeight.w600,
@@ -82,6 +88,7 @@ abstract final class MayosTypography {
   /// Primary body copy.
   static const TextStyle body = TextStyle(
     fontFamily: uiFamily,
+    fontFamilyFallback: fontFamilyFallback,
     fontSize: 15,
     height: 1.5,
     fontWeight: FontWeight.w400,
@@ -91,6 +98,7 @@ abstract final class MayosTypography {
   /// Secondary / supporting body copy.
   static const TextStyle bodySecondary = TextStyle(
     fontFamily: uiFamily,
+    fontFamilyFallback: fontFamilyFallback,
     fontSize: 14,
     height: 1.5,
     fontWeight: FontWeight.w400,
@@ -100,7 +108,12 @@ abstract final class MayosTypography {
   /// Selectable code; generic monospace resolves to Android/iOS system fonts.
   static const TextStyle code = TextStyle(
     fontFamily: 'monospace',
-    fontFamilyFallback: <String>['Roboto Mono', 'Menlo', 'Courier New'],
+    fontFamilyFallback: <String>[
+      'Roboto Mono',
+      'Menlo',
+      'Courier New',
+      arabicFallbackFamily,
+    ],
     fontSize: 14,
     height: 1.4,
     fontWeight: FontWeight.w400,
@@ -109,6 +122,7 @@ abstract final class MayosTypography {
   /// UI label / button text.
   static const TextStyle label = TextStyle(
     fontFamily: uiFamily,
+    fontFamilyFallback: fontFamilyFallback,
     fontSize: 14,
     height: 1.2,
     fontWeight: FontWeight.w600,
@@ -119,6 +133,7 @@ abstract final class MayosTypography {
   /// Numeric / stat figures. Tabular so values align.
   static const TextStyle numeric = TextStyle(
     fontFamily: uiFamily,
+    fontFamilyFallback: fontFamilyFallback,
     fontSize: 28,
     height: 1.05,
     fontWeight: FontWeight.w700,
@@ -130,6 +145,7 @@ abstract final class MayosTypography {
   /// Small numeric / metric label.
   static const TextStyle numericSmall = TextStyle(
     fontFamily: uiFamily,
+    fontFamilyFallback: fontFamilyFallback,
     fontSize: 17,
     height: 1.1,
     fontWeight: FontWeight.w600,
@@ -140,6 +156,7 @@ abstract final class MayosTypography {
   /// Numeric for the in-app keypad keys: between [numericSmall] and [numeric].
   static const TextStyle numericMedium = TextStyle(
     fontFamily: uiFamily,
+    fontFamilyFallback: fontFamilyFallback,
     fontSize: 22,
     height: 1.1,
     fontWeight: FontWeight.w700,
@@ -150,6 +167,7 @@ abstract final class MayosTypography {
   /// Header-avatar initials, set on the accent-subtle disc.
   static const TextStyle avatarInitials = TextStyle(
     fontFamily: uiFamily,
+    fontFamilyFallback: fontFamilyFallback,
     fontSize: 12,
     height: 1.1,
     fontWeight: FontWeight.w600,
@@ -160,6 +178,7 @@ abstract final class MayosTypography {
   /// The single-letter Player/Coach badge chip on the header avatar.
   static const TextStyle modeBadge = TextStyle(
     fontFamily: uiFamily,
+    fontFamilyFallback: fontFamilyFallback,
     fontSize: 9,
     height: 1.1,
     fontWeight: FontWeight.w700,
@@ -170,6 +189,7 @@ abstract final class MayosTypography {
   /// Caption / metadata.
   static const TextStyle caption = TextStyle(
     fontFamily: uiFamily,
+    fontFamilyFallback: fontFamilyFallback,
     fontSize: 12,
     height: 1.35,
     fontWeight: FontWeight.w500,
@@ -181,6 +201,7 @@ abstract final class MayosTypography {
   /// neighbours (table headers).
   static const TextStyle captionStrong = TextStyle(
     fontFamily: uiFamily,
+    fontFamilyFallback: fontFamilyFallback,
     fontSize: 12,
     height: 1.35,
     fontWeight: FontWeight.w700,
@@ -190,6 +211,7 @@ abstract final class MayosTypography {
 
   static const TextStyle _displaySerifMedium = TextStyle(
     fontFamily: displayFamily,
+    fontFamilyFallback: fontFamilyFallback,
     fontWeight: FontWeight.w500,
     fontVariations: _serifMedium,
   );
