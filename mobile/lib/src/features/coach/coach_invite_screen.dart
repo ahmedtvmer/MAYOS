@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/display_language/feature_copy_context.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/ui/mayos_scaffold.dart';
 import '../player/onboarding/coach_code_form.dart';
@@ -15,24 +16,22 @@ class CoachInviteScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MayosScaffold(
-        title: 'Become a coach',
+        title: coachCopyOf(context).becomeCoach,
         showBack: true,
         body: ListView(
           padding: MayosSpacing.screen,
           children: <Widget>[
             Text(
-              'Enter your MAYOS coach code',
+              coachCopyOf(context).enterCoachCode,
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: MayosSpacing.xs),
             CoachCodeForm(
-              description:
-                  'This code comes from MAYOS and enables Coach mode on your own account. '
-                  'It is single-use and expires. Entering it does not assign you to a coach.',
+              description: coachCopyOf(context).coachCodeLead,
               fieldKey: const Key('settings_coach_code'),
               onRedeemed: () {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Coach capability enabled.')),
+                  SnackBar(content: Text(coachCopyOf(context).coachEnabled)),
                 );
                 context.go(coachPath);
               },

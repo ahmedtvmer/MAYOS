@@ -276,12 +276,14 @@ void main() {
     expect(progress, findsOneWidget);
     final Text progressText = tester.widget<Text>(progress);
     expect(progressText.data, contains('مجموعات'));
-    expect(progressText.data, matches(RegExp(r'^[0-9/]+')));
+    final String progressWithoutIsolates =
+        progressText.data!.replaceAll('\u2066', '').replaceAll('\u2069', '');
+    expect(progressWithoutIsolates, matches(RegExp(r'^[0-9/]+')));
     expect(
       Directionality.of(tester.element(find.text('مجموعة').first)),
       TextDirection.rtl,
     );
-    expect(Directionality.of(tester.element(progress)), TextDirection.ltr);
+    expect(Directionality.of(tester.element(progress)), TextDirection.rtl);
     expect(
       Directionality.of(tester.element(find.byType(WorkoutLoggerScreen))),
       TextDirection.rtl,

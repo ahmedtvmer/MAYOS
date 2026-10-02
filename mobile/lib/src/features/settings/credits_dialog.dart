@@ -23,7 +23,6 @@ Future<void> showMediaCredits(BuildContext context, WidgetRef ref) {
       title: Text(copy.credits),
       content: Text(
         copy.creditsBody(gymVisualCredit),
-        textDirection: copy.isArabic ? TextDirection.ltr : null,
         textAlign: copy.isArabic ? TextAlign.end : null,
       ),
       actions: <Widget>[

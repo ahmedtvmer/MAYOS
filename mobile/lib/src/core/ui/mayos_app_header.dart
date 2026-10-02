@@ -68,7 +68,7 @@ class MayosAppHeader extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
+      padding: const EdgeInsetsDirectional.fromSTEB(
           MayosSpacing.lg, MayosSpacing.sm, MayosSpacing.xs, MayosSpacing.xs),
       child: Row(
         children: <Widget>[

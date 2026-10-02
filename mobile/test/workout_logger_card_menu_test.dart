@@ -206,13 +206,14 @@ Future<
   Size size = const Size(1080, 2400),
   String? startedAt,
   DateTime Function()? clock,
+  FakeMayosApi? fakeApi,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
-  final FakeMayosApi fake = _signedInFake();
+  final FakeMayosApi fake = fakeApi ?? _signedInFake();
   fake.coachControlsProgram = coachControlled;
   fake.programVersion = liveProgramVersion;
   final InMemoryTokenStore tokens = InMemoryTokenStore();
@@ -373,7 +374,8 @@ Future<void> _confirmReplace(
 }
 
 void main() {
-  testWidgets('planned exercise detail keeps its prescription and returns to '
+  testWidgets(
+      'planned exercise detail keeps its prescription and returns to '
       'the unchanged Active workout (#217)', (WidgetTester tester) async {
     final SemanticsHandle semantics = tester.ensureSemantics();
     DateTime now = DateTime.parse('2026-09-28T08:00:42.000Z');
@@ -421,13 +423,14 @@ void main() {
     ]) {
       expect(row, findsOneWidget);
     }
-    expect(find.byKey(const ValueKey<String>('logger.tick.0.0')),
-        findsOneWidget);
+    expect(
+        find.byKey(const ValueKey<String>('logger.tick.0.0')), findsOneWidget);
     expect(find.byType(WorkoutLoggerScreen), findsOneWidget);
     semantics.dispose();
   });
 
-  testWidgets('replacement exercise detail has no program prescription '
+  testWidgets(
+      'replacement exercise detail has no program prescription '
       '(#217)', (WidgetTester tester) async {
     final harness = await _openLogger(tester);
 
@@ -456,7 +459,8 @@ void main() {
     expect(find.text('History'), findsOneWidget);
   });
 
-  testWidgets('unplanned exercise detail has no program prescription '
+  testWidgets(
+      'unplanned exercise detail has no program prescription '
       '(#217)', (WidgetTester tester) async {
     final harness = await _openLogger(tester);
 
@@ -811,6 +815,48 @@ void main() {
     expect(harness.fake.programSubstitutionRequests, isEmpty);
     expect((await harness.store.read(_account))!.exercises[1].exerciseId,
         'cable_fly');
+  });
+
+  testWidgets(
+      'Finish replaces a substitution failure after all working sets are unticked',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..baselinesBody.add(<String, dynamic>{
+        'exercise_id': 'incline_press',
+        'sessions_logged': 1,
+        'max_weight_kg': 60.0,
+        'best_e1rm_kg': 76.0,
+        'last_session': <String, dynamic>{
+          'performed_date': '2026-09-26',
+          'sets': <Map<String, dynamic>>[
+            <String, dynamic>{'weight_kg': 60.0, 'reps': 8, 'rir': 2.0},
+          ],
+        },
+      })
+      ..substitutionVersionConflict = true;
+    final harness = await _openLogger(tester, fakeApi: fake);
+
+    // Keep one working set ticked through the Bench replacement so the
+    // subsequent untick makes Finish invalid.
+    await _tickSet(tester, 1, 0);
+    await _pickMenuItem(tester, 0, _replaceItem(0));
+    await _confirmReplace(tester, keepInProgram: true);
+    await _searchAndPick(tester, 'fly', 'Cable Fly');
+    await _pumpUntilFound(
+        tester, find.text(loggerProgramVersionChangedMessage));
+    expect(find.text(loggerProgramVersionChangedMessage), findsOneWidget);
+
+    await _tickSet(tester, 2, 0);
+    final Finder finish = find.widgetWithText(FilledButton, 'Finish workout');
+    await tester.ensureVisible(finish);
+    await tester.tap(finish);
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Log at least one set'), findsOneWidget);
+    expect(find.text(loggerProgramVersionChangedMessage), findsNothing);
+    expect(
+        (await harness.store.read(_account))!.exercises[2].sets.single.ticked,
+        isFalse);
   });
 
   testWidgets('program failure does not roll back the logger replacement',

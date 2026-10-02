@@ -16,6 +16,7 @@ import '../../../core/connectivity_message.dart';
 import '../../../core/device_timezone.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
+import '../../../core/display_language/copy_context.dart';
 import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/models.dart';
 import '../../../core/performed_date_window.dart';
@@ -75,6 +76,49 @@ void openLoggerExerciseDetail(
 }
 
 enum _SummaryAction { save, retry, discardWorkout, done }
+
+enum _WorkoutLoggerCopyError {
+  workoutProgressBlocked,
+  connectToRefresh,
+  saveFailedNoLoss,
+  couldNotReachMayos,
+  reopenWorkoutToSave,
+  programRefreshBeforeSave,
+  mayosBusy,
+}
+
+sealed class _WorkoutLoggerError {
+  const _WorkoutLoggerError({this.programUnchangedPrefix = false});
+
+  final bool programUnchangedPrefix;
+}
+
+final class _WorkoutLoggerCopyErrorState extends _WorkoutLoggerError {
+  const _WorkoutLoggerCopyErrorState(this.message);
+
+  final _WorkoutLoggerCopyError message;
+}
+
+final class _WorkoutLoggerFailureErrorState extends _WorkoutLoggerError {
+  const _WorkoutLoggerFailureErrorState(this.failure,
+      {super.programUnchangedPrefix});
+
+  final FailureMessage failure;
+}
+
+final class _WorkoutLoggerSubstitutionErrorState extends _WorkoutLoggerError {
+  const _WorkoutLoggerSubstitutionErrorState(this.messageType,
+      {super.programUnchangedPrefix});
+
+  final LoggerProgramSubstitutionMessage messageType;
+}
+
+final class _WorkoutLoggerDetailErrorState extends _WorkoutLoggerError {
+  const _WorkoutLoggerDetailErrorState(this.detail,
+      {super.programUnchangedPrefix});
+
+  final String detail;
+}
 
 class _WorkoutExerciseAtIndex {
   const _WorkoutExerciseAtIndex(this.workout, this.exercise);
@@ -137,7 +181,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
 
   bool _loading = true;
   String? _loadError;
-  String? _error;
+  FailureMessage? _loadFailure;
+  _WorkoutLoggerError? _error;
 
   /// A non-blocking note to the player (e.g. a clamped performed date).
   String? _notice;
@@ -166,6 +211,36 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   CheckpointReview? _checkpointReview;
   bool _saving = false;
   WorkoutCopy get _copy => WorkoutCopy(ref.read(displayLanguageProvider));
+
+  String? _visibleError(BuildContext context) {
+    final _WorkoutLoggerError? error = _error;
+    if (error == null) return null;
+    final String detail = switch (error) {
+      _WorkoutLoggerCopyErrorState(:final message) => switch (message) {
+          _WorkoutLoggerCopyError.workoutProgressBlocked =>
+            _copy.workoutProgressBlocked,
+          _WorkoutLoggerCopyError.connectToRefresh => _copy.connectToRefresh,
+          _WorkoutLoggerCopyError.saveFailedNoLoss => _copy.saveFailedNoLoss,
+          _WorkoutLoggerCopyError.couldNotReachMayos =>
+            _copy.couldNotReachMayos,
+          _WorkoutLoggerCopyError.reopenWorkoutToSave =>
+            _copy.reopenWorkoutToSave,
+          _WorkoutLoggerCopyError.programRefreshBeforeSave =>
+            _copy.programRefreshBeforeSave,
+          _WorkoutLoggerCopyError.mayosBusy => _copy.mayosBusy,
+        },
+      _WorkoutLoggerFailureErrorState(:final failure) =>
+        displayCopyOf(context).failureMessage(failure),
+      _WorkoutLoggerSubstitutionErrorState(:final messageType) =>
+        _substitutionText(messageType),
+      _WorkoutLoggerDetailErrorState(:final detail) => detail,
+    };
+    if (error.programUnchangedPrefix) {
+      return _copy.swapSavedButProgramUnchanged(detail);
+    }
+    return detail;
+  }
+
   _SummaryAction _summaryAction = _SummaryAction.save;
   LoggerCellFocus? _focus;
   final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
@@ -318,12 +393,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     if (accountId == null) {
       setState(() {
         _loading = false;
-        _loadError =
-            MayosCopy(ref.read(displayLanguageProvider)).failureMessage(
-          const AppFailureMessage(
-            AppFailureId.draftNotSignedIn,
-            'You are not signed in.',
-          ),
+        _loadFailure = const AppFailureMessage(
+          AppFailureId.draftNotSignedIn,
+          'You are not signed in.',
         );
       });
       return;
@@ -717,7 +789,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     if (workout == null) {
       return;
     }
-    if (_error == _copy.workoutProgressBlocked) {
+    if (_error is _WorkoutLoggerCopyErrorState &&
+        (_error as _WorkoutLoggerCopyErrorState).message ==
+            _WorkoutLoggerCopyError.workoutProgressBlocked) {
       // The Finish bar's own nudge, sitting right above that bar: a tick
       // makes it untrue, so it goes. Every other message — a save failure,
       // an offline refusal — is never dismissed by ticking (#160).
@@ -853,7 +927,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       ),
     );
     if (!anyWorking) {
-      setState(() => _error = _copy.workoutProgressBlocked);
+      setState(
+        () => _error = const _WorkoutLoggerCopyErrorState(
+          _WorkoutLoggerCopyError.workoutProgressBlocked,
+        ),
+      );
       return;
     }
     final int unticked = _untickedCount(workout);
@@ -934,7 +1012,6 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
             children: <Widget>[
               Text(
                 _copy.untickedSetQuestion(unticked),
-                textDirection: _copy.isArabic ? TextDirection.ltr : null,
                 textAlign: _copy.isArabic ? TextAlign.end : null,
                 style: MayosTypography.sectionHeading,
               ),
@@ -1001,7 +1078,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       );
       if (draft == null) {
         setState(() {
-          _error = _copy.connectToRefresh;
+          _error = const _WorkoutLoggerCopyErrorState(
+            _WorkoutLoggerCopyError.connectToRefresh,
+          );
         });
         return;
       }
@@ -1024,7 +1103,15 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       if (!mounted) {
         return;
       }
-      setState(() => _error = _saveFailureMessage(error));
+      setState(() {
+        if (error is ApiException) {
+          _error = _WorkoutLoggerFailureErrorState(apiFailureMessage(error));
+        } else {
+          _error = const _WorkoutLoggerCopyErrorState(
+            _WorkoutLoggerCopyError.saveFailedNoLoss,
+          );
+        }
+      });
     } finally {
       if (mounted) {
         setState(() => _saving = false);
@@ -1081,15 +1168,15 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
             break;
           case WebWorkoutCommitStatus.retryable:
             _summaryAction = _SummaryAction.retry;
-            _error = _webWorkoutCommitFailure(result);
+            _error = _webWorkoutCommitError(result);
             break;
           case WebWorkoutCommitStatus.sessionProblem:
             _summaryAction = _SummaryAction.retry;
-            _error = _webWorkoutCommitFailure(result);
+            _error = _webWorkoutCommitError(result);
             break;
           case WebWorkoutCommitStatus.refused:
             _summaryAction = _SummaryAction.discardWorkout;
-            _error = _webWorkoutCommitFailure(result);
+            _error = _webWorkoutCommitError(result);
             break;
         }
       });
@@ -1097,7 +1184,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       if (mounted) {
         setState(() {
           _summaryAction = _SummaryAction.retry;
-          _error = _copy.couldNotReachMayos;
+          _error = const _WorkoutLoggerCopyErrorState(
+            _WorkoutLoggerCopyError.couldNotReachMayos,
+          );
         });
       }
     } finally {
@@ -1110,23 +1199,29 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   /// How a failed save is reported: the service's own message when it has one,
   /// otherwise a line that promises the workout is still on screen (#123
   /// item 6).
-  String _saveFailureMessage(Object error) => error is ApiException
-      ? MayosCopy(ref.read(displayLanguageProvider))
-          .failureMessage(apiFailureMessage(error))
-      : _copy.saveFailedNoLoss;
-
-  String? _webWorkoutCommitFailure(WebWorkoutCommitResult result) {
+  _WorkoutLoggerError? _webWorkoutCommitError(WebWorkoutCommitResult result) {
     final FailureMessage? failure = result.failureMessage;
     if (failure != null) {
-      return MayosCopy(ref.read(displayLanguageProvider))
-          .failureMessage(failure);
+      return _WorkoutLoggerFailureErrorState(failure);
     }
     return switch (result.messageType) {
-      WebWorkoutCommitMessage.reopenWorkout => _copy.reopenWorkoutToSave,
-      WebWorkoutCommitMessage.refreshProgram => _copy.programRefreshBeforeSave,
-      WebWorkoutCommitMessage.connection => _copy.couldNotReachMayos,
-      WebWorkoutCommitMessage.busy => _copy.mayosBusy,
-      null => result.message,
+      WebWorkoutCommitMessage.reopenWorkout =>
+        const _WorkoutLoggerCopyErrorState(
+          _WorkoutLoggerCopyError.reopenWorkoutToSave,
+        ),
+      WebWorkoutCommitMessage.refreshProgram =>
+        const _WorkoutLoggerCopyErrorState(
+          _WorkoutLoggerCopyError.programRefreshBeforeSave,
+        ),
+      WebWorkoutCommitMessage.connection => const _WorkoutLoggerCopyErrorState(
+          _WorkoutLoggerCopyError.couldNotReachMayos,
+        ),
+      WebWorkoutCommitMessage.busy => const _WorkoutLoggerCopyErrorState(
+          _WorkoutLoggerCopyError.mayosBusy,
+        ),
+      null => result.message == null
+          ? null
+          : _WorkoutLoggerDetailErrorState(result.message!),
     };
   }
 
@@ -1213,11 +1308,16 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     if (_loading || !active.ready) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_loadError != null) {
+    if (_loadError != null || _loadFailure != null) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(MayosSpacing.xl),
-          child: Text(_loadError!, textAlign: TextAlign.center),
+          child: Text(
+            _loadFailure == null
+                ? _loadError!
+                : displayCopyOf(context).failureMessage(_loadFailure!),
+            textAlign: TextAlign.center,
+          ),
         ),
       );
     }
@@ -1280,8 +1380,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     if (_blockReason != null) {
       lines.add(_MessageLine(_blockReason!));
     }
-    if (_error != null) {
-      lines.add(_MessageLine(_error!));
+    final String? visibleError = _visibleError(context);
+    if (visibleError != null) {
+      lines.add(_MessageLine(visibleError));
     }
     if (_notice != null) {
       lines.add(_MessageLine(_notice!, danger: false));
@@ -1417,7 +1518,6 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
           Text(
             _progressLine(workout),
             key: const ValueKey<String>('logger.progress'),
-            textDirection: copy.isArabic ? TextDirection.ltr : null,
             textAlign: copy.isArabic ? TextAlign.end : null,
             style: MayosTypography.bodySecondary.copyWith(
               color: c.textSecondary,
@@ -1788,18 +1888,25 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     bool knownLocalDetail = false,
   }) {
     if (!mounted) return;
-    final String localizedDetail = failureMessage != null
-        ? MayosCopy(ref.read(displayLanguageProvider))
-            .failureMessage(failureMessage)
-        : messageType == null
-            ? detail
-            : _substitutionText(messageType);
     setState(() {
-      _error = messageType == LoggerProgramSubstitutionMessage.versionChanged
-          ? localizedDetail
-          : _copy.swapSavedButProgramUnchanged(
-              knownLocalDetail ? detail : localizedDetail,
-            );
+      final bool showPrefix =
+          messageType != LoggerProgramSubstitutionMessage.versionChanged;
+      if (failureMessage != null) {
+        _error = _WorkoutLoggerFailureErrorState(
+          failureMessage,
+          programUnchangedPrefix: showPrefix,
+        );
+      } else if (messageType != null) {
+        _error = _WorkoutLoggerSubstitutionErrorState(
+          messageType,
+          programUnchangedPrefix: showPrefix,
+        );
+      } else {
+        _error = _WorkoutLoggerDetailErrorState(
+          detail,
+          programUnchangedPrefix: showPrefix,
+        );
+      }
       _notice = null;
     });
   }
@@ -2085,7 +2192,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
               icon: Icons.event_outlined,
               title: _copy.performedDate,
               subtitle: date,
-              subtitleTextDirection: _copy.isArabic ? TextDirection.ltr : null,
+              subtitleTextDirection: TextDirection.ltr,
               trailing: Icon(Icons.edit_outlined, size: 20, color: c.textMuted),
               onTap: _pickDate,
             ),
@@ -2108,7 +2215,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
             label: _copy.notesHint,
           ),
           if (_blockReason != null) _MessageLine(_blockReason!),
-          if (_error != null) _MessageLine(_error!),
+          if (_visibleError(context) case final String error)
+            _MessageLine(error),
           if (_notice != null) _MessageLine(_notice!, danger: false),
           const SizedBox(height: MayosSpacing.lg),
           MayosButton(
@@ -2149,8 +2257,6 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
                   record.kind.name,
                   formatRecordKg(record.value),
                 ),
-                textDirection:
-                    workoutCopyOf(context).isArabic ? TextDirection.ltr : null,
                 style: MayosTypography.bodySecondary.copyWith(
                   color: c.textPrimary,
                 ),
@@ -2240,12 +2346,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         value: value,
         label: label,
         unit: unit,
-        alignment:
-            copy.isArabic ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        alignment: CrossAxisAlignment.start,
       );
-      return copy.isArabic
-          ? Directionality(textDirection: TextDirection.ltr, child: child)
-          : child;
+      return child;
     }
 
     return Column(

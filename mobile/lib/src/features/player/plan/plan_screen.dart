@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/display_language/copy_context.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
@@ -8,22 +9,6 @@ import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_card.dart';
 import '../../../core/ui/mayos_section_header.dart';
 import '../../../providers.dart';
-
-/// Truthful, currently-implemented core benefits per capability. Deliberately
-/// excludes not-yet-working features (workout logging, complete history,
-/// alerts, coach publishing) and any paid/Pro claim, so the display never
-/// over-promises what the app can do today.
-const List<String> _lifterFreeBenefits = <String>[
-  'Automatic training program',
-  'Weekly volume and personal-record dashboard',
-  'Coaching assignment with your coach',
-];
-
-const List<String> _coachFreeBenefits = <String>[
-  'Coach profile and player invites',
-  'Active roster with assignment status',
-  'End or revoke assignments at any time',
-];
 
 /// Shows the account's independent Lifter and Coach plan states served by the
 /// API. Both Android and the shared web client render this same screen.
@@ -36,19 +21,28 @@ class PlanScreen extends ConsumerWidget {
     if (account == null) {
       return const SizedBox.shrink();
     }
+    final copy = displayCopyOf(context);
     final AccountPlans plans = account.plans;
     final List<Widget> cards = <Widget>[
       if (plans.lifter != null)
         _PlanCard(
-          capability: 'Lifter',
+          capability: copy.playerPlanLabel,
           plan: plans.lifter!,
-          benefits: _lifterFreeBenefits,
+          benefits: <String>[
+            copy.automaticTrainingProgram,
+            copy.weeklyVolumeAndRecords,
+            copy.coachingAssignmentBenefit,
+          ],
         ),
       if (plans.coach != null)
         _PlanCard(
-          capability: 'Coach',
+          capability: copy.coachPlanLabel,
           plan: plans.coach!,
-          benefits: _coachFreeBenefits,
+          benefits: <String>[
+            copy.coachProfileAndInvites,
+            copy.activeRosterWithStatus,
+            copy.canEndAssignments,
+          ],
         ),
     ];
     final MayosThemeExtension c = MayosTheme.of(context);
@@ -57,7 +51,7 @@ class PlanScreen extends ConsumerWidget {
         child: Padding(
           padding: const EdgeInsets.all(MayosSpacing.xl),
           child: Text(
-            'No plan is available for this account.',
+            copy.noPlanAvailable,
             textAlign: TextAlign.center,
             style: MayosTypography.body.copyWith(color: c.textSecondary),
           ),
@@ -68,7 +62,7 @@ class PlanScreen extends ConsumerWidget {
       padding: MayosSpacing.screen,
       children: <Widget>[
         Text(
-          'Lifter and Coach plans are independent.',
+          copy.independentPlans,
           style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
         ),
         const SizedBox(height: MayosSpacing.md),
@@ -101,12 +95,13 @@ class _PlanCard extends StatelessWidget {
         children: <Widget>[
           MayosSectionHeader(
             title: '$capability ${plan.label}',
-            subtitle: plan.isFree ? 'Ongoing plan — not a trial.' : null,
+            subtitle:
+                plan.isFree ? displayCopyOf(context).ongoingPlanNotTrial : null,
             padding: EdgeInsets.zero,
           ),
           const SizedBox(height: MayosSpacing.sm),
           Text(
-            "What's included",
+            displayCopyOf(context).includedFeatures,
             style: MayosTypography.label.copyWith(color: c.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.xs),

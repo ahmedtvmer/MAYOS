@@ -74,7 +74,7 @@ void main() {
         frequency: null,
         preference: null,
       ),
-      'طلب تبديل تمرين من المدرب: Bench Press في Upper A إلى Incline Press',
+      'طلب تبديل تمرين من المدرب: \u2066Bench Press\u2069 في \u2066Upper A\u2069 إلى \u2066Incline Press\u2069',
     );
     expect(
       english.programRequestDescription(

@@ -1,6 +1,6 @@
 # Arabic app UI strings awaiting owner review
 
-This inventory lists Arabic app-owned copy from chunks A and B. It awaits owner review.
+This inventory lists Arabic app-owned copy from chunks A, B, and C. It awaits owner review.
 Text supplied by the API, including onboarding explanations and option
 descriptions, exercise names and instructions, coach notes, notices, assistant
 replies, and workout summary details, remains unchanged and is not listed here.
@@ -48,7 +48,8 @@ Values in braces are runtime values; numbers use Western digits.
 | Personal records | الأرقام القياسية الشخصية |
 | Log workout | تسجيل حصة تدريبية |
 | Good morning | صباح الخير |
-| Good afternoon / Good evening | مساء الخير |
+| Good afternoon | طاب يومك |
+| Good evening | مساء الخير |
 | No sets logged in the last 7 days. | لم تُسجل مجموعات خلال آخر 7 أيام. |
 | No personal records yet. | لا توجد أرقام قياسية شخصية بعد. |
 | Could not load your home. | تعذر تحميل الصفحة الرئيسية. |
@@ -715,3 +716,228 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | The service returned invalid exercise data. | أعادت الخدمة بيانات بصيغة غير صالحة. |
 | The service returned invalid session data. | أعادت الخدمة بيانات بصيغة غير صالحة. |
 | The service returned invalid training status data. | أعادت الخدمة بيانات بصيغة غير صالحة. |
+
+## Coach mode shell, roster, and alerts (Chunk C)
+
+| English | Arabic |
+| --- | --- |
+| Roster | قائمة اللاعبين |
+| Alerts | التنبيهات |
+| Requests | الطلبات |
+| Profile | الملف الشخصي |
+| Active assignments | علاقات التدريب النشطة |
+| No assigned players yet. | لا يوجد لاعبون معينون بعد. |
+| Revoke assignment? | إنهاء علاقة التدريب؟ |
+| {player} will lose coaching immediately and can no longer be seen by you. | سيفقد {player} إمكانية التدريب معك فورًا ولن تتمكن من الاطلاع على بياناته. |
+| Revoke | إنهاء العلاقة |
+| Revoked {player}. | انتهت علاقة التدريب مع {player}. |
+| Disable coaching? | إيقاف وضع المدرب؟ |
+| Every assignment ends immediately and your coach capability is removed. Your own player training data is kept. | ستنتهي كل علاقات التدريب فورًا وسيُزال دور المدرب. ستبقى بيانات تدريبك كلاعب محفوظة. |
+| Disable coaching | إيقاف وضع المدرب |
+| Coaching disabled. {count} assignment(s) ended. | تم إيقاف وضع المدرب. انتهت {count} علاقة تدريب. |
+| Acknowledge | تأكيد الاطلاع |
+| Resolve | حل التنبيه |
+| Show resolved | عرض التنبيهات المحلولة |
+| No alerts to show. | لا توجد تنبيهات. |
+| No active assignment. | لا توجد علاقة تدريب نشطة. |
+| Resolved by {username} | حلّه {username} |
+| New / Acknowledged / Resolved | جديد / تم تأكيد الاطلاع / تم الحل |
+| Missed {count}d | 1: يوم واحد فائت; 2: يومان فائتان; 3–10: {count} أيام فائتة; 11+: {count} يومًا فائتًا |
+| Stalled {count} sessions | توقف التقدم: {count} حصص تدريبية |
+| {count} alert(s) | 1: تنبيه واحد; 2: تنبيهان; 3–10: {count} تنبيهات; 11+: {count} تنبيهًا |
+| {count} request(s) | 1: طلب واحد; 2: طلبان; 3–10: {count} طلبات; 11+: {count} طلبًا |
+| Follow-up today / Follow-up overdue | المتابعة اليوم / المتابعة متأخرة |
+| No workouts yet | لم يسجل حصصًا بعد |
+| Last workout {date} · {program} | آخر حصة تدريبية {date} · {program} |
+| Revoking… | جارٍ إنهاء العلاقة… |
+
+## Coach assistant and check-ins (Chunk C)
+
+| English | Arabic |
+| --- | --- |
+| Assistant | المساعد |
+| Ask assistant | اسأل المساعد |
+| Open alerts | التنبيهات المفتوحة |
+| Ask about {player}'s training figures: volume, sessions, records, and schedule. | اسأل عن أرقام تدريب {player}: مجموعات التدريب، والحصص، والأرقام القياسية، والجدول. |
+| Thinking… | جارٍ التفكير… |
+| Answers use the player's training figures. Nothing is saved. | تستخدم الإجابات أرقام تدريب {player}. لا يُحفظ شيء. |
+| Ask about this player | اسأل عن هذا اللاعب |
+| You no longer coach this player | لم تعد مدربًا لهذا اللاعب. |
+| Log check-in | تسجيل تواصل |
+| Log check-in with {player} | تسجيل تواصل مع {player} |
+| Dated today · {date} | تاريخ اليوم · {date} |
+| Next follow-up: {date} | المتابعة القادمة: {date} |
+| Note (optional) | ملاحظة (اختيارية) |
+| Save check-in | حفظ التواصل |
+| Pick a contact channel. | اختر وسيلة التواصل. |
+| Check-in recorded. | تم تسجيل التواصل. |
+| Next follow-up | المتابعة القادمة |
+| not scheduled | غير محدد |
+| No check-ins recorded yet. | لم يُسجل أي تواصل بعد. |
+| In app / In person / Phone / Video / Message / Email / Other | داخل التطبيق / لقاء شخصي / مكالمة هاتفية / مكالمة فيديو / رسالة / بريد إلكتروني / أخرى |
+| Become a coach | كن مدربًا |
+| Enter your MAYOS coach code | أدخل رمز مدرب MAYOS |
+| This code comes from MAYOS and enables Coach mode on your own account. It is single-use and expires. Entering it does not assign you to a coach. | هذا الرمز من MAYOS ويفعّل وضع المدرب في حسابك. يُستخدم مرة واحدة وتنتهي صلاحيته. إدخاله لا ينشئ علاقة تدريب مع مدرب. |
+| Coach capability enabled. | تم تفعيل دور المدرب. |
+
+## Coach profile, invitations, and program tools (Chunk C)
+
+| English | Arabic |
+| --- | --- |
+| Coach profile | الملف الشخصي للمدرب |
+| These details describe you as a coach. | هذه المعلومات تعرّف اللاعبين بك بصفتك مدربًا. |
+| Display name | الاسم المعروض |
+| Specialization | التخصص |
+| e.g. Powerlifting, Hypertrophy | مثلًا: رفع الأثقال، بناء العضلات |
+| Bio | نبذة |
+| Roster capacity | سعة قائمة اللاعبين |
+| Between {min} and {max} players. | من {min} إلى {max} لاعبًا. |
+| Save profile | حفظ الملف الشخصي |
+| Coach profile saved. | تم حفظ ملف المدرب. |
+| Enter a display name. | أدخل اسمًا معروضًا. |
+| Display name must be at most {max} characters. | يجب ألا يتجاوز الاسم {max} حرفًا. |
+| Enter a whole number. | أدخل عددًا صحيحًا. |
+| Capacity must be between {min} and {max}. | يجب أن تكون السعة بين {min} و{max}. |
+| Invite a player | دعوة لاعب |
+| Create a single-use code and give it to one player. It expires and can only be redeemed while you have roster room; the exact expiry is shown when the code is issued. | أنشئ رمزًا لمرة واحدة وقدّمه للاعب واحد. تنتهي صلاحيته، ولا يمكن استخدامه إلا عند توفر مكان في قائمة اللاعبين. سيظهر تاريخ الانتهاء بعد إنشاء الرمز. |
+| Create player invite | إنشاء دعوة للاعب |
+| Expires {date} | تنتهي الصلاحية {date} |
+| {remaining} of {capacity} roster slots free | المتاح في قائمة اللاعبين: {remaining} من {capacity} |
+| Notices | الإشعارات |
+| Mark all read | تحديد الكل كمقروء |
+| Resolved alerts | التنبيهات المحلولة |
+| Publish program | نشر برنامج تدريبي |
+| Split override (optional) | تقسيمة مخصصة (اختيارية) |
+| Rep preference | تفضيل التكرارات |
+| Low / Balanced / High | منخفض / متوازن / مرتفع |
+| Days per week | أيام التدريب أسبوعيًا |
+| Publish | نشر |
+| Published program version {version} | نُشر إصدار البرنامج التدريبي {version} |
+
+## Coach player history, requests, and metrics (Chunk C)
+
+| English | Arabic |
+| --- | --- |
+| Program requests | طلبات البرنامج التدريبي |
+| No program requests yet. | لا توجد طلبات للبرنامج التدريبي بعد. |
+| No volume recorded yet. | لم تُسجل مجموعات تدريب بعد. |
+| Volume (weighted working sets) | مجموعات محسوبة لكل عضلة |
+| Training schedule | جدول التدريب |
+| Expected | أيام التدريب المتوقعة |
+| Timezone: {value} | المنطقة الزمنية: {value} |
+| Pause: {start} → {end} | توقف التدريب: {start} → {end} |
+| Latest session | أحدث حصة تدريبية |
+| Recent sessions | الحصص الأخيرة |
+| No sessions logged yet. | لم تُسجل حصص بعد. |
+| {sets} sets · {volume} kg | {sets} مجموعة تدريب · إجمالي الوزن المرفوع {volume} kg |
+| Warm-up: {count} movements | حركات الإحماء: {count} حركات إحماء |
+| Cardio: {minutes} min | تمارين اللياقة: {minutes} دقائق |
+| Cardio: no duration set | تمارين اللياقة: غير محددة |
+| Readiness {score}/5 | الاستعداد {score}/5 |
+| Skipped / Unplanned | تم تخطيه / غير مخطط |
+| No personal records yet. | لا توجد أرقام قياسية شخصية بعد. |
+| Checkpoints | محطات التقدم |
+| No Checkpoints yet. | لا توجد محطات تقدم بعد. |
+| Checkpoint {number} | محطة التقدم {number} |
+| Mon / Tue / Wed / Thu / Fri / Sat / Sun | الاثنين / الثلاثاء / الأربعاء / الخميس / الجمعة / السبت / الأحد |
+| Exercises | التمارين |
+| No exercises logged yet. | لم تُسجل تمارين بعد. |
+| No recorded sets for this exercise. | لم تُسجل مجموعات لهذا التمرين. |
+| Records | الأرقام القياسية |
+| No check-ins recorded yet. | لم يُسجل أي تواصل بعد. |
+| History | السجل |
+| Check-ins | التواصل |
+| Requests ({count}) | الطلبات ({count}) |
+| Pending | قيد الانتظار |
+| No pending requests. | لا توجد طلبات قيد الانتظار. |
+| Answered | تم الرد |
+| Nothing answered yet. | لا توجد طلبات تم الرد عليها. |
+| This request is no longer available. | لم يعد هذا الطلب متاحًا. |
+| Select a request to review. | اختر طلبًا لمراجعته. |
+| Request detail | تفاصيل الطلب |
+| This request has been answered. | تم الرد على هذا الطلب. |
+| Apply swap | تطبيق التبديل |
+| Apply (rebuilds program) | تطبيق وإعادة إنشاء البرنامج |
+| Reason for declining (shown to the player) | سبب الرفض (سيظهر للاعب) |
+| Sent only with Decline · up to 500 characters. | يُرسل عند الرفض فقط · حتى 500 حرف. |
+| Decline | رفض |
+| {player} asks | يطلب {player} |
+| Whole program | البرنامج كاملًا |
+| program v{version} | إصدار البرنامج {version} |
+| Program request applied. | تم تطبيق طلب البرنامج التدريبي. |
+| Program request declined. | تم رفض طلب البرنامج التدريبي. |
+| Player / You / tap to review | لاعب / أنت / اضغط للمراجعة |
+| Sent {date} · tap to review | أُرسل {date} · اضغط للمراجعة |
+| {exercise} → {replacement} (on {day}) | تبديل تمرين {exercise} في {day} إلى {replacement} |
+| Split change → {frequency} days/week · {preference} | تغيير تقسيمة البرنامج إلى {frequency} أيام أسبوعيًا · {preference} |
+| Split change | تغيير تقسيمة البرنامج |
+| You: {response} | ردك: {response} |
+| Pending / Applied / Declined / Cancelled | قيد الانتظار / تم التطبيق / مرفوض / ملغى |
+| No training history yet. | لا يوجد سجل تدريب بعد. |
+| Since {date} | منذ {date} |
+| Expected: {value} | أيام التدريب المتوقعة: {value} |
+| {split} · {date} | {split} · {date} |
+| {sets} sets · {volume} kg | {sets} مجموعة تدريب · إجمالي الوزن المرفوع {volume} kg |
+| Warm-up: {count} movements | حركات الإحماء: {count} حركات إحماء |
+| Personal records | الأرقام القياسية الشخصية |
+| {exercise}: {sets} sets · {volume} kg | {exercise}: {sets} مجموعات تدريب · إجمالي الوزن المرفوع {volume} kg |
+| Logged against program v{captured} (current v{current}) | سُجلت الحصة على إصدار البرنامج {captured} (الحالي {current}) |
+| Date corrected from {previous} to {corrected} | تم تصحيح التاريخ من {previous} إلى {corrected} |
+
+## Shared screens and utilities (Chunk C final sweep)
+
+| English | Arabic |
+| --- | --- |
+| You're offline | أنت غير متصل بالإنترنت |
+| Could not open this link in your browser. | تعذر فتح هذا الرابط في المتصفح. |
+| Could not open the privacy policy in your browser. | تعذر فتح سياسة الخصوصية في المتصفح. |
+| Image omitted | صورة محذوفة |
+| Page not found | الصفحة غير موجودة |
+| The page you are looking for does not exist or has moved. | الصفحة التي تبحث عنها غير موجودة أو نُقلت. |
+| Go to home | الانتقال إلى الرئيسية |
+| Progress, Engineered. | تقدّمٌ مدروس. |
+| Search the exercise catalog | ابحث في مكتبة التمارين |
+| Search | بحث |
+| Type an exercise name to search. | أدخل اسم تمرين للبحث. |
+| No matching exercise found. | لم يُعثر على تمرين مطابق. |
+| No {muscle} exercise matched. | لم يُعثر على تمرين لعضلة {muscle}. |
+| Every match is already in this workout. | كل النتائج موجودة بالفعل في هذه الحصة. |
+| Muscle: {muscle} | العضلة: {muscle} |
+| Clear the muscle filter | مسح مرشح العضلة |
+| No plan is available for this account. | لا تتوفر خطة لهذا الحساب. |
+| Lifter and Coach plans are independent. | خطتا اللاعب والمدرب مستقلتان. |
+| Lifter / Coach | اللاعب / المدرب |
+| Ongoing plan — not a trial. | خطة مستمرة — ليست فترة تجريبية. |
+| What's included | ما الذي تتضمنه |
+| Automatic training program | برنامج تدريبي تلقائي |
+| Weekly volume and personal-record dashboard | لوحة الحجم التدريبي والأرقام القياسية الأسبوعية |
+| Coaching assignment with your coach | علاقة تدريب مع مدربك |
+| Coach profile and player invites | الملف الشخصي للمدرب ودعوات اللاعبين |
+| Active roster with assignment status | قائمة اللاعبين النشطة وحالة علاقات التدريب |
+| End or revoke assignments at any time | إنهاء علاقات التدريب في أي وقت |
+| Could not reset the password. Request a new link. | تعذر إعادة تعيين كلمة المرور. اطلب رابطًا جديدًا. |
+
+## Rest notifications (Chunk C)
+
+| English | Arabic |
+| --- | --- |
+| MAYOS · Rest {time} | MAYOS · راحة {time} |
+| Next: {exercise} · set {set} · last {last} | التالي: {exercise} · المجموعة {set} · السابق {last} |
+| Rest complete | انتهت الراحة |
+| Rest timer | مؤقت الراحة |
+| The running rest countdown while a workout is in progress. | مؤقت الراحة الجاري أثناء الحصة التدريبية. |
+| The end-of-rest vibration and sound. | الصوت والاهتزاز عند انتهاء الراحة. |
+| Back to {exercise} | العودة إلى {exercise} |
+| Rest alerts need permission to reach you when your screen is off. | تحتاج تنبيهات الراحة إلى إذن لتصلك عند إطفاء الشاشة. |
+
+## New Arabic count forms used by Chunk C
+
+The count helper keeps Western digits and selects a short form by count.
+
+| English noun | 1 | 2 | 3–10 | 11+ |
+| --- | --- | --- | --- | --- |
+| assignments | علاقة تدريب واحدة | علاقتا تدريب | {count} علاقات تدريب | {count} علاقة تدريب |
+| alerts | تنبيه واحد | تنبيهان | {count} تنبيهات | {count} تنبيهًا |
+| requests | طلب واحد | طلبان | {count} طلبات | {count} طلبًا |
+| warm-up movements | حركة إحماء واحدة | حركتا إحماء | {count} حركات إحماء | {count} حركة إحماء |
+| minutes | دقيقة واحدة | دقيقتان | {count} دقائق | {count} دقيقة |

@@ -110,7 +110,6 @@ class PreviousPerformanceSummary extends StatelessWidget {
         : modelLabel;
     return Text(
       copy.previousPerformance(values),
-      textDirection: copy.isArabic ? TextDirection.ltr : null,
       textAlign: copy.isArabic ? TextAlign.end : null,
       style: MayosTypography.caption.copyWith(color: c.textSecondary),
     );

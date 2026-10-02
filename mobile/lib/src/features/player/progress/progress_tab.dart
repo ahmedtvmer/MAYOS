@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/effort.dart';
 import '../../../core/models.dart';
@@ -14,6 +15,7 @@ import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_card.dart';
 import '../../../core/ui/mayos_section_header.dart';
 import '../../../core/ui/mayos_segmented_control.dart';
+import '../../../core/ui/first_strong_direction.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'progress_chart.dart';
@@ -40,26 +42,26 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
   static const List<int> _volumePeriods = <int>[7, 28, 90];
 
   bool _loading = true;
-  String? _loadError;
+  FailureMessage? _loadError;
 
   /// A non-fatal refresh failure: the last loaded data stays visible with a
   /// quiet notice (honest offline behaviour) instead of blanking the screen.
-  String? _notice;
+  FailureMessage? _notice;
 
   List<LoggedExercise> _exercises = const <LoggedExercise>[];
   String? _selectedExerciseId;
   ExerciseHistory? _history;
-  String? _historyError;
+  FailureMessage? _historyError;
   bool _historyLoading = false;
 
   Map<String, double> _volume = const <String, double>{};
-  String? _volumeError;
+  FailureMessage? _volumeError;
   bool _volumeLoading = false;
   int _volumeDays = 7;
 
   List<CheckpointReviewListItem> _checkpointReviews =
       const <CheckpointReviewListItem>[];
-  String? _checkpointError;
+  FailureMessage? _checkpointError;
   bool _checkpointLoading = true;
 
   int? _selectedPoint;
@@ -196,9 +198,9 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
     ref.read(playerShellTabProvider.notifier).state = 1;
   }
 
-  String _failureMessage(ApiException error) => isNetworkFailure(error)
-      ? displayCopyOf(context).connectionFailure
-      : error.message;
+  FailureMessage _failureMessage(ApiException error) => isNetworkFailure(error)
+      ? mutationFailureMessage(error)
+      : apiFailureMessage(error);
 
   @override
   Widget build(BuildContext context) {
@@ -206,7 +208,10 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_loadError != null) {
-      return _ErrorView(message: _loadError!, onRetry: _load);
+      return _ErrorView(
+        message: displayCopyOf(context).failureMessage(_loadError!),
+        onRetry: _load,
+      );
     }
     final MayosThemeExtension c = MayosTheme.of(context);
     return RefreshIndicator(
@@ -231,7 +236,7 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
             )
           else if (_checkpointError != null)
             _InlineError(
-              message: _checkpointError!,
+              message: displayCopyOf(context).failureMessage(_checkpointError!),
               onRetry: _loadCheckpoints,
             )
           else if (_checkpointReviews.isEmpty)
@@ -263,7 +268,8 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
           const SizedBox(height: MayosSpacing.lg),
           if (_notice != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
-            _InlineNotice(message: _notice!),
+            _InlineNotice(
+                message: displayCopyOf(context).failureMessage(_notice!)),
           ],
           const SizedBox(height: MayosSpacing.lg),
           if (_exercises.isEmpty)
@@ -286,7 +292,9 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
                 days: _volumeDays,
                 periods: _volumePeriods,
                 loading: _volumeLoading,
-                error: _volumeError,
+                error: _volumeError == null
+                    ? null
+                    : displayCopyOf(context).failureMessage(_volumeError!),
                 onPeriod: _selectPeriod,
                 onRetry: () => _loadVolume(_volumeDays),
               )
@@ -296,7 +304,9 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
                 selectedId: _selectedExerciseId,
                 history: _history,
                 loading: _historyLoading,
-                error: _historyError,
+                error: _historyError == null
+                    ? null
+                    : displayCopyOf(context).failureMessage(_historyError!),
                 selectedPoint: _selectedPoint,
                 onSelectExercise: _selectExercise,
                 onSelectPoint: (int index) =>
@@ -516,16 +526,17 @@ class _PointCallout extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            '${displayCopyOf(context).session} · ${shortDate(point.date, isArabic: displayCopyOf(context).isArabic)}',
-            textDirection: TextDirection.ltr,
-            textAlign: TextAlign.end,
+            '${displayCopyOf(context).session} · ${displayCopyOf(context).isArabic ? '\u2066${shortDate(point.date, isArabic: true)}\u2069' : shortDate(point.date)}',
+            textAlign: displayCopyOf(context).isArabic
+                ? TextAlign.start
+                : TextAlign.end,
             style: MayosTypography.caption.copyWith(color: c.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.xxs),
-          Directionality(
-            textDirection: TextDirection.ltr,
+          FirstStrongDirection(
+            text: _progressPointValue(context, point, includeRepsUnit: true),
             child: Text(
-              '${displayCopyOf(context).repetitionValue(_formatValue(point.weightKg), '${point.reps}', includeRepsUnit: true)} @ RIR ${rirLabel(point.rpe)}',
+              _progressPointValue(context, point, includeRepsUnit: true),
               style:
                   MayosTypography.numericSmall.copyWith(color: c.textPrimary),
             ),
@@ -567,10 +578,18 @@ class _SessionRow extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Directionality(
-              textDirection: TextDirection.ltr,
+            child: FirstStrongDirection(
+              text: _progressPointValue(
+                context,
+                point,
+                includeRepsUnit: false,
+              ),
               child: Text(
-                '${displayCopyOf(context).repetitionValue(_formatValue(point.weightKg), '${point.reps}')} @ RIR ${rirLabel(point.rpe)}',
+                _progressPointValue(
+                  context,
+                  point,
+                  includeRepsUnit: false,
+                ),
                 style: MayosTypography.body.copyWith(color: c.textPrimary),
               ),
             ),
@@ -852,6 +871,23 @@ class _ErrorView extends StatelessWidget {
       ),
     );
   }
+}
+
+String _progressPointValue(
+  BuildContext context,
+  ExerciseHistoryPoint point, {
+  required bool includeRepsUnit,
+}) {
+  final copy = displayCopyOf(context);
+  final String measured = copy.repetitionValue(
+    _formatValue(point.weightKg),
+    '${point.reps}',
+    includeRepsUnit: includeRepsUnit,
+  );
+  final String rir = rirLabel(point.rpe);
+  return copy.isArabic
+      ? '$measured @ RIR \u2066$rir\u2069'
+      : '$measured @ RIR $rir';
 }
 
 String _formatValue(double value) {

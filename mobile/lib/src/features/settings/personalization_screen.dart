@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/catalog.dart';
 import '../../core/display_language/controller.dart';
@@ -56,6 +57,7 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
   String _style = defaultAssistantStyle;
   _PersonalizationStatus _status = _PersonalizationStatus.loading;
   String? _message;
+  FailureMessage? _failure;
 
   @override
   void initState() {
@@ -73,6 +75,7 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
     setState(() {
       _status = _PersonalizationStatus.loading;
       _message = null;
+      _failure = null;
     });
     try {
       final PlayerProfile profile = await ref.read(apiClientProvider).profile();
@@ -98,8 +101,7 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
   void _showLoadFailure(ApiException error) {
     setState(() {
       _status = _PersonalizationStatus.loadFailed;
-      _message = MayosCopy(ref.read(displayLanguageProvider))
-          .failureMessage(apiFailureMessage(error));
+      _failure = apiFailureMessage(error);
     });
   }
 
@@ -107,6 +109,7 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
     setState(() {
       _status = _PersonalizationStatus.saving;
       _message = null;
+      _failure = null;
     });
     try {
       final PlayerProfile profile = await ref
@@ -127,14 +130,14 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
       _instructions.text = profile.assistantInstructions;
       _status = _PersonalizationStatus.saveSucceeded;
       _message = _copy.styleSaved;
+      _failure = null;
     });
   }
 
   void _showSaveFailure(ApiException error) {
     setState(() {
       _status = _PersonalizationStatus.saveFailed;
-      _message = MayosCopy(ref.read(displayLanguageProvider))
-          .failureMessage(mutationFailureMessage(error));
+      _failure = mutationFailureMessage(error);
     });
   }
 
@@ -170,7 +173,10 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Text(_message ?? _copy.styleLoadFailed),
+          Text(_failure == null
+              ? _message ?? _copy.styleLoadFailed
+              : MayosCopy(ref.read(displayLanguageProvider))
+                  .failureMessage(_failure!)),
           const SizedBox(height: MayosSpacing.md),
           MayosButton(
             label: _copy.retry,
@@ -235,7 +241,11 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
       );
 
   Widget _buildNotice() {
-    final String? message = _message;
+    final String? message = _message ??
+        (_failure == null
+            ? null
+            : MayosCopy(ref.read(displayLanguageProvider))
+                .failureMessage(_failure!));
     if (message == null) return const SizedBox.shrink();
     final MayosThemeExtension colors = MayosTheme.of(context);
     final bool isError = _status == _PersonalizationStatus.saveFailed;

@@ -43,6 +43,8 @@ class MayosCopy {
   String get messageAssistant =>
       isArabic ? 'أرسل رسالة إلى المساعد' : 'Message your assistant';
   String get offline => isArabic ? 'غير متصل' : 'Offline';
+  String get offlineBanner =>
+      isArabic ? 'أنت غير متصل بالإنترنت' : "You're offline";
   String get offlineChatSaved => isArabic
       ? 'غير متصل — يعرض سجل المحادثة المحفوظ. يتطلب الإرسال اتصالًا بالإنترنت.'
       : 'Offline — showing saved chat history. Sending needs a connection.';
@@ -152,6 +154,49 @@ class MayosCopy {
   String get connectionFailure => isArabic
       ? 'يتطلب هذا اتصالًا بالإنترنت. لم يتغير شيء.'
       : 'This needs a connection. Nothing was changed.';
+  String get unavailableLink => isArabic
+      ? 'تعذر فتح هذا الرابط في المتصفح.'
+      : 'Could not open this link in your browser.';
+  String get unavailablePrivacyPolicy => isArabic
+      ? 'تعذر فتح سياسة الخصوصية في المتصفح.'
+      : 'Could not open the privacy policy in your browser.';
+  String get omittedImage => isArabic ? 'صورة محذوفة' : 'Image omitted';
+  String get pageNotFound => isArabic ? 'الصفحة غير موجودة' : 'Page not found';
+  String get pageMissingLead => isArabic
+      ? 'الصفحة التي تبحث عنها غير موجودة أو نُقلت.'
+      : 'The page you are looking for does not exist or has moved.';
+  String get goToHome => isArabic ? 'الانتقال إلى الرئيسية' : 'Go to home';
+  String get brandTagline =>
+      isArabic ? 'تقدّمٌ مدروس.' : 'Progress, Engineered.';
+  String get noPlanAvailable => isArabic
+      ? 'لا تتوفر خطة لهذا الحساب.'
+      : 'No plan is available for this account.';
+  String get independentPlans => isArabic
+      ? 'خطتا اللاعب والمدرب مستقلتان.'
+      : 'Lifter and Coach plans are independent.';
+  String get playerPlanLabel => isArabic ? 'اللاعب' : 'Lifter';
+  String get coachPlanLabel => isArabic ? 'المدرب' : 'Coach';
+  String get ongoingPlanNotTrial => isArabic
+      ? 'خطة مستمرة — ليست فترة تجريبية.'
+      : 'Ongoing plan — not a trial.';
+  String get includedFeatures =>
+      isArabic ? 'ما الذي تتضمنه' : "What's included";
+  String get automaticTrainingProgram =>
+      isArabic ? 'برنامج تدريبي تلقائي' : 'Automatic training program';
+  String get weeklyVolumeAndRecords => isArabic
+      ? 'لوحة الحجم التدريبي والأرقام القياسية الأسبوعية'
+      : 'Weekly volume and personal-record dashboard';
+  String get coachingAssignmentBenefit =>
+      isArabic ? 'علاقة تدريب مع مدربك' : 'Coaching assignment with your coach';
+  String get coachProfileAndInvites => isArabic
+      ? 'الملف الشخصي للمدرب ودعوات اللاعبين'
+      : 'Coach profile and player invites';
+  String get activeRosterWithStatus => isArabic
+      ? 'قائمة اللاعبين النشطة وحالة علاقات التدريب'
+      : 'Active roster with assignment status';
+  String get canEndAssignments => isArabic
+      ? 'إنهاء علاقات التدريب في أي وقت'
+      : 'End or revoke assignments at any time';
 
   /// Renders typed app failures in one place and preserves server details.
   String failureMessage(FailureMessage failure) => switch (failure) {
@@ -186,6 +231,12 @@ class MayosCopy {
                     'أعادت الخدمة بيانات جدول التدريب بصيغة غير صالحة.',
                   AppFailureId.profileUpdateRequired =>
                     'تحتاج الخدمة إلى تحديث قبل تعديل هذا الملف. حاول مجددًا لاحقًا.',
+                  AppFailureId.passwordResetFallback => resetPasswordFallback,
+                  AppFailureId.chatAccountNotSignedIn => youAreNotSignedIn,
+                  AppFailureId.chatReconnectRetry => chatReconnectRetry,
+                  AppFailureId.assistantDidNotFinish => assistantDidNotFinish,
+                  AppFailureId.clearingHistoryNeedsConnection =>
+                    clearingHistoryNeedsConnection,
                   AppFailureId.draftNotSignedIn => 'لم تسجل الدخول.',
                   AppFailureId.draftUnavailable => 'لم تعد هذه الحصة متاحة.',
                   AppFailureId.draftMustBeSynced =>
@@ -209,7 +260,7 @@ class MayosCopy {
                 },
       };
   String warmupPrescription(int sets, int reps, int restSeconds) => isArabic
-      ? '$sets × $reps · ${restTime(restSeconds)}'
+      ? '${_ltr('$sets × $reps')} · ${restTime(restSeconds)}'
       : '$sets × $reps · rest ${restSeconds}s';
   String get deloadApplied =>
       isArabic ? 'تم تطبيق تخفيف التدريب' : 'Deload applied';
@@ -226,10 +277,12 @@ class MayosCopy {
     final List<String> changes = <String>[];
     if (volumeMultiplier < 1.0) {
       final int targetVolume = (volumeMultiplier * 100).round();
-      changes.add('خُفضت المجموعات إلى $targetVolume% من البرنامج');
+      changes.add('خُفضت المجموعات إلى ${_ltr('$targetVolume%')} من البرنامج');
     }
     if (intensityCapRpe != null) {
-      changes.add('ضُبط الجهد عند RIR ${minRirLabel(intensityCapRpe)}');
+      changes.add(
+        'ضُبط الجهد عند RIR ${_ltr(minRirLabel(intensityCapRpe))}',
+      );
     }
     if (changes.isEmpty) {
       return applied
@@ -266,7 +319,7 @@ class MayosCopy {
           : now.hour < 12
               ? 'صباح الخير'
               : now.hour < 17
-                  ? 'مساء الخير'
+                  ? 'طاب يومك'
                   : 'مساء الخير')
       : (now.hour < 5
           ? 'Good evening'
@@ -302,9 +355,9 @@ class MayosCopy {
       final int integerCount = displayTotal.round();
       if (integerCount == 1) return 'مجموعة محسوبة واحدة لكل عضلة';
       if (integerCount == 2) return 'مجموعتان محسوبتان لكل عضلة';
-      return '${arabicCountPhrase(integerCount, ArabicCountNoun.group)} محسوبة لكل عضلة';
+      return '${arabicCountPhrase(integerCount, ArabicCountNoun.group, isolateCount: true)} محسوبة لكل عضلة';
     }
-    return '$count مجموعة محسوبة لكل عضلة';
+    return '${_ltr(count)} مجموعة محسوبة لكل عضلة';
   }
 
   String get noTrainingHistory =>
@@ -318,6 +371,9 @@ class MayosCopy {
   String get everyExerciseMatchInDay => isArabic
       ? 'كل النتائج موجودة بالفعل في هذا اليوم.'
       : 'Every match is already in this day.';
+  String get everyExerciseMatchInWorkout => isArabic
+      ? 'كل النتائج موجودة بالفعل في هذه الحصة.'
+      : 'Every match is already in this workout.';
   String get offlineProgramBanner => isArabic
       ? 'غير متصل — يعرض البرنامج المحفوظ'
       : 'Offline — showing saved program';
@@ -329,8 +385,28 @@ class MayosCopy {
       isArabic ? 'نشره مدربك' : 'Published by your coach';
   String get suggestedSubstitutes =>
       isArabic ? 'التمارين البديلة المقترحة' : 'Suggested substitutes';
+  String get searchExerciseCatalog =>
+      isArabic ? 'ابحث في مكتبة التمارين' : 'Search the exercise catalog';
+  String get addUnplannedExercise =>
+      isArabic ? 'إضافة تمرين غير مخطط' : 'Add unplanned exercise';
+  String get search => isArabic ? 'بحث' : 'Search';
+  String get typeExerciseName =>
+      isArabic ? 'أدخل اسم تمرين للبحث.' : 'Type an exercise name to search.';
+  String get noMatchingExercise =>
+      isArabic ? 'لم يُعثر على تمرين مطابق.' : 'No matching exercise found.';
+  String noMuscleExerciseMatched(String muscle) => isArabic
+      ? 'لم يُعثر على تمرين لعضلة \u2066$muscle\u2069.'
+      : 'No $muscle exercise matched.';
+  String muscleFilterLabel(String muscle) =>
+      isArabic ? 'العضلة: \u2066$muscle\u2069' : 'Muscle: $muscle';
+  String get clearMuscleFilter =>
+      isArabic ? 'مسح مرشح العضلة' : 'Clear the muscle filter';
   String warmupSetCount(int count) => isArabic
-      ? arabicCountPhrase(count, ArabicCountNoun.warmupSet)
+      ? arabicCountPhrase(
+          count,
+          ArabicCountNoun.warmupSet,
+          isolateCount: true,
+        )
       : '$count ${count == 1 ? 'warm-up set' : 'warm-up sets'}';
   String get programNeedsRefresh => isArabic
       ? 'تغير برنامجك. حدّث الصفحة قبل تبديل التمرين.'
@@ -390,9 +466,13 @@ class MayosCopy {
     }
     final int? count = int.tryParse(reps);
     final String repetitionLabel = count == null
-        ? '$reps تكرارات'
-        : arabicCountPhrase(count, ArabicCountNoun.repetition);
-    return '$value kg × $repetitionLabel';
+        ? '${_ltr(reps)} تكرارات'
+        : arabicCountPhrase(
+            count,
+            ArabicCountNoun.repetition,
+            isolateCount: true,
+          );
+    return '${_ltr('$value kg')} × $repetitionLabel';
   }
 
   String get estimatedOneRepMaxShort => 'e1RM';
@@ -476,7 +556,7 @@ class MayosCopy {
       ? 'حصتك التدريبية رقم $count'
       : 'Your ${checkpointOrdinal(count)} workout';
   String restTime(int seconds) => isArabic
-      ? 'راحة ${arabicCountPhrase(seconds, ArabicCountNoun.second, afterPreposition: true)}'
+      ? 'راحة ${arabicCountPhrase(seconds, ArabicCountNoun.second, afterPreposition: true, isolateCount: true)}'
       : 'rest ${seconds}s';
   String get category => isArabic ? 'الفئة' : 'Category';
   String get bodyPart => isArabic ? 'جزء الجسم' : 'Body part';
@@ -587,6 +667,9 @@ class MayosCopy {
   String get resetPasswordLead => isArabic
       ? 'اختر كلمة مرور جديدة لحسابك.'
       : 'Choose a new password for your account.';
+  String get resetPasswordFallback => isArabic
+      ? 'تعذر إعادة تعيين كلمة المرور. اطلب رابطًا جديدًا.'
+      : 'Could not reset the password. Request a new link.';
   String get recoveryEmail =>
       isArabic ? 'البريد الإلكتروني للاسترداد' : 'Recovery email';
   String get chooseUsername =>
@@ -691,6 +774,8 @@ class MayosCopy {
       isArabic ? 'إخفاء تلميح الشاشة الرئيسية' : 'Dismiss Home Screen hint';
   String get googleName =>
       isArabic ? 'المتابعة باستخدام Google' : 'Continue with Google';
+
+  String _ltr(String value) => '\u2066$value\u2069';
 }
 
 String _formatCount(num value) => value == value.roundToDouble()

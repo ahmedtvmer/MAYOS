@@ -56,7 +56,6 @@ class DeloadBanner extends StatelessWidget {
                   intensityCapRpe: decision.intensityCapRpe,
                 )
               : decision.changeSummary,
-          textDirection: copy.isArabic ? TextDirection.ltr : null,
           textAlign: copy.isArabic ? TextAlign.end : null,
           style: MayosTypography.bodySecondary.copyWith(
             color: colors.textPrimary,

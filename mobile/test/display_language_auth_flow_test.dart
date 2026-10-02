@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mayos_mobile/src/app.dart';
+import 'package:mayos_mobile/src/core/app_failure.dart';
 import 'package:mayos_mobile/src/core/display_language/catalog.dart';
+import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
 import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/display_language/store.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
@@ -18,6 +20,47 @@ import 'support/fake_google_auth.dart';
 import 'support/fake_mayos_api.dart';
 
 void main() {
+  testWidgets('login failure follows the selected display language',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()..loginNetworkFails = true;
+    final InMemoryTokenStore tokens = InMemoryTokenStore();
+    final InMemoryDisplayLanguageStore languageStore =
+        InMemoryDisplayLanguageStore()..value = 'en';
+    await tester.pumpWidget(authApp(fake, tokens, extraOverrides: <Override>[
+      displayLanguageStoreProvider.overrideWithValue(languageStore),
+      systemDisplayLanguageProvider.overrideWithValue('en'),
+    ]));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('login_username')), 'alice');
+    await tester.enterText(
+      find.byKey(const Key('login_password')),
+      'password-123',
+    );
+    await tester.tap(find.byKey(const Key('login_submit')));
+    await tester.pumpAndSettle();
+
+    const AppFailureMessage connectionFailure = AppFailureMessage(
+      AppFailureId.cannotReachService,
+      'Cannot reach the service. Check your connection.',
+    );
+    expect(find.text('Cannot reach the service. Check your connection.'),
+        findsOneWidget);
+
+    await _selectArabicOnAuth(tester);
+    expect(
+      find.text(const MayosCopy('ar').failureMessage(connectionFailure)),
+      findsOneWidget,
+    );
+    expect(find.text('Cannot reach the service. Check your connection.'),
+        findsNothing);
+
+    fake.loginNetworkFails = false;
+    await tester.tap(find.byKey(const Key('login_submit')));
+    await tester.pumpAndSettle();
+    expect(find.text('Invalid username or password.'), findsOneWidget);
+  });
+
   testWidgets('Arabic auth screen keeps password-length digits Western',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi();
@@ -42,6 +85,7 @@ void main() {
 
   testWidgets('disabling coaching preserves Arabic account language',
       (WidgetTester tester) async {
+    final String activeAssignments = const CoachCopy('ar').activeAssignments;
     final FakeMayosApi fake = FakeMayosApi()
       ..profileExists = true
       ..recoveryEmail = 'coach@example.com'
@@ -58,15 +102,16 @@ void main() {
     ]));
     await tester.pumpAndSettle();
     await _signIn(tester, 'coach');
-    expect(find.text('Active assignments'), findsOneWidget);
-    expect(Directionality.of(tester.element(find.text('Active assignments'))),
+    expect(find.text(activeAssignments), findsOneWidget);
+    expect(Directionality.of(tester.element(find.text(activeAssignments))),
         TextDirection.rtl);
 
-    await tester.ensureVisible(find.text('Disable coaching'));
-    await tester.tap(find.text('Disable coaching').first);
+    const CoachCopy coachCopy = CoachCopy('ar');
+    await tester.ensureVisible(find.text(coachCopy.disableCoaching));
+    await tester.tap(find.text(coachCopy.disableCoaching).first);
     await tester.pumpAndSettle();
-    expect(find.text('Disable coaching?'), findsOneWidget);
-    await tester.tap(find.text('Disable coaching').last);
+    expect(find.text(coachCopy.disableCoachingQuestion), findsOneWidget);
+    await tester.tap(find.text(coachCopy.disableCoaching).last);
     for (var i = 0;
         i < 30 && find.text(const MayosCopy('ar').home).evaluate().isEmpty;
         i++) {
@@ -109,6 +154,7 @@ void main() {
 
   testWidgets('Arabic account stays Arabic after redeeming a Coach invite',
       (WidgetTester tester) async {
+    final String activeAssignments = const CoachCopy('ar').activeAssignments;
     final FakeMayosApi fake = FakeMayosApi()
       ..profileExists = true
       ..recoveryEmail = 'player@example.com'
@@ -145,7 +191,7 @@ void main() {
     for (var i = 0;
         i < 40 &&
             (!redemptionCompleted ||
-                find.text('Active assignments').evaluate().isEmpty);
+                find.text(activeAssignments).evaluate().isEmpty);
         i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
@@ -153,8 +199,8 @@ void main() {
         reason: 'the fake Coach-invite API request should complete');
     await redemption;
 
-    expect(find.text('Active assignments'), findsOneWidget);
-    expect(Directionality.of(tester.element(find.text('Active assignments'))),
+    expect(find.text(activeAssignments), findsOneWidget);
+    expect(Directionality.of(tester.element(find.text(activeAssignments))),
         TextDirection.rtl);
     expect(fake.displayLanguage, 'ar');
     expect(await languageStore.readAccount('account-alice'), 'ar');

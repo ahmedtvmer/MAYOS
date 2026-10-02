@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/api_client.dart';
+import '../../../core/connectivity_message.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
@@ -64,7 +65,7 @@ class _CheckpointReviewScreenState
         if (!snapshot.hasData) {
           final Object? error = snapshot.error;
           final String message = error is ApiException
-              ? error.message
+              ? displayCopyOf(context).failureMessage(apiFailureMessage(error))
               : displayCopyOf(context).loadCheckpointFailed;
           return Center(
             child: Column(

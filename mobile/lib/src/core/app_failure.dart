@@ -26,6 +26,11 @@ enum AppFailureId {
   googleMissingToken,
   googleCannotReach,
   googleDeleteCancelled,
+  passwordResetFallback,
+  chatAccountNotSignedIn,
+  chatReconnectRetry,
+  assistantDidNotFinish,
+  clearingHistoryNeedsConnection,
 }
 
 /// A typed app-authored message, with its exact English rendering retained.

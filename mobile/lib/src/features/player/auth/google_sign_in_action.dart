@@ -2,8 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/app_failure.dart';
-import '../../../core/display_language/catalog.dart';
-import '../../../core/display_language/controller.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'auth_controller.dart';
@@ -16,13 +14,13 @@ import 'google_auth_gateway.dart';
 /// the two buttons never spin for each other.
 mixin GoogleSignInAction<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   bool _googleBusy = false;
-  String? _googleError;
+  FailureMessage? _googleFailure;
 
   /// True while the Google flow is in flight; drives the button spinner.
   bool get googleBusy => _googleBusy;
 
   /// The last Google failure this screen should show, if any.
-  String? get googleError => _googleError;
+  FailureMessage? get googleFailure => _googleFailure;
 
   /// Routes first sign-in to its nudge or picker, a refusal to an inline
   /// notice, and ignores a dismissal or a session the router already handles.
@@ -45,7 +43,7 @@ mixin GoogleSignInAction<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     }
     setState(() {
       _googleBusy = true;
-      _googleError = null;
+      _googleFailure = null;
     });
     try {
       final ContinueWithGoogleResult result = await start();
@@ -56,11 +54,8 @@ mixin GoogleSignInAction<T extends ConsumerStatefulWidget> on ConsumerState<T> {
         case GoogleSignUpPrompt():
           context.go(carryingLocation(context, googleSignupPath));
         case GoogleSignInRefused(:final message, :final failureMessage):
-          setState(() => _googleError = MayosCopy(
-                ref.read(displayLanguageProvider),
-              ).failureMessage(
-                failureMessage ?? ServerFailureMessage(message),
-              ));
+          setState(() =>
+              _googleFailure = failureMessage ?? ServerFailureMessage(message));
         case GoogleSignInDone():
         case GoogleSignInDismissed():
           break;

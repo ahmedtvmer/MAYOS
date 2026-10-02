@@ -16,6 +16,7 @@ class MayosTextField extends StatelessWidget {
     this.readOnly = false,
     this.autofocus = false,
     this.keyboardType,
+    this.textDirection,
     this.textInputAction,
     this.textCapitalization = TextCapitalization.none,
     this.autofillHints,
@@ -44,6 +45,7 @@ class MayosTextField extends StatelessWidget {
   final bool readOnly;
   final bool autofocus;
   final TextInputType? keyboardType;
+  final TextDirection? textDirection;
   final TextInputAction? textInputAction;
   final TextCapitalization textCapitalization;
   final Iterable<String>? autofillHints;
@@ -80,6 +82,7 @@ class MayosTextField extends StatelessWidget {
       readOnly: readOnly,
       autofocus: autofocus,
       keyboardType: keyboardType,
+      textDirection: textDirection,
       textInputAction: textInputAction,
       textCapitalization: textCapitalization,
       autofillHints: autofillHints,

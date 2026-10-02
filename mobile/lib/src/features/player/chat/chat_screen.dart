@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
+import '../../../core/connectivity_message.dart';
 import '../../../core/chat_models.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
@@ -17,6 +19,7 @@ import '../../../core/ui/mayos_card.dart';
 import '../../../core/ui/mayos_markdown.dart';
 import '../../../core/ui/mayos_scaffold.dart';
 import '../../../core/ui/mayos_text_field.dart';
+import '../../../core/ui/first_strong_direction.dart';
 import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
 
@@ -47,12 +50,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _disclosureAccepted = false;
   bool _loadingHistory = true;
   bool _offline = false;
-  String? _historyError;
+  FailureMessage? _historyFailure;
   List<ChatMessage> _messages = <ChatMessage>[];
   bool _sending = false;
   String? _streamingText;
   String? _streamingMessageId;
   String? _sendError;
+  FailureMessage? _sendFailure;
   String? _failedContent;
   bool _retryAddsBubble = true;
 
@@ -88,8 +92,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _setStateIfMounted(() {
         _disclosureLoaded = true;
         _loadingHistory = false;
-        _historyError =
-            MayosCopy(ref.read(displayLanguageProvider)).youAreNotSignedIn;
+        _historyFailure = const AppFailureMessage(
+          AppFailureId.chatAccountNotSignedIn,
+          'You are not signed in.',
+        );
       });
       return;
     }
@@ -117,7 +123,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (accountId == null) return;
     _setStateIfMounted(() {
       _loadingHistory = true;
-      _historyError = null;
+      _historyFailure = null;
     });
     try {
       final List<ChatMessage> fresh =
@@ -126,7 +132,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _setStateIfMounted(() {
         _messages = fresh;
         _offline = false;
-        _historyError = null;
+        _historyFailure = null;
         _loadingHistory = false;
       });
     } on ApiException catch (error) {
@@ -136,7 +142,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           // Network failure: keep the cached history and read-only offline.
           _offline = true;
         } else {
-          _historyError = error.message;
+          _historyFailure = apiFailureMessage(error);
         }
       });
     }
@@ -185,6 +191,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _setStateIfMounted(() {
       _sending = true;
       _sendError = null;
+      _sendFailure = null;
       _failedContent = null;
       _streamingText = '';
       _streamingMessageId = assistantMessageId;
@@ -230,7 +237,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               _streamingMessageId = null;
               _sending = false;
               _offline = false;
-              _historyError = null;
+              _historyFailure = null;
             });
             await _store.writeHistory(accountId, _messages);
             if (programUpdated) {
@@ -244,22 +251,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
     } on ApiException catch (error) {
       final bool offline = error.statusCode == null;
+      final FailureMessage failure = offline
+          ? const AppFailureMessage(
+              AppFailureId.chatReconnectRetry,
+              'Chat needs a connection. Reconnect and retry.',
+            )
+          : apiFailureMessage(error);
       await _failTurn(
         content,
-        offline
-            ? MayosCopy(ref.read(displayLanguageProvider)).chatReconnectRetry
-            : error.message,
+        MayosCopy(ref.read(displayLanguageProvider)).failureMessage(failure),
         offline: offline,
+        failure: failure,
       );
       return;
     } on Object {
-      await _failTurn(content,
-          MayosCopy(ref.read(displayLanguageProvider)).assistantDidNotFinish);
+      const FailureMessage failure = AppFailureMessage(
+        AppFailureId.assistantDidNotFinish,
+        'The assistant did not finish. Please retry.',
+      );
+      await _failTurn(
+        content,
+        MayosCopy(ref.read(displayLanguageProvider)).failureMessage(failure),
+        failure: failure,
+      );
       return;
     }
     if (!_disposed && !finished && _sending) {
-      await _failTurn(content,
-          MayosCopy(ref.read(displayLanguageProvider)).assistantDidNotFinish);
+      const FailureMessage failure = AppFailureMessage(
+        AppFailureId.assistantDidNotFinish,
+        'The assistant did not finish. Please retry.',
+      );
+      await _failTurn(
+        content,
+        MayosCopy(ref.read(displayLanguageProvider)).failureMessage(failure),
+        failure: failure,
+      );
     }
   }
 
@@ -267,13 +293,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   /// persisted (unanswered) user message appears exactly once, and arms Retry.
   /// A retry re-sends the same content without adding another local bubble.
   Future<void> _failTurn(String content, String message,
-      {bool offline = false}) async {
+      {bool offline = false, FailureMessage? failure}) async {
     _setStateIfMounted(() {
       _streamingText = null;
       _streamingMessageId = null;
       _sending = false;
       _offline = _offline || offline;
       _sendError = message;
+      _sendFailure = failure;
       _failedContent = content;
       // The reloaded server history already contains the user's message, so a
       // retry must not insert it again.
@@ -333,7 +360,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (confirmed != true || !mounted) return;
     final String? accountId = _accountId;
     if (accountId == null) return;
-    _setStateIfMounted(() => _sendError = null);
+    _setStateIfMounted(() {
+      _sendError = null;
+      _sendFailure = null;
+    });
     try {
       await ref.read(apiClientProvider).clearChatHistory();
       await _store.clearHistory(accountId);
@@ -344,10 +374,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       });
     } on ApiException catch (error) {
       _setStateIfMounted(() {
-        _sendError = error.statusCode == null
-            ? MayosCopy(ref.read(displayLanguageProvider))
-                .clearingHistoryNeedsConnection
-            : error.message;
+        _sendFailure = error.statusCode == null
+            ? const AppFailureMessage(
+                AppFailureId.clearingHistoryNeedsConnection,
+                'Clearing history needs a connection.',
+              )
+            : apiFailureMessage(error);
+        _sendError = copy.failureMessage(_sendFailure!);
       });
     }
   }
@@ -379,7 +412,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 if (_sendError != null)
                   _ErrorBanner(
                     key: const Key('chat_send_error'),
-                    message: _sendError!,
+                    message: _sendFailure == null
+                        ? _sendError!
+                        : copy.failureMessage(_sendFailure!),
                     onRetry: _failedContent == null ? null : _retry,
                   ),
                 _composer(),
@@ -433,8 +468,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final List<Widget> banners = <Widget>[
       if (!_disclosureAccepted) _disclosureCard(),
       if (_offline) _OfflineChatBanner(onRetry: _retryHistory),
-      if (_historyError != null)
-        _ErrorBanner(message: _historyError!, onRetry: _loadHistory),
+      if (_historyFailure != null)
+        _ErrorBanner(
+          message: displayCopyOf(context).failureMessage(_historyFailure!),
+          onRetry: _loadHistory,
+        ),
     ];
     final bool empty = _messages.isEmpty && _streamingText == null;
     return CustomScrollView(
@@ -502,7 +540,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               key: ValueKey<String>(message.id),
               source: message.content,
             )
-          : Text(message.content),
+          : FirstStrongDirection(
+              text: message.content,
+              child: Text(message.content),
+            ),
     );
   }
 
@@ -713,12 +754,15 @@ class _ErrorBanner extends StatelessWidget {
       child: Row(
         children: <Widget>[
           Expanded(
-            child: Text(
-              message,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: c.danger),
+            child: FirstStrongDirection(
+              text: message,
+              child: Text(
+                message,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: c.danger),
+              ),
             ),
           ),
           if (onRetry != null)

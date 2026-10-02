@@ -14,7 +14,7 @@ class WorkoutCopy {
   String get discardWorkout => isArabic ? 'حذف الحصة' : 'Discard workout';
   String get finishWorkout => isArabic ? 'إنهاء الحصة' : 'Finish workout';
   String setsProgress(int done, int total) =>
-      isArabic ? '$done/$total مجموعات' : '$done/$total sets';
+      isArabic ? '${_ltr('$done/$total')} مجموعات' : '$done/$total sets';
   String get setShort => isArabic ? 'مجموعة' : 'SET';
   String get kilogramsShort => 'KG';
   String get repsShort => isArabic ? 'تكرارات' : 'REPS';
@@ -24,6 +24,32 @@ class WorkoutCopy {
   String get cardio => isArabic ? 'تمارين اللياقة' : 'Cardio';
   String get minutes => isArabic ? 'دقائق' : 'Minutes';
   String get restTime => isArabic ? 'مدة الراحة…' : 'Rest time…';
+  String restNotificationTitle(String time) =>
+      isArabic ? 'MAYOS · راحة ${_ltr(time)}' : 'MAYOS · Rest $time';
+  String restNotificationLine({
+    required String exerciseName,
+    required int setNumber,
+    String? lastLabel,
+  }) =>
+      isArabic
+          ? 'التالي: ${_ltr(exerciseName)} · المجموعة ${_ltr('$setNumber')}'
+              '${lastLabel == null ? '' : ' · السابق ${_ltr(lastLabel)}'}'
+          : 'Next: $exerciseName · set $setNumber'
+              '${lastLabel == null ? '' : ' · last $lastLabel'}';
+  String get restCompleteNotification =>
+      isArabic ? 'انتهت الراحة' : 'Rest complete';
+  String get restTimerChannel => isArabic ? 'مؤقت الراحة' : 'Rest timer';
+  String get restTimerChannelDescription => isArabic
+      ? 'مؤقت الراحة الجاري أثناء الحصة التدريبية.'
+      : 'The running rest countdown while a workout is in progress.';
+  String get restEndChannelDescription => isArabic
+      ? 'الصوت والاهتزاز عند انتهاء الراحة.'
+      : 'The end-of-rest vibration and sound.';
+  String returnToExercise(String name) =>
+      isArabic ? 'العودة إلى ${_ltr(name)}' : 'Back to $name';
+  String get restNotificationPermission => isArabic
+      ? 'تحتاج تنبيهات الراحة إلى إذن لتصلك عند إطفاء الشاشة.'
+      : 'Rest alerts need permission to reach you when your screen is off.';
   String get addSet => isArabic ? '+ أضف مجموعة' : '+ Add set';
   String get addExercise => isArabic ? 'إضافة تمرين' : 'Add exercise';
   String get addUnplannedExercise =>
@@ -68,7 +94,7 @@ class WorkoutCopy {
   String get replaceQuestion =>
       isArabic ? 'استبدال التمرين؟' : 'Replace exercise?';
   String discardSetsQuestion(int count) => isArabic
-      ? 'استبدال التمرين وحذف ${arabicCountPhrase(count, ArabicCountNoun.group)} المسجلة؟'
+      ? 'استبدال التمرين وحذف ${arabicCountPhrase(count, ArabicCountNoun.group, isolateCount: true)} المسجلة؟'
       : count == 1
           ? 'Replace and discard 1 logged set?'
           : 'Replace and discard $count logged sets?';
@@ -93,7 +119,7 @@ class WorkoutCopy {
   String get keepLogging => isArabic ? 'متابعة التسجيل' : 'Keep logging';
   String get replace => isArabic ? 'استبدال' : 'Replace';
   String setsWereRemoved(int count, {required bool undo}) => isArabic
-      ? '${undo ? 'التراجع عن الاستبدال' : 'إزالة التمرين'} وحذف ${arabicCountPhrase(count, ArabicCountNoun.group)} المسجلة؟'
+      ? '${undo ? 'التراجع عن الاستبدال' : 'إزالة التمرين'} وحذف ${arabicCountPhrase(count, ArabicCountNoun.group, isolateCount: true)} المسجلة؟'
       : count == 1
           ? 'Remove and discard 1 logged set?'
           : 'Remove and discard $count logged sets?';
@@ -123,8 +149,9 @@ class WorkoutCopy {
       ? 'استأنف من حيث توقفت أو احذف هذه الحصة.'
       : 'Resume where you left off, or discard this workout.';
   String get started => isArabic ? 'بدأت' : 'started';
-  String startedWorkoutLabel(String day, String startedAt) =>
-      isArabic ? '$day · بدأت $startedAt' : '$day · started $startedAt';
+  String startedWorkoutLabel(String day, String startedAt) => isArabic
+      ? '${_ltr(day)} · بدأت ${_ltr(startedAt)}'
+      : '$day · started $startedAt';
   String get webWorkoutNoticeTitle =>
       isArabic ? 'تسجيل الحصص على الويب' : 'Logging workouts on web';
   String get webWorkoutNotice => isArabic
@@ -136,7 +163,7 @@ class WorkoutCopy {
       ? 'تُحفظ المجموعات المحددة فقط في الحصة.'
       : 'Only ticked sets are saved to the workout.';
   String untickedSetQuestion(int count) => isArabic
-      ? 'لم تُحدد ${arabicCountPhrase(count, ArabicCountNoun.group)}.'
+      ? 'لم تُحدد ${arabicCountPhrase(count, ArabicCountNoun.group, isolateCount: true)}.'
       : count == 1
           ? "1 set isn't ticked"
           : "$count sets aren't ticked";
@@ -155,7 +182,7 @@ class WorkoutCopy {
   String get performedDate => isArabic ? 'تاريخ الحصة' : 'Performed date';
   String get readiness => isArabic ? 'الاستعداد' : 'Readiness';
   String readinessOutOfFive(int value) =>
-      isArabic ? 'الاستعداد: $value/5' : 'Readiness: $value/5';
+      isArabic ? 'الاستعداد: ${_ltr('$value/5')}' : 'Readiness: $value/5';
   String get notesHint => isArabic
       ? 'ملاحظات (الضخامة، ألم المفاصل، الإرهاق)'
       : 'Notes (pumps, joint aches, fatigue)';
@@ -166,10 +193,9 @@ class WorkoutCopy {
       : kind == 'weight'
           ? 'PR kg'
           : 'PR e1RM';
-  String recordCelebration(String exercise, String kind, String value) =>
-      isArabic
-          ? '$exercise · رقم قياسي ${kind == 'weight' ? '' : 'e1RM '}$value kg'
-          : '$exercise · ${kind == 'weight' ? 'PR ' : 'PR e1RM '}$value kg';
+  String recordCelebration(String exercise, String kind, String value) => isArabic
+      ? '${_ltr(exercise)} · رقم قياسي ${kind == 'weight' ? '' : 'e1RM '}${_ltr('$value kg')}'
+      : '$exercise · ${kind == 'weight' ? 'PR ' : 'PR e1RM '}$value kg';
   String checkpointWorkout(int number) => isArabic
       ? 'حصة تدريبية رقم ${_ltr('$number')}!'
       : 'Your ${_ordinal(number)} workout!';
@@ -198,7 +224,7 @@ class WorkoutCopy {
     required int setsTotal,
   }) =>
       isArabic
-          ? '$exercisesDone/$exercisesTotal تمارين · $setsDone/$setsTotal مجموعات'
+          ? '${_ltr('$exercisesDone/$exercisesTotal')} تمارين · ${_ltr('$setsDone/$setsTotal')} مجموعات'
           : '$exercisesDone/$exercisesTotal exercises · $setsDone/$setsTotal sets';
   String get timezoneUnavailable => isArabic
       ? 'تعذر تحديد المنطقة الزمنية لجهازك، لذلك لا يمكن تسجيل تاريخ الحصة. تحقق من إعداد المنطقة الزمنية وحاول مجددًا.'
@@ -255,12 +281,12 @@ class WorkoutCopy {
       ? 'لم يعد $name ضمن يوم البرنامج التدريبي.'
       : '$name is no longer in this program day.';
   String removeSetsQuestion(int count) => isArabic
-      ? 'إزالة التمرين وحذف ${arabicCountPhrase(count, ArabicCountNoun.group)} المسجلة؟'
+      ? 'إزالة التمرين وحذف ${arabicCountPhrase(count, ArabicCountNoun.group, isolateCount: true)} المسجلة؟'
       : count == 1
           ? 'Remove and discard 1 logged set?'
           : 'Remove and discard $count logged sets?';
   String undoReplaceSetsQuestion(int count) => isArabic
-      ? 'التراجع عن الاستبدال وحذف ${arabicCountPhrase(count, ArabicCountNoun.group)} المسجلة؟'
+      ? 'التراجع عن الاستبدال وحذف ${arabicCountPhrase(count, ArabicCountNoun.group, isolateCount: true)} المسجلة؟'
       : count == 1
           ? 'Undo replace and discard 1 logged set?'
           : 'Undo replace and discard $count logged sets?';
@@ -270,14 +296,18 @@ class WorkoutCopy {
       : 'Offline: showing your cached program.';
   String get noDraftsYet => isArabic ? 'لا توجد مسودات بعد.' : 'No drafts yet.';
   String draftsCounts(int pending, int synced) => isArabic
-      ? '$pending بانتظار المزامنة · $synced تمت مزامنتها'
+      ? '${_ltr('$pending')} بانتظار المزامنة · ${_ltr('$synced')} تمت مزامنتها'
       : '$pending pending · $synced synced';
   String get syncNow => isArabic ? 'مزامنة الآن' : 'Sync now';
   String get offlineDraftsExplanation => isArabic
       ? 'تظهر هنا الحصص التي تسجلها دون اتصال حتى تتم مزامنتها.'
       : 'Workouts you log offline appear here until they sync.';
   String workingSetCount(int count) => isArabic
-      ? arabicCountPhrase(count, ArabicCountNoun.trainingSet)
+      ? arabicCountPhrase(
+          count,
+          ArabicCountNoun.trainingSet,
+          isolateCount: true,
+        )
       : '$count working sets';
   String get editDate => isArabic ? 'تعديل التاريخ' : 'Edit date';
   String get correctDate => isArabic ? 'تصحيح التاريخ' : 'Correct date';
@@ -299,13 +329,13 @@ class WorkoutCopy {
           _ => status,
         };
   String historicalProgram(int captured, int current) => isArabic
-      ? 'سُجلت الحصة على البرنامج التدريبي v$captured (الحالي v$current)'
+      ? 'سُجلت الحصة على البرنامج التدريبي ${_ltr('v$captured')} (الحالي ${_ltr('v$current')})'
       : 'Logged against program v$captured (current v$current)';
   String get androidDraftsUnavailable => isArabic
       ? 'مسودات الحصص دون اتصال متاحة في تطبيق Android.'
       : 'Offline workout drafts are available in the Android app.';
   String previousPerformance(String values) =>
-      isArabic ? 'السابق: $values' : 'Last: $values';
+      isArabic ? 'السابق: ${_ltr(values)}' : 'Last: $values';
   String prescriptionSetCount(int count) {
     if (!isArabic) return count == 1 ? '1 set' : '$count sets';
     final String phrase = arabicCountPhrase(count, ArabicCountNoun.group);

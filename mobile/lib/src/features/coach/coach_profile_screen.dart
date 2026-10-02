@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/app_failure.dart';
+import '../../core/connectivity_message.dart';
+import '../../core/display_language/copy_context.dart';
+import '../../core/display_language/feature_copy_context.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_card.dart';
+import '../../core/ui/first_strong_direction.dart';
 import '../../providers.dart';
 
 /// Coach profile tab of the Coach mode shell (#119): display name, bio,
@@ -38,8 +43,8 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _issuing = false;
-  String? _loadError;
-  String? _saveError;
+  FailureMessage? _loadError;
+  FailureMessage? _saveError;
   AssignmentInvite? _invite;
   List<AssignmentNotice> _notices = <AssignmentNotice>[];
   List<CoachAlert> _resolvedAlerts = <CoachAlert>[];
@@ -78,7 +83,7 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _loadError = error.message;
+        _loadError = apiFailureMessage(error);
       });
     }
   }
@@ -123,7 +128,7 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
       if (!mounted) return;
       setState(() {
         _issuing = false;
-        _saveError = error.message;
+        _saveError = apiFailureMessage(error);
       });
     }
   }
@@ -138,7 +143,7 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
       setState(() => _notices = notices);
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() => _saveError = error.message);
+      setState(() => _saveError = apiFailureMessage(error));
     }
   }
 
@@ -158,41 +163,44 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Coach profile saved.')),
+        SnackBar(content: Text(coachCopyOf(context).coachProfileSaved)),
       );
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _saveError = error.message;
+        _saveError = apiFailureMessage(error);
       });
     }
   }
 
   String? _validateDisplayName(String? value) {
+    final copy = coachCopyOf(context);
     final String trimmed = (value ?? '').trim();
     if (trimmed.isEmpty) {
-      return 'Enter a display name.';
+      return copy.enterDisplayName;
     }
     if (trimmed.length > _maxDisplayName) {
-      return 'Display name must be at most $_maxDisplayName characters.';
+      return copy.displayNameMax(_maxDisplayName);
     }
     return null;
   }
 
   String? _validateCapacity(String? value) {
+    final copy = coachCopyOf(context);
     final int? parsed = int.tryParse((value ?? '').trim());
     if (parsed == null) {
-      return 'Enter a whole number.';
+      return copy.enterWholeNumber;
     }
     if (parsed < _minCapacity || parsed > _maxCapacity) {
-      return 'Capacity must be between $_minCapacity and $_maxCapacity.';
+      return copy.capacityMustBe(_minCapacity, _maxCapacity);
     }
     return null;
   }
 
   @override
   Widget build(BuildContext context) {
+    final copy = coachCopyOf(context);
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -203,10 +211,11 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Text(_loadError!, textAlign: TextAlign.center),
+              Text(displayCopyOf(context).failureMessage(_loadError!),
+                  textAlign: TextAlign.center),
               const SizedBox(height: MayosSpacing.md),
               MayosButton(
-                label: 'Retry',
+                label: copy.retry,
                 variant: MayosButtonVariant.secondary,
                 expand: false,
                 onPressed: _load,
@@ -223,12 +232,12 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
         padding: MayosSpacing.screen,
         children: <Widget>[
           Text(
-            'Coach profile',
+            copy.profileTitle,
             style: MayosTypography.pageHeading.copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: MayosSpacing.xxs),
           Text(
-            'These details describe you as a coach.',
+            copy.profileLead,
             style:
                 MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
           ),
@@ -236,9 +245,9 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
           TextFormField(
             controller: _displayName,
             maxLength: _maxDisplayName,
-            decoration: const InputDecoration(
-              labelText: 'Display name',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: copy.displayName,
+              border: const OutlineInputBorder(),
             ),
             validator: _validateDisplayName,
           ),
@@ -246,10 +255,10 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
           TextFormField(
             controller: _specialization,
             maxLength: _maxSpecialization,
-            decoration: const InputDecoration(
-              labelText: 'Specialization',
-              hintText: 'e.g. Powerlifting, Hypertrophy',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: copy.specialization,
+              hintText: copy.specializationHint,
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: MayosSpacing.sm),
@@ -257,32 +266,33 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
             controller: _bio,
             maxLength: _maxBio,
             maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: 'Bio',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: copy.bio,
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: MayosSpacing.sm),
           TextFormField(
             controller: _capacity,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Roster capacity',
-              helperText: 'Between $_minCapacity and $_maxCapacity players.',
-              border: OutlineInputBorder(),
+            textDirection: TextDirection.ltr,
+            decoration: InputDecoration(
+              labelText: copy.rosterCapacity,
+              helperText: copy.capacityRange(_minCapacity, _maxCapacity),
+              border: const OutlineInputBorder(),
             ),
             validator: _validateCapacity,
           ),
           if (_saveError != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
             Text(
-              _saveError!,
+              displayCopyOf(context).failureMessage(_saveError!),
               style: MayosTypography.bodySecondary.copyWith(color: c.danger),
             ),
           ],
           const SizedBox(height: MayosSpacing.lg),
           MayosButton(
-            label: 'Save profile',
+            label: copy.saveProfile,
             loading: _saving,
             onPressed: _saving ? null : _save,
           ),
@@ -305,20 +315,18 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('Invite a player',
+          Text(coachCopyOf(context).invitePlayer,
               style: MayosTypography.sectionHeading
                   .copyWith(color: c.textPrimary)),
           const SizedBox(height: MayosSpacing.xs),
           Text(
-            'Create a single-use code and give it to one player. It expires and can '
-            'only be redeemed while you have roster room; the exact expiry is shown '
-            'when the code is issued.',
+            coachCopyOf(context).inviteExplanation,
             style:
                 MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.sm),
           MayosButton(
-            label: 'Create player invite',
+            label: coachCopyOf(context).createPlayerInvite,
             icon: Icons.add,
             loading: _issuing,
             onPressed: _issuing ? null : _issue,
@@ -327,12 +335,15 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
             const SizedBox(height: MayosSpacing.md),
             SelectableText(
               invite.token,
+              textDirection: TextDirection.ltr,
               style: MayosTypography.numeric.copyWith(color: c.textPrimary),
             ),
             const SizedBox(height: MayosSpacing.xxs),
-            Text('Expires ${invite.expiresAt}',
+            Text(coachCopyOf(context).inviteExpires(invite.expiresAt),
                 style: MayosTypography.caption.copyWith(color: c.textMuted)),
-            Text('${invite.remaining} of ${invite.capacity} roster slots free',
+            Text(
+                coachCopyOf(context)
+                    .rosterSlotsFree(invite.remaining, invite.capacity),
                 style: MayosTypography.caption.copyWith(color: c.textMuted)),
           ],
         ],
@@ -354,13 +365,13 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
           Row(
             children: <Widget>[
               Expanded(
-                child: Text('Notices',
+                child: Text(coachCopyOf(context).notices,
                     style: MayosTypography.sectionHeading
                         .copyWith(color: c.textPrimary)),
               ),
               if (unread > 0)
                 MayosButton(
-                  label: 'Mark all read',
+                  label: coachCopyOf(context).markAllRead,
                   variant: MayosButtonVariant.tertiary,
                   expand: false,
                   onPressed: _markRead,
@@ -377,8 +388,12 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
                     : Icons.notifications_none,
                 color: notice.isUnread ? c.accent : c.textMuted,
               ),
-              title: Text(notice.message),
-              subtitle: Text(notice.createdAt),
+              title: FirstStrongDirection(
+                text: notice.message,
+                child: Text(notice.message),
+              ),
+              subtitle:
+                  Text(notice.createdAt, textDirection: TextDirection.ltr),
             ),
         ],
       ),
@@ -394,7 +409,7 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('Resolved alerts',
+          Text(coachCopyOf(context).resolvedAlerts,
               style: MayosTypography.sectionHeading
                   .copyWith(color: c.textPrimary)),
           for (final CoachAlert alert in _resolvedAlerts)
@@ -402,12 +417,15 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
               dense: true,
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.check_circle_outline, color: c.success),
-              title: Text('${alert.playerUsername} · ${alert.description}'),
+              title: FirstStrongDirection(
+                text: '${alert.playerUsername} · ${alert.description}',
+                child: Text('${alert.playerUsername} · ${alert.description}'),
+              ),
               subtitle: alert.resolvedBy == null
                   ? null
-                  : Text('Resolved by ${alert.resolvedBy}',
-                      style: MayosTypography.caption
-                          .copyWith(color: c.textMuted)),
+                  : Text(coachCopyOf(context).resolvedBy(alert.resolvedBy!),
+                      style:
+                          MayosTypography.caption.copyWith(color: c.textMuted)),
             ),
         ],
       ),

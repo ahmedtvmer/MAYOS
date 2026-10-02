@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/app_failure.dart';
+import '../../core/connectivity_message.dart';
+import '../../core/display_language/copy_context.dart';
+import '../../core/display_language/feature_copy_context.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_card.dart';
+import '../../core/ui/first_strong_direction.dart';
 import '../../providers.dart';
 import 'coach_shared.dart';
 
@@ -31,7 +36,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
   ];
 
   bool _loading = true;
-  String? _error;
+  FailureMessage? _error;
   String? _busyAlertId;
   bool _showResolved = false;
   List<CoachAlert> _alerts = <CoachAlert>[];
@@ -86,7 +91,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
       if (!mounted || seq != _loadSeq) return;
       setState(() {
         _loading = false;
-        _error = error.message;
+        _error = apiFailureMessage(error);
       });
     }
   }
@@ -121,7 +126,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
       if (!mounted) return;
       setState(() {
         _busyAlertId = null;
-        _error = error.message;
+        _error = apiFailureMessage(error);
       });
     }
   }
@@ -141,6 +146,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
 
   Widget _alertCard(BuildContext context, CoachAlert alert) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final copy = coachCopyOf(context);
     final bool busy = _busyAlertId == alert.alertId;
     return Padding(
       padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
@@ -161,11 +167,16 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
               ],
             ),
             const SizedBox(height: MayosSpacing.xxs),
-            Text(alert.description,
-                style: MayosTypography.body.copyWith(color: c.textPrimary)),
+            FirstStrongDirection(
+              text: alert.description,
+              child: Text(
+                alert.description,
+                style: MayosTypography.body.copyWith(color: c.textPrimary),
+              ),
+            ),
             if (alert.resolvedBy != null)
               Text(
-                'Resolved by ${alert.resolvedBy}',
+                copy.resolvedBy(alert.resolvedBy!),
                 style: MayosTypography.caption.copyWith(color: c.textMuted),
               ),
             const SizedBox(height: MayosSpacing.xs),
@@ -176,14 +187,14 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
               children: <Widget>[
                 if (alert.isNew)
                   MayosButton(
-                    label: 'Acknowledge',
+                    label: copy.acknowledge,
                     variant: MayosButtonVariant.tertiary,
                     expand: false,
                     onPressed: busy ? null : () => _acknowledge(alert),
                   ),
                 if (!alert.isResolved)
                   MayosButton(
-                    label: 'Resolve',
+                    label: copy.resolve,
                     expand: false,
                     loading: busy,
                     onPressed: busy ? null : () => _resolve(alert),
@@ -210,6 +221,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
       return const Center(child: CircularProgressIndicator());
     }
     final MayosThemeExtension c = MayosTheme.of(context);
+    final copy = coachCopyOf(context);
     final List<CoachAlert> visible = _alerts
         .where((CoachAlert alert) => _showResolved || !alert.isResolved)
         .toList(growable: false);
@@ -220,7 +232,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
           Padding(
             padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
             child: Text(
-              _error!,
+              displayCopyOf(context).failureMessage(_error!),
               style: MayosTypography.bodySecondary.copyWith(color: c.danger),
             ),
           ),
@@ -228,7 +240,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
           spacing: MayosSpacing.xs,
           children: <Widget>[
             FilterChip(
-              label: const Text('Show resolved'),
+              label: Text(copy.showResolved),
               selected: _showResolved,
               onSelected: (bool selected) =>
                   setState(() => _showResolved = selected),
@@ -237,7 +249,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
         ),
         const SizedBox(height: MayosSpacing.sm),
         if (visible.isEmpty)
-          Text('No alerts to show.',
+          Text(copy.noAlerts,
               style: MayosTypography.bodySecondary
                   .copyWith(color: c.textSecondary))
         else

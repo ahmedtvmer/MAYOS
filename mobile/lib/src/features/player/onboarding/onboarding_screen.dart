@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/copy_context.dart';
@@ -73,10 +74,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   bool _saving = false;
   bool _disclosureSaving = false;
   bool _submitting = false;
-  String? _error;
-  String? _disclosureError;
+  FailureMessage? _error;
+  FailureMessage? _disclosureError;
   String? _stepError;
+  FailureMessage? _stepFailure;
   String? _confirmError;
+  FailureMessage? _confirmFailure;
+  bool _confirmProgramBeingGenerated = false;
 
   ApiClient get _api => ref.read(apiClientProvider);
 
@@ -130,8 +134,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       }
       setState(() {
         _phase = _OnboardingPhase.error;
-        _error = displayCopyOf(context)
-            .failureMessage(mutationFailureMessage(error));
+        _error = mutationFailureMessage(error);
       });
     }
   }
@@ -220,6 +223,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       _prepareField(name);
       _currentField = name;
       _stepError = null;
+      _stepFailure = null;
     });
   }
 
@@ -229,6 +233,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       _prepareField(name);
       _currentField = name;
       _stepError = null;
+      _stepFailure = null;
     });
   }
 
@@ -238,6 +243,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         _currentField = null;
         _editingFromReview = false;
         _stepError = null;
+        _stepFailure = null;
       });
       return;
     }
@@ -255,6 +261,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         _currentField = null;
         _editingFromReview = false;
         _stepError = null;
+        _stepFailure = null;
       });
       return;
     }
@@ -293,8 +300,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       }
       setState(() {
         _disclosureSaving = false;
-        _disclosureError = displayCopyOf(context)
-            .failureMessage(mutationFailureMessage(error));
+        _disclosureError = mutationFailureMessage(error);
       });
     }
   }
@@ -312,6 +318,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     setState(() {
       _saving = true;
       _stepError = null;
+      _stepFailure = null;
     });
     try {
       final OnboardingIntake intake =
@@ -339,8 +346,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       // Offline/network: keep the answer on screen so it can be retried.
       setState(() {
         _saving = false;
-        _stepError = displayCopyOf(context)
-            .failureMessage(mutationFailureMessage(error));
+        _stepFailure = mutationFailureMessage(error);
       });
     }
   }
@@ -349,6 +355,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     setState(() {
       _submitting = true;
       _confirmError = null;
+      _confirmFailure = null;
+      _confirmProgramBeingGenerated = false;
     });
     try {
       await _api.confirmIntake();
@@ -370,15 +378,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       if (error.statusCode == 409 && error.errorCode == 'confirm_in_progress') {
         setState(() {
           _submitting = false;
-          _confirmError = MayosCopy(ref.read(displayLanguageProvider))
-              .programBeingGenerated;
+          _confirmProgramBeingGenerated = true;
         });
         return;
       }
       setState(() {
         _submitting = false;
-        _confirmError = displayCopyOf(context)
-            .failureMessage(mutationFailureMessage(error));
+        _confirmFailure = mutationFailureMessage(error);
       });
     }
   }
@@ -439,7 +445,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       case _OnboardingPhase.error:
         return _OnboardingStatusLayout(
           child: _LoadErrorContent(
-            message: _error ?? displayCopyOf(context).genericError,
+            message: _error == null
+                ? displayCopyOf(context).genericError
+                : displayCopyOf(context).failureMessage(_error!),
             onRetry: _load,
           ),
         );
@@ -467,7 +475,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           const _HostedProcessingDisclosure(),
           if (_disclosureError != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.md),
-            OnboardingInlineError(message: _disclosureError!),
+            OnboardingInlineError(
+                message:
+                    displayCopyOf(context).failureMessage(_disclosureError!)),
           ],
           const SizedBox(height: MayosSpacing.md),
           _coachInviteEntry(),
@@ -521,6 +531,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           _prepareField(_fields.last.name);
           _currentField = _fields.last.name;
           _stepError = null;
+          _stepFailure = null;
         });
       };
     }
@@ -530,6 +541,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       return () => setState(() {
             _phase = _OnboardingPhase.disclosure;
             _stepError = null;
+            _stepFailure = null;
           });
     }
     return _goBack;
@@ -589,9 +601,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         ),
         const SizedBox(height: MayosSpacing.xl),
         _buildInteraction(field, value),
-        if (_stepError != null) ...<Widget>[
+        if (_stepError != null || _stepFailure != null) ...<Widget>[
           const SizedBox(height: MayosSpacing.md),
-          OnboardingInlineError(message: _stepError!),
+          OnboardingInlineError(
+              message: _stepFailure == null
+                  ? _stepError!
+                  : displayCopyOf(context).failureMessage(_stepFailure!)),
         ],
       ],
     );
@@ -751,9 +766,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           OnboardingInlineError(
               message: displayCopyOf(context).requiredAnswersMissing),
         ],
-        if (_confirmError != null) ...<Widget>[
+        if (_confirmError != null ||
+            _confirmFailure != null ||
+            _confirmProgramBeingGenerated) ...<Widget>[
           const SizedBox(height: MayosSpacing.xs),
-          OnboardingInlineError(message: _confirmError!),
+          OnboardingInlineError(
+              message: _confirmProgramBeingGenerated
+                  ? displayCopyOf(context).programBeingGenerated
+                  : _confirmFailure == null
+                      ? _confirmError!
+                      : displayCopyOf(context)
+                          .failureMessage(_confirmFailure!)),
         ],
       ],
     );

@@ -8,6 +8,7 @@ import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
+import '../../../core/display_language/copy_context.dart';
 import '../../../core/display_language/profile_copy.dart';
 import '../../../core/device_timezone.dart';
 import '../../../core/models.dart';
@@ -19,6 +20,7 @@ import '../../../core/ui/mayos_card.dart';
 import '../../../core/ui/mayos_icon_chip.dart';
 import '../../../core/ui/mayos_section_header.dart';
 import '../../../core/ui/mayos_text_field.dart';
+import '../../../core/ui/first_strong_direction.dart';
 import '../../../providers.dart';
 import '../auth/auth_controller.dart';
 import '../auth/auth_widgets.dart'
@@ -80,8 +82,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   bool _loading = true;
   bool _saving = false;
-  String? _loadError;
+  FailureMessage? _loadError;
   String? _notice;
+  FailureMessage? _noticeFailure;
   bool _noticeIsError = false;
 
   final TextEditingController _timezone = TextEditingController();
@@ -95,6 +98,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   List<ScheduledPause> _pauses = const <ScheduledPause>[];
   bool _savingSchedule = false;
   String? _scheduleNotice;
+  FailureMessage? _scheduleFailure;
   bool _scheduleNoticeIsError = false;
 
   /// `GET /auth/me`: the sign-in methods the section renders (#116).
@@ -104,19 +108,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   /// and the password dialogs can never run over each other.
   bool _methodBusy = false;
   String? _methodNotice;
+  FailureMessage? _methodFailure;
   bool _methodNoticeIsError = false;
 
   DateTime _pauseStart = _today();
   DateTime _pauseEnd = _today();
   bool _schedulingPause = false;
   String? _pauseNotice;
+  FailureMessage? _pauseFailure;
   bool _pauseNoticeIsError = false;
 
   ProfileCopy get _copy => ProfileCopy(ref.read(displayLanguageProvider));
 
-  String _mutationFailure(ApiException error) =>
-      MayosCopy(ref.read(displayLanguageProvider))
-          .failureMessage(mutationFailureMessage(error));
+  FailureMessage _mutationFailure(ApiException error) =>
+      mutationFailureMessage(error);
 
   static DateTime _today() {
     final DateTime now = DateTime.now();
@@ -246,8 +251,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _loadError = MayosCopy(ref.read(displayLanguageProvider))
-            .failureMessage(apiFailureMessage(error));
+        _loadError = apiFailureMessage(error);
       });
     }
   }
@@ -280,6 +284,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (field == null || !isFieldAnswerValid(field, entry.value)) {
         setState(() {
           _notice = _validationMessage(field);
+          _noticeFailure = null;
           _noticeIsError = true;
         });
         return;
@@ -312,6 +317,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     setState(() {
       _saving = true;
       _notice = null;
+      _noticeFailure = null;
       _noticeIsError = false;
     });
     try {
@@ -351,7 +357,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _notice = _mutationFailure(error);
+        _noticeFailure = _mutationFailure(error);
         _noticeIsError = true;
       });
     }
@@ -399,6 +405,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (timezone.isEmpty || (!timezone.contains('/') && timezone != 'UTC')) {
       setState(() {
         _scheduleNotice = _copy.timezoneExample;
+        _scheduleFailure = null;
         _scheduleNoticeIsError = true;
       });
       return;
@@ -406,6 +413,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     setState(() {
       _savingSchedule = true;
       _scheduleNotice = null;
+      _scheduleFailure = null;
       _scheduleNoticeIsError = false;
     });
     try {
@@ -426,7 +434,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _savingSchedule = false;
-        _scheduleNotice = _mutationFailure(error);
+        _scheduleFailure = _mutationFailure(error);
         _scheduleNoticeIsError = true;
       });
     }
@@ -470,6 +478,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (validation != null) {
       setState(() {
         _pauseNotice = validation;
+        _pauseFailure = null;
         _pauseNoticeIsError = true;
       });
       return;
@@ -477,6 +486,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     setState(() {
       _schedulingPause = true;
       _pauseNotice = null;
+      _pauseFailure = null;
       _pauseNoticeIsError = false;
     });
     try {
@@ -497,7 +507,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _schedulingPause = false;
-        _pauseNotice = _mutationFailure(error);
+        _pauseFailure = _mutationFailure(error);
         _pauseNoticeIsError = true;
       });
     }
@@ -514,7 +524,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
-        _methodNotice = _mutationFailure(error);
+        _methodFailure = _mutationFailure(error);
         _methodNoticeIsError = true;
       });
     }
@@ -523,7 +533,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void _setMethodNotice(String message, {required bool error}) {
     setState(() {
       _methodNotice = message;
+      _methodFailure = null;
       _methodNoticeIsError = error;
+    });
+  }
+
+  void _setMethodFailure(FailureMessage failure) {
+    setState(() {
+      _methodNotice = null;
+      _methodFailure = failure;
+      _methodNoticeIsError = true;
     });
   }
 
@@ -546,6 +565,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     setState(() {
       _methodBusy = true;
       _methodNotice = null;
+      _methodFailure = null;
       _methodNoticeIsError = false;
     });
     try {
@@ -558,10 +578,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         case GoogleConnectDismissed():
           break;
         case GoogleConnectRefused(:final message, :final failureMessage):
-          _setMethodNotice(
-            MayosCopy(ref.read(displayLanguageProvider)).failureMessage(
-                failureMessage ?? ServerFailureMessage(message)),
-            error: true,
+          _setMethodFailure(
+            failureMessage ?? ServerFailureMessage(message),
           );
       }
     } finally {
@@ -601,6 +619,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     setState(() {
       _methodBusy = true;
       _methodNotice = null;
+      _methodFailure = null;
       _methodNoticeIsError = false;
     });
     try {
@@ -610,7 +629,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       await _refreshSignInMethods();
     } on ApiException catch (error) {
       if (!mounted) return;
-      _setMethodNotice(_mutationFailure(error), error: true);
+      _setMethodFailure(_mutationFailure(error));
     } finally {
       if (mounted) {
         setState(() => _methodBusy = false);
@@ -680,6 +699,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     bool busy = false;
     bool done = false;
     String? error;
+    FailureMessage? dialogFailure;
     await showDialog<void>(
       context: context,
       builder: (BuildContext dialogContext) => StatefulBuilder(
@@ -712,12 +732,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   fieldKey: confirmFieldKey,
                   label: _copy.confirmNewPassword,
                 ),
-                if (error != null) ...<Widget>[
+                if (error != null || dialogFailure != null) ...<Widget>[
                   const SizedBox(height: MayosSpacing.sm),
                   Text(
-                    error!,
-                    textDirection: _copy.isArabic ? TextDirection.ltr : null,
-                    textAlign: _copy.isArabic ? TextAlign.end : null,
+                    error ??
+                        MayosCopy(ref.read(displayLanguageProvider))
+                            .failureMessage(dialogFailure!),
                     style: MayosTypography.bodySecondary
                         .copyWith(color: MayosTheme.of(context).danger),
                   ),
@@ -758,6 +778,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       setDialogState(() {
                         busy = true;
                         error = null;
+                        dialogFailure = null;
                       });
                       try {
                         await onSubmit(
@@ -766,10 +787,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         if (dialogContext.mounted) {
                           Navigator.of(dialogContext).pop();
                         }
-                      } on ApiException catch (failure) {
+                      } on ApiException catch (apiError) {
                         setDialogState(() {
                           busy = false;
-                          error = _mutationFailure(failure);
+                          dialogFailure = _mutationFailure(apiError);
                         });
                       }
                     },
@@ -802,6 +823,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         googleOnly && google.buttonStyle == GoogleSignInButtonStyle.webRendered;
     bool busy = false;
     String? error;
+    FailureMessage? dialogFailure;
     await showDialog<void>(
       context: context,
       builder: (BuildContext dialogContext) => StatefulBuilder(
@@ -841,20 +863,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           .deleteAccountWithGoogleOutcome(outcome),
                       isBusy: () => busy,
                       dialogContext: dialogContext,
-                      updateDialog: (bool nextBusy, String? nextError) =>
-                          setDialogState(() {
+                      updateDialog:
+                          (bool nextBusy, FailureMessage? nextFailure) =>
+                              setDialogState(() {
                         busy = nextBusy;
-                        error = nextError;
+                        dialogFailure = nextFailure;
                       }),
                     ),
                   ),
                 ],
-                if (error != null) ...<Widget>[
+                if (error != null || dialogFailure != null) ...<Widget>[
                   const SizedBox(height: MayosSpacing.sm),
                   Text(
-                    error!,
-                    textDirection: _copy.isArabic ? TextDirection.ltr : null,
-                    textAlign: _copy.isArabic ? TextAlign.end : null,
+                    error ??
+                        MayosCopy(ref.read(displayLanguageProvider))
+                            .failureMessage(dialogFailure!),
                     style: MayosTypography.bodySecondary
                         .copyWith(color: MayosTheme.of(context).danger),
                   ),
@@ -886,10 +909,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 .deleteAccountWithGoogle(),
                             isBusy: () => busy,
                             dialogContext: dialogContext,
-                            updateDialog: (bool nextBusy, String? nextError) {
+                            updateDialog:
+                                (bool nextBusy, FailureMessage? nextFailure) {
                               setDialogState(() {
                                 busy = nextBusy;
-                                error = nextError;
+                                dialogFailure = nextFailure;
                               });
                             },
                           );
@@ -898,6 +922,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         setDialogState(() {
                           busy = true;
                           error = null;
+                          dialogFailure = null;
                         });
                         try {
                           await ref
@@ -906,10 +931,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           if (dialogContext.mounted) {
                             Navigator.of(dialogContext).pop();
                           }
-                        } on ApiException catch (failure) {
+                        } on ApiException catch (apiError) {
                           setDialogState(() {
                             busy = false;
-                            error = _mutationFailure(failure);
+                            dialogFailure = _mutationFailure(apiError);
                           });
                         }
                       },
@@ -924,7 +949,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     required Future<DeleteWithGoogleResult> Function() delete,
     required bool Function() isBusy,
     required BuildContext dialogContext,
-    required void Function(bool busy, String? error) updateDialog,
+    required void Function(bool busy, FailureMessage? failure) updateDialog,
   }) async {
     if (isBusy()) return;
     updateDialog(true, null);
@@ -934,21 +959,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           :final message,
           :final failureMessage,
         )) {
-      updateDialog(
-        false,
-        MayosCopy(ref.read(displayLanguageProvider))
-            .failureMessage(failureMessage ?? ServerFailureMessage(message)),
-      );
+      updateDialog(false, failureMessage ?? ServerFailureMessage(message));
       return;
     }
     if (result is DeleteWithGoogleDismissed) {
       updateDialog(
         false,
-        MayosCopy(ref.read(displayLanguageProvider)).failureMessage(
-          const AppFailureMessage(
-            AppFailureId.googleDeleteCancelled,
-            kGoogleDeleteCancelledMessage,
-          ),
+        const AppFailureMessage(
+          AppFailureId.googleDeleteCancelled,
+          kGoogleDeleteCancelledMessage,
         ),
       );
       return;
@@ -1049,11 +1068,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Text(
-                _loadError!,
-                textDirection: copy.isArabic ? TextDirection.ltr : null,
-                textAlign: TextAlign.center,
-              ),
+              Text(displayCopyOf(context).failureMessage(_loadError!),
+                  textAlign: TextAlign.center),
               const SizedBox(height: MayosSpacing.md),
               MayosButton(
                 label: copy.retry,
@@ -1075,15 +1091,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         const SizedBox(height: MayosSpacing.xxs),
         if (_account != null) _buildSignInMethods(c),
-        if (_methodNotice != null) ...<Widget>[
+        if (_methodNotice != null || _methodFailure != null) ...<Widget>[
           const SizedBox(height: MayosSpacing.sm),
-          Text(
-            _methodNotice!,
-            textDirection: copy.isArabic ? TextDirection.ltr : null,
-            textAlign: copy.isArabic ? TextAlign.end : null,
-            style: _methodNoticeIsError
-                ? MayosTypography.bodySecondary.copyWith(color: c.danger)
-                : MayosTypography.body,
+          FirstStrongDirection(
+            text: _methodFailure == null
+                ? _methodNotice!
+                : displayCopyOf(context).failureMessage(_methodFailure!),
+            child: Text(
+              _methodFailure == null
+                  ? _methodNotice!
+                  : displayCopyOf(context).failureMessage(_methodFailure!),
+              style: _methodNoticeIsError
+                  ? MayosTypography.bodySecondary.copyWith(color: c.danger)
+                  : MayosTypography.body,
+            ),
           ),
         ],
         const SizedBox(height: MayosSpacing.lg),
@@ -1183,15 +1204,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     _equipmentAccess = selectedAccess ?? _equipmentAccess;
                   }),
         ),
-        if (_notice != null) ...<Widget>[
+        if (_notice != null || _noticeFailure != null) ...<Widget>[
           const SizedBox(height: MayosSpacing.sm),
-          Text(
-            _notice!,
-            textDirection: copy.isArabic ? TextDirection.ltr : null,
-            textAlign: copy.isArabic ? TextAlign.end : null,
-            style: _noticeIsError
-                ? MayosTypography.bodySecondary.copyWith(color: c.danger)
-                : MayosTypography.body,
+          FirstStrongDirection(
+            text: _noticeFailure == null
+                ? _notice!
+                : displayCopyOf(context).failureMessage(_noticeFailure!),
+            child: Text(
+              _noticeFailure == null
+                  ? _notice!
+                  : displayCopyOf(context).failureMessage(_noticeFailure!),
+              style: _noticeIsError
+                  ? MayosTypography.bodySecondary.copyWith(color: c.danger)
+                  : MayosTypography.body,
+            ),
           ),
         ],
         const SizedBox(height: MayosSpacing.lg),
@@ -1239,15 +1265,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             label: copy.timezone,
           ),
         ),
-        if (_scheduleNotice != null) ...<Widget>[
+        if (_scheduleNotice != null || _scheduleFailure != null) ...<Widget>[
           const SizedBox(height: MayosSpacing.sm),
-          Text(
-            _scheduleNotice!,
-            textDirection: copy.isArabic ? TextDirection.ltr : null,
-            textAlign: copy.isArabic ? TextAlign.end : null,
-            style: _scheduleNoticeIsError
-                ? MayosTypography.bodySecondary.copyWith(color: c.danger)
-                : MayosTypography.body,
+          FirstStrongDirection(
+            text: _scheduleFailure == null
+                ? _scheduleNotice!
+                : displayCopyOf(context).failureMessage(_scheduleFailure!),
+            child: Text(
+              _scheduleFailure == null
+                  ? _scheduleNotice!
+                  : displayCopyOf(context).failureMessage(_scheduleFailure!),
+              style: _scheduleNoticeIsError
+                  ? MayosTypography.bodySecondary.copyWith(color: c.danger)
+                  : MayosTypography.body,
+            ),
           ),
         ],
         const SizedBox(height: MayosSpacing.sm),
@@ -1262,47 +1293,41 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         Row(
           children: <Widget>[
             Expanded(
-              child: Directionality(
-                textDirection: copy.isArabic
-                    ? TextDirection.ltr
-                    : Directionality.of(context),
-                child: MayosButton(
-                  key: const Key('pause_start_button'),
-                  label: copy.pauseStart(_formatDate(_pauseStart)),
-                  variant: MayosButtonVariant.secondary,
-                  onPressed: _schedulingPause
-                      ? null
-                      : () => _pickPauseDate(start: true),
-                ),
+              child: MayosButton(
+                key: const Key('pause_start_button'),
+                label: copy.pauseStart(_formatDate(_pauseStart)),
+                variant: MayosButtonVariant.secondary,
+                onPressed:
+                    _schedulingPause ? null : () => _pickPauseDate(start: true),
               ),
             ),
             const SizedBox(width: MayosSpacing.xs),
             Expanded(
-              child: Directionality(
-                textDirection: copy.isArabic
-                    ? TextDirection.ltr
-                    : Directionality.of(context),
-                child: MayosButton(
-                  key: const Key('pause_end_button'),
-                  label: copy.pauseEnd(_formatDate(_pauseEnd)),
-                  variant: MayosButtonVariant.secondary,
-                  onPressed: _schedulingPause
-                      ? null
-                      : () => _pickPauseDate(start: false),
-                ),
+              child: MayosButton(
+                key: const Key('pause_end_button'),
+                label: copy.pauseEnd(_formatDate(_pauseEnd)),
+                variant: MayosButtonVariant.secondary,
+                onPressed: _schedulingPause
+                    ? null
+                    : () => _pickPauseDate(start: false),
               ),
             ),
           ],
         ),
-        if (_pauseNotice != null) ...<Widget>[
+        if (_pauseNotice != null || _pauseFailure != null) ...<Widget>[
           const SizedBox(height: MayosSpacing.sm),
-          Text(
-            _pauseNotice!,
-            textDirection: copy.isArabic ? TextDirection.ltr : null,
-            textAlign: copy.isArabic ? TextAlign.end : null,
-            style: _pauseNoticeIsError
-                ? MayosTypography.bodySecondary.copyWith(color: c.danger)
-                : MayosTypography.body,
+          FirstStrongDirection(
+            text: _pauseFailure == null
+                ? _pauseNotice!
+                : displayCopyOf(context).failureMessage(_pauseFailure!),
+            child: Text(
+              _pauseFailure == null
+                  ? _pauseNotice!
+                  : displayCopyOf(context).failureMessage(_pauseFailure!),
+              style: _pauseNoticeIsError
+                  ? MayosTypography.bodySecondary.copyWith(color: c.danger)
+                  : MayosTypography.body,
+            ),
           ),
         ],
         const SizedBox(height: MayosSpacing.sm),
@@ -1321,8 +1346,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           for (final ScheduledPause pause in _pauses)
             Text(
               copy.pauseRange(pause.startsOn, pause.endsOn),
-              textDirection: copy.isArabic ? TextDirection.ltr : null,
-              textAlign: copy.isArabic ? TextAlign.end : null,
               style: MayosTypography.body.copyWith(color: c.textPrimary),
             ),
         const SizedBox(height: MayosSpacing.xl),

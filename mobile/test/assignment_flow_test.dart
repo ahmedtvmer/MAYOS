@@ -153,9 +153,14 @@ void main() {
       TextDirection.rtl,
     );
     final Text dateAndChannel = tester.widget<Text>(
-      find.text('2026-09-26 · داخل التطبيق'),
+      find.text('\u20662026-09-26\u2069 · داخل التطبيق'),
     );
-    expect(dateAndChannel.textDirection, TextDirection.ltr);
+    expect(dateAndChannel.textDirection, isNull);
+    expect(
+      Directionality.of(
+          tester.element(find.text('\u20662026-09-26\u2069 · داخل التطبيق'))),
+      TextDirection.rtl,
+    );
   });
 
   testWidgets('Arabic player profile labels keep profile data and digits',

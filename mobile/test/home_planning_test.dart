@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mayos_mobile/src/core/display_language/catalog.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/features/player/dashboard/home_planning.dart';
 
@@ -66,6 +67,13 @@ void main() {
       expect(greetingFor(DateTime(2026, 9, 21, 8)), 'Good morning');
       expect(greetingFor(DateTime(2026, 9, 21, 14)), 'Good afternoon');
       expect(greetingFor(DateTime(2026, 9, 21, 20)), 'Good evening');
+    });
+
+    test('Arabic greeting follows morning, afternoon, and evening', () {
+      const MayosCopy arabic = MayosCopy('ar');
+      expect(arabic.greetingFor(DateTime(2026, 9, 21, 8)), 'صباح الخير');
+      expect(arabic.greetingFor(DateTime(2026, 9, 21, 14)), 'طاب يومك');
+      expect(arabic.greetingFor(DateTime(2026, 9, 21, 20)), 'مساء الخير');
     });
   });
 

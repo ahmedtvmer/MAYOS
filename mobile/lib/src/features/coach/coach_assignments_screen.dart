@@ -3,6 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
+import '../../core/app_failure.dart';
+import '../../core/connectivity_message.dart';
+import '../../core/display_language/copy_context.dart';
+import '../../core/display_language/feature_copy_context.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
@@ -36,7 +40,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     with WidgetsBindingObserver {
   bool _loading = true;
   bool _disabling = false;
-  String? _error;
+  FailureMessage? _error;
   String? _busyAssignmentId;
   List<CoachRosterEntry> _assignments = <CoachRosterEntry>[];
 
@@ -48,10 +52,8 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    final List<CoachRosterEntry>? cached =
-        ref.read(coachRosterEntriesProvider);
-    final int? cacheRevision =
-        ref.read(coachRosterEntriesRevisionProvider);
+    final List<CoachRosterEntry>? cached = ref.read(coachRosterEntriesProvider);
+    final int? cacheRevision = ref.read(coachRosterEntriesRevisionProvider);
     if (cached == null ||
         cacheRevision != ref.read(coachRosterRevisionProvider)) {
       _load();
@@ -104,7 +106,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
       if (!mounted || seq != _loadSeq) return;
       setState(() {
         _loading = false;
-        _error = error.message;
+        _error = apiFailureMessage(error);
       });
     }
   }
@@ -114,28 +116,28 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     // assignment that vanished ends the coach assistant's in-memory
     // transcript for it (issue #45).
     ref.read(coachAssistantControllerProvider.notifier).clearUnlessAssigned(
-          <String>[
-            for (final CoachRosterEntry row in assignments) row.assignmentId,
-          ],
-        );
+      <String>[
+        for (final CoachRosterEntry row in assignments) row.assignmentId,
+      ],
+    );
   }
 
   Future<void> _revoke(CoachRosterEntry entry) async {
+    final copy = coachCopyOf(context);
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: const Text('Revoke assignment?'),
-        content: Text(
-            '${entry.playerUsername} will lose coaching immediately and can no longer be seen by you.'),
+        title: Text(copy.revokeAssignmentQuestion),
+        content: Text(copy.revokeAssignmentLead(entry.playerUsername)),
         actions: <Widget>[
           MayosButton(
-            label: 'Cancel',
+            label: copy.cancel,
             variant: MayosButtonVariant.tertiary,
             expand: false,
             onPressed: () => Navigator.of(context).pop(false),
           ),
           MayosButton(
-            label: 'Revoke',
+            label: copy.revoke,
             expand: false,
             onPressed: () => Navigator.of(context).pop(true),
           ),
@@ -165,34 +167,33 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
           .read(coachAssistantControllerProvider.notifier)
           .clearFor(entry.assignmentId);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Revoked ${entry.playerUsername}.')),
+        SnackBar(content: Text(copy.assignmentRevoked(entry.playerUsername))),
       );
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
         _busyAssignmentId = null;
-        _error = error.message;
+        _error = apiFailureMessage(error);
       });
     }
   }
 
   Future<void> _disable() async {
+    final copy = coachCopyOf(context);
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: const Text('Disable coaching?'),
-        content: const Text(
-            'Every assignment ends immediately and your coach capability is removed. '
-            'Your own player training data is kept.'),
+        title: Text(copy.disableCoachingQuestion),
+        content: Text(copy.disableCoachingLead),
         actions: <Widget>[
           MayosButton(
-            label: 'Cancel',
+            label: copy.cancel,
             variant: MayosButtonVariant.tertiary,
             expand: false,
             onPressed: () => Navigator.of(context).pop(false),
           ),
           MayosButton(
-            label: 'Disable coaching',
+            label: copy.disableCoaching,
             expand: false,
             onPressed: () => Navigator.of(context).pop(true),
           ),
@@ -210,8 +211,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
       if (!mounted) return;
       setState(() => _disabling = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Coaching disabled. $ended assignment(s) ended.')),
+        SnackBar(content: Text(copy.coachingDisabled(ended))),
       );
       ref.read(authControllerProvider.notifier).markCoachDisabled();
       // Every assignment just ended: no assistant context survives it (#45).
@@ -220,7 +220,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
       if (!mounted) return;
       setState(() {
         _disabling = false;
-        _error = error.message;
+        _error = apiFailureMessage(error);
       });
     }
   }
@@ -232,7 +232,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     return Padding(
       padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
       child: Text(
-        _error!,
+        displayCopyOf(context).failureMessage(_error!),
         style: MayosTypography.bodySecondary
             .copyWith(color: MayosTheme.of(context).danger),
       ),
@@ -244,29 +244,35 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
   /// the player needs no attention.
   List<Widget> _rosterChips(BuildContext context, CoachRosterEntry entry) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final copy = coachCopyOf(context);
     final String today = isoDateOf(DateTime.now());
-    final String? followUp = entry.followUpChipLabel(today);
+    final String? dueOn = entry.nextFollowUpOn;
+    final String? followUp = dueOn == null || dueOn.compareTo(today) > 0
+        ? null
+        : dueOn == today
+            ? copy.followUpToday
+            : copy.followUpOverdue;
     return <Widget>[
       if (entry.currentMissedStreak > 0)
         coachPillChip(
-            context, 'Missed ${entry.currentMissedStreak}d', c.danger),
+            context, copy.missedDays(entry.currentMissedStreak), c.danger),
       if (entry.stallLength > 0)
         coachPillChip(
           context,
-          'Stalled ${entry.stallLength} session${entry.stallLength == 1 ? '' : 's'}',
+          copy.stalledSessions(entry.stallLength),
           c.warning,
         ),
       if (followUp != null) coachPillChip(context, followUp, c.warning),
       if (entry.alertsNew > 0)
         coachPillChip(
           context,
-          '${entry.alertsNew} alert${entry.alertsNew == 1 ? '' : 's'}',
+          copy.alertsCount(entry.alertsNew),
           c.danger,
         ),
       if (entry.pendingRequests > 0)
         coachPillChip(
           context,
-          '${entry.pendingRequests} request${entry.pendingRequests == 1 ? '' : 's'}',
+          copy.requestsCount(entry.pendingRequests),
           c.accent,
         ),
     ];
@@ -276,6 +282,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
   /// chips, and the revoke action. The whole row opens the player page.
   Widget _rosterRow(BuildContext context, CoachRosterEntry entry) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final copy = coachCopyOf(context);
     final List<Widget> chips = _rosterChips(context, entry);
     final bool selected = widget.selectedAssignmentId == entry.assignmentId;
     return Material(
@@ -301,8 +308,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                   entry.playerUsername.isEmpty
                       ? '?'
                       : entry.playerUsername.substring(0, 1).toUpperCase(),
-                  style:
-                      MayosTypography.label.copyWith(color: c.textPrimary),
+                  style: MayosTypography.label.copyWith(color: c.textPrimary),
                 ),
               ),
               const SizedBox(width: MayosSpacing.md),
@@ -312,12 +318,15 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                   children: <Widget>[
                     Text(
                       entry.playerUsername,
-                      style:
-                          MayosTypography.exerciseTitle.copyWith(color: c.textPrimary),
+                      style: MayosTypography.exerciseTitle
+                          .copyWith(color: c.textPrimary),
                     ),
                     const SizedBox(height: MayosSpacing.xxs),
                     Text(
-                      entry.rosterSubtitle,
+                      copy.rosterSubtitle(
+                        lastWorkout: entry.lastWorkoutOn,
+                        program: entry.programName,
+                      ),
                       style: MayosTypography.caption
                           .copyWith(color: c.textSecondary),
                     ),
@@ -335,15 +344,20 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
               const SizedBox(width: MayosSpacing.xs),
               MayosButton(
                 label: _busyAssignmentId == entry.assignmentId
-                    ? 'Revoking…'
-                    : 'Revoke',
+                    ? copy.revoking
+                    : copy.revoke,
                 variant: MayosButtonVariant.tertiary,
                 expand: false,
                 onPressed: _busyAssignmentId == entry.assignmentId
                     ? null
                     : () => _revoke(entry),
               ),
-              Icon(Icons.chevron_right, color: c.textMuted),
+              Icon(
+                Directionality.of(context) == TextDirection.rtl
+                    ? Icons.chevron_left
+                    : Icons.chevron_right,
+                color: c.textMuted,
+              ),
             ],
           ),
         ),
@@ -353,22 +367,22 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
 
   Widget _assignmentsCard(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final copy = coachCopyOf(context);
     return MayosCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('Active assignments',
-              style:
-                  MayosTypography.sectionHeading.copyWith(color: c.textPrimary)),
+          Text(copy.activeAssignments,
+              style: MayosTypography.sectionHeading
+                  .copyWith(color: c.textPrimary)),
           const SizedBox(height: MayosSpacing.xs),
           if (_assignments.isEmpty)
-            Text('No assigned players yet.',
+            Text(copy.noAssignedPlayers,
                 style: MayosTypography.bodySecondary
                     .copyWith(color: c.textSecondary))
           else
             for (int i = 0; i < _assignments.length; i++) ...<Widget>[
-              if (i > 0)
-                Divider(height: 1, indent: 52, color: c.border),
+              if (i > 0) Divider(height: 1, indent: 52, color: c.border),
               _rosterRow(context, _assignments[i]),
             ],
         ],
@@ -397,7 +411,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
         _assignmentsCard(context),
         const SizedBox(height: MayosSpacing.xl),
         MayosButton(
-          label: 'Disable coaching',
+          label: coachCopyOf(context).disableCoaching,
           icon: Icons.logout,
           variant: MayosButtonVariant.secondary,
           loading: _disabling,

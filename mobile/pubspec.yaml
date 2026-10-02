@@ -19,7 +19,8 @@ dependencies:
   flutter_riverpod: ^2.5.1
   intl: any
   # Lightweight GFM rendering for selectable assistant replies.
-  flutter_markdown_plus: ^1.0.12
+  flutter_markdown_plus:
+    path: packages/flutter_markdown_plus
   flutter_timezone: ^5.1.0
   go_router: ^14.2.0
   # Privacy policy (issue #43): the API serves the policy at /privacy and the

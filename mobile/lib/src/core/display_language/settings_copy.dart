@@ -99,8 +99,8 @@ class SettingsCopy {
       isArabic ? 'تُستخدم لصياغة الردود فقط.' : 'Used for wording only.';
   String creditsBody(String requiredCredit) => isArabic
       ? 'تُنسب صور التمارين ومقاطع GIF في المكتبة وفق شروط استخدامها:\n\n'
-          '$requiredCredit\n\n'
-          'تُعرض الوسائط بحجمها الأصلي وبحد أقصى 180 × 180 مع هذا الاعتماد، بينما لا يزال ترخيص MAYOS الخاص من Gym visual قيد الانتظار.'
+          '${_ltr(requiredCredit)}\n\n'
+          'تُعرض الوسائط بحجمها الأصلي وبحد أقصى ${_ltr('180 × 180')} مع هذا الاعتماد، بينما لا يزال ترخيص MAYOS الخاص من Gym visual قيد الانتظار.'
       : 'Exercise media (the catalog pictures and GIFs) is credited as '
           'required by its terms:\n\n'
           '$requiredCredit\n\n'
@@ -113,7 +113,7 @@ class SettingsCopy {
   String get unsyncedWorkouts =>
       isArabic ? 'حصص غير متزامنة' : 'Unsynced workouts';
   String unsyncedDraftWarning(int count) => isArabic
-      ? 'لديك ${arabicCountPhrase(count, ArabicCountNoun.workoutDraft)} غير متزامنة. ستبقى على هذا الجهاز حتى تتم مزامنتها؛ تسجيل الخروج لن يحذفها.'
+      ? 'لديك ${arabicCountPhrase(count, ArabicCountNoun.workoutDraft, isolateCount: true)} غير متزامنة. ستبقى على هذا الجهاز حتى تتم مزامنتها؛ تسجيل الخروج لن يحذفها.'
       : 'You have $count unsynced workout ${count == 1 ? 'draft' : 'drafts'}. They stay on this device until they sync; logging out will not delete them.';
   String get discardDraftsAndLogOut =>
       isArabic ? 'حذف المسودات وتسجيل الخروج' : 'Discard drafts and log out';
@@ -127,4 +127,6 @@ class SettingsCopy {
   String get discardAndLogOut =>
       isArabic ? 'حذف وتسجيل الخروج' : 'Discard and log out';
   String get cancel => isArabic ? 'إلغاء' : 'Cancel';
+
+  String _ltr(String value) => '\u2066$value\u2069';
 }

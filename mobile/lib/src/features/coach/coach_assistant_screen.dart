@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/app_failure.dart';
+import '../../core/connectivity_message.dart';
+import '../../core/display_language/copy_context.dart';
+import '../../core/display_language/feature_copy_context.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
@@ -11,6 +15,7 @@ import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_markdown.dart';
 import '../../core/ui/mayos_scaffold.dart';
 import '../../core/ui/mayos_text_field.dart';
+import '../../core/ui/first_strong_direction.dart';
 import '../../providers.dart';
 import 'coach_assistant_state.dart';
 
@@ -36,7 +41,7 @@ class CoachAssistantScreen extends ConsumerStatefulWidget {
 class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
   final TextEditingController _question = TextEditingController();
   bool _sending = false;
-  String? _error;
+  FailureMessage? _error;
 
   String get _assignmentId => widget.entry.assignmentId;
 
@@ -66,7 +71,7 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
       if (!stillAssigned) {
         controller.clearFor(_assignmentId);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('You no longer coach this player')),
+          SnackBar(content: Text(coachCopyOf(context).playerAssignmentEnded)),
         );
         Navigator.of(context).pop();
       }
@@ -117,7 +122,7 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
             .read(coachAssistantControllerProvider.notifier)
             .clearFor(_assignmentId);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('You no longer coach this player')),
+          SnackBar(content: Text(coachCopyOf(context).playerAssignmentEnded)),
         );
         Navigator.of(context).pop();
         return;
@@ -129,7 +134,7 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
       }
       setState(() {
         _sending = false;
-        _error = failure.message;
+        _error = apiFailureMessage(failure);
       });
     }
   }
@@ -143,8 +148,9 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
             ? transcript.turns
             : const <CoachAssistantTurn>[];
     final MayosThemeExtension c = MayosTheme.of(context);
+    final copy = coachCopyOf(context);
     return MayosScaffold(
-      title: 'Assistant',
+      title: copy.assistant,
       showBack: true,
       body: Column(
         children: <Widget>[
@@ -166,8 +172,7 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
       child: Padding(
         padding: const EdgeInsets.all(MayosSpacing.xl),
         child: Text(
-          'Ask about ${widget.entry.playerUsername}\'s training figures: '
-          'volume, sessions, records, and schedule.',
+          coachCopyOf(context).assistantNoHistory(widget.entry.playerUsername),
           textAlign: TextAlign.center,
           style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
         ),
@@ -193,7 +198,7 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
                 const SizedBox(width: MayosSpacing.sm),
-                Text('Thinking…',
+                Text(coachCopyOf(context).assistantThinking,
                     style: MayosTypography.bodySecondary
                         .copyWith(color: c.textSecondary)),
               ],
@@ -208,10 +213,13 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
                   source: turn.content,
                   bodyStyle: MayosTypography.bodySecondary,
                 )
-              : Text(
-                  turn.content,
-                  style: MayosTypography.bodySecondary.copyWith(
-                    color: c.onAccent,
+              : FirstStrongDirection(
+                  text: turn.content,
+                  child: Text(
+                    turn.content,
+                    style: MayosTypography.bodySecondary.copyWith(
+                      color: c.onAccent,
+                    ),
                   ),
                 ),
         );
@@ -223,7 +231,9 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
     final bool coach = role == 'coach';
     final MayosThemeExtension c = MayosTheme.of(context);
     return Align(
-      alignment: coach ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: coach
+          ? AlignmentDirectional.centerEnd
+          : AlignmentDirectional.centerStart,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: MayosSpacing.xxs),
         padding: const EdgeInsets.symmetric(
@@ -241,10 +251,11 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
   }
 
   Widget _errorBanner(MayosThemeExtension c) {
+    final String message = displayCopyOf(context).failureMessage(_error!);
     return Container(
       key: const Key('coach_assistant_error'),
       width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(
+      margin: const EdgeInsetsDirectional.fromSTEB(
           MayosSpacing.md, MayosSpacing.xs, MayosSpacing.md, 0),
       padding: const EdgeInsets.symmetric(
           horizontal: MayosSpacing.md, vertical: MayosSpacing.xs),
@@ -253,9 +264,12 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
         borderRadius: MayosRadii.mediumRadius,
         border: Border.all(color: c.danger),
       ),
-      child: Text(
-        _error!,
-        style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+      child: FirstStrongDirection(
+        text: message,
+        child: Text(
+          message,
+          style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+        ),
       ),
     );
   }
@@ -263,10 +277,10 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
   /// The one-line disclosure: figures in, prose out, nothing kept (issue #45).
   Widget _note(MayosThemeExtension c) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
+      padding: const EdgeInsetsDirectional.fromSTEB(
           MayosSpacing.md, MayosSpacing.xs, MayosSpacing.md, 0),
       child: Text(
-        "Answers use the player's training figures. Nothing is saved.",
+        coachCopyOf(context).assistantNote(widget.entry.playerUsername),
         textAlign: TextAlign.center,
         style: MayosTypography.caption.copyWith(color: c.textMuted),
       ),
@@ -278,7 +292,7 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
       key: const Key('coach_assistant_composer'),
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(
+        padding: const EdgeInsetsDirectional.fromSTEB(
             MayosSpacing.sm, MayosSpacing.xs, MayosSpacing.sm, MayosSpacing.xs),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -292,17 +306,17 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
                 maxLines: 4,
                 maxLength: coachAssistantQuestionMaxChars,
                 textInputAction: TextInputAction.newline,
-                hint: 'Ask about this player',
+                hint: coachCopyOf(context).askAboutPlayer,
                 onChanged: (_) => setState(() {}),
               ),
             ),
             const SizedBox(width: MayosSpacing.xs),
             Semantics(
-              label: 'Send',
+              label: coachCopyOf(context).send,
               button: true,
               child: IconButton.filled(
                 key: const Key('coach_assistant_send'),
-                tooltip: 'Send',
+                tooltip: coachCopyOf(context).send,
                 style: IconButton.styleFrom(
                   backgroundColor: c.accent,
                   foregroundColor: c.onAccent,

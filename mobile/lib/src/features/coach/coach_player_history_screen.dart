@@ -3,7 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
+import '../../core/app_failure.dart';
 import '../../core/connectivity.dart';
+import '../../core/connectivity_message.dart';
+import '../../core/display_language/copy_context.dart';
+import '../../core/display_language/feature_copy_context.dart';
 import '../../core/effort.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
@@ -15,6 +19,7 @@ import '../../core/ui/mayos_card.dart';
 import '../../core/ui/mayos_section_header.dart';
 import '../../core/ui/mayos_segmented_control.dart';
 import '../../core/ui/mayos_settings_tile.dart';
+import '../../core/ui/first_strong_direction.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import 'coach_assistant_screen.dart';
@@ -62,7 +67,7 @@ class _CoachPlayerHistoryScreenState
     extends ConsumerState<CoachPlayerHistoryScreen> {
   late CoachRosterEntry _entry;
   bool _loading = true;
-  String? _error;
+  FailureMessage? _error;
   bool _assignmentDenied = false;
   CoachPlayerSummary? _summary;
   List<PersonalRecord> _records = const <PersonalRecord>[];
@@ -74,9 +79,9 @@ class _CoachPlayerHistoryScreenState
   String? _openExerciseId;
   bool _loadingHistory = false;
   bool _publishing = false;
-  String? _publishError;
+  FailureMessage? _publishError;
   List<ProgramRequest> _programRequests = const <ProgramRequest>[];
-  String? _requestError;
+  FailureMessage? _requestError;
   List<CheckIn> _checkIns = const <CheckIn>[];
   String? _nextFollowUpOn;
   List<CoachAlert> _alerts = const <CoachAlert>[];
@@ -97,7 +102,8 @@ class _CoachPlayerHistoryScreenState
     _load();
   }
 
-  CoachRosterEntry _routeEntry() => widget.entry ??
+  CoachRosterEntry _routeEntry() =>
+      widget.entry ??
       CoachRosterEntry(
         assignmentId: widget.assignmentId,
         playerUsername: '',
@@ -108,8 +114,7 @@ class _CoachPlayerHistoryScreenState
   /// This assignment's open (new or acknowledged) alerts, as the player page
   /// shows them (#120).
   List<CoachAlert> _openAlerts(Iterable<CoachAlert> alerts) => alerts
-      .where(
-          (CoachAlert alert) => alert.assignmentId == _entry.assignmentId)
+      .where((CoachAlert alert) => alert.assignmentId == _entry.assignmentId)
       .toList(growable: false);
 
   Future<void> _load() async {
@@ -182,9 +187,7 @@ class _CoachPlayerHistoryScreenState
     setState(() {
       _loading = false;
       _assignmentDenied = error.statusCode == 403;
-      _error = error.statusCode == 403
-          ? 'No active assignment.'
-          : error.message;
+      _error = error.statusCode == 403 ? null : apiFailureMessage(error);
     });
   }
 
@@ -221,7 +224,7 @@ class _CoachPlayerHistoryScreenState
     } on ApiException catch (error) {
       if (!mounted || seq != _requestsSeq) return;
       // A failed refresh is surfaced like every other load error (#121).
-      setState(() => _requestError = error.message);
+      setState(() => _requestError = apiFailureMessage(error));
     }
   }
 
@@ -251,13 +254,14 @@ class _CoachPlayerHistoryScreenState
       if (!mounted) return;
       setState(() {
         _loadingHistory = false;
-        _error = error.message;
+        _error = apiFailureMessage(error);
       });
     }
   }
 
   Future<void> _openPublishDialog() async {
     final TextEditingController split = TextEditingController();
+    final copy = coachCopyOf(context);
     String repPreference = 'balanced';
     int frequency = 4;
     final _PublishRequest? request = await showDialog<_PublishRequest>(
@@ -265,29 +269,31 @@ class _CoachPlayerHistoryScreenState
       builder: (BuildContext context) => StatefulBuilder(
         builder: (BuildContext context, StateSetter setDialogState) =>
             AlertDialog(
-          title: const Text('Publish program'),
+          title: Text(copy.publishProgram),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               TextField(
                 key: const Key('publish_split_field'),
                 controller: split,
-                decoration: const InputDecoration(
-                  labelText: 'Split override (optional)',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: copy.splitOverrideOptional,
+                  border: const OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: MayosSpacing.md),
               DropdownButtonFormField<String>(
                 key: const Key('publish_rep_field'),
                 initialValue: repPreference,
-                decoration: const InputDecoration(
-                    labelText: 'Rep preference', border: OutlineInputBorder()),
-                items: const <DropdownMenuItem<String>>[
-                  DropdownMenuItem<String>(value: 'low', child: Text('Low')),
+                decoration: InputDecoration(
+                    labelText: copy.repPreference,
+                    border: const OutlineInputBorder()),
+                items: <DropdownMenuItem<String>>[
+                  DropdownMenuItem<String>(value: 'low', child: Text(copy.low)),
                   DropdownMenuItem<String>(
-                      value: 'balanced', child: Text('Balanced')),
-                  DropdownMenuItem<String>(value: 'high', child: Text('High')),
+                      value: 'balanced', child: Text(copy.balanced)),
+                  DropdownMenuItem<String>(
+                      value: 'high', child: Text(copy.high)),
                 ],
                 onChanged: (String? value) => setDialogState(
                     () => repPreference = value ?? repPreference),
@@ -296,11 +302,15 @@ class _CoachPlayerHistoryScreenState
               DropdownButtonFormField<int>(
                 key: const Key('publish_frequency_field'),
                 initialValue: frequency,
-                decoration: const InputDecoration(
-                    labelText: 'Days per week', border: OutlineInputBorder()),
+                decoration: InputDecoration(
+                    labelText: copy.daysPerWeek,
+                    border: const OutlineInputBorder()),
                 items: <DropdownMenuItem<int>>[
                   for (int day = 1; day <= 5; day++)
-                    DropdownMenuItem<int>(value: day, child: Text('$day')),
+                    DropdownMenuItem<int>(
+                      value: day,
+                      child: Text('$day', textDirection: TextDirection.ltr),
+                    ),
                 ],
                 onChanged: (int? value) =>
                     setDialogState(() => frequency = value ?? frequency),
@@ -310,11 +320,11 @@ class _CoachPlayerHistoryScreenState
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
+              child: Text(copy.cancel),
             ),
             MayosButton(
               key: const Key('publish_confirm_button'),
-              label: 'Publish',
+              label: copy.publish,
               expand: false,
               onPressed: () => Navigator.of(context).pop(
                 _PublishRequest(
@@ -345,13 +355,15 @@ class _CoachPlayerHistoryScreenState
       if (!mounted) return;
       setState(() => _publishing = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Published program version ${program.version}')),
+        SnackBar(
+            content:
+                Text(coachCopyOf(context).programPublished(program.version))),
       );
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
         _publishing = false;
-        _publishError = error.message;
+        _publishError = apiFailureMessage(error);
       });
     }
   }
@@ -375,7 +387,8 @@ class _CoachPlayerHistoryScreenState
       // An applied request republishes the program, so the whole page
       // refetches; a refusal only needs this segment's list back.
       reload: () => result.resolved ? _load() : _loadRequests(),
-      showError: (String message) => setState(() => _requestError = message),
+      showError: (FailureMessage failure) =>
+          setState(() => _requestError = failure),
       // The Requests tab listens on its revision and republishes the badge.
       notifyRequestsTab: true,
     );
@@ -409,7 +422,7 @@ class _CoachPlayerHistoryScreenState
     ref.read(coachAlertsRevisionProvider.notifier).state++;
     ref.read(coachRosterRevisionProvider.notifier).state++;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Check-in recorded.')),
+      SnackBar(content: Text(coachCopyOf(context).checkInRecorded)),
     );
   }
 
@@ -443,26 +456,31 @@ class _CoachPlayerHistoryScreenState
       if (!mounted) return;
       setState(() => _busyAlertId = null);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
+        SnackBar(
+          content: Text(
+            displayCopyOf(context).failureMessage(apiFailureMessage(error)),
+          ),
+        ),
       );
     }
   }
 
   Widget _checkInsSegment(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final copy = coachCopyOf(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          'Next follow-up: ${_nextFollowUpOn ?? 'not scheduled'}',
+          copy.nextFollowUpLabel(_nextFollowUpOn),
           style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
         ),
         const SizedBox(height: MayosSpacing.sm),
         Align(
-          alignment: Alignment.centerLeft,
+          alignment: AlignmentDirectional.centerStart,
           child: MayosButton(
             key: const Key('record_check_in_button'),
-            label: 'Log check-in',
+            label: copy.logCheckIn,
             icon: Icons.note_add_outlined,
             variant: MayosButtonVariant.secondary,
             expand: false,
@@ -472,7 +490,7 @@ class _CoachPlayerHistoryScreenState
         const SizedBox(height: MayosSpacing.sm),
         if (_checkIns.isEmpty)
           Text(
-            'No check-ins recorded yet.',
+            copy.noRecordedCheckIns,
             style:
                 MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
           )
@@ -481,7 +499,10 @@ class _CoachPlayerHistoryScreenState
             MayosSettingsTile(
               key: Key('check_in_${checkIn.checkInId}'),
               icon: Icons.forum_outlined,
-              title: '${checkIn.checkedInOn} · ${checkIn.channelLabel}',
+              title: copy.checkInTitle(
+                checkIn.checkedInOn,
+                copy.checkInChannel(checkIn.channel),
+              ),
               subtitle: checkIn.note == null || checkIn.note!.isEmpty
                   ? null
                   : checkIn.note!,
@@ -495,20 +516,21 @@ class _CoachPlayerHistoryScreenState
   /// row opens the sheet; answered rows are read-only.
   Widget _requestsSegment(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final copy = coachCopyOf(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const MayosSectionHeader(title: 'Program requests'),
+        MayosSectionHeader(title: copy.programRequests),
         if (_requestError != null) ...<Widget>[
           Text(
-            _requestError!,
+            displayCopyOf(context).failureMessage(_requestError!),
             style: MayosTypography.bodySecondary.copyWith(color: c.danger),
           ),
           const SizedBox(height: MayosSpacing.sm),
         ],
         if (_programRequests.isEmpty)
           Text(
-            'No program requests yet.',
+            copy.noProgramRequests,
             style:
                 MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
           )
@@ -543,61 +565,68 @@ class _CoachPlayerHistoryScreenState
   }
 
   Widget _volumeCard(BuildContext context) {
+    final copy = coachCopyOf(context);
     final Map<String, double> volume = _summary!.volume;
     final List<MapEntry<String, double>> entries = volume.entries
         .where((MapEntry<String, double> entry) => entry.value > 0)
         .toList(growable: false);
     return _section(
       context,
-      'Volume (weighted working sets)',
+      copy.playerVolume,
       entries.isEmpty
-          ? <Widget>[const Text('No volume recorded yet.')]
+          ? <Widget>[Text(copy.noVolume)]
           : <Widget>[
               for (final MapEntry<String, double> entry in entries)
-                Text('${entry.key}: ${entry.value}'),
+                Text(copy.volumeValue(entry.key, '${entry.value}')),
             ],
     );
   }
 
   Widget _scheduleCard(BuildContext context) {
+    final copy = coachCopyOf(context);
     final CoachPlayerSchedule? schedule = _summary!.schedule;
     final List<Widget> children = <Widget>[];
     if (schedule != null) {
-      final String days =
-          schedule.weekdays.map((int day) => weekdayLabels[day - 1]).join(', ');
-      children.add(Text('Expected: $days'));
-      children.add(Text('Timezone: ${schedule.timezone}'));
+      final String days = schedule.weekdays.map(copy.weekday).join(', ');
+      children.add(Text(copy.expectedDays(days)));
+      children.add(Text(copy.timezone(schedule.timezone)));
     }
     for (final CoachPlayerPause pause in _summary!.pauses) {
-      children.add(Text('Pause: ${pause.startsOn} → ${pause.endsOn}'));
+      children.add(Text(copy.pauseDates(pause.startsOn, pause.endsOn)));
     }
-    return _section(context, 'Training schedule', children);
+    return _section(context, copy.trainingSchedule, children);
   }
 
   Widget _latestSessionCard(BuildContext context) {
+    final copy = coachCopyOf(context);
     final CoachPlayerLatestSession? latest = _summary!.latestSession;
     if (latest == null) {
-      return _section(context, 'Latest session',
-          <Widget>[const Text('No sessions logged yet.')]);
+      return _section(
+          context, copy.latestSession, <Widget>[Text(copy.noSessions)]);
     }
-    final String? versionNote = historicalProgramLabel(latest.programVersion,
-        latest.activeProgramVersionAtSync, latest.isHistoricalProgram);
-    return _section(context, 'Latest session', <Widget>[
-      Text('${latest.splitName} · ${latest.sessionDate}'),
-      Text(
-          '${latest.setsCount} sets · ${latest.totalVolumeKg.toStringAsFixed(1)} kg'),
+    final String? versionNote = copy.historicalProgramIfNeeded(
+      latest.programVersion,
+      latest.activeProgramVersionAtSync,
+      latest.isHistoricalProgram,
+    );
+    return _section(context, copy.latestSession, <Widget>[
+      Text(copy.sessionTitle(latest.splitName, latest.sessionDate)),
+      Text(copy.setsAndVolume(
+          latest.setsCount, latest.totalVolumeKg.toStringAsFixed(1))),
       if (latest.warmupMovements.isNotEmpty)
-        Text('Warm-up: ${latest.warmupMovements.length} movements'),
-      if (latest.cardio != null) Text('Cardio: ${latest.cardio!.minutes} min'),
+        Text(copy.movementCount(latest.warmupMovements.length)),
+      if (latest.cardio != null)
+        Text(copy.cardioMinutes(latest.cardio!.minutes)),
       if (latest.readinessScore != null)
-        Text('Readiness ${latest.readinessScore}/5'),
+        Text(copy.readiness(latest.readinessScore!)),
       if (versionNote != null) Text(versionNote),
       for (final PerformedDateCorrection correction in latest.corrections)
-        Text(correction.label),
+        Text(copy.correctedDate(
+            correction.previousDate, correction.correctedDate)),
       const SizedBox(height: MayosSpacing.xs),
       for (final CoachPlayerSessionExercise exercise in latest.exercises)
-        Text(
-            '${exercise.name}: ${exercise.sets} sets · ${exercise.volumeKg.toStringAsFixed(1)} kg'),
+        Text(copy.sessionExercise(exercise.name, exercise.sets,
+            exercise.volumeKg.toStringAsFixed(1))),
       for (final CoachPlayerDivergence divergence in latest.divergences)
         Text(_divergenceLabel(divergence)),
     ]);
@@ -609,16 +638,17 @@ class _CoachPlayerHistoryScreenState
       'unplanned' => 'Unplanned',
       _ => divergence.kind,
     };
-    return '$kind: ${divergence.exerciseName}';
+    return coachCopyOf(context).divergence(kind, divergence.exerciseName);
   }
 
   Widget _recentSessionsCard(BuildContext context) {
+    final copy = coachCopyOf(context);
     final List<CoachPlayerRecentSession> sessions = _summary!.recentSessions;
     return _section(
       context,
-      'Recent sessions',
+      copy.recentSessions,
       sessions.isEmpty
-          ? <Widget>[const Text('No sessions logged yet.')]
+          ? <Widget>[Text(copy.noSessions)]
           : <Widget>[
               for (final CoachPlayerRecentSession session in sessions)
                 _recentSessionTile(session),
@@ -627,24 +657,29 @@ class _CoachPlayerHistoryScreenState
   }
 
   Widget _recentSessionTile(CoachPlayerRecentSession session) {
-    final String? versionNote = historicalProgramLabel(session.programVersion,
-        session.activeProgramVersionAtSync, session.isHistoricalProgram);
+    final copy = coachCopyOf(context);
+    final String? versionNote = copy.historicalProgramIfNeeded(
+      session.programVersion,
+      session.activeProgramVersionAtSync,
+      session.isHistoricalProgram,
+    );
     return ListTile(
       dense: true,
       contentPadding: EdgeInsets.zero,
-      title: Text('${session.splitName} · ${session.sessionDate}'),
+      title: Text(copy.sessionTitle(session.splitName, session.sessionDate)),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-              '${session.setsCount} sets · ${session.totalVolumeKg.toStringAsFixed(1)} kg'),
+          Text(copy.setsAndVolume(
+              session.setsCount, session.totalVolumeKg.toStringAsFixed(1))),
           if (session.warmupMovements.isNotEmpty)
-            Text('Warm-up: ${session.warmupMovements.length} movements'),
+            Text(copy.movementCount(session.warmupMovements.length)),
           if (session.cardio != null)
-            Text('Cardio: ${session.cardio!.minutes} min'),
+            Text(copy.cardioMinutes(session.cardio!.minutes)),
           if (versionNote != null) Text(versionNote),
           for (final PerformedDateCorrection correction in session.corrections)
-            Text(correction.label),
+            Text(copy.correctedDate(
+                correction.previousDate, correction.correctedDate)),
           for (final CoachPlayerDivergence divergence in session.divergences)
             Text(_divergenceLabel(divergence)),
         ],
@@ -653,40 +688,47 @@ class _CoachPlayerHistoryScreenState
   }
 
   Widget _recordsCard(BuildContext context) {
+    final copy = coachCopyOf(context);
     return _section(
       context,
-      'Personal records',
+      copy.personalRecordsTitle,
       _records.isEmpty
-          ? <Widget>[const Text('No personal records yet.')]
+          ? <Widget>[Text(copy.noPersonalRecords)]
           : <Widget>[
               for (final PersonalRecord record in _records)
                 ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   title: Text(record.name),
-                  subtitle: Text(
-                      '${record.recordType} · ${record.value} kg × ${record.reps} reps'),
+                  subtitle: Text(copy.recordSummary(
+                      record.recordType, '${record.value}', record.reps)),
                 ),
             ],
     );
   }
 
   Widget _checkpointReviewsCard(BuildContext context) {
+    final copy = coachCopyOf(context);
     return _section(
       context,
-      'Checkpoints',
+      copy.checkpoints,
       _checkpointReviews.isEmpty
-          ? <Widget>[const Text('No Checkpoints yet.')]
+          ? <Widget>[Text(copy.noCheckpoints)]
           : <Widget>[
               for (final CheckpointReviewListItem review in _checkpointReviews)
                 ListTile(
-                  key: ValueKey<String>(
-                      'coach.checkpoint.${review.checkpoint}'),
+                  key:
+                      ValueKey<String>('coach.checkpoint.${review.checkpoint}'),
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  title: Text('Checkpoint ${review.checkpoint}'),
-                  subtitle: Text('${review.periodStart} – ${review.periodEnd}'),
-                  trailing: const Icon(Icons.chevron_right),
+                  title: Text(copy.checkpointNumber(review.checkpoint)),
+                  subtitle: Text(copy.checkpointPeriod(
+                      review.periodStart, review.periodEnd)),
+                  trailing: Icon(
+                    Directionality.of(context) == TextDirection.rtl
+                        ? Icons.chevron_left
+                        : Icons.chevron_right,
+                  ),
                   onTap: () => context.push(
                     '$checkpointReviewPath/${review.checkpoint}'
                     '?assignment_id=${_entry.assignmentId}',
@@ -697,6 +739,7 @@ class _CoachPlayerHistoryScreenState
   }
 
   Widget _exerciseDetail(BuildContext context, String exerciseId) {
+    final copy = coachCopyOf(context);
     if (_loadingHistory) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 12),
@@ -713,31 +756,36 @@ class _CoachPlayerHistoryScreenState
         if (history.caption != null) Text(history.caption!),
         const SizedBox(height: MayosSpacing.xxs),
         if (history.history.isEmpty)
-          const Text('No recorded sets for this exercise.')
+          Text(copy.noExerciseSets)
         else
           for (final CoachExerciseHistoryPoint point in history.history)
             // Effort is hidden when nobody rated the set, as this line always
             // was; a rated one reads as RIR (#111).
-            Text('${point.date}: ${point.weightKg} kg × ${point.reps}'
-                '${point.rpe == null ? '' : ' @ RIR ${rirLabel(point.rpe)}'}'
-                ' (e1RM ${point.e1rm})'),
+            Text(copy.exerciseHistoryPoint(
+              point.date,
+              '${point.weightKg}',
+              point.reps,
+              rir: point.rpe == null ? null : rirLabel(point.rpe!),
+              e1rm: '${point.e1rm}',
+            )),
         if (history.records.isNotEmpty) ...<Widget>[
           const SizedBox(height: MayosSpacing.xs),
-          const Text('Records'),
+          Text(copy.records),
           for (final CoachExerciseRecord record in history.records)
-            Text(
-                '${record.recordType} · ${record.value} kg × ${record.reps} reps (${record.achievedAt})'),
+            Text(copy.recordHistory(record.recordType, '${record.value}',
+                record.reps, record.achievedAt)),
         ],
       ],
     );
   }
 
   Widget _exercisesCard(BuildContext context) {
+    final copy = coachCopyOf(context);
     return _section(
       context,
-      'Exercises',
+      copy.exercises,
       _exercises.isEmpty
-          ? <Widget>[const Text('No exercises logged yet.')]
+          ? <Widget>[Text(copy.noExercisesLogged)]
           : <Widget>[
               for (final CoachPlayerExercise exercise in _exercises)
                 ExpansionTile(
@@ -760,6 +808,7 @@ class _CoachPlayerHistoryScreenState
   @override
   Widget build(BuildContext context) {
     final CoachRosterEntry entry = _entry;
+    final copy = coachCopyOf(context);
     final bool assistantEnabled =
         ref.watch(authControllerProvider).session?.account.coachAiEnabled ??
             false;
@@ -793,7 +842,7 @@ class _CoachPlayerHistoryScreenState
                   TextButton(
                     key: const Key('log_check_in_action'),
                     onPressed: _loading ? null : _openCheckInSheet,
-                    child: const Text('Log check-in'),
+                    child: Text(copy.logCheckInAction),
                   ),
                   PopupMenuButton<_PlayerAction>(
                     key: const Key('player_page_actions'),
@@ -814,13 +863,13 @@ class _CoachPlayerHistoryScreenState
                         key: const Key('publish_program_action'),
                         value: _PlayerAction.publishProgram,
                         enabled: !_publishing,
-                        child: const Text('Publish program'),
+                        child: Text(copy.publishProgram),
                       ),
                       if (assistantEnabled)
-                        const PopupMenuItem<_PlayerAction>(
+                        PopupMenuItem<_PlayerAction>(
                           key: Key('coach_assistant_entry'),
                           value: _PlayerAction.askAssistant,
-                          child: Text('Ask assistant'),
+                          child: Text(copy.askAssistant),
                         ),
                     ],
                   ),
@@ -841,8 +890,7 @@ class _CoachPlayerHistoryScreenState
   void _openAssistant() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (BuildContext context) =>
-            CoachAssistantScreen(entry: _entry),
+        builder: (BuildContext context) => CoachAssistantScreen(entry: _entry),
       ),
     );
   }
@@ -852,6 +900,7 @@ class _CoachPlayerHistoryScreenState
   /// follow-up is due.
   Widget _alertCard(BuildContext context, CoachAlert alert) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final copy = coachCopyOf(context);
     final bool busy = _busyAlertId == alert.alertId;
     return Padding(
       padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
@@ -864,9 +913,13 @@ class _CoachPlayerHistoryScreenState
             Row(
               children: <Widget>[
                 Expanded(
-                  child: Text(
-                    alert.description,
-                    style: MayosTypography.body.copyWith(color: c.textPrimary),
+                  child: FirstStrongDirection(
+                    text: alert.description,
+                    child: Text(
+                      alert.description,
+                      style:
+                          MayosTypography.body.copyWith(color: c.textPrimary),
+                    ),
                   ),
                 ),
                 coachAlertStateChip(context, alert),
@@ -879,14 +932,14 @@ class _CoachPlayerHistoryScreenState
               children: <Widget>[
                 if (alert.isFollowUpDue)
                   MayosButton(
-                    label: 'Log check-in',
+                    label: copy.logCheckInAction,
                     variant: MayosButtonVariant.tertiary,
                     expand: false,
                     onPressed: busy ? null : _openCheckInSheet,
                   ),
                 if (alert.isNew)
                   MayosButton(
-                    label: 'Acknowledge',
+                    label: copy.acknowledge,
                     variant: MayosButtonVariant.tertiary,
                     expand: false,
                     onPressed: busy
@@ -900,7 +953,7 @@ class _CoachPlayerHistoryScreenState
                   ),
                 if (!alert.isResolved)
                   MayosButton(
-                    label: 'Resolve',
+                    label: copy.resolve,
                     variant: MayosButtonVariant.tertiary,
                     expand: false,
                     loading: busy,
@@ -923,22 +976,26 @@ class _CoachPlayerHistoryScreenState
 
   Widget _buildBody(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final copy = coachCopyOf(context);
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_error != null) {
+    if (_error != null || _assignmentDenied) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(MayosSpacing.xl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Text(_error!,
+              Text(
+                  _assignmentDenied
+                      ? copy.noActiveAssignment
+                      : displayCopyOf(context).failureMessage(_error!),
                   textAlign: TextAlign.center,
                   style: MayosTypography.body.copyWith(color: c.textPrimary)),
               const SizedBox(height: MayosSpacing.md),
               MayosButton(
-                label: 'Retry',
+                label: copy.retry,
                 expand: false,
                 onPressed: _load,
               ),
@@ -952,14 +1009,14 @@ class _CoachPlayerHistoryScreenState
       children: <Widget>[
         if (_publishError != null) ...<Widget>[
           Text(
-            _publishError!,
+            displayCopyOf(context).failureMessage(_publishError!),
             style: MayosTypography.bodySecondary.copyWith(color: c.danger),
           ),
           const SizedBox(height: MayosSpacing.sm),
         ],
         if (_alerts.isNotEmpty) ...<Widget>[
           const SizedBox(height: MayosSpacing.md),
-          Text('Open alerts',
+          Text(copy.openAlerts,
               style: MayosTypography.sectionHeading
                   .copyWith(color: c.textPrimary)),
           const SizedBox(height: MayosSpacing.xs),
@@ -968,15 +1025,15 @@ class _CoachPlayerHistoryScreenState
         const SizedBox(height: MayosSpacing.md),
         MayosSegmentedControl<_PlayerSegment>(
           segments: <MayosSegment<_PlayerSegment>>[
-            const MayosSegment<_PlayerSegment>(
-                value: _PlayerSegment.history, label: 'History'),
-            const MayosSegment<_PlayerSegment>(
-                value: _PlayerSegment.checkIns, label: 'Check-ins'),
+            MayosSegment<_PlayerSegment>(
+                value: _PlayerSegment.history, label: copy.history),
+            MayosSegment<_PlayerSegment>(
+                value: _PlayerSegment.checkIns, label: copy.checkIns),
             MayosSegment<_PlayerSegment>(
               value: _PlayerSegment.requests,
               label: _pendingRequests > 0
-                  ? 'Requests ($_pendingRequests)'
-                  : 'Requests',
+                  ? copy.requestsWithCount(_pendingRequests)
+                  : copy.requests,
             ),
           ],
           selected: _segment,
@@ -998,7 +1055,8 @@ class _CoachPlayerHistoryScreenState
   List<Widget> _historyChildren(BuildContext context) {
     final CoachPlayerSummary summary = _summary!;
     return <Widget>[
-      Text('Since ${summary.startedAt}', style: MayosTypography.bodySecondary),
+      Text(coachCopyOf(context).since(summary.startedAt),
+          style: MayosTypography.bodySecondary),
       const SizedBox(height: MayosSpacing.sm),
       _volumeCard(context),
       const SizedBox(height: MayosSpacing.sm),

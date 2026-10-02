@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/app_failure.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/api_client.dart';
+import '../../../core/connectivity_message.dart';
 import '../../../core/effort.dart';
 import '../../../core/config.dart';
 import '../../../core/models.dart';
@@ -56,7 +58,7 @@ class _DetailData {
   final ProgramExercise? exercise;
   final ExerciseCatalogDetail? catalog;
   final ExerciseHistory? history;
-  final String? partialError;
+  final FailureMessage? partialError;
 }
 
 class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen> {
@@ -75,7 +77,7 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen> {
     ProgramExercise? exercise;
     ExerciseCatalogDetail? catalog;
     ExerciseHistory? history;
-    String? partialError;
+    FailureMessage? partialError;
 
     if (widget.showProgram) {
       try {
@@ -84,18 +86,18 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen> {
           widget.dayOrder,
         );
       } on ApiException catch (error) {
-        partialError = error.message;
+        partialError = apiFailureMessage(error);
       }
     }
     try {
       catalog = await api.exerciseCatalogDetail(widget.exerciseId);
     } on ApiException catch (error) {
-      partialError ??= error.message;
+      partialError ??= apiFailureMessage(error);
     }
     try {
       history = await api.exerciseHistory(widget.exerciseId);
     } on ApiException catch (error) {
-      partialError ??= error.message;
+      partialError ??= apiFailureMessage(error);
     }
 
     return _DetailData(
@@ -143,8 +145,9 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen> {
           final _DetailData data = snapshot.data!;
           if (data.catalog == null && data.exercise == null) {
             return _ErrorView(
-              message: data.partialError ??
-                  displayCopyOf(context).exerciseUnavailable,
+              message: data.partialError == null
+                  ? displayCopyOf(context).exerciseUnavailable
+                  : displayCopyOf(context).failureMessage(data.partialError!),
               onRetry: _retry,
             );
           }
@@ -188,7 +191,9 @@ class _DetailBody extends StatelessWidget {
         ],
         if (data.partialError != null) ...<Widget>[
           const SizedBox(height: MayosSpacing.md),
-          _InlineNotice(message: data.partialError!),
+          _InlineNotice(
+            message: displayCopyOf(context).failureMessage(data.partialError!),
+          ),
         ],
         const SizedBox(height: MayosSpacing.xl),
         MayosSegmentedControl<String>(

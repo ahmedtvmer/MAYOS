@@ -3,6 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
+import '../../core/app_failure.dart';
+import '../../core/connectivity_message.dart';
+import '../../core/display_language/copy_context.dart';
+import '../../core/display_language/feature_copy_context.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
@@ -10,6 +14,7 @@ import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/is_desktop_layout.dart';
 import '../../core/ui/mayos_card.dart';
 import '../../core/ui/mayos_section_header.dart';
+import '../../core/ui/first_strong_direction.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import 'coach_request_sheet.dart';
@@ -32,7 +37,7 @@ class CoachRequestsScreen extends ConsumerStatefulWidget {
 
 class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
   bool _loading = true;
-  String? _error;
+  FailureMessage? _error;
   List<ProgramRequest> _requests = const <ProgramRequest>[];
 
   /// Bumped by every load so a slower, older response can never overwrite a
@@ -51,8 +56,7 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
   void initState() {
     super.initState();
     final List<ProgramRequest>? cached = ref.read(coachRequestsListProvider);
-    final int? cacheRevision =
-        ref.read(coachRequestsListRevisionProvider);
+    final int? cacheRevision = ref.read(coachRequestsListRevisionProvider);
     if (cached == null ||
         cacheRevision != ref.read(coachRequestsRevisionProvider)) {
       _load();
@@ -95,7 +99,7 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
       if (!mounted || seq != _loadSeq) return;
       setState(() {
         _loading = false;
-        _error = error.message;
+        _error = apiFailureMessage(error);
       });
     }
   }
@@ -116,7 +120,7 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
       context: context,
       result: result,
       reload: () => _load(showLoader: false),
-      showError: (String message) => setState(() => _error = message),
+      showError: (FailureMessage failure) => setState(() => _error = failure),
       // This tab republishes the badge from its own reload.
       notifyRequestsTab: false,
     );
@@ -125,8 +129,7 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
   Future<void> _resolveInline(ProgramRequest request,
       CoachRequestDecision decision, String reply) async {
     setState(() => _error = null);
-    final CoachRequestResolution resolution =
-        await resolveCoachProgramRequest(
+    final CoachRequestResolution resolution = await resolveCoachProgramRequest(
       api: ref.read(apiClientProvider),
       request: request,
       decision: decision,
@@ -138,7 +141,7 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
       context: context,
       result: resolution,
       reload: () => _load(showLoader: false),
-      showError: (String message) => setState(() => _error = message),
+      showError: (FailureMessage failure) => setState(() => _error = failure),
       notifyRequestsTab: false,
     );
   }
@@ -150,7 +153,7 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
       child: Text(
-        _error!,
+        displayCopyOf(context).failureMessage(_error!),
         style: MayosTypography.bodySecondary
             .copyWith(color: MayosTheme.of(context).danger),
       ),
@@ -180,20 +183,21 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
   }
 
   Widget _emptyRequests(BuildContext context) => Text(
-        'No program requests yet.',
+        coachCopyOf(context).noProgramRequests,
         style: MayosTypography.bodySecondary
             .copyWith(color: MayosTheme.of(context).textSecondary),
       );
 
   Widget _pendingSection(
       BuildContext context, List<ProgramRequest> pending, String? selectedId) {
+    final copy = coachCopyOf(context);
     final Color secondary = MayosTheme.of(context).textSecondary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const MayosSectionHeader(title: 'Pending'),
+        MayosSectionHeader(title: copy.pending),
         if (pending.isEmpty)
-          Text('No pending requests.',
+          Text(copy.noPendingRequests,
               style: MayosTypography.bodySecondary.copyWith(color: secondary))
         else
           for (final ProgramRequest request in pending)
@@ -217,13 +221,14 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
 
   Widget _answeredSection(
       BuildContext context, List<ProgramRequest> answered, String? selectedId) {
+    final copy = coachCopyOf(context);
     final Color secondary = MayosTheme.of(context).textSecondary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const MayosSectionHeader(title: 'Answered'),
+        MayosSectionHeader(title: copy.answered),
         if (answered.isEmpty)
-          Text('Nothing answered yet.',
+          Text(copy.nothingAnswered,
               style: MayosTypography.bodySecondary.copyWith(color: secondary))
         else
           for (final ProgramRequest request in answered)
@@ -237,7 +242,7 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
 
   Widget _requestDetail(BuildContext context, ProgramRequest? request) {
     if (request == null) {
-      return const Center(child: Text('This request is no longer available.'));
+      return Center(child: Text(coachCopyOf(context).requestUnavailable));
     }
     return CoachRequestDetailPane(
       key: ValueKey<String>(request.requestId),
@@ -272,11 +277,12 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
       }
     }
     final bool desktop = isDesktopLayout(context);
+    final copy = coachCopyOf(context);
     if (desktop) {
       return CoachListDetail(
         list: _requestList(context),
         detail: selectedId == null
-            ? const Center(child: Text('Select a request to review.'))
+            ? Center(child: Text(copy.selectRequest))
             : _requestDetail(context, selected),
         listKey: const Key('coach_request_master_pane'),
         detailKey: const Key('coach_request_detail_region'),
@@ -297,13 +303,12 @@ class CoachRequestDetailPane extends StatefulWidget {
   });
 
   final ProgramRequest request;
-  final String? error;
+  final FailureMessage? error;
   final Future<void> Function(CoachRequestDecision decision, String reply)
       onDecision;
 
   @override
-  State<CoachRequestDetailPane> createState() =>
-      _CoachRequestDetailPaneState();
+  State<CoachRequestDetailPane> createState() => _CoachRequestDetailPaneState();
 }
 
 class _CoachRequestDetailPaneState extends State<CoachRequestDetailPane> {
@@ -327,6 +332,7 @@ class _CoachRequestDetailPaneState extends State<CoachRequestDetailPane> {
   @override
   Widget build(BuildContext context) {
     final ProgramRequest request = widget.request;
+    final copy = coachCopyOf(context);
     final MayosThemeExtension theme = MayosTheme.of(context);
     return ListView(
       key: const Key('coach_request_detail_pane'),
@@ -336,30 +342,36 @@ class _CoachRequestDetailPaneState extends State<CoachRequestDetailPane> {
           Padding(
             padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
             child: Text(
-              widget.error!,
-              style: MayosTypography.bodySecondary
-                  .copyWith(color: theme.danger),
+              displayCopyOf(context).failureMessage(widget.error!),
+              style:
+                  MayosTypography.bodySecondary.copyWith(color: theme.danger),
             ),
           ),
-        const MayosSectionHeader(title: 'Request detail'),
+        MayosSectionHeader(title: copy.requestDetail),
         MayosCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text(request.playerUsername ?? 'Player'),
+              Text(request.playerUsername ?? copy.player),
               const SizedBox(height: MayosSpacing.xs),
               Text(
-                coachRequestTitle(request),
+                coachRequestTitle(context, request),
                 style: MayosTypography.exerciseTitle
                     .copyWith(color: theme.textPrimary),
               ),
               const SizedBox(height: MayosSpacing.xs),
-              Text('“${request.reason}”'),
+              FirstStrongDirection(
+                text: request.reason,
+                child: Text('“${request.reason}”'),
+              ),
               const SizedBox(height: MayosSpacing.xs),
               coachRequestStatusChip(context, request),
               if (request.hasResponse) ...<Widget>[
                 const SizedBox(height: MayosSpacing.xs),
-                Text('You: ${request.response}'),
+                FirstStrongDirection(
+                  text: copy.youReplied(request.response!),
+                  child: Text(copy.youReplied(request.response!)),
+                ),
               ],
             ],
           ),
@@ -374,7 +386,7 @@ class _CoachRequestDetailPaneState extends State<CoachRequestDetailPane> {
           ),
         ] else
           Text(
-            'This request has been answered.',
+            copy.requestAnswered,
             style: MayosTypography.bodySecondary
                 .copyWith(color: theme.textSecondary),
           ),

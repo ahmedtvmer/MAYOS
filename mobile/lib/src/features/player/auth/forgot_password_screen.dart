@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
@@ -27,7 +28,7 @@ class ForgotPasswordScreen extends ConsumerStatefulWidget {
 class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   final TextEditingController _email = TextEditingController();
   bool _busy = false;
-  String? _error;
+  FailureMessage? _error;
   bool _confirmation = false;
 
   @override
@@ -52,8 +53,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       TextInput.finishAutofillContext();
     } on ApiException catch (error) {
       if (mounted) {
-        setState(() => _error = MayosCopy(ref.read(displayLanguageProvider))
-            .failureMessage(mutationFailureMessage(error)));
+        setState(() => _error = mutationFailureMessage(error));
       }
     } finally {
       if (mounted) {
@@ -69,7 +69,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       title: copy.forgotPassword,
       lead: copy.forgotEmailHint,
       wallpaper: true,
-      message: _error == null ? null : AuthInlineNotice(message: _error!),
+      message: _error == null
+          ? null
+          : AuthInlineNotice(message: copy.failureMessage(_error!)),
       primary: MayosButton(
         key: const Key('forgot_submit'),
         label: copy.sendResetLink,

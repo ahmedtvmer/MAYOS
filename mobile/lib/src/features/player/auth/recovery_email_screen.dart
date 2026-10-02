@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
+import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/ui/mayos_button.dart';
@@ -22,7 +24,7 @@ class RecoveryEmailScreen extends ConsumerStatefulWidget {
 class _RecoveryEmailScreenState extends ConsumerState<RecoveryEmailScreen> {
   final TextEditingController _email = TextEditingController();
   bool _busy = false;
-  String? _error;
+  FailureMessage? _error;
 
   @override
   void dispose() {
@@ -44,7 +46,7 @@ class _RecoveryEmailScreenState extends ConsumerState<RecoveryEmailScreen> {
     } on ApiException catch (error) {
       if (mounted) {
         setState(() {
-          _error = error.message;
+          _error = apiFailureMessage(error);
           _busy = false;
         });
       }
@@ -57,7 +59,9 @@ class _RecoveryEmailScreenState extends ConsumerState<RecoveryEmailScreen> {
     return AuthScaffold(
       title: copy.recoveryEmail,
       lead: copy.recoveryEmailLead,
-      message: _error == null ? null : AuthInlineNotice(message: _error!),
+      message: _error == null
+          ? null
+          : AuthInlineNotice(message: copy.failureMessage(_error!)),
       primary: MayosButton(
         key: const Key('recovery_submit'),
         label: copy.saveEmail,

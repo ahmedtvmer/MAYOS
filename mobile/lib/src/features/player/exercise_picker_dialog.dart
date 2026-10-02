@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/app_failure.dart';
+import '../../core/connectivity_message.dart';
+import '../../core/display_language/copy_context.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
@@ -41,15 +44,15 @@ Future<String?> exerciseTargetMuscle(ApiClient api, String exerciseId) async {
 class ExercisePickerDialog extends ConsumerStatefulWidget {
   const ExercisePickerDialog({
     super.key,
-    this.title = 'Add unplanned exercise',
+    this.title,
     this.targetMuscle,
     this.excludeExerciseIds = const <String>{},
     this.suggestedSubstitutes = const <SuggestedSubstitute>[],
-    this.emptyFilteredMessage = 'Every match is already in this workout.',
+    this.emptyFilteredMessage,
   });
 
   /// The dialog's heading: "Add unplanned exercise", or "Replace exercise".
-  final String title;
+  final String? title;
 
   /// The planned exercise's target muscle (#162): when present the search
   /// opens listing that muscle's exercises (server-side `target_muscle`),
@@ -63,7 +66,7 @@ class ExercisePickerDialog extends ConsumerStatefulWidget {
 
   final List<SuggestedSubstitute> suggestedSubstitutes;
 
-  final String emptyFilteredMessage;
+  final String? emptyFilteredMessage;
 
   @override
   ConsumerState<ExercisePickerDialog> createState() =>
@@ -75,6 +78,7 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
 
   bool _searching = false;
   String? _error;
+  FailureMessage? _failure;
   List<ExerciseCatalogEntry> _results = const <ExerciseCatalogEntry>[];
 
   /// Whether [widget.targetMuscle] narrows the results right now (#162).
@@ -111,12 +115,13 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
     final String query = _query.text.trim();
     final String? muscle = _activeMuscle;
     if (query.isEmpty && muscle == null) {
-      setState(() => _error = 'Type an exercise name to search.');
+      setState(() => _error = displayCopyOf(context).typeExerciseName);
       return;
     }
     setState(() {
       _searching = true;
       _error = null;
+      _failure = null;
     });
     try {
       // With a muscle set the server lists or narrows by `target_muscle`, so
@@ -131,8 +136,8 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
         _results = results;
         _error = results.isEmpty
             ? (muscle == null
-                ? 'No matching exercise found.'
-                : 'No $muscle exercise matched.')
+                ? displayCopyOf(context).noMatchingExercise
+                : displayCopyOf(context).noMuscleExerciseMatched(muscle))
             : null;
       });
     } on ApiException catch (error) {
@@ -140,7 +145,7 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
       setState(() {
         _searching = false;
         _results = const <ExerciseCatalogEntry>[];
-        _error = error.message;
+        _failure = apiFailureMessage(error);
       });
     }
   }
@@ -170,7 +175,7 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
       _muscleFilter = !_muscleFilter;
       if (!_muscleFilter && _query.text.trim().isEmpty) {
         _results = const <ExerciseCatalogEntry>[];
-        _error = 'Type an exercise name to search.';
+        _error = displayCopyOf(context).typeExerciseName;
       }
     });
     // Re-list the muscle when it turns on; re-search by name when it turns
@@ -184,10 +189,11 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final copy = displayCopyOf(context);
     final List<ExerciseCatalogEntry> visible = _visible;
     final bool filteredOut = _results.isNotEmpty && visible.isEmpty;
     return AlertDialog(
-      title: Text(widget.title),
+      title: Text(widget.title ?? copy.addUnplannedExercise),
       content: SizedBox(
         width: kExercisePickerDialogWidth,
         child: Column(
@@ -199,7 +205,7 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
               autofocus: true,
               textInputAction: TextInputAction.search,
               onSubmitted: (_) => _search(),
-              label: 'Search the exercise catalog',
+              label: copy.searchExerciseCatalog,
             ),
             if (widget.targetMuscle != null)
               Padding(
@@ -215,11 +221,11 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
                 padding: EdgeInsets.only(top: MayosSpacing.sm),
                 child: Center(child: CircularProgressIndicator()),
               ),
-            if (_error != null)
+            if (_error != null || _failure != null)
               Padding(
                 padding: const EdgeInsets.only(top: MayosSpacing.sm),
                 child: Text(
-                  _error!,
+                  _failure == null ? _error! : copy.failureMessage(_failure!),
                   style: MayosTypography.bodySecondary.copyWith(
                     color: c.danger,
                   ),
@@ -229,7 +235,8 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
               Padding(
                 padding: const EdgeInsets.only(top: MayosSpacing.sm),
                 child: Text(
-                  widget.emptyFilteredMessage,
+                  widget.emptyFilteredMessage ??
+                      copy.everyExerciseMatchInWorkout,
                   style: MayosTypography.bodySecondary.copyWith(
                     color: c.textSecondary,
                   ),
@@ -241,9 +248,9 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
                   shrinkWrap: true,
                   children: <Widget>[
                     if (_visibleSuggestions.isNotEmpty) ...<Widget>[
-                      const Padding(
+                      Padding(
                         padding: EdgeInsets.only(top: MayosSpacing.sm),
-                        child: Text('Suggested substitutes'),
+                        child: Text(copy.suggestedSubstitutes),
                       ),
                       for (final SuggestedSubstitute item
                           in _visibleSuggestions)
@@ -272,13 +279,13 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
       ),
       actions: <Widget>[
         MayosButton(
-          label: 'Cancel',
+          label: copy.cancel,
           variant: MayosButtonVariant.tertiary,
           expand: false,
           onPressed: () => Navigator.of(context).pop(),
         ),
         MayosButton(
-          label: 'Search',
+          label: copy.search,
           expand: false,
           loading: _searching,
           onPressed: _searching ? null : _search,
@@ -309,7 +316,7 @@ class _ExercisePickerMuscleFilterChip extends StatelessWidget {
     return SizedBox(
       height: kMayosMinTapTarget,
       child: Align(
-        alignment: Alignment.centerLeft,
+        alignment: AlignmentDirectional.centerStart,
         child: InkWell(
           key: const ValueKey<String>('logger.search.muscleFilter'),
           borderRadius: MayosRadii.pillRadius,
@@ -328,7 +335,7 @@ class _ExercisePickerMuscleFilterChip extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 Text(
-                  'Muscle: $muscle',
+                  displayCopyOf(context).muscleFilterLabel(muscle),
                   style: MayosTypography.caption.copyWith(
                     color: active ? c.accent : c.textSecondary,
                   ),
@@ -339,7 +346,7 @@ class _ExercisePickerMuscleFilterChip extends StatelessWidget {
                     Icons.close,
                     size: MayosIconSizes.small,
                     color: c.textMuted,
-                    semanticLabel: 'Clear the muscle filter',
+                    semanticLabel: displayCopyOf(context).clearMuscleFilter,
                   ),
                 ],
               ],

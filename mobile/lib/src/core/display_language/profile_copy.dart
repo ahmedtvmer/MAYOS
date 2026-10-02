@@ -31,13 +31,14 @@ class ProfileCopy {
   String get trainingPause =>
       isArabic ? 'إيقاف التدريب مؤقتًا' : 'Training pause';
   String pauseStart(String date) =>
-      isArabic ? 'البداية: $date' : 'Start: $date';
-  String pauseEnd(String date) => isArabic ? 'النهاية: $date' : 'End: $date';
+      isArabic ? 'البداية: ${_ltr(date)}' : 'Start: $date';
+  String pauseEnd(String date) =>
+      isArabic ? 'النهاية: ${_ltr(date)}' : 'End: $date';
   String get schedulePause => isArabic ? 'جدولة التوقف' : 'Schedule pause';
   String get noScheduledPauses =>
       isArabic ? 'لا توجد فترات توقف مجدولة.' : 'No scheduled pauses.';
   String pauseRange(String start, String end) =>
-      isArabic ? 'توقف: $start → $end' : 'Pause: $start → $end';
+      isArabic ? 'توقف: ${_ltr(start)} → ${_ltr(end)}' : 'Pause: $start → $end';
   String get dangerZone => isArabic ? 'منطقة الخطر' : 'Danger zone';
   String get dangerZoneLead => isArabic
       ? 'حذف الحساب يزيله نهائيًا ويمسح بياناته، بما فيها المسودات غير المتزامنة على هذا الجهاز. لا يمكن التراجع عن ذلك.'
@@ -186,4 +187,6 @@ class ProfileCopy {
         'high' => isArabic ? 'مرتفع' : 'High',
         _ => value,
       };
+
+  String _ltr(String value) => '\u2066$value\u2069';
 }

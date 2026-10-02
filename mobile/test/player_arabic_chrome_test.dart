@@ -101,20 +101,41 @@ void main() {
     expect(arabic.programFrequency(2), 'يومان في الأسبوع');
     expect(arabic.programFrequency(3), '3 أيام في الأسبوع');
     expect(arabic.programFrequency(11), '11 يومًا في الأسبوع');
-    expect(arabic.warmupSetCount(3), '3 مجموعات إحماء');
-    expect(arabic.warmupSetCount(11), '11 مجموعة إحماء');
+    expect(arabic.warmupSetCount(3), '\u20663\u2069 مجموعات إحماء');
+    expect(arabic.warmupSetCount(11), '\u206611\u2069 مجموعة إحماء');
     expect(arabic.lastDaysCountedSetsPerMuscle(2),
         'آخر يومين · مجموعات محسوبة لكل عضلة');
     expect(arabic.restTime(2), 'راحة ثانيتين');
-    expect(arabic.repetitionValue('30', '1'), '30 kg × تكرار واحد');
-    expect(arabic.repetitionValue('30', '2'), '30 kg × تكراران');
-    expect(arabic.repetitionValue('30', '3'), '30 kg × 3 تكرارات');
-    expect(arabic.repetitionValue('30', '11'), '30 kg × 11 تكرارًا');
+    expect(
+      arabic.repetitionValue('30', '1'),
+      '\u206630 kg\u2069 × تكرار واحد',
+    );
+    expect(
+      arabic.repetitionValue('30', '2'),
+      '\u206630 kg\u2069 × تكراران',
+    );
+    expect(
+      arabic.repetitionValue('30', '3'),
+      '\u206630 kg\u2069 × \u20663\u2069 تكرارات',
+    );
+    expect(
+      arabic.repetitionValue('30', '11'),
+      '\u206630 kg\u2069 × \u206611\u2069 تكرارًا',
+    );
     expect(arabic.countedSetsMetric(1), 'مجموعة محسوبة واحدة لكل عضلة');
     expect(arabic.countedSetsMetric(2), 'مجموعتان محسوبتان لكل عضلة');
-    expect(arabic.countedSetsMetric(3), '3 مجموعات محسوبة لكل عضلة');
-    expect(arabic.countedSetsMetric(11), '11 مجموعة محسوبة لكل عضلة');
-    expect(arabic.countedSetsMetric(0.5), '0.5 مجموعة محسوبة لكل عضلة');
+    expect(
+      arabic.countedSetsMetric(3),
+      '\u20663\u2069 مجموعات محسوبة لكل عضلة',
+    );
+    expect(
+      arabic.countedSetsMetric(11),
+      '\u206611\u2069 مجموعة محسوبة لكل عضلة',
+    );
+    expect(
+      arabic.countedSetsMetric(0.5),
+      '\u20660.5\u2069 مجموعة محسوبة لكل عضلة',
+    );
     expect(const MayosCopy('en').countedSetsMetric(2), '2 weighted sets');
     expect(
       const MayosCopy('en').countedSetsMetric(1.04),

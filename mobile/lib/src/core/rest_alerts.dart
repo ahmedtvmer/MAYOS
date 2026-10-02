@@ -9,6 +9,7 @@ import 'rest_alerts_web_stub.dart'
     if (dart.library.js_interop) 'rest_alerts_web.dart' as platform;
 import 'rest_length.dart';
 import 'secure_store.dart';
+import 'display_language/workout_copy.dart';
 
 /// What the platform alert layer shows and schedules for ONE rest (#125).
 @immutable
@@ -19,6 +20,7 @@ class RestAlertInfo {
     required this.exerciseName,
     required this.setNumber,
     this.lastLabel,
+    this.languageCode = 'en',
   });
 
   /// When the rest ends (any zone; the platform layer converts).
@@ -34,11 +36,14 @@ class RestAlertInfo {
 
   /// `100 × 5 @1` — the "last" part of the notification line, when known.
   final String? lastLabel;
+  final String languageCode;
 
   /// The notification's second line: `Next: <exercise> · set N · last <prev>`.
-  String get line =>
-      'Next: $exerciseName · set $setNumber'
-      '${lastLabel == null ? '' : ' · last $lastLabel'}';
+  String get line => WorkoutCopy(languageCode).restNotificationLine(
+        exerciseName: exerciseName,
+        setNumber: setNumber,
+        lastLabel: lastLabel,
+      );
 }
 
 /// The ONE seam between the rest timer and the platform's alert machinery —
@@ -146,13 +151,15 @@ class AndroidRestAlerts implements RestAlerts {
     Future<bool?> Function()? canScheduleExactNotifications,
     Future<void> Function()? initialize,
     DateTime Function()? now,
-  }) : _store = store ?? SecureStore(),
-       _explain = explain,
-       _requestNotificationsPermission = requestNotificationsPermission,
-       _requestExactAlarmsPermission = requestExactAlarmsPermission,
-       _canScheduleExact = canScheduleExactNotifications,
-       _initializePlugin = initialize,
-       _now = now ?? DateTime.now;
+    String Function()? displayLanguage,
+  })  : _store = store ?? SecureStore(),
+        _explain = explain,
+        _requestNotificationsPermission = requestNotificationsPermission,
+        _requestExactAlarmsPermission = requestExactAlarmsPermission,
+        _canScheduleExact = canScheduleExactNotifications,
+        _initializePlugin = initialize,
+        _now = now ?? DateTime.now,
+        _displayLanguage = displayLanguage ?? (() => 'en');
 
   /// The ongoing countdown notification and the one-shot end alert, kept as
   /// two ids so ending a rest cancels only the right pair.
@@ -180,6 +187,7 @@ class AndroidRestAlerts implements RestAlerts {
   /// "run the real initialization".
   final Future<void> Function()? _initializePlugin;
   final DateTime Function() _now;
+  final String Function() _displayLanguage;
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
@@ -235,18 +243,17 @@ class AndroidRestAlerts implements RestAlerts {
     }
   }
 
-  AndroidFlutterLocalNotificationsPlugin? get _android => _plugin
-      .resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin
-      >();
+  AndroidFlutterLocalNotificationsPlugin? get _android =>
+      _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
 
   NotificationDetails _restDetails(RestAlertInfo info, int timeoutAfterMs) =>
       NotificationDetails(
         android: AndroidNotificationDetails(
           _restChannel,
-          'Rest timer',
+          WorkoutCopy(_displayLanguage()).restTimerChannel,
           channelDescription:
-              'The running rest countdown while a workout is in progress.',
+              WorkoutCopy(_displayLanguage()).restTimerChannelDescription,
           importance: Importance.low,
           priority: Priority.low,
           ongoing: true,
@@ -271,18 +278,19 @@ class AndroidRestAlerts implements RestAlerts {
   /// the scheduled alarm and by the foreground [playEnd] with the same id, so
   /// at most one "Rest complete" is ever posted for a rest (#125).
   NotificationDetails get _endDetails => NotificationDetails(
-    android: AndroidNotificationDetails(
-      _endChannel,
-      'Rest complete',
-      channelDescription: 'The end-of-rest vibration and sound.',
-      importance: Importance.high,
-      priority: Priority.high,
-      playSound: true,
-      enableVibration: true,
-      autoCancel: true,
-      visibility: NotificationVisibility.public,
-    ),
-  );
+        android: AndroidNotificationDetails(
+          _endChannel,
+          WorkoutCopy(_displayLanguage()).restCompleteNotification,
+          channelDescription:
+              WorkoutCopy(_displayLanguage()).restEndChannelDescription,
+          importance: Importance.high,
+          priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
+          autoCancel: true,
+          visibility: NotificationVisibility.public,
+        ),
+      );
 
   @override
   Future<void> ensureReady() {
@@ -315,9 +323,8 @@ class AndroidRestAlerts implements RestAlerts {
       // Best-effort, like the other protected-storage flags.
     }
     try {
-      _explain?.call(
-        'Rest alerts need permission to reach you when your screen is off.',
-      );
+      _explain
+          ?.call(WorkoutCopy(_displayLanguage()).restNotificationPermission);
     } on Object {
       // No messenger attached (a headless test): the system prompt still
       // carries its own wording.
@@ -349,7 +356,9 @@ class AndroidRestAlerts implements RestAlerts {
     _later(
       () => _plugin.show(
         id: _restId,
-        title: 'MAYOS · Rest ${restMmSs(ms <= 0 ? 0 : (ms / 1000).ceil())}',
+        title: WorkoutCopy(_displayLanguage()).restNotificationTitle(
+          restMmSs(ms <= 0 ? 0 : (ms / 1000).ceil()),
+        ),
         body: info.line,
         notificationDetails: _restDetails(info, ms),
       ),
@@ -386,8 +395,9 @@ class AndroidRestAlerts implements RestAlerts {
       await _plugin.zonedSchedule(
         id: _endId,
         scheduledDate: tz.TZDateTime.from(info.endsAt, tz.local),
-        title: 'Rest complete',
-        body: 'Back to ${info.exerciseName}',
+        title: WorkoutCopy(info.languageCode).restCompleteNotification,
+        body:
+            WorkoutCopy(info.languageCode).returnToExercise(info.exerciseName),
         notificationDetails: _endDetails,
         androidScheduleMode: mode,
       );
@@ -414,8 +424,9 @@ class AndroidRestAlerts implements RestAlerts {
       // the alert (#125).
       await _plugin.show(
         id: _endId,
-        title: 'Rest complete',
-        body: 'Back to ${info.exerciseName}',
+        title: WorkoutCopy(info.languageCode).restCompleteNotification,
+        body:
+            WorkoutCopy(info.languageCode).returnToExercise(info.exerciseName),
         notificationDetails: _endDetails,
       );
     });
@@ -428,12 +439,17 @@ class AndroidRestAlerts implements RestAlerts {
 RestAlerts platformRestAlerts({
   void Function(String line)? explain,
   DateTime Function()? now,
+  String Function()? displayLanguage,
 }) {
   if (kIsWeb) {
     return WebRestAlerts();
   }
   if (defaultTargetPlatform == TargetPlatform.android) {
-    return AndroidRestAlerts(explain: explain, now: now);
+    return AndroidRestAlerts(
+      explain: explain,
+      now: now,
+      displayLanguage: displayLanguage,
+    );
   }
   return const NoopRestAlerts();
 }

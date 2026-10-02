@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../router.dart';
+import '../../core/display_language/copy_context.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
@@ -18,6 +19,7 @@ class NotFoundScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final copy = displayCopyOf(context);
     return MayosScaffold(
       showLogo: true,
       body: Center(
@@ -27,19 +29,20 @@ class NotFoundScreen extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Text(
-                'Page not found',
+                copy.pageNotFound,
                 textAlign: TextAlign.center,
-                style: MayosTypography.pageHeading.copyWith(color: c.textPrimary),
+                style:
+                    MayosTypography.pageHeading.copyWith(color: c.textPrimary),
               ),
               const SizedBox(height: MayosSpacing.sm),
               Text(
-                'The page you are looking for does not exist or has moved.',
+                copy.pageMissingLead,
                 textAlign: TextAlign.center,
                 style: MayosTypography.body.copyWith(color: c.textSecondary),
               ),
               const SizedBox(height: MayosSpacing.xl),
               MayosButton(
-                label: 'Go to home',
+                label: copy.goToHome,
                 expand: false,
                 onPressed: () => context.go(homePath),
               ),

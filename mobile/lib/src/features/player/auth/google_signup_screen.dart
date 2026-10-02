@@ -53,6 +53,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
   bool _busy = false;
   _UsernameCheck _check = _UsernameCheck.idle;
   String? _error;
+  FailureMessage? _failure;
 
   String _loginLocation() => carryingLocation(context, loginPath);
 
@@ -94,6 +95,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
   void _onChanged(String value) {
     _touched = true;
     _error = null;
+    _failure = null;
     if (googleUsernameFormatError(value.trim()) != null) {
       _debounce?.cancel();
       setState(() => _check = _UsernameCheck.idle);
@@ -183,6 +185,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
     setState(() {
       _busy = true;
       _error = null;
+      _failure = null;
     });
     try {
       final CompleteGoogleSignupResult result =
@@ -202,8 +205,8 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
         case GoogleSignupTicketExpired():
           context.go(_loginLocation());
         case GoogleSignupRefused(:final message, :final failureMessage):
-          setState(() => _error = MayosCopy(ref.read(displayLanguageProvider))
-              .failureMessage(failureMessage ?? ServerFailureMessage(message)));
+          setState(
+              () => _failure = failureMessage ?? ServerFailureMessage(message));
       }
     } finally {
       if (mounted) {
@@ -248,7 +251,9 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
       title: copy.chooseUsername,
       lead: copy.chooseUsernameLead,
       wallpaper: true,
-      message: _error == null ? null : AuthInlineNotice(message: _error!),
+      message: _failure != null
+          ? AuthInlineNotice(message: copy.failureMessage(_failure!))
+          : (_error == null ? null : AuthInlineNotice(message: _error!)),
       primary: MayosButton(
         key: const Key('google_signup_submit'),
         label: copy.createAccount,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
+import '../../core/display_language/copy_context.dart';
 import '../../core/ui/mayos_logo.dart';
 import '../../core/ui/mayos_progress.dart';
 import '../../core/ui/mayos_wallpaper.dart';
@@ -31,8 +32,7 @@ class SplashScreen extends StatelessWidget {
               backgroundColor: Colors.transparent,
               body: SafeArea(
                 child: LayoutBuilder(
-                  builder:
-                      (BuildContext context, BoxConstraints constraints) {
+                  builder: (BuildContext context, BoxConstraints constraints) {
                     final double byWidth = constraints.maxWidth * 0.42;
                     final double byHeight = constraints.maxHeight * 0.22;
                     final double logoHeight =
@@ -48,7 +48,8 @@ class SplashScreen extends StatelessWidget {
                         stackHeight / 2 + logoHeight / 2 + MayosSpacing.lg;
                     return Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: MayosSpacing.xl, vertical: verticalPadding),
+                          horizontal: MayosSpacing.xl,
+                          vertical: verticalPadding),
                       child: Stack(
                         fit: StackFit.expand,
                         children: <Widget>[
@@ -58,15 +59,15 @@ class SplashScreen extends StatelessWidget {
                               variant: MayosBrandVariant.white,
                             ),
                           ),
-                          Positioned(
+                          PositionedDirectional(
                             top: taglineTop,
-                            left: 0,
-                            right: 0,
+                            start: 0,
+                            end: 0,
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: <Widget>[
                                 Text(
-                                  'Progress, Engineered.',
+                                  displayCopyOf(context).brandTagline,
                                   textAlign: TextAlign.center,
                                   style: MayosTypography.serifMedium.copyWith(
                                     fontSize: 20,

@@ -14,6 +14,7 @@ import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_card.dart';
+import '../../../core/ui/first_strong_direction.dart';
 import '../../../providers.dart';
 import 'draft_sync_service.dart';
 
@@ -61,7 +62,6 @@ class WorkoutDraftsScreen extends ConsumerWidget {
                 drafts.isEmpty
                     ? copy.noDraftsYet
                     : copy.draftsCounts(pending, synced),
-                textDirection: copy.isArabic ? TextDirection.ltr : null,
                 textAlign: copy.isArabic ? TextAlign.end : null,
                 style: MayosTypography.bodySecondary
                     .copyWith(color: c.textSecondary),
@@ -141,7 +141,6 @@ class _DraftTile extends ConsumerWidget {
                         '${copy.workingSetCount(draft.workingSetCount)} · ${copy.draftStatus(draft.status)}',
                         style: MayosTypography.bodySecondary
                             .copyWith(color: c.textSecondary),
-                        textDirection: copy.isArabic ? TextDirection.ltr : null,
                         textAlign: copy.isArabic ? TextAlign.end : null,
                       ),
                       if (draft.versionDifferenceLabel != null) ...<Widget>[
@@ -156,21 +155,25 @@ class _DraftTile extends ConsumerWidget {
                               : draft.versionDifferenceLabel!,
                           style: MayosTypography.caption
                               .copyWith(color: c.textMuted),
-                          textDirection:
-                              copy.isArabic ? TextDirection.ltr : null,
                           textAlign: copy.isArabic ? TextAlign.end : null,
                         ),
                       ],
                       if (draft.lastError != null &&
                           draft.needsAttention) ...<Widget>[
                         const SizedBox(height: 2),
-                        Text(
-                          displayCopy.failureMessage(
+                        FirstStrongDirection(
+                          text: displayCopy.failureMessage(
                             draft.lastErrorFailure ??
                                 ServerFailureMessage(draft.lastError!),
                           ),
-                          style:
-                              MayosTypography.caption.copyWith(color: c.danger),
+                          child: Text(
+                            displayCopy.failureMessage(
+                              draft.lastErrorFailure ??
+                                  ServerFailureMessage(draft.lastError!),
+                            ),
+                            style: MayosTypography.caption
+                                .copyWith(color: c.danger),
+                          ),
                         ),
                       ],
                     ],

@@ -6,6 +6,8 @@ import '../../core/ui/is_desktop_layout.dart';
 import '../../core/ui/mayos_app_header.dart';
 import '../../core/ui/mayos_bottom_navigation.dart';
 import '../../core/ui/mayos_scaffold.dart';
+import '../../core/display_language/feature_copy_context.dart';
+import '../../core/display_language/coach_copy.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import '../shared/mode_switch.dart';
@@ -36,33 +38,34 @@ class CoachShell extends ConsumerWidget {
   final Widget child;
   final String? assignmentId;
 
-  static const List<MayosNavItem> _items = <MayosNavItem>[
-    MayosNavItem(
-      label: 'Roster',
-      icon: Icons.groups_outlined,
-      selectedIcon: Icons.groups,
-    ),
-    MayosNavItem(
-      label: 'Alerts',
-      icon: Icons.notifications_outlined,
-      selectedIcon: Icons.notifications,
-    ),
-    MayosNavItem(
-      label: 'Requests',
-      icon: Icons.inbox_outlined,
-      selectedIcon: Icons.inbox,
-    ),
-    MayosNavItem(
-      label: 'Profile',
-      icon: Icons.badge_outlined,
-      selectedIcon: Icons.badge,
-    ),
-  ];
+  List<MayosNavItem> _items(CoachCopy copy) => <MayosNavItem>[
+        MayosNavItem(
+          label: copy.roster,
+          icon: Icons.groups_outlined,
+          selectedIcon: Icons.groups,
+        ),
+        MayosNavItem(
+          label: copy.alerts,
+          icon: Icons.notifications_outlined,
+          selectedIcon: Icons.notifications,
+        ),
+        MayosNavItem(
+          label: copy.requests,
+          icon: Icons.inbox_outlined,
+          selectedIcon: Icons.inbox,
+        ),
+        MayosNavItem(
+          label: copy.profile,
+          icon: Icons.badge_outlined,
+          selectedIcon: Icons.badge,
+        ),
+      ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final int newAlerts = ref.watch(coachNewAlertsCountProvider);
     final int pendingRequests = ref.watch(coachPendingRequestsCountProvider);
+    final List<MayosNavItem> items = _items(coachCopyOf(context));
     final String path = GoRouterState.of(context).uri.path;
     final int index = _tabForPath(path);
     final bool assignmentSelected = assignmentId != null;
@@ -99,11 +102,11 @@ class CoachShell extends ConsumerWidget {
       showOfflineBanner: !assignmentSelected,
       bottomBar: MayosBottomNavigation(
         items: <MayosNavItem>[
-          for (int i = 0; i < _items.length; i++)
+          for (int i = 0; i < items.length; i++)
             MayosNavItem(
-              label: _items[i].label,
-              icon: _items[i].icon,
-              selectedIcon: _items[i].selectedIcon,
+              label: items[i].label,
+              icon: items[i].icon,
+              selectedIcon: items[i].selectedIcon,
               badge: switch (i) {
                 CoachShellTab.alerts => newAlerts,
                 CoachShellTab.requests => pendingRequests,

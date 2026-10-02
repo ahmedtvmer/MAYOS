@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
+import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/privacy_policy.dart';
@@ -29,7 +31,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   final TextEditingController _password = TextEditingController();
   bool _rememberMe = false;
   bool _busy = false;
-  String? _error;
+  FailureMessage? _error;
 
   @override
   void dispose() {
@@ -52,7 +54,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       TextInput.finishAutofillContext();
     } on ApiException catch (error) {
       if (mounted) {
-        setState(() => _error = error.message);
+        setState(() => _error = apiFailureMessage(error));
       }
     } finally {
       if (mounted) {
@@ -72,9 +74,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       lead: copy.signInLead,
       wallpaper: true,
       showHomeScreenInstallHint: true,
-      message: googleError != null
-          ? AuthInlineNotice(message: googleError!)
-          : (_error == null ? null : AuthInlineNotice(message: _error!)),
+      message: googleFailure != null
+          ? AuthInlineNotice(message: copy.failureMessage(googleFailure!))
+          : (_error == null
+              ? null
+              : AuthInlineNotice(message: copy.failureMessage(_error!))),
       primary: MayosButton(
         key: const Key('login_submit'),
         label: copy.logIn,

@@ -167,7 +167,7 @@ Future<void> showModeSheet(BuildContext context, WidgetRef ref) {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Padding(
-            padding: const EdgeInsets.fromLTRB(
+            padding: const EdgeInsetsDirectional.fromSTEB(
                 MayosSpacing.lg, 0, MayosSpacing.lg, MayosSpacing.sm),
             child: Row(
               children: <Widget>[

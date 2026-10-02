@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
+import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/privacy_policy.dart';
@@ -33,6 +35,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
   bool _showCoachInviteCode = false;
   bool _busy = false;
   String? _error;
+  FailureMessage? _apiFailure;
 
   @override
   void dispose() {
@@ -48,6 +51,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
         validateNewPassword(_password.text, _confirm.text);
     if (passwordError != null) {
       final MayosCopy copy = MayosCopy(ref.read(displayLanguageProvider));
+      setState(() => _apiFailure = null);
       setState(
           () => _error = newPasswordValidationMessage(passwordError, copy));
       return;
@@ -55,6 +59,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
     setState(() {
       _busy = true;
       _error = null;
+      _apiFailure = null;
     });
     try {
       await ref.read(authControllerProvider.notifier).register(
@@ -70,7 +75,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       TextInput.finishAutofillContext();
     } on ApiException catch (error) {
       if (mounted) {
-        setState(() => _error = error.message);
+        setState(() => _apiFailure = apiFailureMessage(error));
       }
     } finally {
       if (mounted) {
@@ -87,9 +92,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       lead: copy.registerLead,
       wallpaper: true,
       showHomeScreenInstallHint: true,
-      message: googleError != null
-          ? AuthInlineNotice(message: googleError!)
-          : (_error == null ? null : AuthInlineNotice(message: _error!)),
+      message: googleFailure != null
+          ? AuthInlineNotice(message: copy.failureMessage(googleFailure!))
+          : (_apiFailure != null
+              ? AuthInlineNotice(message: copy.failureMessage(_apiFailure!))
+              : (_error == null ? null : AuthInlineNotice(message: _error!))),
       primary: MayosButton(
         key: const Key('register_submit'),
         label: copy.createAccount,

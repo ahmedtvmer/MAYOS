@@ -177,8 +177,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
-FakeMayosApi _signedInFake(
-    {List<Map<String, dynamic>>? baselines}) {
+FakeMayosApi _signedInFake({List<Map<String, dynamic>>? baselines}) {
   final FakeMayosApi fake = FakeMayosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
@@ -287,8 +286,7 @@ List<Override> _appOverrides({
           .overrideWithValue(Future<String?>.value('UTC')),
       // Workout time and the summary's duration read this clock (#159).
       if (clock != null) clockProvider.overrideWithValue(clock),
-      webDirectWorkoutCommitEnabledProvider
-          .overrideWithValue(webDirectCommit),
+      webDirectWorkoutCommitEnabledProvider.overrideWithValue(webDirectCommit),
       apiClientProvider.overrideWith((ref) {
         final ApiClient client = ApiClient(
           tokens: ref.watch(tokenStoreProvider),
@@ -552,7 +550,8 @@ void main() {
     expect(find.byKey(const Key('chat_composer')), findsOneWidget);
   });
 
-  testWidgets('warm-up movements show prescribed rows and stay outside work progress',
+  testWidgets(
+      'warm-up movements show prescribed rows and stay outside work progress',
       (WidgetTester tester) async {
     final InMemoryActiveWorkoutStore store =
         await _openLogger(tester, day: _warmupDay);
@@ -561,23 +560,29 @@ void main() {
         findsOneWidget);
     expect(find.byType(WarmupMovementLoggingCard), findsNWidgets(2));
     expect(
-      tester.widget<TextFormField>(find.byKey(
-          const ValueKey<String>('logger.warmup.0.0.kg'))).initialValue,
+      tester
+          .widget<TextFormField>(
+              find.byKey(const ValueKey<String>('logger.warmup.0.0.kg')))
+          .initialValue,
       isEmpty,
     );
     expect(
-      tester.widget<TextFormField>(find.byKey(
-          const ValueKey<String>('logger.warmup.0.0.reps'))).initialValue,
+      tester
+          .widget<TextFormField>(
+              find.byKey(const ValueKey<String>('logger.warmup.0.0.reps')))
+          .initialValue,
       '10',
     );
     expect(
-      tester.widget<TextFormField>(find.byKey(
-          const ValueKey<String>('logger.warmup.1.0.reps'))).initialValue,
+      tester
+          .widget<TextFormField>(
+              find.byKey(const ValueKey<String>('logger.warmup.1.0.reps')))
+          .initialValue,
       '12',
     );
 
-    await tester.tap(
-        find.byKey(const ValueKey<String>('logger.warmup.0.0.tick')));
+    await tester
+        .tap(find.byKey(const ValueKey<String>('logger.warmup.0.0.tick')));
     await tester.pumpAndSettle();
     final ActiveWorkout persisted = (await store.read(_account))!;
     expect(persisted.warmupMovements[0].sets[0].ticked, isTrue);
@@ -603,7 +608,8 @@ void main() {
     expect(find.byType(CardioLoggingCard), findsNothing);
   });
 
-  testWidgets('prescribed Cardio needs valid minutes and stays outside set progress',
+  testWidgets(
+      'prescribed Cardio needs valid minutes and stays outside set progress',
       (WidgetTester tester) async {
     final InMemoryDraftStore drafts = InMemoryDraftStore();
     final InMemoryActiveWorkoutStore store =
@@ -612,9 +618,11 @@ void main() {
     expect(find.byType(CardioLoggingCard), findsOneWidget);
     expect(find.text('Steady bike after lifting'), findsOneWidget);
     expect(
-      tester.widget<IconButton>(find.byKey(
-        const ValueKey<String>('logger.cardio.tick'),
-      )).onPressed,
+      tester
+          .widget<IconButton>(find.byKey(
+            const ValueKey<String>('logger.cardio.tick'),
+          ))
+          .onPressed,
       isNull,
     );
 
@@ -624,9 +632,11 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      tester.widget<IconButton>(find.byKey(
-        const ValueKey<String>('logger.cardio.tick'),
-      )).onPressed,
+      tester
+          .widget<IconButton>(find.byKey(
+            const ValueKey<String>('logger.cardio.tick'),
+          ))
+          .onPressed,
       isNull,
     );
     await tester.enterText(
@@ -635,9 +645,11 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      tester.widget<IconButton>(find.byKey(
-        const ValueKey<String>('logger.cardio.tick'),
-      )).onPressed,
+      tester
+          .widget<IconButton>(find.byKey(
+            const ValueKey<String>('logger.cardio.tick'),
+          ))
+          .onPressed,
       isNotNull,
     );
     await tester.tap(find.byKey(const ValueKey<String>('logger.cardio.tick')));
@@ -695,8 +707,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(weight, '');
     await tester.pumpAndSettle();
-    await tester.tap(
-        find.byKey(const ValueKey<String>('logger.warmup.0.0.tick')));
+    await tester
+        .tap(find.byKey(const ValueKey<String>('logger.warmup.0.0.tick')));
     await tester.tap(_tick(0, 0));
     await tester.pumpAndSettle();
 
@@ -795,7 +807,8 @@ void main() {
     expect(find.text('Unplanned'), findsNothing);
   });
 
-  testWidgets('the Last: line is hidden entirely when there is no history '
+  testWidgets(
+      'the Last: line is hidden entirely when there is no history '
       '(#158)', (WidgetTester tester) async {
     await _openLogger(tester, baselines: <Map<String, dynamic>>[]);
 
@@ -813,7 +826,8 @@ void main() {
     );
   });
 
-  testWidgets('the exercise card names the movement in primary colour and '
+  testWidgets(
+      'the exercise card names the movement in primary colour and '
       'adds a full-width + Add set (#158)', (WidgetTester tester) async {
     await _openLogger(tester);
     final MayosThemeExtension c = MayosThemeExtension.light;
@@ -1076,14 +1090,15 @@ void main() {
     }
   });
 
-  testWidgets('row states: a pending check is outlined, a ticked row is '
+  testWidgets(
+      'row states: a pending check is outlined, a ticked row is '
       'filled, tinted and still editable (#158)', (WidgetTester tester) async {
     await _openLogger(tester);
     final MayosThemeExtension c = MayosThemeExtension.light;
 
     BoxDecoration tickDecoration(WidgetTester tester) => tester
-        .widget<DecoratedBox>(
-            find.descendant(of: _tick(0, 1), matching: find.byType(DecoratedBox)))
+        .widget<DecoratedBox>(find.descendant(
+            of: _tick(0, 1), matching: find.byType(DecoratedBox)))
         .decoration as BoxDecoration;
 
     // Set 2 is pending: neutral row, outlined check.
@@ -1106,7 +1121,8 @@ void main() {
     expect(find.text('Bench Press · set 2 · Reps'), findsOneWidget);
   });
 
-  testWidgets('RIR in the row is a compact selector that opens the existing '
+  testWidgets(
+      'RIR in the row is a compact selector that opens the existing '
       'chips (#158)', (WidgetTester tester) async {
     await _openLogger(tester);
 
@@ -1121,8 +1137,7 @@ void main() {
     await tester.tap(_cell(0, 0, 'rir'));
     await tester.pump(const Duration(milliseconds: 100));
     for (final int value in <int>[0, 1, 2, 3, 4, 5]) {
-      expect(
-          find.byKey(ValueKey<String>('logger.rir.$value')), findsOneWidget);
+      expect(find.byKey(ValueKey<String>('logger.rir.$value')), findsOneWidget);
     }
     expect(find.byKey(const ValueKey<String>('logger.rir.unrated')),
         findsOneWidget);
@@ -1138,12 +1153,14 @@ void main() {
     expect(find.text('Bench Press · set 2 · Weight (kg)'), findsOneWidget);
   });
 
-  testWidgets('no overflow at 360dp (light) and the row keeps its 48dp '
+  testWidgets(
+      'no overflow at 360dp (light) and the row keeps its 48dp '
       'targets (#158)', (WidgetTester tester) async {
     await _assertNoOverflowAt360(tester, mode: ThemeMode.light);
   });
 
-  testWidgets('no overflow at 360dp (dark) and the row keeps its 48dp '
+  testWidgets(
+      'no overflow at 360dp (dark) and the row keeps its 48dp '
       'targets (#158)', (WidgetTester tester) async {
     await _assertNoOverflowAt360(tester, mode: ThemeMode.dark);
     // The sweep really is dark: the card's title reads the dark token.
@@ -1444,7 +1461,8 @@ void main() {
     expect(_badge(0, 0, PrRecordKind.weight), findsOneWidget);
   });
 
-  testWidgets('the online summary freezes projected Weekly streak and Checkpoint',
+  testWidgets(
+      'the online summary freezes projected Weekly streak and Checkpoint',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _signedInFake()
       ..trainingStatusBody = <String, dynamic>{
@@ -1472,7 +1490,8 @@ void main() {
     expect(find.text('This week: 2 of 2 done'), findsOneWidget);
     expect(find.text('1 workout to your 10th'), findsOneWidget);
 
-    final BuildContext context = tester.element(find.byType(WorkoutLoggerScreen));
+    final BuildContext context =
+        tester.element(find.byType(WorkoutLoggerScreen));
     final controller = ProviderScope.containerOf(context)
         .read(trainingStatusProvider.notifier);
     await controller.acceptCommit(_account, <String, dynamic>{
@@ -1492,7 +1511,8 @@ void main() {
     expect(find.text('1 workout to your 10th'), findsOneWidget);
   });
 
-  testWidgets('an offline summary projects pending drafts from its cached status',
+  testWidgets(
+      'an offline summary projects pending drafts from its cached status',
       (WidgetTester tester) async {
     final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
     await cache.writeTrainingStatus(
@@ -1533,7 +1553,8 @@ void main() {
     expect(find.text('Your 10th workout!'), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('logger.summary.checkpoint')),
         findsOneWidget);
-    expect(find.text('Your review will appear on your dashboard'), findsOneWidget);
+    expect(
+        find.text('Your review will appear on your dashboard'), findsOneWidget);
   });
 
   testWidgets('a committed Checkpoint shows its review and computed ratings',
@@ -1569,7 +1590,8 @@ void main() {
         'rating': <Map<String, dynamic>>[
           <String, dynamic>{'part': 'Consistency', 'label': 'Strong'},
         ],
-        'text': 'Checkpoint 10: 10 workouts since you started logging in MAYOS.',
+        'text':
+            'Checkpoint 10: 10 workouts since you started logging in MAYOS.',
         'text_is_template': true,
       };
     await _openLogger(
@@ -1583,7 +1605,8 @@ void main() {
     await tester.tap(_tick(0, 0));
     await tester.pump(const Duration(milliseconds: 100));
     await _finishAndOpenSummary(tester);
-    expect(find.text('Your review will appear on your dashboard'), findsOneWidget);
+    expect(
+        find.text('Your review will appear on your dashboard'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey<String>('logger.save')));
     await _pumpUntilFound(tester, find.text('Consistency: Strong'));
 
@@ -1591,7 +1614,8 @@ void main() {
     expect(find.text('Consistency: Strong'), findsOneWidget);
   });
 
-  testWidgets('a stale cached week hides streak lines but keeps Checkpoint progress',
+  testWidgets(
+      'a stale cached week hides streak lines but keeps Checkpoint progress',
       (WidgetTester tester) async {
     final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
     await cache.writeTrainingStatus(
@@ -1622,7 +1646,8 @@ void main() {
     expect(find.textContaining('Weekly streak:'), findsNothing);
     expect(find.textContaining('This week:'), findsNothing);
     expect(find.text('Your 10th workout!'), findsOneWidget);
-    expect(find.text('Your review will appear on your dashboard'), findsOneWidget);
+    expect(
+        find.text('Your review will appear on your dashboard'), findsOneWidget);
   });
 
   testWidgets('records and workout summary fit phone and desktop columns', (
@@ -1723,7 +1748,12 @@ void main() {
     expect(find.text('مجموعات التدريب المحددة'), findsOneWidget);
     expect(find.text('إجمالي الوزن المرفوع'), findsOneWidget);
     expect(find.text('المدة'), findsOneWidget);
-    expect(find.text('Bench Press · رقم قياسي 105 kg'), findsOneWidget);
+    expect(
+      find.text(
+        '\u2066Bench Press\u2069 · رقم قياسي \u2066105 kg\u2069',
+      ),
+      findsOneWidget,
+    );
     final MayosSettingsTile dateTile =
         tester.widget<MayosSettingsTile>(find.byType(MayosSettingsTile).first);
     expect(dateTile.subtitle, matches(RegExp(r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$')));
@@ -1768,7 +1798,8 @@ void main() {
     expect(find.widgetWithText(MayosStat, '500'), findsOneWidget);
   });
 
-  testWidgets('a newly earned record vibrates heavily once, and an untick '
+  testWidgets(
+      'a newly earned record vibrates heavily once, and an untick '
       'never vibrates', (WidgetTester tester) async {
     final List<MethodCall> calls = _recordPlatformCalls(tester);
     await _openLogger(tester);
@@ -1884,7 +1915,8 @@ void main() {
     expect(find.widgetWithText(MayosStat, '2185'), findsNothing);
   });
 
-  testWidgets('the top bar shows Workout time from the start, ticking every '
+  testWidgets(
+      'the top bar shows Workout time from the start, ticking every '
       'second (#159)', (WidgetTester tester) async {
     DateTime now = DateTime.parse('2026-09-28T08:00:42.000Z');
     await _openLogger(
@@ -1897,8 +1929,8 @@ void main() {
     final Finder label = find.text('Log workout · 00:42');
     expect(label, findsOneWidget);
     // Sans: the serif display role belongs to the day heading alone (#157).
-    expect(tester.widget<Text>(label).style!.fontFamily,
-        MayosTypography.uiFamily);
+    expect(
+        tester.widget<Text>(label).style!.fontFamily, MayosTypography.uiFamily);
 
     // The bar redraws once a second off the clock — derived, never counted,
     // so nothing pauses and nothing has to be stored.
@@ -1952,7 +1984,8 @@ void main() {
     expect(find.text('Log workout · 1:00:00'), findsOneWidget);
   });
 
-  testWidgets('the ⋮ menu discards the workout behind its own confirmation '
+  testWidgets(
+      'the ⋮ menu discards the workout behind its own confirmation '
       '(#159)', (WidgetTester tester) async {
     final InMemoryActiveWorkoutStore store = await _openLogger(tester);
 
@@ -1991,7 +2024,8 @@ void main() {
     expect(find.text('Discard this workout?'), findsNothing);
   });
 
-  testWidgets('the day heading is the one serif line and the progress line '
+  testWidgets(
+      'the day heading is the one serif line and the progress line '
       'counts exercises and sets (#159)', (WidgetTester tester) async {
     await _openLogger(tester);
 
@@ -2029,7 +2063,8 @@ void main() {
     expect(tester.widget<Text>(progress).data, '2/2 exercises · 3/3 sets');
   });
 
-  testWidgets('the summary shows the workout\'s total duration, frozen at '
+  testWidgets(
+      'the summary shows the workout\'s total duration, frozen at '
       'Finish, with no overflow at 360dp (#159)', (WidgetTester tester) async {
     DateTime now = DateTime.parse('2026-09-28T08:32:10.000Z');
     await _openLogger(
@@ -2079,8 +2114,7 @@ void main() {
     expect(tester.takeException(), isNull);
 
     // Back to the logger: the live tick resumes from the same clock.
-    final Finder back =
-        find.byKey(const ValueKey<String>('logger.save.back'));
+    final Finder back = find.byKey(const ValueKey<String>('logger.save.back'));
     await tester.ensureVisible(back);
     await tester.pump(const Duration(milliseconds: 100));
     await tester.tap(back);
@@ -2091,7 +2125,8 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the bottom bar keeps sets progress and Finish in reach while '
+  testWidgets(
+      'the bottom bar keeps sets progress and Finish in reach while '
       'the list scrolls (#160)', (WidgetTester tester) async {
     await _openLogger(tester);
     // The narrow phone, where the list really does scroll (#160).
@@ -2163,7 +2198,8 @@ void main() {
     expect(bar, findsOneWidget);
   });
 
-  testWidgets('the bottom bar steps aside for the keypad and the last card '
+  testWidgets(
+      'the bottom bar steps aside for the keypad and the last card '
       'scrolls clear of it (#160)', (WidgetTester tester) async {
     await _openLogger(tester);
     tester.view.physicalSize = const Size(360, 640);
@@ -2230,7 +2266,8 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the bottom bar takes the system-nav inset inside its surface '
+  testWidgets(
+      'the bottom bar takes the system-nav inset inside its surface '
       'and keeps its content above it (#160)', (WidgetTester tester) async {
     // A gesture-nav phone: the bottom 48dp of the screen belongs to the
     // system navigation.

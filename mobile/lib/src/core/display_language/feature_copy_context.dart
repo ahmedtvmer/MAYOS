@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import 'assignment_copy.dart';
+import 'coach_copy.dart';
 import 'copy_context.dart';
 import 'profile_copy.dart';
 import 'settings_copy.dart';
@@ -16,6 +17,9 @@ ProfileCopy profileCopyOf(BuildContext context) =>
 
 AssignmentCopy assignmentCopyOf(BuildContext context) =>
     AssignmentCopy(displayCopyOf(context).languageCode);
+
+CoachCopy coachCopyOf(BuildContext context) =>
+    CoachCopy(displayCopyOf(context).languageCode);
 
 SettingsCopy settingsCopyOf(BuildContext context) =>
     SettingsCopy(displayCopyOf(context).languageCode);

@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_failure.dart';
 import '../../core/models.dart';
+import '../../core/display_language/feature_copy_context.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_card.dart';
+import '../../core/ui/first_strong_direction.dart';
 import '../../providers.dart';
 import 'coach_request_sheet.dart';
 
@@ -68,7 +71,7 @@ Color coachAlertStateColor(BuildContext context, String state) {
 Widget coachAlertStateChip(BuildContext context, CoachAlert alert) {
   return coachPillChip(
     context,
-    alert.stateLabel,
+    coachCopyOf(context).alertState(alert.state),
     coachAlertStateColor(context, alert.state),
   );
 }
@@ -109,16 +112,12 @@ List<ProgramRequest> sortCoachRequests(Iterable<ProgramRequest> requests) {
     }
     if (a.isPending) {
       final int byCreated = a.createdAt.compareTo(b.createdAt);
-      return byCreated != 0
-          ? byCreated
-          : a.requestId.compareTo(b.requestId);
+      return byCreated != 0 ? byCreated : a.requestId.compareTo(b.requestId);
     }
     final String resolvedA = a.resolvedAt ?? a.createdAt;
     final String resolvedB = b.resolvedAt ?? b.createdAt;
     final int byResolved = resolvedB.compareTo(resolvedA);
-    return byResolved != 0
-        ? byResolved
-        : a.requestId.compareTo(b.requestId);
+    return byResolved != 0 ? byResolved : a.requestId.compareTo(b.requestId);
   });
   return sorted;
 }
@@ -138,7 +137,7 @@ Future<void> applyCoachRequestAction(
   required BuildContext context,
   required CoachRequestResolution result,
   required Future<void> Function() reload,
-  required void Function(String message) showError,
+  required void Function(FailureMessage failure) showError,
   required bool notifyRequestsTab,
 }) async {
   if (result.resolved) {
@@ -147,12 +146,12 @@ Future<void> applyCoachRequestAction(
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(request.isApplied
-              ? 'Program request applied.'
-              : 'Program request declined.'),
+              ? coachCopyOf(context).requestApplied
+              : coachCopyOf(context).requestDeclined),
         ),
       );
     }
-  } else if (result.message == null) {
+  } else if (result.failure == null) {
     // Closed without acting: nothing changed.
     return;
   }
@@ -164,9 +163,9 @@ Future<void> applyCoachRequestAction(
     ref.read(coachRequestsRevisionProvider.notifier).state++;
   }
   await reload();
-  final String? message = result.message;
-  if (message != null && context.mounted) {
-    showError(message);
+  final FailureMessage? failure = result.failure;
+  if (failure != null && context.mounted) {
+    showError(failure);
   }
 }
 
@@ -191,9 +190,9 @@ class CoachRequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
-    final String player = playerUsername ??
-        request.playerUsername ??
-        'Player';
+    final copy = coachCopyOf(context);
+    final String player =
+        playerUsername ?? request.playerUsername ?? copy.player;
     final DateTime? sent = DateTime.tryParse(request.createdAt);
     return MayosCard(
       key: Key('request_card_${request.requestId}'),
@@ -214,7 +213,9 @@ class CoachRequestCard extends StatelessWidget {
               const SizedBox(width: MayosSpacing.xs),
               Expanded(
                 child: Text(
-                  request.dayName == null ? player : '$player · ${request.dayName}',
+                  request.dayName == null
+                      ? player
+                      : copy.requestPlayerDay(player, request.dayName!),
                   style:
                       MayosTypography.caption.copyWith(color: c.textSecondary),
                 ),
@@ -224,29 +225,41 @@ class CoachRequestCard extends StatelessWidget {
           ),
           const SizedBox(height: MayosSpacing.xs),
           Text(
-            coachRequestTitle(request),
-            style:
-                MayosTypography.exerciseTitle.copyWith(color: c.textPrimary),
+            copy.programRequestTitle(
+              isSubstitution: request.isExerciseSubstitution,
+              exerciseId: request.exerciseId,
+              day: request.dayName,
+              replacementId: request.replacementExerciseId,
+              frequency: request.desiredWeeklyFrequency,
+              preference: request.desiredSplitPreference,
+            ),
+            style: MayosTypography.exerciseTitle.copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: MayosSpacing.xxs),
-          Text(
-            '“${request.reason}”',
-            style:
-                MayosTypography.bodySecondary.copyWith(color: c.textPrimary),
+          FirstStrongDirection(
+            text: request.reason,
+            child: Text(
+              '“${request.reason}”',
+              style:
+                  MayosTypography.bodySecondary.copyWith(color: c.textPrimary),
+            ),
           ),
           if (request.hasResponse) ...<Widget>[
             const SizedBox(height: MayosSpacing.xs),
-            Text(
-              'You: ${request.response}',
-              style: MayosTypography.caption.copyWith(color: c.textSecondary),
+            FirstStrongDirection(
+              text: copy.youReplied(request.response!),
+              child: Text(
+                copy.youReplied(request.response!),
+                style: MayosTypography.caption.copyWith(color: c.textSecondary),
+              ),
             ),
           ],
           if (request.isPending) ...<Widget>[
             const SizedBox(height: MayosSpacing.xxs),
             Text(
               sent == null
-                  ? 'Sent ${request.createdAt} · tap to review'
-                  : 'Sent ${isoDateOf(sent)} · tap to review',
+                  ? copy.sentOn(request.createdAt)
+                  : copy.sentOn(isoDateOf(sent)),
               style: MayosTypography.caption.copyWith(color: c.textMuted),
             ),
           ],

@@ -100,7 +100,7 @@ class _HomeScreenInstallHintBanner extends StatelessWidget {
         border: Border.all(color: colors.border),
       ),
       child: Padding(
-        padding: const EdgeInsets.only(left: MayosSpacing.xs),
+        padding: const EdgeInsetsDirectional.only(start: MayosSpacing.xs),
         child: Row(
           children: <Widget>[
             const Expanded(child: _HomeScreenInstallHintText()),

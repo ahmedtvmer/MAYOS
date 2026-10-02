@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/active_program.dart';
+import '../../../core/app_failure.dart';
+import '../../../core/connectivity_message.dart';
 import '../../../core/api_client.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
@@ -60,7 +62,7 @@ class _DashboardData {
 
   /// Set when a non-fatal section failed to load so the body can say so instead
   /// of silently showing an empty section.
-  final String? partialError;
+  final FailureMessage? partialError;
 }
 
 class _DashboardTabState extends ConsumerState<DashboardTab> {
@@ -102,21 +104,21 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     List<PersonalRecord> records = const <PersonalRecord>[];
     LatestSession? latestSession;
     CheckpointReviewListItem? unopenedCheckpointReview;
-    String? partialError;
+    FailureMessage? partialError;
     try {
       schedule = await api.trainingSchedule();
     } on ApiException catch (error) {
-      partialError = error.message;
+      partialError = apiFailureMessage(error);
     }
     try {
       volume = await api.volume();
     } on ApiException catch (error) {
-      partialError ??= error.message;
+      partialError ??= apiFailureMessage(error);
     }
     try {
       records = await api.personalRecords();
     } on ApiException catch (error) {
-      partialError ??= error.message;
+      partialError ??= apiFailureMessage(error);
     }
     try {
       final List<CheckpointReviewListItem> reviews =
@@ -128,7 +130,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
         }
       }
     } on ApiException catch (error) {
-      partialError ??= error.message;
+      partialError ??= apiFailureMessage(error);
     }
     try {
       latestSession = await api.latestSession();
@@ -191,8 +193,9 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
         }
         if (snapshot.hasError) {
           final Object error = snapshot.error!;
+          final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
           final String message = error is ApiException
-              ? error.message
+              ? copy.failureMessage(apiFailureMessage(error))
               : displayCopyOf(context).loadHomeFailed;
           return _ErrorView(message: message, onRetry: _refresh);
         }
@@ -272,7 +275,7 @@ class _HomeBody extends StatelessWidget {
             _InlineNotice(message: displayCopyOf(context).offlineSavedProgram),
           ] else if (data.partialError != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
-            _InlineNotice(message: data.partialError!),
+            _InlineNotice(message: copy.failureMessage(data.partialError!)),
           ],
           const SizedBox(height: MayosSpacing.xl),
           _ProgramSection(
@@ -500,12 +503,9 @@ class _NextSessionExercise extends StatelessWidget {
                     .copyWith(color: c.textSecondary),
               ),
             ),
-            Directionality(
-              textDirection: TextDirection.ltr,
-              child: Text(
-                displayCopyOf(context).restTime(exercise.restSecondsOrDefault),
-                style: MayosTypography.caption.copyWith(color: c.textMuted),
-              ),
+            Text(
+              displayCopyOf(context).restTime(exercise.restSecondsOrDefault),
+              style: MayosTypography.caption.copyWith(color: c.textMuted),
             ),
           ],
         ),
@@ -543,7 +543,6 @@ class _VolumeSection extends StatelessWidget {
         else ...<Widget>[
           Text(
             displayCopyOf(context).countedSetsMetric(total),
-            textDirection: TextDirection.ltr,
             style: MayosTypography.numericSmall.copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: MayosSpacing.md),

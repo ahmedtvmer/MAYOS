@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
@@ -31,17 +32,13 @@ class ResetPasswordScreen extends ConsumerStatefulWidget {
 }
 
 class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
-  /// Used only when there is no token to submit and no server detail to show;
-  /// the server's own generic message is shown verbatim whenever it responds.
-  static const String _genericFallback =
-      'Could not reset the password. Request a new link.';
-
   late final TextEditingController _token =
       TextEditingController(text: widget.token);
   final TextEditingController _password = TextEditingController();
   final TextEditingController _confirm = TextEditingController();
   bool _busy = false;
   String? _error;
+  FailureMessage? _apiFailure;
 
   @override
   void dispose() {
@@ -52,20 +49,35 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
   }
 
   /// Prefers the server's own `detail`; falls back only when none is present.
-  String _errorMessage(ApiException error) {
+  FailureMessage _apiFailureMessage(ApiException error) {
     if (isNetworkFailure(error)) {
-      return needsConnectionMessage;
+      return mutationFailureMessage(error);
     }
-    final String detail = error.message.trim();
-    return detail.isEmpty ? _genericFallback : detail;
+    final FailureMessage failure = apiFailureMessage(error);
+    if (failure case ServerFailureMessage(:final String detail)
+        when detail.trim().isEmpty) {
+      return const AppFailureMessage(
+        AppFailureId.passwordResetFallback,
+        'Could not reset the password. Request a new link.',
+      );
+    }
+    return failure;
   }
 
   Future<void> _submit() async {
     final String token = _token.text.trim();
     final String password = _password.text;
-    setState(() => _error = null);
+    setState(() {
+      _error = null;
+      _apiFailure = null;
+    });
     if (token.isEmpty) {
-      setState(() => _error = _genericFallback);
+      setState(() {
+        _apiFailure = const AppFailureMessage(
+          AppFailureId.passwordResetFallback,
+          'Could not reset the password. Request a new link.',
+        );
+      });
       return;
     }
     final NewPasswordValidation? passwordError =
@@ -87,7 +99,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       }
     } on ApiException catch (error) {
       if (mounted) {
-        setState(() => _error = _errorMessage(error));
+        setState(() => _apiFailure = _apiFailureMessage(error));
       }
     } finally {
       if (mounted) {
@@ -103,7 +115,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       title: copy.resetPassword,
       lead: copy.resetPasswordLead,
       wallpaper: true,
-      message: _error == null ? null : AuthInlineNotice(message: _error!),
+      message: _apiFailure != null
+          ? AuthInlineNotice(message: copy.failureMessage(_apiFailure!))
+          : (_error == null ? null : AuthInlineNotice(message: _error!)),
       primary: MayosButton(
         key: const Key('reset_submit'),
         label: copy.setNewPassword,

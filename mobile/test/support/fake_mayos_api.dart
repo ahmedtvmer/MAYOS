@@ -18,6 +18,7 @@ class FakeMayosApi {
   String? issuedToken;
   String? currentUsername;
   bool tokenValid = true;
+  bool loginNetworkFails = false;
   bool displayLanguageUpdateFails = false;
   bool coach = false;
   bool playerCapability = true;
@@ -60,6 +61,7 @@ class FakeMayosApi {
   String? validNewAccountCoachInviteCode;
   String? lastRegistrationCoachInviteCode;
   bool coachProfileLoadFails = false;
+  bool coachAssignmentsNetworkFails = false;
   String? currentAccountDisplayLanguageOverride;
 
   // Google sign-in and the username picker (#115).
@@ -690,6 +692,9 @@ class FakeMayosApi {
   }
 
   FakeResponse _login(FakeRequest request) {
+    if (loginNetworkFails) {
+      return const FakeResponse.networkFailure();
+    }
     final String? username = request.body['trainee_id'] as String?;
     final String? password = request.body['password'] as String?;
     if (username == null || passwords[username] != password) {
@@ -929,6 +934,9 @@ class FakeMayosApi {
     if (!coach) {
       return const FakeResponse(
           403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    if (coachAssignmentsNetworkFails) {
+      return const FakeResponse.networkFailure();
     }
     // The service derives the urgency basis on every fetch (#118/#120): alert
     // badges from the alerts table unless a test states them explicitly, and

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/connectivity.dart';
 import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/selector.dart';
 import '../../../core/password_policy.dart';
 import '../../../core/theme/mayos_spacing.dart';
@@ -446,7 +447,7 @@ class AuthPasswordField extends ConsumerStatefulWidget {
   const AuthPasswordField({
     super.key,
     required this.controller,
-    this.label = 'Password',
+    this.label,
     this.helperText,
     this.errorText,
     this.textInputAction,
@@ -458,7 +459,7 @@ class AuthPasswordField extends ConsumerStatefulWidget {
   });
 
   final TextEditingController controller;
-  final String label;
+  final String? label;
   final String? helperText;
   final String? errorText;
   final TextInputAction? textInputAction;
@@ -477,10 +478,11 @@ class _AuthPasswordFieldState extends ConsumerState<AuthPasswordField> {
 
   @override
   Widget build(BuildContext context) {
+    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     return MayosTextField(
       fieldKey: widget.fieldKey,
       controller: widget.controller,
-      label: widget.label,
+      label: widget.label ?? copy.password,
       helperText: widget.helperText,
       errorText: widget.errorText,
       obscureText: _obscure,
@@ -493,7 +495,7 @@ class _AuthPasswordFieldState extends ConsumerState<AuthPasswordField> {
       onSubmitted: widget.onSubmitted,
       suffixIcon: IconButton(
         key: widget.toggleKey,
-        tooltip: _obscure ? 'Show password' : 'Hide password',
+        tooltip: _obscure ? copy.showPassword : copy.hidePassword,
         onPressed: () => setState(() => _obscure = !_obscure),
         icon: Icon(
           _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,

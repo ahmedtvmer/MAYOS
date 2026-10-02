@@ -52,13 +52,14 @@ class AssignmentCopy {
       return 'Change to $frequency days/week$split';
     }
     if (kind == 'exercise_substitution') {
-      return 'طلب تبديل تمرين من المدرب: $exercise في $day إلى $replacement';
+      return 'طلب تبديل تمرين من المدرب: ${_ltr(exercise ?? '')} في ${_ltr(day ?? '')} إلى ${_ltr(replacement ?? '')}';
     }
     final String days = frequency == null
         ? ''
-        : '${arabicCountPhrase(frequency, ArabicCountNoun.day)} في الأسبوع';
-    final String split =
-        preference == null || preference.isEmpty ? '' : ' ($preference)';
+        : '${arabicCountPhrase(frequency, ArabicCountNoun.day, isolateCount: true)} في الأسبوع';
+    final String split = preference == null || preference.isEmpty
+        ? ''
+        : ' (${_ltr(preference)})';
     return 'تغيير تقسيمة البرنامج إلى $days$split';
   }
 
@@ -67,7 +68,7 @@ class AssignmentCopy {
   String get checkIns => isArabic ? 'سجلات التواصل' : 'Check-ins';
   String get formerCoach => isArabic ? 'المدرب السابق' : 'Former coach';
   String coachUsername(String username) =>
-      isArabic ? 'المدرب $username' : 'Coach $username';
+      isArabic ? 'المدرب ${_ltr(username)}' : 'Coach $username';
   String get assignmentEndedStatus =>
       isArabic ? 'انتهت علاقة التدريب' : 'assignment ended';
   String get yourCoach => isArabic ? 'مدربك' : 'Your coach';
@@ -126,4 +127,6 @@ class AssignmentCopy {
       : 'Pick the day, the exercise, and its replacement.';
   String get submitRequest => isArabic ? 'إرسال الطلب' : 'Submit request';
   String get cancel => isArabic ? 'إلغاء' : 'Cancel';
+
+  String _ltr(String value) => '\u2066$value\u2069';
 }

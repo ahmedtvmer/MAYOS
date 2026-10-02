@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
+import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
@@ -32,6 +34,7 @@ class _CoachCodeFormState extends ConsumerState<CoachCodeForm> {
   final TextEditingController _code = TextEditingController();
   bool _submitting = false;
   String? _error;
+  FailureMessage? _failure;
 
   @override
   void dispose() {
@@ -48,6 +51,7 @@ class _CoachCodeFormState extends ConsumerState<CoachCodeForm> {
     setState(() {
       _submitting = true;
       _error = null;
+      _failure = null;
     });
     try {
       await ref.read(authControllerProvider.notifier).redeemCoachInvite(token);
@@ -58,7 +62,7 @@ class _CoachCodeFormState extends ConsumerState<CoachCodeForm> {
       if (mounted) {
         setState(() {
           _submitting = false;
-          _error = error.message;
+          _failure = apiFailureMessage(error);
         });
       }
     }
@@ -83,8 +87,11 @@ class _CoachCodeFormState extends ConsumerState<CoachCodeForm> {
           controller: _code,
           autocorrect: false,
           enableSuggestions: false,
+          textDirection: TextDirection.ltr,
           label: displayCopyOf(context).coachCode,
-          errorText: _error,
+          errorText: _failure == null
+              ? _error
+              : displayCopyOf(context).failureMessage(_failure!),
         ),
         const SizedBox(height: MayosSpacing.lg),
         MayosButton(

@@ -150,11 +150,12 @@ void main() {
     expect(find.text('مجموعات التدريب'), findsOneWidget);
     expect(find.text('Bench Press'), findsOneWidget);
     expect(find.textContaining('4 أيام في الأسبوع'), findsOneWidget);
-    final Finder warmupPrescription = find.text('2 × 15 · راحة 45 ثانية');
+    final Finder warmupPrescription =
+        find.text('\u20662 × 15\u2069 · راحة \u206645\u2069 ثانية');
     expect(warmupPrescription, findsOneWidget);
     expect(
       Directionality.of(tester.element(warmupPrescription)),
-      TextDirection.ltr,
+      TextDirection.rtl,
     );
     expect(find.text('2 × 15 · rest 45s'), findsNothing);
     expect(Directionality.of(tester.element(find.text('مجموعات التدريب'))),
@@ -188,20 +189,15 @@ void main() {
 
     expect(find.text('اقتُرح تخفيف التدريب'), findsOneWidget);
     expect(find.text('Acute readiness floor (1/5 logged).'), findsOneWidget);
-    expect(
-      find.text(
-        'عند التطبيق: خُفضت المجموعات إلى 50% من البرنامج · '
-        'ضُبط الجهد عند RIR ≥ 3. أُبلغ مدربك.',
-      ),
-      findsOneWidget,
+    final Finder deloadSummary = find.text(
+      'عند التطبيق: خُفضت المجموعات إلى \u206650%\u2069 من البرنامج · '
+      'ضُبط الجهد عند RIR \u2066≥ 3\u2069. أُبلغ مدربك.',
     );
+    expect(deloadSummary, findsOneWidget);
+    expect(tester.widget<Text>(deloadSummary).textDirection, isNull);
     expect(
-      tester
-          .widget<Text>(
-            find.textContaining('RIR ≥ 3'),
-          )
-          .textDirection,
-      TextDirection.ltr,
+      Directionality.of(tester.element(deloadSummary)),
+      TextDirection.rtl,
     );
     expect(find.text('اسأل المساعد'), findsOneWidget);
   });

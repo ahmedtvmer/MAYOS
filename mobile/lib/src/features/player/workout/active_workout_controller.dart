@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show FlutterError;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/active_workout.dart';
@@ -72,24 +73,26 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     required ActiveWorkoutStore store,
     required BaselinesService baselines,
     Future<Prescription?> Function(String accountId, int dayOrder)?
-    loadPrescription,
+        loadPrescription,
     DateTime Function()? now,
     String Function()? newId,
     String Function()? clientSessionIdGenerator,
     this.persistClientSessionId = false,
     RestLengthStore? restLengths,
     RestAlerts? alerts,
-  }) : _store = store,
-       _baselines = baselines,
-       _loadPrescription = loadPrescription,
-       _now = now ?? DateTime.now,
-       _newId = newId ?? _fallbackId,
-       _newClientSessionId = clientSessionIdGenerator ?? newClientSessionId,
-       _restLengths = restLengths,
-       _alerts = alerts,
-       super(
-         const ActiveWorkoutState(accountId: null, ready: true, workout: null),
-       );
+    String Function()? displayLanguage,
+  })  : _store = store,
+        _baselines = baselines,
+        _loadPrescription = loadPrescription,
+        _now = now ?? DateTime.now,
+        _newId = newId ?? _fallbackId,
+        _newClientSessionId = clientSessionIdGenerator ?? newClientSessionId,
+        _restLengths = restLengths,
+        _alerts = alerts,
+        _displayLanguage = displayLanguage ?? (() => 'en'),
+        super(
+          const ActiveWorkoutState(accountId: null, ready: true, workout: null),
+        );
 
   final ActiveWorkoutStore _store;
   final BaselinesService _baselines;
@@ -97,7 +100,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   /// Fresh `GET /workouts/prescription` with a short timeout, else the cached
   /// prescription — how the old logger resolved it (#123 item 4).
   final Future<Prescription?> Function(String accountId, int dayOrder)?
-  _loadPrescription;
+      _loadPrescription;
   final DateTime Function() _now;
   final String Function() _newId;
   final String Function() _newClientSessionId;
@@ -110,6 +113,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
 
   /// The one seam to the platform's notification/alarm/sound layer (#125).
   final RestAlerts? _alerts;
+  final String Function() _displayLanguage;
 
   /// The overrides of the signed-in account, keyed by exercise id.
   Map<String, int> _restOverrides = const <String, int>{};
@@ -456,22 +460,24 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     int? reps,
     double? rir,
     bool unrated = false,
-  }) => _updateSet(
-    exerciseIndex,
-    setIndex,
-    (ActiveWorkoutSet set) => set.copyWith(
-      weightKg: weightKg,
-      reps: reps,
-      rir: rir,
-      clearRir: unrated,
-    ),
-  );
+  }) =>
+      _updateSet(
+        exerciseIndex,
+        setIndex,
+        (ActiveWorkoutSet set) => set.copyWith(
+          weightKg: weightKg,
+          reps: reps,
+          rir: rir,
+          clearRir: unrated,
+        ),
+      );
 
   Future<void> updateWarmupMovementSet(
     int movementIndex,
     int setIndex,
     ActiveWarmupSet updatedSet,
-  ) => _updateWarmupSet(movementIndex, setIndex, updatedSet);
+  ) =>
+      _updateWarmupSet(movementIndex, setIndex, updatedSet);
 
   Future<void> updateCardio(WorkoutCardio updatedCardio) async {
     final ActiveWorkout? current = state.workout;
@@ -484,10 +490,10 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   /// Toggles a set row between working and warm-up (`N ↔ W`); warm-ups never
   /// count as working sets.
   Future<void> toggleWarmup(int exerciseIndex, int setIndex) => _updateSet(
-    exerciseIndex,
-    setIndex,
-    (ActiveWorkoutSet set) => set.copyWith(isWarmup: !set.isWarmup),
-  );
+        exerciseIndex,
+        setIndex,
+        (ActiveWorkoutSet set) => set.copyWith(isWarmup: !set.isWarmup),
+      );
 
   /// Ticks or unticks a set row; only ticked rows reach the Workout draft.
   ///
@@ -665,9 +671,8 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     // Back with the rows it was seeded with, all empty (#162 review): the
     // replace cleared them, so nothing logged survives, and the card is
     // loggable again straight away.
-    final int rows = planned.effectiveSetCount > 0
-        ? planned.effectiveSetCount
-        : 1;
+    final int rows =
+        planned.effectiveSetCount > 0 ? planned.effectiveSetCount : 1;
     exercises[exerciseIndex - 1] = planned.copyWith(
       replaced: false,
       sets: <ActiveWorkoutSet>[
@@ -756,9 +761,8 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       exerciseId: exercise.exerciseId,
       exerciseName: exercise.exerciseName,
       setNumber: setIndex + 1,
-      lastLabel: set.reps > 0 || set.weightKg > 0
-          ? setPerformanceLabel(set)
-          : null,
+      lastLabel:
+          set.reps > 0 || set.weightKg > 0 ? setPerformanceLabel(set) : null,
     );
     await _persist(current.copyWith(rest: rest));
     _alertsLive = true;
@@ -951,13 +955,24 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   /// ticked does it fall back to the row that started the rest.
   RestAlertInfo _alertInfo(ActiveRestTimer rest, DateTime now) {
     final ActiveWorkout? current = state.workout;
+    String displayLanguage() {
+      try {
+        return _displayLanguage();
+      } on FlutterError {
+        // The optional alert copy must not require a WidgetsBinding. The
+        // controller is also used in plain unit tests and non-widget hosts.
+        return 'en';
+      }
+    }
+
     RestAlertInfo origin() => RestAlertInfo(
-      endsAt: rest.endsAtClock(now),
-      totalSeconds: rest.totalSeconds,
-      exerciseName: rest.exerciseName,
-      setNumber: rest.setNumber,
-      lastLabel: rest.lastLabel,
-    );
+          endsAt: rest.endsAtClock(now),
+          totalSeconds: rest.totalSeconds,
+          exerciseName: rest.exerciseName,
+          setNumber: rest.setNumber,
+          lastLabel: rest.lastLabel,
+          languageCode: displayLanguage(),
+        );
     if (current == null) {
       return origin();
     }
@@ -977,6 +992,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       exerciseName: next.exercise.exerciseName,
       setNumber: next.setIndex + 1,
       lastLabel: previous == null ? null : previousLabel(previous),
+      languageCode: displayLanguage(),
     );
   }
 
@@ -1102,9 +1118,8 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   /// best-effort, like `AppModeStore`, and one failed write must not break the
   /// chain for the writes after it.
   Future<void> _enqueue(Future<void> Function() action) {
-    final Future<void> next = _writeChain
-        .then<void>((_) => action())
-        .catchError((Object _) {});
+    final Future<void> next =
+        _writeChain.then<void>((_) => action()).catchError((Object _) {});
     _writeChain = next;
     return next;
   }
@@ -1153,8 +1168,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   ) {
     final double projected = target?.projectedWeight ?? 0;
     final int reps = (exercise['target_reps_min'] as num?)?.toInt() ?? 0;
-    final double rpe =
-        target?.targetRpeCap ??
+    final double rpe = target?.targetRpeCap ??
         (exercise['target_rpe'] as num?)?.toDouble() ??
         8.5;
     return PrescriptionHint(

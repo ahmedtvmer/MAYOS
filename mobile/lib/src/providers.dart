@@ -13,6 +13,7 @@ import 'core/baselines.dart';
 import 'core/browser_key_value_store.dart';
 import 'core/chat_storage.dart';
 import 'core/config.dart';
+import 'core/display_language/controller.dart';
 import 'core/display_language/store.dart';
 import 'core/models.dart';
 import 'core/personal_records.dart';
@@ -464,6 +465,7 @@ final GlobalKey<ScaffoldMessengerState> mayosMessengerKey =
 final Provider<RestAlerts> restAlertsProvider = Provider<RestAlerts>((ref) {
   return platformRestAlerts(
     now: ref.watch(clockProvider),
+    displayLanguage: () => ref.read(displayLanguageProvider),
     explain: (String line) => mayosMessengerKey.currentState?.showSnackBar(
       SnackBar(content: Text(line)),
     ),
@@ -504,6 +506,7 @@ final StateNotifierProvider<ActiveWorkoutController, ActiveWorkoutState>
     restLengths: ref.watch(restLengthStoreProvider),
     alerts: ref.watch(restAlertsProvider),
     now: ref.watch(clockProvider),
+    displayLanguage: () => ref.read(displayLanguageProvider),
   );
   ref.listen<AuthState>(authControllerProvider, (
     AuthState? previous,

@@ -38,7 +38,6 @@ Future<void> confirmLogout(BuildContext context, WidgetRef ref) async {
         title: Text(copy.unsyncedWorkouts),
         content: Text(
           copy.unsyncedDraftWarning(unsynced),
-          textDirection: copy.isArabic ? TextDirection.ltr : null,
           textAlign: copy.isArabic ? TextAlign.end : null,
         ),
         actions: <Widget>[

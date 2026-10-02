@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers.dart';
 import 'api_client.dart';
+import 'display_language/copy_context.dart';
 import 'connectivity_events.dart';
 import 'connectivity_message.dart';
 import 'theme/mayos_spacing.dart';
@@ -119,7 +120,7 @@ class OfflineBanner extends StatelessWidget {
                 size: MayosIconSizes.small, color: c.textSecondary),
             const SizedBox(width: MayosSpacing.xs),
             Text(
-              message,
+              displayCopyOf(context).offlineBanner,
               style: MayosTypography.body.copyWith(color: c.textPrimary),
             ),
           ],

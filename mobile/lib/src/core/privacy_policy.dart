@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'config.dart';
+import 'display_language/copy_context.dart';
 import 'external_url_launcher.dart';
 
 export 'external_url_launcher.dart' show ExternalUrlLauncher;
@@ -24,8 +25,7 @@ Future<void> openPrivacyPolicy(BuildContext context, WidgetRef ref) async {
       await ref.read(privacyUrlLauncherProvider)(privacyPolicyUrl);
   if (!opened && context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text('Could not open the privacy policy in your browser.')),
+      SnackBar(content: Text(displayCopyOf(context).unavailablePrivacyPolicy)),
     );
   }
 }

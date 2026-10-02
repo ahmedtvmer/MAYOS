@@ -69,6 +69,41 @@ enum ArabicCountNoun {
     dualNominative: 'تكراران',
     dualOblique: 'تكرارين',
     many: 'تكرارًا',
+  ),
+  assignment(
+    zeroAndFew: 'علاقات تدريب',
+    one: 'علاقة تدريب واحدة',
+    dualNominative: 'علاقتا تدريب',
+    dualOblique: 'علاقتي تدريب',
+    many: 'علاقة تدريب',
+  ),
+  alert(
+    zeroAndFew: 'تنبيهات',
+    one: 'تنبيه واحد',
+    dualNominative: 'تنبيهان',
+    dualOblique: 'تنبيهين',
+    many: 'تنبيهًا',
+  ),
+  request(
+    zeroAndFew: 'طلبات',
+    one: 'طلب واحد',
+    dualNominative: 'طلبان',
+    dualOblique: 'طلبين',
+    many: 'طلبًا',
+  ),
+  warmupMovement(
+    zeroAndFew: 'حركات إحماء',
+    one: 'حركة إحماء واحدة',
+    dualNominative: 'حركتا إحماء',
+    dualOblique: 'حركتي إحماء',
+    many: 'حركة إحماء',
+  ),
+  minute(
+    zeroAndFew: 'دقائق',
+    one: 'دقيقة واحدة',
+    dualNominative: 'دقيقتان',
+    dualOblique: 'دقيقتين',
+    many: 'دقيقة',
   );
 
   const ArabicCountNoun({
@@ -90,12 +125,16 @@ enum ArabicCountNoun {
 ///
 /// [afterPreposition] selects the oblique dual form for phrases such as
 /// "replace on two other days" and "rest for two seconds".
+/// [isolateCount] wraps a rendered numeral in LRI/PDI when it sits inside
+/// Arabic prose.
 String arabicCountPhrase(
   int count,
   ArabicCountNoun noun, {
   bool afterPreposition = false,
+  bool isolateCount = false,
 }) {
-  if (count == 0) return '0 ${noun.zeroAndFew}';
+  final String numericCount = isolateCount ? '\u2066$count\u2069' : '$count';
+  if (count == 0) return '$numericCount ${noun.zeroAndFew}';
   if (count == 1) return noun.one;
   if (count == 2) {
     final String dual =
@@ -105,8 +144,8 @@ String arabicCountPhrase(
 
   final int magnitude = count.abs();
   if (magnitude >= 3 && magnitude <= 10) {
-    return '$count ${noun.zeroAndFew}';
+    return '$numericCount ${noun.zeroAndFew}';
   }
 
-  return '$count ${noun.many}';
+  return '$numericCount ${noun.many}';
 }

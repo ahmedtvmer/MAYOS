@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/active_program.dart';
+import '../../../core/app_failure.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/copy_context.dart';
@@ -17,6 +18,7 @@ import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_card.dart';
 import '../../../core/workout_storage.dart';
+import '../../../core/ui/first_strong_direction.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import '../assignment/program_request_dialog.dart';
@@ -71,8 +73,8 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   bool _generating = false;
   bool _substituting = false;
   bool _pickerBusy = false;
-  String? _loadError;
-  String? _actionError;
+  FailureMessage? _loadError;
+  FailureMessage? _actionError;
   TrainingProgram? _program;
   Map<int, DeloadDecision> _deloadByDay = <int, DeloadDecision>{};
 
@@ -119,7 +121,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
-        _loadError = error.message;
+        _loadError = apiFailureMessage(error);
         _loading = false;
       });
     }
@@ -225,8 +227,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       if (!mounted) return;
       setState(() {
         _generating = false;
-        _actionError = displayCopyOf(context)
-            .failureMessage(mutationFailureMessage(error));
+        _actionError = mutationFailureMessage(error);
       });
     }
   }
@@ -655,7 +656,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         displayCopyOf(context).failureMessage(mutationFailureMessage(error));
     setState(() {
       _substituting = false;
-      _actionError = message;
+      _actionError = mutationFailureMessage(error);
     });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
@@ -679,7 +680,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     }
     if (_loadError != null) {
       return _CenteredMessage(
-        message: _loadError!,
+        message: displayCopyOf(context).failureMessage(_loadError!),
         actionLabel: displayCopyOf(context).retry,
         onAction: _load,
       );
@@ -688,7 +689,9 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     if (program == null) {
       return _CenteredMessage(
         message: displayCopyOf(context).noActiveProgramYet,
-        error: _actionError,
+        error: _actionError == null
+            ? null
+            : displayCopyOf(context).failureMessage(_actionError!),
         actionLabel: displayCopyOf(context).regenerateProgram,
         onAction: _generating ? null : _generate,
         loading: _generating,
@@ -724,7 +727,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
           if (_actionError != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
             Text(
-              _actionError!,
+              displayCopyOf(context).failureMessage(_actionError!),
               style: MayosTypography.bodySecondary.copyWith(color: c.danger),
             ),
           ],
@@ -947,19 +950,15 @@ class _ExerciseRow extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 2),
-                  Directionality(
-                    textDirection: TextDirection.ltr,
-                    child: Text(
-                      <String>[
-                        if (exercise.hasWarmupSets)
-                          displayCopyOf(context)
-                              .warmupSetCount(exercise.warmupSets),
+                  Text(
+                    <String>[
+                      if (exercise.hasWarmupSets)
                         displayCopyOf(context)
-                            .restTime(exercise.restSecondsOrDefault),
-                      ].join(' · '),
-                      style:
-                          MayosTypography.caption.copyWith(color: c.textMuted),
-                    ),
+                            .warmupSetCount(exercise.warmupSets),
+                      displayCopyOf(context)
+                          .restTime(exercise.restSecondsOrDefault),
+                    ].join(' · '),
+                    style: MayosTypography.caption.copyWith(color: c.textMuted),
                   ),
                 ],
               ),
@@ -1001,7 +1000,7 @@ class _WarmupRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
     // ExpansionTile centres its children, so a shrink-wrapping row must be
-    // explicitly left-aligned to sit flush with the section label and the
+    // explicitly aligned to the leading edge and sit flush with the section label and the
     // working-set rows.
     return Align(
       alignment: AlignmentDirectional.centerStart,
@@ -1015,16 +1014,13 @@ class _WarmupRow extends StatelessWidget {
               style: MayosTypography.body.copyWith(color: c.textPrimary),
             ),
             const SizedBox(height: 2),
-            Directionality(
-              textDirection: TextDirection.ltr,
-              child: Text(
-                displayCopyOf(context).warmupPrescription(
-                  warmup.sets,
-                  warmup.reps,
-                  warmup.restSeconds,
-                ),
-                style: MayosTypography.caption.copyWith(color: c.textMuted),
+            Text(
+              displayCopyOf(context).warmupPrescription(
+                warmup.sets,
+                warmup.reps,
+                warmup.restSeconds,
               ),
+              style: MayosTypography.caption.copyWith(color: c.textMuted),
             ),
           ],
         ),
@@ -1049,13 +1045,12 @@ class _CardioRow extends StatelessWidget {
           Icon(Icons.directions_run, size: 16, color: c.textMuted),
           const SizedBox(width: MayosSpacing.xs),
           Expanded(
-            child: Directionality(
-              textDirection: TextDirection.ltr,
+            child: FirstStrongDirection(
+              text: cardio,
               child: Text(
                 cardio,
-                style: MayosTypography.bodySecondary.copyWith(
-                  color: c.textSecondary,
-                ),
+                style: MayosTypography.bodySecondary
+                    .copyWith(color: c.textSecondary),
               ),
             ),
           ),

@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/app_failure.dart';
+import '../../core/connectivity_message.dart';
+import '../../core/display_language/copy_context.dart';
+import '../../core/display_language/feature_copy_context.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
@@ -65,6 +69,7 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
   String? _channel;
   bool _saving = false;
   String? _error;
+  FailureMessage? _failure;
 
   @override
   void dispose() {
@@ -75,7 +80,7 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
   Future<void> _save() async {
     final String? channel = _channel;
     if (channel == null) {
-      setState(() => _error = 'Pick a contact channel.');
+      setState(() => _error = coachCopyOf(context).pickContactChannel);
       return;
     }
     // The note is optional: a blank one is sent as null, not an empty string.
@@ -83,6 +88,7 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
     setState(() {
       _saving = true;
       _error = null;
+      _failure = null;
     });
     try {
       final CheckInCreation created =
@@ -99,7 +105,7 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _error = error.message;
+        _failure = apiFailureMessage(error);
       });
     }
   }
@@ -107,9 +113,10 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final copy = coachCopyOf(context);
     final String today = isoDateOf(DateTime.now());
     return Padding(
-      padding: EdgeInsets.fromLTRB(
+      padding: EdgeInsetsDirectional.fromSTEB(
         MayosSpacing.lg,
         0,
         MayosSpacing.lg,
@@ -120,12 +127,13 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           Text(
-            'Log check-in with ${widget.playerUsername}',
-            style: MayosTypography.sectionHeading.copyWith(color: c.textPrimary),
+            copy.checkInWithPlayer(widget.playerUsername),
+            style:
+                MayosTypography.sectionHeading.copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: MayosSpacing.xxs),
           Text(
-            'Dated today · $today',
+            copy.datedToday(today),
             style: MayosTypography.caption.copyWith(color: c.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.md),
@@ -136,7 +144,7 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
               for (final String channel in kLogCheckInChannels)
                 ChoiceChip(
                   key: Key('check_in_channel_$channel'),
-                  label: Text(CheckIn.labelFor(channel)),
+                  label: Text(copy.checkInChannel(channel)),
                   selected: _channel == channel,
                   onSelected: (bool selected) => setState(() {
                     _channel = selected ? channel : null;
@@ -149,9 +157,9 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
             key: const Key('check_in_note_field'),
             controller: _note,
             maxLines: 2,
-            decoration: const InputDecoration(
-              labelText: 'Note (optional)',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: copy.noteOptional,
+              border: const OutlineInputBorder(),
             ),
           ),
           if (_error != null) ...<Widget>[
@@ -161,10 +169,17 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
               style: MayosTypography.bodySecondary.copyWith(color: c.danger),
             ),
           ],
+          if (_failure != null) ...<Widget>[
+            const SizedBox(height: MayosSpacing.sm),
+            Text(
+              displayCopyOf(context).failureMessage(_failure!),
+              style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+            ),
+          ],
           const SizedBox(height: MayosSpacing.md),
           MayosButton(
             key: const Key('check_in_submit_button'),
-            label: 'Save check-in',
+            label: copy.saveCheckIn,
             loading: _saving,
             onPressed: _saving ? null : _save,
           ),

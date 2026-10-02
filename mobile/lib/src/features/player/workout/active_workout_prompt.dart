@@ -44,8 +44,6 @@ Future<ActiveWorkoutPromptChoice?> showActiveWorkoutPrompt(
           Text(
             copy.startedWorkoutLabel(
                 activeWorkout.dayName, _startedLabel(activeWorkout)),
-            textDirection: copy.isArabic ? TextDirection.ltr : null,
-            textAlign: copy.isArabic ? TextAlign.end : null,
             style:
                 MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
           ),

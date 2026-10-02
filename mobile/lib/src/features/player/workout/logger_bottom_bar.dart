@@ -81,29 +81,15 @@ class LoggerBottomBar extends StatelessWidget {
                   // The counts, in the label role; `Flexible` so an enormous
                   // text scale ellipsizes instead of overflowing the row.
                   Flexible(
-                    child: copy.isArabic
-                        ? Directionality(
-                            textDirection: TextDirection.ltr,
-                            child: Text(
-                              copy.setsProgress(setsTicked, setsTotal),
-                              key: const ValueKey<String>(
-                                  'logger.bottomBar.progress'),
-                              textAlign: TextAlign.end,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: MayosTypography.label
-                                  .copyWith(color: c.textSecondary),
-                            ),
-                          )
-                        : Text(
-                            copy.setsProgress(setsTicked, setsTotal),
-                            key: const ValueKey<String>(
-                                'logger.bottomBar.progress'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: MayosTypography.label
-                                .copyWith(color: c.textSecondary),
-                          ),
+                    child: Text(
+                      copy.setsProgress(setsTicked, setsTotal),
+                      key: const ValueKey<String>('logger.bottomBar.progress'),
+                      textAlign: copy.isArabic ? TextAlign.end : null,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: MayosTypography.label
+                          .copyWith(color: c.textSecondary),
+                    ),
                   ),
                   const SizedBox(width: MayosSpacing.sm),
                   Expanded(

@@ -3,13 +3,14 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../external_url_launcher.dart';
+import '../display_language/copy_context.dart';
+import 'first_strong_direction.dart';
 import '../theme/mayos_spacing.dart';
 import '../theme/mayos_theme.dart';
 import '../theme/mayos_typography.dart';
 
 final RegExp _fenceMarker = RegExp(r'^ {0,3}(`{3,}|~{3,})');
 final RegExp _htmlBlockStart = RegExp(r'^ {0,3}<(?:[A-Za-z]|[!?/])');
-
 // The Markdown package drops block-HTML nodes; escape the opener so their text
 // remains visible without turning it into markup.
 String _escapeBlockHtml(String source) {
@@ -104,8 +105,8 @@ class MayosMarkdown extends ConsumerWidget {
       ),
       blockquoteDecoration: BoxDecoration(
         color: colors.surfaceSunken,
-        border: Border(
-          left: BorderSide(
+        border: BorderDirectional(
+          start: BorderSide(
             color: colors.borderStrong,
             width: MayosBorderWidths.emphasis,
           ),
@@ -136,6 +137,9 @@ class MayosMarkdown extends ConsumerWidget {
       selectable: true,
       softLineBreak: true,
       styleSheet: styleSheet,
+      textDirectionBuilder: (String text, String blockTag) => blockTag == 'pre'
+          ? TextDirection.ltr
+          : firstStrongTextDirection(text),
       onTapLink: (String text, String? href, String title) {
         final Uri? uri = href == null ? null : Uri.tryParse(href);
         if (uri == null ||
@@ -149,8 +153,9 @@ class MayosMarkdown extends ConsumerWidget {
       // Image nodes are reduced to alt text; never resolve a network, file, or
       // asset URI from assistant-controlled Markdown.
       imageBuilder: (Uri uri, String? title, String? alt) {
-        final String label =
-            alt?.trim().isNotEmpty == true ? alt!.trim() : 'Image omitted';
+        final String label = alt?.trim().isNotEmpty == true
+            ? alt!.trim()
+            : displayCopyOf(context).omittedImage;
         return Text(label, style: styleSheet.img);
       },
     );
@@ -161,8 +166,7 @@ class MayosMarkdown extends ConsumerWidget {
         await ref.read(externalUrlLauncherProvider)(uri.toString());
     if (!opened && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Could not open this link in your browser.')),
+        SnackBar(content: Text(displayCopyOf(context).unavailableLink)),
       );
     }
   }
