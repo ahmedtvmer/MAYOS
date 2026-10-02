@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
 import '../../../core/device_timezone.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
@@ -17,7 +19,12 @@ import '../../../core/ui/mayos_section_header.dart';
 import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
 import '../auth/auth_controller.dart';
-import '../auth/auth_widgets.dart' show AuthPasswordField, validateNewPassword;
+import '../auth/auth_widgets.dart'
+    show
+        AuthPasswordField,
+        NewPasswordValidation,
+        newPasswordValidationMessage,
+        validateNewPassword;
 import '../auth/google_auth_gateway.dart';
 import '../auth/google_sign_in_button.dart';
 import '../onboarding/onboarding_widgets.dart'
@@ -473,7 +480,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   /// always shows what the service now reports (#116).
   Future<void> _refreshSignInMethods() async {
     try {
-      final Account account = await ref.read(apiClientProvider).currentAccount();
+      final Account account =
+          await ref.read(apiClientProvider).currentAccount();
       if (!mounted) return;
       setState(() => _account = account);
     } on ApiException catch (error) {
@@ -693,8 +701,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               label: 'Cancel',
               variant: MayosButtonVariant.tertiary,
               expand: false,
-              onPressed:
-                  busy ? null : () => Navigator.of(dialogContext).pop(),
+              onPressed: busy ? null : () => Navigator.of(dialogContext).pop(),
             ),
             MayosButton(
               key: submitKey,
@@ -709,10 +716,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             () => error = 'Enter your current password.');
                         return;
                       }
-                      final String? invalid = validateNewPassword(
-                          _newPassword.text, _newPasswordConfirm.text);
+                      final NewPasswordValidation? invalid =
+                          validateNewPassword(
+                              _newPassword.text, _newPasswordConfirm.text);
                       if (invalid != null) {
-                        setDialogState(() => error = invalid);
+                        final MayosCopy copy =
+                            MayosCopy(ref.read(displayLanguageProvider));
+                        setDialogState(() => error =
+                            newPasswordValidationMessage(invalid, copy));
                         return;
                       }
                       setDialogState(() {
@@ -758,8 +769,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _deletePassword.clear();
     final bool googleOnly = !(_account?.hasPassword ?? true);
     final GoogleAuthGateway google = ref.read(googleAuthGatewayProvider);
-    final bool webGoogle = googleOnly &&
-        google.buttonStyle == GoogleSignInButtonStyle.webRendered;
+    final bool webGoogle =
+        googleOnly && google.buttonStyle == GoogleSignInButtonStyle.webRendered;
     bool busy = false;
     String? error;
     await showDialog<void>(
@@ -879,7 +890,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             error = mutationFailureMessage(failure);
                           });
                         }
-                    },
+                      },
               ),
           ],
         ),
@@ -950,8 +961,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           const Divider(height: 1),
           const SizedBox(height: MayosSpacing.xxs),
           _SignInMethodRow(
-            leading:
-                const MayosIconChip(child: GoogleGLogo(size: MayosIconSizes.medium)),
+            leading: const MayosIconChip(
+                child: GoogleGLogo(size: MayosIconSizes.medium)),
             title: 'Google',
             status: googleLinked ? 'Connected' : 'Not connected',
             hint: googleLinked && !hasPassword ? 'Set a password first' : null,
@@ -966,8 +977,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   )
                 : google.buttonStyle == GoogleSignInButtonStyle.hidden
                     ? const SizedBox.shrink()
-                    : google.buttonStyle ==
-                            GoogleSignInButtonStyle.webRendered
+                    : google.buttonStyle == GoogleSignInButtonStyle.webRendered
                         ? GoogleWebSignInButton(
                             key: const Key('connect_google_web_button'),
                             loading: _methodBusy,

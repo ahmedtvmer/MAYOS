@@ -6,7 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
-import '../../../core/display_language.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -39,8 +40,6 @@ String? googleUsernameFormatError(String value) =>
     googleUsernamePattern.hasMatch(value)
         ? null
         : 'Use 3–30 characters from a–z, 0–9, _ and - (lowercase).';
-
-const String _kTakenMessage = 'That username is taken.';
 
 enum _UsernameCheck { idle, checking, available, taken, unverified }
 
@@ -125,7 +124,9 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
       // A dead ticket is the same exit as a dead ticket on submit: back to
       // sign-in with the short explanation (#115).
       if (error.statusCode == 401) {
-        await _auth.abandonGoogleSignup(notice: kGoogleSignupExpiredMessage);
+        await _auth.abandonGoogleSignup(
+            notice: MayosCopy(ref.read(displayLanguageProvider))
+                .googleSignupExpired);
         if (mounted) {
           context.go(_loginLocation());
         }
@@ -147,24 +148,26 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
       _check != _UsernameCheck.taken;
 
   String? get _fieldError {
+    final MayosCopy copy = MayosCopy(ref.read(displayLanguageProvider));
     if (_touched) {
       final String? formatError =
           googleUsernameFormatError(_username.text.trim());
       if (formatError != null) {
-        return formatError;
+        return copy.usernameFormatError;
       }
     }
-    return _check == _UsernameCheck.taken ? _kTakenMessage : null;
+    return _check == _UsernameCheck.taken ? copy.usernameTaken : null;
   }
 
   String? get _fieldHelper {
+    final MayosCopy copy = MayosCopy(ref.read(displayLanguageProvider));
     switch (_check) {
       case _UsernameCheck.checking:
-        return 'Checking availability…';
+        return copy.checkingAvailability;
       case _UsernameCheck.available:
-        return 'This username is free.';
+        return copy.usernameAvailable;
       case _UsernameCheck.unverified:
-        return 'Could not check availability.';
+        return copy.availabilityCheckFailed;
       case _UsernameCheck.idle:
       case _UsernameCheck.taken:
         return null;
@@ -231,6 +234,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
   }
 
   Widget _signupContent() {
+    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     final PendingGoogleSignup? pending = _auth.pendingSignup;
     if (pending == null) {
       return _expiredView();
@@ -239,20 +243,20 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
       return _existingAccountHintView();
     }
     return AuthScaffold(
-      title: 'Choose your username',
-      lead: 'Pick the name you want to train under. It must be free.',
+      title: copy.chooseUsername,
+      lead: copy.chooseUsernameLead,
       wallpaper: true,
       message: _error == null ? null : AuthInlineNotice(message: _error!),
       primary: MayosButton(
         key: const Key('google_signup_submit'),
-        label: 'Create account',
+        label: copy.createAccount,
         loading: _busy,
         onPressed: _canSubmit ? _submit : null,
       ),
       links: <Widget>[
         AuthLink(
           key: const Key('google_signup_cancel'),
-          label: 'Back to sign in',
+          label: copy.backToSignIn,
           onPressed: _busy ? null : _leaveToLogin,
         ),
       ],
@@ -260,7 +264,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
         MayosTextField(
           fieldKey: const Key('google_signup_username'),
           controller: _username,
-          label: 'Username',
+          label: copy.username,
           enabled: !_busy,
           autocorrect: false,
           enableSuggestions: false,
@@ -275,8 +279,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
         const SizedBox(height: MayosSpacing.md),
         AuthLink(
           key: const Key('google_signup_login_link'),
-          label:
-              'Already have a MAYOS account? Log in with your password, then connect Google in Settings',
+          label: copy.existingAccountNudge,
           onPressed: _busy ? null : _leaveToLogin,
         ),
       ],
@@ -296,19 +299,20 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
   }
 
   Widget _existingAccountHintView() {
+    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     return AuthScaffold(
-      title: 'You already have a MAYOS account for this email.',
-      lead: 'Log in with your password, then connect Google in Settings.',
+      title: copy.existingAccountTitle,
+      lead: copy.existingAccountLead,
       wallpaper: true,
       primary: MayosButton(
         key: const Key('google_existing_account_login'),
-        label: 'Log in',
+        label: copy.logIn,
         onPressed: _leaveToLogin,
       ),
       children: <Widget>[
         MayosButton(
           key: const Key('google_existing_account_create_separate'),
-          label: 'Create a separate account anyway',
+          label: copy.createSeparateAccount,
           variant: MayosButtonVariant.secondary,
           onPressed: _createSeparateAccount,
         ),
@@ -320,19 +324,19 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
   /// say so instead of showing an empty form.
   Widget _expiredView() {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     return AuthScaffold(
-      title: 'Choose your username',
+      title: copy.chooseUsername,
       wallpaper: true,
-      message: const AuthInlineNotice(message: kGoogleSignupExpiredMessage),
+      message: AuthInlineNotice(message: copy.googleSignupExpired),
       primary: MayosButton(
         key: const Key('google_signup_submit'),
-        label: 'Back to sign in',
+        label: copy.backToSignIn,
         onPressed: () => context.go(_loginLocation()),
       ),
       children: <Widget>[
         Text(
-          MayosCopy(ref.watch(displayLanguageProvider)).translate(
-              'The Google sign-in could not be finished, so no account was created.'),
+          copy.googleSignupIncomplete,
           style: MayosTypography.bodySecondary
               .copyWith(color: c.textSecondary, height: 1.5),
         ),

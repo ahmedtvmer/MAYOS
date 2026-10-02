@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/home_screen_install_hint_store.dart';
-import '../../../core/display_language.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
 import '../../../core/home_screen_install_hint_store_stub.dart'
     if (dart.library.js_interop) '../../../core/home_screen_install_hint_store_web.dart'
     as platform;
@@ -118,8 +119,7 @@ class _HomeScreenInstallHintText extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final MayosThemeExtension colors = MayosTheme.of(context);
     return Text(
-      MayosCopy(ref.watch(displayLanguageProvider))
-          .translate(HomeScreenInstallHintSlot.message),
+      MayosCopy(ref.watch(displayLanguageProvider)).homeScreenHint,
       maxLines: 1,
       softWrap: false,
       overflow: TextOverflow.ellipsis,
@@ -137,8 +137,8 @@ class _HomeScreenInstallHintDismissButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final MayosThemeExtension colors = MayosTheme.of(context);
     return IconButton(
-      tooltip: MayosCopy(ref.watch(displayLanguageProvider))
-          .translate('Dismiss Home Screen hint'),
+      tooltip:
+          MayosCopy(ref.watch(displayLanguageProvider)).dismissHomeScreenHint,
       onPressed: onDismiss,
       constraints: const BoxConstraints(
         minWidth: kMayosMinTapTarget,

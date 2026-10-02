@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
@@ -51,21 +53,20 @@ class _RecoveryEmailScreenState extends ConsumerState<RecoveryEmailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     return AuthScaffold(
-      title: 'Recovery email',
-      lead:
-          'Add a recovery email so you can reset your password if you lose it. '
-          'It is kept separately from your training data.',
+      title: copy.recoveryEmail,
+      lead: copy.recoveryEmailLead,
       message: _error == null ? null : AuthInlineNotice(message: _error!),
       primary: MayosButton(
         key: const Key('recovery_submit'),
-        label: 'Save email',
+        label: copy.saveEmail,
         loading: _busy,
         onPressed: _busy ? null : _save,
       ),
       links: <Widget>[
         AuthLink(
-          label: 'Log out',
+          label: copy.logOut,
           onPressed: _busy
               ? null
               : () => ref.read(authControllerProvider.notifier).logout(),
@@ -75,7 +76,7 @@ class _RecoveryEmailScreenState extends ConsumerState<RecoveryEmailScreen> {
         MayosTextField(
           fieldKey: const Key('recovery_email'),
           controller: _email,
-          label: 'Email',
+          label: copy.email,
           enabled: !_busy,
           keyboardType: TextInputType.emailAddress,
           textInputAction: TextInputAction.done,

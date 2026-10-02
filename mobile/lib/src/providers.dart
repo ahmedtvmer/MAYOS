@@ -13,7 +13,7 @@ import 'core/baselines.dart';
 import 'core/browser_key_value_store.dart';
 import 'core/chat_storage.dart';
 import 'core/config.dart';
-import 'core/display_language.dart';
+import 'core/display_language/store.dart';
 import 'core/models.dart';
 import 'core/personal_records.dart';
 import 'core/rest_alerts.dart';
@@ -42,26 +42,26 @@ final Provider<ThemeModeStore> themeModeStoreProvider =
     Provider<ThemeModeStore>((ref) => SecureThemeModeStore());
 
 final StateNotifierProvider<ThemeModeController, ThemeMode>
-themeModeControllerProvider =
+    themeModeControllerProvider =
     StateNotifierProvider<ThemeModeController, ThemeMode>((ref) {
-      return ThemeModeController(ref.watch(themeModeStoreProvider));
-    });
+  return ThemeModeController(ref.watch(themeModeStoreProvider));
+});
 
 final Provider<UnauthorizedEvents> unauthorizedEventsProvider =
     Provider<UnauthorizedEvents>((ref) {
-      final UnauthorizedEvents events = UnauthorizedEvents();
-      ref.onDispose(events.dispose);
-      return events;
-    });
+  final UnauthorizedEvents events = UnauthorizedEvents();
+  ref.onDispose(events.dispose);
+  return events;
+});
 
 /// Signals an `account_deleted` 401 so the app erases the account's protected
 /// local data instead of offering the logout keep/discard prompt (ADR 039).
 final Provider<AccountDeletedEvents> accountDeletedEventsProvider =
     Provider<AccountDeletedEvents>((ref) {
-      final AccountDeletedEvents events = AccountDeletedEvents();
-      ref.onDispose(events.dispose);
-      return events;
-    });
+  final AccountDeletedEvents events = AccountDeletedEvents();
+  ref.onDispose(events.dispose);
+  return events;
+});
 
 final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
   final TokenStore tokens = ref.watch(tokenStoreProvider);
@@ -73,31 +73,31 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
 
 final Provider<AuthRepository> authRepositoryProvider =
     Provider<AuthRepository>(
-      (ref) => AuthRepository(
-        api: ref.watch(apiClientProvider),
-        tokens: ref.watch(tokenStoreProvider),
-        chatCache: ref.watch(chatCacheStoreProvider),
-        displayLanguageStore: ref.watch(displayLanguageStoreProvider),
-        eraser: AccountDataEraser(
-          drafts: ref.watch(draftStoreProvider),
-          workoutCache: ref.watch(workoutCacheStoreProvider),
-          chatCache: ref.watch(chatCacheStoreProvider),
-          baselines: ref.watch(baselineCacheStoreProvider),
-          activeWorkout: ref.watch(activeWorkoutStoreProvider),
-          workoutStartNotice: ref.watch(workoutStartNoticeStoreProvider),
-        ),
-      ),
-    );
+  (ref) => AuthRepository(
+    api: ref.watch(apiClientProvider),
+    tokens: ref.watch(tokenStoreProvider),
+    chatCache: ref.watch(chatCacheStoreProvider),
+    displayLanguageStore: ref.watch(displayLanguageStoreProvider),
+    eraser: AccountDataEraser(
+      drafts: ref.watch(draftStoreProvider),
+      workoutCache: ref.watch(workoutCacheStoreProvider),
+      chatCache: ref.watch(chatCacheStoreProvider),
+      baselines: ref.watch(baselineCacheStoreProvider),
+      activeWorkout: ref.watch(activeWorkoutStoreProvider),
+      workoutStartNotice: ref.watch(workoutStartNoticeStoreProvider),
+    ),
+  ),
+);
 
 final StateNotifierProvider<AuthController, AuthState> authControllerProvider =
     StateNotifierProvider<AuthController, AuthState>((ref) {
-      return AuthController(
-        ref.watch(authRepositoryProvider),
-        ref.watch(unauthorizedEventsProvider),
-        ref.watch(accountDeletedEventsProvider),
-        ref.watch(googleAuthGatewayProvider),
-      );
-    });
+  return AuthController(
+    ref.watch(authRepositoryProvider),
+    ref.watch(unauthorizedEventsProvider),
+    ref.watch(accountDeletedEventsProvider),
+    ref.watch(googleAuthGatewayProvider),
+  );
+});
 
 /// The one seam to the Google SDK (#115): tests replace it with a fake, and
 /// the web half (#127) plugs in behind the same interface.
@@ -114,23 +114,23 @@ final Provider<AppModeStore> appModeStoreProvider = Provider<AppModeStore>(
 /// choice and the live coach capability. Not `ready` until the account's
 /// stored choice has been read, so the app never flashes the wrong shell.
 final StateNotifierProvider<AppModeController, AppModeState>
-appModeControllerProvider =
+    appModeControllerProvider =
     StateNotifierProvider<AppModeController, AppModeState>((ref) {
-      final AppModeController controller = AppModeController(
-        ref.watch(appModeStoreProvider),
-      );
-      ref.listen<AuthState>(authControllerProvider, (
-        AuthState? previous,
-        AuthState next,
-      ) {
-        final Account? account = next.session?.account;
-        controller.syncAccount(
-          accountId: account?.accountId,
-          isCoach: account?.isCoach ?? false,
-        );
-      }, fireImmediately: true);
-      return controller;
-    });
+  final AppModeController controller = AppModeController(
+    ref.watch(appModeStoreProvider),
+  );
+  ref.listen<AuthState>(authControllerProvider, (
+    AuthState? previous,
+    AuthState next,
+  ) {
+    final Account? account = next.session?.account;
+    controller.syncAccount(
+      accountId: account?.accountId,
+      isCoach: account?.isCoach ?? false,
+    );
+  }, fireImmediately: true);
+  return controller;
+});
 
 /// The coach assistant's in-memory transcript for ONE selected player (#45).
 ///
@@ -141,27 +141,27 @@ appModeControllerProvider =
 /// on player switch and on a revoked/ended assignment; `MayosApp` clears it on
 /// `AppLifecycleState.detached`.
 final StateNotifierProvider<CoachAssistantController, CoachAssistantTranscript?>
-coachAssistantControllerProvider =
+    coachAssistantControllerProvider =
     StateNotifierProvider<CoachAssistantController, CoachAssistantTranscript?>((
-      ref,
-    ) {
-      final CoachAssistantController controller = CoachAssistantController();
-      ref.listen<AuthState>(authControllerProvider, (
-        AuthState? previous,
-        AuthState next,
-      ) {
-        final Account? account = next.session?.account;
-        // A signed-out session, a lost coach capability, or a switched-off feature
-        // all end the assistant's context (issue #45).
-        if (!next.isAuthenticated ||
-            account == null ||
-            !account.isCoach ||
-            !account.coachAiEnabled) {
-          controller.clear();
-        }
-      });
-      return controller;
-    });
+  ref,
+) {
+  final CoachAssistantController controller = CoachAssistantController();
+  ref.listen<AuthState>(authControllerProvider, (
+    AuthState? previous,
+    AuthState next,
+  ) {
+    final Account? account = next.session?.account;
+    // A signed-out session, a lost coach capability, or a switched-off feature
+    // all end the assistant's context (issue #45).
+    if (!next.isAuthenticated ||
+        account == null ||
+        !account.isCoach ||
+        !account.coachAiEnabled) {
+      controller.clear();
+    }
+  });
+  return controller;
+});
 
 /// Whether this client captures protected offline workout drafts (ADR 020).
 ///
@@ -210,10 +210,10 @@ final Provider<DraftStore> draftStoreProvider = Provider<DraftStore>(
 /// Protected cache of the active program and its prescription for offline logging.
 final Provider<WorkoutCacheStore> workoutCacheStoreProvider =
     Provider<WorkoutCacheStore>(
-      (ref) => ref.watch(offlineWorkoutDraftsEnabledProvider)
-          ? SecureWorkoutCacheStore()
-          : InMemoryWorkoutCacheStore(),
-    );
+  (ref) => ref.watch(offlineWorkoutDraftsEnabledProvider)
+      ? SecureWorkoutCacheStore()
+      : InMemoryWorkoutCacheStore(),
+);
 
 /// Last-known server training status, loaded at app start and persisted with
 /// the Android workout cache for the Finish summary (#220).
@@ -250,24 +250,24 @@ final checkpointReviewProvider = FutureProvider.family<CheckpointReview, int>(
 /// for read-only offline viewing (#37, ADR 016/036).
 final Provider<ChatCacheStore> chatCacheStoreProvider =
     Provider<ChatCacheStore>(
-      (ref) => ref.watch(offlineWorkoutDraftsEnabledProvider)
-          ? SecureChatCacheStore()
-          : InMemoryChatCacheStore(),
-    );
+  (ref) => ref.watch(offlineWorkoutDraftsEnabledProvider)
+      ? SecureChatCacheStore()
+      : InMemoryChatCacheStore(),
+);
 
 final Provider<WebActiveWorkoutStore> webActiveWorkoutStoreProvider =
     Provider<WebActiveWorkoutStore>(
-      (ref) => WebActiveWorkoutStore(
-        storage: ref.watch(browserKeyValueStoreProvider),
-      ),
-    );
+  (ref) => WebActiveWorkoutStore(
+    storage: ref.watch(browserKeyValueStoreProvider),
+  ),
+);
 
 final Provider<WorkoutStartNoticeStore> workoutStartNoticeStoreProvider =
     Provider<WorkoutStartNoticeStore>(
-      (ref) => ref.watch(webDirectWorkoutCommitEnabledProvider)
-          ? ref.watch(webActiveWorkoutStoreProvider)
-          : InMemoryWorkoutStartNoticeStore(),
-    );
+  (ref) => ref.watch(webDirectWorkoutCommitEnabledProvider)
+      ? ref.watch(webActiveWorkoutStoreProvider)
+      : InMemoryWorkoutStartNoticeStore(),
+);
 
 /// Runs [reset] whenever the signed-in account changes or the session ends.
 ///
@@ -402,55 +402,55 @@ final StateProvider<int> coachRequestsRevisionProvider = StateProvider<int>(
 /// and periodically while the app is in the foreground (ADR 020/033).
 final ChangeNotifierProvider<DraftSyncService> draftSyncServiceProvider =
     ChangeNotifierProvider<DraftSyncService>((ref) {
-      final DraftSyncService service = DraftSyncService(
-        api: ref.watch(apiClientProvider),
-        store: ref.watch(draftStoreProvider),
-        onCommit: (String accountId, Map<String, dynamic> response) => ref
-            .read(trainingStatusProvider.notifier)
-            .acceptCommit(accountId, response),
-      );
-      ref.listen<AuthState>(authControllerProvider, (
-        AuthState? previous,
-        AuthState next,
-      ) {
-        final String? accountId = next.session?.account.accountId;
-        if (next.isAuthenticated && accountId != null) {
-          service.startFor(accountId);
-        } else {
-          service.stop();
-        }
-      }, fireImmediately: true);
-      return service;
-    });
+  final DraftSyncService service = DraftSyncService(
+    api: ref.watch(apiClientProvider),
+    store: ref.watch(draftStoreProvider),
+    onCommit: (String accountId, Map<String, dynamic> response) => ref
+        .read(trainingStatusProvider.notifier)
+        .acceptCommit(accountId, response),
+  );
+  ref.listen<AuthState>(authControllerProvider, (
+    AuthState? previous,
+    AuthState next,
+  ) {
+    final String? accountId = next.session?.account.accountId;
+    if (next.isAuthenticated && accountId != null) {
+      service.startFor(accountId);
+    } else {
+      service.stop();
+    }
+  }, fireImmediately: true);
+  return service;
+});
 
 /// Protected, account-separated cache of the last successful
 /// `GET /workouts/baselines` fetch (#123). Same offline gate as the drafts:
 /// it stays in memory on web (ADR 022).
 final Provider<BaselineCacheStore> baselineCacheStoreProvider =
     Provider<BaselineCacheStore>(
-      (ref) => ref.watch(offlineWorkoutDraftsEnabledProvider)
-          ? SecureBaselineCacheStore()
-          : InMemoryBaselineCacheStore(),
-    );
+  (ref) => ref.watch(offlineWorkoutDraftsEnabledProvider)
+      ? SecureBaselineCacheStore()
+      : InMemoryBaselineCacheStore(),
+);
 
 /// Device storage for the single Active workout held per account (#123).
 final Provider<ActiveWorkoutStore> activeWorkoutStoreProvider =
     Provider<ActiveWorkoutStore>(
-      (ref) => ref.watch(offlineWorkoutDraftsEnabledProvider)
-          ? SecureActiveWorkoutStore()
-          : ref.watch(webActiveWorkoutStoreProvider),
-    );
+  (ref) => ref.watch(offlineWorkoutDraftsEnabledProvider)
+      ? SecureActiveWorkoutStore()
+      : ref.watch(webActiveWorkoutStoreProvider),
+);
 
 /// The baselines reader: Home's fire-and-forget prefetch and the fresh →
 /// cache → empty resolution a workout start freezes (#123).
 final Provider<BaselinesService> baselinesServiceProvider =
     Provider<BaselinesService>(
-      (ref) => BaselinesService(
-        api: ref.watch(apiClientProvider),
-        cache: ref.watch(baselineCacheStoreProvider),
-        drafts: ref.watch(draftStoreProvider),
-      ),
-    );
+  (ref) => BaselinesService(
+    api: ref.watch(apiClientProvider),
+    cache: ref.watch(baselineCacheStoreProvider),
+    drafts: ref.watch(draftStoreProvider),
+  ),
+);
 
 /// The root scaffold messenger, so a one-line explanation raised outside any
 /// screen's own messenger — the rest-alarm permission ask (#125) — still has
@@ -475,58 +475,57 @@ final Provider<RestAlerts> restAlertsProvider = Provider<RestAlerts>((ref) {
 /// stores, so this store stays in memory on web (ADR 022).
 final Provider<RestLengthStore> restLengthStoreProvider =
     Provider<RestLengthStore>(
-      (ref) => ref.watch(offlineWorkoutDraftsEnabledProvider)
-          ? SecureRestLengthStore()
-          : InMemoryRestLengthStore(),
-    );
+  (ref) => ref.watch(offlineWorkoutDraftsEnabledProvider)
+      ? SecureRestLengthStore()
+      : InMemoryRestLengthStore(),
+);
 
 /// The signed-in account's Active workout, restored from device storage when
 /// the session resolves and persisted after every change (#123).
 final StateNotifierProvider<ActiveWorkoutController, ActiveWorkoutState>
-activeWorkoutControllerProvider =
+    activeWorkoutControllerProvider =
     StateNotifierProvider<ActiveWorkoutController, ActiveWorkoutState>((ref) {
-      final ApiClient api = ref.watch(apiClientProvider);
-      final WorkoutCacheStore cache = ref.watch(workoutCacheStoreProvider);
-      final ActiveWorkoutController controller = ActiveWorkoutController(
-        store: ref.watch(activeWorkoutStoreProvider),
-        baselines: ref.watch(baselinesServiceProvider),
-        persistClientSessionId: ref.watch(
-          webDirectWorkoutCommitEnabledProvider,
-        ),
-        // The prescription a start seeds and hints from: fresh with a short
-        // timeout, else the cache, as the old logger resolved it (#123).
-        loadPrescription: (String accountId, int dayOrder) =>
-            loadDayPrescription(
-              api: api,
-              cache: cache,
-              accountId: accountId,
-              dayOrder: dayOrder,
-            ),
-        restLengths: ref.watch(restLengthStoreProvider),
-        alerts: ref.watch(restAlertsProvider),
-        now: ref.watch(clockProvider),
-      );
-      ref.listen<AuthState>(authControllerProvider, (
-        AuthState? previous,
-        AuthState next,
-      ) {
-        final String? accountId = next.session?.account.accountId;
-        if (next.isAuthenticated && accountId != null) {
-          controller.syncAccount(accountId);
-        } else {
-          controller.syncAccount(null);
-        }
-      }, fireImmediately: true);
-      return controller;
-    });
+  final ApiClient api = ref.watch(apiClientProvider);
+  final WorkoutCacheStore cache = ref.watch(workoutCacheStoreProvider);
+  final ActiveWorkoutController controller = ActiveWorkoutController(
+    store: ref.watch(activeWorkoutStoreProvider),
+    baselines: ref.watch(baselinesServiceProvider),
+    persistClientSessionId: ref.watch(
+      webDirectWorkoutCommitEnabledProvider,
+    ),
+    // The prescription a start seeds and hints from: fresh with a short
+    // timeout, else the cache, as the old logger resolved it (#123).
+    loadPrescription: (String accountId, int dayOrder) => loadDayPrescription(
+      api: api,
+      cache: cache,
+      accountId: accountId,
+      dayOrder: dayOrder,
+    ),
+    restLengths: ref.watch(restLengthStoreProvider),
+    alerts: ref.watch(restAlertsProvider),
+    now: ref.watch(clockProvider),
+  );
+  ref.listen<AuthState>(authControllerProvider, (
+    AuthState? previous,
+    AuthState next,
+  ) {
+    final String? accountId = next.session?.account.accountId;
+    if (next.isAuthenticated && accountId != null) {
+      controller.syncAccount(accountId);
+    } else {
+      controller.syncAccount(null);
+    }
+  }, fireImmediately: true);
+  return controller;
+});
 
 final Provider<WebWorkoutCommitter> webWorkoutCommitterProvider =
     Provider<WebWorkoutCommitter>(
-      (ref) => WebWorkoutCommitter(
-        api: ref.watch(apiClientProvider),
-        controller: ref.watch(activeWorkoutControllerProvider.notifier),
-        onCommit: (String accountId, Map<String, dynamic> response) => ref
-            .read(trainingStatusProvider.notifier)
-            .acceptCommit(accountId, response),
-      ),
-    );
+  (ref) => WebWorkoutCommitter(
+    api: ref.watch(apiClientProvider),
+    controller: ref.watch(activeWorkoutControllerProvider.notifier),
+    onCommit: (String accountId, Map<String, dynamic> response) => ref
+        .read(trainingStatusProvider.notifier)
+        .acceptCommit(accountId, response),
+  ),
+);

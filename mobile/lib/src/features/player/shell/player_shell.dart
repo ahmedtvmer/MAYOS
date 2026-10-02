@@ -5,7 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/ui/mayos_app_header.dart';
-import '../../../core/display_language.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
 import '../../../core/ui/mayos_bottom_navigation.dart';
 import '../../../core/ui/mayos_scaffold.dart';
 import '../../../providers.dart';

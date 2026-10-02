@@ -44,7 +44,8 @@ class FakeMayosApi {
   String currentGoal = 'Get stronger';
   String injuriesOrLimitations = 'None';
   double weightKg = 75;
-  final List<Map<String, dynamic>> profileUpdateBodies = <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> profileUpdateBodies =
+      <Map<String, dynamic>>[];
   int profileRebuildCalls = 0;
   int _profileProgramRevision = 0;
   String assistantStyle = defaultAssistantStyle;
@@ -59,6 +60,7 @@ class FakeMayosApi {
   String? validNewAccountCoachInviteCode;
   String? lastRegistrationCoachInviteCode;
   bool coachProfileLoadFails = false;
+  String? currentAccountDisplayLanguageOverride;
 
   // Google sign-in and the username picker (#115).
   /// The ID token that answers with a session instead of a signup ticket.
@@ -668,7 +670,8 @@ class FakeMayosApi {
       return const FakeResponse(
           400, <String, dynamic>{'detail': 'Password is too short.'});
     }
-    final String? coachInviteCode = request.body['coach_invite_code'] as String?;
+    final String? coachInviteCode =
+        request.body['coach_invite_code'] as String?;
     registeredDisplayLanguage = request.body['display_language'] as String?;
     displayLanguage = registeredDisplayLanguage == 'ar' ? 'ar' : 'en';
     lastRegistrationCoachInviteCode = coachInviteCode;
@@ -700,13 +703,13 @@ class FakeMayosApi {
   }
 
   FakeResponse _me(FakeRequest request) {
-    if (!_authorized(request)) {
-      return const FakeResponse(
-          401, <String, dynamic>{'detail': 'Token has been revoked.'});
-    }
     if (meFails) {
       return const FakeResponse(
           500, <String, dynamic>{'detail': 'The service is unavailable.'});
+    }
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
     }
     return FakeResponse(200, <String, dynamic>{
       'account_id': 'account-$currentUsername',
@@ -719,7 +722,8 @@ class FakeMayosApi {
       'coach_ai_enabled': coachAiEnabled,
       'has_password': hasPassword,
       'linked_sign_ins': linkedSignIns.toList(growable: false),
-      'display_language': displayLanguage,
+      'display_language':
+          currentAccountDisplayLanguageOverride ?? displayLanguage,
     });
   }
 
@@ -840,6 +844,7 @@ class FakeMayosApi {
       'trainee_id': currentUsername,
       'capabilities': <String, dynamic>{'player': true, 'coach': true},
       'plans': _plansBody(),
+      'display_language': displayLanguage,
       'coach_ai_enabled': coachAiEnabled,
     });
   }

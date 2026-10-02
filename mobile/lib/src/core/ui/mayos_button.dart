@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../display_language.dart';
 import '../theme/mayos_spacing.dart';
 import '../theme/mayos_theme.dart';
 
@@ -13,7 +11,7 @@ enum MayosButtonVariant { primary, secondary, tertiary }
 /// text action. All variants keep a >=48dp target, show a pressed state, and
 /// swap their label for a spinner while [loading]. [destructive] paints a
 /// primary button in the danger colour (account deletion, discards).
-class MayosButton extends ConsumerWidget {
+class MayosButton extends StatelessWidget {
   const MayosButton({
     super.key,
     required this.label,
@@ -36,7 +34,7 @@ class MayosButton extends ConsumerWidget {
   final String? semanticsLabel;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final bool enabled = onPressed != null && !loading;
     final MayosThemeExtension c = MayosTheme.of(context);
     final Widget child = loading
@@ -50,7 +48,7 @@ class MayosButton extends ConsumerWidget {
                   : c.accent,
             ),
           )
-        : _content(context, MayosCopy(ref.watch(displayLanguageProvider)));
+        : _content(context);
 
     final Widget button = switch (variant) {
       MayosButtonVariant.primary => FilledButton(
@@ -83,9 +81,9 @@ class MayosButton extends ConsumerWidget {
     return SizedBox(width: double.infinity, child: wrapped);
   }
 
-  Widget _content(BuildContext context, MayosCopy copy) {
+  Widget _content(BuildContext context) {
     if (icon == null) {
-      return Text(copy.translate(label));
+      return Text(label);
     }
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -93,9 +91,7 @@ class MayosButton extends ConsumerWidget {
       children: <Widget>[
         Icon(icon, size: 18),
         const SizedBox(width: MayosSpacing.xs),
-        Flexible(
-            child:
-                Text(copy.translate(label), overflow: TextOverflow.ellipsis)),
+        Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
       ],
     );
   }

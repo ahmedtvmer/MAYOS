@@ -24,6 +24,7 @@ from svc.dependencies import (
     get_signup_subject,
     get_verified_player,
     get_verified_account,
+    VerifiedAccount,
     google_sign_in_enabled,
 )
 from svc.rate_limit import PASSWORD_LIMIT, REGISTER_LIMIT, LOGIN_LIMIT, RESET_LIMIT, USERNAME_CHECK_LIMIT, limiter
@@ -312,7 +313,7 @@ async def read_current_account(
         plans=AccountPlansOut(**plans),
         has_password=has_password,
         linked_sign_ins=linked_sign_ins,
-        display_language=account.get("display_language", "en"),
+        display_language=account["display_language"],
         coach_ai_enabled=coach_ai_service.coach_ai_enabled(),
     )
 
@@ -320,11 +321,13 @@ async def read_current_account(
 @router.put("/display-language")
 async def update_display_language(
     body: DisplayLanguageIn,
-    player: Annotated[Any, Depends(get_verified_account)],
+    account: Annotated[VerifiedAccount, Depends(get_verified_account)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Saves the account's Display language by immutable account identity."""
-    saved = await asyncio.to_thread(db.set_account_display_language, player.account_id, body.display_language)
+    saved = await asyncio.to_thread(
+        db.set_account_display_language, account.account_id, body.display_language
+    )
     if not saved:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found.")
     return {"display_language": body.display_language}

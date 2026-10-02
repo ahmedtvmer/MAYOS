@@ -3,6 +3,7 @@
 library;
 
 import 'config.dart';
+import 'display_language/catalog.dart';
 import 'effort.dart';
 import 'rest_length.dart';
 
@@ -116,7 +117,7 @@ class Account {
       linkedSignIns: rawLinked is List<dynamic>
           ? rawLinked.whereType<String>().toList(growable: false)
           : const <String>[],
-      displayLanguage: json['display_language'] == 'ar' ? 'ar' : 'en',
+      displayLanguage: normalizeDisplayLanguage(json['display_language']),
     );
   }
 
@@ -139,9 +140,33 @@ class Account {
   final List<String> linkedSignIns;
   final String displayLanguage;
 
+  Account copyWith({
+    String? accountId,
+    String? traineeId,
+    Capabilities? capabilities,
+    AccountPlans? plans,
+    bool? coachAiEnabled,
+    bool? hasPassword,
+    List<String>? linkedSignIns,
+    String? displayLanguage,
+  }) =>
+      Account(
+        accountId: accountId ?? this.accountId,
+        traineeId: traineeId ?? this.traineeId,
+        capabilities: capabilities ?? this.capabilities,
+        plans: plans ?? this.plans,
+        coachAiEnabled: coachAiEnabled ?? this.coachAiEnabled,
+        hasPassword: hasPassword ?? this.hasPassword,
+        linkedSignIns: linkedSignIns ?? this.linkedSignIns,
+        displayLanguage: displayLanguage ?? this.displayLanguage,
+      );
+
   bool get isCoach => capabilities.coach;
 
   bool get hasGoogleLink => linkedSignIns.contains('google');
+
+  Account withDisplayLanguage(String language) =>
+      copyWith(displayLanguage: language);
 }
 
 /// `GET`/`PUT /coach/profile`: coach-authored fields keyed by immutable account id.
@@ -582,9 +607,10 @@ class CoachAlert {
             : null,
         profileChanges: json['profile_changes'] is Map<String, dynamic>
             ? (json['profile_changes'] as Map<String, dynamic>).map(
-                (String key, dynamic value) => MapEntry<String, Map<String, String>>(
+                (String key, dynamic value) =>
+                    MapEntry<String, Map<String, String>>(
                   key,
-                    (value as Map<String, dynamic>).map(
+                  (value as Map<String, dynamic>).map(
                     (String part, dynamic text) => MapEntry<String, String>(
                       part,
                       text == null || '$text'.isEmpty ? 'Not set' : '$text',
@@ -643,7 +669,8 @@ class CoachAlert {
           '(since ${windowStartDate ?? 'an earlier date'})';
     }
     if (isDeloadRecommended) {
-      final String base = 'Deload recommended — ${reason ?? 'Systemic fatigue'}';
+      final String base =
+          'Deload recommended — ${reason ?? 'Systemic fatigue'}';
       final String? choice = playerDeloadChoice?['choice'] as String?;
       if (choice == deloadChoiceUndo || choice == deloadChoiceApply) {
         return '$base · Player chose to $choice it for the next workout only';
@@ -663,7 +690,8 @@ class CoachAlert {
         'injuries_or_limitations': 'Injuries or limitations',
         'equipment_access': 'Equipment access',
       };
-      final Map<String, Map<String, String>> changes = profileChanges ?? const {};
+      final Map<String, Map<String, String>> changes =
+          profileChanges ?? const {};
       return changes.entries.map((MapEntry<String, Map<String, String>> entry) {
         final String label = labels[entry.key] ?? entry.key;
         return '$label: ${entry.value['before'] ?? ''} → ${entry.value['after'] ?? ''}';
@@ -930,9 +958,10 @@ class CoachPlayerLatestSession {
             .map((dynamic d) =>
                 CoachPlayerDivergence.fromJson(d as Map<String, dynamic>))
             .toList(growable: false),
-        warmupMovements: (json['warmup_movements'] as List<dynamic>? ?? const [])
-            .map((dynamic movement) => WarmupMovementLog.fromJson(
-                movement as Map<String, dynamic>))
+        warmupMovements: (json['warmup_movements'] as List<dynamic>? ??
+                const [])
+            .map((dynamic movement) =>
+                WarmupMovementLog.fromJson(movement as Map<String, dynamic>))
             .toList(growable: false),
         cardio: json['cardio'] is Map<String, dynamic>
             ? WorkoutCardio.fromJson(json['cardio'] as Map<String, dynamic>)
@@ -996,9 +1025,10 @@ class CoachPlayerRecentSession {
             .map((dynamic d) =>
                 CoachPlayerDivergence.fromJson(d as Map<String, dynamic>))
             .toList(growable: false),
-        warmupMovements: (json['warmup_movements'] as List<dynamic>? ?? const [])
-            .map((dynamic movement) => WarmupMovementLog.fromJson(
-                movement as Map<String, dynamic>))
+        warmupMovements: (json['warmup_movements'] as List<dynamic>? ??
+                const [])
+            .map((dynamic movement) =>
+                WarmupMovementLog.fromJson(movement as Map<String, dynamic>))
             .toList(growable: false),
         cardio: json['cardio'] is Map<String, dynamic>
             ? WorkoutCardio.fromJson(json['cardio'] as Map<String, dynamic>)
@@ -1492,8 +1522,7 @@ class PlayerProfile {
         injuriesOrLimitations:
             json['injuries_or_limitations'] as String? ?? 'None',
         weightKg: (json['weight_kg'] as num?)?.toDouble() ?? 75,
-        assistantStyle:
-            json['coach_tone'] as String? ?? defaultAssistantStyle,
+        assistantStyle: json['coach_tone'] as String? ?? defaultAssistantStyle,
         assistantInstructions: json['custom_instructions'] as String? ?? '',
         playerControlsProgram: json['player_controls_program'] as bool? ?? true,
       );
@@ -1734,8 +1763,8 @@ class CheckpointReviewListItem {
       periodStart: json['period_start'] as String,
       periodEnd: json['period_end'] as String,
       rating: rawRating
-          .map((dynamic part) => CheckpointRatingPart.fromJson(
-              part as Map<String, dynamic>))
+          .map((dynamic part) =>
+              CheckpointRatingPart.fromJson(part as Map<String, dynamic>))
           .toList(growable: false),
       opened: json['opened'] as bool? ?? false,
     );
@@ -1772,8 +1801,8 @@ class CheckpointReview {
       periodEnd: json['period_end'] as String,
       facts: Map<String, dynamic>.unmodifiable(facts),
       rating: rawRating
-          .map((dynamic part) => CheckpointRatingPart.fromJson(
-              part as Map<String, dynamic>))
+          .map((dynamic part) =>
+              CheckpointRatingPart.fromJson(part as Map<String, dynamic>))
           .toList(growable: false),
       text: json['text'] as String,
       textIsTemplate: json['text_is_template'] as bool? ?? false,
@@ -2370,7 +2399,8 @@ class WarmupMovementDraft {
         exerciseName: exerciseName,
         sets: <WarmupSetLog>[
           for (final WarmupSetDraft set in sets)
-            if (set.ticked) WarmupSetLog(weightKg: set.weightKg, reps: set.reps),
+            if (set.ticked)
+              WarmupSetLog(weightKg: set.weightKg, reps: set.reps),
         ],
       );
 
@@ -2457,11 +2487,11 @@ class WorkoutDraft {
             .map((dynamic e) =>
                 DraftExercise.fromJson(e as Map<String, dynamic>))
             .toList(growable: false),
-        warmupMovements:
-            (json['warmup_movements'] as List<dynamic>? ?? const <dynamic>[])
-                .map((dynamic movement) => WarmupMovementDraft.fromJson(
-                    movement as Map<String, dynamic>))
-                .toList(growable: false),
+        warmupMovements: (json['warmup_movements'] as List<dynamic>? ??
+                const <dynamic>[])
+            .map((dynamic movement) =>
+                WarmupMovementDraft.fromJson(movement as Map<String, dynamic>))
+            .toList(growable: false),
         cardio: json['cardio'] is Map<String, dynamic>
             ? WorkoutCardio.fromJson(json['cardio'] as Map<String, dynamic>)
             : null,
@@ -2593,8 +2623,8 @@ class WorkoutDraft {
                 ],
               },
         ],
-        if (warmupMovements.any((WarmupMovementDraft movement) =>
-            movement.hasTickedSets))
+        if (warmupMovements
+            .any((WarmupMovementDraft movement) => movement.hasTickedSets))
           'warmup_movements': <Map<String, dynamic>>[
             for (final WarmupMovementDraft movement in warmupMovements)
               if (movement.hasTickedSets) movement.toCommitLog().toJson(),
@@ -2704,10 +2734,8 @@ class DeloadDecision {
     return DeloadDecision(
       state: state,
       reason: json['reason'] as String?,
-      volumeMultiplier:
-          (json['volume_multiplier'] as num?)?.toDouble() ?? 1.0,
-      intensityCapRpe:
-          (json['intensity_cap_rpe'] as num?)?.toDouble(),
+      volumeMultiplier: (json['volume_multiplier'] as num?)?.toDouble() ?? 1.0,
+      intensityCapRpe: (json['intensity_cap_rpe'] as num?)?.toDouble(),
     );
   }
 
@@ -3004,9 +3032,10 @@ class LatestSession {
         splitName: json['split_name'] as String? ?? '',
         dayOrder: (json['day_order'] as num?)?.toInt(),
         programVersion: (json['program_version'] as num?)?.toInt(),
-        warmupMovements: (json['warmup_movements'] as List<dynamic>? ?? const [])
-            .map((dynamic movement) => WarmupMovementLog.fromJson(
-                movement as Map<String, dynamic>))
+        warmupMovements: (json['warmup_movements'] as List<dynamic>? ??
+                const [])
+            .map((dynamic movement) =>
+                WarmupMovementLog.fromJson(movement as Map<String, dynamic>))
             .toList(growable: false),
         cardio: json['cardio'] is Map<String, dynamic>
             ? WorkoutCardio.fromJson(json['cardio'] as Map<String, dynamic>)

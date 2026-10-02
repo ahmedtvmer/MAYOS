@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/catalog.dart';
 import '../../../core/models.dart';
 import 'auth_repository.dart';
 import 'google_auth_gateway.dart';
@@ -198,12 +199,15 @@ class AuthController extends StateNotifier<AuthState> {
   final GoogleAuthGateway _google;
 
   PendingGoogleSignup? _pendingSignup;
+  int _displayLanguageRevision = 0;
 
   /// The sign-up the username picker is completing, or null when none is open.
   PendingGoogleSignup? get pendingSignup => _pendingSignup;
 
   /// Resolves a persisted session once at startup.
-  Future<void> initialize() async {
+  /// Returns true when startup definitively has no session; false for an
+  /// authenticated restore or a transient failure where the cached token stays.
+  Future<bool> initialize() async {
     try {
       final AccountSession? session = await _repository.restore();
       // Preserve a notice an account-deleted signal may have set mid-restore so
@@ -211,9 +215,13 @@ class AuthController extends StateNotifier<AuthState> {
       state = session == null
           ? AuthState.unauthenticated(state.notice)
           : AuthState.authenticated(session);
-    } on ApiException {
-      // Network failure during restore: keep the token, ask the user to retry.
+      return session == null;
+    } on Object {
+      // Any transport or non-401 service failure is transient. Keep the token
+      // and account-language cache so the user can retry when connectivity is
+      // restored. AuthRepository converts definitive 401s to a null session.
       state = const AuthState.unauthenticated();
+      return false;
     }
   }
 
@@ -253,6 +261,30 @@ class AuthController extends StateNotifier<AuthState> {
     // The MAYOS session is over, so the Google SDK's own is too (#115).
     await _google.clearSdkState();
     state = const AuthState.unauthenticated();
+  }
+
+  /// Applies a server-confirmed Display language without changing Account
+  /// capability, plan, or Player/Coach mode state.
+  bool ownsAccount(String accountId) =>
+      state.session?.account.accountId == accountId;
+
+  bool confirmDisplayLanguage(String accountId, String language) {
+    final AccountSession? session = state.session;
+    if (session == null ||
+        !ownsAccount(accountId) ||
+        !isSupportedDisplayLanguage(language)) {
+      return false;
+    }
+    _displayLanguageRevision++;
+    state = AuthState.authenticated(
+      AccountSession(
+        account: session.account.withDisplayLanguage(language),
+        onboarded: session.onboarded,
+        hasRecoveryEmail: session.hasRecoveryEmail,
+      ),
+      notice: state.notice,
+    );
+    return true;
   }
 
   /// One "Continue with Google" tap: get an ID token, then hand it to
@@ -522,15 +554,22 @@ class AuthController extends StateNotifier<AuthState> {
     if (!state.isAuthenticated || current == null) {
       return;
     }
+    final int languageRevision = _displayLanguageRevision;
     try {
       final Account account = await _repository.currentAccount();
       if (!state.isAuthenticated ||
           state.session?.account.accountId != current.account.accountId) {
         return;
       }
+      final Account refreshedAccount =
+          _displayLanguageRevision == languageRevision
+              ? account
+              : account.copyWith(
+                  displayLanguage: state.session!.account.displayLanguage,
+                );
       state = AuthState.authenticated(
         AccountSession(
-          account: account,
+          account: refreshedAccount,
           onboarded: current.onboarded,
           hasRecoveryEmail: current.hasRecoveryEmail,
         ),
@@ -547,17 +586,12 @@ class AuthController extends StateNotifier<AuthState> {
     final Account account = current.account;
     state = AuthState.authenticated(
       AccountSession(
-        account: Account(
-          accountId: account.accountId,
-          traineeId: account.traineeId,
+        account: account.copyWith(
           capabilities: Capabilities(
             player: account.capabilities.player,
             coach: false,
           ),
           plans: account.plans.withoutCoach(),
-          coachAiEnabled: account.coachAiEnabled,
-          hasPassword: account.hasPassword,
-          linkedSignIns: account.linkedSignIns,
         ),
         onboarded: current.onboarded,
         hasRecoveryEmail: current.hasRecoveryEmail,

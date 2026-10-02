@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -9,10 +8,11 @@ import 'package:go_router/go_router.dart';
 
 import 'core/app_mode.dart';
 import 'core/connectivity.dart';
-import 'core/display_language.dart';
+import 'core/display_language/controller.dart';
 import 'core/models.dart';
 import 'core/theme/mayos_spacing.dart';
 import 'core/theme/mayos_theme.dart';
+import 'core/token_subject.dart';
 import 'core/ui/is_desktop_layout.dart';
 import 'core/ui/mayos_app_mode_scope.dart';
 import 'features/player/auth/auth_controller.dart';
@@ -45,37 +45,41 @@ class _MayosAppState extends ConsumerState<MayosApp>
     // Training status is restored from the protected cache and refreshed as
     // soon as the stored session is known (#220).
     ref.read(trainingStatusProvider.notifier);
-    // Resolve any persisted session once, off the first frame.
-    Future<void>.microtask(() async {
-      final tokens = ref.read(tokenStoreProvider);
-      final accountId = await tokens.readAccountId() ??
-          _unverifiedSubject(await tokens.read());
-      await ref
-          .read(displayLanguageProvider.notifier)
-          .initialize(accountId: accountId);
-      await ref.read(authControllerProvider.notifier).initialize();
-    });
+    // Session startup and preference storage are independent. A delayed or
+    // unavailable language-store plugin must never hold authentication open.
+    unawaited(_initializeAuthentication());
+    unawaited(_initializeDisplayLanguage());
     // Load the persisted appearance choice off the first frame.
     Future<void>.microtask(
       () => ref.read(themeModeControllerProvider.notifier).initialize(),
     );
   }
 
-  // The subject only selects this device's account-namespaced cache. The API
-  // still verifies the signed token before restoring an Account session.
-  String? _unverifiedSubject(String? token) {
-    if (token == null) return null;
-    final parts = token.split('.');
-    if (parts.length < 2) return null;
+  Future<void> _initializeDisplayLanguage() async {
+    final languageController = ref.read(displayLanguageProvider.notifier);
+    final int startupRevision = languageController.revision;
     try {
-      final payload =
-          utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
-      final subject = (jsonDecode(payload) as Map<String, dynamic>)['sub'];
-      return subject is String && subject.isNotEmpty ? subject : null;
-    } on FormatException {
-      return null;
-    } on TypeError {
-      return null;
+      final tokens = ref.read(tokenStoreProvider);
+      final accountId = await tokens.readAccountId() ??
+          unverifiedTokenSubject(await tokens.read());
+      await languageController.initialize(
+        accountId: accountId,
+        expectedRevision: startupRevision,
+      );
+    } on Object {
+      // Authentication remains usable when local preference storage fails.
+      ref.read(displayLanguageProvider.notifier).useSystemLanguage();
+    }
+  }
+
+  Future<void> _initializeAuthentication() async {
+    final bool definitivelySignedOut =
+        await ref.read(authControllerProvider.notifier).initialize();
+    if (!mounted || !definitivelySignedOut) return;
+    // No token or a rejected token means the cached Account is no longer
+    // active. Restore the local manual choice, or the latest system language.
+    if (ref.read(authControllerProvider).session == null) {
+      await ref.read(displayLanguageProvider.notifier).restoreLoggedOutChoice();
     }
   }
 
@@ -118,6 +122,8 @@ class _MayosAppState extends ConsumerState<MayosApp>
               account.accountId,
               account.displayLanguage,
             );
+      } else if (previous?.session != null) {
+        ref.read(displayLanguageProvider.notifier).restoreLoggedOutChoice();
       }
     });
     final GoRouter router = ref.watch(routerProvider);
@@ -129,9 +135,7 @@ class _MayosAppState extends ConsumerState<MayosApp>
       stored: ref.watch(appModeControllerProvider).mode,
     );
     final ThemeMode themeMode = ref.watch(themeModeControllerProvider);
-    final AccountSession? session = ref.watch(authControllerProvider).session;
-    final String selectedLanguage =
-        session?.account.displayLanguage ?? ref.watch(displayLanguageProvider);
+    final String selectedLanguage = ref.watch(displayLanguageProvider);
     return MaterialApp.router(
       title: 'MAYOS',
       debugShowCheckedModeBanner: false,

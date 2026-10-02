@@ -39,9 +39,10 @@ def test_password_account_language_registers_restores_and_updates(tmp_path: Path
             logged_in = client.post("/auth/login", json={"trainee_id": "arabic-player", "password": "strong-password"})
             assert logged_in.status_code == 200
             assert logged_in.json()["display_language"] == "en"
-            assert client.put("/auth/display-language", headers=headers,
+            login_headers = {"Authorization": f"Bearer {logged_in.json()['access_token']}"}
+            assert client.put("/auth/display-language", headers=login_headers,
                               json={"display_language": "fr"}).status_code == 422
-            assert client.get("/auth/me", headers=headers).json()["display_language"] == "en"
+            assert client.get("/auth/me", headers=login_headers).json()["display_language"] == "en"
     finally:
         if db.ledger_conn is not None:
             db.ledger_conn.close()

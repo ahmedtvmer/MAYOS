@@ -4,7 +4,7 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/display_language.dart';
+import 'package:mayos_mobile/src/core/display_language/store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/providers.dart';
 

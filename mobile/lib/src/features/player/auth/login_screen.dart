@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
 import '../../../core/privacy_policy.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/ui/mayos_button.dart';
@@ -61,12 +63,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
+    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     final Uri uri = GoRouterState.of(context).uri;
     final bool resetJustCompleted = uri.queryParameters['reset'] == '1';
     final String? notice = ref.watch(authControllerProvider).notice;
     return AuthScaffold(
-      title: 'Log in',
-      lead: 'Sign in to keep training and pick up where you left off.',
+      title: copy.logIn,
+      lead: copy.signInLead,
       wallpaper: true,
       showHomeScreenInstallHint: true,
       message: googleError != null
@@ -74,32 +77,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           : (_error == null ? null : AuthInlineNotice(message: _error!)),
       primary: MayosButton(
         key: const Key('login_submit'),
-        label: 'Log in',
+        label: copy.logIn,
         loading: _busy,
         onPressed: _busy ? null : _submit,
       ),
       links: <Widget>[
         AuthLink(
-          label: 'Create an account',
+          label: copy.createAccountLink,
           onPressed: _busy
               ? null
               : () => context.go(carryingLocation(context, registerPath)),
         ),
         AuthLink(
-          label: 'Forgot password?',
+          label: copy.forgotPasswordQuestion,
           onPressed: _busy ? null : () => context.go(forgotPasswordPath),
         ),
         AuthLink(
           key: const Key('login_privacy_policy'),
-          label: 'Privacy policy',
+          label: copy.privacyPolicy,
           onPressed: _busy ? null : () => openPrivacyPolicy(context, ref),
         ),
       ],
       children: <Widget>[
         if (resetJustCompleted)
-          const AuthInlineNotice(
+          AuthInlineNotice(
             kind: AuthNoticeKind.success,
-            message: 'Password changed. Sign in with your new password.',
+            message: copy.passwordChanged,
           )
         else if (notice != null)
           AuthInlineNotice(kind: AuthNoticeKind.info, message: notice),
@@ -114,7 +117,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         MayosTextField(
           fieldKey: const Key('login_username'),
           controller: _username,
-          label: 'Username',
+          label: copy.username,
           enabled: !_busy,
           textInputAction: TextInputAction.next,
           keyboardType: TextInputType.text,
@@ -125,12 +128,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           fieldKey: const Key('login_password'),
           toggleKey: const Key('login_password_toggle'),
           controller: _password,
+          label: copy.password,
           textInputAction: TextInputAction.done,
           autofillHints: const <String>[AutofillHints.password],
           onSubmitted: (_) => _busy ? null : _submit(),
         ),
         AuthConsentRow(
-          label: 'Keep me signed in',
+          label: copy.keepMeSignedIn,
           value: _rememberMe,
           enabled: !_busy,
           onChanged: (bool value) => setState(() => _rememberMe = value),

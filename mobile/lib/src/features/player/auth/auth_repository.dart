@@ -1,11 +1,12 @@
-import 'dart:convert';
+import 'dart:async';
 
 import '../../../core/account_data_eraser.dart';
 import '../../../core/api_client.dart';
 import '../../../core/chat_storage.dart';
-import '../../../core/display_language.dart';
+import '../../../core/display_language/store.dart';
 import '../../../core/models.dart';
 import '../../../core/token_store.dart';
+import '../../../core/token_subject.dart';
 
 /// What the first Google sign-in needs from the screens (#115/#174).
 sealed class GoogleSignInFlowResult {
@@ -153,8 +154,9 @@ class AuthRepository {
   Future<void> deleteAccount(String password) async {
     final String? accountId = await _localAccountId();
     await _api.deleteAccount(password);
-    await eraseAllLocalData(accountId);
+    await _erasePrivateAccountData(accountId);
     await _tokens.clear();
+    _deleteDisplayLanguageCacheBestEffort(accountId);
   }
 
   /// The Google-proof deletion a Google-only account uses (#114): the same
@@ -162,8 +164,9 @@ class AuthRepository {
   Future<void> deleteAccountWithGoogle({required String googleIdToken}) async {
     final String? accountId = await _localAccountId();
     await _api.deleteAccountWithGoogle(googleIdToken: googleIdToken);
-    await eraseAllLocalData(accountId);
+    await _erasePrivateAccountData(accountId);
     await _tokens.clear();
+    _deleteDisplayLanguageCacheBestEffort(accountId);
   }
 
   /// Connects the Google subject verified from [idToken] to this account.
@@ -197,17 +200,27 @@ class AuthRepository {
   /// protected local data and clear the local session (ADR 039).
   Future<void> handleAccountDeleted() async {
     final String? accountId = await _localAccountId();
-    await eraseAllLocalData(accountId);
+    await _erasePrivateAccountData(accountId);
     await _tokens.clear();
+    _deleteDisplayLanguageCacheBestEffort(accountId);
   }
 
-  /// The single erase path for both account-deletion flows (ADR 039).
-  Future<void> eraseAllLocalData(String? accountId) async {
+  /// Clears the account's private local data before dropping its credentials.
+  Future<void> _erasePrivateAccountData(String? accountId) async {
     if (accountId == null || accountId.isEmpty) {
       return;
     }
     await _eraser.erase(accountId);
-    await _displayLanguageStore?.deleteAccount(accountId);
+  }
+
+  /// Language-cache cleanup is non-critical and must not hold up session teardown.
+  void _deleteDisplayLanguageCacheBestEffort(String? accountId) {
+    if (accountId == null || accountId.isEmpty) return;
+    final DisplayLanguageStore? store = _displayLanguageStore;
+    if (store == null) return;
+    unawaited(store.deleteAccount(accountId).catchError((Object _) {
+      // Best effort: language preference cleanup must never block or fail teardown.
+    }));
   }
 
   /// The immutable account id for local-key lookup: the persisted id, or the
@@ -220,29 +233,7 @@ class AuthRepository {
     if (stored != null && stored.isNotEmpty) {
       return stored;
     }
-    return _unverifiedSubject(await _tokens.read());
-  }
-
-  static String? _unverifiedSubject(String? token) {
-    if (token == null || token.isEmpty) {
-      return null;
-    }
-    final List<String> parts = token.split('.');
-    if (parts.length < 2) {
-      return null;
-    }
-    try {
-      final String payload =
-          utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
-      final dynamic decoded = jsonDecode(payload);
-      if (decoded is Map && decoded['sub'] is String) {
-        final String sub = decoded['sub'] as String;
-        return sub.isEmpty ? null : sub;
-      }
-    } on Object {
-      // A malformed token has no usable subject.
-    }
-    return null;
+    return unverifiedTokenSubject(await _tokens.read());
   }
 
   Future<void> _saveAccountId(String accountId) async {

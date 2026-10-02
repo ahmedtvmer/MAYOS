@@ -6,7 +6,7 @@ import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Annotated, Any, NamedTuple
+from typing import Annotated, Any, NamedTuple, TypeVar
 
 import jwt
 from fastapi import Depends, HTTPException, Request, status
@@ -45,8 +45,8 @@ class AccountDeletedError(HTTPException):
         super().__init__(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account deleted.")
 
 
-class VerifiedPlayer(str):
-    """Ledger id carrying the account identity verified for this request."""
+class _VerifiedIdentityMarker(str):
+    """Shared immutable ledger/account/session data for verified identities."""
 
     def __new__(cls, ledger_id: str, account_id: str, session_epoch: int):
         value = str.__new__(cls, ledger_id)
@@ -55,11 +55,15 @@ class VerifiedPlayer(str):
         return value
 
 
-class VerifiedAccount:
-    """Authenticated account identity that does not require Player capability."""
+class VerifiedPlayer(_VerifiedIdentityMarker):
+    """Ledger id carrying the account identity verified for this request."""
 
-    def __init__(self, account_id: str):
-        self.account_id = account_id
+
+class VerifiedAccount(_VerifiedIdentityMarker):
+    """Ledger id carrying a verified Account without requiring Player capability."""
+
+
+_VerifiedIdentity = TypeVar("_VerifiedIdentity", VerifiedPlayer, VerifiedAccount)
 
 
 async def get_db(request: Request) -> Any:
@@ -74,7 +78,9 @@ async def get_db(request: Request) -> Any:
     return store
 
 
-def _authorize_account(db: Any, account_id: str, token_epoch: int) -> dict[str, Any]:
+def _authorize_account(
+    db: Any, account_id: str, token_epoch: int, *, require_player: bool = True
+) -> dict[str, Any]:
     """Validates the account registry entry before any ledger is mounted.
 
     Raises 401 for an unknown/deleted account, a missing player capability, a
@@ -88,7 +94,7 @@ def _authorize_account(db: Any, account_id: str, token_epoch: int) -> dict[str, 
     account = db.get_account(account_id)
     if account is not None and account["deleted_at"] is not None:
         raise AccountDeletedError()
-    if not db.is_live_account(account) or not account["is_player"]:
+    if not db.is_live_account(account) or (require_player and not account["is_player"]):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
     if token_epoch != account["session_epoch"]:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked.")
@@ -105,7 +111,10 @@ class _RegistryIdentity(NamedTuple):
 
 
 def _resolve_registry_identity(
-    credentials: HTTPAuthorizationCredentials | None, db: Any
+    credentials: HTTPAuthorizationCredentials | None,
+    db: Any,
+    *,
+    require_player: bool = True,
 ) -> _RegistryIdentity:
     """Verifies the bearer signature and registry account without mounting a ledger.
 
@@ -121,19 +130,34 @@ def _resolve_registry_identity(
         account_id = str(claims["sub"])
     except jwt.PyJWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.") from None
-    account = _authorize_account(db, account_id, token_version_of(claims))
+    account = _authorize_account(
+        db, account_id, token_version_of(claims), require_player=require_player
+    )
     return _RegistryIdentity(claims, account)
+
+
+def _verified_marker(
+    identity: _RegistryIdentity, marker_type: type[_VerifiedIdentity]
+) -> _VerifiedIdentity:
+    """Builds a verified identity marker without mounting a ledger."""
+    claims, account = identity
+    marker = marker_type(
+        account["ledger_id"], account["account_id"], token_version_of(claims)
+    )
+    marker.jti = str(claims["jti"])
+    return marker
 
 
 def _verified_player(identity: _RegistryIdentity) -> VerifiedPlayer:
     """Builds the verified-player marker without opening or mounting a ledger."""
-    claims, account = identity
-    player = VerifiedPlayer(account["ledger_id"], account["account_id"], token_version_of(claims))
-    player.jti = str(claims["jti"])
-    return player
+    return _verified_marker(identity, VerifiedPlayer)
 
 
-def _reject_revoked_token(db: Any, player: VerifiedPlayer) -> None:
+def _verified_account(identity: _RegistryIdentity) -> VerifiedAccount:
+    return _verified_marker(identity, VerifiedAccount)
+
+
+def _reject_revoked_token(db: Any, player: VerifiedPlayer | VerifiedAccount) -> None:
     """Rejects a token whose ``jti`` is revoked, using a short-lived ledger handle.
 
     The registry gate has already passed, so opening the ledger repeats only the
@@ -192,27 +216,12 @@ async def get_verified_account(
     db: Annotated[Any, Depends(get_db)],
 ) -> VerifiedAccount:
     """Authenticates an Account-level preference independent of its capabilities."""
-    if credentials is None or credentials.scheme.lower() != "bearer" or not credentials.credentials:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token.")
-    try:
-        claims = token_claims(credentials.credentials)
-        account_id = str(claims["sub"])
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.") from None
-    if db.is_account_deleted(account_id):
-        raise AccountDeletedError()
-    account = db.get_account(account_id)
-    if account is not None and account["deleted_at"] is not None:
-        raise AccountDeletedError()
-    if not db.is_live_account(account) or token_version_of(claims) != account["session_epoch"]:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
-    if not db.ledger_exists(account["ledger_id"]):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
-    with db.open_ledger(account["ledger_id"]) as ledger:
-        if ledger.is_token_revoked(str(claims["jti"])):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked.")
-    _record_last_seen(db, account_id)
-    return VerifiedAccount(account_id)
+    account = _verified_account(
+        _resolve_registry_identity(credentials, db, require_player=False)
+    )
+    _reject_revoked_token(db, account)
+    _record_last_seen(db, account.account_id)
+    return account
 
 
 async def get_ledger(

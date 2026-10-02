@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/app_mode.dart';
-import '../../core/display_language.dart';
+import '../../core/display_language/catalog.dart';
+import '../../core/display_language/controller.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
@@ -200,7 +201,7 @@ Future<void> showModeSheet(BuildContext context, WidgetRef ref) {
           ),
           ListTile(
             leading: const Icon(Icons.logout),
-            title: Text(copy.translate('Log out')),
+            title: Text(copy.logOut),
             onTap: () {
               Navigator.of(sheetContext).pop();
               confirmLogout(context, ref);

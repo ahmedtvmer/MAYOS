@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -63,13 +65,13 @@ class GoogleSignInSection extends ConsumerWidget {
     if (gateway.buttonStyle == GoogleSignInButtonStyle.hidden) {
       return const SizedBox.shrink();
     }
-    final Widget button = gateway.buttonStyle ==
-            GoogleSignInButtonStyle.webRendered
-        ? GoogleWebSignInButton(
-            loading: loading,
-            onOutcome: onWebOutcome,
-          )
-        : GoogleSignInButton(onPressed: onPressed, loading: loading);
+    final Widget button =
+        gateway.buttonStyle == GoogleSignInButtonStyle.webRendered
+            ? GoogleWebSignInButton(
+                loading: loading,
+                onOutcome: onWebOutcome,
+              )
+            : GoogleSignInButton(onPressed: onPressed, loading: loading);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -217,6 +219,9 @@ class GoogleSignInButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String label = MayosCopy(
+      Localizations.localeOf(context).languageCode,
+    ).googleName;
     // Google allows one light and one dark theme; pick the one matching the
     // surface (the sign-in screens run on the dark wallpaper).
     final bool dark = Theme.of(context).brightness == Brightness.dark;
@@ -230,7 +235,7 @@ class GoogleSignInButton extends StatelessWidget {
     return Semantics(
       button: true,
       enabled: enabled,
-      label: 'Continue with Google',
+      label: label,
       child: SizedBox(
         width: double.infinity,
         child: Material(
@@ -262,7 +267,7 @@ class GoogleSignInButton extends StatelessWidget {
                     const GoogleGLogo(size: 18),
                     const SizedBox(width: 10),
                     Text(
-                      'Continue with Google',
+                      label,
                       style: TextStyle(
                         fontFamily: MayosTypography.uiFamily,
                         fontSize: 14,
@@ -294,11 +299,11 @@ class GoogleGLogo extends StatelessWidget {
 }
 
 /// The quiet "or" rule between the Google button and the password form (#115).
-class AuthOrDivider extends StatelessWidget {
+class AuthOrDivider extends ConsumerWidget {
   const AuthOrDivider({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final MayosThemeExtension c = MayosTheme.of(context);
     return Row(
       children: <Widget>[
@@ -306,7 +311,7 @@ class AuthOrDivider extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: MayosSpacing.sm),
           child: Text(
-            'or',
+            MayosCopy(ref.watch(displayLanguageProvider)).signInOr,
             style: MayosTypography.bodySecondary.copyWith(color: c.textMuted),
           ),
         ),

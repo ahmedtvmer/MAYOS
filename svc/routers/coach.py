@@ -51,6 +51,7 @@ async def redeem_coach_invite(
         account = db.get_account(result["account_id"])
         result["has_password"] = auth_service.account_has_password(db, account)
         result["linked_sign_ins"] = db.list_linked_sign_in_providers(result["account_id"])
+        result["display_language"] = account["display_language"]
         return result
 
     result = await asyncio.to_thread(_run)
@@ -61,6 +62,7 @@ async def redeem_coach_invite(
         plans=AccountPlansOut(**result["plans"]),
         has_password=result["has_password"],
         linked_sign_ins=result["linked_sign_ins"],
+        display_language=result["display_language"],
         coach_ai_enabled=coach_ai_service.coach_ai_enabled(),
     )
 

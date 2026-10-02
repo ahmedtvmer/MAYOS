@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/connectivity.dart';
-import '../../../core/display_language.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/selector.dart';
+import '../../../core/password_policy.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -11,6 +13,7 @@ import '../../../core/ui/mayos_logo.dart';
 import '../../../core/ui/mayos_player_column.dart';
 import '../../../core/ui/mayos_text_field.dart';
 import '../../../core/ui/mayos_wallpaper.dart';
+import '../../../providers.dart';
 import 'home_screen_install_hint.dart';
 
 /// The shared MAYOS composition for the authentication and recovery screens.
@@ -29,7 +32,7 @@ import 'home_screen_install_hint.dart';
 /// screens, the tertiary links move to the end of the scrollable content, and
 /// the pinned bar keeps only the compact primary action so the fields stay
 /// visible.
-class AuthScaffold extends StatelessWidget {
+class AuthScaffold extends ConsumerWidget {
   const AuthScaffold({
     super.key,
     required this.title,
@@ -60,8 +63,10 @@ class AuthScaffold extends StatelessWidget {
   final bool showHomeScreenInstallHint;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final bool authenticated =
+        ref.watch(authControllerProvider).session != null;
     final bool keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     // On short screens the hero would push the fields and CTA out of the
     // shrunken viewport, so it is dropped while the keyboard is open.
@@ -151,11 +156,12 @@ class AuthScaffold extends StatelessWidget {
                 ],
               ),
             ),
-            const PositionedDirectional(
-              top: 0,
-              end: MayosSpacing.md,
-              child: DisplayLanguageSelector(compact: true),
-            ),
+            if (!authenticated)
+              const PositionedDirectional(
+                top: 0,
+                end: MayosSpacing.md,
+                child: DisplayLanguageSelector(compact: true),
+              ),
           ]),
         ),
       ),
@@ -171,22 +177,21 @@ class AuthScaffold extends StatelessWidget {
 }
 
 /// The editorial serif heading and its short sans explanation.
-class AuthHeading extends ConsumerWidget {
+class AuthHeading extends StatelessWidget {
   const AuthHeading({super.key, required this.title, this.lead});
 
   final String title;
   final String? lead;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
-    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     final double width = MediaQuery.sizeOf(context).width;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          copy.translate(title),
+          title,
           style: MayosTypography.pageHeading.copyWith(
             color: c.textPrimary,
             fontSize: width < 400 ? 28 : 32,
@@ -196,7 +201,7 @@ class AuthHeading extends ConsumerWidget {
         if (lead != null) ...<Widget>[
           const SizedBox(height: MayosSpacing.sm),
           Text(
-            copy.translate(lead!),
+            lead!,
             style: MayosTypography.bodySecondary.copyWith(
               color: c.textSecondary,
               height: 1.5,
@@ -211,7 +216,7 @@ class AuthHeading extends ConsumerWidget {
 enum AuthNoticeKind { error, success, info }
 
 /// An inline, left-aligned message for local validation and server responses.
-class AuthInlineNotice extends ConsumerWidget {
+class AuthInlineNotice extends StatelessWidget {
   const AuthInlineNotice({
     super.key,
     required this.message,
@@ -222,7 +227,7 @@ class AuthInlineNotice extends ConsumerWidget {
   final AuthNoticeKind kind;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final (Color color, IconData icon) = switch (kind) {
       AuthNoticeKind.error => (c.danger, Icons.error_outline),
@@ -238,7 +243,7 @@ class AuthInlineNotice extends ConsumerWidget {
           const SizedBox(width: MayosSpacing.xs),
           Expanded(
             child: Text(
-              MayosCopy(ref.watch(displayLanguageProvider)).translate(message),
+              message,
               style: MayosTypography.bodySecondary.copyWith(color: color),
             ),
           ),
@@ -339,7 +344,7 @@ class AuthConsentRow extends ConsumerWidget {
       container: true,
       checked: value,
       enabled: interactive,
-      label: MayosCopy(ref.watch(displayLanguageProvider)).translate(label),
+      label: label,
       onTap: toggle,
       child: ExcludeSemantics(
         child: InkWell(
@@ -353,8 +358,7 @@ class AuthConsentRow extends ConsumerWidget {
                 const SizedBox(width: MayosSpacing.sm),
                 Expanded(
                   child: Text(
-                    MayosCopy(ref.watch(displayLanguageProvider))
-                        .translate(label),
+                    label,
                     style: MayosTypography.body.copyWith(color: labelColor),
                   ),
                 ),
@@ -397,23 +401,45 @@ class _ConsentCheckbox extends StatelessWidget {
 
 /// The client-side new-password rules, shared by register and reset so
 /// the same rule is worded identically on every screen.
-const int kMinPasswordLength = 8;
-const String kPasswordMinLengthMessage = 'Use at least 8 characters.';
-const String kPasswordMismatchMessage = 'Passwords do not match.';
+enum NewPasswordValidation { tooShort, mismatch }
+
+String newPasswordValidationMessage(
+  NewPasswordValidation validation,
+  MayosCopy copy,
+) =>
+    switch (validation) {
+      NewPasswordValidation.tooShort => copy.passwordLength,
+      NewPasswordValidation.mismatch => copy.passwordMismatch,
+    };
 
 /// The min-length check for a chosen password, or null when it is long enough.
 String? passwordLengthError(String password) =>
-    password.length < kMinPasswordLength ? kPasswordMinLengthMessage : null;
+    _newPasswordLengthValidation(password) == NewPasswordValidation.tooShort
+        ? const MayosCopy('en').passwordLength
+        : null;
 
 /// The confirmation check, or null when the two entries match.
 String? passwordConfirmationError(String password, String confirm) =>
-    password == confirm ? null : kPasswordMismatchMessage;
+    _newPasswordConfirmationValidation(password, confirm) ==
+            NewPasswordValidation.mismatch
+        ? const MayosCopy('en').passwordMismatch
+        : null;
+
+NewPasswordValidation? _newPasswordLengthValidation(String password) =>
+    password.length < kMinPasswordLength
+        ? NewPasswordValidation.tooShort
+        : null;
+
+NewPasswordValidation? _newPasswordConfirmationValidation(
+        String password, String confirm) =>
+    password == confirm ? null : NewPasswordValidation.mismatch;
 
 /// The shared new-password validator: the length rule first, then the match
 /// rule, or null when both pass.
-String? validateNewPassword(String password, String confirm) =>
-    passwordLengthError(password) ??
-    passwordConfirmationError(password, confirm);
+NewPasswordValidation? validateNewPassword(String password, String confirm) {
+  return _newPasswordLengthValidation(password) ??
+      _newPasswordConfirmationValidation(password, confirm);
+}
 
 /// A password input with an obscured default and a labelled visibility toggle.
 class AuthPasswordField extends ConsumerStatefulWidget {
@@ -451,13 +477,11 @@ class _AuthPasswordFieldState extends ConsumerState<AuthPasswordField> {
 
   @override
   Widget build(BuildContext context) {
-    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     return MayosTextField(
       fieldKey: widget.fieldKey,
       controller: widget.controller,
-      label: copy.translate(widget.label),
-      helperText:
-          widget.helperText == null ? null : copy.translate(widget.helperText!),
+      label: widget.label,
+      helperText: widget.helperText,
       errorText: widget.errorText,
       obscureText: _obscure,
       keyboardType: TextInputType.visiblePassword,
@@ -469,7 +493,7 @@ class _AuthPasswordFieldState extends ConsumerState<AuthPasswordField> {
       onSubmitted: widget.onSubmitted,
       suffixIcon: IconButton(
         key: widget.toggleKey,
-        tooltip: copy.translate(_obscure ? 'Show password' : 'Hide password'),
+        tooltip: _obscure ? 'Show password' : 'Hide password',
         onPressed: () => setState(() => _obscure = !_obscure),
         icon: Icon(
           _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
@@ -481,16 +505,16 @@ class _AuthPasswordFieldState extends ConsumerState<AuthPasswordField> {
 }
 
 /// A quiet link built from the shared tertiary button.
-class AuthLink extends ConsumerWidget {
+class AuthLink extends StatelessWidget {
   const AuthLink({super.key, required this.label, required this.onPressed});
 
   final String label;
   final VoidCallback? onPressed;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return MayosButton(
-      label: MayosCopy(ref.watch(displayLanguageProvider)).translate(label),
+      label: label,
       variant: MayosButtonVariant.tertiary,
       expand: false,
       onPressed: onPressed,

@@ -226,7 +226,7 @@ class AccountOut(BaseModel):
     plans: AccountPlansOut
     has_password: bool
     linked_sign_ins: list[str]
-    display_language: Literal["en", "ar"] = "en"
+    display_language: Literal["en", "ar"]
     coach_ai_enabled: bool = False
 
 

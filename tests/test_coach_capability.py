@@ -173,6 +173,27 @@ def test_owner_issued_invite_grants_capability_without_reissuing_token(api):
     assert me.json()["capabilities"] == {"player": True, "coach": True}
 
 
+def test_coach_invite_redemption_returns_saved_display_language(api):
+    client, db, _ = api
+    registered = client.post(
+        "/auth/register",
+        json={
+            "trainee_id": "arabic-coach",
+            "password": "correct-horse-1",
+            "display_language": "ar",
+        },
+    )
+    assert registered.status_code == 201, registered.text
+    headers = _authed(registered.json()["access_token"])
+    invite = _issue(db, "arabic-coach", actor="cli")
+
+    redeemed = client.post(
+        "/coach/invite/redeem", headers=headers, json={"token": invite["token"]}
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    assert redeemed.json()["display_language"] == "ar"
+
+
 def test_invite_is_bound_to_the_invited_account(api):
     client, db, _ = api
     _register(client, "alice")

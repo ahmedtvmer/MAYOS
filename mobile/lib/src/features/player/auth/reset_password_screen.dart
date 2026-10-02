@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_text_field.dart';
@@ -66,9 +68,12 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       setState(() => _error = _genericFallback);
       return;
     }
-    final String? passwordError = validateNewPassword(password, _confirm.text);
+    final NewPasswordValidation? passwordError =
+        validateNewPassword(password, _confirm.text);
     if (passwordError != null) {
-      setState(() => _error = passwordError);
+      final MayosCopy copy = MayosCopy(ref.read(displayLanguageProvider));
+      setState(
+          () => _error = newPasswordValidationMessage(passwordError, copy));
       return;
     }
     setState(() => _busy = true);
@@ -93,20 +98,21 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     return AuthScaffold(
-      title: 'Reset password',
-      lead: 'Choose a new password for your account.',
+      title: copy.resetPassword,
+      lead: copy.resetPasswordLead,
       wallpaper: true,
       message: _error == null ? null : AuthInlineNotice(message: _error!),
       primary: MayosButton(
         key: const Key('reset_submit'),
-        label: 'Set new password',
+        label: copy.setNewPassword,
         loading: _busy,
         onPressed: _busy ? null : _submit,
       ),
       links: <Widget>[
         AuthLink(
-          label: 'Request a new link',
+          label: copy.requestNewLink,
           onPressed: _busy ? null : () => context.go(forgotPasswordPath),
         ),
       ],
@@ -114,7 +120,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
         MayosTextField(
           fieldKey: const Key('reset_token'),
           controller: _token,
-          label: 'Reset code',
+          label: copy.resetCode,
           readOnly: true,
         ),
         const SizedBox(height: MayosSpacing.md),
@@ -122,8 +128,8 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
           fieldKey: const Key('reset_password'),
           toggleKey: const Key('reset_password_toggle'),
           controller: _password,
-          label: 'New password',
-          helperText: 'At least 8 characters',
+          label: copy.newPassword,
+          helperText: copy.passwordLengthHint,
           textInputAction: TextInputAction.next,
           autofillHints: const <String>[AutofillHints.newPassword],
         ),
@@ -132,7 +138,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
           fieldKey: const Key('reset_confirm'),
           toggleKey: const Key('reset_confirm_toggle'),
           controller: _confirm,
-          label: 'Confirm password',
+          label: copy.confirmPassword,
           textInputAction: TextInputAction.done,
           autofillHints: const <String>[AutofillHints.newPassword],
           onSubmitted: (_) => _busy ? null : _submit(),

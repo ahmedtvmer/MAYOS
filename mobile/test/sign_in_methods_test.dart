@@ -17,6 +17,7 @@ import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/auth/google_auth_gateway.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
+import 'package:mayos_mobile/src/features/settings/settings_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
@@ -97,8 +98,7 @@ Future<void> _pumpProfile(
             .overrideWithValue(InMemoryBaselineCacheStore()),
         deviceTimezoneProvider
             .overrideWithValue(Future<String>.value('Europe/London')),
-        if (google != null)
-          googleAuthGatewayProvider.overrideWithValue(google),
+        if (google != null) googleAuthGatewayProvider.overrideWithValue(google),
         apiClientProvider.overrideWith((ref) {
           final ApiClient client = ApiClient(
             tokens: ref.watch(tokenStoreProvider),
@@ -149,10 +149,10 @@ Future<void> _reveal(WidgetTester tester, Finder finder) async {
 
 void main() {
   group('sign-in methods section', () {
-    testWidgets('failed Display language save keeps confirmed selection',
+    testWidgets(
+        'confirmed language changes direction and failed save preserves it',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi()
-        ..displayLanguageUpdateFails = true;
+      final FakeMayosApi fake = FakeMayosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
       await _pumpProfile(tester, fake, tokens,
@@ -160,16 +160,35 @@ void main() {
 
       final Finder selector =
           find.byKey(const Key('account_display_language_en-0'));
+      await tester.scrollUntilVisible(
+        selector,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(selector, findsOneWidget);
+      expect(Directionality.of(tester.element(find.byType(SettingsScreen))),
+          TextDirection.ltr);
       await tester.tap(selector);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Arabic').last);
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('account_display_language_en-1')),
+      expect(find.byKey(const Key('account_display_language_ar-0')),
           findsOneWidget);
-      expect(fake.displayLanguage, 'en');
-      expect(find.text('Could not save Display language.'), findsOneWidget);
-      expect(find.text('English'), findsOneWidget);
+      expect(fake.displayLanguage, 'ar');
+      expect(Directionality.of(tester.element(find.byType(SettingsScreen))),
+          TextDirection.rtl);
+
+      fake.displayLanguageUpdateFails = true;
+      await tester.tap(find.byKey(const Key('account_display_language_ar-0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('الإنجليزية').last);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('account_display_language_ar-1')),
+          findsOneWidget);
+      expect(fake.displayLanguage, 'ar');
+      expect(Directionality.of(tester.element(find.byType(SettingsScreen))),
+          TextDirection.rtl);
+      expect(find.text('تعذر حفظ لغة العرض.'), findsOneWidget);
     });
 
     testWidgets('a password-only account offers change password and connect',
@@ -177,8 +196,7 @@ void main() {
       final FakeMayosApi fake = FakeMayosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
-      await _pumpProfile(tester, fake, tokens,
-          google: FakeGoogleAuthGateway());
+      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
       expect(find.text('Sign-in methods'), findsOneWidget);
       expect(find.text('Password set'), findsOneWidget);
@@ -198,8 +216,7 @@ void main() {
       final FakeMayosApi fake = FakeMayosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: false, googleLinked: true);
-      await _pumpProfile(tester, fake, tokens,
-          google: FakeGoogleAuthGateway());
+      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
       expect(find.text('No password yet'), findsOneWidget);
       expect(find.byKey(const Key('set_password_button')), findsOneWidget);
@@ -210,8 +227,8 @@ void main() {
       expect(find.byKey(const Key('connect_google_button')), findsNothing);
 
       // Disconnecting would leave no way back in, so it is disabled (#114).
-      final MayosButton disconnect = tester
-          .widget<MayosButton>(find.byKey(const Key('disconnect_google_button')));
+      final MayosButton disconnect = tester.widget<MayosButton>(
+          find.byKey(const Key('disconnect_google_button')));
       expect(disconnect.onPressed, isNull);
       expect(fake.linkedSignIns, contains('google'));
     });
@@ -221,8 +238,7 @@ void main() {
       final FakeMayosApi fake = FakeMayosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: true);
-      await _pumpProfile(tester, fake, tokens,
-          google: FakeGoogleAuthGateway());
+      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
       expect(find.text('Password set'), findsOneWidget);
       expect(find.text('Change password'), findsOneWidget);
@@ -230,7 +246,8 @@ void main() {
       expect(find.text('Set a password first'), findsNothing);
       expect(
         tester
-            .widget<MayosButton>(find.byKey(const Key('disconnect_google_button')))
+            .widget<MayosButton>(
+                find.byKey(const Key('disconnect_google_button')))
             .onPressed,
         isNotNull,
       );
@@ -266,10 +283,8 @@ void main() {
       await _pumpProfile(tester, fake, tokens, google: google);
 
       await _reveal(tester, find.byKey(const Key('connect_google_button')));
-      final int meBefore = fake
-          .adapter.requests
-          .where((r) => r.path == '/auth/me')
-          .length;
+      final int meBefore =
+          fake.adapter.requests.where((r) => r.path == '/auth/me').length;
       await tester.tap(find.byKey(const Key('connect_google_button')));
       await _pumpUntilFound(tester, find.text('Google account connected.'));
 
@@ -323,9 +338,11 @@ void main() {
       await _reveal(tester, find.byKey(const Key('connect_google_web_button')));
       google.emitAuthenticationOutcome(const GoogleAuthIdToken('first-token'));
       google.emitAuthenticationOutcome(const GoogleAuthIdToken('second-token'));
-      for (int i = 0; i < 20 &&
-          !fake.adapter.requests.any(
-              (FakeRequest r) => r.path == '/auth/google/link'); i++) {
+      for (int i = 0;
+          i < 20 &&
+              !fake.adapter.requests
+                  .any((FakeRequest r) => r.path == '/auth/google/link');
+          i++) {
         await tester.pump(const Duration(milliseconds: 10));
       }
       expect(
@@ -345,13 +362,14 @@ void main() {
         ..googleLinkConflictElsewhere = true;
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
-      await _pumpProfile(tester, fake, tokens,
-          google: FakeGoogleAuthGateway());
+      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
       await _reveal(tester, find.byKey(const Key('connect_google_button')));
       await tester.tap(find.byKey(const Key('connect_google_button')));
-      await _pumpUntilFound(tester, find.text(
-          'This Google account is already connected to another MAYOS account'));
+      await _pumpUntilFound(
+          tester,
+          find.text(
+              'This Google account is already connected to another MAYOS account'));
 
       expect(fake.linkGoogleRequests, 1);
       expect(fake.linkedSignIns, isEmpty);
@@ -364,13 +382,14 @@ void main() {
         ..googleLinkConflictDifferent = true;
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
-      await _pumpProfile(tester, fake, tokens,
-          google: FakeGoogleAuthGateway());
+      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
       await _reveal(tester, find.byKey(const Key('connect_google_button')));
       await tester.tap(find.byKey(const Key('connect_google_button')));
-      await _pumpUntilFound(tester, find.text(
-          'This account already has a different Google account connected. Disconnect it first.'));
+      await _pumpUntilFound(
+          tester,
+          find.text(
+              'This account already has a different Google account connected. Disconnect it first.'));
 
       expect(fake.linkGoogleRequests, 1);
       expect(fake.linkedSignIns, isEmpty);
@@ -384,8 +403,7 @@ void main() {
       final FakeMayosApi fake = FakeMayosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: true);
-      await _pumpProfile(tester, fake, tokens,
-          google: FakeGoogleAuthGateway());
+      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
       await _reveal(tester, find.byKey(const Key('disconnect_google_button')));
       await tester.tap(find.byKey(const Key('disconnect_google_button')));
@@ -399,7 +417,8 @@ void main() {
 
       await tester.tap(find.byKey(const Key('disconnect_google_button')));
       await _pumpUntilFound(tester, find.text('Disconnect Google?'));
-      await tester.tap(find.byKey(const Key('disconnect_google_confirm_button')));
+      await tester
+          .tap(find.byKey(const Key('disconnect_google_confirm_button')));
       await _pumpUntilFound(tester, find.text('Google disconnected.'));
 
       expect(fake.unlinkGoogleRequests, 1);
@@ -414,8 +433,7 @@ void main() {
       final FakeMayosApi fake = FakeMayosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
-      await _pumpProfile(tester, fake, tokens,
-          google: FakeGoogleAuthGateway());
+      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
       await _reveal(tester, find.byKey(const Key('change_password_button')));
       await tester.tap(find.byKey(const Key('change_password_button')));
@@ -452,8 +470,7 @@ void main() {
       final FakeMayosApi fake = FakeMayosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: false, googleLinked: true);
-      await _pumpProfile(tester, fake, tokens,
-          google: FakeGoogleAuthGateway());
+      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
       await _reveal(tester, find.byKey(const Key('set_password_button')));
       await tester.tap(find.byKey(const Key('set_password_button')));
@@ -473,7 +490,8 @@ void main() {
           find.byKey(const Key('set_password_confirm_field')),
           'correct-horse-1');
       await tester.tap(find.byKey(const Key('set_password_confirm_button')));
-      await _pumpUntilFound(tester, find.text('Password set. You can now disconnect Google.'));
+      await _pumpUntilFound(
+          tester, find.text('Password set. You can now disconnect Google.'));
 
       expect(fake.setPasswordRequests, 1);
       expect(fake.lastSetPassword, 'correct-horse-1');
@@ -482,7 +500,8 @@ void main() {
       expect(find.text('Change password'), findsOneWidget);
       expect(
         tester
-            .widget<MayosButton>(find.byKey(const Key('disconnect_google_button')))
+            .widget<MayosButton>(
+                find.byKey(const Key('disconnect_google_button')))
             .onPressed,
         isNotNull,
       );
@@ -511,17 +530,18 @@ void main() {
       await _pumpUntilFound(tester, find.text('Delete account?'));
       expect(
           find.byKey(const Key('delete_account_confirm_button')), findsNothing);
-      expect(
-          find.byKey(const Key('delete_account_google_web_button')),
+      expect(find.byKey(const Key('delete_account_google_web_button')),
           findsOneWidget);
 
       google.emitAuthenticationOutcome(
           const GoogleAuthIdToken('web-delete-token'));
       google.emitAuthenticationOutcome(
           const GoogleAuthIdToken('second-delete-token'));
-      for (int i = 0; i < 20 &&
-          !fake.adapter.requests.any(
-              (FakeRequest r) => r.path == '/auth/account'); i++) {
+      for (int i = 0;
+          i < 20 &&
+              !fake.adapter.requests
+                  .any((FakeRequest r) => r.path == '/auth/account');
+          i++) {
         await tester.pump(const Duration(milliseconds: 10));
       }
       expect(
@@ -575,8 +595,8 @@ void main() {
       await _pumpUntilFound(tester, find.text('Delete account?'));
 
       // No password exists, so there is no password field to fill in.
-      expect(find.byKey(const Key('delete_account_password_field')),
-          findsNothing);
+      expect(
+          find.byKey(const Key('delete_account_password_field')), findsNothing);
       expect(find.textContaining('signing in with Google'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('delete_account_confirm_button')));
@@ -608,7 +628,9 @@ void main() {
       await _pumpUntilFound(tester, find.text('Delete account?'));
       await tester.tap(find.byKey(const Key('delete_account_confirm_button')));
       await _pumpUntilFound(
-          tester, find.text('Google sign-in was cancelled. Your account was not deleted.'));
+          tester,
+          find.text(
+              'Google sign-in was cancelled. Your account was not deleted.'));
 
       expect(google.authenticateCalls, 1);
       expect(google.clearSdkStateCalls, 0);
@@ -622,15 +644,14 @@ void main() {
       final FakeMayosApi fake = FakeMayosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
-      await _pumpProfile(tester, fake, tokens,
-          google: FakeGoogleAuthGateway());
+      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
       await _reveal(tester, find.byKey(const Key('delete_account_button')));
       await tester.tap(find.byKey(const Key('delete_account_button')));
       await _pumpUntilFound(tester, find.text('Delete account?'));
 
-      expect(
-          find.byKey(const Key('delete_account_password_field')), findsOneWidget);
+      expect(find.byKey(const Key('delete_account_password_field')),
+          findsOneWidget);
 
       await tester.enterText(
           find.byKey(const Key('delete_account_password_field')), 'wrong-pass');
@@ -638,7 +659,8 @@ void main() {
       await _pumpUntilFound(tester, find.text('Invalid credentials.'));
       expect(fake.accountDeleted, isFalse);
 
-      await tester.enterText(find.byKey(const Key('delete_account_password_field')),
+      await tester.enterText(
+          find.byKey(const Key('delete_account_password_field')),
           'correct-horse-1');
       await tester.tap(find.byKey(const Key('delete_account_confirm_button')));
       await _pumpUntilFound(tester, find.text('Log in'));

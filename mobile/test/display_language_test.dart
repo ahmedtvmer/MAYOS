@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/display_language.dart';
 import 'package:mayos_mobile/src/core/browser_key_value_store.dart';
@@ -47,7 +48,8 @@ void main() {
       child: const MaterialApp(home: Scaffold(body: DisplayLanguageSelector())),
     ));
     expect(find.text('English'), findsOneWidget);
-    expect(store.value, 'en');
+    // Only a manual choice is persisted; a system-derived default is not.
+    expect(store.value, isNull);
   });
 
   testWidgets(
@@ -108,11 +110,12 @@ void main() {
     expect(find.text('0123456789 · MAYOS · Free · Pro · RIR'), findsOneWidget);
   });
 
-  test('failed local save does not mutate confirmed language', () async {
+  test('failed local persistence keeps the manual choice active in memory',
+      () async {
     final controller =
         DisplayLanguageController(_FailingStore(), systemLanguage: 'en');
-    await expectLater(controller.choose('ar'), throwsStateError);
-    expect(controller.state, 'en');
+    await controller.choose('ar');
+    expect(controller.state, 'ar');
   });
 
   test('web uses browser storage and Android uses secure-storage adapter',
@@ -127,8 +130,8 @@ void main() {
     await web.deleteAccount('account');
     expect(await web.readAccount('account'), isNull);
 
-    // The Android branch is exercised without a browser framework. In a host
-    // test process lacking the plugin, its injected-store fallback is in-memory.
+    // Exercise the secure-storage branch directly without a browser framework.
+    FlutterSecureStorage.setMockInitialValues(<String, String>{});
     final android = PlatformDisplayLanguageStore(isWeb: false);
     await android.write('en');
     await android.writeAccount('account', 'ar');

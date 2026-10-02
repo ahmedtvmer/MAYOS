@@ -5,7 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/connectivity_message.dart';
-import '../../../core/display_language.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_text_field.dart';
@@ -27,7 +28,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   final TextEditingController _email = TextEditingController();
   bool _busy = false;
   String? _error;
-  String? _confirmation;
+  bool _confirmation = false;
 
   @override
   void dispose() {
@@ -39,14 +40,14 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     setState(() {
       _busy = true;
       _error = null;
-      _confirmation = null;
+      _confirmation = false;
     });
     try {
-      final String message = await ref
+      await ref
           .read(authControllerProvider.notifier)
           .requestPasswordReset(_email.text.trim());
       if (mounted) {
-        setState(() => _confirmation = message);
+        setState(() => _confirmation = true);
       }
       TextInput.finishAutofillContext();
     } on ApiException catch (error) {
@@ -62,21 +63,21 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     return AuthScaffold(
-      title: 'Forgot password',
-      lead: 'Enter your recovery email and we will send a reset link. '
-          'Open it on this device to choose a new password.',
+      title: copy.forgotPassword,
+      lead: copy.forgotEmailHint,
       wallpaper: true,
       message: _error == null ? null : AuthInlineNotice(message: _error!),
       primary: MayosButton(
         key: const Key('forgot_submit'),
-        label: 'Send reset link',
+        label: copy.sendResetLink,
         loading: _busy,
         onPressed: _busy ? null : _submit,
       ),
       links: <Widget>[
         AuthLink(
-          label: 'Back to log in',
+          label: copy.backToLogIn,
           onPressed: _busy ? null : () => context.go(loginPath),
         ),
       ],
@@ -84,7 +85,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         MayosTextField(
           fieldKey: const Key('forgot_email'),
           controller: _email,
-          label: 'Email',
+          label: copy.email,
           enabled: !_busy,
           keyboardType: TextInputType.emailAddress,
           textInputAction: TextInputAction.done,
@@ -92,24 +93,22 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           autofillHints: const <String>[AutofillHints.email],
           onSubmitted: (_) => _busy ? null : _submit(),
         ),
-        if (_confirmation != null) ...<Widget>[
+        if (_confirmation) ...<Widget>[
           const SizedBox(height: MayosSpacing.md),
           AuthInlineNotice(
             kind: AuthNoticeKind.success,
-            message: _confirmation!,
+            message: copy.resetRequestConfirmation,
           ),
           const SizedBox(height: MayosSpacing.sm),
-          Text(MayosCopy(ref.watch(displayLanguageProvider))
-              .translate("Didn't get an email? Check the address,")),
+          Text(copy.noEmailHint),
           AuthLink(
             key: const Key('forgot_signup'),
-            label: 'sign up',
+            label: copy.signUp,
             onPressed: _busy
                 ? null
                 : () => context.go(carryingLocation(context, registerPath)),
           ),
-          Text(MayosCopy(ref.watch(displayLanguageProvider))
-              .translate('or log in and add a recovery email in Settings.')),
+          Text(copy.forgotSettingsHint),
         ],
       ],
     );

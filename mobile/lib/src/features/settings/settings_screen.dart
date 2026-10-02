@@ -4,7 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/config.dart';
 import '../../core/api_client.dart';
-import '../../core/display_language.dart';
+import '../../core/display_language/catalog.dart';
+import '../../core/display_language/controller.dart';
+import '../../core/display_language/choices.dart';
 import '../../core/models.dart';
 import '../../core/privacy_policy.dart';
 import '../../core/theme/mayos_spacing.dart';
@@ -33,6 +35,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   int _selectorRevision = 0;
+  bool _savingLanguage = false;
 
   @override
   Widget build(BuildContext context) {
@@ -51,42 +54,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       body: ListView(
         padding: MayosSpacing.screen,
         children: <Widget>[
-          MayosSectionHeader(title: copy.displayLanguage),
-          DropdownButtonFormField<String>(
-            key: ValueKey<String>(
-                'account_display_language_$language-$_selectorRevision'),
-            initialValue: language,
-            items: <DropdownMenuItem<String>>[
-              DropdownMenuItem(value: 'en', child: Text(copy.english)),
-              DropdownMenuItem(value: 'ar', child: Text(copy.arabic)),
-            ],
-            onChanged: session == null
-                ? null
-                : (value) async {
-                    if (value == null || value == language) {
-                      return;
-                    }
-                    try {
-                      await ref
-                          .read(authRepositoryProvider)
-                          .updateDisplayLanguage(value);
-                      await ref
-                          .read(displayLanguageProvider.notifier)
-                          .useAccount(session.account.accountId, value);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(copy.languageSaved)));
-                      }
-                    } on ApiException {
-                      setState(() => _selectorRevision++);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(copy.languageSaveFailed)));
-                      }
-                    }
-                  },
-          ),
-          const SizedBox(height: MayosSpacing.xl),
           const MayosSectionHeader(
             title: 'Appearance',
             subtitle: 'Choose how MAYOS looks. System follows your device.',
@@ -235,9 +202,96 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onTap: () => confirmLogout(context, ref),
             ),
           ),
+          const SizedBox(height: MayosSpacing.xl),
+          MayosSectionHeader(title: copy.displayLanguage),
+          InputDecorator(
+            decoration: InputDecoration(
+              border: const OutlineInputBorder(),
+            ),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      key: ValueKey<String>(
+                          'account_display_language_$language-$_selectorRevision'),
+                      value: language,
+                      isExpanded: true,
+                      items: displayLanguageMenuItems(copy),
+                      onChanged: session == null || _savingLanguage
+                          ? null
+                          : (value) {
+                              if (value != null && value != language) {
+                                _saveDisplayLanguage(
+                                  value,
+                                  confirmedLanguage: language,
+                                  accountId: session.account.accountId,
+                                );
+                              }
+                            },
+                    ),
+                  ),
+                ),
+                if (_savingLanguage)
+                  const Padding(
+                    padding: EdgeInsetsDirectional.only(start: MayosSpacing.sm),
+                    child: SizedBox(
+                      width: MayosIconSizes.medium,
+                      height: MayosIconSizes.medium,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+              ],
+            ),
+          ),
           const SizedBox(height: MayosSpacing.xxl),
         ],
       ),
     );
+  }
+
+  Future<void> _saveDisplayLanguage(
+    String value, {
+    required String confirmedLanguage,
+    required String accountId,
+  }) async {
+    setState(() => _savingLanguage = true);
+    final authRepository = ref.read(authRepositoryProvider);
+    final authController = ref.read(authControllerProvider.notifier);
+    final displayLanguageController =
+        ref.read(displayLanguageProvider.notifier);
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    try {
+      await authRepository.updateDisplayLanguage(value);
+      final bool stillCurrent =
+          authController.confirmDisplayLanguage(accountId, value);
+      if (!stillCurrent) {
+        // The server accepted the initiating Account's preference, but a
+        // logout or account switch means it must not become the active choice.
+        displayLanguageController.cacheAccountChoice(accountId, value);
+      }
+      if (!mounted) return;
+      if (stillCurrent) {
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          SnackBar(content: Text(MayosCopy(value).languageSaved)),
+        );
+      }
+    } on ApiException {
+      if (!mounted) return;
+      final bool stillCurrent = authController.ownsAccount(accountId);
+      if (stillCurrent) setState(() => _selectorRevision++);
+      if (stillCurrent) {
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(MayosCopy(confirmedLanguage).languageSaveFailed),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingLanguage = false);
+    }
   }
 }
