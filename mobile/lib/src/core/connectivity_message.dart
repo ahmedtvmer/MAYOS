@@ -19,5 +19,10 @@ bool isNetworkFailure(ApiException error) => error.statusCode == null;
 /// The message to show for a failed program-changing action: the shared
 /// connectivity line for a transport failure, otherwise the server's own
 /// message.
-String mutationFailureMessage(ApiException error) =>
-    isNetworkFailure(error) ? needsConnectionMessage : error.message;
+String mutationFailureMessage(
+  ApiException error, {
+  String? connectionMessage,
+}) =>
+    isNetworkFailure(error)
+        ? connectionMessage ?? needsConnectionMessage
+        : error.message;

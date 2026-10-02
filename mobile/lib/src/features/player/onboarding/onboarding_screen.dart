@@ -3,6 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
+import '../../../core/display_language/copy_context.dart';
+import '../../../core/display_language/onboarding_copy.dart';
 import '../../../core/connectivity.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/models.dart';
@@ -38,9 +42,9 @@ class _CoachInviteRedeemDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Enable coaching'),
+        title: Text(displayCopyOf(context).enableCoaching),
         content: CoachCodeForm(
-          description: 'Enter your MAYOS coach code.',
+          description: displayCopyOf(context).enterCoachCodeLead,
           fieldKey: const Key('onboarding_coach_code'),
           submitButtonKey: const Key('onboarding_redeem_coach_code'),
           onRedeemed: () => Navigator.of(context).pop(true),
@@ -48,7 +52,7 @@ class _CoachInviteRedeemDialog extends StatelessWidget {
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(displayCopyOf(context).cancel),
           ),
         ],
       );
@@ -126,7 +130,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       }
       setState(() {
         _phase = _OnboardingPhase.error;
-        _error = mutationFailureMessage(error);
+        _error = mutationFailureMessage(
+          error,
+          connectionMessage: displayCopyOf(context).connectionFailure,
+        );
       });
     }
   }
@@ -288,7 +295,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       }
       setState(() {
         _disclosureSaving = false;
-        _disclosureError = mutationFailureMessage(error);
+        _disclosureError = mutationFailureMessage(
+          error,
+          connectionMessage: displayCopyOf(context).connectionFailure,
+        );
       });
     }
   }
@@ -333,7 +343,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       // Offline/network: keep the answer on screen so it can be retried.
       setState(() {
         _saving = false;
-        _stepError = mutationFailureMessage(error);
+        _stepError = mutationFailureMessage(
+          error,
+          connectionMessage: displayCopyOf(context).connectionFailure,
+        );
       });
     }
   }
@@ -363,14 +376,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       if (error.statusCode == 409 && error.errorCode == 'confirm_in_progress') {
         setState(() {
           _submitting = false;
-          _confirmError =
-              'A program is already being generated. Give it a moment and retry.';
+          _confirmError = MayosCopy(ref.read(displayLanguageProvider))
+              .programBeingGenerated;
         });
         return;
       }
       setState(() {
         _submitting = false;
-        _confirmError = mutationFailureMessage(error);
+        _confirmError = mutationFailureMessage(
+          error,
+          connectionMessage: displayCopyOf(context).connectionFailure,
+        );
       });
     }
   }
@@ -390,7 +406,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         child: TextButton(
           key: const Key('onboarding_coach_invite_entry'),
           onPressed: _redeemCoachInvite,
-          child: const Text("I'm a coach — enter coach code"),
+          child: Text(displayCopyOf(context).enterCoachCode),
         ),
       );
 
@@ -405,12 +421,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     if (field.type == 'int' || field.type == 'float') {
       final String min = field.minimum?.toString() ?? '';
       final String max = field.maximum?.toString() ?? '';
-      return 'Enter a number between $min and $max.';
+      return MayosCopy(ref.read(displayLanguageProvider))
+          .enterNumberBetween(min, max);
     }
     if (field.type == 'enum') {
-      return 'Choose an option to continue.';
+      return MayosCopy(ref.read(displayLanguageProvider))
+          .chooseOptionToContinue;
     }
-    return 'Write at least 2 characters.';
+    return MayosCopy(ref.read(displayLanguageProvider))
+        .writeAtLeastTwoCharacters;
   }
 
   // -- build ----------------------------------------------------------------
@@ -428,7 +447,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       case _OnboardingPhase.error:
         return _OnboardingStatusLayout(
           child: _LoadErrorContent(
-            message: _error ?? 'Something went wrong.',
+            message: _error ?? displayCopyOf(context).genericError,
             onRetry: _load,
           ),
         );
@@ -444,14 +463,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       bottomBar: OnboardingActions(
         primary: MayosButton(
           key: const Key('onboarding_disclosure_continue'),
-          label: 'I understand',
+          label: displayCopyOf(context).understood,
           loading: _disclosureSaving,
           onPressed: _disclosureSaving ? null : _acceptDisclosure,
         ),
       ),
       child: OnboardingStepBody(
         children: <Widget>[
-          const OnboardingQuestion(question: 'Before we begin'),
+          OnboardingQuestion(question: displayCopyOf(context).beforeWeBegin),
           const SizedBox(height: MayosSpacing.lg),
           const _HostedProcessingDisclosure(),
           if (_disclosureError != null) ...<Widget>[
@@ -545,7 +564,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     return OnboardingActions(
       primary: MayosButton(
         key: const Key('onboarding_continue'),
-        label: (isLast && !_editingFromReview) ? 'Review' : 'Continue',
+        label: (isLast && !_editingFromReview)
+            ? displayCopyOf(context).review
+            : displayCopyOf(context).continueAction,
         loading: _saving,
         onPressed:
             (canContinue && !_saving) ? () => _continueStep(field) : null,
@@ -554,7 +575,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           ? null
           : MayosButton(
               key: const Key('onboarding_skip'),
-              label: 'Skip for now',
+              label: displayCopyOf(context).skipForNow,
               variant: MayosButtonVariant.tertiary,
               onPressed:
                   _saving ? null : () => _continueStep(field, skip: true),
@@ -567,9 +588,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     return OnboardingStepBody(
       children: <Widget>[
         OnboardingQuestion(
-          question: questionFor(field.name),
+          question: OnboardingCopy(displayCopyOf(context).languageCode)
+              .question(field.name, serverLabel: field.label),
           explanation: explanationFor(field),
-          note: field.prefilled ? 'Saved from your earlier setup' : null,
+          note: field.prefilled
+              ? displayCopyOf(context).savedFromEarlierSetup
+              : null,
         ),
         const SizedBox(height: MayosSpacing.xl),
         _buildInteraction(field, value),
@@ -619,11 +643,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     if (field.type == 'int' || field.type == 'float') {
       return NumericFieldEditor(
         fieldName: field.name,
+        fieldLabel: field.label,
         minimum: field.minimum ?? 0,
         maximum: field.maximum ?? 100,
         integer: field.type == 'int',
         step: _stepFor(field),
-        unit: unitFor(field.name),
+        unit: OnboardingCopy(displayCopyOf(context).languageCode)
+            .unitFor(field.name),
         value: value is num ? value : null,
         onChanged: (num? next) => setState(() {
           if (next == null) {
@@ -637,10 +663,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     return TextFieldEditor(
       fieldName: field.name,
       controller: _controllerFor(field),
-      hint: field.hint ?? 'Type your answer',
+      hint: field.hint ?? displayCopyOf(context).typeYourAnswer,
       examples: field.examples,
       quickOptions: field.name == 'injuries_or_limitations'
-          ? const <String>['None']
+          ? <String>[displayCopyOf(context).none]
           : const <String>[],
       onChanged: (String text) => setState(() => _draft[field.name] = text),
     );
@@ -656,7 +682,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       for (final String value in field.allowedValues)
         OnboardingChoiceOption(
           value: value,
-          label: optionLabel(field.name, value),
+          label: onboardingOptionLabel(
+            field,
+            value,
+            copy: OnboardingCopy(displayCopyOf(context).languageCode),
+          ),
           subtitle: field.optionDescriptions[value],
           icon: _iconFor(field.name, value),
         ),
@@ -677,7 +707,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     return OnboardingActions(
       primary: MayosButton(
         key: const Key('onboarding_confirm'),
-        label: 'Create my program',
+        label: displayCopyOf(context).createMyProgram,
         loading: _submitting,
         onPressed: progress.isComplete ? _confirm : null,
       ),
@@ -688,15 +718,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final bool ready = progress.isComplete;
     return OnboardingStepBody(
       children: <Widget>[
-        const OnboardingQuestion(
-          question: 'Review your setup',
-          explanation:
-              'Check your answers. You can edit anything before MAYOS builds '
-              'your first program.',
+        OnboardingQuestion(
+          question: displayCopyOf(context).reviewSetup,
+          explanation: displayCopyOf(context).reviewSetupLead,
         ),
         const SizedBox(height: MayosSpacing.xl),
         ReviewSection(
-          title: 'About you',
+          title: displayCopyOf(context).aboutYou,
           fields: _reviewFields(const <String>[
             'gender',
             'proportions',
@@ -708,7 +736,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           onEdit: (IntakeField field) => _editField(field.name),
         ),
         ReviewSection(
-          title: 'Training',
+          title: displayCopyOf(context).training,
           fields: _reviewFields(const <String>[
             'current_goal',
             'long_term_goal',
@@ -719,7 +747,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           onEdit: (IntakeField field) => _editField(field.name),
         ),
         ReviewSection(
-          title: 'Health & recovery',
+          title: displayCopyOf(context).healthAndRecovery,
           fields: _reviewFields(const <String>[
             'injuries_or_limitations',
             'stress_and_sleep',
@@ -728,9 +756,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         ),
         if (!ready) ...<Widget>[
           const SizedBox(height: MayosSpacing.xs),
-          const OnboardingInlineError(
-            message: 'Some required answers are still missing.',
-          ),
+          OnboardingInlineError(
+              message: displayCopyOf(context).requiredAnswersMissing),
         ],
         if (_confirmError != null) ...<Widget>[
           const SizedBox(height: MayosSpacing.xs),
@@ -775,7 +802,7 @@ class _HostedProcessingDisclosure extends StatelessWidget {
               const SizedBox(width: MayosSpacing.sm),
               Expanded(
                 child: Text(
-                  'Hosted AI processing',
+                  displayCopyOf(context).hostedAIProcessing,
                   style: MayosTypography.sectionHeading
                       .copyWith(color: c.textPrimary),
                 ),
@@ -784,10 +811,7 @@ class _HostedProcessingDisclosure extends StatelessWidget {
           ),
           const SizedBox(height: MayosSpacing.md),
           Text(
-            'Onboarding is powered by a hosted AI provider. The answers you type '
-            'and the training context needed to respond are sent for '
-            'processing. Free text you write may contain personal information, '
-            'so avoid sharing anything you do not want processed.',
+            displayCopyOf(context).onboardingHostedDisclosure,
             style:
                 MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
           ),
@@ -799,8 +823,7 @@ class _HostedProcessingDisclosure extends StatelessWidget {
               const SizedBox(width: MayosSpacing.xs),
               Expanded(
                 child: Text(
-                  'Nothing is sent until you continue. You can change any answer '
-                  'before your program is created.',
+                  displayCopyOf(context).onboardingPrivacyNote,
                   style: MayosTypography.caption.copyWith(color: c.textMuted),
                 ),
               ),
@@ -855,7 +878,7 @@ class _LoadErrorContent extends StatelessWidget {
         Icon(Icons.cloud_off, size: 40, color: c.textMuted),
         const SizedBox(height: MayosSpacing.md),
         Text(
-          'Could not load your setup',
+          displayCopyOf(context).setupLoadFailed,
           textAlign: TextAlign.center,
           style: MayosTypography.pageHeading
               .copyWith(color: c.textPrimary, fontSize: 24),
@@ -864,12 +887,11 @@ class _LoadErrorContent extends StatelessWidget {
         Text(
           message,
           textAlign: TextAlign.center,
-          style: MayosTypography.bodySecondary
-              .copyWith(color: c.textSecondary),
+          style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
         ),
         const SizedBox(height: MayosSpacing.xl),
         MayosButton(
-          label: 'Retry',
+          label: displayCopyOf(context).retry,
           expand: false,
           onPressed: onRetry,
         ),
@@ -890,13 +912,13 @@ class _BuildingProgramContent extends StatelessWidget {
         const MayosBrandMark(size: 52),
         const SizedBox(height: MayosSpacing.xl),
         Text(
-          'Building your program',
+          displayCopyOf(context).buildingYourProgram,
           textAlign: TextAlign.center,
           style: MayosTypography.pageHeading.copyWith(color: c.textPrimary),
         ),
         const SizedBox(height: MayosSpacing.sm),
         Text(
-          'This can take a moment. Your answers are saved.',
+          displayCopyOf(context).answersSavedBuilding,
           textAlign: TextAlign.center,
           style: MayosTypography.bodySecondary.copyWith(
             color: c.textSecondary,

@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
+import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/connectivity_message.dart';
@@ -90,11 +92,13 @@ Future<void> _pumpOnboarding(
   Size size = const Size(393, 852),
   ThemeMode mode = ThemeMode.light,
   double textScale = 1.0,
+  String languageCode = 'en',
 }) async {
   await _mountOnboarding(
     tester,
     fake,
     viewport: (size: size, mode: mode, textScale: textScale),
+    languageCode: languageCode,
   );
   await _pumpUntilFound(tester, find.byType(OnboardingScaffold));
 }
@@ -103,6 +107,7 @@ Future<void> _mountOnboarding(
   WidgetTester tester,
   FakeMayosApi fake, {
   _OnboardingViewport? viewport,
+  String languageCode = 'en',
 }) async {
   final _OnboardingViewport view = viewport ??
       (
@@ -126,6 +131,7 @@ Future<void> _mountOnboarding(
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
+        systemDisplayLanguageProvider.overrideWithValue(languageCode),
         _apiOverride(fake),
       ],
       child: MaterialApp(
@@ -133,6 +139,9 @@ Future<void> _mountOnboarding(
         theme: MayosTheme.light,
         darkTheme: MayosTheme.dark,
         themeMode: view.mode,
+        locale: Locale(languageCode),
+        supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
         home: const OnboardingScreen(),
       ),
     ),
@@ -228,6 +237,24 @@ Future<void> _answerAll(WidgetTester tester,
 }
 
 void main() {
+  testWidgets(
+      'Arabic onboarding translates app copy and preserves API explanations',
+      (tester) async {
+    final FakeMayosApi fake = _fake();
+    await _pumpOnboarding(tester, fake, languageCode: 'ar');
+    expect(find.text('قبل أن نبدأ'), findsOneWidget);
+    expect(find.text('معالجة عبر الذكاء الاصطناعي المستضاف'), findsOneWidget);
+    expect(Directionality.of(tester.element(find.text('قبل أن نبدأ'))),
+        TextDirection.rtl);
+    await tester.tap(find.byKey(const Key('onboarding_disclosure_continue')));
+    await _pumpUntilFound(tester, find.text('أي تخصص تريد أن يوجّه تدريبك؟'));
+    expect(find.text('أي تخصص تريد أن يوجّه تدريبك؟'), findsOneWidget);
+    expect(
+        find.text(
+            'Your specialization is required and selects the default split family.'),
+        findsOneWidget);
+  });
+
   testWidgets('the disclosure gates every answer', (WidgetTester tester) async {
     final FakeMayosApi fake = _fake();
     await _pumpOnboarding(tester, fake);
@@ -277,8 +304,7 @@ void main() {
 
   testWidgets('raw onboarding error state uses the desktop player column',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake()
-      ..failOffline('GET', '/onboarding/intake');
+    final FakeMayosApi fake = _fake()..failOffline('GET', '/onboarding/intake');
     await _mountOnboarding(
       tester,
       fake,
@@ -472,6 +498,40 @@ void main() {
     await _pumpUntilFound(tester, find.text(needsConnectionMessage));
 
     expect(find.text(needsConnectionMessage), findsOneWidget);
+    expect(find.text('build glutes and legs'), findsWidgets);
+    expect(fake.intakeAnswers.containsKey('current_goal'), isFalse);
+  });
+
+  testWidgets('Arabic onboarding translates the shared connection failure',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _fake(acknowledged: true)
+      ..intakeAnswers.addAll(<String, Object>{
+        'gender': 'female',
+        'proportions': 'balanced',
+        'age': 30,
+        'height_cm': 175.0,
+        'weight_kg': 75.0,
+        'training_age_years': 2.0,
+      });
+    await _pumpOnboarding(tester, fake, languageCode: 'ar');
+
+    expect(find.byKey(const Key('current_goal_input')), findsOneWidget);
+    fake.failOffline('PUT', '/onboarding/intake/answers/current_goal');
+    await _tapAndFind(
+      tester,
+      find.byKey(const Key('current_goal_example_0')),
+      find.byKey(const Key('onboarding_continue')),
+    );
+    await tester.tap(find.byKey(const Key('onboarding_continue')));
+    await _pumpUntilFound(
+      tester,
+      find.text('يتطلب هذا اتصالًا بالإنترنت. لم يتغير شيء.'),
+    );
+
+    expect(
+      find.text('يتطلب هذا اتصالًا بالإنترنت. لم يتغير شيء.'),
+      findsOneWidget,
+    );
     expect(find.text('build glutes and legs'), findsWidgets);
     expect(fake.intakeAnswers.containsKey('current_goal'), isFalse);
   });

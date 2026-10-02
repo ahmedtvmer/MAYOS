@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/active_workout.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
+import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/baselines.dart';
@@ -57,7 +58,9 @@ Future<void> _pumpProgram(
   Size size = const Size(1080, 2400),
   ActiveWorkoutStore? activeWorkoutStore,
   WorkoutCacheStore? workoutCacheStore,
+  String languageCode = 'en',
 }) async {
+  fake.displayLanguage = languageCode;
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
@@ -70,6 +73,7 @@ Future<void> _pumpProgram(
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
+        systemDisplayLanguageProvider.overrideWithValue(languageCode),
         themeModeStoreProvider.overrideWithValue(InMemoryThemeModeStore(mode)),
         draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
         if (activeWorkoutStore != null)
@@ -93,10 +97,13 @@ Future<void> _pumpProgram(
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Home'));
+  await _pumpUntilFound(
+      tester, find.text(languageCode == 'ar' ? 'الرئيسية' : 'Home'));
   await tester.pump(const Duration(milliseconds: 400));
-  await tester.tap(find.text('Program'));
-  await _pumpUntilFound(tester, find.text('Day 1: Upper 1'));
+  await tester
+      .tap(find.text(languageCode == 'ar' ? 'البرنامج التدريبي' : 'Program'));
+  await _pumpUntilFound(tester,
+      find.text(languageCode == 'ar' ? 'اليوم 1: Upper 1' : 'Day 1: Upper 1'));
 
   // Resize after navigating so the layout is exercised at the target size
   // without depending on bottom-bar hit-testing at the small viewport.
@@ -134,10 +141,74 @@ Future<void> _chooseCableFly(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+      'Arabic program labels translate while split and exercise names remain',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpProgram(tester, fake, languageCode: 'ar');
+    expect(find.text('اليوم 1: Upper 1'), findsOneWidget);
+    expect(find.text('مجموعات التدريب'), findsOneWidget);
+    expect(find.text('Bench Press'), findsOneWidget);
+    expect(find.textContaining('4 أيام في الأسبوع'), findsOneWidget);
+    final Finder warmupPrescription = find.text('2 × 15 · راحة 45 ثانية');
+    expect(warmupPrescription, findsOneWidget);
+    expect(
+      Directionality.of(tester.element(warmupPrescription)),
+      TextDirection.ltr,
+    );
+    expect(find.text('2 × 15 · rest 45s'), findsNothing);
+    expect(Directionality.of(tester.element(find.text('مجموعات التدريب'))),
+        TextDirection.rtl);
+  });
+
+  testWidgets('Arabic Program translates app-composed deload labels',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake()..prescriptionOffline = true;
+    final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
+    await cache.writePrescription(
+      'account-alice',
+      1,
+      const Prescription(
+        deload: DeloadDecision(
+          state: DeloadState.suggested,
+          reason: 'Acute readiness floor (1/5 logged).',
+          volumeMultiplier: 0.5,
+          intensityCapRpe: 7.0,
+        ),
+        targets: <PrescriptionTarget>[],
+      ),
+    );
+    await _pumpProgram(
+      tester,
+      fake,
+      languageCode: 'ar',
+      workoutCacheStore: cache,
+    );
+    await _pumpUntilFound(tester, find.text('اقتُرح تخفيف التدريب'));
+
+    expect(find.text('اقتُرح تخفيف التدريب'), findsOneWidget);
+    expect(find.text('Acute readiness floor (1/5 logged).'), findsOneWidget);
+    expect(
+      find.text(
+        'عند التطبيق: خُفضت المجموعات إلى 50% من البرنامج · '
+        'ضُبط الجهد عند RIR ≥ 3. أُبلغ مدربك.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.textContaining('RIR ≥ 3'),
+          )
+          .textDirection,
+      TextDirection.ltr,
+    );
+    expect(find.text('اسأل المساعد'), findsOneWidget);
+  });
+
   testWidgets('program shows a suggested deload and opens the assistant',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake()
-      ..prescriptionOffline = true;
+    final FakeMayosApi fake = _signedInFake()..prescriptionOffline = true;
     final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
     await cache.writePrescription(
       'account-alice',
@@ -185,7 +256,8 @@ void main() {
     expect(find.text('Warm-up'), findsOneWidget);
     expect(find.text('Working sets'), findsOneWidget);
     expect(find.text('Bench Press'), findsOneWidget);
-    expect(find.text('Suggested substitutes: Incline DB Press'), findsOneWidget);
+    expect(
+        find.text('Suggested substitutes: Incline DB Press'), findsOneWidget);
     expect(find.textContaining('3 × 5–8'), findsOneWidget);
     expect(find.textContaining('2 warm-up sets · rest 180s'), findsOneWidget);
     expect(find.text('Band Pull-Apart'), findsOneWidget);

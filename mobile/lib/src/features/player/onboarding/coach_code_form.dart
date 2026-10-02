@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/display_language/copy_context.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/ui/mayos_button.dart';
@@ -41,7 +42,7 @@ class _CoachCodeFormState extends ConsumerState<CoachCodeForm> {
   Future<void> _submit() async {
     final String token = _code.text.trim();
     if (token.length < 10) {
-      setState(() => _error = 'Enter your MAYOS coach code.');
+      setState(() => _error = displayCopyOf(context).enterCoachCodeLead);
       return;
     }
     setState(() {
@@ -82,13 +83,13 @@ class _CoachCodeFormState extends ConsumerState<CoachCodeForm> {
           controller: _code,
           autocorrect: false,
           enableSuggestions: false,
-          label: 'MAYOS coach code',
+          label: displayCopyOf(context).coachCode,
           errorText: _error,
         ),
         const SizedBox(height: MayosSpacing.lg),
         MayosButton(
           key: widget.submitButtonKey,
-          label: 'Enable coaching',
+          label: displayCopyOf(context).enableCoaching,
           loading: _submitting,
           onPressed: _submit,
         ),

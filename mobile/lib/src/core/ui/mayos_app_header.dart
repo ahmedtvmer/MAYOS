@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../router.dart';
+import '../display_language/catalog.dart';
+import '../display_language/copy_context.dart';
 import '../theme/mayos_spacing.dart';
 import '../theme/mayos_theme.dart';
 import '../theme/mayos_typography.dart';
@@ -39,6 +41,7 @@ class MayosAppHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final MayosCopy copy = displayCopyOf(context);
     // The default shell header shows the brand alone, centred on the screen so
     // it is independent of how many actions sit on the right. Titled sub-pages
     // keep the left-aligned back button + title row.
@@ -71,7 +74,7 @@ class MayosAppHeader extends StatelessWidget {
         children: <Widget>[
           if (showBack)
             IconButton(
-              tooltip: 'Back',
+              tooltip: copy.back,
               // Pop the page underneath when there is one. A deep link or a
               // cold start leaves the stack empty, so `maybePop` reports the
               // pop unhandled and Back resolves to Home instead of doing
@@ -85,11 +88,12 @@ class MayosAppHeader extends StatelessWidget {
                 }
                 context.go(homePath);
               },
+              // Icons.arrow_back opts into Flutter's text-direction mirroring.
               icon: const Icon(Icons.arrow_back),
             )
           else if (showLogo)
             const Padding(
-              padding: EdgeInsets.only(left: 4),
+              padding: EdgeInsetsDirectional.only(start: 4),
               child: _MayosWordmark(),
             )
           else

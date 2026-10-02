@@ -34,23 +34,23 @@ class PlayerShell extends ConsumerStatefulWidget {
 }
 
 class _PlayerShellState extends ConsumerState<PlayerShell> {
-  static const List<MayosNavItem> _items = <MayosNavItem>[
-    MayosNavItem(
-      label: 'Home',
-      icon: Icons.home_outlined,
-      selectedIcon: Icons.home,
-    ),
-    MayosNavItem(
-      label: 'Program',
-      icon: Icons.article_outlined,
-      selectedIcon: Icons.article,
-    ),
-    MayosNavItem(
-      label: 'Progress',
-      icon: Icons.insights_outlined,
-      selectedIcon: Icons.insights,
-    ),
-  ];
+  List<MayosNavItem> _items(MayosCopy copy) => <MayosNavItem>[
+        MayosNavItem(
+          label: copy.home,
+          icon: Icons.home_outlined,
+          selectedIcon: Icons.home,
+        ),
+        MayosNavItem(
+          label: copy.program,
+          icon: Icons.article_outlined,
+          selectedIcon: Icons.article,
+        ),
+        MayosNavItem(
+          label: copy.progress,
+          icon: Icons.insights_outlined,
+          selectedIcon: Icons.insights,
+        ),
+      ];
 
   /// Set once this shell visit has offered Resume / Discard, so the prompt
   /// appears at most once per opening of the app (#123).
@@ -97,13 +97,13 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
     final int index = ref.watch(playerShellTabProvider);
     final bool isCoach =
         ref.watch(authControllerProvider).session?.account.isCoach ?? false;
-    final String settingsLabel =
-        MayosCopy(ref.watch(displayLanguageProvider)).settings;
+    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
+    final String settingsLabel = copy.settings;
     return MayosScaffold(
       header: MayosAppHeader(
         actions: <Widget>[
           IconButton(
-            tooltip: 'Assistant',
+            tooltip: copy.assistant,
             onPressed: () => context.push(chatPath),
             icon: const Icon(Icons.chat_bubble_outline),
           ),
@@ -126,7 +126,7 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
         ],
       ),
       bottomBar: MayosBottomNavigation(
-        items: _items,
+        items: _items(copy),
         index: index,
         onSelected: (int selected) =>
             ref.read(playerShellTabProvider.notifier).state = selected,

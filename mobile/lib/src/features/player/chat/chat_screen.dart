@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/chat_models.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
+import '../../../core/display_language/copy_context.dart';
 import '../../../core/chat_storage.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
@@ -23,6 +26,10 @@ import '../../../providers.dart';
 /// connectivity: the composer disables with an explanatory message once a load
 /// or send fails with a network error, and sends are never queued. The
 /// last-loaded history is cached per account so it stays readable offline.
+MayosCopy _chatCopy(BuildContext context) => MayosCopy(
+      ProviderScope.containerOf(context).read(displayLanguageProvider),
+    );
+
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
 
@@ -81,7 +88,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _setStateIfMounted(() {
         _disclosureLoaded = true;
         _loadingHistory = false;
-        _historyError = 'You are not signed in.';
+        _historyError =
+            MayosCopy(ref.read(displayLanguageProvider)).youAreNotSignedIn;
       });
       return;
     }
@@ -239,17 +247,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       await _failTurn(
         content,
         offline
-            ? 'Chat needs a connection. Reconnect and retry.'
+            ? MayosCopy(ref.read(displayLanguageProvider)).chatReconnectRetry
             : error.message,
         offline: offline,
       );
       return;
     } on Object {
-      await _failTurn(content, 'The assistant did not finish. Please retry.');
+      await _failTurn(content,
+          MayosCopy(ref.read(displayLanguageProvider)).assistantDidNotFinish);
       return;
     }
     if (!_disposed && !finished && _sending) {
-      await _failTurn(content, 'The assistant did not finish. Please retry.');
+      await _failTurn(content,
+          MayosCopy(ref.read(displayLanguageProvider)).assistantDidNotFinish);
     }
   }
 
@@ -283,11 +293,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (program == null) return;
       final WorkoutCacheStore cache = ref.read(workoutCacheStoreProvider);
       await cache.writeProgram(accountId, program);
-      final ProgramDay? nextWorkout = program.days.isEmpty ? null : program.days.first;
+      final ProgramDay? nextWorkout =
+          program.days.isEmpty ? null : program.days.first;
       if (nextWorkout != null) {
         try {
-          final prescription = await ref.read(apiClientProvider).prescription(nextWorkout.dayOrder);
-          await cache.writePrescription(accountId, nextWorkout.dayOrder, prescription);
+          final prescription = await ref
+              .read(apiClientProvider)
+              .prescription(nextWorkout.dayOrder);
+          await cache.writePrescription(
+              accountId, nextWorkout.dayOrder, prescription);
         } on Object {
           // Keep the existing next-workout prescription if refresh fails.
         }
@@ -298,20 +312,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _confirmClear() async {
+    final MayosCopy copy = MayosCopy(ref.read(displayLanguageProvider));
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: const Text('Clear chat history?'),
-        content:
-            const Text('This permanently deletes your assistant chat history.'),
+        title: Text(copy.clearChatHistoryQuestion),
+        content: Text(copy.clearChatHistoryConfirmation),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(copy.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Clear'),
+            child: Text(copy.clear),
           ),
         ],
       ),
@@ -331,7 +345,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } on ApiException catch (error) {
       _setStateIfMounted(() {
         _sendError = error.statusCode == null
-            ? 'Clearing history needs a connection.'
+            ? MayosCopy(ref.read(displayLanguageProvider))
+                .clearingHistoryNeedsConnection
             : error.message;
       });
     }
@@ -342,13 +357,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     return MayosScaffold(
-      title: 'Assistant',
+      title: copy.assistant,
       showBack: true,
       actions: <Widget>[
         IconButton(
           key: const Key('chat_clear'),
-          tooltip: 'Clear chat history',
+          tooltip: copy.clearChatHistory,
           onPressed: _messages.isEmpty ? null : _confirmClear,
           icon: const Icon(Icons.delete_outline),
         ),
@@ -373,6 +389,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _disclosureCard() {
+    final MayosCopy copy = MayosCopy(ref.read(displayLanguageProvider));
     final MayosThemeExtension c = MayosTheme.of(context);
     return Padding(
       padding: const EdgeInsets.all(MayosSpacing.md),
@@ -386,19 +403,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 Icon(Icons.privacy_tip_outlined, size: 18, color: c.accent),
                 const SizedBox(width: MayosSpacing.xs),
                 Expanded(
-                  child: Text('Before you start',
+                  child: Text(copy.beforeYouStart,
                       style: Theme.of(context).textTheme.titleMedium),
                 ),
               ],
             ),
             const SizedBox(height: MayosSpacing.xs),
-            const Text(hostedChatDisclosure),
+            Text(displayCopyOf(context).hostedChatDisclosure),
             const SizedBox(height: MayosSpacing.sm),
             Align(
-              alignment: Alignment.centerRight,
+              alignment: AlignmentDirectional.centerEnd,
               child: MayosButton(
                 key: const Key('chat_disclosure_accept'),
-                label: 'I understand',
+                label: copy.understood,
                 expand: false,
                 onPressed: _acceptDisclosure,
               ),
@@ -451,8 +468,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         padding: const EdgeInsets.all(MayosSpacing.xl),
         child: Text(
           _disclosureAccepted
-              ? 'Ask your assistant about training, technique, or your program.'
-              : 'Accept the disclosure to start chatting.',
+              ? displayCopyOf(context).askAssistantAboutTraining
+              : displayCopyOf(context).acceptDisclosureToStartChatting,
           textAlign: TextAlign.center,
         ),
       ),
@@ -494,7 +511,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final bool user = role == 'user';
     final MayosThemeExtension c = MayosTheme.of(context);
     return Align(
-      alignment: user ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: user
+          ? AlignmentDirectional.centerEnd
+          : AlignmentDirectional.centerStart,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: MayosSpacing.xxs),
         padding: const EdgeInsets.symmetric(
@@ -515,12 +534,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _composer() {
+    final MayosCopy copy = MayosCopy(ref.read(displayLanguageProvider));
     final String? helper = _offline && !_disclosureAccepted
         ? null
         : !_disclosureAccepted
-            ? 'Accept the disclosure above to enable chat.'
+            ? copy.acceptDisclosureToEnableChat
             : _offline
-                ? 'Chat needs a connection.'
+                ? copy.chatNeedsConnection
                 : null;
     final MayosThemeExtension c = MayosTheme.of(context);
     return SafeArea(
@@ -540,18 +560,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 minLines: 1,
                 maxLines: 4,
                 textInputAction: TextInputAction.newline,
-                hint: _offline ? 'Offline' : 'Message your assistant',
+                hint: _offline ? copy.offline : copy.messageAssistant,
                 helperText: helper,
                 onSubmitted: (_) => _send(),
               ),
             ),
             const SizedBox(width: MayosSpacing.xs),
             Semantics(
-              label: 'Send',
+              label: copy.send,
               button: true,
               child: IconButton.filled(
                 key: const Key('chat_send'),
-                tooltip: 'Send',
+                tooltip: copy.send,
                 style: IconButton.styleFrom(
                   backgroundColor: c.accent,
                   foregroundColor: c.onAccent,
@@ -602,7 +622,7 @@ class _DebriefCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text('Session debrief',
+                  Text(_chatCopy(context).sessionDebrief,
                       style: Theme.of(context).textTheme.titleSmall),
                   const SizedBox(height: MayosSpacing.xxs),
                   MayosMarkdown(source: message.content),
@@ -620,7 +640,8 @@ class _TypingIndicator extends StatelessWidget {
   const _TypingIndicator();
 
   @override
-  Widget build(BuildContext context) => const Text('Assistant is replying…');
+  Widget build(BuildContext context) =>
+      Text(_chatCopy(context).assistantReplying);
 }
 
 class _OfflineChatBanner extends StatelessWidget {
@@ -649,7 +670,7 @@ class _OfflineChatBanner extends StatelessWidget {
           const SizedBox(width: MayosSpacing.xs),
           Expanded(
             child: Text(
-              'Offline — showing saved chat history. Sending needs a connection.',
+              _chatCopy(context).offlineChatSaved,
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
@@ -658,7 +679,7 @@ class _OfflineChatBanner extends StatelessWidget {
           ),
           MayosButton(
             key: const Key('chat_offline_retry'),
-            label: 'Retry',
+            label: _chatCopy(context).retry,
             variant: MayosButtonVariant.tertiary,
             expand: false,
             onPressed: onRetry,
@@ -703,7 +724,7 @@ class _ErrorBanner extends StatelessWidget {
           if (onRetry != null)
             MayosButton(
               key: const Key('chat_retry'),
-              label: 'Retry',
+              label: _chatCopy(context).retry,
               variant: MayosButtonVariant.tertiary,
               expand: false,
               onPressed: onRetry,

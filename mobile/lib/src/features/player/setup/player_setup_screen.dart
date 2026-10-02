@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/app_mode.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -23,6 +25,7 @@ class PlayerSetupScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     return MayosScaffold(
       header: const MayosAppHeader(
         actions: <Widget>[ModeAvatarButton()],
@@ -36,26 +39,25 @@ class PlayerSetupScreen extends ConsumerWidget {
             Icon(Icons.fitness_center, size: 40, color: c.accent),
             const SizedBox(height: MayosSpacing.md),
             Text(
-              'Set up your own training',
+              copy.setupOwnTraining,
               textAlign: TextAlign.center,
               style: MayosTypography.pageHeading.copyWith(color: c.textPrimary),
             ),
             const SizedBox(height: MayosSpacing.sm),
             Text(
-              'Player mode needs a short intake before it can build your '
-              'program. Your coaching stays as it is.',
+              copy.setupLead,
               textAlign: TextAlign.center,
               style: MayosTypography.bodySecondary
                   .copyWith(color: c.textSecondary),
             ),
             const SizedBox(height: MayosSpacing.xl),
             MayosButton(
-              label: 'Start intake',
+              label: copy.startIntake,
               onPressed: () => context.go(onboardingPath),
             ),
             const SizedBox(height: MayosSpacing.sm),
             MayosButton(
-              label: 'Back to Coach mode',
+              label: copy.backToCoachMode,
               variant: MayosButtonVariant.tertiary,
               onPressed: () => switchToMode(context, ref, AppMode.coach),
             ),

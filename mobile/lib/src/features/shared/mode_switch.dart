@@ -36,11 +36,11 @@ class ModeAvatarButton extends ConsumerWidget {
         .substring(0, username.length < 2 ? username.length : 2)
         .toUpperCase();
     return Padding(
-      padding: const EdgeInsets.only(right: MayosSpacing.xs),
+      padding: const EdgeInsetsDirectional.only(end: MayosSpacing.xs),
       child: Semantics(
         button: true,
-        label:
-            'Account and mode. Current: ${coachMode ? 'Coach' : 'Player'} mode',
+        label: MayosCopy(ref.watch(displayLanguageProvider))
+            .accountMode(coachMode),
         excludeSemantics: true,
         child: InkWell(
           customBorder: const CircleBorder(),
@@ -60,8 +60,8 @@ class ModeAvatarButton extends ConsumerWidget {
                         .copyWith(color: c.accent),
                   ),
                 ),
-                Positioned(
-                  right: 4,
+                PositionedDirectional(
+                  end: 4,
                   bottom: 6,
                   child: Container(
                     key: badgeKey,
@@ -174,21 +174,21 @@ Future<void> showModeSheet(BuildContext context, WidgetRef ref) {
                 Expanded(
                   child: Text(username, style: MayosTypography.sectionHeading),
                 ),
-                Text('Switch mode', style: MayosTypography.caption),
+                Text(copy.switchMode, style: MayosTypography.caption),
               ],
             ),
           ),
           modeRow(
             AppMode.player,
             Icons.fitness_center,
-            'Player mode',
-            onboarded ? 'Your own training' : 'Set up your own training',
+            copy.playerMode,
+            onboarded ? copy.ownTraining : copy.setupOwnTraining,
           ),
           modeRow(
             AppMode.coach,
             Icons.groups_outlined,
-            'Coach mode',
-            'Your roster, alerts, and profile',
+            copy.coachMode,
+            copy.rosterAlertsProfile,
           ),
           const Divider(),
           ListTile(

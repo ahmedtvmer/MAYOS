@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/display_language/copy_context.dart';
 import '../../../core/api_client.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/effort.dart';
@@ -195,8 +196,9 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
     ref.read(playerShellTabProvider.notifier).state = 1;
   }
 
-  String _failureMessage(ApiException error) =>
-      isNetworkFailure(error) ? needsConnectionMessage : error.message;
+  String _failureMessage(ApiException error) => isNetworkFailure(error)
+      ? displayCopyOf(context).connectionFailure
+      : error.message;
 
   @override
   Widget build(BuildContext context) {
@@ -214,14 +216,14 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
             MayosSpacing.lg, MayosSpacing.xxl),
         children: <Widget>[
           Text(
-            'Progress',
+            displayCopyOf(context).progress,
             style: MayosTypography.display.copyWith(
               fontSize: 34,
               color: c.textPrimary,
             ),
           ),
           const SizedBox(height: MayosSpacing.lg),
-          const MayosSectionHeader(title: 'Checkpoints'),
+          MayosSectionHeader(title: displayCopyOf(context).checkpoints),
           if (_checkpointLoading)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: MayosSpacing.md),
@@ -234,19 +236,29 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
             )
           else if (_checkpointReviews.isEmpty)
             Text(
-              'No Checkpoints yet.',
+              displayCopyOf(context).noCheckpointsYet,
               style: MayosTypography.bodySecondary
                   .copyWith(color: c.textSecondary),
             )
           else
             for (final CheckpointReviewListItem review in _checkpointReviews)
               ListTile(
-                key: ValueKey<String>('progress.checkpoint.${review.checkpoint}'),
+                key: ValueKey<String>(
+                    'progress.checkpoint.${review.checkpoint}'),
                 contentPadding: EdgeInsets.zero,
-                title: Text('Checkpoint ${review.checkpoint}'),
-                subtitle: Text('${review.periodStart} – ${review.periodEnd}'),
+                title: Text(
+                  '${displayCopyOf(context).checkpointLabel} ${review.checkpoint}',
+                  textDirection: TextDirection.ltr,
+                  textAlign: TextAlign.end,
+                ),
+                subtitle: Text(
+                  '${review.periodStart} – ${review.periodEnd}',
+                  textDirection: TextDirection.ltr,
+                  textAlign: TextAlign.end,
+                ),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('$checkpointReviewPath/${review.checkpoint}'),
+                onTap: () =>
+                    context.push('$checkpointReviewPath/${review.checkpoint}'),
               ),
           const SizedBox(height: MayosSpacing.lg),
           if (_notice != null) ...<Widget>[
@@ -258,9 +270,11 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
             _NoHistoryState(onGoToProgram: _goToProgram)
           else ...<Widget>[
             MayosSegmentedControl<String>(
-              segments: const <MayosSegment<String>>[
-                MayosSegment<String>(value: 'strength', label: 'Strength'),
-                MayosSegment<String>(value: 'volume', label: 'Volume'),
+              segments: <MayosSegment<String>>[
+                MayosSegment<String>(
+                    value: 'strength', label: displayCopyOf(context).strength),
+                MayosSegment<String>(
+                    value: 'volume', label: displayCopyOf(context).volume),
               ],
               selected: _section,
               onChanged: (String value) => setState(() => _section = value),
@@ -332,7 +346,8 @@ class _StrengthSection extends StatelessWidget {
         break;
       }
     }
-    final String name = selected?.name ?? 'Exercise';
+    final String name =
+        selected?.name ?? displayCopyOf(context).exerciseFallbackName;
     final List<ExerciseHistoryPoint> points =
         history?.history ?? const <ExerciseHistoryPoint>[];
 
@@ -346,8 +361,8 @@ class _StrengthSection extends StatelessWidget {
         ),
         const SizedBox(height: MayosSpacing.xl),
         MayosSectionHeader(
-          title: 'Estimated 1RM',
-          subtitle: '$name · kg · all logged sessions',
+          title: displayCopyOf(context).estimatedOneRepMax,
+          subtitle: '$name · kg · ${displayCopyOf(context).allLoggedSessions}',
         ),
         if (loading)
           const Padding(
@@ -358,7 +373,7 @@ class _StrengthSection extends StatelessWidget {
           _InlineError(message: error!, onRetry: onRetry)
         else if (points.isEmpty)
           Text(
-            'No sets recorded for $name yet. Log a workout to start a trend.',
+            displayCopyOf(context).noSetsForExercise(name),
             style:
                 MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
           )
@@ -372,7 +387,7 @@ class _StrengthSection extends StatelessWidget {
           if (points.length < 2) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
             Text(
-              'Only one session logged. A trend needs at least two sessions.',
+              displayCopyOf(context).oneSessionTrendNeedsMore,
               style: MayosTypography.bodySecondary
                   .copyWith(color: c.textSecondary),
             ),
@@ -383,12 +398,12 @@ class _StrengthSection extends StatelessWidget {
             _PointCallout(point: points[selectedPoint!]),
           ],
           const SizedBox(height: MayosSpacing.xl),
-          MayosSectionHeader(title: 'Recent sessions'),
+          MayosSectionHeader(title: displayCopyOf(context).recentSessions),
           for (final ExerciseHistoryPoint point in points.reversed)
             _SessionRow(point: point),
           const SizedBox(height: MayosSpacing.md),
           MayosButton(
-            label: 'View exercise',
+            label: displayCopyOf(context).viewExercise,
             icon: Icons.arrow_forward,
             variant: MayosButtonVariant.secondary,
             expand: false,
@@ -469,9 +484,10 @@ class _StrengthChart extends StatelessWidget {
           for (final ExerciseHistoryPoint point in points)
             ProgressChartPoint(date: point.date, value: point.e1rm),
         ],
-        metricLabel: 'Estimated 1RM',
+        metricLabel: displayCopyOf(context).estimatedOneRepMax,
         unit: 'kg',
         exerciseName: exerciseName,
+        copy: displayCopyOf(context),
         selectedIndex: selectedIndex,
         onPointSelected: onSelectPoint,
       ),
@@ -500,20 +516,28 @@ class _PointCallout extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Session · ${shortDate(point.date)}',
+            '${displayCopyOf(context).session} · ${shortDate(point.date, isArabic: displayCopyOf(context).isArabic)}',
+            textDirection: TextDirection.ltr,
+            textAlign: TextAlign.end,
             style: MayosTypography.caption.copyWith(color: c.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.xxs),
-          Text(
-            '${_formatValue(point.weightKg)} kg × ${point.reps} reps @ RIR '
-            '${rirLabel(point.rpe)}',
-            style: MayosTypography.numericSmall.copyWith(color: c.textPrimary),
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: Text(
+              '${displayCopyOf(context).repetitionValue(_formatValue(point.weightKg), '${point.reps}', includeRepsUnit: true)} @ RIR ${rirLabel(point.rpe)}',
+              style:
+                  MayosTypography.numericSmall.copyWith(color: c.textPrimary),
+            ),
           ),
           const SizedBox(height: 2),
-          Text(
-            'e1RM ${_formatValue(point.e1rm)} kg',
-            style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: Text(
+              '${displayCopyOf(context).estimatedOneRepMaxShort} ${_formatValue(point.e1rm)} kg',
+              style: MayosTypography.bodySecondary
+                  .copyWith(color: c.textSecondary),
+            ),
           ),
         ],
       ),
@@ -536,21 +560,28 @@ class _SessionRow extends StatelessWidget {
           SizedBox(
             width: 64,
             child: Text(
-              shortDate(point.date),
+              shortDate(point.date, isArabic: displayCopyOf(context).isArabic),
+              textDirection: TextDirection.ltr,
+              textAlign: TextAlign.end,
               style: MayosTypography.caption.copyWith(color: c.textMuted),
             ),
           ),
           Expanded(
-            child: Text(
-              '${_formatValue(point.weightKg)} kg × ${point.reps} @ RIR '
-              '${rirLabel(point.rpe)}',
-              style: MayosTypography.body.copyWith(color: c.textPrimary),
+            child: Directionality(
+              textDirection: TextDirection.ltr,
+              child: Text(
+                '${displayCopyOf(context).repetitionValue(_formatValue(point.weightKg), '${point.reps}')} @ RIR ${rirLabel(point.rpe)}',
+                style: MayosTypography.body.copyWith(color: c.textPrimary),
+              ),
             ),
           ),
           const SizedBox(width: MayosSpacing.xs),
-          Text(
-            'e1RM ${_formatValue(point.e1rm)}',
-            style: MayosTypography.caption.copyWith(color: c.textSecondary),
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: Text(
+              '${displayCopyOf(context).estimatedOneRepMaxShort} ${_formatValue(point.e1rm)}',
+              style: MayosTypography.caption.copyWith(color: c.textSecondary),
+            ),
           ),
         ],
       ),
@@ -594,15 +625,17 @@ class _VolumeSection extends StatelessWidget {
         MayosSegmentedControl<int>(
           segments: <MayosSegment<int>>[
             for (final int period in periods)
-              MayosSegment<int>(value: period, label: '$period days'),
+              MayosSegment<int>(
+                  value: period,
+                  label: displayCopyOf(context).dayCount(period)),
           ],
           selected: days,
           onChanged: onPeriod,
         ),
         const SizedBox(height: MayosSpacing.xl),
         MayosSectionHeader(
-          title: 'Weighted sets',
-          subtitle: 'Last $days days · working sets per muscle',
+          title: displayCopyOf(context).countedSets,
+          subtitle: displayCopyOf(context).lastDaysCountedSetsPerMuscle(days),
         ),
         if (loading)
           const Padding(
@@ -613,18 +646,20 @@ class _VolumeSection extends StatelessWidget {
           _InlineError(message: error!, onRetry: onRetry)
         else if (muscles.isEmpty)
           Text(
-            'No weighted sets logged in the last $days days.',
+            displayCopyOf(context).countedSetsLogged(days),
             style:
                 MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
           )
         else ...<Widget>[
           Text(
-            '${_formatValue(total)} weighted sets',
+            displayCopyOf(context)
+                .countedSetsMetric(total, roundNearInteger: true),
+            textDirection: TextDirection.ltr,
             style: MayosTypography.numericSmall.copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: MayosSpacing.xxs),
           Text(
-            'Primary muscle counts 1 per working set, each secondary 0.5.',
+            displayCopyOf(context).countedSetsExplanation,
             style: MayosTypography.caption.copyWith(color: c.textMuted),
           ),
           const SizedBox(height: MayosSpacing.md),
@@ -669,10 +704,13 @@ class _MuscleVolumeBar extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: MayosSpacing.xs),
-              Text(
-                _formatValue(value),
-                style: MayosTypography.numericSmall
-                    .copyWith(color: c.textSecondary),
+              Directionality(
+                textDirection: TextDirection.ltr,
+                child: Text(
+                  _formatValue(value),
+                  style: MayosTypography.numericSmall
+                      .copyWith(color: c.textSecondary),
+                ),
               ),
             ],
           ),
@@ -682,7 +720,7 @@ class _MuscleVolumeBar extends StatelessWidget {
             child: SizedBox(
               height: 6,
               child: FractionallySizedBox(
-                alignment: Alignment.centerLeft,
+                alignment: AlignmentDirectional.centerStart,
                 widthFactor: fraction.clamp(0.0, 1.0),
                 child: DecoratedBox(
                   decoration: BoxDecoration(color: c.chartPrimary),
@@ -708,18 +746,17 @@ class _NoHistoryState extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          'No training history yet',
+          displayCopyOf(context).noTrainingHistory,
           style: MayosTypography.sectionHeading.copyWith(color: c.textPrimary),
         ),
         const SizedBox(height: MayosSpacing.xs),
         Text(
-          'Log a workout and your strength trend, volume, and per-exercise '
-          'records will appear here.',
+          displayCopyOf(context).logToSeeHistory,
           style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
         ),
         const SizedBox(height: MayosSpacing.md),
         MayosButton(
-          label: 'Go to Program',
+          label: displayCopyOf(context).goToProgram,
           icon: Icons.article_outlined,
           variant: MayosButtonVariant.secondary,
           expand: false,
@@ -748,7 +785,7 @@ class _InlineError extends StatelessWidget {
         ),
         const SizedBox(height: MayosSpacing.sm),
         MayosButton(
-          label: 'Retry',
+          label: displayCopyOf(context).retry,
           variant: MayosButtonVariant.tertiary,
           expand: false,
           onPressed: onRetry,
@@ -805,7 +842,7 @@ class _ErrorView extends StatelessWidget {
             ),
             const SizedBox(height: MayosSpacing.md),
             MayosButton(
-              label: 'Retry',
+              label: displayCopyOf(context).retry,
               variant: MayosButtonVariant.secondary,
               expand: false,
               onPressed: onRetry,

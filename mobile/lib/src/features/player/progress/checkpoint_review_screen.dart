@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/display_language/copy_context.dart';
 import '../../../core/api_client.dart';
 import '../../../core/models.dart';
-import '../../../core/training_status_projection.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -56,7 +56,8 @@ class _CheckpointReviewScreenState
   Widget build(BuildContext context) {
     return FutureBuilder<CheckpointReview>(
       future: _reviewFuture,
-      builder: (BuildContext context, AsyncSnapshot<CheckpointReview> snapshot) {
+      builder:
+          (BuildContext context, AsyncSnapshot<CheckpointReview> snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
@@ -64,14 +65,16 @@ class _CheckpointReviewScreenState
           final Object? error = snapshot.error;
           final String message = error is ApiException
               ? error.message
-              : 'Could not load this Checkpoint review.';
+              : displayCopyOf(context).loadCheckpointFailed;
           return Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 Text(message),
                 const SizedBox(height: MayosSpacing.md),
-                OutlinedButton(onPressed: _retry, child: const Text('Retry')),
+                OutlinedButton(
+                    onPressed: _retry,
+                    child: Text(displayCopyOf(context).retry)),
               ],
             ),
           );
@@ -94,7 +97,7 @@ class _ReviewBody extends StatelessWidget {
       padding: MayosSpacing.screen,
       children: <Widget>[
         Text(
-          'Your ${checkpointOrdinal(review.checkpoint)} workout',
+          displayCopyOf(context).checkpointWorkout(review.checkpoint),
           key: const ValueKey<String>('checkpoint.review.title'),
           style: MayosTypography.display.copyWith(
             fontSize: 30,
@@ -106,11 +109,12 @@ class _ReviewBody extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              const MayosSectionHeader(title: 'Period'),
+              MayosSectionHeader(title: displayCopyOf(context).period),
               const SizedBox(height: MayosSpacing.xs),
               Text(
                 '${review.periodStart} – ${review.periodEnd}',
                 key: const ValueKey<String>('checkpoint.review.period'),
+                textDirection: TextDirection.ltr,
                 style: MayosTypography.bodySecondary
                     .copyWith(color: c.textSecondary),
               ),
@@ -122,7 +126,7 @@ class _ReviewBody extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              const MayosSectionHeader(title: 'Rating'),
+              MayosSectionHeader(title: displayCopyOf(context).rating),
               for (int index = 0; index < review.rating.length; index++)
                 ListTile(
                   key: ValueKey<String>('checkpoint.review.rating.$index'),

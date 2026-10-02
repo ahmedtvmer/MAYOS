@@ -13,6 +13,7 @@ import 'package:mayos_mobile/src/core/active_workout.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/chat_models.dart';
+import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/connectivity_message.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/workout_start_notice_store.dart';
@@ -77,7 +78,9 @@ Future<void> _pumpChat(
   Key? scopeKey,
   ThemeMode? themeMode,
   Size? size,
+  String languageCode = 'en',
 }) async {
+  fake.displayLanguage = languageCode;
   await _pumpHome(tester, fake,
       chatCache: store,
       workoutCache: workoutCache,
@@ -86,8 +89,10 @@ Future<void> _pumpChat(
       baselineCache: baselineCache,
       scopeKey: scopeKey,
       themeMode: themeMode,
-      size: size);
-  await tester.tap(find.byTooltip('Assistant'));
+      size: size,
+      languageCode: languageCode);
+  await tester
+      .tap(find.byTooltip(languageCode == 'ar' ? 'المساعد' : 'Assistant'));
   await _pumpUntilFound(tester, find.byKey(const Key('chat_composer')));
 }
 
@@ -103,6 +108,7 @@ Future<void> _pumpHome(
   Key? scopeKey,
   ThemeMode? themeMode,
   Size? size,
+  String languageCode = 'en',
 }) async {
   tester.view.physicalSize = size ?? const Size(1080, 2400);
   tester.view.devicePixelRatio = size == null ? 2.0 : 1.0;
@@ -117,8 +123,9 @@ Future<void> _pumpHome(
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
-        themeModeStoreProvider.overrideWithValue(
-            InMemoryThemeModeStore(themeMode)),
+        systemDisplayLanguageProvider.overrideWithValue(languageCode),
+        themeModeStoreProvider
+            .overrideWithValue(InMemoryThemeModeStore(themeMode)),
         _apiOverride(fake),
         chatCacheStoreProvider
             .overrideWithValue(chatCache ?? InMemoryChatCacheStore()),
@@ -137,7 +144,8 @@ Future<void> _pumpHome(
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Home'));
+  await _pumpUntilFound(
+      tester, find.text(languageCode == 'ar' ? 'الرئيسية' : 'Home'));
 }
 
 Future<void> _acceptDisclosure(WidgetTester tester) async {
@@ -225,6 +233,30 @@ void main() {
     expect((events.single as ChatToken).token, '€');
   });
 
+  testWidgets('Arabic chat chrome preserves assistant text from the API',
+      (tester) async {
+    final FakeMayosApi fake = _fakePlayer('alice');
+    fake.chatHistory.add(<String, dynamic>{
+      'id': 'server-reply-1',
+      'role': 'assistant',
+      'content': 'Server supplied coaching text.',
+      'created_at': '2026-10-02T10:00:00Z',
+    });
+    await _pumpChat(tester, fake,
+        store: InMemoryChatCacheStore(), languageCode: 'ar');
+    expect(find.byTooltip('مسح سجل المحادثة'), findsOneWidget);
+    expect(find.text('قبل أن تبدأ'), findsOneWidget);
+    expect(
+        find.text(
+            'يرد على المحادثة نموذج ذكاء اصطناعي مستضاف. تُرسل رسالتك وسياق التدريب اللازم للإجابة إلى مزود النموذج. قد يتضمن النص الحر تفاصيل تكشف هويتك، لذا لا تكتب ما لا ترغب في معالجته هناك.'),
+        findsOneWidget);
+    expect(_chatMarkdown('Server supplied coaching text.'), findsOneWidget);
+    expect(
+      Directionality.of(tester.element(find.byTooltip('مسح سجل المحادثة'))),
+      TextDirection.rtl,
+    );
+  });
+
   testWidgets('disclosure gates the composer and persists per account',
       (tester) async {
     final InMemoryChatCacheStore store = InMemoryChatCacheStore();
@@ -308,20 +340,24 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
       await tester.pump(const Duration(milliseconds: 120));
 
-      final MayosMarkdown partial = tester.widgetList<MayosMarkdown>(
-        _chatMarkdown('**Strong'),
-      ).first;
+      final MayosMarkdown partial = tester
+          .widgetList<MayosMarkdown>(
+            _chatMarkdown('**Strong'),
+          )
+          .first;
       final Key identityKey = partial.key!;
       expect(partial.source, '**Strong');
       expect(_renderedMarkdownText('Strong'), findsOneWidget);
       expect(find.text('**How?**'), findsOneWidget);
       expect(
-        tester.widget<MarkdownBody>(
-          find.descendant(
-            of: find.byKey(identityKey),
-            matching: find.byType(MarkdownBody),
-          ),
-        ).key,
+        tester
+            .widget<MarkdownBody>(
+              find.descendant(
+                of: find.byKey(identityKey),
+                matching: find.byType(MarkdownBody),
+              ),
+            )
+            .key,
         isNull,
       );
 
@@ -329,7 +365,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 120));
       const String reply = '**Strong** and *steady*.';
       expect(find.byKey(identityKey), findsOneWidget);
-      expect(tester.widget<MayosMarkdown>(find.byKey(identityKey)).source, reply);
+      expect(
+          tester.widget<MayosMarkdown>(find.byKey(identityKey)).source, reply);
       expect(_renderedMarkdownText('Strong and steady.'), findsOneWidget);
       expect(tester.takeException(), isNull);
 
@@ -491,7 +528,8 @@ void main() {
       tester,
       find.byKey(const ValueKey<String>('logger.progress')),
     );
-    expect(find.byKey(const ValueKey<String>('logger.progress')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey<String>('logger.progress')), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('logger.deload')), findsOneWidget);
     expect(find.text('Deload applied'), findsOneWidget);
   });

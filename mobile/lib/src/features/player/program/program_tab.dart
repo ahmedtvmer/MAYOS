@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/active_program.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
+import '../../../core/display_language/copy_context.dart';
 import '../../../core/api_client.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/models.dart';
@@ -222,7 +225,10 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       if (!mounted) return;
       setState(() {
         _generating = false;
-        _actionError = mutationFailureMessage(error);
+        _actionError = mutationFailureMessage(
+          error,
+          connectionMessage: displayCopyOf(context).connectionFailure,
+        );
       });
     }
   }
@@ -321,12 +327,13 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   ) async {
     if (program == null || route == ProgramAuthorityRoute.unavailable) {
       _showAuthorityMessage(
-          'Your program changed. Refresh before substituting.');
+          MayosCopy(ref.read(displayLanguageProvider)).programNeedsRefresh);
       return;
     }
     if (route == ProgramAuthorityRoute.inconsistent ||
         route == ProgramAuthorityRoute.unchanged) {
-      _showAuthorityMessage('Program authority changed again. Try once more.');
+      _showAuthorityMessage(
+          MayosCopy(ref.read(displayLanguageProvider)).programAuthorityChanged);
       return;
     }
     await _continueWithRefreshedProgram(program, recovery);
@@ -339,8 +346,8 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     final (ProgramDay, ProgramExercise)? target =
         _findRefreshedSubstitutionTarget(program, recovery);
     if (target == null) {
-      _showAuthorityMessage(
-          'The program changed. Choose the exercise and replacement again.');
+      _showAuthorityMessage(MayosCopy(ref.read(displayLanguageProvider))
+          .programChangedChooseAgain);
       return;
     }
     await _routeSubstitutionForRefreshedProgram(
@@ -379,13 +386,13 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         day,
         exercise,
         replacement,
-        authorityNotice:
-            'Program authority changed. Continuing with direct substitution.',
+        authorityNotice: MayosCopy(ref.read(displayLanguageProvider))
+            .authorityChangedDirectSwap,
       );
       return;
     }
-    _showAuthorityMessage(
-        'Program authority changed. Opening a request for your coach.');
+    _showAuthorityMessage(MayosCopy(ref.read(displayLanguageProvider))
+        .authorityChangedRequestCoach);
     await _requestSubstitution(day, exercise, replacement);
   }
 
@@ -467,8 +474,9 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       ..showSnackBar(
         SnackBar(
           content: Text(
-            'Your coach has been asked to replace ${exercise.exerciseName} '
-            'with ${replacement.name}.',
+            MayosCopy(ref.read(displayLanguageProvider))
+                .substitutionRequestSent(
+                    exercise.exerciseName, replacement.name),
           ),
         ),
       );
@@ -486,13 +494,13 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     return showDialog<ExerciseCatalogEntry>(
       context: context,
       builder: (BuildContext context) => ExercisePickerDialog(
-        title: 'Substitute exercise',
+        title: displayCopyOf(context).substituteExercise,
         targetMuscle: targetMuscle,
         excludeExerciseIds: <String>{
           for (final ProgramExercise item in day.exercises) item.exerciseId,
         },
         suggestedSubstitutes: exercise.suggestedSubstitutes,
-        emptyFilteredMessage: 'Every match is already in this day.',
+        emptyFilteredMessage: displayCopyOf(context).everyExerciseMatchInDay,
       ),
     );
   }
@@ -512,14 +520,15 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       builder: (BuildContext context) => StatefulBuilder(
         builder: (BuildContext context, StateSetter setDialogState) =>
             AlertDialog(
-          title: const Text('Substitute exercise?'),
+          title: Text(displayCopyOf(context).substituteExerciseQuestion),
           content: SizedBox(
             width: kExercisePickerDialogWidth,
             child: CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               controlAffinity: ListTileControlAffinity.leading,
               value: allOccurrences,
-              title: Text('Also replace on $otherDayCount other days'),
+              title: Text(
+                  displayCopyOf(context).alsoReplaceOnOtherDays(otherDayCount)),
               onChanged: (bool? value) => setDialogState(
                 () => allOccurrences = value ?? false,
               ),
@@ -527,13 +536,13 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
           ),
           actions: <Widget>[
             MayosButton(
-              label: 'Cancel',
+              label: displayCopyOf(context).cancel,
               variant: MayosButtonVariant.tertiary,
               expand: false,
               onPressed: () => Navigator.of(context).pop(),
             ),
             MayosButton(
-              label: 'Substitute',
+              label: displayCopyOf(context).substitute,
               expand: false,
               onPressed: () => Navigator.of(context).pop(allOccurrences),
             ),
@@ -614,7 +623,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       ..hideCurrentSnackBar();
     if (direction == _SwapDirection.undo) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('Substitution undone.')),
+        SnackBar(content: Text(displayCopyOf(context).substitutionUndone)),
       );
       return;
     }
@@ -623,12 +632,13 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         content: Text(
           <String>[
             if (swap.authorityNotice != null) swap.authorityNotice!,
-            '${swap.sourceName} replaced with ${swap.replacement.name}.',
+            MayosCopy(ref.read(displayLanguageProvider))
+                .substitutionApplied(swap.sourceName, swap.replacement.name),
           ].join(' '),
         ),
         duration: const Duration(seconds: 10),
         action: SnackBarAction(
-          label: 'Undo',
+          label: displayCopyOf(context).undo,
           onPressed: () => unawaited(
             _performProgramSwap(
               swap,
@@ -643,7 +653,10 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   }
 
   void _showSwapError(ApiException error) {
-    final String message = mutationFailureMessage(error);
+    final String message = mutationFailureMessage(
+      error,
+      connectionMessage: displayCopyOf(context).connectionFailure,
+    );
     setState(() {
       _substituting = false;
       _actionError = message;
@@ -671,16 +684,16 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     if (_loadError != null) {
       return _CenteredMessage(
         message: _loadError!,
-        actionLabel: 'Retry',
+        actionLabel: displayCopyOf(context).retry,
         onAction: _load,
       );
     }
     final TrainingProgram? program = _program;
     if (program == null) {
       return _CenteredMessage(
-        message: 'No active program yet. Complete onboarding to build one.',
+        message: displayCopyOf(context).noActiveProgramYet,
         error: _actionError,
-        actionLabel: 'Regenerate program',
+        actionLabel: displayCopyOf(context).regenerateProgram,
         onAction: _generating ? null : _generate,
         loading: _generating,
       );
@@ -702,8 +715,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
           ),
           const SizedBox(height: MayosSpacing.xs),
           Text(
-            '${program.splitType} · ${program.weeklyFrequency} '
-            '${program.weeklyFrequency == 1 ? 'day' : 'days'}/week',
+            '${program.splitType} · ${displayCopyOf(context).programFrequency(program.weeklyFrequency)}',
             style:
                 MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
           ),
@@ -722,9 +734,9 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
           ],
           const SizedBox(height: MayosSpacing.md),
           Align(
-            alignment: Alignment.centerLeft,
+            alignment: AlignmentDirectional.centerStart,
             child: MayosButton(
-              label: 'Regenerate program',
+              label: displayCopyOf(context).regenerateProgram,
               icon: Icons.auto_awesome,
               variant: MayosButtonVariant.tertiary,
               loading: _generating,
@@ -747,14 +759,15 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                   shape: const Border(),
                   collapsedShape: const Border(),
                   title: Text(
-                    'Day ${day.dayOrder}: ${day.dayName}',
+                    displayCopyOf(context)
+                        .dayHeading(day.dayOrder, day.dayName),
                     style: MayosTypography.sectionHeading
                         .copyWith(color: c.textPrimary),
                   ),
                   children: <Widget>[
                     ..._deloadBannerFor(day),
                     MayosButton(
-                      label: 'Log workout',
+                      label: displayCopyOf(context).logWorkout,
                       icon: Icons.edit_note,
                       onPressed: () {
                         // Runs the Resume/Discard guard and creates the
@@ -769,11 +782,11 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                     ),
                     const SizedBox(height: MayosSpacing.md),
                     if (day.hasWarmup) ...<Widget>[
-                      const _SectionLabel('Warm-up'),
+                      _SectionLabel(displayCopyOf(context).warmup),
                       for (final WarmupExercise warmup in day.warmupExercises)
                         _WarmupRow(warmup: warmup),
                     ],
-                    const _SectionLabel('Working sets'),
+                    _SectionLabel(displayCopyOf(context).workingSets),
                     for (final ProgramExercise exercise in day.exercises)
                       _ExerciseRow(
                         exercise: exercise,
@@ -785,7 +798,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                                 ),
                       ),
                     if (day.hasCardio) ...<Widget>[
-                      const _SectionLabel('Cardio'),
+                      _SectionLabel(displayCopyOf(context).cardio),
                       _CardioRow(cardio: day.cardio!),
                     ],
                   ],
@@ -870,7 +883,9 @@ class _ProvenanceLabel extends StatelessWidget {
         ),
         const SizedBox(width: MayosSpacing.xxs),
         Text(
-          former ? 'Former coach' : 'Published by your coach',
+          former
+              ? displayCopyOf(context).formerCoach
+              : displayCopyOf(context).publishedByCoach,
           style: MayosTypography.caption.copyWith(
             color: former ? c.textMuted : c.textSecondary,
           ),
@@ -915,28 +930,40 @@ class _ExerciseRow extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    exercise.prescription,
-                    style: MayosTypography.bodySecondary.copyWith(
-                      color: c.textSecondary,
+                  Directionality(
+                    textDirection: TextDirection.ltr,
+                    child: Text(
+                      exercise.prescription,
+                      style: MayosTypography.bodySecondary.copyWith(
+                        color: c.textSecondary,
+                      ),
                     ),
                   ),
                   if (exercise.suggestedSubstitutes.isNotEmpty) ...<Widget>[
                     const SizedBox(height: 2),
                     Text(
-                      'Suggested substitutes: ${exercise.suggestedSubstitutes.map((SuggestedSubstitute item) => item.exerciseName).join(', ')}',
-                      style: MayosTypography.caption.copyWith(color: c.textMuted),
+                      displayCopyOf(context).suggestedSubstitutesFor(exercise
+                          .suggestedSubstitutes
+                          .map((SuggestedSubstitute item) => item.exerciseName)
+                          .join(', ')),
+                      style:
+                          MayosTypography.caption.copyWith(color: c.textMuted),
                     ),
                   ],
                   const SizedBox(height: 2),
-                  Text(
-                    <String>[
-                      if (exercise.hasWarmupSets)
-                        '${exercise.warmupSets} warm-up '
-                            '${exercise.warmupSets == 1 ? 'set' : 'sets'}',
-                      exercise.restLabel,
-                    ].join(' · '),
-                    style: MayosTypography.caption.copyWith(color: c.textMuted),
+                  Directionality(
+                    textDirection: TextDirection.ltr,
+                    child: Text(
+                      <String>[
+                        if (exercise.hasWarmupSets)
+                          displayCopyOf(context)
+                              .warmupSetCount(exercise.warmupSets),
+                        displayCopyOf(context)
+                            .restTime(exercise.restSecondsOrDefault),
+                      ].join(' · '),
+                      style:
+                          MayosTypography.caption.copyWith(color: c.textMuted),
+                    ),
                   ),
                 ],
               ),
@@ -947,16 +974,17 @@ class _ExerciseRow extends StatelessWidget {
               child: Icon(Icons.chevron_right, size: 20, color: c.textMuted),
             ),
             PopupMenuButton<String>(
-              tooltip: 'More actions for ${exercise.exerciseName}',
+              tooltip: displayCopyOf(context)
+                  .moreActionsForExercise(exercise.exerciseName),
               enabled: onSubstitute != null,
               onSelected: (String value) {
                 if (value == 'substitute') onSubstitute?.call();
               },
               itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                const PopupMenuItem<String>(
+                PopupMenuItem<String>(
                   value: 'substitute',
                   height: kMayosMinTapTarget,
-                  child: Text('Substitute exercise'),
+                  child: Text(displayCopyOf(context).substituteExercise),
                 ),
               ],
               icon: Icon(Icons.more_vert, color: c.textMuted),
@@ -980,7 +1008,7 @@ class _WarmupRow extends StatelessWidget {
     // explicitly left-aligned to sit flush with the section label and the
     // working-set rows.
     return Align(
-      alignment: Alignment.centerLeft,
+      alignment: AlignmentDirectional.centerStart,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: MayosSpacing.xs),
         child: Column(
@@ -991,9 +1019,16 @@ class _WarmupRow extends StatelessWidget {
               style: MayosTypography.body.copyWith(color: c.textPrimary),
             ),
             const SizedBox(height: 2),
-            Text(
-              warmup.prescription,
-              style: MayosTypography.caption.copyWith(color: c.textMuted),
+            Directionality(
+              textDirection: TextDirection.ltr,
+              child: Text(
+                displayCopyOf(context).warmupPrescription(
+                  warmup.sets,
+                  warmup.reps,
+                  warmup.restSeconds,
+                ),
+                style: MayosTypography.caption.copyWith(color: c.textMuted),
+              ),
             ),
           ],
         ),
@@ -1018,10 +1053,13 @@ class _CardioRow extends StatelessWidget {
           Icon(Icons.directions_run, size: 16, color: c.textMuted),
           const SizedBox(width: MayosSpacing.xs),
           Expanded(
-            child: Text(
-              cardio,
-              style: MayosTypography.bodySecondary.copyWith(
-                color: c.textSecondary,
+            child: Directionality(
+              textDirection: TextDirection.ltr,
+              child: Text(
+                cardio,
+                style: MayosTypography.bodySecondary.copyWith(
+                  color: c.textSecondary,
+                ),
               ),
             ),
           ),
@@ -1051,7 +1089,7 @@ class _OfflineBanner extends StatelessWidget {
           const SizedBox(width: MayosSpacing.xs),
           Expanded(
             child: Text(
-              'Offline — showing saved program',
+              displayCopyOf(context).offlineProgramBanner,
               style: MayosTypography.bodySecondary.copyWith(
                 color: c.textSecondary,
               ),
@@ -1075,7 +1113,7 @@ class _SectionLabel extends StatelessWidget {
       padding:
           const EdgeInsets.only(top: MayosSpacing.md, bottom: MayosSpacing.xxs),
       child: Align(
-        alignment: Alignment.centerLeft,
+        alignment: AlignmentDirectional.centerStart,
         child: Text(
           text,
           style: MayosTypography.caption.copyWith(

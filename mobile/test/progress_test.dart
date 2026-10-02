@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
+import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/connectivity_message.dart';
@@ -118,6 +120,7 @@ Future<void> _pumpProgress(
   Size size = const Size(1080, 2400),
   double textScale = 1.0,
   Finder? ready,
+  String languageCode = 'en',
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -130,16 +133,27 @@ Future<void> _pumpProgress(
   await tokens.save('token-alice');
   await tester.pumpWidget(
     ProviderScope(
-      overrides: <Override>[_apiOverride(fake, tokens)],
+      overrides: <Override>[
+        _apiOverride(fake, tokens),
+        systemDisplayLanguageProvider.overrideWithValue(languageCode),
+      ],
       child: MaterialApp(
         theme: MayosTheme.light,
         darkTheme: MayosTheme.dark,
         themeMode: mode,
+        locale: Locale(languageCode),
+        supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
         home: const Scaffold(body: ProgressTab()),
       ),
     ),
   );
-  await _pumpUntilFound(tester, ready ?? find.text('Estimated 1RM'));
+  await _pumpUntilFound(
+      tester,
+      ready ??
+          find.text(languageCode == 'ar'
+              ? 'الحد الأقصى التقديري لتكرار واحد'
+              : 'Estimated 1RM'));
 }
 
 Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
@@ -185,6 +199,19 @@ Future<void> _openProgressTab(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('Arabic Progress shows localized labels and Western chart digits',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpProgress(tester, fake, languageCode: 'ar');
+    expect(find.text('محطات التقدم'), findsOneWidget);
+    expect(find.text('القوة'), findsOneWidget);
+    expect(find.text('الحجم التدريبي'), findsOneWidget);
+    expect(find.text('الحد الأقصى التقديري لتكرار واحد'), findsOneWidget);
+    expect(find.text('٣'), findsNothing);
+    expect(Directionality.of(tester.element(find.text('القوة'))),
+        TextDirection.rtl);
+  });
+
   testWidgets('strength maps real history into the chart, rows, and units',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _signedInFake();
@@ -200,7 +227,8 @@ void main() {
     expect(find.textContaining('e1RM 110'), findsOneWidget);
   });
 
-  testWidgets('Progress lists Checkpoints newest first', (WidgetTester tester) async {
+  testWidgets('Progress lists Checkpoints newest first',
+      (WidgetTester tester) async {
     final FakeMayosApi fake = _signedInFake()
       ..checkpointReviewRows = <Map<String, dynamic>>[
         for (final int checkpoint in <int>[25, 10])

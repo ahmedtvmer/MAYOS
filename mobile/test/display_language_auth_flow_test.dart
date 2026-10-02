@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mayos_mobile/src/app.dart';
+import 'package:mayos_mobile/src/core/display_language/catalog.dart';
 import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/display_language/store.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
@@ -66,13 +67,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Disable coaching?'), findsOneWidget);
     await tester.tap(find.text('Disable coaching').last);
-    for (var i = 0; i < 30 && find.text('Home').evaluate().isEmpty; i++) {
+    for (var i = 0;
+        i < 30 && find.text(const MayosCopy('ar').home).evaluate().isEmpty;
+        i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
-    expect(find.text('Home'), findsOneWidget);
-    expect(Directionality.of(tester.element(find.text('Home'))),
-        TextDirection.rtl);
+    final Finder home = find.text(const MayosCopy('ar').home);
+    expect(home, findsOneWidget);
+    expect(Directionality.of(tester.element(home)), TextDirection.rtl);
     expect(fake.coach, isFalse);
   });
 
@@ -122,7 +125,9 @@ void main() {
     ]));
     await tester.pumpAndSettle();
     await _signIn(tester, 'alice');
-    expect(Directionality.of(tester.element(find.text('Home'))),
+    expect(
+        Directionality.of(
+            tester.element(find.text(const MayosCopy('ar').home))),
         TextDirection.rtl);
 
     // Settings UI path is covered by coach_profile_test.
@@ -311,12 +316,11 @@ void main() {
     expect(tokens.delayedRead.isCompleted, isFalse);
 
     await _signIn(tester, 'alice');
-    expect(Directionality.of(tester.element(find.text('Home'))),
-        TextDirection.rtl);
+    final Finder home = find.text(const MayosCopy('ar').home);
+    expect(Directionality.of(tester.element(home)), TextDirection.rtl);
     tokens.delayedRead.completeError(StateError('storage unavailable'));
     await tester.pumpAndSettle();
-    expect(Directionality.of(tester.element(find.text('Home'))),
-        TextDirection.rtl);
+    expect(Directionality.of(tester.element(home)), TextDirection.rtl);
   });
 
   testWidgets(
@@ -341,15 +345,14 @@ void main() {
     expect(tokens.delayedAccountId.isCompleted, isFalse);
 
     await _signIn(tester, 'alice');
-    expect(Directionality.of(tester.element(find.text('Home'))),
-        TextDirection.rtl);
+    final Finder home = find.text(const MayosCopy('ar').home);
+    expect(Directionality.of(tester.element(home)), TextDirection.rtl);
 
     tokens.delayedAccountId.complete('account-alice');
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
-    expect(Directionality.of(tester.element(find.text('Home'))),
-        TextDirection.rtl);
+    expect(Directionality.of(tester.element(home)), TextDirection.rtl);
   });
 
   testWidgets(
@@ -746,9 +749,9 @@ void main() {
     expect(find.text('English'), findsOneWidget);
 
     await _signIn(tester, 'alice');
-    expect(find.text('Home'), findsOneWidget);
-    expect(Directionality.of(tester.element(find.text('Home'))),
-        TextDirection.rtl);
+    final Finder arabicHome = find.text(const MayosCopy('ar').home);
+    expect(arabicHome, findsOneWidget);
+    expect(Directionality.of(tester.element(arabicHome)), TextDirection.rtl);
     expect(await languageStore.readAccount('account-alice'), 'ar');
 
     await _logout(tester);

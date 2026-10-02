@@ -1,4 +1,5 @@
 import 'models.dart';
+import 'checkpoint_ordinal.dart' as ordinal;
 
 /// Projects the cached status into the immutable lines shown at Finish.
 List<String> projectTrainingStatusSummary({
@@ -39,7 +40,8 @@ List<String> _weeklyLines(
   if (_weekStartIso(now) != status.weekStart) {
     return const <String>[];
   }
-  final int done = status.weekDone + _pendingThisWeek(unsynced, status.weekStart) + 1;
+  final int done =
+      status.weekDone + _pendingThisWeek(unsynced, status.weekStart) + 1;
   final int streak = _projectedStreak(status, done);
   final String weekWord = streak == 1 ? 'week' : 'weeks';
   return <String>[
@@ -104,14 +106,5 @@ int _nextCheckpoint(int count) {
 }
 
 String checkpointOrdinal(int value) {
-  final int lastTwo = value % 100;
-  if (lastTwo >= 11 && lastTwo <= 13) {
-    return '${value}th';
-  }
-  return switch (value % 10) {
-    1 => '${value}st',
-    2 => '${value}nd',
-    3 => '${value}rd',
-    _ => '${value}th',
-  };
+  return ordinal.checkpointOrdinal(value);
 }

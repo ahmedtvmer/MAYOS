@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
+import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
@@ -45,6 +47,7 @@ Future<void> _pumpDetail(
   int? dayOrder = 1,
   String initialTab = 'overview',
   Size size = const Size(1080, 2400),
+  String languageCode = 'en',
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -58,6 +61,7 @@ Future<void> _pumpDetail(
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
+        systemDisplayLanguageProvider.overrideWithValue(languageCode),
         themeModeStoreProvider.overrideWithValue(InMemoryThemeModeStore(mode)),
         draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
         workoutCacheStoreProvider
@@ -77,6 +81,9 @@ Future<void> _pumpDetail(
         theme: MayosTheme.light,
         darkTheme: MayosTheme.dark,
         themeMode: mode,
+        locale: Locale(languageCode),
+        supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
         home: ExerciseDetailScreen(
           exerciseId: exerciseId,
           dayOrder: dayOrder,
@@ -85,7 +92,8 @@ Future<void> _pumpDetail(
       ),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Overview'));
+  await _pumpUntilFound(
+      tester, find.text(languageCode == 'ar' ? 'نظرة عامة' : 'Overview'));
 }
 
 Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
@@ -123,6 +131,20 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
 }
 
 void main() {
+  testWidgets(
+      'Arabic exercise tabs and prescription labels preserve exercise names',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpDetail(tester, fake, 'bench_press', languageCode: 'ar');
+    expect(find.text('نظرة عامة'), findsOneWidget);
+    expect(find.text('الأسلوب'), findsOneWidget);
+    expect(find.text('السجل'), findsOneWidget);
+    expect(find.text('Bench Press'), findsOneWidget);
+    expect(find.text('RIR ≥ 2'), findsOneWidget);
+    expect(Directionality.of(tester.element(find.text('نظرة عامة'))),
+        TextDirection.rtl);
+  });
+
   testWidgets('Program exercise opens detail with prescription stats',
       (tester) async {
     final FakeMayosApi fake = _signedInFake();
@@ -212,8 +234,9 @@ void main() {
     // The relative catalog path resolved through mediaUrlFor: the GIF first
     // (the still-picture Image only exists inside its failure fallback).
     final Image image = tester.widget<Image>(find.byType(Image).first);
-    final ImageProvider provider =
-        image.image is ResizeImage ? (image.image as ResizeImage).imageProvider : image.image;
+    final ImageProvider provider = image.image is ResizeImage
+        ? (image.image as ResizeImage).imageProvider
+        : image.image;
     expect(provider, isA<NetworkImage>());
     expect(
       (provider as NetworkImage).url,

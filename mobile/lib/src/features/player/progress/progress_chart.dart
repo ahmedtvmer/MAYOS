@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../core/display_language/catalog.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
 
@@ -30,6 +31,7 @@ class ProgressLineChart extends StatefulWidget {
     this.selectedIndex,
     this.onPointSelected,
     this.height = 208,
+    this.copy = const MayosCopy('en'),
   });
 
   final List<ProgressChartPoint> points;
@@ -43,20 +45,21 @@ class ProgressLineChart extends StatefulWidget {
   final int? selectedIndex;
   final ValueChanged<int>? onPointSelected;
   final double height;
+  final MayosCopy copy;
 
   /// The accessibility summary read in place of the painted chart.
   String get semanticsSummary {
     if (points.isEmpty) {
-      return '$metricLabel for $exerciseName: no sessions.';
+      return copy.chartNoSessions(metricLabel, exerciseName);
     }
-    final String first = shortDate(points.first.date);
+    final String first = shortDate(points.first.date, isArabic: copy.isArabic);
     if (points.length == 1) {
-      return '$metricLabel for $exerciseName: 1 session on $first, '
-          '${_formatValue(points.first.value)} $unit.';
+      return copy.chartOneSession(metricLabel, exerciseName, first,
+          _formatValue(points.first.value), unit);
     }
-    final String last = shortDate(points.last.date);
-    return '$metricLabel for $exerciseName, ${points.length} sessions from '
-        '$first to $last, latest ${_formatValue(points.last.value)} $unit.';
+    final String last = shortDate(points.last.date, isArabic: copy.isArabic);
+    return copy.chartManySessions(metricLabel, exerciseName, points.length,
+        first, last, _formatValue(points.last.value), unit);
   }
 
   @override
@@ -130,6 +133,7 @@ class _ProgressLineChartState extends State<ProgressLineChart> {
                     progress: progress,
                     textScaler: scaler,
                     textDirection: direction,
+                    isArabic: widget.copy.isArabic,
                   ),
                 );
               },
@@ -153,6 +157,7 @@ class _ProgressLinePainter extends CustomPainter {
     required this.progress,
     required this.textScaler,
     required this.textDirection,
+    required this.isArabic,
   });
 
   final List<ProgressChartPoint> points;
@@ -165,6 +170,7 @@ class _ProgressLinePainter extends CustomPainter {
   final double progress;
   final TextScaler textScaler;
   final TextDirection textDirection;
+  final bool isArabic;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -216,14 +222,22 @@ class _ProgressLinePainter extends CustomPainter {
         Offset(left - 6, y),
         alignRight: true,
         centerVertically: true,
+        textDirection: TextDirection.ltr,
       );
     }
 
     // The x labels are drawn first/last; the first is dropped when the two
     // would collide at narrow widths or large text scale (#54).
-    final TextPainter firstLabel = _layoutText(shortDate(points.first.date));
-    final TextPainter? lastLabel =
-        points.length > 1 ? _layoutText(shortDate(points.last.date)) : null;
+    final TextPainter firstLabel = _layoutText(
+      shortDate(points.first.date, isArabic: isArabic),
+      textDirection: TextDirection.ltr,
+    );
+    final TextPainter? lastLabel = points.length > 1
+        ? _layoutText(
+            shortDate(points.last.date, isArabic: isArabic),
+            textDirection: TextDirection.ltr,
+          )
+        : null;
     final bool showFirst = lastLabel == null ||
         left + firstLabel.width + 12 <= right - lastLabel.width;
     if (showFirst) {
@@ -284,12 +298,16 @@ class _ProgressLinePainter extends CustomPainter {
     canvas.restore();
   }
 
-  TextPainter _layoutText(String text) => TextPainter(
+  TextPainter _layoutText(
+    String text, {
+    TextDirection? textDirection,
+  }) =>
+      TextPainter(
         text: TextSpan(
           text: text,
           style: MayosTypography.caption.copyWith(color: labelColor),
         ),
-        textDirection: textDirection,
+        textDirection: textDirection ?? this.textDirection,
         textScaler: textScaler,
         maxLines: 1,
       )..layout();
@@ -300,8 +318,9 @@ class _ProgressLinePainter extends CustomPainter {
     Offset anchor, {
     bool alignRight = false,
     bool centerVertically = false,
+    TextDirection? textDirection,
   }) {
-    final TextPainter painter = _layoutText(text);
+    final TextPainter painter = _layoutText(text, textDirection: textDirection);
     double dx = anchor.dx;
     double dy = anchor.dy;
     if (alignRight) {
@@ -344,26 +363,12 @@ class _ProgressLinePainter extends CustomPainter {
 }
 
 /// Formats an ISO date as a short axis/report label ("2026-06-03" → "Jun 3").
-String shortDate(String iso) {
+String shortDate(String iso, {bool isArabic = false}) {
   final DateTime? parsed = DateTime.tryParse(iso);
   if (parsed == null) {
     return iso;
   }
-  const List<String> months = <String>[
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-  return '${months[parsed.month - 1]} ${parsed.day}';
+  return MayosCopy(isArabic ? 'ar' : 'en').shortDate(parsed);
 }
 
 String _formatValue(double value) {

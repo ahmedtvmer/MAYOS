@@ -1,4 +1,5 @@
 import '../../../core/models.dart';
+import '../../../core/display_language/catalog.dart';
 
 /// Pure planning rules for the Home "next session" block (#53).
 ///
@@ -11,12 +12,7 @@ import '../../../core/models.dart';
 
 /// The editorial greeting for the hour, without inventing a name. No account
 /// field exposes a display/preferred name, so Home greets neutrally.
-String greetingFor(DateTime now) {
-  final int hour = now.hour;
-  if (hour >= 5 && hour < 12) return 'Good morning';
-  if (hour >= 12 && hour < 17) return 'Good afternoon';
-  return 'Good evening';
-}
+String greetingFor(DateTime now) => MayosCopy('en').greetingFor(now);
 
 /// The identity and performed date of one logged workout, used to derive the
 /// next program day from data the app already has: the latest committed session
@@ -76,13 +72,14 @@ int nextScheduledWeekday(List<int> weekdays, DateTime now) {
 /// schedule, or "Next session · Tue" once a schedule exists.
 ///
 /// The label is independent of which program day is next.
-String nextSessionLabel(TrainingSchedule? schedule, DateTime now) {
+String nextSessionLabel(TrainingSchedule? schedule, DateTime now,
+    {bool isArabic = false}) {
   final List<int> sorted = _sortedWeekdays(schedule);
   if (sorted.isEmpty) {
-    return 'Next session';
+    return MayosCopy(isArabic ? 'ar' : 'en').nextSessionLabel(null);
   }
   final int next = nextScheduledWeekday(sorted, now);
-  return 'Next session · ${weekdayLabels[next - 1]}';
+  return MayosCopy(isArabic ? 'ar' : 'en').nextSessionLabel(next);
 }
 
 /// The ordered program day after the one most recently trained, wrapping to

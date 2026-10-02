@@ -88,7 +88,7 @@ class MayosNavigationRail extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: c.surface,
-        border: Border(right: BorderSide(color: c.border)),
+        border: BorderDirectional(end: BorderSide(color: c.border)),
       ),
       child: SizedBox(
         width: MayosLayout.navigationRailWidth,
@@ -210,7 +210,10 @@ class _NavigationItemIcon extends StatelessWidget {
     final MayosThemeExtension c = MayosTheme.of(context);
     return Badge(
       isLabelVisible: item.badge > 0,
-      label: Text('${item.badge}'),
+      label: Directionality(
+        textDirection: TextDirection.ltr,
+        child: Text('${item.badge}'),
+      ),
       backgroundColor: c.danger,
       child: AnimatedSwitcher(
         duration: MayosMotion.fast,

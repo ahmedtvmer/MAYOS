@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/display_language/copy_context.dart';
 import '../../../core/api_client.dart';
 import '../../../core/effort.dart';
 import '../../../core/config.dart';
@@ -136,12 +137,14 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen> {
           }
           if (snapshot.hasError) {
             return _ErrorView(
-                message: 'Could not load this exercise.', onRetry: _retry);
+                message: displayCopyOf(context).loadExerciseFailed,
+                onRetry: _retry);
           }
           final _DetailData data = snapshot.data!;
           if (data.catalog == null && data.exercise == null) {
             return _ErrorView(
-              message: data.partialError ?? 'This exercise is not available.',
+              message: data.partialError ??
+                  displayCopyOf(context).exerciseUnavailable,
               onRetry: _retry,
             );
           }
@@ -170,7 +173,9 @@ class _DetailBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final ExerciseCatalogDetail? catalog = data.catalog;
     final ProgramExercise? exercise = data.exercise;
-    final String name = catalog?.name ?? exercise?.exerciseName ?? 'Exercise';
+    final String name = catalog?.name ??
+        exercise?.exerciseName ??
+        displayCopyOf(context).exerciseFallbackName;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(
@@ -187,10 +192,13 @@ class _DetailBody extends StatelessWidget {
         ],
         const SizedBox(height: MayosSpacing.xl),
         MayosSegmentedControl<String>(
-          segments: const <MayosSegment<String>>[
-            MayosSegment<String>(value: 'overview', label: 'Overview'),
-            MayosSegment<String>(value: 'technique', label: 'Technique'),
-            MayosSegment<String>(value: 'history', label: 'History'),
+          segments: <MayosSegment<String>>[
+            MayosSegment<String>(
+                value: 'overview', label: displayCopyOf(context).overview),
+            MayosSegment<String>(
+                value: 'technique', label: displayCopyOf(context).technique),
+            MayosSegment<String>(
+                value: 'history', label: displayCopyOf(context).history),
           ],
           selected: tab,
           onChanged: onTab,
@@ -331,7 +339,7 @@ class _CatalogMedia extends StatelessWidget {
         height: size,
         child: ColoredBox(
           color: c.surfaceSunken,
-          child: _gif(c),
+          child: _gif(context, c),
         ),
       ),
     );
@@ -339,10 +347,10 @@ class _CatalogMedia extends StatelessWidget {
 
   /// The GIF animates as any multi-frame network image does; a failed or
   /// absent GIF falls back to the still picture in the same box.
-  Widget _gif(MayosThemeExtension c) {
+  Widget _gif(BuildContext context, MayosThemeExtension c) {
     final String? url = detail.gifUrl;
     if (url == null) {
-      return _still(c);
+      return _still(context, c);
     }
     return Image.network(
       url,
@@ -352,14 +360,14 @@ class _CatalogMedia extends StatelessWidget {
       gaplessPlayback: true,
       loadingBuilder: (_, Widget child, ImageChunkEvent? progress) =>
           progress == null ? child : _placeholder(c),
-      errorBuilder: (_, __, ___) => _still(c),
+      errorBuilder: (_, __, ___) => _still(context, c),
     );
   }
 
-  Widget _still(MayosThemeExtension c) {
+  Widget _still(BuildContext context, MayosThemeExtension c) {
     final String? url = detail.imageUrl;
     if (url == null) {
-      return _fallback(c);
+      return _fallback(context, c);
     }
     return Image.network(
       url,
@@ -369,7 +377,7 @@ class _CatalogMedia extends StatelessWidget {
       gaplessPlayback: true,
       loadingBuilder: (_, Widget child, ImageChunkEvent? progress) =>
           progress == null ? child : _placeholder(c),
-      errorBuilder: (_, __, ___) => _fallback(c),
+      errorBuilder: (_, __, ___) => _fallback(context, c),
     );
   }
 
@@ -386,14 +394,14 @@ class _CatalogMedia extends StatelessWidget {
         ),
       );
 
-  Widget _fallback(MayosThemeExtension c) => ColoredBox(
+  Widget _fallback(BuildContext context, MayosThemeExtension c) => ColoredBox(
         color: c.secondarySurface,
         child: Center(
           child: Icon(
             Icons.fitness_center,
             size: MayosIconSizes.large,
             color: c.textMuted,
-            semanticLabel: 'Exercise media unavailable',
+            semanticLabel: displayCopyOf(context).exerciseMediaUnavailable,
           ),
         ),
       );
@@ -459,19 +467,19 @@ class _PrescriptionTrio extends StatelessWidget {
           child: _PrescriptionStat(
             value: '${exercise.targetSets} × '
                 '${exercise.targetRepsMin}–${exercise.targetRepsMax}',
-            label: 'Sets × reps',
+            label: displayCopyOf(context).setsAndReps,
           ),
         ),
         Expanded(
           child: _PrescriptionStat(
             value: 'RIR ${minRirLabel(exercise.targetRpe)}',
-            label: 'Intensity',
+            label: displayCopyOf(context).intensity,
           ),
         ),
         Expanded(
           child: _PrescriptionStat(
             value: '${exercise.restSecondsOrDefault}s',
-            label: 'Rest',
+            label: displayCopyOf(context).rest,
           ),
         ),
       ],
@@ -493,11 +501,15 @@ class _PrescriptionStat extends StatelessWidget {
       children: <Widget>[
         FittedBox(
           fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Text(
-            value,
-            maxLines: 1,
-            style: MayosTypography.numericSmall.copyWith(color: c.textPrimary),
+          alignment: AlignmentDirectional.centerStart,
+          child: Directionality(
+            textDirection: TextDirection.ltr,
+            child: Text(
+              value,
+              maxLines: 1,
+              style:
+                  MayosTypography.numericSmall.copyWith(color: c.textPrimary),
+            ),
           ),
         ),
         const SizedBox(height: 2),
@@ -527,18 +539,19 @@ class _OverviewTab extends StatelessWidget {
         bodyPart.isNotEmpty &&
         category.toLowerCase() == bodyPart.toLowerCase();
     final List<(String, String?)> rows = <(String, String?)>[
-      if (category.isNotEmpty) ('Category', titleCase(category)),
+      if (category.isNotEmpty)
+        (displayCopyOf(context).category, titleCase(category)),
       // Body part mirrors category upstream; show it only when it differs.
       if (bodyPart.isNotEmpty && !categoryIsBodyPart)
-        ('Body part', titleCase(bodyPart)),
+        (displayCopyOf(context).bodyPart, titleCase(bodyPart)),
       if (detail != null && detail.equipment.isNotEmpty)
-        ('Equipment', titleCase(detail.equipment)),
-      if (ex != null && ex.hasNotes) ('Notes', ex.notes),
+        (displayCopyOf(context).equipment, titleCase(detail.equipment)),
+      if (ex != null && ex.hasNotes) (displayCopyOf(context).notes, ex.notes),
     ];
 
     if (rows.isEmpty) {
       return _EmptyTab(
-        message: 'No details are available for this exercise.',
+        message: displayCopyOf(context).noExerciseDetails,
       );
     }
 
@@ -598,8 +611,8 @@ class _TechniqueTab extends StatelessWidget {
     final MayosThemeExtension c = MayosTheme.of(context);
     final String? instructions = catalog?.instructions;
     if (instructions == null || instructions.trim().isEmpty) {
-      return const _EmptyTab(
-        message: 'Instructions aren\'t available for this exercise yet.',
+      return _EmptyTab(
+        message: displayCopyOf(context).noInstructionsForExercise,
       );
     }
     final List<String> steps = instructions
@@ -652,9 +665,8 @@ class _HistoryTab extends StatelessWidget {
     final List<ExerciseHistoryPoint> points =
         history?.history ?? const <ExerciseHistoryPoint>[];
     if (points.isEmpty) {
-      return const _EmptyTab(
-        message:
-            'No history for this exercise yet. Log a workout to see it here.',
+      return _EmptyTab(
+        message: displayCopyOf(context).noExerciseHistory,
       );
     }
     return Column(
@@ -677,20 +689,28 @@ class _HistoryTab extends StatelessWidget {
                   width: 88,
                   child: Text(
                     point.date,
+                    textDirection: TextDirection.ltr,
                     style: MayosTypography.caption.copyWith(color: c.textMuted),
                   ),
                 ),
                 Expanded(
-                  child: Text(
-                    '${_trim(point.weightKg)} kg × ${point.reps} @ RIR '
-                    '${rirLabel(point.rpe)}',
-                    style: MayosTypography.body.copyWith(color: c.textPrimary),
+                  child: Directionality(
+                    textDirection: TextDirection.ltr,
+                    child: Text(
+                      '${_trim(point.weightKg)} kg × ${point.reps} @ RIR '
+                      '${rirLabel(point.rpe)}',
+                      style:
+                          MayosTypography.body.copyWith(color: c.textPrimary),
+                    ),
                   ),
                 ),
-                Text(
-                  'e1RM ${_trim(point.e1rm)}',
-                  style:
-                      MayosTypography.caption.copyWith(color: c.textSecondary),
+                Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Text(
+                    'e1RM ${_trim(point.e1rm)}',
+                    style: MayosTypography.caption
+                        .copyWith(color: c.textSecondary),
+                  ),
                 ),
               ],
             ),
@@ -764,7 +784,8 @@ class _ErrorView extends StatelessWidget {
               style: MayosTypography.body.copyWith(color: c.textPrimary),
             ),
             const SizedBox(height: MayosSpacing.md),
-            FilledButton(onPressed: onRetry, child: const Text('Retry')),
+            FilledButton(
+                onPressed: onRetry, child: Text(displayCopyOf(context).retry)),
           ],
         ),
       ),

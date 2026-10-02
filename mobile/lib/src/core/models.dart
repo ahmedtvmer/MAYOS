@@ -1296,6 +1296,7 @@ class IntakeField {
     required this.type,
     required this.isRequired,
     required this.profileField,
+    this.label,
     this.allowedValues = const <String>[],
     this.minimum,
     this.maximum,
@@ -1327,6 +1328,7 @@ class IntakeField {
       type: json['type'] as String? ?? 'text',
       isRequired: json['required'] as bool? ?? false,
       profileField: json['profile_field'] as String? ?? '',
+      label: json['label'] as String?,
       allowedValues: List<String>.from(allowedValues),
       minimum: (json['minimum'] as num?)?.toDouble(),
       maximum: (json['maximum'] as num?)?.toDouble(),
@@ -1353,6 +1355,7 @@ class IntakeField {
   final String type;
   final bool isRequired;
   final String profileField;
+  final String? label;
   final List<String> allowedValues;
   final double? minimum;
   final double? maximum;

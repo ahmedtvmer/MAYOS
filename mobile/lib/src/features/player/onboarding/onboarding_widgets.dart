@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/models.dart';
+import '../../../core/display_language/copy_context.dart';
+import '../../../core/display_language/onboarding_copy.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -18,57 +20,35 @@ import 'proportion_silhouette.dart';
 // label or a unit; they never define the domain.
 // ---------------------------------------------------------------------------
 
-/// A readable label for one allowed value of a field.
-String optionLabel(String fieldName, String value) {
-  switch (value) {
-    case 'long_legs':
-      return 'Legs longer than torso';
-    case 'long_torso':
-      return 'Torso longer than legs';
-    case 'balanced':
-      return 'Balanced';
-    case 'male':
-      return 'Male';
-    case 'female':
-      return 'Female';
-    case 'low':
-      return 'Low';
-    case 'high':
-      return 'High';
-  }
-  return value
-      .split('_')
-      .map((String part) =>
-          part.isEmpty ? part : '${part[0].toUpperCase()}${part.substring(1)}')
-      .join(' ');
+/// Compatibility helpers used by profile and onboarding tests. All field and
+/// option wording lives in [OnboardingCopy].
+String _readableWireValue(String value) => value
+    .split('_')
+    .map((String part) =>
+        part.isEmpty ? part : '${part[0].toUpperCase()}${part.substring(1)}')
+    .join(' ');
+
+String optionLabel(String fieldName, String value) =>
+    OnboardingCopy('en').option(fieldName, value) ?? _readableWireValue(value);
+
+/// Shows a translated app-owned option title when the catalog knows it. For
+/// future API choices, preserve the server description verbatim in Arabic or
+/// the established readable value label in English.
+String onboardingOptionLabel(
+  IntakeField field,
+  String value, {
+  OnboardingCopy? copy,
+}) {
+  final OnboardingCopy activeCopy = copy ?? const OnboardingCopy('en');
+  final String? localized = activeCopy.option(field.name, value);
+  if (localized != null) return localized;
+  if (!activeCopy.isArabic) return _readableWireValue(value);
+  return field.optionDescriptions[value] ?? activeCopy.unknownOption;
 }
 
-/// The measurement unit shown beside a numeric field, or null.
-String? unitFor(String fieldName) => switch (fieldName) {
-      'height_cm' => 'cm',
-      'weight_kg' => 'kg',
-      'age' => 'years',
-      'training_age_years' => 'years',
-      _ => null,
-    };
-
-/// The editorial question for one field.
-String questionFor(String fieldName) => switch (fieldName) {
-      'gender' => 'Which specialization should shape your training?',
-      'proportions' => 'Which best describes your body proportions?',
-      'age' => 'How old are you?',
-      'height_cm' => 'How tall are you?',
-      'weight_kg' => 'What do you weigh?',
-      'training_age_years' => 'How long have you been training?',
-      'current_goal' => "What's your main goal right now?",
-      'long_term_goal' => 'Where do you want to be long term?',
-      'weekly_frequency' => 'How many days a week can you train?',
-      'equipment_access' => 'What can you train with?',
-      'injuries_or_limitations' => 'Anything to work around?',
-      'stress_and_sleep' => "How's your recovery?",
-      'rep_preference' => 'What rep range do you prefer?',
-      _ => optionLabel('', fieldName),
-    };
+/// The English editorial question, sourced from the shared onboarding copy.
+String questionFor(String fieldName, {String? serverLabel}) =>
+    OnboardingCopy('en').question(fieldName, serverLabel: serverLabel);
 
 /// A short line under the question. The API's own explanation is used verbatim
 /// when it provides one, so the app never invents a training claim.
@@ -81,18 +61,16 @@ String? explanationFor(IntakeField field) {
 }
 
 /// How one saved answer reads on the review screen.
-String displayAnswer(IntakeField field) {
+String displayAnswer(IntakeField field, {OnboardingCopy? copy}) {
+  final OnboardingCopy activeCopy = copy ?? const OnboardingCopy('en');
   final Object? answer = field.answer;
   if (answer == null) {
-    return 'Not answered';
+    return activeCopy.notAnswered;
   }
   switch (field.type) {
     case 'enum':
       final String value = answer.toString();
-      if (field.name == 'rep_preference' && value == 'balanced') {
-        return 'Balanced';
-      }
-      return optionLabel(field.name, value);
+      return onboardingOptionLabel(field, value, copy: activeCopy);
     case 'int':
     case 'float':
       final num? value = answer is num ? answer : num.tryParse('$answer');
@@ -100,36 +78,20 @@ String displayAnswer(IntakeField field) {
         return answer.toString();
       }
       if (field.name == 'weekly_frequency') {
-        final int days = value.round();
-        return '$days ${days == 1 ? 'day' : 'days'}/week';
+        return activeCopy.frequencyAnswer(value.round());
       }
-      final String unit = unitFor(field.name) ?? '';
       final String number = value == value.roundToDouble()
           ? value.round().toString()
           : value.toString();
+      if (field.name == 'age' || field.name == 'training_age_years') {
+        return activeCopy.yearsValue(number);
+      }
+      final String unit = activeCopy.unitFor(field.name) ?? '';
       return unit.isEmpty ? number : '$number $unit';
     default:
       return answer.toString();
   }
 }
-
-/// A compact label shown on the review screen.
-String reviewLabel(String fieldName) => switch (fieldName) {
-      'gender' => 'Specialization',
-      'proportions' => 'Proportions',
-      'age' => 'Age',
-      'height_cm' => 'Height',
-      'weight_kg' => 'Weight',
-      'training_age_years' => 'Training age',
-      'current_goal' => 'Current goal',
-      'long_term_goal' => 'Long-term goal',
-      'weekly_frequency' => 'Weekly frequency',
-      'equipment_access' => 'Equipment',
-      'injuries_or_limitations' => 'Injuries or limitations',
-      'stress_and_sleep' => 'Stress and sleep',
-      'rep_preference' => 'Rep preference',
-      _ => optionLabel('', fieldName),
-    };
 
 ProportionShape proportionShapeFor(String value) => switch (value) {
       'long_legs' => ProportionShape.longLegs,
@@ -233,9 +195,9 @@ class _OnboardingHeader extends StatelessWidget {
                 ? null
                 : IconButton(
                     key: const Key('onboarding_back'),
-                    tooltip: 'Back',
+                    tooltip: displayCopyOf(context).backTooltip,
                     onPressed: onBack,
-                    icon: const Icon(Icons.arrow_back),
+                    icon: const BackButtonIcon(),
                   ),
           ),
           Expanded(
@@ -273,7 +235,7 @@ class OnboardingProgressBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
     return Semantics(
-      label: 'Progress: $answered of $total answered',
+      label: displayCopyOf(context).onboardingProgress(answered, total),
       child: Row(
         children: <Widget>[
           for (int i = 0; i < total; i++)
@@ -542,7 +504,11 @@ class ProportionSelector extends StatelessWidget {
           for (final String value in field.allowedValues)
             _ProportionCard(
               value: value,
-              title: optionLabel(field.name, value),
+              title: onboardingOptionLabel(
+                field,
+                value,
+                copy: OnboardingCopy(displayCopyOf(context).languageCode),
+              ),
               caption: field.optionDescriptions[value],
               silhouette: ProportionSilhouette(
                 shape: proportionShapeFor(value),
@@ -634,8 +600,8 @@ class _ProportionCardState extends State<_ProportionCard> {
     return Semantics(
       button: true,
       selected: selected,
-      label:
-          '${widget.title}. ${widget.caption ?? ''} ${selected ? 'Selected' : 'Not selected'}',
+      label: displayCopyOf(context)
+          .selectionSemantics(widget.title, widget.caption ?? '', selected),
       excludeSemantics: true,
       child: AnimatedScale(
         scale: _pressed ? 0.98 : 1,
@@ -692,7 +658,7 @@ class _ProportionCardState extends State<_ProportionCard> {
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
                         Stack(
-                          alignment: Alignment.topRight,
+                          alignment: AlignmentDirectional.topEnd,
                           children: <Widget>[
                             Padding(
                               padding: const EdgeInsets.symmetric(
@@ -754,6 +720,7 @@ class NumericFieldEditor extends StatefulWidget {
   const NumericFieldEditor({
     super.key,
     required this.fieldName,
+    this.fieldLabel,
     required this.minimum,
     required this.maximum,
     required this.integer,
@@ -764,6 +731,7 @@ class NumericFieldEditor extends StatefulWidget {
   });
 
   final String fieldName;
+  final String? fieldLabel;
   final double minimum;
   final double maximum;
   final bool integer;
@@ -839,6 +807,8 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final OnboardingCopy copy =
+        OnboardingCopy(displayCopyOf(context).languageCode);
     final String display = widget.value == null ? '—' : _format(widget.value);
     final String range = widget.integer
         ? '${widget.minimum.round()}–${widget.maximum.round()}'
@@ -859,7 +829,8 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
             children: <Widget>[
               Semantics(
                 label:
-                    '${widget.fieldName} $display ${widget.unit ?? ''}'.trim(),
+                    '${copy.reviewLabel(widget.fieldName, serverLabel: widget.fieldLabel)} $display ${widget.unit ?? ''}'
+                        .trim(),
                 excludeSemantics: true,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -869,6 +840,7 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
                     Flexible(
                       child: Text(
                         display,
+                        textDirection: TextDirection.ltr,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: MayosTypography.numeric.copyWith(
@@ -898,7 +870,7 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
                     child: _StepButton(
                       buttonKey: Key('${widget.fieldName}_decrement'),
                       icon: Icons.remove,
-                      semanticsLabel: 'Decrease',
+                      semanticsLabel: displayCopyOf(context).decrease,
                       onPressed: _canDecrement ? () => _step(-1) : null,
                     ),
                   ),
@@ -907,7 +879,7 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
                     child: _StepButton(
                       buttonKey: Key('${widget.fieldName}_increment'),
                       icon: Icons.add,
-                      semanticsLabel: 'Increase',
+                      semanticsLabel: displayCopyOf(context).increase,
                       onPressed: _canIncrement ? () => _step(1) : null,
                     ),
                   ),
@@ -922,6 +894,8 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
             Expanded(
               child: Text(
                 widget.unit == null ? range : '$range ${widget.unit}',
+                textDirection: TextDirection.ltr,
+                textAlign: TextAlign.end,
                 style: MayosTypography.caption.copyWith(color: c.textMuted),
               ),
             ),
@@ -930,7 +904,9 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
                 key: Key('${widget.fieldName}_direct_toggle'),
                 onPressed: () => setState(() => _direct = !_direct),
                 child: Text(
-                  _direct ? 'Use the stepper' : 'Type a value',
+                  _direct
+                      ? displayCopyOf(context).useStepper
+                      : displayCopyOf(context).typeAValue,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -940,22 +916,28 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
         ),
         if (_direct) ...<Widget>[
           const SizedBox(height: MayosSpacing.xs),
-          MayosTextField(
-            fieldKey: Key('${widget.fieldName}_input'),
-            controller: _controller,
-            keyboardType: widget.integer
-                ? TextInputType.number
-                : const TextInputType.numberWithOptions(decimal: true),
-            hint: '${widget.minimum.round()} to ${widget.maximum.round()}',
-            onChanged: (String text) {
-              final String trimmed = text.trim();
-              if (trimmed.isEmpty) {
-                widget.onChanged(null);
-                return;
-              }
-              final num? parsed = num.tryParse(trimmed);
-              widget.onChanged(parsed);
-            },
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: MayosTextField(
+              fieldKey: Key('${widget.fieldName}_input'),
+              controller: _controller,
+              keyboardType: widget.integer
+                  ? TextInputType.number
+                  : const TextInputType.numberWithOptions(decimal: true),
+              hint: copy.numericRangeHint(
+                widget.minimum.round(),
+                widget.maximum.round(),
+              ),
+              onChanged: (String text) {
+                final String trimmed = text.trim();
+                if (trimmed.isEmpty) {
+                  widget.onChanged(null);
+                  return;
+                }
+                final num? parsed = num.tryParse(trimmed);
+                widget.onChanged(parsed);
+              },
+            ),
           ),
         ],
       ],
@@ -1048,8 +1030,8 @@ class FrequencySelector extends StatelessWidget {
         const SizedBox(height: MayosSpacing.sm),
         Text(
           value == null
-              ? 'Choose your weekly training days'
-              : '$value ${value == 1 ? 'day' : 'days'} per week',
+              ? displayCopyOf(context).chooseWeeklyTrainingDays
+              : displayCopyOf(context).daysInWeek(value),
           style: MayosTypography.caption.copyWith(color: c.textMuted),
         ),
       ],
@@ -1076,7 +1058,7 @@ class _FrequencyPill extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: '$value ${value == 1 ? 'day' : 'days'} per week',
+      label: displayCopyOf(context).daysInWeek(value),
       excludeSemantics: true,
       child: AnimatedContainer(
         duration: MayosMotion.fast,
@@ -1103,13 +1085,16 @@ class _FrequencyPill extends StatelessWidget {
                 children: <Widget>[
                   Text(
                     '$value',
+                    textDirection: TextDirection.ltr,
                     style: MayosTypography.numericSmall.copyWith(
                       fontSize: 20,
                       color: selected ? c.accent : c.textPrimary,
                     ),
                   ),
                   Text(
-                    value == 1 ? 'day' : 'days',
+                    value == 1
+                        ? displayCopyOf(context).day
+                        : displayCopyOf(context).days,
                     style: MayosTypography.caption.copyWith(
                       color: selected ? c.accent : c.textMuted,
                     ),
@@ -1188,7 +1173,7 @@ class _TextFieldEditorState extends State<TextFieldEditor> {
         if (chips.isNotEmpty) ...<Widget>[
           const SizedBox(height: MayosSpacing.md),
           Text(
-            'Tap an example to start',
+            displayCopyOf(context).tapExampleToStart,
             style: MayosTypography.caption.copyWith(color: c.textMuted),
           ),
           const SizedBox(height: MayosSpacing.xs),
@@ -1280,8 +1265,8 @@ class ReviewSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           Padding(
-            padding: const EdgeInsets.only(
-                left: MayosSpacing.xxs, bottom: MayosSpacing.xs),
+            padding: const EdgeInsetsDirectional.only(
+                start: MayosSpacing.xxs, bottom: MayosSpacing.xs),
             child: Text(
               title.toUpperCase(),
               style: MayosTypography.caption.copyWith(
@@ -1317,7 +1302,9 @@ class _ReviewRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
-    final String value = displayAnswer(field);
+    final OnboardingCopy copy =
+        OnboardingCopy(displayCopyOf(context).languageCode);
+    final String value = displayAnswer(field, copy: copy);
     final bool answered = field.answer != null;
     return InkWell(
       key: Key('review_edit_${field.name}'),
@@ -1333,7 +1320,7 @@ class _ReviewRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    reviewLabel(field.name),
+                    copy.reviewLabel(field.name, serverLabel: field.label),
                     style: MayosTypography.caption.copyWith(color: c.textMuted),
                   ),
                   const SizedBox(height: MayosSpacing.xxs),
