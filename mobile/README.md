@@ -54,8 +54,8 @@ flutter run \
 
 # Release requires an explicit HTTPS base URL; the app fails fast otherwise.
 flutter build apk --release \
-  --dart-define=MAYOS_API_BASE_URL=https://api.example.com \
-  --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID"
+  --target-platform android-arm64 \
+  --dart-define=MAYOS_API_BASE_URL=https://mayos-api.fly.dev --split-per-abi \ --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID"
 
 # Build the shared web client for an HTTPS API.
 flutter build web --release \
