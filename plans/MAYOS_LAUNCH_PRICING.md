@@ -75,20 +75,31 @@ Everything in Free, plus deeper intelligence and substantially higher AI usage.
 A genuinely usable plan for a small coach.
 
 - Maximum **5 active players**
-- Program creation, editing, and assignment
+- Full program authoring: the program editor, spreadsheet import, Coach
+  exercises, set groups (top set plus back-off sets, AMRAP), week-by-week
+  programs, Program templates, and viewing, editing or approving a player's
+  current program
 - Full player workout logs
 - Basic progress visibility
-- **5 AI requests/day**
-- Automated alarms available with limited depth/scope
-- Essential signals remain available, including major adherence issues, missed training, and clear progression problems
+- The deterministic Roster urgency order (lapsing first)
+- Essential coach alerts: missed-day streak, follow-up due, Stalling (stall
+  alert), suggested deload, injury and clearance changes, and coaching
+  subscription expiry. Deload alerts stay on Free because a coached player's
+  deload is only suggested to the coach (ADR 055).
+- Coaching packages and subscription tracking (post-launch epic)
+- The one-player coach assistant within the Coach AI allowance
+- **5 AI requests/day** (Coach pool)
 
 If a coach exceeds five active players when Pro expires or a payment fails,
 allow a 14-day grace period. After it ends, the coach's access is read-only
 while the roster remains above five, except that coach and player can still
 end assignments. Publishing programs, responding to requests, recording
 check-ins, and issuing invitations resume when the coach restores Pro or
-reduces the active roster to five. Preserve each player's program and training
-history; do not end assignments automatically.
+reduces the active roster to five. While read-only, the coach may still edit
+(but not publish) Program drafts and Program templates, record, renew or
+revoke coaching subscriptions, and use the one-player assistant within the
+Free allowance. Preserve each player's program and training history; do not
+end assignments automatically.
 
 ## 5. Coach Pro — 399 EGP/month
 
@@ -98,20 +109,37 @@ The professional coaching tier.
 - Up to **30 active players**
 - Existing assignments above 30 remain active when this cap first applies;
   new invitations and assignments stop until the roster is at or below 30
-- Deeper adherence, progression, fatigue, and volume alerts grounded in
-  recorded training and schedule data
-- Ranked roster view showing which assigned players need attention
-- An on-demand roster briefing that deterministically ranks eligible assigned
-  players, then uses de-identified evidence for at most five consenting players
-  in one model request after a separate privacy and quality gate
-- Player-scoped analysis and candidate program changes for coach review and
-  publication
-- **30 AI requests/day**
+- Deeper alerts grounded in recorded training and schedule data: regression
+  on an exercise, Volume review per muscle, and effort rising at the same load
+- Stall length as a key in the Roster urgency order
+- The roster assistant: free-form questions across the roster ("who needs
+  me today?", "who stalled this month?") answered over deterministic,
+  de-identified signals for every eligible assigned player, bounded by a token
+  budget, after a recorded privacy and evaluation gate. Accepting an
+  assignment is the player's consent; players assigned earlier are included
+  after a one-time notice.
+- AI-proposed program changes for coach review; an accepted proposal opens as
+  a Program draft and is published by the coach
+- **30 AI requests/day** (Coach pool)
 
-Business-management and nutrition features remain outside the public-launch
-scope and are not included in this entitlement.
+Nutrition features remain outside the public-launch scope. Coach business
+management is limited to tracking coaching packages and subscription periods
+(no payment processing), delivered as a post-launch epic on both Coach plans.
 
 Internal fair-use/resource safeguards still apply.
+
+### Coach AI allowance
+
+One Coach pool per account covers the one-player assistant, the roster
+assistant, "Generate draft" and AI program proposals: one request per completed
+answer or generated draft. Writing a program by hand, importing a spreadsheet
+and publishing never consume a request.
+
+### Closed trial
+
+During the closed trial every coach receives Coach Pro behaviour under the
+trial's own AI limits. Free and Pro differences apply from public launch;
+founding coaches then start with two free Coach Pro months.
 
 ## 6. AI Context Policy
 
@@ -206,7 +234,9 @@ Free → Pro should be differentiated primarily by **capacity, intelligence dept
 | Price/month | 0 EGP | **199 EGP** | 0 EGP | **399 EGP** |
 | AI requests/day | **5** | **30** | **5** | **30** |
 | Active players | — | — | **5** | **30** |
-| Automated alarms | — | — | Limited | Full |
+| Automated alarms | — | — | Essential | Full |
+| Roster assistant | — | — | — | ✅ |
+| Program authoring and templates | — | — | ✅ | ✅ |
 | Advanced analysis | Limited | Full | Limited | Full |
 
 > Daily AI request counts are starting proposals until measured costs and
