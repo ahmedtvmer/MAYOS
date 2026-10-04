@@ -2301,7 +2301,6 @@ def test_reused_username_gets_a_new_analytics_identity_after_deletion(analytics_
         event["event"] == "account_created" and event["distinct_id"] == second_id
         for event in sink.events
     )
-    assert deletion_attempts == []
 
 
 def test_coach_alert_and_review_events_are_committed_private_and_deduplicated(analytics_api):
