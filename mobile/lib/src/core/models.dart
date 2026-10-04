@@ -34,8 +34,8 @@ class Capabilities {
   final bool coach;
 }
 
-/// One capability's server-owned plan state. The client only displays it; it
-/// never infers an entitlement from the user or the device.
+/// One capability's server-owned plan state. Coach may reflect the effective
+/// closed-trial entitlement; the client never infers it from the device.
 class PlanState {
   const PlanState({required this.plan, required this.status});
 
@@ -86,8 +86,8 @@ class AccountPlans {
   AccountPlans withoutCoach() => AccountPlans(lifter: lifter);
 }
 
-/// Current account identity, capabilities, independent plan states, the
-/// coach-AI feature state, and the sign-in methods from `GET /auth/me` (#116).
+/// Current account identity, capabilities, effective Coach and stored Lifter
+/// plan states, coach-AI state, and sign-in methods from `GET /auth/me`.
 class Account {
   const Account({
     required this.accountId,
@@ -172,6 +172,8 @@ class Account {
       );
 
   bool get isCoach => capabilities.coach;
+
+  bool get hasCoachPro => plans.coach?.isPro ?? false;
 
   bool get hasGoogleLink => linkedSignIns.contains('google');
 

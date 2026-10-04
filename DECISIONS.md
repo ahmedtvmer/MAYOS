@@ -612,3 +612,11 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Context**: ADR 009/042 excluded zero-load sets because they could not produce a positive e1RM, leaving body-weight and band training without a Personal record even after the logger learned to record those sets.
 * **Rationale**: Reps are a direct, inspectable progress measure at zero load. Reading prior sets rather than the append-only record table keeps first-session, tie, and offline logger behavior aligned without inventing historical achievements.
 * **Code References**: `agent/progression_engine.py` (`SessionExerciseRecord`, `evaluate_session_prs`, `evaluate_session_most_reps`, `best_zero_load_reps`, `is_body_weight_or_band_equipment`), `database/ledger/workouts.py` (`rep_working_set_rows`), `database/exercise_library/lookup.py` (`get_exercise_library_entries`), `database/migration_manager.py` (`_migrate_v20_to_v21`), `database/schema/definitions.py` (`personal_records`), `service/workouts.py` (`_baseline_rows`), `svc/schemas.py` (`BaselineOut`), `agent/debrief.py` (`format_pr_events`), `mobile/lib/src/core/personal_records.dart`, `mobile/lib/src/core/baselines.dart`, `mobile/lib/src/core/display_language/workout_copy.dart`, `mobile/lib/src/core/display_language/catalog.dart`, `mobile/lib/src/core/display_language/coach_copy.dart`, `mobile/lib/src/features/player/dashboard/dashboard_tab.dart`, `tests/test_workout_baselines.py`, `tests/test_migration_manager.py`, `mobile/test/personal_records_test.dart`, `mobile/test/workout_logger_screen_test.dart`, `mobile/test/home_screen_test.dart`.
+
+---
+
+### ADR 063: Closed-trial Coach Pro override
+
+* **Status**: Accepted and implemented (2026-10-04)
+* **Decision**: During the closed trial, a deployment setting defaults on and grants every Coach effective Coach Pro behaviour. Turning it off makes the stored Coach plan determine the effective plan. The override never changes stored plan state, and the Owner dashboard continues to show the stored plan.
+* **Code References**: `service/plans.py`.

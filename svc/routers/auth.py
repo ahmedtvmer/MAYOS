@@ -346,9 +346,10 @@ async def read_current_account(
 
     Capabilities are read from the durable registry on every call, so a change
     (for example, a granted coach capability) is visible without reissuing the
-    token. Plans are server-owned per capability and default to the ongoing Free
-    plan for every capability the account holds. ``has_password`` and
-    ``linked_sign_ins`` report how the account can sign in (#114) — provider
+    token. Plans are server-owned per capability. The Coach plan includes the
+    closed-trial override, so it is the effective entitlement clients use to
+    show Pro-only surfaces. ``has_password`` and
+    ``linked_sign_ins`` report how the account can sign in — provider
     names only, never a Google ``sub``. The endpoint fails closed for
     unknown/deleted/capability-less accounts via the shared auth dependency.
     """
@@ -357,9 +358,10 @@ async def read_current_account(
         account = db.get_account(player.account_id)
         if not db.is_live_account(account):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
+        plans = plans_service.effective_plans_for_account(db, account)
         return (
             account,
-            plans_service.plans_for_account(db, account),
+            plans,
             auth_service.account_has_password(db, account),
             db.list_linked_sign_in_providers(account["account_id"]),
             db.is_recovery_email_verified(account["account_id"]),

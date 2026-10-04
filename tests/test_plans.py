@@ -30,6 +30,7 @@ def api(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("SKIP_LLM_LOAD", "true")
     monkeypatch.setenv("TESTING", "1")
     monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
+    monkeypatch.setenv("COACH_CLOSED_TRIAL_OVERRIDE", "false")
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
@@ -155,6 +156,59 @@ def test_dual_capability_account_holds_independent_free_plans(api):
         "lifter": {"plan": "free", "status": "active"},
         "coach": {"plan": "free", "status": "active"},
     }
+
+
+def test_auth_me_uses_effective_coach_plan_and_closed_trial_override(api, monkeypatch):
+    client, db, _ = api
+    headers, token, _ = _make_coach(client, db, "alice")
+    account_id = _subject(token)
+    account = db.get_account(account_id)
+
+    monkeypatch.delenv("COACH_CLOSED_TRIAL_OVERRIDE")
+    assert plans_service.effective_coach_plan(db, account) == "pro"
+    assert _plans(client, headers)["coach"] == {"plan": "pro", "status": "active"}
+    assert plans_service.plans_for_account(db, account)["coach"] == {
+        "plan": "free",
+        "status": "active",
+    }
+
+    player = _register(client, "bob")
+    player_account = db.get_account(_subject(player["access_token"]))
+    assert plans_service.effective_coach_plan(db, player_account) is None
+    assert _plans(client, _authed(player["access_token"]))["coach"] is None
+
+    monkeypatch.setenv("COACH_CLOSED_TRIAL_OVERRIDE", "false")
+    assert plans_service.effective_coach_plan(db, account) == "free"
+    assert _plans(client, headers)["coach"] == {"plan": "free", "status": "active"}
+
+    monkeypatch.setenv("COACH_CLOSED_TRIAL_OVERRIDE", "not-a-boolean")
+    assert plans_service.effective_coach_plan(db, account) == "free"
+    assert _plans(client, headers)["coach"] == {"plan": "free", "status": "active"}
+
+    granted = plans_service.set_plan(db, account_id, "coach", "pro")
+    assert granted["ok"]
+    assert plans_service.effective_coach_plan(db, account) == "pro"
+    assert _plans(client, headers)["coach"] == {"plan": "pro", "status": "active"}
+
+
+def test_effective_plans_read_stored_plan_rows_once(api, monkeypatch):
+    client, db, _ = api
+    headers, token, _ = _make_coach(client, db, "alice")
+    account = db.get_account(_subject(token))
+    original_list_plans = db.list_plans
+    calls = 0
+
+    def counted_list_plans(account_id):
+        nonlocal calls
+        calls += 1
+        return original_list_plans(account_id)
+
+    monkeypatch.setattr(db, "list_plans", counted_list_plans)
+    assert plans_service.effective_plans_for_account(db, account)["coach"] == {
+        "plan": "free",
+        "status": "active",
+    }
+    assert calls == 1
 
 
 def test_plan_state_is_keyed_to_the_immutable_account(api):

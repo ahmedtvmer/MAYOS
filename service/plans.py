@@ -5,14 +5,17 @@ account that can coach has a Coach plan, independent of each other. Eligibility
 comes only from the durable registry capabilities, never from a client-supplied
 role or username.
 
-An eligible capability with no stored override is on the ongoing Free plan: the
+An eligible capability with no stored plan is on the ongoing Free plan: the
 service computes that default, so no write happens on a read and a client can
-never assert its own entitlement. `set_plan` is the internal seam later
-subscription tickets (#57–#72) use to record a server-verified grant; it is
-deliberately not an HTTP route and adds no billing or payment path.
+never assert its own entitlement. `effective_coach_plan` applies the configured
+closed-trial override without changing the stored plan. `set_plan` records
+server-verified plan grants; it is not an HTTP route and adds no billing or
+payment path.
 """
 
 from typing import Any
+
+from utils.env_flags import env_flag
 
 CAPABILITY_LIFTER = "lifter"
 CAPABILITY_COACH = "coach"
@@ -23,6 +26,7 @@ PLAN_PRO = "pro"
 PLANS = (PLAN_FREE, PLAN_PRO)
 
 DEFAULT_STATUS = "active"
+COACH_CLOSED_TRIAL_OVERRIDE_ENV = "COACH_CLOSED_TRIAL_OVERRIDE"
 
 # Which durable capability makes a plan eligible for an account.
 _CAPABILITY_FLAG = {
@@ -57,6 +61,31 @@ def plans_for_account(db: Any, account: dict[str, Any] | None) -> dict[str, dict
 def read_plans(db: Any, account_id: str) -> dict[str, dict[str, Any] | None]:
     """Reads both plan states by immutable account id, failing closed to ``None``."""
     return plans_for_account(db, db.get_account(account_id))
+
+
+def effective_coach_plan(
+    db: Any,
+    account: dict[str, Any] | None,
+    *,
+    stored_plans: dict[str, dict[str, Any] | None] | None = None,
+) -> str | None:
+    """Returns the stored Coach plan unless the closed-trial override grants Pro."""
+    if not db.is_live_account(account) or not account["is_coach"]:
+        return None
+    if env_flag(COACH_CLOSED_TRIAL_OVERRIDE_ENV, True):
+        return PLAN_PRO
+    plans = stored_plans if stored_plans is not None else plans_for_account(db, account)
+    coach_plan = plans[CAPABILITY_COACH]
+    return coach_plan["plan"] if coach_plan is not None else None
+
+
+def effective_plans_for_account(db: Any, account: dict[str, Any] | None) -> dict[str, dict[str, Any] | None]:
+    """Returns account plans with the Coach plan's closed-trial entitlement applied."""
+    plans = plans_for_account(db, account)
+    coach_plan = effective_coach_plan(db, account, stored_plans=plans)
+    if coach_plan is not None and plans[CAPABILITY_COACH] is not None:
+        plans[CAPABILITY_COACH]["plan"] = coach_plan
+    return plans
 
 
 def set_plan(

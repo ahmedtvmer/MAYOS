@@ -45,10 +45,10 @@ async def redeem_coach_invite(
         result = coach_service.redeem_coach_invite(db, player.account_id, body.token)
         if not result["ok"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
-        result["plans"] = plans_service.read_plans(db, result["account_id"])
         # Same sign-in-method fields /auth/me reports (#114), read for real
         # rather than defaulted, so the two AccountOut producers agree.
         account = db.get_account(result["account_id"])
+        result["plans"] = plans_service.effective_plans_for_account(db, account)
         result["has_password"] = auth_service.account_has_password(db, account)
         result["linked_sign_ins"] = db.list_linked_sign_in_providers(result["account_id"])
         result["display_language"] = account["display_language"]

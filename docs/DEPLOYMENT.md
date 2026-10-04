@@ -153,6 +153,7 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `JUDGE_EXTRA_BODY` | unset | Judge defaults to `chat_template_kwargs.enable_thinking: false`; a JSON object replaces only its body, and `{}` sends none |
 | `LLM_ENABLE_THINKING` | unset (`false`) | `true` opts only the judge back into thinking unless `JUDGE_EXTRA_BODY` overrides it |
 | `COACH_MODEL` | `deepseek-ai/DeepSeek-V4-Flash` | Hosted coach model; set to override the default |
+| `COACH_CLOSED_TRIAL_OVERRIDE` | `true` | Grants Coach Pro behaviour to every Coach during the closed trial; set to `false` at public launch to use each account's stored Coach plan |
 | `COACH_AI_ENABLED` | `false` | Enables the optional coach AI assistant (#45); refused unless `COACH_AI_EVAL_REPORT` records a passing **live** report for the current prompt version *and* the configured coach model/backend |
 | `COACH_AI_EVAL_REPORT` | unset | Path to the recorded coach privacy + evaluation report JSON (see §4, "Enabling the optional coach AI assistant") |
 | `RATE_LIMIT_COACH_ASSISTANT` | `30/minute` | Per-client limit on `POST /coach/assignments/{id}/assistant`; the per-account model limits (`MODEL_*`) still apply |

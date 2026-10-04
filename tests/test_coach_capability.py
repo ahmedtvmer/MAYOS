@@ -142,7 +142,8 @@ def test_coach_route_still_rejects_a_revoked_token(api):
     assert client.get("/coach/profile", headers=headers).status_code == 401
 
 
-def test_owner_issued_invite_grants_capability_without_reissuing_token(api):
+def test_owner_issued_invite_grants_capability_without_reissuing_token(api, monkeypatch):
+    monkeypatch.setenv("COACH_CLOSED_TRIAL_OVERRIDE", "true")
     client, db, _ = api
     registered = _register(client, "alice")
     token = registered["access_token"]
@@ -165,13 +166,26 @@ def test_owner_issued_invite_grants_capability_without_reissuing_token(api):
         "recovery_email_verified": False,
         "plans": {
             "lifter": {"plan": "free", "status": "active"},
-            "coach": {"plan": "free", "status": "active"},
+            "coach": {"plan": "pro", "status": "active"},
         },
     }
 
     # The same bearer token now sees the live capability (registry-driven).
     me = client.get("/auth/me", headers=headers)
     assert me.json()["capabilities"] == {"player": True, "coach": True}
+
+
+def test_invite_redemption_uses_stored_coach_plan_when_override_is_off(api, monkeypatch):
+    monkeypatch.setenv("COACH_CLOSED_TRIAL_OVERRIDE", "false")
+    client, db, _ = api
+    registered = _register(client, "alice")
+    headers = _authed(registered["access_token"])
+    issued = _issue(db, "alice", actor="cli")
+
+    redeemed = client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]})
+
+    assert redeemed.status_code == 200, redeemed.text
+    assert redeemed.json()["plans"]["coach"] == {"plan": "free", "status": "active"}
 
 
 def test_coach_invite_redemption_returns_saved_display_language(api):
