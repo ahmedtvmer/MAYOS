@@ -16,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from database.database_manager import DatabaseManager
+from service import analytics
 from service import coach as coach_service
 from service import coach_history as coach_history_service
 from service import missed_day_alerts as alerts_service
@@ -233,6 +234,75 @@ def test_in_window_correction_records_edit_and_correction_row(api):
     assert [(row["previous_date"], row["corrected_date"]) for row in rows] == [
         ("2026-09-26", "2026-09-25")
     ]
+
+
+def test_performed_date_event_follows_a_changed_correction_only(api, recording_analytics, monkeypatch):
+    monkeypatch.setenv("MAYOS_ENV", "test")
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    session_id = _commit_session(client, db, headers, version)
+    correction_url = f"/workouts/sessions/{session_id}/performed-date"
+
+    refused = client.patch(correction_url, headers=headers, json={"performed_date": "2026-09-28"})
+    assert refused.status_code == 400
+    assert not [event for event in recording_analytics.events if event["event"] == "performed_date_corrected"]
+
+    corrected = client.patch(correction_url, headers=headers, json={"performed_date": "2026-09-25"})
+    assert corrected.status_code == 200, corrected.text
+    events = [event for event in recording_analytics.events if event["event"] == "performed_date_corrected"]
+    assert len(events) == 1
+    assert events[0]["properties"]["role"] == "player"
+    assert events[0]["properties"]["platform"] == "unknown"
+    assert events[0]["properties"] == {
+        "role": "player",
+        "platform": "unknown",
+        "app_version": "unknown",
+        "env": "test",
+    }
+    assert events[0]["uuid"] == analytics.deterministic_event_uuid(
+        "performed_date_corrected",
+        f"{session_id}:2026-09-25:{FIXED_NOW.isoformat()}",
+    )
+    assert not db.catalog_conn.in_transaction
+    noop = client.patch(
+        correction_url,
+        headers=headers,
+        json={"performed_date": "2026-09-25"},
+    )
+    assert noop.status_code == 200
+    assert noop.json()["changed"] is False
+    assert len([event for event in recording_analytics.events if event["event"] == "performed_date_corrected"]) == 1
+
+
+def test_raising_analytics_sink_does_not_fail_performed_date_correction(api):
+    class RaisingSink:
+        def capture(self, *_args):
+            raise RuntimeError("analytics unavailable")
+
+        def set_person(self, *_args):
+            raise RuntimeError("analytics unavailable")
+
+        def set_person_once(self, *_args):
+            raise RuntimeError("analytics unavailable")
+
+        def delete_person(self, *_args):
+            raise RuntimeError("analytics unavailable")
+
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    session_id = _commit_session(client, db, headers, version)
+    analytics.set_sink(RaisingSink())
+
+    response = client.patch(
+        f"/workouts/sessions/{session_id}/performed-date",
+        headers=headers,
+        json={"performed_date": "2026-09-25"},
+    )
+
+    assert response.status_code == 200, response.text
+    db.switch_user("p1")
+    rows = db.ledger.list_performed_date_corrections(session_id)
+    assert len(rows) == 1
 
 
 def test_correcting_to_the_same_date_is_a_noop(api):

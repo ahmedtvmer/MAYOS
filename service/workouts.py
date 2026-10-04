@@ -26,6 +26,8 @@ from database.exercise_resolution import resolve_exercise_display_row
 from core.deload_choices import DELOAD_CHOICE_APPLY, DELOAD_CHOICE_UNDO
 from core.warmup import calculate_warmup_sets
 from service._base import ledger_scope
+from service import analytics
+from service import workout_analytics
 from service import stall_alerts, stalling
 from service import training_status as training_status_service
 from service import checkpoint_reviews as checkpoint_reviews_service
@@ -86,6 +88,7 @@ class SyncMetadata:
     performed_timezone: str | None = None
     program_version: int | None = None
     captured_at: str | None = None
+    captured_offline: bool = False
 
 
 def day_plan_from(program: Any, day_order: int) -> Any:
@@ -845,6 +848,8 @@ def commit_session(
     ledger: Any | None = None,
     warmup_movements: list[dict[str, Any]] | None = None,
     cardio: dict[str, Any] | None = None,
+    *,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> CommitOutcome:
     """Persists a logged session and returns totals, per-movement analytics, debrief, and pointer.
 
@@ -864,7 +869,6 @@ def commit_session(
         imported_workouts = training_status_service.imported_workout_count(
             db, account_id
         )
-
         with ledger.ledger_transaction():
             body = _persist_session(
                 db,
@@ -895,6 +899,21 @@ def commit_session(
             )
             ledger.consume_deload_choice()
 
+        if account_id:
+            workout_analytics.capture_workout_completed(
+                db,
+                ledger,
+                workout_analytics.WorkoutCommitAnalyticsInput(
+                    account_id=account_id,
+                    session_id=session_id,
+                    sync=sync,
+                    sets_by_exercise=sets_by_exercise,
+                    body=body,
+                    uploaded_at=now_iso,
+                    client=client,
+                ),
+            )
+
     _run_post_commit_hooks(
         db, account_id, session_id, today_date, body["exercise_summaries"], body["fatigue_post"]
     )
@@ -915,6 +934,7 @@ def commit_logged_session(
     ledger: Any | None = None,
     warmup_movements: list[dict[str, Any]] | None = None,
     cardio: dict[str, Any] | None = None,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> CommitOutcome:
     """Idempotently commits one offline-captured workout (ADR 020/033/034).
 
@@ -942,6 +962,7 @@ def commit_logged_session(
         imported_workouts = training_status_service.imported_workout_count(
             db, account_id
         )
+        committed_program = None
         try:
             with ledger.ledger_transaction():
                 replayed = committed_session(ledger, client_session_id)
@@ -953,6 +974,7 @@ def commit_logged_session(
                     raise DayPlanNotFoundError(day_order)
                 active_version = program.version
                 resolved = resolve_sync_program(db, ledger, program, sync.program_version)
+                committed_program = resolved
                 day_plan = day_plan_from(resolved, day_order)
 
                 body = _persist_session(
@@ -993,6 +1015,22 @@ def commit_logged_session(
                 raise
             return _commit_outcome_from_row(existing)
 
+        if account_id and outcome.created:
+            workout_analytics.capture_workout_completed(
+                db,
+                ledger,
+                workout_analytics.WorkoutCommitAnalyticsInput(
+                    account_id=account_id,
+                    session_id=session_id,
+                    sync=sync,
+                    sets_by_exercise=sets_by_exercise,
+                    body=outcome.body,
+                    uploaded_at=now_iso,
+                    client=client,
+                    program=committed_program,
+                ),
+            )
+
     _run_post_commit_hooks(
         db, account_id, session_id, sync.performed_date, outcome.body["exercise_summaries"], outcome.body["fatigue_post"]
     )
@@ -1008,6 +1046,7 @@ def correct_performed_date(
     account_id: str,
     now_iso: str | None = None,
     ledger: Any | None = None,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> dict[str, Any] | None:
     """Corrects one committed session's performed date (ADR 020/035).
 
@@ -1068,6 +1107,15 @@ def correct_performed_date(
             corrections = ledger.list_performed_date_corrections(session_id)
 
     _evaluate_missed_days(db, account_id)
+    analytics.capture(
+        analytics.AnalyticsEvent(
+            account_id=account_id,
+            event="performed_date_corrected",
+            domain_key=f"{session_id}:{corrected_date}:{now_iso}",
+            role="player",
+        ),
+        client,
+    )
     return {
         "session_id": session_id,
         "session_date": corrected_date,

@@ -1476,6 +1476,11 @@ def test_onboarding_step_viewed_is_a_client_event_with_allowlisted_identifiers()
     assert not contract.properties["step"].validate("left knee pain")
 
 
+def test_workout_sync_failure_reason_does_not_widen_invite_reason_code():
+    assert analytics.PROPERTY_TYPES["sync_failure_reason"].validate("network")
+    assert not analytics.PROPERTY_TYPES["reason_code"].validate("network")
+
+
 def test_tracking_plan_events_and_properties_match_code_catalogue():
     document = TRACKING_PLAN.read_text(encoding="utf-8")
     section = document.split("<!-- event-catalogue:start -->", 1)[1].split("<!-- event-catalogue:end -->", 1)[0]

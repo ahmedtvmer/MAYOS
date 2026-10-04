@@ -4,6 +4,7 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from service.analytics import PROPERTY_TYPES, WORKOUT_SYNC_FAILURE_REASONS
 
 from agent.ProgramState import (
     GeneratedProgramSchema,
@@ -36,6 +37,7 @@ from agent.program_prescription import (
 )
 from agent.prompts import ASSISTANT_STYLE_KEYS, MAX_ASSISTANT_STYLE_INSTRUCTIONS
 AssistantStyleKey = Literal[*ASSISTANT_STYLE_KEYS]
+WorkoutSyncFailureReason = Literal[*WORKOUT_SYNC_FAILURE_REASONS]
 
 __all__ = [
     "ActiveProgramOut",
@@ -151,6 +153,7 @@ __all__ = [
     "WarmupMovementOut",
     "WarmupMovementSetOut",
     "WorkoutSetIn",
+    "WorkoutSyncFailureIn",
 ]
 
 
@@ -1183,6 +1186,7 @@ class SessionCommitIn(BaseModel):
     performed_timezone: str | None = Field(default=None, max_length=64)
     program_version: int | None = Field(default=None, ge=0)
     captured_at: str | None = Field(default=None, max_length=64)
+    captured_offline: bool = False
 
     @model_validator(mode="after")
     def _sync_fields_require_client_session_id(self) -> "SessionCommitIn":
@@ -1191,8 +1195,11 @@ class SessionCommitIn(BaseModel):
             or self.performed_timezone is not None
             or self.program_version is not None
             or self.captured_at is not None
+            or self.captured_offline
         ):
-            raise ValueError("performed_date/performed_timezone/program_version/captured_at require client_session_id.")
+            raise ValueError(
+                "performed_date/performed_timezone/program_version/captured_at/captured_offline require client_session_id."
+            )
         return self
 
 
@@ -1200,6 +1207,11 @@ class SessionPerformedDateCorrectIn(BaseModel):
     """A requested performed-date correction for one committed session (ADR 035)."""
 
     performed_date: str = Field(max_length=10)
+
+
+class WorkoutSyncFailureIn(BaseModel):
+    reason_code: WorkoutSyncFailureReason
+    attempt: int = Field(ge=1, le=PROPERTY_TYPES["attempt"].maximum)
 
 
 class SessionPerformedDateCorrectOut(BaseModel):

@@ -138,7 +138,10 @@ Future<void> offerActiveWorkoutOnOpen(
     return;
   }
   if (choice == ActiveWorkoutPromptChoice.discard) {
-    await controller.discard(accountId: active.accountId, workoutId: active.id);
+    await controller.discard(
+      accountId: active.accountId,
+      workoutId: active.id,
+    );
   } else if (choice == ActiveWorkoutPromptChoice.resume) {
     // Pushed, not `go`: the logger must sit on top of the screen the offer
     // was made on, so its back affordance has somewhere to return to (#156).
@@ -182,7 +185,10 @@ Future<bool> startWorkoutFromDay(
     if (choice != ActiveWorkoutPromptChoice.discard) {
       return false;
     }
-    await controller.discard(accountId: active.accountId, workoutId: active.id);
+    await controller.discard(
+      accountId: active.accountId,
+      workoutId: active.id,
+    );
     if (!context.mounted) {
       return false;
     }
@@ -204,6 +210,7 @@ Future<bool> startWorkoutFromDay(
   if (!context.mounted || outcome != StartWorkoutOutcome.started) {
     return false;
   }
+  ref.read(analyticsClientProvider).workoutStarted();
   // Pushed, not `go`: the logger sits above Home or Program and Back returns
   // there (#156). `go` replaced the whole stack, leaving the logger as the
   // only page with nothing to pop.

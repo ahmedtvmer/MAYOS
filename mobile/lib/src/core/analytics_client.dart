@@ -35,6 +35,10 @@ abstract interface class AnalyticsClient {
 
   void onboardingStepViewed(String step);
 
+  void workoutStarted();
+
+  void workoutDraftDiscarded({required String workoutId});
+
   void reset();
 }
 
@@ -49,6 +53,12 @@ class NoOpAnalyticsClient implements AnalyticsClient {
 
   @override
   void onboardingStepViewed(String step) {}
+
+  @override
+  void workoutStarted() {}
+
+  @override
+  void workoutDraftDiscarded({required String workoutId}) {}
 
   @override
   void reset() {}
@@ -96,6 +106,7 @@ class PostHogAnalyticsClient implements AnalyticsClient {
   final Future<bool> _ready;
   Future<void> _permissionChange = Future<void>.value();
   bool _accountEnabled = true;
+  final Set<String> _discardedWorkoutIds = <String>{};
 
   static Future<void> _initialize(
     String clientKey, {
@@ -197,6 +208,31 @@ class PostHogAnalyticsClient implements AnalyticsClient {
                 eventName: 'onboarding_step_viewed',
                 properties: properties,
               ),
+      ),
+    );
+  }
+
+  @override
+  void workoutStarted() => _captureWorkoutEvent('workout_started');
+
+  @override
+  void workoutDraftDiscarded({required String workoutId}) {
+    if (!_discardedWorkoutIds.add(workoutId)) return;
+    _captureWorkoutEvent('workout_draft_discarded');
+  }
+
+  void _captureWorkoutEvent(String event) {
+    final String? role = _currentRole;
+    if (role == null) return;
+    final Map<String, Object> properties = <String, Object>{
+      ..._commonDimensions,
+      'role': role,
+    };
+    unawaited(
+      _run(
+        () => _isWeb
+            ? capturePostHogWeb(event, properties)
+            : Posthog().capture(eventName: event, properties: properties),
       ),
     );
   }

@@ -14,6 +14,7 @@ import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
+import 'support/fake_analytics_client.dart';
 import 'support/fake_mayos_api.dart';
 
 const String _account = 'account-alice';
@@ -73,7 +74,9 @@ ActiveWorkout _storedWorkout() => ActiveWorkout(
 Future<ProviderContainer> _pumpApp(
   WidgetTester tester,
   FakeMayosApi fake,
-  InMemoryActiveWorkoutStore store,
+  InMemoryActiveWorkoutStore store, {
+  FakeAnalyticsClient? analytics,
+}
 ) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 1.0;
@@ -95,6 +98,9 @@ Future<ProviderContainer> _pumpApp(
         baselineCacheStoreProvider
             .overrideWithValue(InMemoryBaselineCacheStore()),
         activeWorkoutStoreProvider.overrideWithValue(store),
+        analyticsClientProvider.overrideWithValue(
+          analytics ?? FakeAnalyticsClient(),
+        ),
         // The logger resolves the device timezone through a platform channel
         // no test host implements; inject a value like the logger's own tests.
         deviceTimezoneProvider.overrideWithValue(Future<String>.value('UTC')),
@@ -121,9 +127,14 @@ void main() {
   testWidgets('opening the app offers Resume or Discard for a stored workout',
       (WidgetTester tester) async {
     final InMemoryActiveWorkoutStore store = InMemoryActiveWorkoutStore();
+    final FakeAnalyticsClient analytics = FakeAnalyticsClient();
     await store.write(_account, _storedWorkout());
-    final ProviderContainer container =
-        await _pumpApp(tester, _signedInFake(), store);
+    final ProviderContainer container = await _pumpApp(
+      tester,
+      _signedInFake(),
+      store,
+      analytics: analytics,
+    );
 
     await tester.pumpAndSettle();
     expect(find.text('Unfinished workout'), findsOneWidget);
@@ -134,6 +145,11 @@ void main() {
 
     expect(find.text('Unfinished workout'), findsNothing);
     expect(await store.read(_account), isNull);
+    expect(
+      analytics.events.where((Map<String, Object> event) =>
+          event['event'] == 'workout_draft_discarded'),
+      hasLength(1),
+    );
     expect(
       container.read(activeWorkoutControllerProvider).hasWorkout,
       isFalse,
@@ -161,7 +177,8 @@ void main() {
       (WidgetTester tester) async {
     final InMemoryActiveWorkoutStore store = InMemoryActiveWorkoutStore();
     await store.write(_account, _storedWorkout());
-    await _pumpApp(tester, _signedInFake(), store);
+    final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    await _pumpApp(tester, _signedInFake(), store, analytics: analytics);
 
     // Defer the app-open offer: tapping outside dismisses it, and a
     // dismissed prompt is a cancel — nothing is discarded or started (#123
@@ -189,5 +206,15 @@ void main() {
     final ActiveWorkout? current = await store.read(_account);
     expect(current, isNotNull);
     expect(current!.id, isNot('aw-stored'));
+    expect(
+      analytics.events.where((Map<String, Object> event) =>
+          event['event'] == 'workout_started'),
+      hasLength(1),
+    );
+    expect(
+      analytics.events.where((Map<String, Object> event) =>
+          event['event'] == 'workout_draft_discarded'),
+      hasLength(1),
+    );
   });
 }

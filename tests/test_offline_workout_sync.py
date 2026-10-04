@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 
 from agent.ProgramState import ProgramDaySchema, ProgramExerciseSchema
 from database.database_manager import DatabaseManager
+from service import analytics
 from service import coach as coach_service
 from service import coach_history as coach_history_service
 from service import workouts as workouts_service
@@ -209,7 +210,8 @@ def _assign(client, coach_headers, player_headers):
 
 
 def _sync_body(*, client_session_id=CLIENT_ID, version, day_order=1, performed_date="2026-09-26",
-               performed_timezone="UTC", captured_at="2026-09-26T11:30:00+00:00"):
+               performed_timezone="UTC", captured_at="2026-09-26T11:30:00+00:00",
+               captured_offline=False):
     return {
         "day_order": day_order,
         "readiness": 4,
@@ -220,6 +222,7 @@ def _sync_body(*, client_session_id=CLIENT_ID, version, day_order=1, performed_d
         "performed_timezone": performed_timezone,
         "program_version": version,
         "captured_at": captured_at,
+        "captured_offline": captured_offline,
     }
 
 
@@ -444,6 +447,166 @@ def test_first_commit_returns_201_and_records_sync_fields(api):
     assert row["active_program_version_at_sync"] == version
     assert row["captured_at"] == "2026-09-26T11:30:00+00:00"
     assert row["uploaded_at"] == FIXED_NOW.isoformat()
+
+
+def test_workout_completed_is_aggregate_only_and_replay_emits_once(api, recording_analytics, monkeypatch):
+    monkeypatch.setenv("MAYOS_ENV", "test")
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    headers["X-MAYOS-Client"] = "android/1.2.3"
+    payload = _sync_body(version=version)
+    payload["captured_offline"] = True
+    payload["sets"] = payload["sets"][:2] + [
+        {
+            "exercise": _exercise_payload("ohp", "Overhead Press"),
+            "sets": [{"weight_kg": 70.0, "reps": 8, "rpe": 8.0}],
+        }
+    ]
+    payload["sets"][1]["sets"][0]["rpe"] = None
+    payload["session_notes"] = "private note must stay in MAYOS"
+
+    first = client.post("/workouts/sessions", headers=headers, json=payload)
+    replay = client.post("/workouts/sessions", headers=headers, json=payload)
+
+    assert first.status_code == 201, first.text
+    assert replay.status_code == 200, replay.text
+    events = [event for event in recording_analytics.events if event["event"] == "workout_completed"]
+    assert len(events) == 1
+    event = events[0]
+    assert event["uuid"] == analytics.deterministic_event_uuid("workout_completed", CLIENT_ID)
+    assert event["properties"] == {
+        "role": "player",
+        "platform": "android",
+        "app_version": "1.2.3",
+        "env": "test",
+        "set_count": 3,
+        "exercise_count": 3,
+        "load_complete_set_count": 3,
+        "reps_complete_set_count": 3,
+        "rir_complete_set_count": 2,
+        "divergence_count": 2,
+        "unplanned_exercise_count": 1,
+        "captured_offline": True,
+        "sync_delay_seconds": 1800,
+        "is_first_workout": True,
+        "program_provenance": "generated",
+        "coached": False,
+    }
+    assert "private note must stay in MAYOS" not in repr(event)
+    assert "Squat" not in repr(event)
+    assert "Overhead Press" not in repr(event)
+    assert "100.0" not in repr(event)
+
+
+def test_web_idempotent_commit_is_not_reported_as_offline(api, recording_analytics):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    headers["X-MAYOS-Client"] = "web/2.0.0"
+
+    response = client.post(
+        "/workouts/sessions", headers=headers, json=_sync_body(version=version)
+    )
+
+    assert response.status_code == 201, response.text
+    events = [event for event in recording_analytics.events if event["event"] == "workout_completed"]
+    assert len(events) == 1
+    assert events[0]["properties"]["platform"] == "web"
+    assert events[0]["properties"]["captured_offline"] is False
+    assert events[0]["properties"]["sync_delay_seconds"] == 0
+
+
+def test_android_commit_without_offline_flag_is_not_reported_as_offline(
+    api, recording_analytics
+):
+    client, _db = api
+    headers, version = _prepare_player(client, _db)
+    headers["X-MAYOS-Client"] = "android/1.2.3"
+
+    response = client.post(
+        "/workouts/sessions", headers=headers, json=_sync_body(version=version)
+    )
+
+    assert response.status_code == 201, response.text
+    event = next(
+        event
+        for event in recording_analytics.events
+        if event["event"] == "workout_completed"
+    )
+    assert event["properties"]["captured_offline"] is False
+    assert event["properties"]["sync_delay_seconds"] == 0
+
+
+def test_sync_failure_report_is_authenticated_and_catalogued(api, recording_analytics):
+    client, db = api
+    player = _register(client, "p1")
+    headers = _authed(player["access_token"])
+    payload = {"reason_code": "network", "attempt": 2}
+
+    unauthorized = client.post("/workouts/sync-failures", json=payload)
+    assert unauthorized.status_code == 401
+    assert not [event for event in recording_analytics.events if event["event"] == "workout_sync_failed"]
+
+    reported = client.post(
+        "/workouts/sync-failures",
+        headers=headers,
+        json=payload,
+    )
+
+    assert reported.status_code == 204, reported.text
+    events = [event for event in recording_analytics.events if event["event"] == "workout_sync_failed"]
+    assert len(events) == 1
+    assert events[0]["distinct_id"] == db.get_active_account_by_username("p1")["account_id"]
+    assert events[0]["properties"]["sync_failure_reason"] == "network"
+    assert events[0]["properties"]["attempt"] == 2
+    rejected = client.post(
+        "/workouts/sync-failures",
+        headers=headers,
+        json={"reason_code": "private details", "attempt": 2},
+    )
+    assert rejected.status_code == 422
+    assert len([event for event in recording_analytics.events if event["event"] == "workout_sync_failed"]) == 1
+
+    class RaisingSink:
+        def capture(self, *_args):
+            raise RuntimeError("analytics unavailable")
+
+        def set_person(self, *_args):
+            raise RuntimeError("analytics unavailable")
+
+        def set_person_once(self, *_args):
+            raise RuntimeError("analytics unavailable")
+
+        def delete_person(self, *_args):
+            raise RuntimeError("analytics unavailable")
+
+    analytics.set_sink(RaisingSink())
+    still_ok = client.post("/workouts/sync-failures", headers=headers, json=payload)
+    assert still_ok.status_code == 204, still_ok.text
+
+
+def test_raising_analytics_sink_does_not_fail_workout_commit(api):
+    class RaisingSink:
+        def capture(self, *_args):
+            raise RuntimeError("analytics unavailable")
+
+        def set_person(self, *_args):
+            raise RuntimeError("analytics unavailable")
+
+        def set_person_once(self, *_args):
+            raise RuntimeError("analytics unavailable")
+
+        def delete_person(self, *_args):
+            raise RuntimeError("analytics unavailable")
+
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    analytics.set_sink(RaisingSink())
+
+    committed = client.post("/workouts/sessions", headers=headers, json=_sync_body(version=version))
+
+    assert committed.status_code == 201, committed.text
+    db.switch_user("p1")
+    assert db.conn.execute("SELECT COUNT(*) FROM workout_sessions").fetchone()[0] == 1
 
 
 def test_commit_status_is_stored_and_replayed_at_commit_time(api, monkeypatch):
@@ -922,7 +1085,7 @@ def test_uncommitted_client_id_still_validates_the_catalog(api):
     assert db.conn.execute("SELECT COUNT(*) FROM workout_sessions").fetchone()[0] == 0
 
 
-def test_failed_commit_writes_nothing_and_retry_succeeds(api, monkeypatch):
+def test_failed_commit_writes_nothing_and_retry_succeeds(api, monkeypatch, recording_analytics):
     client, db = api
     headers, version = _prepare_player(client, db)
 
@@ -939,6 +1102,7 @@ def test_failed_commit_writes_nothing_and_retry_succeeds(api, monkeypatch):
     assert db.conn.execute("SELECT COUNT(*) FROM workout_sessions").fetchone()[0] == 0
     assert db.conn.execute("SELECT COUNT(*) FROM workout_sets").fetchone()[0] == 0
     assert db.conn.execute("SELECT COUNT(*) FROM session_commits").fetchone()[0] == 0
+    assert not [event for event in recording_analytics.events if event["event"] == "workout_completed"]
 
     monkeypatch.setattr(workouts_service, "evaluate_session_prs", original)
     retry = client.post("/workouts/sessions", headers=headers, json=_sync_body(version=version))
@@ -946,6 +1110,7 @@ def test_failed_commit_writes_nothing_and_retry_succeeds(api, monkeypatch):
     db.switch_user("p1")
     assert db.conn.execute("SELECT COUNT(*) FROM workout_sessions").fetchone()[0] == 1
     assert db.conn.execute("SELECT COUNT(*) FROM session_commits").fetchone()[0] == 1
+    assert len([event for event in recording_analytics.events if event["event"] == "workout_completed"]) == 1
 
 
 def test_status_lookup_404_then_200(api):
@@ -970,7 +1135,7 @@ def test_status_lookup_404_then_200(api):
     assert body["corrections"] == []
 
 
-def test_legacy_commit_without_client_session_id_still_works(api):
+def test_legacy_commit_without_client_session_id_emits_once(api, recording_analytics):
     client, db = api
     headers, _ = _prepare_player(client, db)
 
@@ -983,6 +1148,35 @@ def test_legacy_commit_without_client_session_id_still_works(api):
     db.switch_user("p1")
     row = db.conn.execute("SELECT client_session_id FROM workout_sessions").fetchone()
     assert row["client_session_id"] is None
+    events = [event for event in recording_analytics.events if event["event"] == "workout_completed"]
+    assert len(events) == 1
+    assert events[0]["uuid"] == analytics.deterministic_event_uuid(
+        "workout_completed", resp.json()["session_id"]
+    )
+
+
+def test_workout_fact_lookup_failure_does_not_fail_committed_workout(
+    api, recording_analytics, monkeypatch
+):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+
+    def fail_assignment_lookup(_account_id):
+        raise RuntimeError("assignment lookup unavailable")
+
+    monkeypatch.setattr(db, "get_active_assignment_for_player", fail_assignment_lookup)
+    response = client.post(
+        "/workouts/sessions", headers=headers, json=_sync_body(version=version)
+    )
+
+    assert response.status_code == 201, response.text
+    db.switch_user("p1")
+    assert db.conn.execute("SELECT COUNT(*) FROM workout_sessions").fetchone()[0] == 1
+    assert not [
+        event
+        for event in recording_analytics.events
+        if event["event"] == "workout_completed"
+    ]
 
 
 def test_newer_program_version_is_refused_and_writes_nothing(api):

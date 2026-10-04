@@ -432,11 +432,14 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         });
         return;
       }
-      await controller.startFromDay(
+      final StartWorkoutOutcome outcome = await controller.startFromDay(
         accountId: accountId,
         day: day,
         programVersion: program?.version,
       );
+      if (outcome == StartWorkoutOutcome.started) {
+        ref.read(analyticsClientProvider).workoutStarted();
+      }
     }
     final ActiveWorkout? workout = controller.workout;
     if (!mounted) return;
@@ -1106,7 +1109,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       // Saving ends the Active workout (CONTEXT.md): the draft now owns it.
       // The controller waits for every pending store write before deleting, so
       // a late write can never resurrect it (#123 item 5).
-      await _controller.discard(
+      await _controller.finishAsDraft(
         accountId: workout.accountId,
         workoutId: workout.id,
       );

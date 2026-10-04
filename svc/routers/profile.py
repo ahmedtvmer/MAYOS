@@ -93,6 +93,7 @@ async def read_schedule(
 
 @router.put("/schedule", response_model=TrainingScheduleSetOut)
 async def set_schedule(
+    request: Request,
     body: TrainingScheduleUpdateIn,
     player: Annotated[Any, Depends(get_verified_player)],
     ledger: Annotated[Any, Depends(get_ledger)],
@@ -102,7 +103,14 @@ async def set_schedule(
 
     def _run():
         try:
-            return schedule_service.set_schedule(db, str(player), body.model_dump(), ledger=ledger)
+            return schedule_service.set_schedule(
+                db,
+                str(player),
+                body.model_dump(),
+                ledger=ledger,
+                player_account_id=account_id_of(player),
+                client=analytics.client_context(request),
+            )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
 
@@ -123,6 +131,7 @@ async def list_pauses(
 
 @router.post("/schedule/pauses", status_code=status.HTTP_201_CREATED, response_model=TrainingPauseCreateOut)
 async def create_pause(
+    request: Request,
     body: TrainingPauseIn,
     player: Annotated[Any, Depends(get_verified_player)],
     ledger: Annotated[Any, Depends(get_ledger)],
@@ -138,6 +147,7 @@ async def create_pause(
                 body.model_dump(),
                 account_id_of(player),
                 ledger=ledger,
+                client=analytics.client_context(request),
             )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None

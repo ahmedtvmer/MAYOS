@@ -2587,6 +2587,9 @@ class WorkoutDraft {
     required this.updatedAt,
     this.attempt = 0,
     this.nextAttemptAt,
+    this.capturedOffline = false,
+    this.lastReportedSyncFailureReason,
+    this.pendingNetworkFailureAttempt,
   });
 
   factory WorkoutDraft.fromJson(Map<String, dynamic> json) => WorkoutDraft(
@@ -2623,6 +2626,11 @@ class WorkoutDraft {
         updatedAt: json['updated_at'] as String? ?? '',
         attempt: (json['attempt'] as num?)?.toInt() ?? 0,
         nextAttemptAt: json['next_attempt_at'] as String?,
+        capturedOffline: json['captured_offline'] as bool? ?? false,
+        lastReportedSyncFailureReason:
+            json['last_reported_sync_failure_reason'] as String?,
+        pendingNetworkFailureAttempt:
+            (json['pending_network_failure_attempt'] as num?)?.toInt(),
       );
 
   final String clientSessionId;
@@ -2651,6 +2659,15 @@ class WorkoutDraft {
   /// The earliest instant (ISO, same clock as [capturedAt]/[updatedAt]) a
   /// backed-off draft may be retried; null when due immediately.
   final String? nextAttemptAt;
+
+  /// Set when a prior sync attempt failed because connectivity was unavailable.
+  final bool capturedOffline;
+
+  /// Last failure reason reported for this draft, used to suppress retry spam.
+  final String? lastReportedSyncFailureReason;
+
+  /// A network failure waiting for the next successful request to report it.
+  final int? pendingNetworkFailureAttempt;
 
   bool get isSynced => status == DraftStatus.synced;
 
@@ -2704,6 +2721,11 @@ class WorkoutDraft {
     String? updatedAt,
     int? attempt,
     String? nextAttemptAt,
+    bool? capturedOffline,
+    String? lastReportedSyncFailureReason,
+    bool clearLastReportedSyncFailureReason = false,
+    int? pendingNetworkFailureAttempt,
+    bool clearPendingNetworkFailureAttempt = false,
     bool clearNextAttempt = false,
     bool clearLastError = false,
     bool clearLastErrorFailure = false,
@@ -2732,6 +2754,13 @@ class WorkoutDraft {
         attempt: attempt ?? this.attempt,
         nextAttemptAt:
             clearNextAttempt ? null : (nextAttemptAt ?? this.nextAttemptAt),
+        capturedOffline: capturedOffline ?? this.capturedOffline,
+        lastReportedSyncFailureReason: clearLastReportedSyncFailureReason
+            ? null
+            : (lastReportedSyncFailureReason ?? this.lastReportedSyncFailureReason),
+        pendingNetworkFailureAttempt: clearPendingNetworkFailureAttempt
+            ? null
+            : (pendingNetworkFailureAttempt ?? this.pendingNetworkFailureAttempt),
       );
 
   /// The `POST /workouts/sessions` body for this draft.
@@ -2761,6 +2790,7 @@ class WorkoutDraft {
         'performed_timezone': performedTimezone,
         'program_version': programVersion,
         'captured_at': capturedAt,
+        'captured_offline': capturedOffline,
       };
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -2793,6 +2823,9 @@ class WorkoutDraft {
         'updated_at': updatedAt,
         'attempt': attempt,
         'next_attempt_at': nextAttemptAt,
+        'captured_offline': capturedOffline,
+        'last_reported_sync_failure_reason': lastReportedSyncFailureReason,
+        'pending_network_failure_attempt': pendingNetworkFailureAttempt,
       };
 }
 

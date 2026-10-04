@@ -166,6 +166,8 @@ _PROGRAM_TRIGGERS = frozenset(
 )
 _PROGRAM_REQUEST_KINDS = frozenset({"exercise_substitution", "split_change"})
 _PROGRAM_REQUEST_OUTCOMES = frozenset({"applied", "declined", "cancelled"})
+_PROGRAM_PROVENANCE = frozenset({"generated", "coach_published", "none"})
+WORKOUT_SYNC_FAILURE_REASONS = ("network", "server", "conflict", "rejected")
 _DIMENSION_VALUES: dict[str, frozenset[str]] = {
     "role": frozenset({"player", "coach", "unknown"}),
     "platform": frozenset({"android", "web", "unknown"}),
@@ -181,6 +183,21 @@ PROPERTY_TYPES: dict[str, PropertyType] = {
     "time_since_invite_seconds": _bounded_int(31_557_600),
     "prefilled_fields_count": _bounded_int(100),
     "day_count": _bounded_int(100),
+    "days_per_week": _bounded_int(7),
+    "length_days": _bounded_int(14),
+    "set_count": _bounded_int(1000),
+    "exercise_count": _bounded_int(100),
+    "load_complete_set_count": _bounded_int(1000),
+    "reps_complete_set_count": _bounded_int(1000),
+    "rir_complete_set_count": _bounded_int(1000),
+    "divergence_count": _bounded_int(100),
+    "unplanned_exercise_count": _bounded_int(100),
+    "captured_offline": _boolean(),
+    "sync_delay_seconds": _bounded_int(31_557_600),
+    "is_first_workout": _boolean(),
+    "program_provenance": _enum(_PROGRAM_PROVENANCE),
+    "attempt": _bounded_int(100),
+    "sync_failure_reason": _enum(frozenset(WORKOUT_SYNC_FAILURE_REASONS)),
     "trigger": _enum(_PROGRAM_TRIGGERS),
     "first_for_assignment": _boolean(),
     "is_coaching_action": _boolean(),
@@ -287,6 +304,41 @@ EVENT_CATALOGUE: dict[str, EventContract] = {
             "is_coaching_action": PROPERTY_TYPES["is_coaching_action"],
         },
     ),
+    "workout_completed": EventContract(
+        "server",
+        {
+            **_COMMON_PROPERTIES,
+            "set_count": PROPERTY_TYPES["set_count"],
+            "exercise_count": PROPERTY_TYPES["exercise_count"],
+            "load_complete_set_count": PROPERTY_TYPES["load_complete_set_count"],
+            "reps_complete_set_count": PROPERTY_TYPES["reps_complete_set_count"],
+            "rir_complete_set_count": PROPERTY_TYPES["rir_complete_set_count"],
+            "divergence_count": PROPERTY_TYPES["divergence_count"],
+            "unplanned_exercise_count": PROPERTY_TYPES["unplanned_exercise_count"],
+            "captured_offline": PROPERTY_TYPES["captured_offline"],
+            "sync_delay_seconds": PROPERTY_TYPES["sync_delay_seconds"],
+            "is_first_workout": PROPERTY_TYPES["is_first_workout"],
+            "program_provenance": PROPERTY_TYPES["program_provenance"],
+            "coached": PROPERTY_TYPES["coached"],
+        },
+    ),
+    "performed_date_corrected": EventContract("server", dict(_COMMON_PROPERTIES)),
+    "training_schedule_set": EventContract(
+        "server", {**_COMMON_PROPERTIES, "days_per_week": PROPERTY_TYPES["days_per_week"]}
+    ),
+    "schedule_pause_scheduled": EventContract(
+        "server", {**_COMMON_PROPERTIES, "length_days": PROPERTY_TYPES["length_days"]}
+    ),
+    "workout_sync_failed": EventContract(
+        "server",
+        {
+            **_COMMON_PROPERTIES,
+            "sync_failure_reason": PROPERTY_TYPES["sync_failure_reason"],
+            "attempt": PROPERTY_TYPES["attempt"],
+        },
+    ),
+    "workout_started": EventContract("client", dict(_COMMON_PROPERTIES)),
+    "workout_draft_discarded": EventContract("client", dict(_COMMON_PROPERTIES)),
 }
 
 PERSON_PROPERTY_CATALOGUE: dict[str, PropertyType] = {

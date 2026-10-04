@@ -16,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from database.database_manager import DatabaseManager
+from service import analytics
 from service import coach as coach_service
 from service import coach_history as coach_history_service
 from service import schedule as schedule_service
@@ -148,6 +149,69 @@ def _program_snapshot(db, player="p1"):
 def _put_schedule(client, headers, **overrides):
     body = {"weekdays": [1, 3, 5], "timezone": "Europe/London", **overrides}
     return client.put("/profile/schedule", headers=headers, json=body)
+
+
+def test_schedule_and_pause_analytics_follow_their_committed_writes(api, recording_analytics, monkeypatch):
+    monkeypatch.setenv("MAYOS_ENV", "test")
+    client, db = api
+    player = _register(client, "p1")
+    headers = {**_authed(player["access_token"]), "X-MAYOS-Client": "web/2.0.0"}
+
+    schedule = _put_schedule(client, headers, weekdays=[1, 4, 6])
+    assert schedule.status_code == 200, schedule.text
+    pauses_before = _post_pause(client, headers, starts_on=_iso(-1), ends_on=_iso(0))
+    assert pauses_before.status_code == 400
+    pause = _post_pause(client, headers, starts_on=_iso(2), ends_on=_iso(4))
+    assert pause.status_code == 201, pause.text
+
+    events = [event for event in recording_analytics.events if event["event"] in {
+        "training_schedule_set", "schedule_pause_scheduled"
+    }]
+    assert [event["event"] for event in events] == ["training_schedule_set", "schedule_pause_scheduled"]
+    assert events[0]["properties"]["days_per_week"] == 3
+    assert events[0]["properties"]["platform"] == "web"
+    assert events[1]["properties"]["length_days"] == 3
+    account = db.get_active_account_by_username("p1")
+    ledger_id = account["ledger_id"]
+    assert events[0]["uuid"] == analytics.deterministic_event_uuid(
+        "training_schedule_set", schedule.json()["version"]["schedule_id"]
+    )
+    assert events[1]["uuid"] == analytics.deterministic_event_uuid(
+        "schedule_pause_scheduled", pause.json()["pause"]["pause_id"]
+    )
+    with db.open_ledger(ledger_id) as ledger:
+        assert len(ledger.list_training_schedules(ledger_id)) == 1
+        assert len(ledger.list_training_pauses(ledger_id)) == 1
+
+
+def test_raising_analytics_sink_does_not_fail_schedule_or_pause_writes(api):
+    class RaisingSink:
+        def capture(self, *_args):
+            raise RuntimeError("analytics unavailable")
+
+        def set_person(self, *_args):
+            raise RuntimeError("analytics unavailable")
+
+        def set_person_once(self, *_args):
+            raise RuntimeError("analytics unavailable")
+
+        def delete_person(self, *_args):
+            raise RuntimeError("analytics unavailable")
+
+    client, db = api
+    player = _register(client, "p1")
+    headers = _authed(player["access_token"])
+    analytics.set_sink(RaisingSink())
+
+    schedule = _put_schedule(client, headers, weekdays=[2, 4])
+    pause = _post_pause(client, headers, starts_on=_iso(2), ends_on=_iso(3))
+
+    assert schedule.status_code == 200, schedule.text
+    assert pause.status_code == 201, pause.text
+    account = db.get_active_account_by_username("p1")
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        assert len(ledger.list_training_schedules(account["ledger_id"])) == 1
+        assert len(ledger.list_training_pauses(account["ledger_id"])) == 1
 
 
 def _post_pause(client, headers, **overrides):

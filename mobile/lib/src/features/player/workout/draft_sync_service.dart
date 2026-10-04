@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/analytics_client.dart';
 import '../../../core/app_failure.dart';
 import '../../../core/models.dart';
 import '../../../core/workout_storage.dart';
@@ -35,15 +36,18 @@ class DraftSyncService extends ChangeNotifier {
   DraftSyncService({
     required ApiClient api,
     required DraftStore store,
+    AnalyticsClient analytics = const NoOpAnalyticsClient(),
     this.onCommit,
     this.retryInterval = const Duration(seconds: 60),
     DateTime Function()? now,
   })  : _api = api,
+        _analytics = analytics,
         _store = store,
         _now = now ?? DateTime.now;
 
   final ApiClient _api;
   final DraftStore _store;
+  final AnalyticsClient _analytics;
   final Future<void> Function(String accountId, Map<String, dynamic> response)?
       onCommit;
   final Duration? retryInterval;
@@ -184,17 +188,33 @@ class DraftSyncService extends ChangeNotifier {
     if (id == null) {
       return;
     }
+    bool discardedUnsyncedDraft = false;
     await _mutateDrafts(
         id,
-        (List<WorkoutDraft> current) => current
-            .where((WorkoutDraft draft) =>
-                draft.clientSessionId != clientSessionId)
-            .toList(growable: false));
+        (List<WorkoutDraft> current) => current.where((WorkoutDraft draft) {
+              if (draft.clientSessionId != clientSessionId) return true;
+              discardedUnsyncedDraft = draft.isUnsynced;
+              return false;
+            }).toList(growable: false));
+    if (discardedUnsyncedDraft) {
+      _analytics.workoutDraftDiscarded(workoutId: clientSessionId);
+    }
   }
 
   /// Removes every draft for an account (logout's explicit discard choice).
   Future<void> discardAllForAccount(String accountId) async {
-    await _mutateDrafts(accountId, (_) => <WorkoutDraft>[]);
+    final List<String> discardedWorkoutIds = <String>[];
+    await _mutateDrafts(accountId, (List<WorkoutDraft> current) {
+      discardedWorkoutIds.addAll(
+        current
+            .where((WorkoutDraft draft) => draft.isUnsynced)
+            .map((WorkoutDraft draft) => draft.clientSessionId),
+      );
+      return <WorkoutDraft>[];
+    });
+    for (final String workoutId in discardedWorkoutIds) {
+      _analytics.workoutDraftDiscarded(workoutId: workoutId);
+    }
   }
 
   /// Explicitly retries a needs-attention (or backed-off) draft: resets its
@@ -468,6 +488,7 @@ class DraftSyncService extends ChangeNotifier {
       if (!await _canProceed(accountId, draft.clientSessionId, generation)) {
         return draft;
       }
+      draft = _reportPendingNetworkFailure(draft, accountId, generation);
       if (existing != null) {
         return _synced(draft, existing);
       }
@@ -479,8 +500,10 @@ class DraftSyncService extends ChangeNotifier {
       if (result.created || result.statusCode == 200) {
         return _synced(draft, result.body);
       }
+      _reportSyncFailureIfCurrent(accountId, draft, generation, 'rejected');
       return draft.copyWith(
         status: DraftStatus.needsReconciliation,
+        lastReportedSyncFailureReason: 'rejected',
         lastError:
             'The service returned an unexpected status (${result.statusCode}).',
         lastErrorFailure: AppFailureMessage(
@@ -491,9 +514,31 @@ class DraftSyncService extends ChangeNotifier {
         updatedAt: _iso(),
       );
     } on ApiException catch (error) {
+      final String reason = _syncFailureReason(error);
+      if (reason != 'network') {
+        draft = _reportPendingNetworkFailure(draft, accountId, generation);
+      }
+      _reportSyncFailureIfCurrent(accountId, draft, generation, reason);
+      final bool capturedOffline = draft.capturedOffline || reason == 'network';
+      final int failureAttempt = (draft.attempt + 1).clamp(1, 100).toInt();
+      final bool networkFailure = reason == 'network';
+      final bool queueNetworkFailure = networkFailure &&
+          draft.lastReportedSyncFailureReason != 'network' &&
+          draft.pendingNetworkFailureAttempt == null;
       if (_isTerminal(error)) {
         return draft.copyWith(
           status: DraftStatus.needsReconciliation,
+          capturedOffline: capturedOffline,
+          lastReportedSyncFailureReason: networkFailure
+              ? (queueNetworkFailure
+                  ? null
+                  : draft.lastReportedSyncFailureReason)
+              : reason,
+          clearLastReportedSyncFailureReason: queueNetworkFailure,
+          pendingNetworkFailureAttempt:
+              queueNetworkFailure ? failureAttempt : null,
+          clearPendingNetworkFailureAttempt:
+              !networkFailure || draft.lastReportedSyncFailureReason == 'network',
           lastError: error.message,
           lastErrorFailure: error.failureMessage is AppFailureMessage
               ? error.failureMessage! as AppFailureMessage
@@ -502,7 +547,74 @@ class DraftSyncService extends ChangeNotifier {
           updatedAt: _iso(),
         );
       }
-      return _backedOff(draft, error);
+      return _backedOff(
+        draft.copyWith(
+          capturedOffline: capturedOffline,
+          lastReportedSyncFailureReason: networkFailure
+              ? (queueNetworkFailure
+                  ? null
+                  : draft.lastReportedSyncFailureReason)
+              : reason,
+          clearLastReportedSyncFailureReason: queueNetworkFailure,
+          pendingNetworkFailureAttempt:
+              queueNetworkFailure ? failureAttempt : null,
+          clearPendingNetworkFailureAttempt:
+              !networkFailure || draft.lastReportedSyncFailureReason == 'network',
+        ),
+        error,
+      );
+    }
+  }
+
+  String _syncFailureReason(ApiException error) => switch (error.statusCode) {
+        null => 'network',
+        408 => 'network',
+        409 => 'conflict',
+        >= 500 => 'server',
+        _ => 'rejected',
+      };
+
+  void _reportSyncFailureIfCurrent(
+    String accountId,
+    WorkoutDraft draft,
+    int generation,
+    String reasonCode,
+  ) {
+    if (reasonCode == 'network' ||
+        !_stillCurrent(accountId, generation) ||
+        draft.lastReportedSyncFailureReason == reasonCode) {
+      return;
+    }
+    final int attempt = (draft.attempt + 1).clamp(1, 100).toInt();
+    unawaited(_reportSyncFailure(reasonCode, attempt));
+  }
+
+  WorkoutDraft _reportPendingNetworkFailure(
+    WorkoutDraft draft,
+    String accountId,
+    int generation,
+  ) {
+    final int? attempt = draft.pendingNetworkFailureAttempt;
+    if (attempt == null ||
+        draft.lastReportedSyncFailureReason == 'network' ||
+        !_stillCurrent(accountId, generation)) {
+      return draft;
+    }
+    unawaited(_reportSyncFailure('network', attempt));
+    return draft.copyWith(
+      lastReportedSyncFailureReason: 'network',
+      clearPendingNetworkFailureAttempt: true,
+    );
+  }
+
+  Future<void> _reportSyncFailure(String reasonCode, int attempt) async {
+    try {
+      await _api.reportWorkoutSyncFailure(
+        reasonCode: reasonCode,
+        attempt: attempt,
+      );
+    } on Object {
+      // The reporting request is best-effort and is never queued for retry.
     }
   }
 

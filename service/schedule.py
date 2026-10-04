@@ -20,6 +20,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from service._base import ledger_scope
+from service import analytics
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +136,13 @@ def get_schedule(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str
 
 
 def set_schedule(
-    db: Any, ledger_id: str, payload: dict[str, Any], ledger: Any | None = None
+    db: Any,
+    ledger_id: str,
+    payload: dict[str, Any],
+    ledger: Any | None = None,
+    *,
+    player_account_id: str | None = None,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> dict[str, Any]:
     """Validates and appends a new schedule version; the program is never touched.
 
@@ -158,7 +165,18 @@ def set_schedule(
             ledger_id, weekdays, timezone, effective_from.isoformat(), _now_iso()
         )
         current = ledger.get_schedule_effective_on(ledger_id, today.isoformat())
-        return {"version": version, "current": current}
+    if player_account_id:
+        analytics.capture(
+            analytics.AnalyticsEvent(
+                account_id=player_account_id,
+                event="training_schedule_set",
+                domain_key=version["schedule_id"],
+                role="player",
+                properties={"days_per_week": len(weekdays)},
+            ),
+            client,
+        )
+    return {"version": version, "current": current}
 
 
 def schedule_pause(
@@ -167,6 +185,8 @@ def schedule_pause(
     payload: dict[str, Any],
     player_account_id: str | None,
     ledger: Any | None = None,
+    *,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> dict[str, Any]:
     """Validates and stores a prospective pause, then best-effort notifies the coach.
 
@@ -188,6 +208,17 @@ def schedule_pause(
 
         pause = ledger.schedule_training_pause(
             ledger_id, starts_on.isoformat(), ends_on.isoformat(), now_iso
+        )
+    if player_account_id:
+        analytics.capture(
+            analytics.AnalyticsEvent(
+                account_id=player_account_id,
+                event="schedule_pause_scheduled",
+                domain_key=pause["pause_id"],
+                role="player",
+                properties={"length_days": (ends_on - starts_on).days + 1},
+            ),
+            client,
         )
     notice_sent = _notify_coach(db, player_account_id, starts_on, ends_on, now_iso)
     return {"pause": pause, "notice_sent": notice_sent}

@@ -104,6 +104,9 @@ Future<bool> _confirmWebLogout(
   if (discard != true || !context.mounted) {
     return false;
   }
-  await controller.discard(accountId: accountId, workoutId: workout.id);
+  await controller.discard(
+    accountId: accountId,
+    workoutId: workout.id,
+  );
   return true;
 }

@@ -6,19 +6,23 @@ import json
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from database.exercise_resolution import resolve_exercise_display_row
+from service import analytics
 from service import sessions as sessions_service
 from service import workouts as workouts_service
+from service import workout_analytics
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
+from svc.rate_limit import WORKOUT_SYNC_FAILURE_LIMIT, limiter
 from svc.schemas import (
     BaselinesOut,
     PlayerLatestSessionOut,
     SessionCommitIn,
     SessionPerformedDateCorrectIn,
     SessionPerformedDateCorrectOut,
+    WorkoutSyncFailureIn,
 )
 from utils.equipment_access import COMMERCIAL_GYM, map_equipment_access
 
@@ -195,6 +199,7 @@ async def read_baselines(
 
 @router.post("/sessions", status_code=status.HTTP_201_CREATED)
 async def commit_session(
+    request: Request,
     body: SessionCommitIn,
     player: Annotated[Any, Depends(get_verified_player)],
     ledger: Annotated[Any, Depends(get_ledger)],
@@ -210,6 +215,7 @@ async def commit_session(
                 warmup_movements=_warmup_movements_payload(db, body),
                 cardio=body.cardio.model_dump() if body.cardio is not None else None,
                 account_id=account_id_of(player), ledger=ledger,
+                client=analytics.client_context(request),
             )
 
         try:
@@ -235,6 +241,7 @@ async def commit_session(
             performed_timezone=body.performed_timezone,
             program_version=body.program_version,
             captured_at=body.captured_at,
+            captured_offline=body.captured_offline,
         )
         return workouts_service.commit_logged_session(
             db,
@@ -248,6 +255,7 @@ async def commit_session(
             cardio=body.cardio.model_dump() if body.cardio is not None else None,
             account_id=account_id_of(player),
             ledger=ledger,
+            client=analytics.client_context(request),
         )
 
     try:
@@ -265,6 +273,22 @@ async def commit_session(
     if not result.created:
         return JSONResponse(status_code=status.HTTP_200_OK, content=result.body)
     return result.body
+
+
+@router.post("/sync-failures", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(WORKOUT_SYNC_FAILURE_LIMIT)
+async def report_sync_failure(
+    request: Request,
+    body: WorkoutSyncFailureIn,
+    player: Annotated[Any, Depends(get_verified_player)],
+):
+    workout_analytics.report_sync_failure(
+        account_id_of(player),
+        body.reason_code,
+        body.attempt,
+        client=analytics.client_context(request),
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/sessions/latest", response_model=PlayerLatestSessionOut)
@@ -324,6 +348,7 @@ async def read_session_by_client_id(
     response_model=SessionPerformedDateCorrectOut,
 )
 async def correct_session_performed_date(
+    request: Request,
     session_id: str,
     body: SessionPerformedDateCorrectIn,
     player: Annotated[Any, Depends(get_verified_player)],
@@ -347,6 +372,7 @@ async def correct_session_performed_date(
             body.performed_date,
             account_id=account_id_of(player),
             ledger=ledger,
+            client=analytics.client_context(request),
         )
         if result is None:
             raise HTTPException(

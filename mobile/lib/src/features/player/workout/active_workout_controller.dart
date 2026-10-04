@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show FlutterError;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/active_workout.dart';
+import '../../../core/analytics_client.dart';
 import '../../../core/baseline_service.dart';
 import '../../../core/baselines.dart';
 import '../../../core/client_session_id.dart';
@@ -80,6 +81,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     this.persistClientSessionId = false,
     RestLengthStore? restLengths,
     RestAlerts? alerts,
+    AnalyticsClient analytics = const NoOpAnalyticsClient(),
     String Function()? displayLanguage,
   })  : _store = store,
         _baselines = baselines,
@@ -89,6 +91,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
         _newClientSessionId = clientSessionIdGenerator ?? newClientSessionId,
         _restLengths = restLengths,
         _alerts = alerts,
+        _analytics = analytics,
         _displayLanguage = displayLanguage ?? (() => 'en'),
         super(
           const ActiveWorkoutState(accountId: null, ready: true, workout: null),
@@ -113,6 +116,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
 
   /// The one seam to the platform's notification/alarm/sound layer (#125).
   final RestAlerts? _alerts;
+  final AnalyticsClient _analytics;
   final String Function() _displayLanguage;
 
   /// The overrides of the signed-in account, keyed by exercise id.
@@ -394,13 +398,51 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   /// [workoutId] narrows the discard to one workout; a caller that names the
   /// wrong account or workout gets a no-op instead of clearing a workout that
   /// is not theirs.
-  Future<void> discard({required String accountId, String? workoutId}) async {
+  Future<void> discard({
+    required String accountId,
+    String? workoutId,
+  }) async {
+    final ActiveWorkout? current = _matchingWorkout(accountId, workoutId);
+    if (current == null) return;
+    if (await _removeActiveWorkout(current)) {
+      _analytics.workoutDraftDiscarded(
+        workoutId: current.clientSessionId ?? current.id,
+      );
+    }
+  }
+
+  /// Removes an Active workout after its completed data has been saved as a
+  /// Workout draft; that handoff does not close the discard funnel.
+  Future<void> finishAsDraft({
+    required String accountId,
+    required String workoutId,
+  }) async {
+    final ActiveWorkout? current = _matchingWorkout(accountId, workoutId);
+    if (current == null) return;
+    await _removeActiveWorkout(current);
+  }
+
+  /// Removes an Active workout after the server has committed it.
+  Future<void> removeCommitted({
+    required String accountId,
+    required String workoutId,
+  }) async {
+    final ActiveWorkout? current = _matchingWorkout(accountId, workoutId);
+    if (current == null) return;
+    await _removeActiveWorkout(current);
+  }
+
+  ActiveWorkout? _matchingWorkout(String accountId, String? workoutId) {
     final ActiveWorkout? current = state.workout;
     if (current == null ||
         current.accountId != accountId ||
         (workoutId != null && current.id != workoutId)) {
-      return;
+      return null;
     }
+    return current;
+  }
+
+  Future<bool> _removeActiveWorkout(ActiveWorkout current) async {
     state = ActiveWorkoutState(
       accountId: state.accountId,
       ready: state.ready,
@@ -413,11 +455,12 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       _alertsSuspended = false;
       await _removeAlerts();
     }
-    try {
-      await _enqueue(() => _store.deleteForAccount(accountId));
-    } on Object {
-      // Best-effort, like the other protected stores; state already shows none.
-    }
+    bool removedFromStore = false;
+    await _enqueue(() async {
+      await _store.deleteForAccount(current.accountId);
+      removedFromStore = true;
+    });
+    return removedFromStore;
   }
 
   /// Appends a new empty row (the logger's "+ Add set"): like the #107

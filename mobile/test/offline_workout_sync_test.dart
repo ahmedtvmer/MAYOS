@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/active_workout.dart';
+import 'package:mayos_mobile/src/core/analytics_client.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/baselines.dart';
@@ -20,6 +21,7 @@ import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.d
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
+import 'support/fake_analytics_client.dart';
 import 'support/fake_mayos_api.dart';
 
 const String _accountA = 'account-alice';
@@ -101,11 +103,13 @@ DraftSyncService _service({
   required DraftStore store,
   Future<void> Function(String accountId, Map<String, dynamic> response)?
       onCommit,
+  AnalyticsClient? analytics,
   DateTime Function()? now,
 }) =>
     DraftSyncService(
       api: _client(fake, tokens),
       store: store,
+      analytics: analytics ?? const NoOpAnalyticsClient(),
       onCommit: onCommit,
       retryInterval: null,
       now: now ?? (() => _fixedNow),
@@ -223,22 +227,129 @@ void main() {
       expect(await store.read(_accountB), isEmpty);
     });
 
-    test('explicit discard removes the draft while keep does not', () async {
+    test('explicit draft discard removes it and reports the client event', () async {
       final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
       final TokenStore tokens = await _authedTokens(fake);
       final InMemoryDraftStore store = InMemoryDraftStore();
+      final FakeAnalyticsClient analytics = FakeAnalyticsClient();
       final DraftSyncService service =
-          _service(fake: fake, tokens: tokens, store: store);
+          _service(fake: fake, tokens: tokens, store: store, analytics: analytics);
       service.startFor(_accountA, syncImmediately: false);
-      await service.saveDraft(_draft(accountId: _accountA));
+      final WorkoutDraft draft = _draft(accountId: _accountA);
+      await service.saveDraft(draft);
 
       expect(await service.unsyncedCountFor(_accountA), 1);
-      await service.discardAllForAccount(_accountA);
+      await service.discardDraft(draft.clientSessionId);
       expect(await store.read(_accountA), isEmpty);
+      expect(analytics.events, <Map<String, Object>>[
+        <String, Object>{
+          'event': 'workout_draft_discarded',
+          'properties': <String, Object>{},
+        },
+      ]);
     });
   });
 
   group('sync engine', () {
+    test('reports one bounded sync failure without blocking the draft retry',
+        () async {
+      final FakeMayosApi fake = FakeMayosApi()
+        ..commitFails = true
+        ..programVersion = 1
+        ..failOffline('POST', '/workouts/sync-failures');
+      final TokenStore tokens = await _authedTokens(fake);
+      final DraftSyncService service = _service(
+        fake: fake,
+        tokens: tokens,
+        store: InMemoryDraftStore(),
+      );
+      service.startFor(_accountA, syncImmediately: false);
+
+      await service.saveDraft(_draft(accountId: _accountA));
+      await pumpEventQueue();
+
+      expect(service.drafts.single.status, DraftStatus.pending);
+      final List<FakeRequest> reports = fake.adapter.requests
+          .where((FakeRequest request) =>
+              request.path == '/workouts/sync-failures')
+          .toList(growable: false);
+      expect(reports, hasLength(1));
+      expect(reports.single.body, <String, dynamic>{
+        'reason_code': 'server',
+        'attempt': 1,
+      });
+
+      await service.retryDraft(service.drafts.single.clientSessionId);
+      await pumpEventQueue();
+      expect(
+        fake.adapter.requests.where((FakeRequest request) =>
+            request.path == '/workouts/sync-failures'),
+        hasLength(1),
+      );
+    });
+
+    test('network failure marks offline capture and reports once per reason',
+        () async {
+      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final TokenStore tokens = await _authedTokens(fake);
+      final WorkoutDraft draft = _draft(accountId: _accountA);
+      final String lookupPath =
+          '/workouts/sessions/by-client-id/${draft.clientSessionId}';
+      fake.failOffline('GET', lookupPath);
+      final DraftSyncService service = _service(
+        fake: fake,
+        tokens: tokens,
+        store: InMemoryDraftStore(),
+      );
+      service.startFor(_accountA, syncImmediately: false);
+
+      await service.saveDraft(draft);
+      await pumpEventQueue();
+      expect(service.drafts.single.capturedOffline, isTrue);
+      expect(
+        fake.adapter.requests.where((FakeRequest request) =>
+            request.path == '/workouts/sync-failures'),
+        isEmpty,
+      );
+
+      await service.retryDraft(draft.clientSessionId);
+      await pumpEventQueue();
+      expect(
+        fake.adapter.requests.where((FakeRequest request) =>
+            request.path == '/workouts/sync-failures'),
+        isEmpty,
+      );
+
+      fake.offlineRequests.remove('GET $lookupPath');
+      fake.failOffline('POST', '/workouts/sessions');
+      await service.retryDraft(draft.clientSessionId);
+      expect(
+        fake.adapter.requests.where((FakeRequest request) =>
+            request.path == '/workouts/sync-failures'),
+        hasLength(1),
+      );
+
+      await service.retryDraft(draft.clientSessionId);
+      expect(
+        fake.adapter.requests.where((FakeRequest request) =>
+            request.path == '/workouts/sync-failures'),
+        hasLength(1),
+      );
+
+      fake.offlineRequests.remove('POST /workouts/sessions');
+      await service.retryDraft(draft.clientSessionId);
+      final FakeRequest commit = fake.adapter.requests.lastWhere(
+        (FakeRequest request) => request.path == '/workouts/sessions',
+      );
+      expect(commit.body['captured_offline'], isTrue);
+
+      expect(
+        fake.adapter.requests.where((FakeRequest request) =>
+            request.path == '/workouts/sync-failures'),
+        hasLength(1),
+      );
+    });
+
     test(
         'network failure stays pending; retry sends the same client session id',
         () async {
@@ -855,14 +966,16 @@ void main() {
       expect(await store.read(_accountA), hasLength(1));
     });
 
-    testWidgets('discard drafts and log out erases them',
+    testWidgets('discard drafts and log out reports each discarded draft',
         (WidgetTester tester) async {
       final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
       final InMemoryDraftStore store = InMemoryDraftStore();
-      await store
-          .write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
+      final WorkoutDraft firstDraft = _draft(accountId: _accountA);
+      final WorkoutDraft secondDraft = _draft(accountId: _accountA);
+      await store.write(_accountA, <WorkoutDraft>[firstDraft, secondDraft]);
+      final FakeAnalyticsClient analytics = FakeAnalyticsClient();
 
-      await _pumpApp(tester, fake, draftStore: store);
+      await _pumpApp(tester, fake, draftStore: store, analytics: analytics);
       await _openSettings(tester);
       await tester.scrollUntilVisible(find.text('Log out'), 300);
       await tester.pumpAndSettle();
@@ -872,6 +985,11 @@ void main() {
       await tester.tap(find.text('Discard drafts and log out'));
       await _pumpUntilFound(tester, find.text('Log in'));
       expect(await store.read(_accountA), isEmpty);
+      expect(
+        analytics.events.where((Map<String, Object> event) =>
+            event['event'] == 'workout_draft_discarded'),
+        hasLength(2),
+      );
     });
   });
 
@@ -1283,6 +1401,7 @@ Future<void> _pumpApp(
   InMemoryWorkoutCacheStore? cacheStore,
   String? deviceTimezone = 'UTC',
   bool offlineDraftsEnabled = true,
+  AnalyticsClient? analytics,
 }) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 2.0;
@@ -1308,6 +1427,9 @@ Future<void> _pumpApp(
         // #123's keystore-backed stores have no plugin on the test host.
         activeWorkoutStoreProvider
             .overrideWithValue(InMemoryActiveWorkoutStore()),
+        analyticsClientProvider.overrideWithValue(
+          analytics ?? const NoOpAnalyticsClient(),
+        ),
         baselineCacheStoreProvider
             .overrideWithValue(InMemoryBaselineCacheStore()),
         apiClientProvider.overrideWith((ref) {

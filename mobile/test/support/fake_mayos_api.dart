@@ -360,6 +360,9 @@ class FakeMayosApi {
     if (path == '/workouts/sessions/latest') {
       return _latestSession(request);
     }
+    if (path == '/workouts/sync-failures') {
+      return _reportWorkoutSyncFailure(request);
+    }
     if (path.startsWith('/workouts/sessions/') &&
         path.endsWith('/performed-date')) {
       return _correctPerformedDate(request);
@@ -3432,6 +3435,14 @@ class FakeMayosApi {
       if (commitResponseLost) return const FakeResponse.networkFailure();
     }
     return FakeResponse(201, session);
+  }
+
+  FakeResponse _reportWorkoutSyncFailure(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    return const FakeResponse(204);
   }
 
   Map<String, dynamic> _sessionResponse(Map<String, dynamic> body) {

@@ -113,7 +113,7 @@ class WebWorkoutCommitter {
   }
 
   Future<void> _removeCommittedWorkout(ActiveWorkout workout) =>
-      _controller.discard(
+      _controller.removeCommitted(
         accountId: workout.accountId,
         workoutId: workout.id,
       );

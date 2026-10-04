@@ -129,6 +129,13 @@ registry.
 | `program_exercise_swapped` | server | A Player swaps or undoes an exercise swap, or a Coach applies an exercise-substitution request after the new program version commits. The `role` identifies who acted. | `role`, `platform`, `app_version`, `env` |
 | `program_request_created` | server | A Player's program request has committed to the registry. | `role`, `platform`, `app_version`, `env`, `kind` |
 | `program_request_resolved` | server | A Coach applies or declines a request, or a Player cancels it, after the registry transition commits. Coach resolutions are coaching actions. | `role`, `platform`, `app_version`, `env`, `outcome`, `time_open_seconds`, `is_coaching_action` |
+| `workout_completed` | server | A workout commit has succeeded. An idempotent replay emits nothing; the client session id determines the event UUID when present, with the committed session id as the fallback. | `role`, `platform`, `app_version`, `env`, `set_count`, `exercise_count`, `load_complete_set_count`, `reps_complete_set_count`, `rir_complete_set_count`, `divergence_count`, `unplanned_exercise_count`, `captured_offline`, `sync_delay_seconds`, `is_first_workout`, `program_provenance`, `coached` |
+| `performed_date_corrected` | server | A committed workout's performed date has changed and the correction row is stored. A no-op correction emits nothing. | `role`, `platform`, `app_version`, `env` |
+| `training_schedule_set` | server | A new Training schedule version has committed. | `role`, `platform`, `app_version`, `env`, `days_per_week` |
+| `schedule_pause_scheduled` | server | A prospective Training schedule pause has committed. | `role`, `platform`, `app_version`, `env`, `length_days` |
+| `workout_sync_failed` | server | The authenticated client reports a failed Workout draft sync attempt. | `role`, `platform`, `app_version`, `env`, `sync_failure_reason`, `attempt` |
+| `workout_started` | client | A new Active workout is saved locally before logger navigation; resuming an existing Active workout is not a new start. | `role`, `platform`, `app_version`, `env` |
+| `workout_draft_discarded` | client | A Player explicitly discards an Active workout or an unsynced Workout draft. The client deduplicates by local workout identity and sends no workout identifier. | `role`, `platform`, `app_version`, `env` |
 <!-- event-catalogue:end -->
 
 ### Property definitions
@@ -165,6 +172,21 @@ registry.
 | `kind` | `exercise_substitution` or `split_change` | Program request category. Request reason and split preference are never sent. |
 | `outcome` | `applied`, `declined`, or `cancelled` | Program request's committed resolution. A decline response is never sent. |
 | `time_open_seconds` | Bounded nonnegative integer | Whole seconds between request creation and resolution, capped at one year. |
+| `set_count` | Integer from 0 to 1000 | Number of logged working sets, capped at 1000; Warm-up sets are excluded. |
+| `exercise_count` | Integer from 0 to 100 | Number of distinct exercises with a logged working set, capped at 100. Exercise ids and names are never sent. |
+| `load_complete_set_count` | Integer from 0 to 1000 | Working sets with a recorded load, capped at 1000. The load values are never sent. |
+| `reps_complete_set_count` | Integer from 0 to 1000 | Working sets with a recorded rep count, capped at 1000. The rep values are never sent. |
+| `rir_complete_set_count` | Integer from 0 to 1000 | Working sets with an effort rating from which RIR is available, capped at 1000; the rating and RIR values are never sent. |
+| `divergence_count` | Integer from 0 to 100 | Skipped plus unplanned exercise divergences recorded at commit, capped at 100. Exercise ids and names are never sent. |
+| `unplanned_exercise_count` | Integer from 0 to 100 | Unplanned exercises among the committed divergences, capped at 100. |
+| `captured_offline` | Boolean | The client sets this when the workout is finished without connectivity or a sync status lookup/commit fails because connectivity is unavailable. It persists on the Workout draft and is sent on the eventual commit; platform and client-session presence do not imply offline capture. |
+| `sync_delay_seconds` | Integer from 0 to 31,557,600 | Whole seconds from the Workout draft capture instant to its successful commit when `captured_offline` is true; otherwise zero, capped at the catalogue bound. |
+| `is_first_workout` | Boolean | True when this is the Player's first completed workout recorded in MAYOS. Imported history is excluded. |
+| `program_provenance` | `generated`, `coach_published`, or `none` | Whether the program used for the workout was generated, published by a Coach, or absent. Program and Coach ids are never sent. |
+| `days_per_week` | Integer from 0 to 7 | Number of weekdays in the newly committed Training schedule. Weekday identities are not sent. |
+| `length_days` | Integer from 1 to 14 | Inclusive length of a committed prospective Training schedule pause. Dates and reason text are never sent. |
+| `attempt` | Integer from 1 to 100 | Bounded sync attempt number reported by the client. |
+| `sync_failure_reason` | `network`, `server`, `conflict`, or `rejected` | Coded reason for a failed Workout draft sync. No response text or workout identifier is sent. |
 
 ## PostHog and operational database boundary
 

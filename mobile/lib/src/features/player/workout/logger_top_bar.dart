@@ -65,7 +65,10 @@ class _LoggerTopBarState extends ConsumerState<LoggerTopBar> {
     }
     await ref
         .read(activeWorkoutControllerProvider.notifier)
-        .discard(accountId: workout.accountId, workoutId: workout.id);
+        .discard(
+          accountId: workout.accountId,
+          workoutId: workout.id,
+        );
     if (!mounted) {
       return;
     }

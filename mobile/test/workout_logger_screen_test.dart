@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/active_workout.dart';
+import 'package:mayos_mobile/src/core/analytics_client.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/baselines.dart';
@@ -35,6 +36,7 @@ import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.d
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
+import 'support/fake_analytics_client.dart';
 import 'support/fake_mayos_api.dart';
 
 const String _account = 'account-alice';
@@ -398,6 +400,7 @@ List<Override> _appOverrides({
   ThemeMode themeMode = ThemeMode.light,
   DateTime Function()? clock,
   bool webDirectCommit = false,
+  FakeAnalyticsClient? analytics,
 }) =>
     <Override>[
       tokenStoreProvider.overrideWithValue(tokens),
@@ -411,6 +414,9 @@ List<Override> _appOverrides({
       baselineCacheStoreProvider
           .overrideWithValue(InMemoryBaselineCacheStore()),
       activeWorkoutStoreProvider.overrideWithValue(store),
+      analyticsClientProvider.overrideWithValue(
+        analytics ?? const NoOpAnalyticsClient(),
+      ),
       deviceTimezoneProvider.overrideWithValue(Future<String>.value('UTC')),
       deviceTimezoneOrNullProvider
           .overrideWithValue(Future<String?>.value('UTC')),
@@ -470,6 +476,7 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
   bool webDirectCommit = false,
   String? languageCode,
   bool roundTripStoredWorkout = false,
+  FakeAnalyticsClient? analytics,
 }) async {
   _usePhoneView(tester);
 
@@ -536,6 +543,7 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
       themeMode: themeMode,
       clock: clock,
       webDirectCommit: webDirectCommit,
+      analytics: analytics,
     ),
   );
   await _resumeFromPrompt(tester, languageCode: effectiveLanguage);
@@ -2674,7 +2682,9 @@ void main() {
   testWidgets(
       'the ⋮ menu discards the workout behind its own confirmation '
       '(#159)', (WidgetTester tester) async {
-    final InMemoryActiveWorkoutStore store = await _openLogger(tester);
+    final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    final InMemoryActiveWorkoutStore store =
+        await _openLogger(tester, analytics: analytics);
 
     await tester.tap(find.byKey(LoggerTopBar.menuKey));
     await tester.pumpAndSettle();
@@ -2696,6 +2706,11 @@ void main() {
     expect(find.text('Discard this workout?'), findsNothing);
     expect(find.byType(WorkoutLoggerScreen), findsOneWidget);
     expect(await store.read(_account), isNotNull);
+    expect(
+      analytics.events.where((Map<String, Object> event) =>
+          event['event'] == 'workout_draft_discarded'),
+      isEmpty,
+    );
 
     // This time Discard: the same effect Discard has in the Resume prompt —
     // the Active workout is gone and the player leaves the logger.
@@ -2709,6 +2724,11 @@ void main() {
     expect(find.byType(WorkoutLoggerScreen), findsNothing);
     expect(await store.read(_account), isNull);
     expect(find.text('Discard this workout?'), findsNothing);
+    expect(
+      analytics.events.where((Map<String, Object> event) =>
+          event['event'] == 'workout_draft_discarded'),
+      hasLength(1),
+    );
   });
 
   testWidgets(

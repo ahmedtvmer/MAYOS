@@ -6,6 +6,7 @@ class FakeAnalyticsClient implements AnalyticsClient {
   final List<String> resetAccountIds = <String>[];
   final List<Map<String, Object>> events = <Map<String, Object>>[];
   final List<bool> enabledChanges = <bool>[];
+  final Set<String> _discardedWorkoutIds = <String>{};
 
   String? _currentAccountId;
   bool enabled = true;
@@ -29,6 +30,22 @@ class FakeAnalyticsClient implements AnalyticsClient {
     events.add(<String, Object>{
       'event': 'onboarding_step_viewed',
       'properties': <String, Object>{'step': step},
+    });
+  }
+
+  @override
+  void workoutStarted() => _recordWorkoutEvent('workout_started');
+
+  @override
+  void workoutDraftDiscarded({required String workoutId}) {
+    if (!_discardedWorkoutIds.add(workoutId)) return;
+    _recordWorkoutEvent('workout_draft_discarded');
+  }
+
+  void _recordWorkoutEvent(String event) {
+    events.add(<String, Object>{
+      'event': event,
+      'properties': <String, Object>{},
     });
   }
 

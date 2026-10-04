@@ -1817,6 +1817,19 @@ class ApiClient {
     );
   }
 
+  /// Reports one failed Workout draft sync attempt without retrying the report.
+  Future<void> reportWorkoutSyncFailure({
+    required String reasonCode,
+    required int attempt,
+  }) async {
+    await _send(
+      () => _dio.post<dynamic>(
+        '/workouts/sync-failures',
+        data: <String, dynamic>{'reason_code': reasonCode, 'attempt': attempt},
+      ),
+    );
+  }
+
   /// The stored commit for a client session id, or null when never committed.
   ///
   /// Used to reconcile a lost response before retrying so a committed workout

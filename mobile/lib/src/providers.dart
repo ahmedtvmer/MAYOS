@@ -433,6 +433,7 @@ final ChangeNotifierProvider<DraftSyncService> draftSyncServiceProvider =
   final DraftSyncService service = DraftSyncService(
     api: ref.watch(apiClientProvider),
     store: ref.watch(draftStoreProvider),
+    analytics: ref.watch(analyticsClientProvider),
     onCommit: (String accountId, Map<String, dynamic> response) => ref
         .read(trainingStatusProvider.notifier)
         .acceptCommit(accountId, response),
@@ -532,6 +533,7 @@ final StateNotifierProvider<ActiveWorkoutController, ActiveWorkoutState>
     ),
     restLengths: ref.watch(restLengthStoreProvider),
     alerts: ref.watch(restAlertsProvider),
+    analytics: ref.watch(analyticsClientProvider),
     now: ref.watch(clockProvider),
     displayLanguage: () => ref.read(displayLanguageProvider),
   );
