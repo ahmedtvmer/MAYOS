@@ -188,7 +188,7 @@ def test_wrong_password_changes_nothing(api):
     assert client.get("/dashboard/exercises", headers=_authed(token)).status_code == 200
 
 
-def test_deletion_invalidates_all_sessions_and_removes_ledger(api):
+def test_deletion_invalidates_all_sessions_and_removes_ledger(api, mark_recovery_email_verified):
     client, db, ledgers_dir = api
     registered = _register(client, "alice", remember_me=True)
     token = registered["access_token"]
@@ -197,6 +197,7 @@ def test_deletion_invalidates_all_sessions_and_removes_ledger(api):
     second_token = _login(client, "alice")["access_token"]
     # Recovery email + a pending reset token.
     assert client.post("/auth/email", headers=_authed(token), json={"email": "alice@example.com"}).status_code == 200
+    mark_recovery_email_verified(db, account_id)
     reset_service.request_password_reset(
         db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "reset-token-abcdef1234"
     )

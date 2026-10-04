@@ -100,6 +100,7 @@ def account_metadata(db: Any, account: dict[str, Any], now: datetime | None = No
         "plans": plans_service.plans_for_account(db, account),
         "assignments": db.active_assignment_summary(account_id),
         "recovery_email": mask_recovery_email(db.get_account_email(account_id)),
+        "recovery_email_verified": db.is_recovery_email_verified(account_id),
         "usage_month": model_metering.account_usage_totals(
             db, account_id, month_start.isoformat(), month_end.isoformat()
         ),

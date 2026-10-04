@@ -164,13 +164,14 @@ def test_recovery_email_set_get_and_conflict(api):
     assert clash.status_code == 400
 
 
-def test_forgot_password_is_generic_and_reset_roundtrip(api):
+def test_forgot_password_is_generic_and_reset_roundtrip(api, monkeypatch, verify_recovery_email):
     from service import password_reset as reset_service
 
     client, db = api
     _register(client, "alice")
     alice_token = client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}).json()["access_token"]
     client.post("/auth/email", json={"email": "alice@example.com"}, headers=_authed(alice_token))
+    verify_recovery_email(client, alice_token, monkeypatch)
 
     known = client.post("/auth/forgot-password", json={"email": "alice@example.com"})
     unknown = client.post("/auth/forgot-password", json={"email": "nobody@example.com"})
@@ -191,13 +192,14 @@ def test_forgot_password_is_generic_and_reset_roundtrip(api):
     assert client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}).status_code == 401
 
 
-def test_reset_token_single_use_expiry_and_generic_errors(api):
+def test_reset_token_single_use_expiry_and_generic_errors(api, monkeypatch, verify_recovery_email):
     from service import password_reset as reset_service
 
     client, db = api
     _register(client, "alice")
     alice_token = client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}).json()["access_token"]
     client.post("/auth/email", json={"email": "alice@example.com"}, headers=_authed(alice_token))
+    verify_recovery_email(client, alice_token, monkeypatch)
 
     reset_service.request_password_reset(db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "one-time-token-abcdef1234")
     assert client.post("/auth/reset-password", json={"token": "one-time-token-abcdef1234", "new_password": "first-reset-11"}).status_code == 200
@@ -226,13 +228,14 @@ def test_reset_token_single_use_expiry_and_generic_errors(api):
     assert stale.json() == reuse.json()
 
 
-def test_reset_weak_password_does_not_consume_token(api):
+def test_reset_weak_password_does_not_consume_token(api, monkeypatch, verify_recovery_email):
     from service import password_reset as reset_service
 
     client, db = api
     _register(client, "alice")
     login_token = client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}).json()["access_token"]
     client.post("/auth/email", json={"email": "alice@example.com"}, headers=_authed(login_token))
+    verify_recovery_email(client, login_token, monkeypatch)
     reset_service.request_password_reset(db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "patient-token-abcdef1234")
 
     weak = client.post("/auth/reset-password", json={"token": "patient-token-abcdef1234", "new_password": "short"})

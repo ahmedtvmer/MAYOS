@@ -341,7 +341,7 @@ async def admin_account_detail(
     metadata = await asyncio.to_thread(admin_accounts_service.account_metadata, db, account)
     coach_invites = await asyncio.to_thread(_live_coach_invites, db, account["account_id"])
     outcome = request.query_params.get("reset", "")
-    if outcome not in {"sent", "send_failed", "no_recovery_email"}:
+    if outcome not in {"sent", "send_failed", "no_recovery_email", "unverified"}:
         outcome = ""
     reset_result = {"outcome": outcome}
     body += _account_detail_page(account, metadata, session.csrf_token, reset_result, coach_invites)
@@ -1521,12 +1521,19 @@ def _password_card(
     masked_email = metadata["recovery_email"]
     if not account["is_player"]:
         return '<section class="health-panel"><h2>Password</h2><p>Password reset is unavailable.</p></section>'
-    action, label = ("reset-link", "Create reset link") if masked_email == "Not set" else ("reset-email", "Send reset email")
     outcome = reset_result.get("outcome", "")
+    email_verified = metadata["recovery_email_verified"]
+    has_unverified_email = masked_email != "Not set" and not email_verified
+    action, label = (
+        ("reset-link", "Create reset link")
+        if masked_email == "Not set" or not email_verified
+        else ("reset-email", "Send reset email")
+    )
+    notice_outcome = outcome or ("unverified" if has_unverified_email else "")
     return (
         '<section class="health-panel" aria-labelledby="password-title">'
         '<h2 id="password-title">Password</h2>'
-        + _password_reset_notice(outcome, masked_email)
+        + _password_reset_notice(notice_outcome, masked_email)
         + (_issued_reset_link(reset_result) if outcome == "issued" else "")
         + _password_form(account_id, action, label, csrf_token)
         + "</section>"
@@ -1546,6 +1553,7 @@ def _password_reset_notice(outcome: str, masked_email: str) -> str:
         "sent": f"Reset email sent to {masked_email}",
         "send_failed": "Couldn't send the email; try again or create a link",
         "no_recovery_email": "No recovery email is linked; create a reset link instead.",
+        "unverified": "The recovery email is unverified; create a one-time reset link instead.",
     }
     message = messages.get(outcome)
     if message is None:

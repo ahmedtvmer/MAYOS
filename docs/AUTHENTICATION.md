@@ -152,9 +152,11 @@ sequenceDiagram
     API-->>User: 202 + identical generic message
     Note over API: One background path looks up and hashes every valid address
     API->>DB: lookup trainee_emails -> account_id (live accounts only)
-    alt Live account uses the recovery email
+    alt Live account uses a verified recovery email
     API->>DB: store SHA-256(token) keyed by account_id, expires_at, used_at=NULL
     API->>Mail: send reset link (or log it in console-dev mode)
+    else Live account uses an unverified recovery email
+    Note over API,DB: Create no reset token and send no email
     else No live account uses the address
     API->>DB: claim one 24-hour slot using a keyed address hash
     API->>Mail: send no-account notice with sign-up link when allowed
@@ -169,7 +171,8 @@ sequenceDiagram
 Defensive details:
 
 * A well-formed address that has no live MAYOS account receives a short **“No MAYOS account uses this email”** email with a sign-up link and advice to try the registered address or add a recovery email in Settings. The link uses `RESET_LINK_BASE_URL/register`, the same host as reset links. When no web origin is configured, the API serves a self-contained page asking the person to open the MAYOS app. Malformed addresses send no email. Unknown-address notices share the SMTP/console sender and are limited to one per address every 24 hours using a keyed hash. Expired hashes are pruned during forgot-password requests; no startup or scheduled cleanup exists, so inactive rows can remain until another request. The address itself is never stored for this limit.
-* The forgot-password endpoint returns its usual generic 202 before lookup or email work begins. FastAPI `BackgroundTasks` runs the same lookup, hashing, and pruning path for every valid address; the catalog store is passed explicitly to that task. The app keeps the generic success message because the email notification can reach someone other than the person using the device; a different on-screen response would reveal whether an account exists.
+* A reset link is created and sent only when a live account's recovery email is verified. An unverified address receives no email and gets no reset token. The unknown-address notice behavior remains unchanged.
+* The forgot-password endpoint returns its usual generic 202 before lookup or email work begins. FastAPI `BackgroundTasks` then runs one service task with the catalog store passed explicitly; that task performs account lookup and cleanup after the response has been sent. It creates and sends a reset only after confirming the recovery email is verified. Verified, unverified, and unknown addresses share the same response shape and `3/hour` rate limit. The app keeps the generic success message because email work can reach someone other than the person using the device; a different on-screen response would reveal which case applied.
 * Weak new passwords are rejected **before** token consumption — a failed attempt does not burn the link.
 * Unknown, expired, reused, and fabricated tokens all share one generic `400 Invalid or expired reset code.`
 * Expired and consumed tokens are pruned on each request.
@@ -183,7 +186,7 @@ Defensive details:
 
 ## 8. Owner-Initiated Resets
 
-The owner dashboard can send the standard reset email when a recovery email is linked. Without one, it can issue a single-use reset link with a separate `ADMIN_RESET_LINK_TTL_MINUTES` lifetime (default **1440**, clamped 5–10080 minutes); the raw link is shown once. Redeeming either reset changes the password through the existing reset flow and advances the account session epoch, ending every session.
+The owner dashboard can send the standard reset email when a recovery email is linked and verified. If the address is absent or unverified, it can issue a single-use reset link with a separate `ADMIN_RESET_LINK_TTL_MINUTES` lifetime (default **1440**, clamped 5–10080 minutes); the raw link is shown once. An unverified email attempt is audited without the address. Redeeming either reset changes the password through the existing reset flow and advances the account session epoch, ending every session.
 
 For a direct password set, the operator uses the CLI against the ledger:
 

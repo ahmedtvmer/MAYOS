@@ -205,10 +205,13 @@ def test_hosted_reset_page_security_headers_and_script(api):
     assert "typeof detail === 'string'" in resp.text
 
 
-def test_forgot_reset_round_trip_email_body_and_session_revocation(api, monkeypatch):
+def test_forgot_reset_round_trip_email_body_and_session_revocation(
+    api, monkeypatch, verify_recovery_email
+):
     client, _ = api
     old_token = _register(client, "alice")
     _set_recovery_email(client, old_token)
+    verify_recovery_email(client, old_token, monkeypatch)
     assert client.get("/dashboard/exercises", headers=_authed(old_token)).status_code == 200
 
     monkeypatch.setenv("RESET_LINK_BASE_URL", "https://mayos-api.fly.dev")
@@ -238,10 +241,11 @@ def test_forgot_reset_round_trip_email_body_and_session_revocation(api, monkeypa
     assert client.get("/dashboard/exercises", headers=_authed(relogin.json()["access_token"])).status_code == 200
 
 
-def test_forgot_password_sends_notice_only_for_unmatched_addresses(api, monkeypatch):
+def test_forgot_password_sends_notice_only_for_unmatched_addresses(api, monkeypatch, verify_recovery_email):
     client, db = api
     token = _register(client, "alice")
     _set_recovery_email(client, token)
+    verify_recovery_email(client, token, monkeypatch)
     monkeypatch.setenv("RESET_LINK_BASE_URL", "https://mayos-api.fly.dev/")
     monkeypatch.setenv("SMTP_HOST", "")
 
@@ -283,6 +287,49 @@ def test_forgot_password_sends_notice_only_for_unmatched_addresses(api, monkeypa
         "second-person@example.com",
         "https://mayos-api.fly.dev/register",
     )
+
+
+def test_forgot_password_only_emails_verified_recovery_addresses(api, monkeypatch, verify_recovery_email):
+    client, db = api
+    verified_token = _register(client, "verified")
+    _set_recovery_email(client, verified_token, "verified@example.com")
+    verify_recovery_email(client, verified_token, monkeypatch)
+    unverified_token = _register(client, "unverified")
+    _set_recovery_email(client, unverified_token, "unverified@example.com")
+    _reset_limiter()
+
+    deliveries = []
+
+    def fake_deliver(to_email, subject, body, *, delivery):
+        deliveries.append((to_email, subject, body))
+        return True
+
+    monkeypatch.setattr(email_sender, "_deliver", fake_deliver)
+    responses = [
+        client.post("/auth/forgot-password", json={"email": email})
+        for email in (
+            "verified@example.com",
+            "unverified@example.com",
+            "unknown@example.com",
+        )
+    ]
+    rate_limited = client.post("/auth/forgot-password", json={"email": "unverified@example.com"})
+
+    assert [response.status_code for response in responses] == [202, 202, 202]
+    assert responses[0].json() == responses[1].json() == responses[2].json()
+    assert rate_limited.status_code == 429
+    assert deliveries[0][0] == "verified@example.com"
+    assert "password reset" in deliveries[0][1].lower()
+    assert deliveries[-1][0] == "unknown@example.com"
+    assert "no mayos account" in deliveries[-1][1].lower()
+    assert all(email != "unverified@example.com" for email, _, _ in deliveries)
+
+    verified_account_id = db.get_account_by_email("verified@example.com")
+    unverified_account_id = db.get_account_by_email("unverified@example.com")
+    with db.catalog_locked() as conn:
+        token_accounts = {row[0] for row in conn.execute("SELECT trainee_id FROM password_reset_tokens").fetchall()}
+    assert verified_account_id in token_accounts
+    assert unverified_account_id not in token_accounts
 
 
 def test_no_account_notice_limit_is_one_per_address_per_24_hours(api, monkeypatch):
@@ -364,12 +411,13 @@ def test_no_account_mailer_preparation_error_uses_purpose_only_log(api, caplog):
     assert "private.player@example.com" not in caplog.text
 
 
-def test_deleted_account_recovery_address_gets_no_account_notice(api):
+def test_deleted_account_recovery_address_gets_no_account_notice(api, monkeypatch, verify_recovery_email):
     from service import account_deletion as deletion_service
 
     client, db = api
     token = _register(client, "alice")
     _set_recovery_email(client, token)
+    verify_recovery_email(client, token, monkeypatch)
     account_id = db.get_active_account_by_username("alice")["account_id"]
     assert deletion_service.delete_account(db, account_id, "correct-horse-1")["ok"]
     deliveries = []
@@ -398,7 +446,7 @@ def test_forgot_password_keeps_existing_rate_limit(api):
     assert statuses == [202, 202, 202, 429]
 
 
-def test_remember_me_session_is_rejected_after_reset(api):
+def test_remember_me_session_is_rejected_after_reset(api, monkeypatch, verify_recovery_email):
     client, db = api
     _register(client, "alice")
     basic = client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}).json()["access_token"]
@@ -406,6 +454,7 @@ def test_remember_me_session_is_rejected_after_reset(api):
         "/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1", "remember_me": True}
     ).json()["access_token"]
     _set_recovery_email(client, basic)
+    verify_recovery_email(client, basic, monkeypatch)
     # Both sessions are live before the reset.
     assert client.get("/dashboard/exercises", headers=_authed(basic)).status_code == 200
     assert client.get("/dashboard/exercises", headers=_authed(remembered)).status_code == 200
@@ -424,10 +473,11 @@ def test_remember_me_session_is_rejected_after_reset(api):
     assert client.get("/dashboard/exercises", headers=_authed(remembered)).status_code == 401
 
 
-def test_coach_account_completes_forgot_reset_login(api, monkeypatch):
+def test_coach_account_completes_forgot_reset_login(api, monkeypatch, verify_recovery_email):
     client, db = api
     token = _register(client, "coachlet")
     _set_recovery_email(client, token, "coachlet@example.com")
+    verify_recovery_email(client, token, monkeypatch)
     issued = coach_service.issue_coach_invite(db, "coachlet", actor="cli")
     assert issued["ok"], issued
     redeemed = client.post("/coach/invite/redeem", headers=_authed(token), json={"token": issued["token"]})
@@ -452,13 +502,14 @@ def test_coach_account_completes_forgot_reset_login(api, monkeypatch):
     assert me.json()["capabilities"]["coach"] is True
 
 
-def test_reset_token_failures_are_generic_and_change_nothing(api):
+def test_reset_token_failures_are_generic_and_change_nothing(api, monkeypatch, verify_recovery_email):
     client, db = api
     _register(client, "alice")
     alice_token = client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}).json()[
         "access_token"
     ]
     _set_recovery_email(client, alice_token)
+    verify_recovery_email(client, alice_token, monkeypatch)
 
     # Fabricated token.
     _reset_limiter()

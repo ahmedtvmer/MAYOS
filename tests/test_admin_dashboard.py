@@ -972,12 +972,15 @@ def test_account_page_shows_metadata_usage_limits_and_never_training_content(adm
     assert "Not set" in missing_email.text
 
 
-def test_owner_reset_email_sends_standard_link_and_revokes_sessions(admin_api, caplog):
+def test_owner_reset_email_sends_standard_link_and_revokes_sessions(
+    admin_api, caplog, mark_recovery_email_verified
+):
     from urllib.parse import parse_qs, urlsplit
 
     client, db, now, sent_emails = admin_api
     account, auth_headers = _register_account(client, db, "emailresetowner")
     db.set_account_email(account["account_id"], "alice@example.com")
+    mark_recovery_email_verified(db, account["account_id"])
     page = client.get(f"/admin/accounts/{account['account_id']}")
     assert page.status_code == 404
     assert client.post(f"/admin/accounts/{account['account_id']}/reset-email").status_code == 404
@@ -1025,12 +1028,62 @@ def test_owner_reset_email_sends_standard_link_and_revokes_sessions(admin_api, c
     assert reset_link not in audit.text and raw_token not in audit.text and raw_token not in caplog.text
 
 
-def test_owner_reset_email_failure_is_audited_and_shown_without_email(admin_api, monkeypatch):
+def test_owner_reset_email_skips_unverified_recovery_email_and_offers_link(
+    admin_api,
+):
+    client, db, now, sent_emails = admin_api
+    account, _ = _register_account(client, db, "unverifiedresetowner")
+    db.set_account_email(account["account_id"], "unverified@example.com")
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{account['account_id']}")
+    assert "recovery email is unverified" in page.text.lower()
+    assert "Create reset link" in page.text
+    assert 'action="/admin/accounts/' + account["account_id"] + '/reset-link"' in page.text
+    assert "Send reset email" not in page.text
+    response = client.post(
+        f"/admin/accounts/{account['account_id']}/reset-email",
+        data={"csrf_token": _csrf(page.text)},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("?reset=unverified")
+    notice = client.get(response.headers["location"])
+    assert "recovery email is unverified" in notice.text.lower()
+    assert "Create reset link" in notice.text
+    assert 'action="/admin/accounts/' + account["account_id"] + '/reset-link"' in notice.text
+    assert all(email[1] != "Mayos Engine password reset" for email in sent_emails)
+    with db.catalog_locked() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM password_reset_tokens WHERE trainee_id = ?",
+            (account["account_id"],),
+        ).fetchone()[0] == 0
+
+    audit = client.get(
+        f"/admin/audit?action=reset_email_unverified&account_id={account['account_id']}"
+    )
+    assert audit.status_code == 200
+    assert "reset_email_unverified" in audit.text
+    assert "unverified@example.com" not in audit.text
+
+    issued = client.post(
+        f"/admin/accounts/{account['account_id']}/reset-link",
+        data={"csrf_token": _csrf(notice.text)},
+    )
+    assert issued.status_code == 200
+    assert "Your MAYOS password reset link" in issued.text
+    assert "works once" in issued.text
+
+
+def test_owner_reset_email_failure_is_audited_and_shown_without_email(
+    admin_api, monkeypatch, mark_recovery_email_verified
+):
     from service import email_sender
 
     client, db, now, _ = admin_api
     account, _ = _register_account(client, db, "emailfailowner")
     db.set_account_email(account["account_id"], "failed@example.com")
+    mark_recovery_email_verified(db, account["account_id"])
     monkeypatch.setattr(
         email_sender,
         "_deliver",
@@ -1055,10 +1108,13 @@ def test_owner_reset_email_failure_is_audited_and_shown_without_email(admin_api,
     assert "failed@example.com" not in audit.text
 
 
-def test_owner_reset_email_store_failure_is_audited_and_shown(admin_api, monkeypatch):
+def test_owner_reset_email_store_failure_is_audited_and_shown(
+    admin_api, monkeypatch, mark_recovery_email_verified
+):
     client, db, now, _ = admin_api
     account, _ = _register_account(client, db, "storefailowner")
     db.set_account_email(account["account_id"], "store-failed@example.com")
+    mark_recovery_email_verified(db, account["account_id"])
 
     def fail_store(_token_hash, _account_id, _expires_at):
         raise sqlite3.OperationalError("test token storage failure")

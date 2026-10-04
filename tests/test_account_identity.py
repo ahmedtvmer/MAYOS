@@ -176,11 +176,12 @@ def test_password_change_bumps_registry_epoch(api):
     assert client.get("/dashboard/exercises", headers=_authed(registered["access_token"])).status_code == 401
 
 
-def test_password_reset_bumps_registry_epoch(api):
+def test_password_reset_bumps_registry_epoch(api, mark_recovery_email_verified):
     client, db, _ = api
     registered = _register(client, "alice")
     account_id = _subject(registered["access_token"])
     client.post("/auth/email", json={"email": "alice@example.com"}, headers=_authed(registered["access_token"]))
+    mark_recovery_email_verified(db, account_id)
     reset_service.request_password_reset(
         db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "reset-token-abcdef1234"
     )
@@ -251,12 +252,13 @@ def test_deleted_timestamp_blocks_recovery_and_revocation(api):
         conn.close()
 
 
-def test_deleted_account_recovery_cannot_reset_reused_username(api, monkeypatch):
+def test_deleted_account_recovery_cannot_reset_reused_username(api, monkeypatch, mark_recovery_email_verified):
     client, db, ledgers_dir = api
     first = _register(client, "alice")
     first_id = _subject(first["access_token"])
     first_headers = _authed(first["access_token"])
     assert client.post("/auth/email", json={"email": "alice@example.com"}, headers=first_headers).status_code == 200
+    mark_recovery_email_verified(db, first_id)
 
     reset_service.request_password_reset(
         db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "old-reset-token-abcdef12"

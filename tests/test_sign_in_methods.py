@@ -597,13 +597,15 @@ def test_deletion_replay_also_clears_links(api):
 # Password reset on a Google-only account
 
 
-def test_password_reset_gives_a_google_only_account_a_password(api):
+def test_password_reset_gives_a_google_only_account_a_password(api, mark_recovery_email_verified):
     client, db, _verifier = api
     token, _ = _google_account(client, "ana-token:Ana", "ana")
 
     assert _me(client, token)["has_password"] is False
     emailed = client.post("/auth/email", json={"email": "ana@example.com"}, headers=_authed(token))
     assert emailed.status_code == 200, emailed.text
+    account_id = _subject(token)
+    mark_recovery_email_verified(db, account_id)
 
     reset_service.request_password_reset(
         db,

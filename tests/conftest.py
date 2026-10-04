@@ -13,6 +13,7 @@ survive the agent-module imports. Cloud tests override them explicitly with
 """
 
 import os
+import re
 
 import pytest
 
@@ -110,3 +111,41 @@ def fresh_store(tmp_path):
         yield db
     finally:
         db.catalog_conn.close()
+
+
+@pytest.fixture
+def mark_recovery_email_verified():
+    def mark(db, account_id):
+        with db.catalog_locked() as conn:
+            conn.execute(
+                "UPDATE trainee_emails SET verified = 1 WHERE trainee_id = ?",
+                (account_id,),
+            )
+            conn.commit()
+
+    return mark
+
+
+@pytest.fixture
+def verify_recovery_email():
+    def verify(client, token, monkeypatch):
+        from service import email_sender
+
+        codes = []
+
+        def capture(_to_email, _subject, body, *, delivery):
+            match = re.search(r"(?<!\d)\d{6}(?!\d)", body)
+            assert match is not None
+            codes.append(match.group())
+            return True
+
+        monkeypatch.setattr(email_sender, "_deliver", capture)
+        headers = {"Authorization": f"Bearer {token}"}
+        sent = client.post("/auth/email/verification-code", headers=headers)
+        assert sent.status_code == 200, sent.text
+        verified = client.post(
+            "/auth/email/verify", json={"code": codes[0]}, headers=headers
+        )
+        assert verified.status_code == 200, verified.text
+
+    return verify

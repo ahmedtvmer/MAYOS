@@ -115,6 +115,17 @@ def owner_send_reset_email(db: Any, account_id: str, actor: str, source_ip: str 
     email = normalize_email(db.get_account_email(account_id))
     if email is None:
         return {"outcome": "no_recovery_email"}
+    if not db.is_recovery_email_verified(account_id):
+        _write_owner_reset_audit(
+            db,
+            audit_log.AuditEvent(
+                actor=actor,
+                action="reset_email_unverified",
+                target_account_id=account_id,
+                source_ip=source_ip,
+            ),
+        )
+        return {"outcome": "unverified"}
 
     try:
         raw_token, _ = _new_reset_token(db, account_id, reset_ttl())
@@ -397,6 +408,8 @@ def request_password_reset(
         )
         if notice_claimed:
             _send_no_account_notice_email(normalized, no_account_mailer)
+        return generic_response
+    if not db.is_recovery_email_verified(account["account_id"]):
         return generic_response
     raw_token = _store_requested_reset_token(db, account["account_id"], token_factory)
     if raw_token is None:
