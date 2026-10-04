@@ -11,9 +11,9 @@ and capture can lose an event.
 
 - PostHog `distinct_id` is the immutable Account id. It is never a username,
   email, token, or client identifier.
-- Mutable person properties are `is_player` and `is_coach`. The initial
-  `signup_phase` is set once from `MAYOS_RELEASE_PHASE` (`closed_trial` by
-  default; `public` after launch).
+- Mutable person properties are `is_player`, `is_coach`, `coached`, and
+  `active_roster_size`. The initial `signup_phase` is set once from
+  `MAYOS_RELEASE_PHASE` (`closed_trial` by default; `public` after launch).
 - Every event carries `role`, `platform`, `app_version`, and `env`.
   `X-MAYOS-Client` uses `platform/version` (for example, `android/1.2.3`);
   missing or invalid headers resolve to `unknown`. The service owns that
@@ -43,7 +43,9 @@ and capture can lose an event.
   addresses, free text, onboarding answers, prompts, completions, or workout
   contents.
 - Event UUIDs are UUID5 values derived from the event name and its domain key.
-  For these account-scoped events, the domain key is the immutable account id.
+  Assignment events use the assignment or invite identity; Coach capability
+  transitions use the Account id and committed timestamp; failed redemption
+  events use one generated attempt identity.
 - The code catalogue and current server events are contract-tested for exact
   name parity. The strict recording sink rejects unknown events, extra or
   missing properties, and values outside each property's safe type or
@@ -55,9 +57,15 @@ and capture can lose an event.
 | Event | Origin | Trigger | Properties |
 |---|---|---|---|
 | `account_created` | server | A password or Google registration has committed and its account ledger is ready. | `role`, `platform`, `app_version`, `env`, `signup_phase`, `invite_used` |
+| `coach_capability_granted` | server | A Coach invite redemption has committed and granted Coach capability. | `role`, `platform`, `app_version`, `env` |
+| `coach_capability_disabled` | server | Coach capability has been cleared by disablement or account deletion, after any active assignments end. | `role`, `platform`, `app_version`, `env` |
 | `onboarding_started` | server | The first committed onboarding write: disclosure, first named answer, or legacy start/answer. Reads do not create this event. | `role`, `platform`, `app_version`, `env` |
 | `onboarding_completed` | server | The first successful onboarding completion has committed and its completion time is persisted. Retries and replayed confirmation do not create another event. | `role`, `platform`, `app_version`, `env`, `duration_seconds`, `prefilled_fields_count` |
 | `onboarding_step_viewed` | client | A Player is shown one onboarding step. Sent on each display of that step; answer values are excluded. | `role`, `platform`, `app_version`, `env`, `step` |
+| `assignment_invite_issued` | server | A Coach's single-use Assignment invite has been stored. | `role`, `platform`, `app_version`, `env`, `active_roster_size` |
+| `assignment_started` | server | A Player has consented and the invite claim and active Assignment have committed; the Coach (roster owner) is the distinct id. | `role`, `platform`, `app_version`, `env`, `coach_id`, `active_roster_size`, `time_since_invite_seconds` |
+| `assignment_ended` | server | An active Assignment has ended through either participant, Coach disablement, or account deletion; the Coach (roster owner) is the distinct id unless that Coach was deleted, in which case it is the surviving Player. | `role`, `platform`, `app_version`, `env`, `ended_by`, `duration_seconds`, `active_roster_size` |
+| `invite_redemption_failed` | server | A Player's Assignment invite redemption was refused. | `role`, `platform`, `app_version`, `env`, `reason_code` |
 <!-- event-catalogue:end -->
 
 ### Property definitions
@@ -66,13 +74,19 @@ and capture can lose an event.
 |---|---|---|
 | `is_player` | Boolean person property | The Account has Player capability. |
 | `is_coach` | Boolean person property | The Account has Coach capability. |
-| `role` | `player`, `coach`, or `unknown` | Capability under which the action occurred. |
+| `coached` | Boolean person property | The Player has an active Assignment. |
+| `active_roster_size` | Integer from 0 to 200; person property and assignment event property | The Coach's count of active Assignments, read from committed registry state. |
+| `role` | `player`, `coach`, or `unknown` | Capability for the event's distinct id; Assignment lifecycle events describe the roster owner except when the Coach is deleted. |
 | `platform` | `android`, `web`, or `unknown` | Flutter client platform; server events use `X-MAYOS-Client`. |
 | `app_version` | Safe version label or `unknown` | Flutter build name; server events use `X-MAYOS-Client`. |
 | `env` | `development`, `production`, or `test` | Release Flutter events use `production`; server uses `MAYOS_ENV`, defaulting to `development`. |
 | `signup_phase` | `closed_trial` or `public` | Release phase at account creation; also set once on the person. |
 | `invite_used` | Boolean | Whether registration consumed a new-account Coach invite. No invite code is sent. |
-| `duration_seconds` | Bounded nonnegative integer | Elapsed whole seconds from the first persisted onboarding start to completion. |
+| `duration_seconds` | Bounded nonnegative integer | For onboarding, elapsed whole seconds from the first persisted start to completion; for an Assignment, elapsed whole seconds from its committed start to end. |
+| `coach_id` | Immutable Account UUID | Opaque id of the Coach on an `assignment_started` event. |
+| `time_since_invite_seconds` | Bounded nonnegative integer | Elapsed whole seconds from Assignment invite creation to committed redemption. |
+| `ended_by` | `player`, `coach`, `coach_capability_disabled`, or `account_deleted` | Who or what ended the Assignment. |
+| `reason_code` | `unknown_code`, `already_redeemed`, `expired`, `coach_unavailable`, `not_a_player`, `self_assignment`, `already_assigned`, `capacity`, or `consent_required` | Coded reason for a refused Assignment invite redemption; a same-Player retry after a successful redemption is `already_redeemed`. The HTTP error remains generic for unknown, redeemed, expired, unavailable-Coach, and non-Player cases. No token or free text is sent. |
 | `prefilled_fields_count` | Integer from 0 to 100 | Number of legacy-prefilled answers at completion. Answer values are never sent. |
 | `step` | Allowlisted onboarding step identifier | One of `disclosure`, each field in `service/intake.py::INTAKE_FIELDS`, or `review`. No answer values are sent. |
 
@@ -86,5 +100,5 @@ not reconstructed from analytics events.
 
 The service uses the PostHog SDK's background queue. It sends no events without a
 key and never sends from test mode. Person deletion is exposed by the MAYOS
-analytics interface for account-deletion work; account deletion and its retry
-policy are owned by the account-deletion implementation.
+analytics interface and is handled independently of these coaching relationship
+events.

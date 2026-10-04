@@ -25,6 +25,7 @@ from database.database_manager import (  # noqa: E402
     DatabaseManager,
 )
 from database.offsite_backup import configure_database_offsite_backup  # noqa: E402
+from service.account_deletion import replay_deletions  # noqa: E402
 from utils.logger import MyosLogger  # noqa: E402
 
 logger = MyosLogger().get_logger(__name__)
@@ -40,7 +41,7 @@ def main(argv: list[str] | None = None) -> int:
     db = DatabaseManager(catalog_path=args.catalog, ledgers_dir=args.ledgers_dir, backups_dir=args.backups_dir)
     configure_database_offsite_backup(db, log_disabled=True)
     try:
-        applied = db.reapply_deletions()
+        applied = replay_deletions(db, full=True)
     finally:
         db.catalog_conn.close()
 

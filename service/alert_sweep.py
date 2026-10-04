@@ -11,6 +11,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
+from service import account_deletion as account_deletion_service
 from service.check_ins import evaluate_follow_up
 from service.missed_day_alerts import evaluate_assignment
 
@@ -41,7 +42,7 @@ def run_sweep(db: Any, now: datetime | None = None) -> dict[str, int]:
     # interrupted deletion resolves on the next sweep without a restart
     # (ADR 039). Incremental: already-applied records are skipped.
     try:
-        db.replay_deletions()
+        account_deletion_service.replay_deletions(db)
     except Exception:
         counts["errors"] += 1
         logger.exception("Deletion replay failed during the sweep")

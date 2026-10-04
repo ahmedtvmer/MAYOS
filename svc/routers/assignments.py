@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse, Response
 
 from agent.ProgramState import GeneratedProgramSchema, PersistedProgramSchema
 from service import assignments as assignment_service
+from service import analytics as analytics_service
 from service import check_ins as check_ins_service
 from service import checkpoint_reviews as checkpoint_reviews_service
 from service import coach_history as coach_history_service
@@ -124,9 +125,10 @@ async def issue_assignment_invite(
     db: Annotated[Any, Depends(get_db)],
 ):
     """Issues a single-use, capacity-bound assignment invite for the authenticated coach."""
+    client = analytics_service.client_context(request)
 
     def _run():
-        result = assignment_service.issue_assignment_invite(db, coach.account_id)
+        result = assignment_service.issue_assignment_invite(db, coach.account_id, client=client)
         if not result["ok"]:
             raise _bad_request(result["error"])
         return result
@@ -344,9 +346,12 @@ async def revoke_assignment(
     db: Annotated[Any, Depends(get_db)],
 ):
     """Coach ends one of their assignments; access is revoked immediately."""
+    client = analytics_service.client_context(request)
 
     def _run():
-        result = assignment_service.end_assignment(db, coach.account_id, assignment_id, "coach")
+        result = assignment_service.end_assignment(
+            db, coach.account_id, assignment_id, "coach", client=client
+        )
         if not result["ok"]:
             if "not part of this assignment" in result["error"]:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=result["error"])
@@ -609,9 +614,12 @@ async def redeem_assignment_invite(
     db: Annotated[Any, Depends(get_db)],
 ):
     """Explicitly consents to and atomically redeems an assignment invite."""
+    client = analytics_service.client_context(request)
 
     def _run():
-        result = assignment_service.redeem_assignment_invite(db, body.token, player.account_id, body.consent)
+        result = assignment_service.redeem_assignment_invite(
+            db, body.token, player.account_id, body.consent, client=client
+        )
         if not result["ok"]:
             raise _bad_request(result["error"])
         return result
@@ -682,12 +690,15 @@ async def end_my_assignment(
     db: Annotated[Any, Depends(get_db)],
 ):
     """Player ends their active assignment; coach access is revoked immediately."""
+    client = analytics_service.client_context(request)
 
     def _run():
         assignment = assignment_service.get_player_assignment(db, player.account_id)
         if assignment is None:
             raise _bad_request("You have no active coaching assignment.")
-        result = assignment_service.end_assignment(db, player.account_id, assignment["assignment_id"], "player")
+        result = assignment_service.end_assignment(
+            db, player.account_id, assignment["assignment_id"], "player", client=client
+        )
         if not result["ok"]:
             raise _bad_request(result["error"])
         return result

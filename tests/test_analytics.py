@@ -37,24 +37,100 @@ def _test_program() -> GeneratedProgramSchema:
     )
 
 
-def _assert_authoritative_write_committed(db: DatabaseManager, account_id: str, event: str) -> None:
+def _assert_authoritative_write_committed(
+    db: DatabaseManager, account_id: str, event: str, event_uuid: str, properties: dict
+) -> None:
+    assert not db.catalog_conn.in_transaction
     account = db.get_account(account_id)
-    assert db.is_live_account(account)
-    with db.open_ledger(account["ledger_id"]) as ledger:
-        assert not ledger.conn.in_transaction
-        if event == "onboarding_started":
-            assert ledger.get_onboarding_analytics_started_at()
-            assert (
-                ledger.get_intake_state()
-                or ledger.load_onboarding_state()
-                or ledger.get_active_program()
-                or ledger.get_chat_history()
-            )
-        elif event == "onboarding_completed":
-            assert ledger.get_onboarding_analytics_completed_at()
-            intake_state = ledger.get_intake_state()
-            assert intake_state is None or intake_state["status"] == "confirmed"
-            assert intake_state is not None or ledger.get_active_program() is not None
+    if event == "assignment_ended" and properties["ended_by"] == "account_deleted":
+        assert db.is_live_account(account)
+    elif event == "coach_capability_disabled":
+        assert account is not None and not account["is_coach"]
+    else:
+        assert db.is_live_account(account)
+    if event in {"onboarding_started", "onboarding_completed"}:
+        with db.open_ledger(account["ledger_id"]) as ledger:
+            assert not ledger.conn.in_transaction
+            if event == "onboarding_started":
+                assert ledger.get_onboarding_analytics_started_at()
+                assert (
+                    ledger.get_intake_state()
+                    or ledger.load_onboarding_state()
+                    or ledger.get_active_program()
+                    or ledger.get_chat_history()
+                )
+            else:
+                assert ledger.get_onboarding_analytics_completed_at()
+                intake_state = ledger.get_intake_state()
+                assert intake_state is None or intake_state["status"] == "confirmed"
+                assert intake_state is not None or ledger.get_active_program() is not None
+    if event == "coach_capability_granted":
+        assert account["is_coach"] is True
+    elif event == "assignment_invite_issued":
+        assert db.count_active_assignments_for_coach(account_id) == properties["active_roster_size"]
+        invite_hashes = db.catalog_conn.execute(
+            "SELECT token_hash FROM assignment_invites WHERE coach_account_id = ? ORDER BY created_at DESC",
+            (account_id,),
+        ).fetchall()
+        assert any(
+            analytics.deterministic_event_uuid(event, f"{row[0]}:issued") == event_uuid
+            for row in invite_hashes
+        )
+    elif event == "assignment_started":
+        active_rows = db.catalog_conn.execute(
+            "SELECT assignment_id, coach_account_id, player_account_id, started_at FROM assignments"
+            " WHERE coach_account_id = ? AND status = 'active'",
+            (account_id,),
+        ).fetchall()
+        active = next(
+            (
+                row
+                for row in active_rows
+                if analytics.deterministic_event_uuid(event, f"{row[0]}:started") == event_uuid
+            ),
+            None,
+        )
+        assert active is not None
+        assert active[1] == properties["coach_id"] == account_id
+        assert db.count_active_assignments_for_coach(properties["coach_id"]) == properties["active_roster_size"]
+        invite_created_at = db.catalog_conn.execute(
+            "SELECT created_at FROM assignment_invites WHERE assignment_id = ?", (active[0],)
+        ).fetchone()[0]
+        time_since_invite = max(
+            0,
+            int(
+                (
+                    datetime.fromisoformat(active[3])
+                    - datetime.fromisoformat(invite_created_at)
+                ).total_seconds()
+            ),
+        )
+        assert properties["time_since_invite_seconds"] == time_since_invite
+    elif event == "assignment_ended":
+        ended_assignments = db.catalog_conn.execute(
+            "SELECT assignment_id, coach_account_id, player_account_id, status, started_at, ended_at FROM assignments"
+            " WHERE ended_by = ?"
+            " AND (coach_account_id = ? OR player_account_id = ?) ORDER BY ended_at DESC",
+            (properties["ended_by"], account_id, account_id),
+        ).fetchall()
+        ended = next(
+            (
+                row
+                for row in ended_assignments
+                if analytics.deterministic_event_uuid(event, f"{row[0]}:ended") == event_uuid
+            ),
+            None,
+        )
+        assert ended is not None and ended[3] == "ended"
+        if properties["ended_by"] == "account_deleted":
+            coach_was_deleted = not db.is_live_account(db.get_account(ended[1]))
+            expected_distinct_id = ended[2] if coach_was_deleted else ended[1]
+            assert account_id == expected_distinct_id
+        assert db.count_active_assignments_for_coach(ended[1]) == properties["active_roster_size"]
+        duration = max(
+            0, int((datetime.fromisoformat(ended[5]) - datetime.fromisoformat(ended[4])).total_seconds())
+        )
+        assert properties["duration_seconds"] == duration
 
 
 @pytest.fixture
@@ -93,10 +169,14 @@ def analytics_api(tmp_path, monkeypatch, recording_analytics):
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
     sink = recording_analytics
+    sink.capture_attempts = []
     original_capture = sink.capture
 
     def capture_after_committed_write(account_id, event, event_uuid, properties):
-        _assert_authoritative_write_committed(db, account_id, event)
+        _assert_authoritative_write_committed(db, account_id, event, event_uuid, properties)
+        sink.capture_attempts.append(
+            {"distinct_id": account_id, "event": event, "uuid": event_uuid, "properties": dict(properties)}
+        )
         original_capture(account_id, event, event_uuid, properties)
 
     monkeypatch.setattr(sink, "capture", capture_after_committed_write)
@@ -117,11 +197,21 @@ def _register(client: TestClient, username: str, *, client_header: str | None = 
         headers=headers,
     )
     assert response.status_code == 201, response.text
-    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+    headers = {"Authorization": f"Bearer {response.json()['access_token']}"}
+    if client_header:
+        headers["X-MAYOS-Client"] = client_header
+    return headers
 
 
 def _event(sink, name: str) -> dict:
     return next(event for event in sink.events if event["event"] == name)
+
+
+def _capture_attempt_count(sink, event_name: str, event_uuid: str) -> int:
+    return sum(
+        attempt["event"] == event_name and attempt["uuid"] == event_uuid
+        for attempt in sink.capture_attempts
+    )
 
 
 def _fill_required_intake(client: TestClient, headers: dict[str, str]) -> None:
@@ -373,7 +463,17 @@ def test_account_created_marks_invite_use_and_release_phase_once(analytics_api, 
     event = _event(sink, "account_created")
     assert event["properties"]["signup_phase"] == "public"
     assert event["properties"]["invite_used"] is True
-    assert sink.people[event["distinct_id"]] == {"is_player": True, "is_coach": True}
+    grant = _event(sink, "coach_capability_granted")
+    assert grant["distinct_id"] == event["distinct_id"]
+    assert grant["properties"]["role"] == "coach"
+    assert sink.events.index(event) < sink.events.index(grant)
+    assert _capture_attempt_count(sink, "account_created", event["uuid"]) == 1
+    assert _capture_attempt_count(sink, "coach_capability_granted", grant["uuid"]) == 1
+    assert sink.people[event["distinct_id"]] == {
+        "is_player": True,
+        "is_coach": True,
+        "active_roster_size": 0,
+    }
     assert sink.people_set_once[event["distinct_id"]] == {"signup_phase": "public"}
 
 
@@ -542,3 +642,400 @@ def test_raising_sink_does_not_fail_registration(analytics_api):
         json={"trainee_id": "analytics-raising", "password": "correct-horse-1"},
     )
     assert response.status_code == 201, response.text
+
+
+def _grant_analytics_coach(client, db, username: str, *, client_header: str = "web/3.1"):
+    from service import coach as coach_service
+
+    headers = _register(client, username, client_header=client_header)
+    account = db.get_active_account_by_username(username)
+    invite = coach_service.issue_coach_invite(db, username, actor="test")
+    assert invite["ok"]
+    response = client.post("/coach/invite/redeem", headers=headers, json={"token": invite["token"]})
+    assert response.status_code == 200, response.text
+    return headers, account["account_id"]
+
+
+def _set_analytics_coach_profile(client, headers, capacity: int = 5):
+    response = client.put(
+        "/coach/profile",
+        headers=headers,
+        json={"display_name": "Coach", "bio": "", "specialization": "", "capacity": capacity},
+    )
+    assert response.status_code == 200, response.text
+
+
+def test_assignment_events_follow_commits_and_keep_roster_properties_current(analytics_api):
+    client, db, sink = analytics_api
+    coach_headers, coach_id = _grant_analytics_coach(client, db, "analytics-coach")
+    _set_analytics_coach_profile(client, coach_headers, capacity=1)
+
+    coach_granted = _event(sink, "coach_capability_granted")
+    assert coach_granted["distinct_id"] == coach_id
+    assert coach_granted["properties"]["role"] == "coach"
+    assert coach_granted["properties"]["platform"] == "web"
+    assert sink.people[coach_id]["is_coach"] is True
+    assert sink.people[coach_id]["active_roster_size"] == 0
+
+    issued = client.post("/coach/assignments/invites", headers=coach_headers)
+    assert issued.status_code == 200, issued.text
+    invite_event = _event(sink, "assignment_invite_issued")
+    assert invite_event["distinct_id"] == coach_id
+    assert invite_event["properties"]["active_roster_size"] == 0
+
+    player_headers = _register(client, "analytics-player", client_header="android/4.2.1")
+    player_id = db.get_active_account_by_username("analytics-player")["account_id"]
+    redeemed = client.post(
+        "/assignments/invites/redeem",
+        headers=player_headers,
+        json={"token": issued.json()["token"], "consent": True},
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    assignment_id = redeemed.json()["assignment"]["assignment_id"]
+    started = _event(sink, "assignment_started")
+    assert started["distinct_id"] == coach_id
+    assert started["properties"]["coach_id"] == coach_id
+    assert started["properties"]["active_roster_size"] == 1
+    assert started["properties"]["time_since_invite_seconds"] >= 0
+    assert started["properties"]["platform"] == "android"
+    assert sink.people[player_id]["coached"] is True
+    assert sink.people[coach_id]["active_roster_size"] == 1
+    full_roster_invite = client.post("/coach/assignments/invites", headers=coach_headers)
+    assert full_roster_invite.status_code == 400
+    assert len([event for event in sink.events if event["event"] == "assignment_invite_issued"]) == 1
+
+    ended = client.post("/assignments/me/end", headers=player_headers)
+    assert ended.status_code == 200, ended.text
+    end_event = _event(sink, "assignment_ended")
+    assert end_event["distinct_id"] == coach_id
+    assert end_event["properties"]["ended_by"] == "player"
+    assert end_event["properties"]["active_roster_size"] == 0
+    assert end_event["properties"]["duration_seconds"] >= 0
+    assignment_status = db.catalog_conn.execute(
+        "SELECT status FROM assignments WHERE assignment_id = ?", (assignment_id,)
+    ).fetchone()[0]
+    assert assignment_status == "ended"
+    assert sink.people[player_id]["coached"] is False
+    assert sink.people[coach_id]["active_roster_size"] == 0
+
+    second_invite = client.post("/coach/assignments/invites", headers=coach_headers)
+    assert second_invite.status_code == 200, second_invite.text
+    second_player_headers = _register(client, "analytics-coach-revoke", client_header="android/4.2.1")
+    second_assignment = client.post(
+        "/assignments/invites/redeem",
+        headers=second_player_headers,
+        json={"token": second_invite.json()["token"], "consent": True},
+    )
+    assert second_assignment.status_code == 200, second_assignment.text
+    assignment_to_revoke = second_assignment.json()["assignment"]["assignment_id"]
+    revoked = client.post(
+        f"/coach/assignments/{assignment_to_revoke}/revoke", headers=coach_headers
+    )
+    assert revoked.status_code == 200, revoked.text
+    coach_revoke_event = next(
+        event
+        for event in sink.events
+        if event["event"] == "assignment_ended" and event["properties"]["ended_by"] == "coach"
+    )
+    assert coach_revoke_event["distinct_id"] == coach_id
+    for capture in sink.capture_attempts:
+        assert _capture_attempt_count(sink, capture["event"], capture["uuid"]) == 1
+
+
+def test_coach_disablement_and_account_deletion_emit_assignment_ends_once(analytics_api):
+    client, db, sink = analytics_api
+    coach_headers, coach_id = _grant_analytics_coach(client, db, "analytics-disable-coach")
+    _set_analytics_coach_profile(client, coach_headers)
+    player_headers = _register(client, "analytics-disable-player")
+    player_id = db.get_active_account_by_username("analytics-disable-player")["account_id"]
+    invite = client.post("/coach/assignments/invites", headers=coach_headers)
+    assert invite.status_code == 200, invite.text
+    assignment = client.post(
+        "/assignments/invites/redeem",
+        headers=player_headers,
+        json={"token": invite.json()["token"], "consent": True},
+    )
+    assert assignment.status_code == 200, assignment.text
+
+    disabled = client.post("/coach/capability/disable", headers=coach_headers)
+    assert disabled.status_code == 200, disabled.text
+    disabled_events = [event for event in sink.events if event["event"] == "coach_capability_disabled"]
+    assert len(disabled_events) == 1
+    ended_events = [event for event in sink.events if event["event"] == "assignment_ended"]
+    assert len(ended_events) == 1
+    assert ended_events[0]["properties"]["ended_by"] == "coach_capability_disabled"
+    assert sink.people[coach_id]["is_coach"] is False
+    assert sink.people[coach_id]["active_roster_size"] == 0
+    assert sink.people[player_id]["coached"] is False
+
+    deleting_coach_headers, deleting_coach_id = _grant_analytics_coach(
+        client, db, "analytics-deleted-coach"
+    )
+    _set_analytics_coach_profile(client, deleting_coach_headers)
+    deleting_player_headers = _register(client, "analytics-deleted-player")
+    deleted_assignment_invite = client.post(
+        "/coach/assignments/invites", headers=deleting_coach_headers
+    )
+    assert deleted_assignment_invite.status_code == 200, deleted_assignment_invite.text
+    assignment_response = client.post(
+        "/assignments/invites/redeem",
+        headers=deleting_player_headers,
+        json={"token": deleted_assignment_invite.json()["token"], "consent": True},
+    )
+    assert assignment_response.status_code == 200, assignment_response.text
+    deleted = client.request(
+        "DELETE", "/auth/account", headers=deleting_player_headers, json={"password": "correct-horse-1"}
+    )
+    assert deleted.status_code == 200, deleted.text
+    all_end_events = [event for event in sink.events if event["event"] == "assignment_ended"]
+    deletion_events = [
+        event for event in all_end_events if event["properties"]["ended_by"] == "account_deleted"
+    ]
+    assert len(deletion_events) == 1
+    assert deletion_events[0]["distinct_id"] == deleting_coach_id
+    assert sink.people[deleting_coach_id]["active_roster_size"] == 0
+
+    from svc.rate_limit import limiter
+
+    limiter._storage.reset()
+    deleted_coach_headers, deleted_coach_id = _grant_analytics_coach(
+        client, db, "analytics-account-deleted-coach"
+    )
+    _set_analytics_coach_profile(client, deleted_coach_headers)
+    assigned_player_headers = _register(client, "analytics-account-deleted-roster")
+    coach_invite = client.post("/coach/assignments/invites", headers=deleted_coach_headers)
+    assert coach_invite.status_code == 200, coach_invite.text
+    assigned = client.post(
+        "/assignments/invites/redeem",
+        headers=assigned_player_headers,
+        json={"token": coach_invite.json()["token"], "consent": True},
+    )
+    assert assigned.status_code == 200, assigned.text
+    assigned_player_id = db.get_active_account_by_username("analytics-account-deleted-roster")["account_id"]
+    coach_deleted = client.request(
+        "DELETE", "/auth/account", headers=deleted_coach_headers, json={"password": "correct-horse-1"}
+    )
+    assert coach_deleted.status_code == 200, coach_deleted.text
+    deleted_coach_end = next(
+        event
+        for event in sink.events
+        if event["event"] == "assignment_ended"
+        and event["distinct_id"] == assigned_player_id
+        and event["properties"]["ended_by"] == "account_deleted"
+    )
+    assert deleted_coach_end["properties"]["active_roster_size"] == 0
+    deleted_coach_disable = [
+        event
+        for event in sink.events
+        if event["event"] == "coach_capability_disabled" and event["distinct_id"] == deleted_coach_id
+    ]
+    assert len(deleted_coach_disable) == 1
+    assert assigned_player_id in sink.people and sink.people[assigned_player_id]["coached"] is False
+    assert sink.people[deleted_coach_id]["is_coach"] is False
+    assert sink.people[deleted_coach_id]["active_roster_size"] == 0
+    for capture in sink.capture_attempts:
+        assert _capture_attempt_count(sink, capture["event"], capture["uuid"]) == 1
+
+
+def test_failed_end_and_disable_do_not_emit_success_events(analytics_api, monkeypatch):
+    client, db, sink = analytics_api
+    coach_headers, _coach_id = _grant_analytics_coach(client, db, "analytics-failed-end-coach")
+    other_coach_headers, _other_coach_id = _grant_analytics_coach(
+        client, db, "analytics-failed-end-other-coach"
+    )
+    _set_analytics_coach_profile(client, coach_headers)
+    _set_analytics_coach_profile(client, other_coach_headers)
+    player_headers = _register(client, "analytics-failed-end-player")
+    invite = client.post("/coach/assignments/invites", headers=coach_headers)
+    assert invite.status_code == 200, invite.text
+    redeemed = client.post(
+        "/assignments/invites/redeem",
+        headers=player_headers,
+        json={"token": invite.json()["token"], "consent": True},
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    assignment_id = redeemed.json()["assignment"]["assignment_id"]
+    event_attempts_before_failures = len(sink.capture_attempts)
+
+    forbidden_end = client.post(
+        f"/coach/assignments/{assignment_id}/revoke", headers=other_coach_headers
+    )
+    assert forbidden_end.status_code == 403
+    monkeypatch.setattr(db, "disable_coach_account", lambda *_args, **_kwargs: {"ok": False})
+    failed_disable = client.post("/coach/capability/disable", headers=coach_headers)
+    assert failed_disable.status_code == 400
+    assert len(sink.capture_attempts) == event_attempts_before_failures
+    assert not any(
+        attempt["event"] in {"assignment_ended", "coach_capability_disabled"}
+        for attempt in sink.capture_attempts[event_attempts_before_failures:]
+    )
+
+
+def test_raising_sink_does_not_fail_end_disable_or_delete(analytics_api):
+    client, db, _sink = analytics_api
+    coach_headers, coach_id = _grant_analytics_coach(client, db, "analytics-raising-end-coach")
+    second_coach_headers, _second_coach_id = _grant_analytics_coach(
+        client, db, "analytics-raising-delete-coach"
+    )
+    _set_analytics_coach_profile(client, coach_headers)
+    _set_analytics_coach_profile(client, second_coach_headers)
+    end_player_headers = _register(client, "analytics-raising-end-player")
+    delete_player_headers = _register(client, "analytics-raising-delete-player")
+    delete_player_id = db.get_active_account_by_username("analytics-raising-delete-player")["account_id"]
+    end_invite = client.post("/coach/assignments/invites", headers=coach_headers)
+    delete_invite = client.post("/coach/assignments/invites", headers=second_coach_headers)
+    assert end_invite.status_code == delete_invite.status_code == 200
+    for headers, invite in ((end_player_headers, end_invite), (delete_player_headers, delete_invite)):
+        redeemed = client.post(
+            "/assignments/invites/redeem",
+            headers=headers,
+            json={"token": invite.json()["token"], "consent": True},
+        )
+        assert redeemed.status_code == 200, redeemed.text
+
+    class RaisingSink:
+        def capture(self, *_args):
+            raise RuntimeError("sink unavailable")
+
+        def set_person(self, *_args):
+            raise RuntimeError("sink unavailable")
+
+        def set_person_once(self, *_args):
+            raise RuntimeError("sink unavailable")
+
+        def delete_person(self, *_args):
+            raise RuntimeError("sink unavailable")
+
+    analytics.set_sink(RaisingSink())
+    ended = client.post("/assignments/me/end", headers=end_player_headers)
+    assert ended.status_code == 200, ended.text
+    disabled = client.post("/coach/capability/disable", headers=coach_headers)
+    assert disabled.status_code == 200, disabled.text
+    deleted = client.request(
+        "DELETE", "/auth/account", headers=delete_player_headers, json={"password": "correct-horse-1"}
+    )
+    assert deleted.status_code == 200, deleted.text
+    assert db.get_account(coach_id)["is_coach"] is False
+    assert db.get_account(delete_player_id)["deleted_at"] is not None
+
+
+def test_invite_redemption_failures_are_reason_coded_and_raising_sink_is_isolated(analytics_api):
+    client, db, sink = analytics_api
+    coach_a_headers, _coach_a_id = _grant_analytics_coach(client, db, "analytics-reason-coach-a")
+    coach_b_headers, _coach_b_id = _grant_analytics_coach(client, db, "analytics-reason-coach-b")
+    _set_analytics_coach_profile(client, coach_a_headers, capacity=1)
+    _set_analytics_coach_profile(client, coach_b_headers, capacity=1)
+    player_a_headers = _register(client, "analytics-reason-player-a")
+    player_b_headers = _register(client, "analytics-reason-player-b")
+    non_player_headers = _register(client, "analytics-reason-not-player")
+    non_player_id = db.get_active_account_by_username("analytics-reason-not-player")["account_id"]
+
+    def redeem(headers, token, *, consent=True):
+        return client.post(
+            "/assignments/invites/redeem",
+            headers=headers,
+            json={"token": token, "consent": consent},
+        )
+
+    def assert_failure(response, reason_code: str, detail: str = "Invalid or expired invite code."):
+        assert response.status_code == 400, response.text
+        assert response.json()["detail"] == detail
+        matching = [
+            attempt
+            for attempt in sink.capture_attempts
+            if attempt["event"] == "invite_redemption_failed"
+            and attempt["properties"]["reason_code"] == reason_code
+        ]
+        assert len(matching) == 1
+        assert _capture_attempt_count(sink, "invite_redemption_failed", matching[0]["uuid"]) == 1
+
+    assert_failure(redeem(player_a_headers, "unknown-valid-token"), "unknown_code")
+    assert_failure(
+        redeem(player_a_headers, "another-valid-shaped-token", consent=False),
+        "consent_required",
+        "You must explicitly accept the assignment to redeem this invite.",
+    )
+
+    coach_a_tokens = [
+        client.post("/coach/assignments/invites", headers=coach_a_headers).json()["token"]
+        for _ in range(3)
+    ]
+    coach_b_tokens = [
+        client.post("/coach/assignments/invites", headers=coach_b_headers).json()["token"]
+        for _ in range(3)
+    ]
+    assert_failure(redeem(coach_a_headers, coach_a_tokens[2]), "self_assignment", "You cannot assign yourself as your own coach.")
+
+    accepted = redeem(player_a_headers, coach_a_tokens[0])
+    assert accepted.status_code == 200, accepted.text
+    assert_failure(redeem(player_a_headers, coach_a_tokens[0]), "already_redeemed")
+    assert_failure(redeem(player_b_headers, coach_a_tokens[1]), "capacity", "This coach's roster is full. Ask them for a new invite later.")
+    assert_failure(redeem(player_a_headers, coach_b_tokens[0]), "already_assigned", "You already have an active coaching assignment.")
+
+    with db.catalog_locked() as conn:
+        conn.execute(
+            "UPDATE assignment_invites SET expires_at = ? WHERE token_hash = ?",
+            ("2000-01-01T00:00:00+00:00", hash_token(coach_b_tokens[1])),
+        )
+        conn.commit()
+    assert_failure(redeem(player_b_headers, coach_b_tokens[1]), "expired")
+    disabled = client.post("/coach/capability/disable", headers=coach_b_headers)
+    assert disabled.status_code == 200, disabled.text
+    assert_failure(redeem(player_b_headers, coach_b_tokens[2]), "coach_unavailable")
+
+    with db.catalog_locked() as conn:
+        conn.execute("UPDATE accounts SET is_player = 0 WHERE account_id = ?", (non_player_id,))
+        conn.commit()
+    from svc.dependencies import VerifiedPlayer, get_current_player
+
+    prior_override = client.app.dependency_overrides.get(get_current_player)
+    client.app.dependency_overrides[get_current_player] = lambda: VerifiedPlayer(
+        non_player_id, non_player_id, 1
+    )
+    try:
+        assert_failure(redeem(non_player_headers, coach_a_tokens[1]), "not_a_player")
+    finally:
+        if prior_override is None:
+            client.app.dependency_overrides.pop(get_current_player, None)
+        else:
+            client.app.dependency_overrides[get_current_player] = prior_override
+
+    class RaisingSink:
+        def capture(self, *_args):
+            raise RuntimeError("sink unavailable")
+
+        def set_person(self, *_args):
+            raise RuntimeError("sink unavailable")
+
+        def set_person_once(self, *_args):
+            raise RuntimeError("sink unavailable")
+
+        def delete_person(self, *_args):
+            raise RuntimeError("sink unavailable")
+
+    _set_analytics_coach_profile(client, coach_a_headers, capacity=2)
+    analytics.set_sink(RaisingSink())
+    invite = client.post("/coach/assignments/invites", headers=coach_a_headers)
+    assert invite.status_code == 200, invite.text
+    redeemed = client.post(
+        "/assignments/invites/redeem",
+        headers=player_b_headers,
+        json={"token": invite.json()["token"], "consent": True},
+    )
+    assert redeemed.status_code == 200, redeemed.text
+
+
+def test_hourly_sweep_does_not_delete_analytics_person_profiles(analytics_api, monkeypatch):
+    client, db, _sink = analytics_api
+    headers = _register(client, "analytics-deletion-retry")
+    deleted = client.request(
+        "DELETE", "/auth/account", headers=headers, json={"password": "correct-horse-1"}
+    )
+    assert deleted.status_code == 200, deleted.text
+
+    deletion_attempts = []
+    monkeypatch.setattr(analytics, "delete_person", deletion_attempts.append)
+    from service.alert_sweep import run_sweep
+
+    run_sweep(db)
+    assert deletion_attempts == []

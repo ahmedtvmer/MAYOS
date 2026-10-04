@@ -11,7 +11,10 @@ from typing import Any
 import bcrypt
 
 from service._base import ledger_scope
-from service.coach import DEFAULT_CAPACITY, GENERIC_NEW_ACCOUNT_INVITE_ERROR
+from service.coach import (
+    DEFAULT_CAPACITY,
+    GENERIC_NEW_ACCOUNT_INVITE_ERROR,
+)
 from service._tokens import hash_token
 
 MIN_PASSWORD_LENGTH = 8
@@ -49,6 +52,7 @@ def register_player(
     owns opted-in import).
     """
     clean_id = db._sanitize_username(username)
+    coach_granted_at = None
     if not clean_id:
         return {"ok": False, "error": "Trainee ID is empty after sanitization."}
     if coach_invite_code is not None:
@@ -60,8 +64,9 @@ def register_player(
             MIN_COACH_INVITE_CODE_LENGTH <= len(coach_invite_code) <= MAX_COACH_INVITE_CODE_LENGTH
         ):
             return {"ok": False, "error": GENERIC_NEW_ACCOUNT_INVITE_ERROR, "code": "invalid_coach_invite"}
+        coach_granted_at = datetime.now(UTC).isoformat()
         account = db.register_account_with_coach_invite(
-            hash_token(coach_invite_code), clean_id, datetime.now(UTC).isoformat(), DEFAULT_CAPACITY, display_language
+            hash_token(coach_invite_code), clean_id, coach_granted_at, DEFAULT_CAPACITY, display_language
         )
         if account is None:
             return {"ok": False, "error": GENERIC_NEW_ACCOUNT_INVITE_ERROR, "code": "invalid_coach_invite"}
@@ -91,6 +96,7 @@ def register_player(
         "ok": True,
         "trainee_id": ledger_id,
         "account_id": account_id,
+        "coach_granted_at": coach_granted_at,
         "session_epoch": account.get("session_epoch", 1),
         "display_language": account.get("display_language", "en"),
     }

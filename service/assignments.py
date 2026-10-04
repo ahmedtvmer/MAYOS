@@ -17,10 +17,13 @@ Only SHA-256 hashes of codes are stored and neither codes nor notices are logged
 import logging
 import os
 import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
+from database.registry.assignments import EndedAssignmentSnapshot
 from service import missed_day_alerts
+from service import analytics as analytics_service
 from service._tokens import hash_token
 from service.check_ins import next_follow_up_on
 from service.email_sender import (
@@ -99,7 +102,7 @@ def coach_identity(db: Any, coach_account_id: str, account: dict[str, Any]) -> d
 
 
 def _reason_error(reason: str) -> str:
-    if reason == "self":
+    if reason == "self_assignment":
         return SELF_ASSIGNMENT_ERROR
     if reason == "already_assigned":
         return ALREADY_ASSIGNED_ERROR
@@ -108,11 +111,112 @@ def _reason_error(reason: str) -> str:
     return GENERIC_INVITE_ERROR
 
 
+def duration_seconds(started_at: str, ended_at: str) -> int:
+    elapsed = datetime.fromisoformat(ended_at) - datetime.fromisoformat(started_at)
+    return max(0, int(elapsed.total_seconds()))
+
+
+def capture_assignment_ended(
+    assignment: EndedAssignmentSnapshot,
+    active_roster_size: int,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
+    deleted_account_id: str | None = None,
+) -> None:
+    coach_deleted = deleted_account_id == assignment.coach_account_id
+    analytics_service.capture(
+        analytics_service.AnalyticsEvent(
+            account_id=assignment.player_account_id if coach_deleted else assignment.coach_account_id,
+            event="assignment_ended",
+            domain_key=f"{assignment.assignment_id}:ended",
+            role="player" if coach_deleted else "coach",
+            properties={
+                "ended_by": assignment.ended_by,
+                "duration_seconds": duration_seconds(assignment.started_at, assignment.ended_at),
+                "active_roster_size": active_roster_size,
+            },
+        ),
+        client,
+    )
+
+
+def _capture_redemption_failure(
+    player_account_id: str, reason_code: str, client: analytics_service.ClientContext
+) -> None:
+    analytics_service.capture(
+        analytics_service.AnalyticsEvent(
+            account_id=player_account_id,
+            event="invite_redemption_failed",
+            domain_key=str(uuid.uuid4()),
+            role="player",
+            properties={"reason_code": reason_code},
+        ),
+        client,
+    )
+
+
+def _capture_assignment_ended(
+    assignment: EndedAssignmentSnapshot,
+    active_roster_size: int,
+    *,
+    client: analytics_service.ClientContext,
+) -> None:
+    capture_assignment_ended(assignment, active_roster_size, client=client)
+    analytics_service.set_person(assignment.player_account_id, {"coached": False})
+    analytics_service.set_person(assignment.coach_account_id, {"active_roster_size": active_roster_size})
+
+
+def _capture_invite_issued(
+    coach_account_id: str,
+    invite_hash: str,
+    active_roster_size: int,
+    client: analytics_service.ClientContext,
+) -> None:
+    analytics_service.capture(
+        analytics_service.AnalyticsEvent(
+            account_id=coach_account_id,
+            event="assignment_invite_issued",
+            domain_key=f"{invite_hash}:issued",
+            role="coach",
+            properties={"active_roster_size": active_roster_size},
+        ),
+        client,
+    )
+    analytics_service.set_person(coach_account_id, {"active_roster_size": active_roster_size})
+
+
+def _capture_assignment_started(
+    player_account_id: str, assignment: dict[str, Any], client: analytics_service.ClientContext
+) -> None:
+    analytics_service.capture(
+        analytics_service.AnalyticsEvent(
+            account_id=assignment["coach_account_id"],
+            event="assignment_started",
+            domain_key=f"{assignment['assignment_id']}:started",
+            role="coach",
+            properties={
+                "coach_id": assignment["coach_account_id"],
+                "active_roster_size": assignment["roster_size"],
+                "time_since_invite_seconds": duration_seconds(
+                    assignment["invite_created_at"], assignment["started_at"]
+                ),
+            },
+        ),
+        client,
+    )
+    analytics_service.set_person(player_account_id, {"coached": True})
+    analytics_service.set_person(
+        assignment["coach_account_id"], {"active_roster_size": assignment["roster_size"]}
+    )
+
+
 def issue_assignment_invite(
     db: Any,
     coach_account_id: str,
     token_factory: Callable[[], str] | None = None,
     ttl_minutes: int | None = None,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
 ) -> dict[str, Any]:
     """Coach issues a single-use, capacity-bound assignment invite.
 
@@ -141,7 +245,9 @@ def issue_assignment_invite(
 
     raw_token = token_factory() if token_factory else secrets.token_urlsafe(32)
     expires_at = (datetime.now(UTC) + ttl).isoformat()
-    db.create_assignment_invite(hash_token(raw_token), coach_account_id, expires_at)
+    invite_hash = hash_token(raw_token)
+    roster_size = db.create_assignment_invite(invite_hash, coach_account_id, expires_at)
+    _capture_invite_issued(coach_account_id, invite_hash, roster_size, client)
     return {
         "ok": True,
         "token": raw_token,
@@ -202,27 +308,38 @@ def _send_redemption_email(
         return False
 
 
-def redeem_assignment_invite(db: Any, token: Any, player_account_id: str, consent: bool) -> dict[str, Any]:
+def redeem_assignment_invite(
+    db: Any,
+    token: Any,
+    player_account_id: str,
+    consent: bool,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
+) -> dict[str, Any]:
     """Atomically redeems a code after explicit consent; emails the coach afterwards.
 
     The assignment, single-use claim, and in-app notice commit together. The email is
     a post-commit side effect, so a transport failure leaves the assignment intact.
     """
     if consent is not True:
+        _capture_redemption_failure(player_account_id, "consent_required", client)
         return {"ok": False, "error": CONSENT_REQUIRED_ERROR}
     if not _valid_token(token):
+        _capture_redemption_failure(player_account_id, "unknown_code", client)
         return {"ok": False, "error": GENERIC_INVITE_ERROR}
 
     now_iso = datetime.now(UTC).isoformat()
     result = db.redeem_assignment_invite(hash_token(token), player_account_id, now_iso)
     if not result["ok"]:
+        _capture_redemption_failure(player_account_id, result["reason"], client)
         return {"ok": False, "error": _reason_error(result["reason"])}
+
+    _capture_assignment_started(player_account_id, result, client)
 
     identity = {"display_name": "", "bio": "", "specialization": ""}
     email_sent = False
     coach_account = None
     try:
-        db.prune_assignment_invites(now_iso)
         coach_account = db.get_account(result["coach_account_id"])
         if coach_account:
             identity = coach_identity(db, result["coach_account_id"], coach_account)
@@ -296,7 +413,14 @@ def authorized_player_ledger(db: Any, coach_account_id: str, assignment_id: Any)
     return ledger, {"assignment": assignment, "player": player}
 
 
-def end_assignment(db: Any, account_id: str, assignment_id: Any, ended_by: str) -> dict[str, Any]:
+def end_assignment(
+    db: Any,
+    account_id: str,
+    assignment_id: Any,
+    ended_by: str,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
+) -> dict[str, Any]:
     """Ends an assignment when the caller is the coach or the player. Revocation is immediate."""
     if not isinstance(assignment_id, str) or not assignment_id:
         return {"ok": False, "error": "Assignment not found."}
@@ -308,10 +432,17 @@ def end_assignment(db: Any, account_id: str, assignment_id: Any, ended_by: str) 
         if reason == "already_ended":
             return {"ok": False, "error": "This assignment has already ended."}
         return {"ok": False, "error": "Assignment not found."}
+    assignment = result["ended_assignment"]
     discard_assignment_program_draft(
-        db, assignment_id, result["player_account_id"], best_effort=True
+        db, assignment_id, assignment.player_account_id, best_effort=True
     )
-    return {"ok": True, "assignment_id": assignment_id, "status": "ended", "ended_at": result["ended_at"]}
+    _capture_assignment_ended(assignment, result["roster_size"], client=client)
+    return {
+        "ok": True,
+        "assignment_id": assignment_id,
+        "status": "ended",
+        "ended_at": assignment.ended_at,
+    }
 
 
 def list_coach_assignments(db: Any, coach_account_id: str) -> list[dict[str, Any]]:
@@ -377,22 +508,57 @@ def mark_player_notices_read(db: Any, player_account_id: str) -> int:
     return db.mark_assignment_notices_read(player_account_id, datetime.now(UTC).isoformat())
 
 
-def disable_coach_capability(db: Any, coach_account_id: str) -> dict[str, Any]:
+def disable_coach_capability(
+    db: Any,
+    coach_account_id: str,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
+) -> dict[str, Any]:
     """Ends every assignment and clears the capability in one catalog transaction.
 
     The account's own player ledger is never touched, so its training data survives
     (ADR 013/014).
     """
-    result = db.disable_coach_account(
-        coach_account_id, datetime.now(UTC).isoformat(), "coach_capability_disabled"
-    )
+    disabled_at = datetime.now(UTC).isoformat()
+    result = db.disable_coach_account(coach_account_id, disabled_at, "coach_capability_disabled")
     if not result["ok"]:
         return {"ok": False, "error": "Coach capability required."}
-    for assignment in result["ended_assignment_details"]:
+    for assignment in result["ended_assignment_records"]:
         discard_assignment_program_draft(
             db,
-            assignment["assignment_id"],
-            assignment["player_account_id"],
+            assignment.assignment_id,
+            assignment.player_account_id,
             best_effort=True,
         )
+    _capture_coach_disabled(
+        coach_account_id,
+        disabled_at,
+        result["ended_assignment_records"],
+        result["roster_size"],
+        client,
+    )
     return {"ok": True, "ended_assignments": result["ended_assignments"]}
+
+
+def _capture_coach_disabled(
+    coach_account_id: str,
+    disabled_at: str,
+    assignments: list[EndedAssignmentSnapshot],
+    active_roster_size: int,
+    client: analytics_service.ClientContext,
+) -> None:
+    for assignment in assignments:
+        capture_assignment_ended(assignment, active_roster_size, client=client)
+        analytics_service.set_person(assignment.player_account_id, {"coached": False})
+    analytics_service.capture(
+        analytics_service.AnalyticsEvent(
+            account_id=coach_account_id,
+            event="coach_capability_disabled",
+            domain_key=f"{coach_account_id}:disabled:{disabled_at}",
+            role="coach",
+        ),
+        client,
+    )
+    analytics_service.set_person(
+        coach_account_id, {"is_coach": False, "active_roster_size": active_roster_size}
+    )

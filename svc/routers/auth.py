@@ -11,6 +11,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from service import account_deletion as deletion_service
 from service import analytics as analytics_service
 from service import auth as auth_service
+from service import coach as coach_service
 from service import coach_ai as coach_ai_service
 from service import google_sign_in as google_service
 from service import password_reset as reset_service
@@ -74,7 +75,10 @@ def _invalid_google_credentials() -> HTTPException:
 def _record_account_created(request: Request, account_id: str, *, invite_used: bool) -> None:
     """Updates the PostHog person and records the committed account creation."""
     signup_phase = analytics_service.release_phase()
-    analytics_service.set_person(account_id, {"is_player": True, "is_coach": invite_used})
+    person_properties = {"is_player": True, "is_coach": invite_used}
+    if invite_used:
+        person_properties["active_roster_size"] = 0
+    analytics_service.set_person(account_id, person_properties)
     analytics_service.set_person_once(account_id, {"signup_phase": signup_phase})
     analytics_service.capture_for_request(
         request,
@@ -104,6 +108,12 @@ async def register(request: Request, body: TraineeIn, db: Annotated[Any, Depends
 
     result = await asyncio.to_thread(_run)
     _record_account_created(request, result["account_id"], invite_used=body.coach_invite_code is not None)
+    if result["coach_granted_at"] is not None:
+        coach_service.capture_coach_capability_granted_event(
+            result["account_id"],
+            result["coach_granted_at"],
+            client=analytics_service.client_context(request),
+        )
     return TokenOut(
         access_token=create_access_token(
             result["account_id"],
@@ -506,9 +516,11 @@ async def delete_account(
     deletion never races an open connection.
     """
 
+    client = analytics_service.client_context(request)
+
     def _run(google_identity: Any | None = None):
         result = deletion_service.delete_account(
-            db, player.account_id, body.password, google_identity=google_identity
+            db, player.account_id, body.password, google_identity=google_identity, client=client
         )
         if not result["ok"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])

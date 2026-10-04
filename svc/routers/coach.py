@@ -12,6 +12,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from service import assignments as assignment_service
+from service import analytics as analytics_service
 from service import auth as auth_service
 from service import coach as coach_service
 from service import coach_ai as coach_ai_service
@@ -40,9 +41,10 @@ async def redeem_coach_invite(
     db: Annotated[Any, Depends(get_db)],
 ):
     """Authenticated single-use redemption of an owner-issued coach invite."""
+    client = analytics_service.client_context(request)
 
     def _run():
-        result = coach_service.redeem_coach_invite(db, player.account_id, body.token)
+        result = coach_service.redeem_coach_invite(db, player.account_id, body.token, client=client)
         if not result["ok"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
         # Same sign-in-method fields /auth/me reports (#114), read for real
@@ -110,9 +112,10 @@ async def disable_coach_capability(
     db: Annotated[Any, Depends(get_db)],
 ):
     """Ends every assignment and clears the coach capability, preserving the player ledger."""
+    client = analytics_service.client_context(request)
 
     def _run():
-        result = assignment_service.disable_coach_capability(db, coach.account_id)
+        result = assignment_service.disable_coach_capability(db, coach.account_id, client=client)
         if not result["ok"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
         return result

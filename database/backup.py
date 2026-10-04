@@ -442,7 +442,7 @@ def restore_daily_backup(snapshot: Path, *, db: Any) -> dict[str, Any]:
             _restore_ledger_file(entry, Path(db.ledgers_dir) / entry.name)
             restored_ledgers.append(entry.stem)
 
-    applied = db.reapply_deletions()
+    applied, deletion_facts = db._reapply_deletions_with_facts()
     quarantined = quarantine_orphaned_ledgers(db)
     logger.info(
         "Restored snapshot %s (catalog + %s ledger(s)); reapplied %s deletion(s); quarantined %s orphan(s).",
@@ -455,6 +455,7 @@ def restore_daily_backup(snapshot: Path, *, db: Any) -> dict[str, Any]:
         "snapshot": str(snapshot),
         "restored_ledgers": restored_ledgers,
         "deletions_reapplied": applied,
+        "deletion_facts": deletion_facts,
         "quarantined_ledgers": quarantined,
     }
 

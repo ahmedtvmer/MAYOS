@@ -54,6 +54,21 @@ class AnalyticsEvent:
     properties: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True)
+class ClientContext:
+    """Client platform header of the HTTP request that caused an event, if any."""
+
+    header: str | None = None
+
+
+UNKNOWN_CLIENT = ClientContext()
+
+
+def client_context(request: Request) -> ClientContext:
+    """Reads the platform dimensions an HTTP request carries."""
+    return ClientContext(request.headers.get("X-MAYOS-Client"))
+
+
 class AnalyticsSink(Protocol):
     """Provider interface consumed by the analytics boundary."""
 
@@ -85,6 +100,19 @@ def _version_label() -> PropertyType:
     )
 
 
+def _account_id() -> PropertyType:
+    def is_account_id(value: Any) -> bool:
+        if not isinstance(value, str):
+            return False
+        try:
+            uuid.UUID(value)
+        except ValueError:
+            return False
+        return True
+
+    return PropertyType(is_account_id, "an immutable account UUID")
+
+
 _PHASES = frozenset({"closed_trial", "public"})
 _ONBOARDING_STEPS = frozenset(field.name for field in INTAKE_FIELDS) | {
     "disclosure",
@@ -101,11 +129,31 @@ PROPERTY_TYPES: dict[str, PropertyType] = {
     "env": _enum(_ENVIRONMENTS),
     "signup_phase": _enum(_PHASES),
     "invite_used": _boolean(),
-    "duration_seconds": _bounded_int(31_557_600),
+    "duration_seconds": _bounded_int(3_155_760_000),
+    "time_since_invite_seconds": _bounded_int(31_557_600),
     "prefilled_fields_count": _bounded_int(100),
     "is_player": _boolean(),
     "is_coach": _boolean(),
     "step": _enum(_ONBOARDING_STEPS),
+    "coached": _boolean(),
+    "active_roster_size": _bounded_int(200),
+    "coach_id": _account_id(),
+    "ended_by": _enum(frozenset({"player", "coach", "coach_capability_disabled", "account_deleted"})),
+    "reason_code": _enum(
+        frozenset(
+            {
+                "unknown_code",
+                "already_redeemed",
+                "expired",
+                "coach_unavailable",
+                "not_a_player",
+                "self_assignment",
+                "already_assigned",
+                "capacity",
+                "consent_required",
+            }
+        )
+    ),
 }
 _COMMON_PROPERTIES = {name: PROPERTY_TYPES[name] for name in ("role", "platform", "app_version", "env")}
 EVENT_CATALOGUE: dict[str, EventContract] = {
@@ -130,12 +178,41 @@ EVENT_CATALOGUE: dict[str, EventContract] = {
         "client",
         {**_COMMON_PROPERTIES, "step": PROPERTY_TYPES["step"]},
     ),
+    "coach_capability_granted": EventContract("server", dict(_COMMON_PROPERTIES)),
+    "coach_capability_disabled": EventContract("server", dict(_COMMON_PROPERTIES)),
+    "assignment_invite_issued": EventContract(
+        "server", {**_COMMON_PROPERTIES, "active_roster_size": PROPERTY_TYPES["active_roster_size"]}
+    ),
+    "assignment_started": EventContract(
+        "server",
+        {
+            **_COMMON_PROPERTIES,
+            "coach_id": PROPERTY_TYPES["coach_id"],
+            "active_roster_size": PROPERTY_TYPES["active_roster_size"],
+            "time_since_invite_seconds": PROPERTY_TYPES["time_since_invite_seconds"],
+        },
+    ),
+    "assignment_ended": EventContract(
+        "server",
+        {
+            **_COMMON_PROPERTIES,
+            "ended_by": PROPERTY_TYPES["ended_by"],
+            "duration_seconds": PROPERTY_TYPES["duration_seconds"],
+            "active_roster_size": PROPERTY_TYPES["active_roster_size"],
+        },
+    ),
+    "invite_redemption_failed": EventContract(
+        "server", {**_COMMON_PROPERTIES, "reason_code": PROPERTY_TYPES["reason_code"]}
+    ),
 }
 
 PERSON_PROPERTY_CATALOGUE: dict[str, PropertyType] = {
-    name: PROPERTY_TYPES[name] for name in ("is_player", "is_coach", "signup_phase")
+    name: PROPERTY_TYPES[name]
+    for name in ("is_player", "is_coach", "coached", "active_roster_size", "signup_phase")
 }
-_MUTABLE_PERSON_PROPERTIES = {name: PERSON_PROPERTY_CATALOGUE[name] for name in ("is_player", "is_coach")}
+_MUTABLE_PERSON_PROPERTIES = {
+    name: PERSON_PROPERTY_CATALOGUE[name] for name in ("is_player", "is_coach", "coached", "active_roster_size")
+}
 _SET_ONCE_PERSON_PROPERTIES = {"signup_phase": PERSON_PROPERTY_CATALOGUE["signup_phase"]}
 
 
@@ -391,9 +468,9 @@ def _observe(action: Callable[[], None], failure: str) -> None:
         logger.exception("Product analytics %s failed; the operation continues.", failure)
 
 
-def capture(event: AnalyticsEvent, client_header: str | None = None) -> None:
+def capture(event: AnalyticsEvent, client: ClientContext = UNKNOWN_CLIENT) -> None:
     """Captures one server event with safe dimensions and a deterministic UUID."""
-    payload = {**resolve_dimensions(client_header, role=event.role), **(event.properties or {})}
+    payload = {**resolve_dimensions(client.header, role=event.role), **(event.properties or {})}
     _observe(
         lambda: _sink.capture(
             event.account_id, event.event, deterministic_event_uuid(event.event, event.domain_key), payload
@@ -403,8 +480,8 @@ def capture(event: AnalyticsEvent, client_header: str | None = None) -> None:
 
 
 def capture_for_request(request: Request, event: AnalyticsEvent) -> None:
-    """Captures one server event with the platform dimensions of an HTTP request."""
-    capture(event, request.headers.get("X-MAYOS-Client"))
+    """Captures using the safe client dimensions carried by this request."""
+    capture(event, client_context(request))
 
 
 def set_person(account_id: str, properties: dict[str, Any]) -> None:

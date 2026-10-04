@@ -15,6 +15,7 @@ from slowapi.errors import RateLimitExceeded
 
 from database.storage import storage_status
 from service.admin_auth import AdminSecurity, partial_secret_configuration
+from service import account_deletion as account_deletion_service
 from service.analytics import register_configured_sink
 from service.model_limits import ModelLimitExceeded
 from service.model_metering import record_model_usage
@@ -187,7 +188,7 @@ async def lifespan(app: FastAPI):
             app.state.db = db
             # Complete any deletion whose catalog transaction did not finish, so
             # a crash cannot leave a half-deleted account (ADR 015/039).
-            await asyncio.to_thread(db.replay_deletions)
+            await asyncio.to_thread(account_deletion_service.replay_deletions, db)
             # A restore is a boot-time step: the only volume-owning writer cannot
             # be scaled to zero for an offline restore, and restoring while it
             # serves is unsafe. Apply the scheduled snapshot in place (restoring
@@ -199,7 +200,12 @@ async def lifespan(app: FastAPI):
 
             applied_restore = await asyncio.to_thread(apply_pending_restore, db)
             if applied_restore is not None:
-                logger.warning("Boot-time restore applied: %s", applied_restore)
+                account_deletion_service.capture_deletion_facts(applied_restore["deletion_facts"])
+                logger.warning(
+                    "Boot-time restore from %s applied; %s deletion(s) reapplied.",
+                    applied_restore["snapshot"],
+                    applied_restore["deletions_reapplied"],
+                )
             _ready["catalog"] = True
         except StorageNotReady:
             logger.exception(

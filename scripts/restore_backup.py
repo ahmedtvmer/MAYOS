@@ -40,6 +40,7 @@ from database.database_manager import (  # noqa: E402
     DatabaseManager,
 )
 from database.offsite_backup import configure_database_offsite_backup  # noqa: E402
+from service.account_deletion import capture_deletion_facts  # noqa: E402
 from utils.logger import MyosLogger  # noqa: E402
 
 logger = MyosLogger().get_logger(__name__)
@@ -121,7 +122,11 @@ def main(argv: list[str] | None = None) -> int:
             db = DatabaseManager(catalog_path=args.catalog, ledgers_dir=args.ledgers_dir, backups_dir=args.backups_dir)
         configure_database_offsite_backup(db, store=store, log_disabled=True)
         summary = restore_daily_backup(snapshot, db=db)
-        logger.info("Restore complete: %s", summary)
+        capture_deletion_facts(summary["deletion_facts"])
+        logger.info(
+            "Restore complete: %s",
+            {key: value for key, value in summary.items() if key != "deletion_facts"},
+        )
         print(
             f"Restored {snapshot} (catalog + {len(summary['restored_ledgers'])} ledger(s)); "
             f"reapplied {summary['deletions_reapplied']} deletion(s); "

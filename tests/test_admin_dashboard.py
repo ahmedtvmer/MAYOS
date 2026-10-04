@@ -1344,6 +1344,110 @@ def test_owner_delete_reuses_durable_path_notifies_before_erasure_and_releases_u
     assert replacement["ledger_id"] != ledger_id
 
 
+def test_owner_delete_replay_emits_committed_relationship_events_once(admin_api, recording_analytics, monkeypatch):
+    from service.account_deletion import replay_deletions
+    from service import coach as coach_service
+    from service.analytics import deterministic_event_uuid
+
+    client, db, now, _ = admin_api
+    coach, coach_headers = _register_account(client, db, "owner-replay-coach")
+    player, player_headers = _register_account(client, db, "owner-replay-player")
+    coach_invite = coach_service.issue_coach_invite(db, "owner-replay-coach", actor="test")
+    assert coach_invite["ok"]
+    redeemed_coach = client.post(
+        "/coach/invite/redeem", headers=coach_headers, json={"token": coach_invite["token"]}
+    )
+    assert redeemed_coach.status_code == 200, redeemed_coach.text
+    profile = client.put(
+        "/coach/profile",
+        headers=coach_headers,
+        json={"display_name": "Coach", "bio": "", "specialization": "", "capacity": 5},
+    )
+    assert profile.status_code == 200, profile.text
+    assignment_invite = client.post("/coach/assignments/invites", headers=coach_headers)
+    assert assignment_invite.status_code == 200, assignment_invite.text
+    assignment_response = client.post(
+        "/assignments/invites/redeem",
+        headers=player_headers,
+        json={"token": assignment_invite.json()["token"], "consent": True},
+    )
+    assert assignment_response.status_code == 200, assignment_response.text
+    assignment_id = assignment_response.json()["assignment"]["assignment_id"]
+
+    capture_attempts = []
+    sink_capture = recording_analytics.capture
+
+    def capture_with_attempt_log(account_id, event, event_uuid, properties):
+        assert not db.catalog_conn.in_transaction
+        if event == "assignment_ended":
+            status_row = db.catalog_conn.execute(
+                "SELECT status FROM assignments WHERE assignment_id = ?", (assignment_id,)
+            ).fetchone()
+            assert status_row == ("ended",)
+        elif event == "coach_capability_disabled":
+            assert db.get_account(account_id)["deleted_at"] is not None
+        capture_attempts.append((account_id, event, event_uuid, dict(properties)))
+        sink_capture(account_id, event, event_uuid, properties)
+
+    monkeypatch.setattr(recording_analytics, "capture", capture_with_attempt_log)
+    original_delete = db.delete_account
+    fail_once = True
+
+    def interrupt_first_delete(account_id, now_iso=None, *, ledger_id=None):
+        nonlocal fail_once
+        if fail_once:
+            fail_once = False
+            raise RuntimeError("simulated catalog interruption")
+        return original_delete(account_id, now_iso, ledger_id=ledger_id)
+
+    monkeypatch.setattr(db, "delete_account", interrupt_first_delete)
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{coach['account_id']}/delete")
+    now[0] += 30
+    pending = _submit_account_delete(
+        client,
+        coach["account_id"],
+        _csrf(page.text),
+        coach["username"],
+        _totp(TOTP_SECRET, now[0]),
+        "The coach requested deletion.",
+    )
+    assert pending.status_code == 303
+    assert pending.headers["location"] == "/admin/accounts?deleted=pending"
+    assert capture_attempts == []
+
+    assert replay_deletions(db) == 1
+    deleted_at = db.get_account(coach["account_id"])["deleted_at"]
+    ended_uuid = deterministic_event_uuid("assignment_ended", f"{assignment_id}:ended")
+    disabled_uuid = deterministic_event_uuid(
+        "coach_capability_disabled", f"{coach['account_id']}:disabled:{deleted_at}"
+    )
+    ended = [attempt for attempt in capture_attempts if attempt[1] == "assignment_ended"]
+    disabled = [attempt for attempt in capture_attempts if attempt[1] == "coach_capability_disabled"]
+    assert len(ended) == len(disabled) == 1
+    assert ended[0][0] == player["account_id"]
+    assert ended[0][2] == ended_uuid
+    assert ended[0][3]["ended_by"] == "account_deleted"
+    assert ended[0][3]["active_roster_size"] == 0
+    assert disabled[0][0] == coach["account_id"]
+    assert disabled[0][2] == disabled_uuid
+    assert not db.catalog_conn.in_transaction
+    assert coach["account_id"] not in recording_analytics.deleted_people
+
+    replay_queries = []
+    db.catalog_conn.set_trace_callback(replay_queries.append)
+    try:
+        assert replay_deletions(db, full=True) == 1
+    finally:
+        db.catalog_conn.set_trace_callback(None)
+    assert len(capture_attempts) == 2
+    assert not any("GROUP BY coach_account_id" in query for query in replay_queries)
+    assert not any(
+        "SELECT assignment_id, coach_account_id, player_account_id, started_at FROM assignments" in query
+        for query in replay_queries
+    )
+
+
 @pytest.mark.parametrize(
     "failure",
     ["wrong_username", "stale_totp", "missing_reason", "email_reason", "long_reason"],

@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
 from service import account_deletion as deletion_service
+from service import analytics as analytics_service
 from service.privacy_policy import policy_body_html
 from svc.dependencies import get_db
 from svc.html import self_contained_html
@@ -206,7 +207,11 @@ async def delete_request_submit(request: Request, db: Annotated[Any, Depends(get
         return _form_page(_RESULT_PAGE, title=DELETE_PAGE_TITLE, message=UNCONFIRMED_MESSAGE)
 
     result = await asyncio.to_thread(
-        deletion_service.delete_account_by_username, db, username, password
+        deletion_service.delete_account_by_username,
+        db,
+        username,
+        password,
+        client=analytics_service.client_context(request),
     )
     if not result["ok"]:
         return _form_page(_RESULT_PAGE, title=DELETE_PAGE_TITLE, message=GENERIC_FAILURE_MESSAGE)

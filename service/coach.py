@@ -21,6 +21,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
 from service import audit_log, email_sender
+from service import analytics as analytics_service
 from service._tokens import hash_token
 
 DEFAULT_CAPACITY = 10
@@ -277,7 +278,13 @@ def _live_bound_invite(db: Any, account_id: str, raw_code: str) -> dict[str, Any
     )
 
 
-def redeem_coach_invite(db: Any, account_id: str, token: str) -> dict[str, Any]:
+def redeem_coach_invite(
+    db: Any,
+    account_id: str,
+    token: str,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
+) -> dict[str, Any]:
     """Authenticated redemption. Unknown/expired/used/mismatched codes share one error.
 
     ``account_id`` comes from the verified JWT, never the body, so the code can
@@ -290,12 +297,43 @@ def redeem_coach_invite(db: Any, account_id: str, token: str) -> dict[str, Any]:
     if account is None:
         return {"ok": False, "error": GENERIC_INVITE_ERROR}
     db.prune_coach_invites(now_iso)
+    capture_coach_capability_granted(db, account["account_id"], now_iso, client=client)
     return {
         "ok": True,
         "account_id": account["account_id"],
         "username": account["username"],
         "capabilities": {"player": account["is_player"], "coach": account["is_coach"]},
     }
+
+
+def capture_coach_capability_granted_event(
+    account_id: str,
+    granted_at: str,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
+) -> None:
+    analytics_service.capture(
+        analytics_service.AnalyticsEvent(
+            account_id=account_id,
+            event="coach_capability_granted",
+            domain_key=f"{account_id}:granted:{granted_at}",
+            role="coach",
+        ),
+        client,
+    )
+
+
+def capture_coach_capability_granted(
+    db: Any,
+    account_id: str,
+    granted_at: str,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
+) -> None:
+    """Captures a committed Coach grant and initializes its roster property."""
+    roster_size = db.count_active_assignments_for_coach(account_id)
+    capture_coach_capability_granted_event(account_id, granted_at, client=client)
+    analytics_service.set_person(account_id, {"is_coach": True, "active_roster_size": roster_size})
 
 
 def get_coach_profile(db: Any, account_id: str) -> dict[str, Any] | None:

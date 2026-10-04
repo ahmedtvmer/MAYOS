@@ -32,6 +32,8 @@ from enum import Enum
 from typing import Any
 
 from service import audit_log, email_sender
+from service import analytics as analytics_service
+from service import assignments as assignment_service
 from service._base import ledger_scope
 from service.auth import INVALID_CREDENTIALS, hash_password, verify_password
 from service.google_sign_in import PROVIDER
@@ -86,6 +88,7 @@ def delete_account(
     google_identity: Any | None = None,
     ledger: Any | None = None,
     now: datetime | None = None,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
 ) -> dict[str, Any]:
     """Verifies one proof and deletes the account and its active data.
 
@@ -118,8 +121,47 @@ def delete_account(
     elif not _google_identity_deletes(db, account_id, google_identity, now):
         return {"ok": False, "error": INVALID_CREDENTIALS}
 
-    db.delete_account(account["account_id"], datetime.now(UTC).isoformat(), ledger_id=account["ledger_id"])
+    deletion = db.delete_account(
+        account["account_id"], datetime.now(UTC).isoformat(), ledger_id=account["ledger_id"]
+    )
+    _capture_deleted_relationships(deletion, client=client)
     return {"ok": True, "account_id": account["account_id"], "trainee_id": account["ledger_id"]}
+
+
+def _capture_deleted_relationships(
+    deletion: dict[str, Any], *, client: analytics_service.ClientContext
+) -> None:
+    account_id = deletion["account_id"]
+    for assignment in deletion["ended_assignments"]:
+        roster_size = deletion["roster_counts_by_coach"].get(assignment.coach_account_id, 0)
+        assignment_service.capture_assignment_ended(
+            assignment, roster_size, client=client, deleted_account_id=account_id
+        )
+        analytics_service.set_person(assignment.player_account_id, {"coached": False})
+        if assignment.coach_account_id != account_id:
+            analytics_service.set_person(
+                assignment.coach_account_id, {"active_roster_size": roster_size}
+            )
+    if deletion["was_coach"]:
+        _capture_deleted_coach(account_id, deletion["deleted_at"], client=client)
+        analytics_service.set_person(account_id, {"is_coach": False, "active_roster_size": 0})
+
+
+def _capture_deleted_coach(
+    account_id: str,
+    deleted_at: str,
+    *,
+    client: analytics_service.ClientContext,
+) -> None:
+    analytics_service.capture(
+        analytics_service.AnalyticsEvent(
+            account_id=account_id,
+            event="coach_capability_disabled",
+            domain_key=f"{account_id}:disabled:{deleted_at}",
+            role="coach",
+        ),
+        client,
+    )
 
 
 def owner_delete_account(
@@ -127,6 +169,8 @@ def owner_delete_account(
     request: OwnerDeleteRequest,
     verify_step_up: Callable[[str], StepUpResult],
     mailer: Callable[[str, str], bool] | None = None,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
 ) -> dict[str, Any]:
     """Deletes any live account after owner step-up and records the outcome.
 
@@ -152,7 +196,7 @@ def owner_delete_account(
         if error == "lockout_started":
             error = "confirmation_failed"
         return {"outcome": "rejected", "error": error}
-    return _apply_owner_delete(db, account, request, mailer)
+    return _apply_owner_delete(db, account, request, mailer, client=client)
 
 
 def _owner_delete_request_error(
@@ -179,6 +223,8 @@ def _apply_owner_delete(
     account: dict[str, Any],
     request: OwnerDeleteRequest,
     mailer: Callable[[str, str], bool] | None,
+    *,
+    client: analytics_service.ClientContext,
 ) -> dict[str, Any]:
     recovery_email = db.get_account_email(request.account_id)
     deleted_at = datetime.now(UTC).isoformat()
@@ -213,6 +259,7 @@ def _apply_owner_delete(
         return {"outcome": "pending", "account_id": request.account_id}
     if not deletion.get("ok"):
         return {"outcome": "not_found"}
+    _capture_deleted_relationships(deletion, client=client)
     _audit_owner_deletion(db, request, email_failed)
     return {"outcome": "deleted", "account_id": request.account_id}
 
@@ -294,7 +341,13 @@ def _google_identity_deletes(db: Any, account_id: str, identity: Any, now: datet
     return db.get_linked_sign_in_account_id(PROVIDER, sub) == account_id
 
 
-def delete_account_by_username(db: Any, username: Any, password: Any) -> dict[str, Any]:
+def delete_account_by_username(
+    db: Any,
+    username: Any,
+    password: Any,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
+) -> dict[str, Any]:
     """External deletion-request path: resolve the reusable username, then delete.
 
     The username is normalised exactly as ``service.auth.login_player`` does it
@@ -311,4 +364,25 @@ def delete_account_by_username(db: Any, username: Any, password: Any) -> dict[st
     if account is None or not account["is_player"] or not db.ledger_exists(account["ledger_id"]):
         _spend_one_bcrypt(password)
         return {"ok": False, "error": INVALID_CREDENTIALS}
-    return delete_account(db, account["account_id"], password)
+    return delete_account(db, account["account_id"], password, client=client)
+
+
+def replay_deletions(
+    db: Any,
+    *,
+    full: bool = False,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
+) -> int:
+    replay = db._reapply_deletions_with_facts if full else db._replay_deletions_with_facts
+    processed, changed_accounts = replay()
+    capture_deletion_facts(changed_accounts, client=client)
+    return processed
+
+
+def capture_deletion_facts(
+    deletions: list[dict[str, Any]],
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
+) -> None:
+    for deletion in deletions:
+        _capture_deleted_relationships(deletion, client=client)

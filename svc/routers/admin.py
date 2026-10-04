@@ -19,6 +19,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from service import admin_accounts as admin_accounts_service
 from service import account_deletion as account_deletion_service
+from service import analytics as analytics_service
 from service import coach as coach_service
 from service import model_metering as model_metering_service
 from service import admin_auth, audit_log, email_sender, password_reset as password_reset_service, periodic_status
@@ -425,6 +426,7 @@ async def admin_account_delete_submit(
         db,
         deletion_request,
         verify_step_up,
+        client=analytics_service.client_context(request),
     )
     if outcome["outcome"] == "not_found":
         return not_found_response()

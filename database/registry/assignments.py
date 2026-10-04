@@ -5,8 +5,19 @@ Extracted from DatabaseManager; behaviour is unchanged.
 
 import sqlite3
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+
+
+@dataclass(frozen=True)
+class EndedAssignmentSnapshot:
+    assignment_id: str
+    coach_account_id: str
+    player_account_id: str
+    started_at: str
+    ended_at: str
+    ended_by: str
 
 
 class RegistryAssignmentsMixin:
@@ -28,7 +39,7 @@ class RegistryAssignmentsMixin:
             "ended_by": row[6],
         }
 
-    def create_assignment_invite(self, token_hash: str, coach_account_id: str, expires_at: str) -> None:
+    def create_assignment_invite(self, token_hash: str, coach_account_id: str, expires_at: str) -> int:
         """Stores a hashed, capacity-bound assignment invite. The raw code is never persisted."""
         self.ensure_account_schema()
         now = datetime.now(UTC).isoformat()
@@ -40,7 +51,9 @@ class RegistryAssignmentsMixin:
                 " VALUES (?, ?, ?, NULL, NULL, NULL, ?)",
                 (token_hash, str(coach_account_id), expires_at, now),
             )
+            roster_size = self.count_active_assignments_for_coach(coach_account_id)
             self.catalog_conn.commit()
+            return roster_size
 
     def get_assignment_invite(self, token_hash: str) -> dict[str, Any] | None:
         """Reads an invite by hash for preview. Never consumes it."""
@@ -64,15 +77,9 @@ class RegistryAssignmentsMixin:
             }
 
     def prune_assignment_invites(self, now_iso: str) -> int:
+        """Retains invite hashes so expiry and redemption retries keep distinct reasons."""
         self.ensure_account_schema()
-        with self._catalog_lock:
-            cursor = self.catalog_conn.cursor()
-            cursor.execute(
-                "DELETE FROM assignment_invites WHERE expires_at < ? OR used_at IS NOT NULL",
-                (now_iso,),
-            )
-            self.catalog_conn.commit()
-            return cursor.rowcount
+        return 0
 
     def get_coach_capacity(self, coach_account_id: str) -> int | None:
         self.ensure_account_schema()
@@ -177,27 +184,32 @@ class RegistryAssignmentsMixin:
         data the caller needs to write the assignment.
         """
         cursor.execute(
-            "SELECT coach_account_id, expires_at, used_at FROM assignment_invites WHERE token_hash = ?",
+            "SELECT coach_account_id, expires_at, used_at, created_at"
+            " FROM assignment_invites WHERE token_hash = ?",
             (str(token_hash),),
         )
         invite = cursor.fetchone()
-        if invite is None or invite[2] is not None or str(invite[1]) <= now_iso:
-            return {"ok": False, "reason": "invalid"}
+        if invite is None:
+            return {"ok": False, "reason": "unknown_code"}
+        if invite[2] is not None:
+            return {"ok": False, "reason": "already_redeemed"}
+        if str(invite[1]) <= now_iso:
+            return {"ok": False, "reason": "expired"}
         coach_account_id = str(invite[0])
         if coach_account_id == str(player_account_id):
-            return {"ok": False, "reason": "self"}
+            return {"ok": False, "reason": "self_assignment"}
 
         cursor.execute(f"SELECT {self._ACCOUNT_COLUMNS} FROM accounts WHERE account_id = ?", (coach_account_id,))
         coach = self._account_from_row(cursor.fetchone())
         if not self.is_live_account(coach) or not coach["is_coach"]:
-            return {"ok": False, "reason": "invalid"}
+            return {"ok": False, "reason": "coach_unavailable"}
 
         cursor.execute(
             f"SELECT {self._ACCOUNT_COLUMNS} FROM accounts WHERE account_id = ?", (str(player_account_id),)
         )
         player = self._account_from_row(cursor.fetchone())
         if not self.is_live_account(player) or not player["is_player"]:
-            return {"ok": False, "reason": "invalid"}
+            return {"ok": False, "reason": "not_a_player"}
 
         cursor.execute(
             "SELECT 1 FROM assignments WHERE player_account_id = ? AND status = 'active'",
@@ -209,13 +221,14 @@ class RegistryAssignmentsMixin:
         cursor.execute("SELECT capacity FROM coach_profiles WHERE account_id = ?", (coach_account_id,))
         capacity_row = cursor.fetchone()
         capacity = int(capacity_row[0]) if capacity_row is not None else 0
-        cursor.execute(
-            "SELECT COUNT(*) FROM assignments WHERE coach_account_id = ? AND status = 'active'",
-            (coach_account_id,),
-        )
-        if int(cursor.fetchone()[0]) >= capacity:
+        if self.count_active_assignments_for_coach(coach_account_id) >= capacity:
             return {"ok": False, "reason": "capacity"}
-        return {"ok": True, "coach_account_id": coach_account_id, "player_username": player["username"]}
+        return {
+            "ok": True,
+            "coach_account_id": coach_account_id,
+            "player_username": player["username"],
+            "invite_created_at": str(invite[3]),
+        }
 
     def redeem_assignment_invite(
         self, token_hash: str, player_account_id: str, now_iso: str
@@ -253,7 +266,7 @@ class RegistryAssignmentsMixin:
                     (now_iso, str(player_account_id), assignment_id, str(token_hash)),
                 )
                 if cursor.rowcount != 1:
-                    return fail("invalid")
+                    return fail("already_redeemed")
                 cursor.execute(
                     "INSERT INTO assignments"
                     " (assignment_id, coach_account_id, player_account_id, status, started_at, ended_at, ended_by)"
@@ -272,6 +285,7 @@ class RegistryAssignmentsMixin:
                         now_iso,
                     ),
                 )
+                roster_size = self.count_active_assignments_for_coach(coach_account_id)
                 conn.commit()
             except sqlite3.IntegrityError:
                 return fail("already_assigned")
@@ -286,6 +300,8 @@ class RegistryAssignmentsMixin:
                 "player_username": player_username,
                 "notice_id": notice_id,
                 "started_at": now_iso,
+                "invite_created_at": target["invite_created_at"],
+                "roster_size": roster_size,
             }
 
     def end_assignment(self, assignment_id: str, account_id: str, now_iso: str, ended_by: str) -> dict[str, Any]:
@@ -294,7 +310,8 @@ class RegistryAssignmentsMixin:
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
-                "SELECT coach_account_id, player_account_id, status FROM assignments WHERE assignment_id = ?",
+                "SELECT coach_account_id, player_account_id, status, started_at"
+                " FROM assignments WHERE assignment_id = ?",
                 (str(assignment_id),),
             )
             row = cursor.fetchone()
@@ -312,13 +329,19 @@ class RegistryAssignmentsMixin:
             if cursor.rowcount != 1:
                 self.catalog_conn.rollback()
                 return {"ok": False, "reason": "already_ended"}
+            roster_size = self.count_active_assignments_for_coach(str(row[0]))
             self.catalog_conn.commit()
             return {
                 "ok": True,
-                "assignment_id": str(assignment_id),
-                "player_account_id": str(row[1]),
-                "ended_at": now_iso,
-                "ended_by": str(ended_by),
+                "ended_assignment": EndedAssignmentSnapshot(
+                    assignment_id=str(assignment_id),
+                    coach_account_id=str(row[0]),
+                    player_account_id=str(row[1]),
+                    started_at=str(row[3]),
+                    ended_at=now_iso,
+                    ended_by=str(ended_by),
+                ),
+                "roster_size": roster_size,
             }
 
     def disable_coach_account(self, coach_account_id: str, now_iso: str, ended_by: str) -> dict[str, Any]:
@@ -344,12 +367,19 @@ class RegistryAssignmentsMixin:
                     conn.rollback()
                     return {"ok": False}
                 cursor.execute(
-                    "SELECT assignment_id, player_account_id FROM assignments"
+                    "SELECT assignment_id, player_account_id, started_at FROM assignments"
                     " WHERE coach_account_id = ? AND status = 'active'",
                     (str(coach_account_id),),
                 )
-                ended_assignment_details = [
-                    {"assignment_id": str(row[0]), "player_account_id": str(row[1])}
+                active_assignments = [
+                    EndedAssignmentSnapshot(
+                        assignment_id=str(row[0]),
+                        coach_account_id=str(coach_account_id),
+                        player_account_id=str(row[1]),
+                        started_at=str(row[2]),
+                        ended_at=now_iso,
+                        ended_by=str(ended_by),
+                    )
                     for row in cursor.fetchall()
                 ]
                 cursor.execute(
@@ -370,7 +400,8 @@ class RegistryAssignmentsMixin:
             return {
                 "ok": True,
                 "ended_assignments": ended,
-                "ended_assignment_details": ended_assignment_details,
+                "ended_assignment_records": active_assignments,
+                "roster_size": 0,
             }
 
     def create_assignment_notice(

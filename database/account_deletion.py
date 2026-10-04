@@ -12,6 +12,7 @@ from typing import Any
 
 from database.backup import remove_ledger_from_daily_backups
 from database.program_drafts import discard_assignment_program_draft
+from database.registry.assignments import EndedAssignmentSnapshot
 from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
@@ -153,7 +154,7 @@ class AccountDeletionMixin:
         # (a) durable record first.
         self.record_account_deletion(str(account_id), resolved_ledger_id, now)
         # (b) catalog: mark deleted, revoke sessions, end relationships.
-        self._force_delete_account_catalog(str(account_id), now)
+        deletion_state = self._force_delete_account_catalog(str(account_id), now)
         # (c) live ledger + any user-specific backup copies.
         # Keep network I/O off the request path. With R2 configured, the
         # durable record remains pending until startup/hourly replay completes it.
@@ -164,9 +165,17 @@ class AccountDeletionMixin:
             self._mark_deletion_pending(str(account_id))
         # model_usage rows keep the opaque account id for billing reconciliation
         # (documented in ADR 039); they carry no username or contact details.
-        return {"ok": True, "account_id": str(account_id), "ledger_id": resolved_ledger_id, "deleted_at": now}
+        return {
+            "ok": True,
+            "account_id": str(account_id),
+            "ledger_id": resolved_ledger_id,
+            "deleted_at": now,
+            "was_coach": deletion_state["was_coach"],
+            "ended_assignments": deletion_state["ended_assignments"],
+            "roster_counts_by_coach": deletion_state["roster_counts_by_coach"],
+        }
 
-    def _force_delete_account_catalog(self, account_id: str, now_iso: str) -> None:
+    def _force_delete_account_catalog(self, account_id: str, now_iso: str) -> dict[str, Any]:
         """Forces one account's catalog state to deleted in a single transaction.
 
         Idempotent: calling it again (startup/restore replay) leaves an already
@@ -179,9 +188,11 @@ class AccountDeletionMixin:
         with self.catalog_transaction():
             conn = self.catalog_conn
             cursor = conn.cursor()
-            cursor.execute("SELECT username FROM accounts WHERE account_id = ?", (account_id,))
+            cursor.execute("SELECT username, is_coach, status FROM accounts WHERE account_id = ?", (account_id,))
             username_row = cursor.fetchone()
             legacy_username = str(username_row[0]) if username_row is not None else account_id
+            was_coach = bool(username_row[1]) if username_row is not None else False
+            already_deleted = username_row is None or (str(username_row[2]) == "deleted" and not was_coach)
             # The account's assignments, collected before anything is removed.
             cursor.execute(
                 "SELECT assignment_id, player_account_id FROM assignments"
@@ -192,6 +203,25 @@ class AccountDeletionMixin:
                 (str(row[0]), str(row[1])) for row in cursor.fetchall()
             ]
             assignment_ids = [assignment_id for assignment_id, _ in assignment_details]
+            active_assignments: list[EndedAssignmentSnapshot] = []
+            if not already_deleted:
+                cursor.execute(
+                    "SELECT assignment_id, coach_account_id, player_account_id, started_at"
+                    " FROM assignments WHERE (coach_account_id = ? OR player_account_id = ?)"
+                    " AND status = 'active'",
+                    (account_id, account_id),
+                )
+                active_assignments = [
+                    EndedAssignmentSnapshot(
+                        assignment_id=str(row[0]),
+                        coach_account_id=str(row[1]),
+                        player_account_id=str(row[2]),
+                        started_at=str(row[3]),
+                        ended_at=now_iso,
+                        ended_by="account_deleted",
+                    )
+                    for row in cursor.fetchall()
+                ]
             cursor.execute(
                 "UPDATE accounts SET status = 'deleted', deleted_at = ?,"
                 " session_epoch = CASE WHEN deleted_at IS NULL THEN session_epoch + 1 ELSE session_epoch END,"
@@ -291,7 +321,27 @@ class AccountDeletionMixin:
                 "DELETE FROM coach_alerts WHERE coach_account_id = ? OR player_account_id = ?",
                 (account_id, account_id),
             )
+            coach_ids = {assignment.coach_account_id for assignment in active_assignments}
+            roster_counts_by_coach: dict[str, int] = {}
+            if coach_ids:
+                placeholders = ",".join("?" for _ in coach_ids)
+                cursor.execute(
+                    "SELECT coach_account_id, COUNT(*) FROM assignments"
+                    f" WHERE coach_account_id IN ({placeholders}) AND status = 'active'"
+                    " GROUP BY coach_account_id",
+                    tuple(coach_ids),
+                )
+                roster_counts_by_coach = {str(row[0]): int(row[1]) for row in cursor.fetchall()}
+                roster_counts_by_coach.update(
+                    {coach_id: roster_counts_by_coach.get(coach_id, 0) for coach_id in coach_ids}
+                )
+            deletion_state = {
+                "was_coach": was_coach,
+                "ended_assignments": active_assignments,
+                "roster_counts_by_coach": roster_counts_by_coach,
+            }
         self._discard_assignment_program_drafts(account_id, assignment_details)
+        return deletion_state
 
     def _discard_assignment_program_drafts(
         self, deleted_account_id: str, assignment_details: list[tuple[str, str]]
@@ -378,7 +428,7 @@ class AccountDeletionMixin:
                 )
         return remote_cleanup_complete
 
-    def replay_deletions(self, *, full: bool = False) -> int:
+    def _replay_deletions_with_facts(self, *, full: bool = False) -> tuple[int, list[dict[str, Any]]]:
         """Replays durable deletion records; returns how many were processed.
 
         Incremental (``full=False``, the startup/sweep path) skips records already
@@ -389,17 +439,32 @@ class AccountDeletionMixin:
         """
         records = self.list_account_deletions()
         applied = 0
+        changed_accounts: list[dict[str, Any]] = []
         for record in records:
             if not full and record.get("applied_at") is not None:
                 continue
-            self._force_delete_account_catalog(record["account_id"], record["deleted_at"])
+            deletion_state = self._force_delete_account_catalog(record["account_id"], record["deleted_at"])
+            if deletion_state["was_coach"] or deletion_state["ended_assignments"]:
+                changed_accounts.append(
+                    {
+                        "account_id": record["account_id"],
+                        "deleted_at": record["deleted_at"],
+                        **deletion_state,
+                    }
+                )
             if not self._remove_account_files(record["ledger_id"]):
                 self._mark_deletion_pending(record["account_id"])
                 continue
             self._mark_deletion_applied(record["account_id"])
             applied += 1
-        return applied
+        return applied, changed_accounts
+
+    def replay_deletions(self, *, full: bool = False) -> int:
+        return self._replay_deletions_with_facts(full=full)[0]
+
+    def _reapply_deletions_with_facts(self) -> tuple[int, list[dict[str, Any]]]:
+        return self._replay_deletions_with_facts(full=True)
 
     def reapply_deletions(self) -> int:
         """Full deletion replay for the restore path; re-checks every record."""
-        return self.replay_deletions(full=True)
+        return self._reapply_deletions_with_facts()[0]
