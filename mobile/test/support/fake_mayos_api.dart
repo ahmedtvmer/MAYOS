@@ -145,6 +145,7 @@ class FakeMayosApi {
   int? programVersion;
   String? programPublishedByCoachAccountId;
   Map<String, dynamic>? programDraft;
+  int programDraftGenerationRequests = 0;
   Map<String, dynamic>? programDraftPublishError;
   Object? programDraftReplaceError;
   String? _programNameOverride;
@@ -412,9 +413,6 @@ class FakeMayosApi {
     }
     if (path.startsWith('/coach/assignments/') && path.endsWith('/revoke')) {
       return _revokeAssignment(request);
-    }
-    if (path.startsWith('/coach/assignments/') && path.endsWith('/program')) {
-      return _publishProgram(request);
     }
     if (path.startsWith('/coach/assignments/') && path.contains('/player/')) {
       return _coachPlayerHistory(request);
@@ -1787,39 +1785,6 @@ class FakeMayosApi {
     });
   }
 
-  FakeResponse _publishProgram(FakeRequest request) {
-    if (!_authorized(request)) {
-      return const FakeResponse(
-          401, <String, dynamic>{'detail': 'Token has been revoked.'});
-    }
-    if (!coach) {
-      return const FakeResponse(
-          403, <String, dynamic>{'detail': 'Coach capability required.'});
-    }
-    final String id = request.path
-        .replaceFirst('/coach/assignments/', '')
-        .replaceFirst('/program', '');
-    final bool owned = assignments
-        .any((Map<String, dynamic> entry) => entry['assignment_id'] == id);
-    if (!owned) {
-      return const FakeResponse(
-          403, <String, dynamic>{'detail': 'No active assignment.'});
-    }
-    _publishedVersion++;
-    programVersion = _publishedVersion;
-    programPublishedByCoachAccountId = 'account-$currentUsername';
-    coachControlsProgram = true;
-    playerNotices.insert(0, <String, dynamic>{
-      'notice_id': 'notice-$_publishedVersion',
-      'assignment_id': id,
-      'kind': 'program_published',
-      'message': 'Your coach published program version $programVersion.',
-      'created_at': '2026-09-24T11:00:00Z',
-      'read_at': null,
-    });
-    return FakeResponse(200, _activeProgramBody());
-  }
-
   FakeResponse _coachProgramDraft(FakeRequest request) {
     if (!_authorized(request)) {
       return const FakeResponse(
@@ -1837,6 +1802,55 @@ class FakeMayosApi {
     if (!owned) {
       return const FakeResponse(
           403, <String, dynamic>{'detail': 'No active assignment.'});
+    }
+    if (request.path.endsWith('/program-draft/generate')) {
+      programDraftGenerationRequests++;
+      final bool replace = request.query['replace'] == true ||
+          request.query['replace'] == 'true';
+      if (programDraft != null && !replace) {
+        return const FakeResponse(
+          409,
+          <String, dynamic>{
+            'detail': 'A Program draft already exists for this assignment.'
+          },
+        );
+      }
+      final int frequency =
+          (request.body['frequency_override'] as num?)?.toInt() ?? weeklyFrequency;
+      programDraft = <String, dynamic>{
+        'program_name': 'Generated plan',
+        'split_type': request.body['user_split_override'] as String? ?? 'Full Body',
+        'weekly_frequency': frequency,
+        'instructions': '',
+        'days': <Map<String, dynamic>>[
+          for (int day = 1; day <= frequency; day++)
+            <String, dynamic>{
+              'day_name': day == 1 ? 'Full A' : 'Full $day',
+              'day_order': day,
+              'warmup_exercises': <dynamic>[],
+              'exercises': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'exercise_id': 'bench_press',
+                  'exercise_name': 'Bench Press',
+                  'warmup_sets': 0,
+                  'target_sets': 3,
+                  'target_reps_min': 6,
+                  'target_reps_max': 8,
+                  'target_rir': 2,
+                  'rest_seconds': 180,
+                  'notes': null,
+                },
+              ],
+              'cardio': null,
+            },
+        ],
+      };
+      return FakeResponse(200, <String, dynamic>{
+        'assignment_id': assignmentId,
+        'draft': programDraft,
+        'created_at': '2026-10-04T10:00:00Z',
+        'updated_at': '2026-10-04T10:00:00Z',
+      });
     }
     if (request.path.endsWith('/publish')) {
       if (programDraft == null) {

@@ -148,28 +148,31 @@ def _seed_workout(db, player, on):
 
 
 def _coach_generation(db, monkeypatch):
-    def fake(**kwargs):
+    def fake(_request, *, inference_call=None, ledger):
         program = GeneratedProgramSchema(
             program_name="Coach Plan",
             split_type="Full Body",
             weekly_frequency=1,
             days=[_day_plan()],
         )
-        kwargs["ledger"].save_training_program(
-            program.model_dump(),
-            published_by_coach_account_id=kwargs.get("published_by_coach_account_id"),
-        )
         return program, "md"
 
-    monkeypatch.setattr("service.coach_programs.generate_program_pipeline", fake)
+    monkeypatch.setattr("service.coach_programs.generate_program_draft_pipeline", fake)
 
 
 def _create_request(api, coach_headers, player, monkeypatch):
     """Publishes a coach program to the player, then records a pending request."""
     client, db, _ = api
     _coach_generation(db, monkeypatch)
+    generated = client.post(
+        f"/coach/assignments/{player['assignment_id']}/program-draft/generate",
+        headers=coach_headers,
+        json={},
+    )
+    assert generated.status_code == 200, generated.text
     published = client.post(
-        f"/coach/assignments/{player['assignment_id']}/program", headers=coach_headers, json={}
+        f"/coach/assignments/{player['assignment_id']}/program-draft/publish",
+        headers=coach_headers,
     )
     assert published.status_code == 200, published.text
     created = client.post(
@@ -440,8 +443,15 @@ def test_last_workout_ranks_never_trained_first_then_oldest(api):
 def _publish_coach_program(api, coach_headers, player, monkeypatch) -> None:
     client, db, _ = api
     _coach_generation(db, monkeypatch)
+    generated = client.post(
+        f"/coach/assignments/{player['assignment_id']}/program-draft/generate",
+        headers=coach_headers,
+        json={},
+    )
+    assert generated.status_code == 200, generated.text
     published = client.post(
-        f"/coach/assignments/{player['assignment_id']}/program", headers=coach_headers, json={}
+        f"/coach/assignments/{player['assignment_id']}/program-draft/publish",
+        headers=coach_headers,
     )
     assert published.status_code == 200, published.text
 

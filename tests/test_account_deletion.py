@@ -146,13 +146,9 @@ def _program(name: str = "Coach Plan") -> GeneratedProgramSchema:
     )
 
 
-def _fake_coach_generator(db):
-    def fake(**kwargs):
+def _fake_coach_generator():
+    def fake(_request, *, inference_call=None, ledger):
         program = _program()
-        kwargs["ledger"].save_training_program(
-            program.model_dump(),
-            published_by_coach_account_id=kwargs.get("published_by_coach_account_id"),
-        )
         return program, "md"
 
     return fake
@@ -425,8 +421,21 @@ def test_deleted_coach_becomes_former_coach_and_returns_program_authority(api, m
         headers=coach_headers,
         json={"checked_in_on": datetime.now(UTC).date().isoformat(), "channel": "phone"},
     ).status_code == 200
-    monkeypatch.setattr("service.coach_programs.generate_program_pipeline", _fake_coach_generator(db))
-    assert client.post(f"/coach/assignments/{assignment_id}/program", headers=coach_headers, json={}).status_code == 200
+    monkeypatch.setattr(
+        "service.coach_programs.generate_program_draft_pipeline",
+        _fake_coach_generator(),
+    )
+    generated = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/generate",
+        headers=coach_headers,
+        json={},
+    )
+    assert generated.status_code == 200, generated.text
+    published = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/publish",
+        headers=coach_headers,
+    )
+    assert published.status_code == 200, published.text
     with db.open_ledger("bob") as ledger:
         ledger.create_program_draft(assignment_id, {"program_name": "Unpublished plan"})
 

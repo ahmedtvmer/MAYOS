@@ -825,29 +825,42 @@ class ApiClient {
     );
   }
 
-  /// Publishes a coach-authored program for an assigned player (ADR 026).
+  /// Generates an unpublished Program draft for an assigned player.
   ///
-  /// Null overrides are omitted from the body so the pipeline applies its
-  /// defaults. Returns the persisted program with its stable version and
-  /// provenance. A missing/foreign/ended assignment denies.
-  Future<TrainingProgram> coachPublishProgram(
+  /// A conflict means a Program draft exists; replacement requires confirmation.
+  Future<Map<String, dynamic>> coachGenerateProgramDraft(
     String assignmentId, {
-    String? splitOverride,
-    String? repPreference,
-    int? frequency,
-  }) async {
-    final Map<String, dynamic> body = <String, dynamic>{
-      if (splitOverride != null) 'user_split_override': splitOverride,
-      if (repPreference != null) 'rep_preference_override': repPreference,
-      if (frequency != null) 'frequency_override': frequency,
-    };
+    required Map<String, dynamic> generationOverrides,
+  }) =>
+      _postCoachProgramDraftGeneration(
+        assignmentId,
+        generationOverrides,
+        null,
+      );
+
+  Future<Map<String, dynamic>> coachReplaceGeneratedProgramDraft(
+    String assignmentId, {
+    required Map<String, dynamic> generationOverrides,
+  }) =>
+      _postCoachProgramDraftGeneration(
+        assignmentId,
+        generationOverrides,
+        <String, dynamic>{'replace': true},
+      );
+
+  Future<Map<String, dynamic>> _postCoachProgramDraftGeneration(
+    String assignmentId,
+    Map<String, dynamic> generationOverrides,
+    Map<String, dynamic>? queryParameters,
+  ) async {
     final response = await _send(
       () => _dio.post<dynamic>(
-        '/coach/assignments/$assignmentId/program',
-        data: body,
+        '/coach/assignments/$assignmentId/program-draft/generate',
+        data: generationOverrides,
+        queryParameters: queryParameters,
       ),
     );
-    return _parseBody(response.data, TrainingProgram.fromJson, _invalidProgram);
+    return _parseCoachProgramDraft(response.data);
   }
 
   Future<Map<String, dynamic>> coachCreateProgramDraft(

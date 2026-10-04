@@ -1,18 +1,11 @@
-"""Coach-authored program publication (ticket #26).
-
-A coach with the live capability and an active, owned assignment generates a
-program for that player through the normal pipeline, stamped with the coaching
-account as provenance (ADR 026). The player's ledger is mounted only after the
-assignment gate passes; unknown, ended, and other-coach assignments all deny
-with ``None``. Publication is durable — the program is retained, with its
-authority, even after the assignment ends.
-"""
+"""Coach program generation and publication effects."""
 
 import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from agent.program_generator import generate_program_pipeline
+from agent.ProgramState import GeneratedProgramSchema
+from agent.program_generator import ProgramGenerationRequest, generate_program_draft_pipeline
 from service.assignments import authorized_player_ledger
 from service.program_analytics import ProgramAnalyticsActor, capture_coach_program_published
 from service import stall_alerts
@@ -21,58 +14,85 @@ from service import analytics
 logger = logging.getLogger(__name__)
 
 
-def publish_program(
+def _generated_exercise_draft(exercise: dict[str, Any]) -> dict[str, Any]:
+    draft_exercise = dict(exercise)
+    draft_exercise["target_rir"] = 10 - float(draft_exercise.pop("target_rpe"))
+    # The Player view displays these catalog steps as coach-written notes.
+    draft_exercise["notes"] = None
+    return draft_exercise
+
+
+def _generated_day_draft(day: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **day,
+        "exercises": [_generated_exercise_draft(exercise) for exercise in day.get("exercises", [])],
+    }
+
+
+def _program_draft(
+    program: GeneratedProgramSchema, db: Any, coach_account_id: str, ledger: Any
+) -> dict[str, Any]:
+    generated = program.model_dump()
+    days = [_generated_day_draft(day) for day in generated.get("days", [])]
+    from service.coach_program_drafts import validate_generated_program_draft
+
+    return validate_generated_program_draft(generated, days, db, coach_account_id, ledger)
+
+
+def _coach_split_inference(db: Any, actor: ProgramAnalyticsActor):
+    from svc.llm import InferenceScope, run_inference_sync
+
+    scope = InferenceScope(
+        account_id=actor.account_id,
+        role="coach",
+        purpose="coach_generate_draft",
+        store=db,
+    )
+
+    def infer(function, *args, **kwargs):
+        return run_inference_sync(function, *args, scope=scope, **kwargs)
+
+    return infer
+
+
+def _build_generated_draft(
+    db: Any,
+    actor: ProgramAnalyticsActor,
+    request: ProgramGenerationRequest,
+    ledger: Any,
+) -> dict[str, Any]:
+    program, _ = generate_program_draft_pipeline(
+        request,
+        inference_call=_coach_split_inference(db, actor),
+        ledger=ledger,
+    )
+    return _program_draft(program, db, actor.account_id, ledger)
+
+
+def generate_program_draft(
     db: Any,
     actor: ProgramAnalyticsActor,
     assignment_id: Any,
+    request: ProgramGenerationRequest,
     *,
-    user_split_override: str | None = None,
-    rep_preference_override: str | None = None,
-    frequency_override: int | None = None,
-    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
-) -> Any:
-    """Generates and activates a coach-owned program for an assigned player.
+    replace_existing: bool = False,
+) -> Any | None:
+    from service import coach_program_drafts
 
-    Returns the persisted program (carrying its stable version and provenance),
-    or ``None`` when the assignment is not active and owned by this coach.
-    """
-    coach_account_id = actor.account_id
-    authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
+    authorized = authorized_player_ledger(db, actor.account_id, assignment_id)
     if authorized is None:
         return None
-    ledger, context = authorized
+    ledger, _ = authorized
     with ledger:
-        assignment = context["assignment"]
-        prior_publication = ledger.has_program_published_by_coach_since(
-            coach_account_id, assignment["started_at"]
+        coach_program_drafts.ensure_generated_program_draft_available(
+            ledger, assignment_id, replace_existing=replace_existing
         )
-        from svc.llm import InferenceScope, run_inference_sync
-
-        _program, _ = run_inference_sync(
-            generate_program_pipeline,
-            user_split_override=user_split_override,
-            rep_preference_override=rep_preference_override,
-            frequency_override=frequency_override,
-            published_by_coach_account_id=coach_account_id,
-            ledger=ledger,
-            scope=InferenceScope(
-                account_id=coach_account_id, role="coach", purpose="coach_program_publish", store=db
-            ),
-        )
-
-        published = ledger.get_active_program()
-        if published is None:
-            raise RuntimeError("Published program is missing from the player ledger after save.")
-
-        record_program_publication(
-            db,
-            context,
-            published,
-            actor=actor,
-            first_for_assignment=not prior_publication,
-            client=client,
-        )
-        return published
+        draft = _build_generated_draft(db, actor, request, ledger)
+        if db.get_active_assignment_for_coach(actor.account_id, assignment_id) is None:
+            return None
+        if replace_existing:
+            return coach_program_drafts.replace_generated_program_draft(ledger, assignment_id, draft)
+        return coach_program_drafts.create_generated_program_draft(ledger, assignment_id, draft)
 
 
 def record_program_publication(

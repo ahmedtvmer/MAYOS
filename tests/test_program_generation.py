@@ -56,7 +56,14 @@ from unittest.mock import MagicMock
 from pydantic import ValidationError
 
 from agent import program_generator
-from agent.ProgramState import GeneratedProgramSchema, PersistedProgramSchema, ProgramSchema
+from agent.ProgramState import (
+    CustomDayPlan,
+    GeneratedProgramSchema,
+    PersistedProgramSchema,
+    ProgramDaySchema,
+    ProgramExerciseSchema,
+    ProgramSchema,
+)
 from agent.UserState import PlayerProfileSchema
 
 
@@ -94,6 +101,57 @@ def test_invalid_text_frequency_not_hidden_by_valid_override(monkeypatch, freque
             user_split_override=f"switch routine to {frequency} days", frequency_override=3, ledger=database
         )
     assert database.method_calls == [("get_player_profile", (), {})]
+
+
+def test_coach_generation_can_build_a_draft_without_writing_program_or_profile(monkeypatch):
+    profile = {
+        "gender": "male",
+        "weekly_frequency": 4,
+        "rep_preference": "balanced",
+        "equipment_access": "commercial gym",
+        "injuries_or_limitations": "None",
+        "stress_and_sleep": "normal",
+        "training_age_years": 3,
+        "current_goal": "Hypertrophy",
+    }
+    ledger = MagicMock()
+    ledger.get_player_profile.return_value = profile.copy()
+    split = type("Split", (), {})()
+    split.split_name = "Full Body"
+    split.days = [
+        CustomDayPlan(day_order=order, day_name=f"Full {order}", target_slots=[])
+        for order in (1, 2)
+    ]
+    monkeypatch.setattr(program_generator, "resolve_split", lambda **_kwargs: split)
+
+    def build_day(day, *_args, **_kwargs):
+        return ProgramDaySchema(
+            day_name=day.day_name,
+            day_order=day.day_order,
+            exercises=[
+                ProgramExerciseSchema(
+                    exercise_id=exercise_id,
+                    exercise_name=name,
+                    target_reps_min=6,
+                    target_reps_max=8,
+                )
+                for exercise_id, name in (("sq", "Squat"), ("bp", "Bench"), ("row", "Row"))
+            ],
+        )
+
+    monkeypatch.setattr(program_generator, "assemble_deterministic_day", build_day)
+
+    generated, _ = program_generator.generate_program_draft_pipeline(
+        program_generator.ProgramGenerationRequest(
+            frequency_override=2,
+        ),
+        ledger=ledger,
+    )
+
+    assert generated.weekly_frequency == 2
+    ledger.update_player_frequency.assert_not_called()
+    ledger.save_training_program.assert_not_called()
+    assert ledger.get_player_profile.return_value == profile
 
 
 @pytest.mark.parametrize("schema", [PlayerProfileSchema, ProgramSchema, GeneratedProgramSchema])

@@ -120,6 +120,34 @@ def replace_program_draft(
         return replaced
 
 
+def ensure_generated_program_draft_available(
+    ledger: Any, assignment_id: str, *, replace_existing: bool
+) -> None:
+    """Reject an unconfirmed replacement before starting generation."""
+    if not replace_existing and ledger.get_program_draft(assignment_id) is not None:
+        raise ProgramDraftAlreadyExists("A Program draft already exists for this assignment.")
+
+
+def create_generated_program_draft(ledger: Any, assignment_id: str, draft: dict[str, Any]) -> Any:
+    created = ledger.create_program_draft(assignment_id, draft)
+    if created is None:
+        raise ProgramDraftAlreadyExists("A Program draft already exists for this assignment.")
+    return created
+
+
+def replace_generated_program_draft(ledger: Any, assignment_id: str, draft: dict[str, Any]) -> Any:
+    replaced = ledger.replace_program_draft(assignment_id, draft)
+    if replaced is not None:
+        return replaced
+    created = ledger.create_program_draft(assignment_id, draft)
+    if created is not None:
+        return created
+    replaced = ledger.replace_program_draft(assignment_id, draft)
+    if replaced is None:
+        raise ProgramDraftAlreadyExists("The Program draft changed while it was being generated.")
+    return replaced
+
+
 def discard_program_draft(db: Any, coach_account_id: str, assignment_id: str) -> bool | None:
     authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
     if authorized is None:
@@ -299,6 +327,34 @@ def _published_program(
     if issues:
         raise ProgramDraftValidationError(issues)
     return validated.model_dump()
+
+
+def validate_generated_program_draft(
+    generated: dict[str, Any],
+    days: list[dict[str, Any]],
+    db: Any,
+    coach_account_id: str,
+    ledger: Any,
+) -> dict[str, Any]:
+    """Convert generated content to a valid, publishable Program draft."""
+    from svc.schemas import CoachProgramDraftIn
+
+    try:
+        draft = CoachProgramDraftIn.model_validate(
+            {
+                "program_name": generated["program_name"],
+                "split_type": generated["split_type"],
+                "weekly_frequency": generated["weekly_frequency"],
+                "instructions": "",
+                "days": days,
+            }
+        ).model_dump()
+    except ValidationError as error:
+        raise ProgramDraftValidationError(
+            [_pydantic_issue(issue) for issue in error.errors()]
+        ) from error
+    _published_program(draft, db, coach_account_id, ledger)
+    return draft
 
 
 def publish_program_draft(

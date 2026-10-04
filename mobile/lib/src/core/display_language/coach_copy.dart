@@ -211,8 +211,21 @@ class CoachCopy {
   String get resolvedAlerts =>
       isArabic ? 'التنبيهات المحلولة' : 'Resolved alerts';
 
-  String get publishProgram =>
-      isArabic ? 'نشر برنامج تدريبي' : 'Publish program';
+  String get generateDraft =>
+      isArabic ? 'إنشاء مسودة' : 'Generate draft';
+  String get generate => isArabic ? 'إنشاء' : 'Generate';
+  String get split => isArabic ? 'التقسيمة' : 'Split';
+  String get repRangePreference =>
+      isArabic ? 'تفضيل نطاق التكرارات' : 'Rep range preference';
+  String get replaceProgramDraftTitle =>
+      isArabic
+          ? 'استبدال مسودة البرنامج التدريبي الحالية؟'
+          : 'Replace the current Program draft?';
+  String get replaceProgramDraftPrompt => isArabic
+      ? 'سيؤدي إنشاء مسودة جديدة إلى استبدال تعديلاتك المحفوظة. هل تريد المتابعة؟'
+      : 'Generating a new draft will replace your saved edits. Continue?';
+  String get replaceProgramDraftAction =>
+      isArabic ? 'استبدال المسودة' : 'Replace draft';
   String get writeProgram =>
       isArabic ? 'اكتب برنامجًا تدريبيًا' : 'Write program';
   String get trainingDay => isArabic ? 'يوم التدريب' : 'Training day';
@@ -335,9 +348,6 @@ class CoachCopy {
             ? 'راجع هذا الحقل في البرنامج التدريبي.'
             : 'Check this Training program field.',
       };
-  String get splitOverrideOptional =>
-      isArabic ? 'تقسيمة مخصصة (اختيارية)' : 'Split override (optional)';
-  String get repPreference => isArabic ? 'تفضيل التكرارات' : 'Rep preference';
   String get low => isArabic ? 'منخفض' : 'Low';
   String get balanced => isArabic ? 'متوازن' : 'Balanced';
   String get high => isArabic ? 'مرتفع' : 'High';

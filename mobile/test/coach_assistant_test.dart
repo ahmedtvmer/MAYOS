@@ -132,7 +132,7 @@ Future<void> _openAssistant(WidgetTester tester, String player) async {
 /// Opens the player page's overflow menu so its actions are on screen.
 Future<void> _openPageActions(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('player_page_actions')));
-  await _pumpUntilFound(tester, find.text('Publish program'));
+  await _pumpUntilFound(tester, find.text('Generate draft'));
 }
 
 /// Pops the top route through [anchor]'s navigator: a pushed route keeps the
@@ -204,7 +204,7 @@ void main() {
 
     // The other player action is still offered by the overflow menu (#G).
     await _openPageActions(tester);
-    expect(find.text('Publish program'), findsOneWidget);
+    expect(find.text('Generate draft'), findsOneWidget);
     expect(find.text('Ask assistant'), findsNothing);
   });
 

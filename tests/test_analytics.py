@@ -308,13 +308,17 @@ def _analytics_program() -> GeneratedProgramSchema:
 def _install_analytics_program_generators(monkeypatch) -> None:
     def fake_program(*_args, ledger, published_by_coach_account_id=None, **_kwargs):
         program = _analytics_program()
-        ledger.save_training_program(
-            program.model_dump(), published_by_coach_account_id=published_by_coach_account_id
-        )
+        if _kwargs.get("persist_program", True):
+            ledger.save_training_program(
+                program.model_dump(), published_by_coach_account_id=published_by_coach_account_id
+            )
         return program, "private program markdown"
 
+    def fake_coach_draft(_request, *, inference_call=None, ledger):
+        return fake_program(ledger=ledger, persist_program=False)
+
     monkeypatch.setattr("service.programs.generate_program_pipeline", fake_program)
-    monkeypatch.setattr("service.coach_programs.generate_program_pipeline", fake_program)
+    monkeypatch.setattr("service.coach_programs.generate_program_draft_pipeline", fake_coach_draft)
     monkeypatch.setattr("service.profile.generate_program_pipeline", fake_program)
     monkeypatch.setattr("service.program_requests.generate_program_pipeline", fake_program)
 
@@ -1024,8 +1028,15 @@ def test_program_and_request_events_follow_committed_api_operations(analytics_ap
     coach_headers, assignment_id = _assigned_analytics_player(client, db, player_headers)
     coach_headers = {**coach_headers, "X-MAYOS-Client": "web/5.1.0"}
     for expected_first in (True, False):
+        generated = client.post(
+            f"/coach/assignments/{assignment_id}/program-draft/generate",
+            headers=coach_headers,
+            json={},
+        )
+        assert generated.status_code == 200, generated.text
         published = client.post(
-            f"/coach/assignments/{assignment_id}/program", headers=coach_headers, json={}
+            f"/coach/assignments/{assignment_id}/program-draft/publish",
+            headers=coach_headers,
         )
         assert published.status_code == 200, published.text
         publication_events = [event for event in sink.events if event["event"] == "coach_program_published"]
@@ -1268,7 +1279,16 @@ def test_raising_sink_does_not_fail_program_request_or_swap_operations(analytics
     coach_headers, assignment_id = _assigned_analytics_player(client, db, player_headers)
 
     analytics.set_sink(RaisingAnalyticsSink())
-    published = client.post(f"/coach/assignments/{assignment_id}/program", headers=coach_headers, json={})
+    generated = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/generate",
+        headers=coach_headers,
+        json={},
+    )
+    assert generated.status_code == 200, generated.text
+    published = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/publish",
+        headers=coach_headers,
+    )
     assert published.status_code == 200, published.text
 
     def create_split_request(frequency):

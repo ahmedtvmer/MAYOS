@@ -150,15 +150,11 @@ def _program(frequency=1) -> GeneratedProgramSchema:
 
 
 def _coach_generation(db, monkeypatch):
-    def fake(**kwargs):
-        program = _program()
-        kwargs["ledger"].save_training_program(
-            program.model_dump(),
-            published_by_coach_account_id=kwargs.get("published_by_coach_account_id"),
-        )
+    def fake(request, *, inference_call=None, ledger):
+        program = _program(frequency=request.frequency_override or 1)
         return program, "md"
 
-    monkeypatch.setattr("service.coach_programs.generate_program_pipeline", fake)
+    monkeypatch.setattr("service.coach_programs.generate_program_draft_pipeline", fake)
 
 
 def _request_generation(db, monkeypatch):
@@ -176,7 +172,17 @@ def _request_generation(db, monkeypatch):
 
 
 def _publish(client, coach_headers, assignment_id, **body):
-    return client.post(f"/coach/assignments/{assignment_id}/program", headers=coach_headers, json=body)
+    generated = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/generate",
+        headers=coach_headers,
+        json=body,
+    )
+    if generated.status_code != 200:
+        return generated
+    return client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/publish",
+        headers=coach_headers,
+    )
 
 
 def _create(client, player_headers, **body):

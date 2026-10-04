@@ -11,6 +11,7 @@ import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,6 +22,8 @@ from langchain_core.runnables import RunnableLambda
 
 from agent import assistant_graph
 from agent import onboarding_graph as onboarding_module
+from agent import program_rules
+from agent.program_rules import get_default_split, resolve_split
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
 from service import coach_programs as coach_programs_service
@@ -243,6 +246,51 @@ def test_multicall_turn_records_every_call(api):
     assert rows[0]["requests"] == 2
 
 
+def test_resolve_split_meters_only_model_path_through_injected_inference(api, monkeypatch):
+    _client, db = api
+    _assigned_player(_client, db)
+    account_id = _account_id(db, "coach")
+    fake = _fake_model("deepseek-ai/DeepSeek-V4-Flash")
+    structured = MagicMock()
+    structured.invoke.side_effect = lambda _prompt: (fake.invoke("custom split"), get_default_split(3))[1]
+    model = MagicMock()
+    model.with_structured_output.return_value.bind.return_value = structured
+    monkeypatch.setattr(program_rules, "llm", model)
+
+    scope = InferenceScope(
+        account_id=account_id,
+        role="coach",
+        purpose="coach_generate_draft",
+        store=db,
+    )
+
+    def injected_inference(function, *args, **kwargs):
+        return run_inference_sync(function, *args, scope=scope, **kwargs)
+
+    custom = resolve_split(
+        3,
+        preference="custom glute emphasis across the week",
+        inference_call=injected_inference,
+    )
+    assert len(custom.days) == 3
+    rows = _usage_rows(db, account_id)
+    assert len(rows) == 1
+    assert rows[0]["role"] == "coach"
+    assert rows[0]["requests"] == 1
+    assert rows[0]["input_tokens"] == 120
+    with db._catalog_lock:
+        purposes = db.catalog_conn.execute(
+            "SELECT purpose FROM model_usage WHERE account_id = ?",
+            (account_id,),
+        ).fetchall()
+    assert [row[0] for row in purposes] == ["coach_generate_draft"]
+
+    deterministic = resolve_split(3, preference="ppl", inference_call=injected_inference)
+    assert len(deterministic.days) == 3
+    assert _usage_rows(db, account_id)[0]["requests"] == 1
+    structured.invoke.assert_called_once()
+
+
 def test_onboarding_step_is_metered(api, monkeypatch):
     client, db = api
     token = _register(client, "player1")
@@ -271,11 +319,12 @@ def test_onboarding_step_is_metered(api, monkeypatch):
     assert rows[0]["input_tokens"] > 0
 
 
-def test_coach_program_publish_is_metered(api, monkeypatch):
+def test_coach_generate_draft_meters_only_model_calls_and_uses_shared_429(api, monkeypatch):
     from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
 
     client, db = api
     coach_headers, _player_headers, assignment_id = _assigned_player(client, db)
+    monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "1")
     fake = _fake_model("deepseek-ai/DeepSeek-V4-Flash")
 
     def _stub_program() -> GeneratedProgramSchema:
@@ -298,25 +347,49 @@ def test_coach_program_publish_is_metered(api, monkeypatch):
             ],
         )
 
-    def _wrapped(*args, **kwargs):
-        fake.invoke("coach program")
+    def _wrapped(request, *, inference_call, ledger):
+        if request.user_split_override == "glute focus":
+            inference_call(lambda: fake.invoke("coach program"))
         program = _stub_program()
-        kwargs["ledger"].save_training_program(
-            program.model_dump(),
-            published_by_coach_account_id=kwargs.get("published_by_coach_account_id"),
-        )
         return program, ""
 
-    monkeypatch.setattr(coach_programs_service, "generate_program_pipeline", _wrapped)
+    monkeypatch.setattr(coach_programs_service, "generate_program_draft_pipeline", _wrapped)
 
-    resp = client.post(
-        f"/coach/assignments/{assignment_id}/program", headers=coach_headers, json={}
+    deterministic = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/generate",
+        headers=coach_headers,
+        json={},
     )
-    assert resp.status_code == 200, resp.text
+    assert deterministic.status_code == 200, deterministic.text
+    assert _usage_rows(db, _account_id(db, "coach")) == []
 
-    rows = _usage_rows(db, _account_id(db, "coach"))
+    model_backed = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/generate",
+        headers=coach_headers,
+        json={"user_split_override": "glute focus"},
+        params={"replace": "true"},
+    )
+    assert model_backed.status_code == 200, model_backed.text
+
+    coach_account_id = _account_id(db, "coach")
+    rows = _usage_rows(db, coach_account_id)
     assert rows and rows[0]["role"] == "coach"
     assert rows[0]["model"] == "deepseek-ai/DeepSeek-V4-Flash"
+    with db._catalog_lock:
+        purposes = db.catalog_conn.execute(
+            "SELECT purpose FROM model_usage WHERE account_id = ? ORDER BY created_at",
+            (coach_account_id,),
+        ).fetchall()
+    assert [row[0] for row in purposes] == ["coach_generate_draft"]
+
+    refused = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/generate",
+        headers=coach_headers,
+        json={"user_split_override": "glute focus"},
+        params={"replace": "true"},
+    )
+    assert refused.status_code == 429
+    assert refused.json() == {"detail": "Too many AI requests. Please wait a minute and try again."}
 
 
 def test_cost_computed_from_pricing_json(api, monkeypatch):

@@ -80,5 +80,36 @@ def test_dynamic_split_plan_uses_its_own_output_budget(monkeypatch):
     )
 
 
+def test_dynamic_split_uses_the_generation_metering_scope(monkeypatch):
+    model = MagicMock()
+    structured = model.with_structured_output.return_value.bind.return_value
+    structured.invoke.return_value = get_default_split(3)
+    monkeypatch.setattr("agent.program_rules.llm", model)
+    calls = []
+
+    def injected_inference(function, *args, **kwargs):
+        calls.append((function, args))
+        return function(*args, **kwargs)
+
+    plan = resolve_split(
+        3,
+        preference="Custom weekly arrangement with separate emphasis days for chest, back, and arms",
+        inference_call=injected_inference,
+    )
+
+    assert len(plan.days) == 3
+    assert len(calls) == 1
+    structured.invoke.assert_called_once()
+
+
+def test_blueprint_split_does_not_call_injected_inference():
+    run_model = MagicMock(side_effect=AssertionError("deterministic split called the model"))
+
+    plan = resolve_split(3, preference="ppl", inference_call=run_model)
+
+    assert len(plan.days) == 3
+    run_model.assert_not_called()
+
+
 if __name__ == "__main__":
     test_rules()

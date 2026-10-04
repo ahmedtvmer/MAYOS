@@ -298,7 +298,7 @@ def test_coach_surfaces_never_expose_player_chat(api):
     # non-raising client and assert its output is chat-free even when the tiny
     # test catalog makes generation fail.
     with TestClient(client.app, raise_server_exceptions=False) as raw_client:
-        program = raw_client.post(f"{base}/program", headers=coach_headers, json={})
+        program = raw_client.post(f"{base}/program-draft/generate", headers=coach_headers, json={})
     assert PRIVATE_USER_CHAT not in program.text
     assert PRIVATE_ASSISTANT_CHAT not in program.text
     assert pointer not in program.text
@@ -313,6 +313,7 @@ def test_coach_surfaces_never_expose_player_chat(api):
         f"POST /coach/assignments/{'{assignment_id}'}/revoke",
         f"POST /coach/assignments/{'{assignment_id}'}/check-ins",
         f"POST /coach/assignments/{'{assignment_id}'}/assistant",
+        f"POST /coach/assignments/{'{assignment_id}'}/program-draft/generate",
         f"POST /coach/assignments/{'{assignment_id}'}/program-requests/{'{request_id}'}/apply",
         f"POST /coach/assignments/{'{assignment_id}'}/program-requests/{'{request_id}'}/decline",
         "POST /coach/assignments/notices/read",

@@ -1,5 +1,5 @@
 import re
-from typing import Any
+from typing import Any, Callable
 
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -214,7 +214,12 @@ def _sanitize_llm_plan(plan: DynamicSplitPlan, frequency: int, gender: str) -> D
     return plan.model_copy(update={"days": sanitized_days})
 
 
-def resolve_split(frequency: int, preference: str | None = None, gender: str = "male") -> DynamicSplitPlan:
+def resolve_split(
+    frequency: int,
+    preference: str | None = None,
+    gender: str = "male",
+    inference_call: Callable[..., DynamicSplitPlan] | None = None,
+) -> DynamicSplitPlan:
     clamped_freq = min(max(int(frequency), 1), 5)
     if not preference or preference.strip().lower() in ["standard", "default", "none", "balanced"]:
         return get_default_split(clamped_freq, gender=gender)
@@ -242,7 +247,10 @@ def resolve_split(frequency: int, preference: str | None = None, gender: str = "
             content=f"Frequency: {clamped_freq} days/week. Trainee: {gender_context}. User Split Request: '{preference}'"
         ),
     ]
-    plan: DynamicSplitPlan = structured_llm.invoke(prompt)
+    if inference_call is None:
+        plan: DynamicSplitPlan = structured_llm.invoke(prompt)
+    else:
+        plan = inference_call(structured_llm.invoke, prompt)
     if len(plan.days) > clamped_freq:
         plan.days = plan.days[:clamped_freq]
     return _sanitize_llm_plan(plan, clamped_freq, gender)

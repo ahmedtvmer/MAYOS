@@ -8,6 +8,7 @@ import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
+import 'support/fake_api_adapter.dart';
 import 'support/fake_mayos_api.dart';
 
 /// Pumps finite frames until [finder] matches, then a few more so transitions
@@ -639,7 +640,7 @@ void main() {
     );
   });
 
-  testWidgets('coach publishes a program and sees the published version',
+  testWidgets('coach generates a draft, edits it, then publishes it',
       (tester) async {
     final FakeMayosApi fake = _coachFake();
     await _pumpApp(tester, fake);
@@ -649,17 +650,140 @@ void main() {
     await tester.tap(find.text('bob'));
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
 
-    // The player page keeps Publish program behind an overflow menu (#G).
     await tester.tap(find.byKey(const Key('player_page_actions')));
-    await _pumpUntilFound(tester, find.text('Publish program'));
-    await tester.tap(find.text('Publish program'));
-    await _pumpUntilFound(tester, find.text('Rep preference'));
-    await tester.tap(find.byKey(const Key('publish_confirm_button')));
+    await _pumpUntilFound(tester, find.text('Generate draft'));
+    await tester.tap(find.text('Generate draft'));
+    await _pumpUntilFound(tester, find.text('Rep range preference'));
+
+    expect(find.text('Days per week'), findsOneWidget);
+    expect(find.text('Split'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('generate_draft_confirm_button')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_save')));
+
+    expect(fake.programVersion, isNull);
+    expect(fake.programDraftGenerationRequests, 1);
+    await tester.enterText(
+      find.byKey(const Key('program_draft_day_name_0')),
+      'Edited Full A',
+    );
+    await tester.tap(find.byKey(const Key('program_draft_save')));
+    await _pumpUntilFound(tester, find.text('Draft saved.'));
+    expect((fake.programDraft!['days'] as List<dynamic>).first['day_name'], 'Edited Full A');
+    await tester.tap(find.byKey(const Key('program_draft_publish')));
+    await _pumpUntilFound(
+      tester,
+      find.text('Publish this Training program now? It will become the active program.'),
+    );
+    await tester.tap(find.text('Publish').last);
     await _pumpUntilFound(tester, find.text('Published program version 1'));
 
     expect(find.text('Published program version 1'), findsOneWidget);
     expect(fake.programVersion, 1);
     expect(fake.programPublishedByCoachAccountId, 'account-alice');
+    expect(fake.programDraft, isNull);
+    expect(fake.programDaysOverride!.first['day_name'], 'Edited Full A');
+  });
+
+  testWidgets('generating over a draft asks before replacing it', (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..programDraft = <String, dynamic>{
+        'program_name': 'Existing plan',
+        'split_type': 'Full Body',
+        'weekly_frequency': 1,
+        'instructions': '',
+        'days': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'day_name': 'Saved day',
+            'day_order': 1,
+            'warmup_exercises': <dynamic>[],
+            'exercises': <dynamic>[],
+            'cardio': null,
+          },
+        ],
+      };
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await tester.tap(find.byKey(const Key('player_page_actions')));
+    await _pumpUntilFound(tester, find.text('Generate draft'));
+    await tester.tap(find.text('Generate draft'));
+    await _pumpUntilFound(tester, find.byKey(const Key('generate_draft_confirm_button')));
+    await tester.tap(find.byKey(const Key('generate_draft_confirm_button')));
+    await _pumpUntilFound(tester, find.text('Replace the current Program draft?'));
+    expect(fake.programDraft!['program_name'], 'Existing plan');
+    await tester.tap(find.byKey(const Key('generate_draft_replace_confirm')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_save')));
+
+    final List<FakeRequest> generationRequests = fake.adapter.requests
+        .where((FakeRequest request) => request.path.endsWith('/program-draft/generate'))
+        .toList(growable: false);
+    expect(generationRequests, hasLength(2));
+    expect(generationRequests.first.query, isNot(containsPair('replace', true)));
+    expect(generationRequests.last.query, containsPair('replace', true));
+    expect(fake.programVersion, isNull);
+  });
+
+  testWidgets(
+      'declining replacement keeps the existing draft and sends no second request',
+      (tester) async {
+    final Map<String, dynamic> existingDraft = <String, dynamic>{
+      'program_name': 'Existing plan',
+      'split_type': 'Full Body',
+      'weekly_frequency': 1,
+      'instructions': '',
+      'days': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'day_name': 'Saved day',
+          'day_order': 1,
+          'warmup_exercises': <dynamic>[],
+          'exercises': <dynamic>[],
+          'cardio': null,
+        },
+      ],
+    };
+    final FakeMayosApi fake = _coachFake()..programDraft = existingDraft;
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await tester.tap(find.byKey(const Key('player_page_actions')));
+    await _pumpUntilFound(tester, find.text('Generate draft'));
+    await tester.tap(find.text('Generate draft'));
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('generate_draft_confirm_button')),
+    );
+    await tester.tap(find.byKey(const Key('generate_draft_confirm_button')));
+    await _pumpUntilFound(tester, find.text('Replace the current Program draft?'));
+
+    expect(fake.programDraft!['program_name'], 'Existing plan');
+    await tester.tap(find.text('Cancel').last);
+    await tester.pumpAndSettle();
+
+    final List<FakeRequest> generationRequests = fake.adapter.requests
+        .where((FakeRequest request) => request.path.endsWith('/program-draft/generate'))
+        .toList(growable: false);
+    expect(generationRequests, hasLength(1));
+    expect(fake.programDraft!['program_name'], 'Existing plan');
+    expect(fake.programDraft!['days'], existingDraft['days']);
+    expect(find.byKey(const Key('program_draft_save')), findsNothing);
+  });
+
+  testWidgets('Generate draft labels are localized in Arabic', (tester) async {
+    final FakeMayosApi fake = _coachFake()..displayLanguage = 'ar';
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('علاقات التدريب النشطة'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.text('مجموعات محسوبة لكل عضلة'));
+    await tester.tap(find.byKey(const Key('player_page_actions')));
+    await _pumpUntilFound(tester, find.text('إنشاء مسودة'));
+    await tester.tap(find.text('إنشاء مسودة'));
+    await _pumpUntilFound(tester, find.text('تفضيل نطاق التكرارات'));
+
+    expect(find.text('أيام التدريب أسبوعيًا'), findsOneWidget);
+    expect(find.text('التقسيمة'), findsOneWidget);
+    expect(find.text('إنشاء'), findsOneWidget);
   });
 
   testWidgets('profile shows and saves the intake rep preference values',

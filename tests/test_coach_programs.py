@@ -152,18 +152,32 @@ def _program() -> GeneratedProgramSchema:
     )
 
 
-def _coach_generation(db, monkeypatch):
-    """Replaces the LLM-free pipeline at the coach service seam, saving through the real ledger."""
+def _coach_generation(monkeypatch):
+    """Replaces the generator while leaving draft persistence to the real service."""
 
-    def fake(**kwargs):
-        program = _program()
-        kwargs["ledger"].save_training_program(
-            program.model_dump(),
-            published_by_coach_account_id=kwargs.get("published_by_coach_account_id"),
+    def fake(request, *, inference_call=None, ledger):
+        source = _program()
+        frequency = request.frequency_override or source.weekly_frequency
+        day = source.days[0]
+        days = [
+            day.model_copy(
+                update={
+                    "day_name": f"Full {index}",
+                    "day_order": index,
+                    "exercises": [
+                        exercise.model_copy(update={"target_rpe": 8.0, "notes": "Catalog execution steps."})
+                        for exercise in day.exercises
+                    ],
+                }
+            )
+            for index in range(1, frequency + 1)
+        ]
+        program = source.model_copy(
+            update={"weekly_frequency": frequency, "days": days}
         )
         return program, "md"
 
-    monkeypatch.setattr("service.coach_programs.generate_program_pipeline", fake)
+    monkeypatch.setattr("service.coach_programs.generate_program_draft_pipeline", fake)
 
 
 def _player_generation(db, monkeypatch):
@@ -177,8 +191,22 @@ def _player_generation(db, monkeypatch):
     monkeypatch.setattr("service.programs.generate_program_pipeline", fake)
 
 
+def _generate_draft(client, coach_headers, assignment_id, **body):
+    return client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/generate",
+        headers=coach_headers,
+        json=body,
+    )
+
+
 def _publish(client, coach_headers, assignment_id, **body):
-    return client.post(f"/coach/assignments/{assignment_id}/program", headers=coach_headers, json=body)
+    generated = _generate_draft(client, coach_headers, assignment_id, **body)
+    if generated.status_code != 200:
+        return generated
+    return client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/publish",
+        headers=coach_headers,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -189,7 +217,7 @@ def _publish(client, coach_headers, assignment_id, **body):
 def test_publish_activates_immediately_with_provenance_and_notice(api, monkeypatch):
     client, db, _ = api
     coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
-    _coach_generation(db, monkeypatch)
+    _coach_generation(monkeypatch)
 
     published = _publish(client, coach_headers, assignment_id, frequency_override=3)
     assert published.status_code == 200, published.text
@@ -216,7 +244,7 @@ def test_publish_activates_immediately_with_provenance_and_notice(api, monkeypat
 def test_second_publish_increments_version_and_keeps_first_stable(api, monkeypatch):
     client, db, _ = api
     coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
-    _coach_generation(db, monkeypatch)
+    _coach_generation(monkeypatch)
 
     assert _publish(client, coach_headers, assignment_id).json()["version"] == 1
     assert _publish(client, coach_headers, assignment_id).json()["version"] == 2
@@ -229,6 +257,101 @@ def test_second_publish_increments_version_and_keeps_first_stable(api, monkeypat
     ).fetchall()
     assert [int(row[0]) for row in rows] == [1, 2]
     assert all(row[1] == coach_account_id for row in rows)
+
+
+def test_generate_draft_preserves_active_program_profile_and_authority(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, coach_account_id, player_account_id = _assigned_player(api)
+    _coach_generation(monkeypatch)
+    player = db.get_account(player_account_id)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        ledger.save_training_program(_program().model_dump())
+        original = ledger.get_active_program()
+        original_profile = ledger.get_player_profile()
+
+    response = _generate_draft(
+        client,
+        coach_headers,
+        assignment_id,
+        frequency_override=2,
+        rep_preference_override="high",
+    )
+
+    assert response.status_code == 200, response.text
+    draft = response.json()["draft"]
+    assert draft["weekly_frequency"] == 2
+    assert draft["days"][0]["exercises"][0]["notes"] is None
+    assert client.get("/programs/active", headers=player_headers).json()["version"] == original.version
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        assert ledger.get_active_program().model_dump() == original.model_dump()
+        assert ledger.get_player_profile() == original_profile
+        assert ledger.get_program_draft(assignment_id)["draft"]["weekly_frequency"] == 2
+        assert db.get_active_assignment_for_player(player_account_id)["coach_account_id"] == coach_account_id
+        assert ledger.get_program_draft(assignment_id)["draft"]["days"][0]["exercises"][0]["target_rir"] == 2
+
+
+def test_generated_draft_can_be_edited_and_published(api, monkeypatch):
+    client, _, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    _coach_generation(monkeypatch)
+
+    generated = _generate_draft(client, coach_headers, assignment_id)
+    assert generated.status_code == 200, generated.text
+    assert client.get("/programs/active", headers=player_headers).json() is None
+
+    draft = generated.json()["draft"]
+    draft["days"][0]["day_name"] = "Coach edited day"
+    saved = client.put(
+        _program_draft_path(assignment_id),
+        headers=coach_headers,
+        json=draft,
+    )
+    assert saved.status_code == 200, saved.text
+    assert client.get("/programs/active", headers=player_headers).json() is None
+
+    published = client.post(
+        f"{_program_draft_path(assignment_id)}/publish",
+        headers=coach_headers,
+    )
+    assert published.status_code == 200, published.text
+    assert published.json()["version"] == 1
+    assert published.json()["days"][0]["day_name"] == "Coach edited day"
+
+
+def test_generate_draft_requires_confirmation_to_replace_existing_draft(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+    _coach_generation(monkeypatch)
+    path = _program_draft_path(assignment_id)
+    original = _one_day_draft()
+    assert client.post(path, headers=coach_headers, json=original).status_code == 200
+
+    refused = _generate_draft(client, coach_headers, assignment_id, frequency_override=2)
+
+    assert refused.status_code == 409
+    untouched = client.get(path, headers=coach_headers).json()["draft"]
+    assert untouched["program_name"] == original["program_name"]
+    assert untouched["days"][0]["exercises"][0]["exercise_id"] == "sq"
+    assert untouched["days"][0]["exercises"][0]["target_sets"] == 3
+
+    replaced = client.post(
+        f"{path}/generate?replace=true",
+        headers=coach_headers,
+        json={"frequency_override": 2},
+    )
+
+    assert replaced.status_code == 200, replaced.text
+    assert replaced.json()["draft"]["program_name"] == "Coach Plan"
+    assert client.get(path, headers=coach_headers).json()["draft"]["program_name"] == "Coach Plan"
+
+
+def test_old_direct_publish_route_is_removed(api):
+    client, _, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+
+    response = client.post(f"/coach/assignments/{assignment_id}/program", headers=coach_headers, json={})
+
+    assert response.status_code == 404
 
 
 def _program_draft_path(assignment_id):
@@ -753,7 +876,7 @@ def test_player_self_service_works_while_assigned_before_first_publication(api, 
 def test_player_generate_refused_after_publication(api, monkeypatch):
     client, db, _ = api
     coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
-    _coach_generation(db, monkeypatch)
+    _coach_generation(monkeypatch)
     assert _publish(client, coach_headers, assignment_id).status_code == 200
 
     refused = client.post("/programs/generate", headers=player_headers, json={})
@@ -766,7 +889,7 @@ def test_assistant_swap_refused_when_coach_controls_program(api, monkeypatch):
 
     client, db, _ = api
     coach_headers, player_headers, assignment_id, coach_account_id, player_account_id = _assigned_player(api)
-    _coach_generation(db, monkeypatch)
+    _coach_generation(monkeypatch)
     assert _publish(client, coach_headers, assignment_id).status_code == 200
 
     db.switch_user("p1")
@@ -795,7 +918,7 @@ def test_assistant_mutation_refused_when_coach_controls_program(api, monkeypatch
 
     client, db, _ = api
     coach_headers, _, assignment_id, _, player_account_id = _assigned_player(api)
-    _coach_generation(db, monkeypatch)
+    _coach_generation(monkeypatch)
     assert _publish(client, coach_headers, assignment_id).status_code == 200
 
     pipeline = MagicMock(return_value=(_program(), "md"))
@@ -825,7 +948,7 @@ def test_assistant_mutation_refused_when_coach_controls_program(api, monkeypatch
 def test_unassignment_retains_program_and_returns_authority(api, monkeypatch, ended_by):
     client, db, _ = api
     coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
-    _coach_generation(db, monkeypatch)
+    _coach_generation(monkeypatch)
     assert _publish(client, coach_headers, assignment_id).status_code == 200
 
     if ended_by == "coach":
@@ -849,7 +972,7 @@ def test_unassignment_retains_program_and_returns_authority(api, monkeypatch, en
 def test_fresh_assignment_before_publication_keeps_self_service(api, monkeypatch):
     client, db, _ = api
     coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
-    _coach_generation(db, monkeypatch)
+    _coach_generation(monkeypatch)
     assert _publish(client, coach_headers, assignment_id).status_code == 200
 
     assert client.post(f"/coach/assignments/{assignment_id}/revoke", headers=coach_headers).status_code == 200
@@ -877,7 +1000,7 @@ def test_fresh_assignment_before_publication_keeps_self_service(api, monkeypatch
 def test_non_coach_cannot_publish(api, monkeypatch):
     client, db, _ = api
     _, player_headers, assignment_id, _, _ = _assigned_player(api)
-    _coach_generation(db, monkeypatch)
+    _coach_generation(monkeypatch)
 
     denied = _publish(client, player_headers, assignment_id)
     assert denied.status_code == 403
@@ -887,7 +1010,7 @@ def test_non_coach_cannot_publish(api, monkeypatch):
 def test_unknown_and_other_coach_assignments_are_indistinguishable(api, monkeypatch):
     client, db, _ = api
     coach_headers, _, assignment_id, _, _ = _assigned_player(api)
-    _coach_generation(db, monkeypatch)
+    _coach_generation(monkeypatch)
     other_headers = _make_coach(client, db, "intruder", capacity=5)
 
     other = _publish(client, other_headers, assignment_id)
@@ -898,4 +1021,4 @@ def test_unknown_and_other_coach_assignments_are_indistinguishable(api, monkeypa
 
 def test_publish_requires_authentication(api):
     client, _, _ = api
-    assert client.post("/coach/assignments/x/program").status_code == 401
+    assert client.post("/coach/assignments/x/program-draft/generate", json={}).status_code == 401

@@ -53,8 +53,8 @@ class CoachPlayerHistoryScreen extends ConsumerStatefulWidget {
       _CoachPlayerHistoryScreenState();
 }
 
-class _PublishRequest {
-  const _PublishRequest({
+class _GenerateDraftRequest {
+  const _GenerateDraftRequest({
     required this.split,
     required this.repPreference,
     required this.frequency,
@@ -63,6 +63,109 @@ class _PublishRequest {
   final String split;
   final String repPreference;
   final int frequency;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        if (split.isNotEmpty) 'user_split_override': split,
+        'rep_preference_override': repPreference,
+        'frequency_override': frequency,
+      };
+}
+
+class _GenerateDraftDialog extends StatefulWidget {
+  const _GenerateDraftDialog();
+
+  @override
+  State<_GenerateDraftDialog> createState() => _GenerateDraftDialogState();
+}
+
+class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
+  final TextEditingController _split = TextEditingController();
+  String _repPreference = 'balanced';
+  int _frequency = 4;
+
+  @override
+  void dispose() {
+    _split.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = coachCopyOf(context);
+    return AlertDialog(
+      title: Text(copy.generateDraft),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          TextField(
+            key: const Key('generate_draft_split_field'),
+            controller: _split,
+            decoration: InputDecoration(
+              labelText: copy.split,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: MayosSpacing.md),
+          DropdownButtonFormField<String>(
+            key: const Key('generate_draft_rep_field'),
+            initialValue: _repPreference,
+            decoration: InputDecoration(
+              labelText: copy.repRangePreference,
+              border: const OutlineInputBorder(),
+            ),
+            items: <DropdownMenuItem<String>>[
+              DropdownMenuItem<String>(value: 'low', child: Text(copy.low)),
+              DropdownMenuItem<String>(
+                value: 'balanced',
+                child: Text(copy.balanced),
+              ),
+              DropdownMenuItem<String>(value: 'high', child: Text(copy.high)),
+            ],
+            onChanged: (String? value) => setState(
+              () => _repPreference = value ?? _repPreference,
+            ),
+          ),
+          const SizedBox(height: MayosSpacing.md),
+          DropdownButtonFormField<int>(
+            key: const Key('generate_draft_frequency_field'),
+            initialValue: _frequency,
+            decoration: InputDecoration(
+              labelText: copy.daysPerWeek,
+              border: const OutlineInputBorder(),
+            ),
+            items: <DropdownMenuItem<int>>[
+              for (int day = 1; day <= 5; day++)
+                DropdownMenuItem<int>(
+                  value: day,
+                  child: Text('$day', textDirection: TextDirection.ltr),
+                ),
+            ],
+            onChanged: (int? value) => setState(
+              () => _frequency = value ?? _frequency,
+            ),
+          ),
+        ],
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(copy.cancel),
+        ),
+        MayosButton(
+          key: const Key('generate_draft_confirm_button'),
+          label: copy.generate,
+          expand: false,
+          onPressed: () => Navigator.of(context).pop(
+            _GenerateDraftRequest(
+              split: _split.text.trim(),
+              repPreference: _repPreference,
+              frequency: _frequency,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _CoachPlayerHistoryScreenState
@@ -80,8 +183,8 @@ class _CoachPlayerHistoryScreenState
       <String, CoachExerciseHistory>{};
   String? _openExerciseId;
   bool _loadingHistory = false;
-  bool _publishing = false;
-  FailureMessage? _publishError;
+  bool _generatingDraft = false;
+  FailureMessage? _generateError;
   List<ProgramRequest> _programRequests = const <ProgramRequest>[];
   FailureMessage? _requestError;
   List<CheckIn> _checkIns = const <CheckIn>[];
@@ -261,113 +364,66 @@ class _CoachPlayerHistoryScreenState
     }
   }
 
-  Future<void> _openPublishDialog() async {
-    final TextEditingController split = TextEditingController();
-    final copy = coachCopyOf(context);
-    String repPreference = 'balanced';
-    int frequency = 4;
-    final _PublishRequest? request = await showDialog<_PublishRequest>(
+  Future<void> _openGenerateDraftDialog() async {
+    final _GenerateDraftRequest? request = await showDialog<_GenerateDraftRequest>(
       context: context,
-      builder: (BuildContext context) => StatefulBuilder(
-        builder: (BuildContext context, StateSetter setDialogState) =>
-            AlertDialog(
-          title: Text(copy.publishProgram),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              TextField(
-                key: const Key('publish_split_field'),
-                controller: split,
-                decoration: InputDecoration(
-                  labelText: copy.splitOverrideOptional,
-                  border: const OutlineInputBorder(),
-                ),
+      builder: (BuildContext context) => const _GenerateDraftDialog(),
+    );
+    if (request == null || !mounted) return;
+    await _generateDraft(request);
+  }
+
+  Future<void> _generateDraft(_GenerateDraftRequest request) async {
+    setState(() {
+      _generatingDraft = true;
+      _generateError = null;
+    });
+    try {
+      try {
+        await ref.read(apiClientProvider).coachGenerateProgramDraft(
+              _entry.assignmentId,
+              generationOverrides: request.toJson(),
+            );
+      } on ApiException catch (error) {
+        if (error.statusCode != 409) rethrow;
+        final bool replace = await _confirmProgramDraftReplacement();
+        if (!mounted || !replace) return;
+        await ref.read(apiClientProvider).coachReplaceGeneratedProgramDraft(
+              _entry.assignmentId,
+              generationOverrides: request.toJson(),
+            );
+      }
+      if (!mounted) return;
+      _openProgramDraft();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _generateError = apiFailureMessage(error));
+    } finally {
+      if (mounted) setState(() => _generatingDraft = false);
+    }
+  }
+
+  Future<bool> _confirmProgramDraftReplacement() async {
+    final copy = coachCopyOf(context);
+    return await showDialog<bool>(
+          context: context,
+          builder: (BuildContext context) => AlertDialog(
+            title: Text(copy.replaceProgramDraftTitle),
+            content: Text(copy.replaceProgramDraftPrompt),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(copy.cancel),
               ),
-              const SizedBox(height: MayosSpacing.md),
-              DropdownButtonFormField<String>(
-                key: const Key('publish_rep_field'),
-                initialValue: repPreference,
-                decoration: InputDecoration(
-                    labelText: copy.repPreference,
-                    border: const OutlineInputBorder()),
-                items: <DropdownMenuItem<String>>[
-                  DropdownMenuItem<String>(value: 'low', child: Text(copy.low)),
-                  DropdownMenuItem<String>(
-                      value: 'balanced', child: Text(copy.balanced)),
-                  DropdownMenuItem<String>(
-                      value: 'high', child: Text(copy.high)),
-                ],
-                onChanged: (String? value) => setDialogState(
-                    () => repPreference = value ?? repPreference),
-              ),
-              const SizedBox(height: MayosSpacing.md),
-              DropdownButtonFormField<int>(
-                key: const Key('publish_frequency_field'),
-                initialValue: frequency,
-                decoration: InputDecoration(
-                    labelText: copy.daysPerWeek,
-                    border: const OutlineInputBorder()),
-                items: <DropdownMenuItem<int>>[
-                  for (int day = 1; day <= 5; day++)
-                    DropdownMenuItem<int>(
-                      value: day,
-                      child: Text('$day', textDirection: TextDirection.ltr),
-                    ),
-                ],
-                onChanged: (int? value) =>
-                    setDialogState(() => frequency = value ?? frequency),
+              TextButton(
+                key: const Key('generate_draft_replace_confirm'),
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(copy.replaceProgramDraftAction),
               ),
             ],
           ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(copy.cancel),
-            ),
-            MayosButton(
-              key: const Key('publish_confirm_button'),
-              label: copy.publish,
-              expand: false,
-              onPressed: () => Navigator.of(context).pop(
-                _PublishRequest(
-                  split: split.text.trim(),
-                  repPreference: repPreference,
-                  frequency: frequency,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-    split.dispose();
-    if (request == null || !mounted) return;
-    setState(() {
-      _publishing = true;
-      _publishError = null;
-    });
-    try {
-      final TrainingProgram program =
-          await ref.read(apiClientProvider).coachPublishProgram(
-                _entry.assignmentId,
-                splitOverride: request.split.isEmpty ? null : request.split,
-                repPreference: request.repPreference,
-                frequency: request.frequency,
-              );
-      if (!mounted) return;
-      setState(() => _publishing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content:
-                Text(coachCopyOf(context).programPublished(program.version))),
-      );
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _publishing = false;
-        _publishError = apiFailureMessage(error);
-      });
-    }
+        ) ??
+        false;
   }
 
   /// Opens the resolve sheet and runs the shared post-resolve flow (#121):
@@ -868,9 +924,9 @@ class _CoachPlayerHistoryScreenState
                       switch (action) {
                         case _PlayerAction.writeProgram:
                           _openProgramDraft();
-                        case _PlayerAction.publishProgram:
-                          if (!_publishing) {
-                            _openPublishDialog();
+                        case _PlayerAction.generateDraft:
+                          if (!_generatingDraft) {
+                            _openGenerateDraftDialog();
                           }
                         case _PlayerAction.askAssistant:
                           _openAssistant();
@@ -884,10 +940,10 @@ class _CoachPlayerHistoryScreenState
                         child: Text(copy.writeProgram),
                       ),
                       PopupMenuItem<_PlayerAction>(
-                        key: const Key('publish_program_action'),
-                        value: _PlayerAction.publishProgram,
-                        enabled: !_publishing,
-                        child: Text(copy.publishProgram),
+                        key: const Key('generate_draft_action'),
+                        value: _PlayerAction.generateDraft,
+                        enabled: !_generatingDraft,
+                        child: Text(copy.generateDraft),
                       ),
                       if (assistantEnabled)
                         PopupMenuItem<_PlayerAction>(
@@ -1052,9 +1108,9 @@ class _CoachPlayerHistoryScreenState
     return ListView(
       padding: const EdgeInsets.all(MayosSpacing.md),
       children: <Widget>[
-        if (_publishError != null) ...<Widget>[
+        if (_generateError != null) ...<Widget>[
           Text(
-            displayCopyOf(context).failureMessage(_publishError!),
+            displayCopyOf(context).failureMessage(_generateError!),
             style: MayosTypography.bodySecondary.copyWith(color: c.danger),
           ),
           const SizedBox(height: MayosSpacing.sm),
@@ -1132,6 +1188,6 @@ enum _PlayerSegment {
 /// The player page's overflow actions (#G).
 enum _PlayerAction {
   writeProgram,
-  publishProgram,
+  generateDraft,
   askAssistant,
 }

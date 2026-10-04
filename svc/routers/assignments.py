@@ -19,7 +19,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, Response
 
-from agent.ProgramState import GeneratedProgramSchema, PersistedProgramSchema
+from agent.ProgramState import PersistedProgramSchema
 from service import analytics
 from service import assignments as assignment_service
 from service import analytics as analytics_service
@@ -364,34 +364,6 @@ async def revoke_assignment(
     return AssignmentEndOut(**result)
 
 
-@coach_router.post("/{assignment_id}/program", response_model=GeneratedProgramSchema)
-@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
-async def publish_assigned_player_program(
-    request: Request,
-    assignment_id: str,
-    body: ProgramGenerateIn,
-    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
-    db: Annotated[Any, Depends(get_db)],
-):
-    """Publishes a coach-authored program to an actively assigned player."""
-
-    def _run():
-        published = coach_programs_service.publish_program(
-            db,
-            ProgramAnalyticsActor(coach.account_id, "coach"),
-            assignment_id,
-            user_split_override=body.user_split_override,
-            rep_preference_override=body.rep_preference_override,
-            frequency_override=body.frequency_override,
-            client=analytics.client_context(request),
-        )
-        if published is None:
-            raise _no_active_assignment()
-        return published
-
-    return await asyncio.to_thread(_run)
-
-
 @coach_router.post("/{assignment_id}/program-draft", response_model=CoachProgramDraftOut)
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def create_assigned_player_program_draft(
@@ -412,6 +384,43 @@ async def create_assigned_player_program_draft(
         if created is None:
             raise _no_active_assignment()
         return created
+
+    return await asyncio.to_thread(_run)
+
+
+@coach_router.post("/{assignment_id}/program-draft/generate", response_model=CoachProgramDraftOut)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def generate_assigned_player_program_draft(
+    request: Request,
+    assignment_id: str,
+    body: ProgramGenerateIn,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+    replace: bool = False,
+):
+    def _run():
+        try:
+            generated = coach_programs_service.generate_program_draft(
+                db,
+                ProgramAnalyticsActor(coach.account_id, "coach"),
+                assignment_id,
+                coach_programs_service.ProgramGenerationRequest(
+                    user_split_override=body.user_split_override,
+                    rep_preference_override=body.rep_preference_override,
+                    frequency_override=body.frequency_override,
+                ),
+                replace_existing=replace,
+            )
+        except coach_program_drafts_service.ProgramDraftAlreadyExists as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        except coach_program_drafts_service.ProgramDraftValidationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"errors": exc.issues},
+            ) from exc
+        if generated is None:
+            raise _no_active_assignment()
+        return generated
 
     return await asyncio.to_thread(_run)
 

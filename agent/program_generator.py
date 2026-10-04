@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from dotenv import load_dotenv
 
@@ -77,6 +77,13 @@ class ExercisePrescription:
     working_sets: int
     rep_preference: str
     experience_level: ExperienceLevel
+
+
+@dataclass(frozen=True)
+class ProgramGenerationRequest:
+    user_split_override: str | None = None
+    rep_preference_override: str | None = None
+    frequency_override: int | None = None
 
 
 def get_biomechanical_cue(name: str, mechanic: str, experience_level: ExperienceLevel) -> str:
@@ -371,81 +378,112 @@ def generate_program_pipeline(
     *,
     ledger: Any,
 ) -> tuple[GeneratedProgramSchema, str]:
+    """Generates and persists a new active Program version."""
+    profile = _generation_profile(ledger)
+    request = ProgramGenerationRequest(user_split_override, rep_preference_override, frequency_override)
+    weekly_frequency = _resolve_generation(profile, request)
+    if published_by_coach_account_id is None and weekly_frequency != profile.get("weekly_frequency"):
+        ledger.update_player_frequency(weekly_frequency)
+    program, markdown = _build_program(profile, request, weekly_frequency, ledger)
+    ledger.save_training_program(
+        program.model_dump(), published_by_coach_account_id=published_by_coach_account_id
+    )
+    return program, markdown
+
+
+def generate_program_draft_pipeline(
+    request: ProgramGenerationRequest,
+    *,
+    inference_call: Callable[..., DynamicSplitPlan] | None = None,
+    ledger: Any,
+) -> tuple[GeneratedProgramSchema, str]:
+    """Builds generated content without changing the active Program or profile."""
+    profile = _generation_profile(ledger)
+    weekly_frequency = _resolve_generation(profile, request)
+    return _build_program(profile, request, weekly_frequency, ledger, inference_call=inference_call)
+
+
+def _generation_profile(ledger: Any) -> dict[str, Any]:
     profile = ledger.get_player_profile()
     if not profile:
         raise ValueError("No user profile found in SQLite. Complete intake first.")
+    return profile
 
-    text_frequency = extract_frequency_from_text(user_split_override)
+
+def _resolve_generation(
+    profile: dict[str, Any], request: ProgramGenerationRequest
+) -> int:
+    text_frequency = extract_frequency_from_text(request.user_split_override)
     if text_frequency is not None:
         validate_frequency(text_frequency)
-    if frequency_override is not None:
-        freq = validate_frequency(frequency_override)
+    if request.frequency_override is not None:
+        frequency = request.frequency_override
     elif text_frequency is not None:
-        freq = validate_frequency(text_frequency)
+        frequency = text_frequency
     else:
-        freq = validate_frequency(profile.get("weekly_frequency", 4))
+        frequency = profile.get("weekly_frequency", 4)
+    return validate_frequency(frequency)
 
-    if published_by_coach_account_id is None and freq != profile.get("weekly_frequency"):
-        ledger.update_player_frequency(freq)
 
-    clean_split_override = user_split_override
-    if user_split_override:
-        keywords = [
-            "upper",
-            "lower",
-            "ppl",
-            "push",
-            "pull",
-            "legs",
-            "arnold",
-            "full body",
-            "bro split",
-            "anterior",
-            "posterior",
-            "glute",
-            "total body",
-        ]
-        if not any(kw in user_split_override.lower() for kw in keywords):
-            clean_split_override = None
-
-    split_plan: DynamicSplitPlan = resolve_split(
-        frequency=freq, preference=clean_split_override, gender=profile.get("gender", "male")
-    )
-    rep_pref = rep_preference_override or profile.get("rep_preference", "balanced")
-
-    generated_days: list[ProgramDaySchema] = []
-    recovery_cut = is_poor_recovery(profile.get("stress_and_sleep"))
-    context = DayGenerationContext(
-        equipment_access=map_equipment_access(profile.get("equipment_access", COMMERCIAL_GYM)),
-        limitations=profile.get("injuries_or_limitations", "None"),
-        rep_preference=rep_pref,
-        recovery_cut=recovery_cut,
-        experience_level=experience_level_for_training_age(profile.get("training_age_years", 0.0)),
-    )
-
-    for day in split_plan.days:
-        day_plan = assemble_deterministic_day(
-            day=day,
-            context=context,
-            excluded_ids=set(),
-            ledger=ledger,
-        )
-        generated_days.append(day_plan)
-
-    # Goals modulate only the cardio layer; the lifting program is goal-agnostic.
-    if is_fat_loss_goal(profile.get("current_goal"), profile.get("long_term_goal")):
-        for day_plan in generated_days:
-            day_plan.cardio = FAT_LOSS_CARDIO_NOTE
-
+def _build_program(
+    profile: dict[str, Any],
+    request: ProgramGenerationRequest,
+    weekly_frequency: int,
+    ledger: Any,
+    *,
+    inference_call: Callable[..., DynamicSplitPlan] | None = None,
+) -> tuple[GeneratedProgramSchema, str]:
+    split_plan = _resolve_split_plan(profile, request, weekly_frequency, inference_call)
+    days = _generate_program_days(profile, request, split_plan, ledger)
     program = GeneratedProgramSchema(
         program_name=split_plan.split_name,
         split_type=split_plan.split_name,
         weekly_frequency=len(split_plan.days),
-        days=generated_days,
+        days=days,
     )
-
-    ledger.save_training_program(
-        program.model_dump(), published_by_coach_account_id=published_by_coach_account_id
-    )
-
     return program, render_program_markdown(program)
+
+
+def _resolve_split_plan(
+    profile: dict[str, Any],
+    request: ProgramGenerationRequest,
+    weekly_frequency: int,
+    inference_call: Callable[..., DynamicSplitPlan] | None = None,
+) -> DynamicSplitPlan:
+    preference = request.user_split_override
+    if preference:
+        keywords = (
+            "upper", "lower", "ppl", "push", "pull", "legs", "arnold", "full body",
+            "bro split", "anterior", "posterior", "glute", "total body",
+        )
+        if not any(keyword in preference.lower() for keyword in keywords):
+            preference = None
+    return resolve_split(
+        frequency=weekly_frequency,
+        preference=preference,
+        gender=profile.get("gender", "male"),
+        inference_call=inference_call,
+    )
+
+
+def _generate_program_days(
+    profile: dict[str, Any],
+    request: ProgramGenerationRequest,
+    split_plan: DynamicSplitPlan,
+    ledger: Any,
+) -> list[ProgramDaySchema]:
+    context = DayGenerationContext(
+        equipment_access=map_equipment_access(profile.get("equipment_access", COMMERCIAL_GYM)),
+        limitations=profile.get("injuries_or_limitations", "None"),
+        rep_preference=request.rep_preference_override or profile.get("rep_preference", "balanced"),
+        recovery_cut=is_poor_recovery(profile.get("stress_and_sleep")),
+        experience_level=experience_level_for_training_age(profile.get("training_age_years", 0.0)),
+    )
+    days = [
+        assemble_deterministic_day(day=day, context=context, excluded_ids=set(), ledger=ledger)
+        for day in split_plan.days
+    ]
+    if is_fat_loss_goal(profile.get("current_goal"), profile.get("long_term_goal")):
+        for day in days:
+            day.cardio = FAT_LOSS_CARDIO_NOTE
+    return days

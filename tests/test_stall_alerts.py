@@ -125,15 +125,21 @@ def test_publishing_program_resolves_stall_and_resolved_alert_is_not_urgent(api,
     coach_headers, _, assignment_id, _, assignment = _assigned(api)
     _open_stall(api, assignment)
 
-    def fake_generate(**kwargs):
+    def fake_generate(_request, *, inference_call=None, ledger):
         program = _program()
-        kwargs["ledger"].save_training_program(
-            program.model_dump(), published_by_coach_account_id=kwargs.get("published_by_coach_account_id")
-        )
         return program, "md"
 
-    monkeypatch.setattr("service.coach_programs.generate_program_pipeline", fake_generate)
-    published = client.post(f"/coach/assignments/{assignment_id}/program", headers=coach_headers, json={})
+    monkeypatch.setattr("service.coach_programs.generate_program_draft_pipeline", fake_generate)
+    generated = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/generate",
+        headers=coach_headers,
+        json={},
+    )
+    assert generated.status_code == 200, generated.text
+    published = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/publish",
+        headers=coach_headers,
+    )
     assert published.status_code == 200, published.text
 
     alerts = client.get("/coach/alerts?state=resolved", headers=coach_headers).json()["alerts"]

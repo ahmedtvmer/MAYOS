@@ -166,10 +166,11 @@ def _counting_saver(db: Any, program_name: str):
     def fake(**kwargs):
         calls["n"] += 1
         program = _program(program_name)
-        kwargs["ledger"].save_training_program(
-            program.model_dump(),
-            published_by_coach_account_id=kwargs.get("published_by_coach_account_id"),
-        )
+        if kwargs.get("persist_program", True):
+            kwargs["ledger"].save_training_program(
+                program.model_dump(),
+                published_by_coach_account_id=kwargs.get("published_by_coach_account_id"),
+            )
         return program, "md"
 
     return fake, calls
@@ -177,7 +178,17 @@ def _counting_saver(db: Any, program_name: str):
 
 def _coach_generation(db, monkeypatch):
     fake, _ = _counting_saver(db, "Coach Plan")
-    monkeypatch.setattr("service.coach_programs.generate_program_pipeline", fake)
+
+    def fake_draft(request, *, inference_call=None, ledger):
+        return fake(
+            user_split_override=request.user_split_override,
+            rep_preference_override=request.rep_preference_override,
+            frequency_override=request.frequency_override,
+            persist_program=False,
+            ledger=ledger,
+        )
+
+    monkeypatch.setattr("service.coach_programs.generate_program_draft_pipeline", fake_draft)
 
 
 def _player_generation(db, monkeypatch):
@@ -199,7 +210,17 @@ def _profile_generation(db, monkeypatch):
 
 
 def _publish(client, coach_headers, assignment_id, **body):
-    return client.post(f"/coach/assignments/{assignment_id}/program", headers=coach_headers, json=body)
+    generated = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/generate",
+        headers=coach_headers,
+        json=body,
+    )
+    if generated.status_code != 200:
+        return generated
+    return client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/publish",
+        headers=coach_headers,
+    )
 
 
 def _chat_done_event(client, player_headers, content):
@@ -559,10 +580,15 @@ def test_coach_frequency_override_preserves_profile_and_drives_weekly_streak_fal
     with db.open_ledger("p1") as ledger:
         ledger.upsert_player_profile({"weekly_frequency": 2})
 
-    published = client.post(
-        f"/coach/assignments/{assignment_id}/program",
+    generated = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/generate",
         headers=coach_headers,
         json={"frequency_override": 4},
+    )
+    assert generated.status_code == 200, generated.text
+    published = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/publish",
+        headers=coach_headers,
     )
 
     assert published.status_code == 200, published.text
