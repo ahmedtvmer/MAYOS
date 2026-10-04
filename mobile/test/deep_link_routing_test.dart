@@ -241,6 +241,32 @@ void main() {
     );
   });
 
+  test('player chat is only reachable in Player mode', () {
+    final AuthState coach = _authenticated(coach: true, onboarded: true);
+    expect(
+      redirectFor(coach, chatPath, _mode(AppMode.coach)),
+      coachRosterPath,
+    );
+    expect(
+      redirectFor(coach, '$chatPath/conversation-1?source=deep-link',
+          _mode(AppMode.coach)),
+      coachRosterPath,
+    );
+    expect(
+      redirectFor(
+          _authenticated(coach: true, onboarded: false), chatPath,
+          _mode(AppMode.coach)),
+      coachRosterPath,
+    );
+
+    final AuthState playerMode =
+        _authenticated(coach: true, onboarded: true);
+    expect(
+      redirectFor(playerMode, chatPath, _mode(AppMode.player)),
+      isNull,
+    );
+  });
+
   test('a cold coach-tab deep link survives sign-in and capability checks', () {
     const String target = '$coachRequestsPath/request-1?filter=pending';
     final String held = _hold(target)!;

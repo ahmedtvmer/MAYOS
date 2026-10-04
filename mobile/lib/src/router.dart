@@ -202,6 +202,10 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
       if (path == homePath && coachMode) {
         return coachRosterPath;
       }
+      if (coachMode &&
+          (path == chatPath || path.startsWith('$chatPath/'))) {
+        return coachRosterPath;
+      }
       // The deferred-intake screen is only for a coach in Player mode who has
       // not completed onboarding (#119).
       if (path == playerSetupPath) {
