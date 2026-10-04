@@ -168,6 +168,7 @@ def test_owner_issued_invite_grants_capability_without_reissuing_token(api, monk
             "lifter": {"plan": "free", "status": "active"},
             "coach": {"plan": "pro", "status": "active"},
         },
+        "analytics_allowed": True,
     }
 
     # The same bearer token now sees the live capability (registry-driven).

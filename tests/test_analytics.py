@@ -199,7 +199,7 @@ def analytics_api(tmp_path, monkeypatch, recording_analytics):
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
-    analytics.register_analytics_preference_reader(db.analytics_preference_allows)
+    analytics.override_analytics_preference_reader(db.analytics_preference_allows)
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
     sink = recording_analytics
@@ -649,7 +649,7 @@ def test_opted_out_player_assignment_redemption_is_attributed_to_allowed_coach(a
 
 def test_analytics_boundary_fails_closed_when_registry_preference_cannot_be_read(recording_analytics):
     account_id = "00000000-0000-0000-0000-000000000001"
-    analytics.register_analytics_preference_reader(lambda _account_id: (_ for _ in ()).throw(OSError()))
+    analytics.override_analytics_preference_reader(lambda _account_id: (_ for _ in ()).throw(OSError()))
 
     analytics.capture(
         analytics.AnalyticsEvent(
@@ -666,7 +666,7 @@ def test_analytics_boundary_fails_closed_when_registry_preference_cannot_be_read
     assert recording_analytics.events == []
     assert recording_analytics.people == {}
     assert recording_analytics.people_set_once == {}
-    analytics.register_analytics_preference_reader(None)
+    analytics.override_analytics_preference_reader(None)
 
 
 def test_server_events_resolve_android_web_and_missing_client_dimensions(analytics_api):
@@ -1226,7 +1226,7 @@ def test_recording_sink_keeps_every_capture_call_and_coach_events_use_player_own
 
     from service.program_analytics import ProgramAnalyticsActor, capture_program_generated
 
-    analytics.register_analytics_preference_reader(lambda _account_id: True)
+    analytics.override_analytics_preference_reader(lambda _account_id: True)
     account_id = uuid.uuid4().hex
     event = analytics.AnalyticsEvent(
         account_id=account_id,

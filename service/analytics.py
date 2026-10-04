@@ -585,6 +585,7 @@ def create_sink_from_environment() -> NoOpAnalyticsSink | PostHogAnalyticsSink:
 _sink: AnalyticsSink = NoOpAnalyticsSink()
 _sink_is_override = False
 _analytics_preference_reader: Callable[[str], bool] | None = None
+_preference_reader_is_override = False
 
 
 def register_analytics_preference_reader(reader: Callable[[str], bool] | None) -> None:
@@ -592,10 +593,19 @@ def register_analytics_preference_reader(reader: Callable[[str], bool] | None) -
 
     Analytics stays a leaf module: the application supplies the registry seam
     rather than importing database code here. A missing or failing reader
-    suppresses sends.
+    suppresses sends. A reader installed with
+    ``override_analytics_preference_reader`` is kept.
     """
     global _analytics_preference_reader
+    if not _preference_reader_is_override:
+        _analytics_preference_reader = reader
+
+
+def override_analytics_preference_reader(reader: Callable[[str], bool] | None) -> None:
+    """Replaces the preference lookup regardless of app startup; ``None`` clears the override."""
+    global _analytics_preference_reader, _preference_reader_is_override
     _analytics_preference_reader = reader
+    _preference_reader_is_override = reader is not None
 
 
 def _account_allows_analytics(account_id: str) -> bool:

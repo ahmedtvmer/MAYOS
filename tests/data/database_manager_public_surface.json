@@ -524,6 +524,14 @@
     "get_first_touch_acquisition": {
       "kind": "method",
       "signature": "(self, account_id: str) -> dict[str, str | None] | None"
+    },
+    "analytics_preference_allows": {
+      "kind": "method",
+      "signature": "(self, account_id: str) -> bool"
+    },
+    "set_account_analytics_allowed": {
+      "kind": "method",
+      "signature": "(self, account_id: str, allowed: bool) -> bool | None"
     }
   },
   "module_names": [

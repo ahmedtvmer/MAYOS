@@ -43,17 +43,18 @@ def recording_analytics():
     """Installs the strict analytics contract sink for every test."""
     from service.analytics import (
         RecordingAnalyticsSink,
-        register_analytics_preference_reader,
+        override_analytics_preference_reader,
         set_sink,
     )
 
     sink = RecordingAnalyticsSink()
-    register_analytics_preference_reader(None)
+    # Accounts allow analytics unless a test installs the registry preference.
+    override_analytics_preference_reader(lambda _account_id: True)
     set_sink(sink)
     try:
         yield sink
     finally:
-        register_analytics_preference_reader(None)
+        override_analytics_preference_reader(None)
         set_sink(None)
 
 
