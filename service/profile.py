@@ -4,7 +4,7 @@ from typing import Any
 
 from agent.program_generator import generate_program_pipeline
 from service._base import ledger_scope
-from service.profile_change_alerts import normalize_profile_value, record_profile_change
+from service.profile_change_alerts import normalize_profile_value
 from service.programs import COACH_CONTROLLED_ERROR, player_controls_program
 from utils.equipment_access import map_equipment_access
 

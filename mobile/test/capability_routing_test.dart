@@ -14,10 +14,13 @@ AuthState _authenticated({
   required bool coach,
   required bool onboarded,
   bool hasRecoveryEmail = true,
+  bool? recoveryEmailVerified,
 }) =>
     AuthState.authenticated(
       AccountSession(
-        account: _account(coach: coach),
+        account: _account(coach: coach).copyWith(
+          recoveryEmailVerified: recoveryEmailVerified ?? hasRecoveryEmail,
+        ),
         onboarded: onboarded,
         hasRecoveryEmail: hasRecoveryEmail,
       ),
@@ -124,6 +127,28 @@ void main() {
         _authenticated(coach: false, onboarded: true, hasRecoveryEmail: true);
     expect(
         redirectFor(done, recoveryEmailPath, _mode(AppMode.player)), homePath);
+  });
+
+  test('saved but unverified recovery email stays behind the gate', () {
+    final AuthState unverified = _authenticated(
+      coach: false,
+      onboarded: true,
+      hasRecoveryEmail: true,
+      recoveryEmailVerified: false,
+    );
+
+    expect(redirectFor(unverified, homePath, _mode(AppMode.player)),
+        recoveryEmailPath);
+    expect(redirectFor(unverified, recoveryEmailPath, _mode(AppMode.player)),
+        isNull);
+
+    final AuthState verified = _authenticated(
+      coach: false,
+      onboarded: true,
+      hasRecoveryEmail: true,
+      recoveryEmailVerified: true,
+    );
+    expect(redirectFor(verified, homePath, _mode(AppMode.player)), isNull);
   });
 
   test('recovery email stays ahead of the mode and deferred onboarding', () {

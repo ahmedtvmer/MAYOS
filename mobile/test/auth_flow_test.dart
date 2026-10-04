@@ -54,9 +54,25 @@ void main() {
         .firstWhere((FakeRequest r) => r.path == '/auth/me');
     expect(meRequest.headers['Authorization'], 'Bearer $token');
 
-    // Recovery email releases the ADR 007 gate.
+    // Saving an address sends a code; verification releases the gate.
     await auth.setRecoveryEmail('alice@example.com');
     expect(container.read(authControllerProvider).session!.hasRecoveryEmail,
+        isTrue);
+    expect(
+        container
+            .read(authControllerProvider)
+            .session!
+            .account
+            .recoveryEmailVerified,
+        isFalse);
+    await auth.sendRecoveryEmailVerificationCode();
+    await auth.verifyRecoveryEmail(fake.currentRecoveryEmailCode!);
+    expect(
+        container
+            .read(authControllerProvider)
+            .session!
+            .account
+            .recoveryEmailVerified,
         isTrue);
 
     // Conversational onboarding.
@@ -122,6 +138,8 @@ void main() {
     final ApiClient api = container.read(apiClientProvider);
     await auth.register(username: 'alice', password: 'correct-horse-1');
     await auth.setRecoveryEmail('alice@example.com');
+    await auth.sendRecoveryEmailVerificationCode();
+    await auth.verifyRecoveryEmail(fake.currentRecoveryEmailCode!);
 
     await api.startOnboarding();
     await api.submitOnboardingStep(content: 'Build muscle');

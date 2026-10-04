@@ -1062,13 +1062,15 @@ class ApiClient {
     return (response.data as Map<String, dynamic>)['email'] as String?;
   }
 
-  /// Sets the recovery email and returns the normalized value.
-  Future<String> setRecoveryEmail(String email) async {
+  /// Sets the recovery email and returns its normalized value and verification state.
+  Future<({String email, bool verified})> setRecoveryEmail(String email) async {
     final response = await _send(
       () => _dio.post<dynamic>('/auth/email', data: {'email': email}),
     );
-    final persistedEmail = (response.data as Map<String, dynamic>)['email'];
-    if (persistedEmail is! String || persistedEmail.isEmpty) {
+    final Map<String, dynamic> body = response.data as Map<String, dynamic>;
+    final persistedEmail = body['email'];
+    final verified = body['verified'];
+    if (persistedEmail is! String || persistedEmail.isEmpty || verified is! bool) {
       throw const ApiException(
         'Could not confirm the recovery email. Please retry.',
         failureMessage: AppFailureMessage(
@@ -1077,7 +1079,22 @@ class ApiClient {
         ),
       );
     }
-    return persistedEmail;
+    return (email: persistedEmail, verified: verified);
+  }
+
+  /// Sends a fresh single-use code to the saved, unverified recovery email.
+  Future<void> sendRecoveryEmailVerificationCode() async {
+    await _send(() => _dio.post<dynamic>('/auth/email/verification-code'));
+  }
+
+  /// Consumes the single-use code for the account's current recovery email.
+  Future<void> verifyRecoveryEmail(String code) async {
+    await _send(
+      () => _dio.post<dynamic>(
+        '/auth/email/verify',
+        data: <String, dynamic>{'code': code},
+      ),
+    );
   }
 
   /// Requests a reset link for [email].

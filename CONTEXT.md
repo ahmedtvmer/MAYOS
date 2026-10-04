@@ -13,6 +13,10 @@ replies use the same vocabulary.
 **Account**:
 The identity a person uses to access MAYOS. An account can have player and coach capabilities at the same time.
 
+**Recovery email**:
+The account's verified email address for password recovery. It lives in the shared catalog with the account, separately from training data. The account remains behind the recovery-email gate until its current address is verified.
+_Arabic_: البريد الإلكتروني للاسترداد
+
 **Player**:
 An account holder using MAYOS for their own training. A player may also be a coach.
 _Arabic_: لاعب

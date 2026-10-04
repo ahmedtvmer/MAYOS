@@ -135,8 +135,9 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `RESET_LINK_BASE_URL` | `http://localhost:8000` | Reset-link / App Link base; must match the App Link host |
 | `ANDROID_APP_PACKAGE` | `com.mayos.mayos_mobile` | App Link `assetlinks.json` package |
 | `ANDROID_APP_SHA256_CERT_FINGERPRINTS` | unset (⇒ 404) | App Link signing-cert SHA-256 fingerprints (case/colons optional; normalised) |
-| | `RESET_TOKEN_TTL_MINUTES` | `30` | Reset-link lifetime (clamped 5–120) |
-| `SMTP_HOST` | unset | **Unset ⇒ console-dev backend** (reset links logged, not sent). Configure for real deployments |
+| `RESET_TOKEN_TTL_MINUTES` | `30` | Reset-link lifetime (clamped 5–120) |
+| `EMAIL_VERIFICATION_CODE_TTL_MINUTES` | `10` | Recovery-email code lifetime (clamped 5–60) |
+| `SMTP_HOST` | unset | **Unset ⇒ console-dev backend** (reset links and verification codes logged, not sent). Configure for real deployments |
 | `SMTP_PORT` / `SMTP_USE_TLS` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | `587` / `true` / — / — / `no-reply@myos.local` | SMTP transport |
 | `RATE_LIMIT_LOGIN` / `_REGISTER` / `_PASSWORD` / `_RESET` / `_CHAT` / `_ONBOARDING` | `5/min` / `5/min` / `10/min` / `3/hour` / `30/min` / `30/min` | Per-route limits |
 | `RATE_LIMIT_USERNAME_CHECK` | `30/min` | `GET /auth/username-available`, the as-you-type username picker (#113) |

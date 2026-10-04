@@ -244,7 +244,14 @@ class AuthRepository {
     }
   }
 
-  Future<String> setRecoveryEmail(String email) => _api.setRecoveryEmail(email);
+  Future<({String email, bool verified})> setRecoveryEmail(String email) =>
+      _api.setRecoveryEmail(email);
+
+  Future<void> sendRecoveryEmailVerificationCode() =>
+      _api.sendRecoveryEmailVerificationCode();
+
+  Future<void> verifyRecoveryEmail(String code) =>
+      _api.verifyRecoveryEmail(code);
 
   /// Requests a reset link, returning the service's constant confirmation.
   Future<String> forgotPassword(String email) => _api.forgotPassword(email);
@@ -332,6 +339,7 @@ class AuthRepository {
       account: account,
       onboarded: onboarded,
       hasRecoveryEmail: email != null && email.isNotEmpty,
+      recoveryEmail: email,
     );
   }
 }

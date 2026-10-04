@@ -97,6 +97,7 @@ class Account {
     this.hasPassword = false,
     this.linkedSignIns = const <String>[],
     this.displayLanguage = 'en',
+    this.recoveryEmailVerified = false,
   });
 
   factory Account.fromJson(Map<String, dynamic> json) {
@@ -119,6 +120,7 @@ class Account {
           ? rawLinked.whereType<String>().toList(growable: false)
           : const <String>[],
       displayLanguage: normalizeDisplayLanguage(json['display_language']),
+      recoveryEmailVerified: json['recovery_email_verified'] as bool? ?? false,
     );
   }
 
@@ -141,6 +143,9 @@ class Account {
   final List<String> linkedSignIns;
   final String displayLanguage;
 
+  /// Whether `/auth/me` confirms the current recovery email address.
+  final bool recoveryEmailVerified;
+
   Account copyWith({
     String? accountId,
     String? traineeId,
@@ -150,6 +155,7 @@ class Account {
     bool? hasPassword,
     List<String>? linkedSignIns,
     String? displayLanguage,
+    bool? recoveryEmailVerified,
   }) =>
       Account(
         accountId: accountId ?? this.accountId,
@@ -160,6 +166,8 @@ class Account {
         hasPassword: hasPassword ?? this.hasPassword,
         linkedSignIns: linkedSignIns ?? this.linkedSignIns,
         displayLanguage: displayLanguage ?? this.displayLanguage,
+        recoveryEmailVerified:
+            recoveryEmailVerified ?? this.recoveryEmailVerified,
       );
 
   bool get isCoach => capabilities.coach;
@@ -1216,6 +1224,7 @@ class AccountSession {
     required this.account,
     required this.onboarded,
     required this.hasRecoveryEmail,
+    this.recoveryEmail,
   });
 
   final Account account;
@@ -1223,6 +1232,9 @@ class AccountSession {
 
   /// ADR 007: a recovery email is mandatory before dashboard or onboarding.
   final bool hasRecoveryEmail;
+
+  /// The saved recovery address, available only to the authenticated account.
+  final String? recoveryEmail;
 }
 
 /// `POST /auth/register` and `POST /auth/login` response body.

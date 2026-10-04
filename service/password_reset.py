@@ -28,6 +28,13 @@ from service.email_sender import (
     log_email_preparation_failure,
     send_no_account_notice_email,
     send_password_reset_email,
+    send_recovery_email_verification_code,
+)
+from service.email_verification import (
+    CODE_PURPOSE_RECOVERY_EMAIL,
+    EmailVerificationIdentity,
+    issue_code,
+    verify_code,
 )
 
 logger = logging.getLogger(__name__)
@@ -255,6 +262,46 @@ def set_recovery_email(db: Any, account_id: str, email: str) -> dict[str, Any]:
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
     return {"ok": True, "trainee_id": account["ledger_id"], "email": normalized}
+
+
+def _current_unverified_recovery_email(db: Any, account_id: str) -> tuple[dict[str, Any], str] | None:
+    account = db.get_account(account_id)
+    if not db.is_live_account(account) or not account["is_player"]:
+        return None
+    email = normalize_email(db.get_account_email(account_id))
+    if email is None or db.is_recovery_email_verified(account_id):
+        return None
+    return account, email
+
+
+def issue_recovery_email_verification_code(db: Any, account_id: str) -> bool:
+    """Sends a code to the account's current, still-unverified recovery email."""
+    current = _current_unverified_recovery_email(db, account_id)
+    if current is None:
+        return False
+    account, email = current
+    return issue_code(
+        db,
+        EmailVerificationIdentity(account_id, email, CODE_PURPOSE_RECOVERY_EMAIL),
+        account.get("display_language", "en"),
+        lambda address, code, language: send_recovery_email_verification_code(
+            address, code, language, account_id=account_id
+        ),
+    )
+
+
+def verify_recovery_email_code(db: Any, account_id: str, code: str) -> bool:
+    """Consumes the code and verifies only the account's current recovery address."""
+    current = _current_unverified_recovery_email(db, account_id)
+    if current is None:
+        return False
+    _, email = current
+    return verify_code(
+        db,
+        EmailVerificationIdentity(account_id, email, CODE_PURPOSE_RECOVERY_EMAIL),
+        code,
+        mark_recovery_email=True,
+    )
 
 
 def _no_account_notice_hash(normalized_email: str) -> str:

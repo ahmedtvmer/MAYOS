@@ -286,6 +286,7 @@ class AuthController extends StateNotifier<AuthState> {
         account: session.account.withDisplayLanguage(language),
         onboarded: session.onboarded,
         hasRecoveryEmail: session.hasRecoveryEmail,
+        recoveryEmail: session.recoveryEmail,
       ),
       notice: state.notice,
     );
@@ -567,6 +568,7 @@ class AuthController extends StateNotifier<AuthState> {
         account: account,
         onboarded: current.onboarded,
         hasRecoveryEmail: current.hasRecoveryEmail,
+        recoveryEmail: current.recoveryEmail,
       ),
     );
   }
@@ -599,6 +601,7 @@ class AuthController extends StateNotifier<AuthState> {
           account: refreshedAccount,
           onboarded: current.onboarded,
           hasRecoveryEmail: current.hasRecoveryEmail,
+          recoveryEmail: current.recoveryEmail,
         ),
       );
     } on ApiException {
@@ -622,20 +625,53 @@ class AuthController extends StateNotifier<AuthState> {
         ),
         onboarded: current.onboarded,
         hasRecoveryEmail: current.hasRecoveryEmail,
+        recoveryEmail: current.recoveryEmail,
       ),
     );
   }
 
-  /// Saves the mandatory recovery email, then releases the ADR 007 gate.
-  Future<void> setRecoveryEmail(String email) async {
-    await _repository.setRecoveryEmail(email);
+  /// Saves or corrects the recovery email while keeping the verification gate closed.
+  Future<bool> setRecoveryEmail(String email) async {
+    final AccountSession? before = state.session;
+    final ({String email, bool verified}) saved =
+        await _repository.setRecoveryEmail(email);
     final AccountSession? session = state.session;
-    if (state.isAuthenticated && session != null) {
+    if (state.isAuthenticated &&
+        before != null &&
+        session?.account.accountId == before.account.accountId) {
       state = AuthState.authenticated(
         AccountSession(
-          account: session.account,
+          account: session!.account.copyWith(
+            recoveryEmailVerified: saved.verified,
+          ),
           onboarded: session.onboarded,
-          hasRecoveryEmail: true,
+          hasRecoveryEmail: saved.email.isNotEmpty,
+          recoveryEmail: saved.email,
+        ),
+      );
+    }
+    return saved.verified;
+  }
+
+  /// Sends a fresh code to the saved recovery email.
+  Future<void> sendRecoveryEmailVerificationCode() async {
+    await _repository.sendRecoveryEmailVerificationCode();
+  }
+
+  /// Verifies the saved recovery email and releases the authenticated gate.
+  Future<void> verifyRecoveryEmail(String code) async {
+    final AccountSession? before = state.session;
+    await _repository.verifyRecoveryEmail(code);
+    final AccountSession? session = state.session;
+    if (state.isAuthenticated &&
+        before != null &&
+        session?.account.accountId == before.account.accountId) {
+      state = AuthState.authenticated(
+        AccountSession(
+          account: session!.account.copyWith(recoveryEmailVerified: true),
+          onboarded: session.onboarded,
+          hasRecoveryEmail: session.hasRecoveryEmail,
+          recoveryEmail: session.recoveryEmail,
         ),
       );
     }
@@ -650,6 +686,7 @@ class AuthController extends StateNotifier<AuthState> {
           account: session.account,
           onboarded: true,
           hasRecoveryEmail: session.hasRecoveryEmail,
+          recoveryEmail: session.recoveryEmail,
         ),
       );
     }

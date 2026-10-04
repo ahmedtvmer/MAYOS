@@ -182,6 +182,11 @@ void main() {
     await tester.enterText(
         find.byKey(const Key('recovery_email')), 'alice@example.com');
     await tester.tap(find.byKey(const Key('recovery_submit')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('recovery_verification_code')));
+    await tester.enterText(find.byKey(const Key('recovery_verification_code')),
+        fake.currentRecoveryEmailCode!);
+    await tester.tap(find.byKey(const Key('recovery_submit')));
     await _pumpUntilFound(tester, find.byType(PlanScreen));
 
     expect(fake.recoveryEmail, 'alice@example.com');

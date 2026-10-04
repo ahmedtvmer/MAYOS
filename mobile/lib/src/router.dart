@@ -141,9 +141,9 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
           ? _carriedTarget(from)
           : null;
 
-      // ADR 007: a recovery email is mandatory before dashboard or onboarding.
-      // It stays first, ahead of the mode and onboarding rules (#119).
-      if (!accountSession.hasRecoveryEmail) {
+      // ADR 007: a verified recovery email is mandatory before dashboard or onboarding.
+      // It stays first, ahead of the mode and onboarding rules.
+      if (!accountSession.account.recoveryEmailVerified) {
         if (path == recoveryEmailPath) {
           return null;
         }

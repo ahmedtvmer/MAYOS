@@ -227,6 +227,7 @@ class AccountOut(BaseModel):
     has_password: bool
     linked_sign_ins: list[str]
     display_language: Literal["en", "ar"]
+    recovery_email_verified: bool = False
     coach_ai_enabled: bool = False
 
 
@@ -707,6 +708,7 @@ class EmailUpdateIn(BaseModel):
 
 class RecoveryEmailOut(BaseModel):
     email: str | None = None
+    verified: bool = False
 
 
 class ForgotPasswordIn(BaseModel):

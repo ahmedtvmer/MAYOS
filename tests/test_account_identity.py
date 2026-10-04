@@ -364,6 +364,7 @@ def test_current_account_reports_capabilities_from_durable_registry(api):
         "coach_ai_enabled": False,
         "has_password": True,
         "linked_sign_ins": [],
+        "recovery_email_verified": False,
         "plans": {
             "lifter": {"plan": "free", "status": "active"},
             "coach": None,
@@ -510,7 +511,10 @@ def test_old_account_id_cannot_change_reused_username_password_or_email(api, mon
             assert second_client.post(
                 "/auth/login", json={"trainee_id": "alice", "password": "attacker-horse-99"}
             ).status_code == 401
-            assert second_client.get("/auth/email", headers=_authed(second["access_token"])).json() == {"email": None}
+            assert second_client.get("/auth/email", headers=_authed(second["access_token"])).json() == {
+                "email": None,
+                "verified": False,
+            }
     finally:
         if fresh_db.ledger_conn is not None:
             fresh_db.ledger_conn.close()

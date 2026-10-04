@@ -32,6 +32,9 @@ class FakeMayosApi {
   String coachPlan = 'free';
   bool profileExists = false;
   String? recoveryEmail;
+  bool recoveryEmailVerified = true;
+  String? currentRecoveryEmailCode;
+  int recoveryEmailCodesSent = 0;
   // Password recovery (#38).
   String resetConfirmation =
       'If this email is linked to a ledger, a reset link is on its way.';
@@ -420,6 +423,10 @@ class FakeMayosApi {
         return _updateDisplayLanguage(request);
       case '/auth/email':
         return _recoveryEmail(request);
+      case '/auth/email/verification-code':
+        return _sendRecoveryEmailCode(request);
+      case '/auth/email/verify':
+        return _verifyRecoveryEmail(request);
       case '/auth/forgot-password':
         return _forgotPassword(request);
       case '/auth/reset-password':
@@ -727,6 +734,8 @@ class FakeMayosApi {
       'linked_sign_ins': linkedSignIns.toList(growable: false),
       'display_language':
           currentAccountDisplayLanguageOverride ?? displayLanguage,
+      'recovery_email_verified':
+          recoveryEmail != null && recoveryEmailVerified,
     });
   }
 
@@ -760,7 +769,10 @@ class FakeMayosApi {
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
     }
     if (request.method == 'GET') {
-      return FakeResponse(200, <String, dynamic>{'email': recoveryEmail});
+      return FakeResponse(200, <String, dynamic>{
+        'email': recoveryEmail,
+        'verified': recoveryEmail != null && recoveryEmailVerified,
+      });
     }
     final String? raw = request.body['email'] as String?;
     final String? normalized = raw?.trim().toLowerCase();
@@ -771,8 +783,46 @@ class FakeMayosApi {
       return const FakeResponse(
           400, <String, dynamic>{'detail': 'Enter a valid email address.'});
     }
-    recoveryEmail = normalized;
-    return FakeResponse(200, <String, dynamic>{'email': normalized});
+    if (normalized != recoveryEmail) {
+      recoveryEmail = normalized;
+      recoveryEmailVerified = false;
+      currentRecoveryEmailCode = null;
+    }
+    return FakeResponse(200, <String, dynamic>{
+      'email': normalized,
+      'verified': recoveryEmailVerified,
+    });
+  }
+
+  FakeResponse _sendRecoveryEmailCode(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (recoveryEmail == null || recoveryEmailVerified) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'Invalid or expired verification code.'});
+    }
+    recoveryEmailCodesSent++;
+    currentRecoveryEmailCode = recoveryEmailCodesSent.toString().padLeft(6, '0');
+    return const FakeResponse(
+        200, <String, dynamic>{'message': 'A verification code has been sent.'});
+  }
+
+  FakeResponse _verifyRecoveryEmail(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (request.body['code'] != currentRecoveryEmailCode ||
+        currentRecoveryEmailCode == null) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'Invalid or expired verification code.'});
+    }
+    recoveryEmailVerified = true;
+    currentRecoveryEmailCode = null;
+    return const FakeResponse(
+        200, <String, dynamic>{'message': 'Recovery email verified.'});
   }
 
   FakeResponse _forgotPassword(FakeRequest request) {
@@ -849,6 +899,8 @@ class FakeMayosApi {
       'plans': _plansBody(),
       'display_language': displayLanguage,
       'coach_ai_enabled': coachAiEnabled,
+      'recovery_email_verified':
+          recoveryEmail != null && recoveryEmailVerified,
     });
   }
 

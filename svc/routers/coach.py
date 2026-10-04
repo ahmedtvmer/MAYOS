@@ -52,6 +52,7 @@ async def redeem_coach_invite(
         result["has_password"] = auth_service.account_has_password(db, account)
         result["linked_sign_ins"] = db.list_linked_sign_in_providers(result["account_id"])
         result["display_language"] = account["display_language"]
+        result["recovery_email_verified"] = db.is_recovery_email_verified(result["account_id"])
         return result
 
     result = await asyncio.to_thread(_run)
@@ -63,6 +64,7 @@ async def redeem_coach_invite(
         has_password=result["has_password"],
         linked_sign_ins=result["linked_sign_ins"],
         display_language=result["display_language"],
+        recovery_email_verified=result["recovery_email_verified"],
         coach_ai_enabled=coach_ai_service.coach_ai_enabled(),
     )
 

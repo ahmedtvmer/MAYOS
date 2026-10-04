@@ -77,10 +77,16 @@ void main() {
     await _pumpUntilFound(tester, find.text('Enter a valid email address.'));
     expect(_sawOnboardingCall(fake), isFalse);
 
-    // A valid email unlocks the gate; the hosted-processing disclosure still
-    // gates every answer.
-    await tester.enterText(find.byType(TextField), 'alice@example.com');
+    // A valid email starts verification; the gate stays closed until the code
+    // is entered. The hosted-processing disclosure still gates every answer.
+    await tester.enterText(
+        find.byKey(const Key('recovery_email')), 'alice@example.com');
     await tester.tap(find.text('Save email'));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('recovery_verification_code')));
+    await tester.enterText(find.byKey(const Key('recovery_verification_code')),
+        fake.currentRecoveryEmailCode!);
+    await tester.tap(find.text('Verify email'));
     await _pumpUntilFound(tester, find.text('Hosted AI processing'));
     expect(fake.intakeAnswers, isEmpty);
     expect(fake.intakeDisclosureAcknowledged, isFalse);

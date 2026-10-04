@@ -37,6 +37,10 @@
       "kind": "method",
       "signature": "(self, account_id: str, now_iso: str) -> int"
     },
+    "is_recovery_email_verified": {
+      "kind": "method",
+      "signature": "(self, account_id: str) -> bool"
+    },
     "count_active_assignments_for_coach": {
       "kind": "method",
       "signature": "(self, coach_account_id: str) -> int"

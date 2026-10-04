@@ -728,6 +728,23 @@ class MayosCopy {
       isArabic ? 'طلب رابط جديد' : 'Request a new link';
   String get resetCode => isArabic ? 'رمز إعادة التعيين' : 'Reset code';
   String get saveEmail => isArabic ? 'حفظ البريد الإلكتروني' : 'Save email';
+  String get verifyRecoveryEmail =>
+      isArabic ? 'تأكيد البريد الإلكتروني' : 'Verify email';
+  String get verificationCode => isArabic ? 'رمز التأكيد' : 'Verification code';
+  String get sendVerificationCode => isArabic ? 'إرسال الرمز' : 'Send code';
+  String get resendVerificationCode =>
+      isArabic ? 'إعادة إرسال الرمز' : 'Resend code';
+  String get changeRecoveryEmail =>
+      isArabic ? 'تغيير البريد الإلكتروني' : 'Change email';
+  String get recoveryCodeSent => isArabic
+      ? 'أرسلنا رمزًا إلى بريدك الإلكتروني للاسترداد.'
+      : 'We sent a code to your recovery email.';
+  String get recoveryCodeError => isArabic
+      ? 'الرمز غير صالح أو منتهي الصلاحية. اطلب رمزًا جديدًا.'
+      : 'That code is invalid or expired. Request a new code.';
+  String get recoveryCodeSendError => isArabic
+      ? 'تعذر إرسال الرمز. يُرجى المحاولة مرة أخرى.'
+      : 'Could not send the code. Please try again.';
   String get logOut => isArabic ? 'تسجيل الخروج' : 'Log out';
   String get createSeparateAccount => isArabic
       ? 'إنشاء حساب منفصل على أي حال'
@@ -742,8 +759,11 @@ class MayosCopy {
       ? 'لديك حساب MAYOS بالفعل؟ سجّل الدخول بكلمة المرور، ثم اربط Google من الإعدادات.'
       : 'Already have a MAYOS account? Log in with your password, then connect Google in Settings';
   String get recoveryEmailLead => isArabic
-      ? 'أضف بريدًا للاسترداد لتتمكن من إعادة تعيين كلمة المرور إذا فقدتها. يُحفظ منفصلًا عن بيانات تدريبك.'
-      : 'Add a recovery email so you can reset your password if you lose it. It is kept separately from your training data.';
+      ? 'أضف بريدًا إلكترونيًا للاسترداد لتتمكن من إعادة تعيين كلمة المرور إذا فقدتها. سنرسل رمزًا لتأكيد ملكيتك لهذا العنوان.'
+      : 'Add a recovery email so you can reset your password if you lose it. We will send a code to verify that you own this address.';
+  String get recoveryEmailCodeLead => isArabic
+      ? 'أدخل الرمز الذي أرسلناه إلى بريدك الإلكتروني للاسترداد.'
+      : 'Enter the code we sent to your recovery email.';
   String get googleSignupIncomplete => isArabic
       ? 'تعذر إكمال تسجيل الدخول عبر Google، لذلك لم يتم إنشاء حساب.'
       : 'The Google sign-in could not be finished, so no account was created.';

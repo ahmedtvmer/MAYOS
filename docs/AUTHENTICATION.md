@@ -102,32 +102,37 @@ Change-password failures return **400, never 401** — so a wrong current passwo
 
 ---
 
-## 6. Recovery Email and Legacy Client Gate (ADR 007)
+## 6. Verified Recovery Email Gate (ADR 007)
 
 Recovery identity lives in the **shared catalog** (`db/catalog.db`), not in per-user ledgers, because the logged-out forgot-password flow cannot know which ledger to open:
 
 | Table | Columns | Purpose |
 | :--- | :--- | :--- |
-| `trainee_emails` | `trainee_id` (PK, **immutable account id** for live rows), `email` (UNIQUE), `updated_at` | Email ↔ account mapping |
+| `trainee_emails` | `trainee_id` (PK, **immutable account id** for live rows), `email` (UNIQUE), `updated_at`, `verified` | Current recovery address and verification state |
 | `password_reset_tokens` | `token_hash` (PK), `trainee_id` (**immutable account id** for live rows), `expires_at`, `used_at`, `created_at` | Single-use reset tokens |
+| `email_verification_codes` | `code_id`, keyed `code_hash`, `account_id`, keyed `address_hash`, `purpose`, `expires_at`, `used_at`, `failed_attempts`, `created_at` | Short-lived address-verification codes; no address or raw code |
 
-Both tables are provisioned idempotently at catalog boot (`ensure_account_schema()` outside any held lock).
+These tables are provisioned idempotently at catalog boot (`ensure_account_schema()` outside any held lock). The additive migration gives existing recovery addresses `verified=0`.
 
 Live recovery rows are keyed by the immutable account id; **legacy username-keyed rows are ignored by lookup**. A stale email mapping or unredeemed token therefore cannot target a new account that reuses a deleted account's username (Section 7).
 
-The Flutter app is the product client. The API provides `GET /auth/email` and `POST /auth/email`; recovery-email setup is part of the app onboarding and is not an API access gate.
+`GET /auth/me` includes `recovery_email_verified`, which the Flutter router uses to gate dashboard, Coach mode, and onboarding. The API also provides `GET /auth/email`, `POST /auth/email`, `POST /auth/email/verification-code`, and `POST /auth/email/verify`. The blocking app gate accepts or corrects an address, sends a code, and remains closed until verification succeeds. Existing saved addresses start unverified and reach code entry on the next authenticated session.
+
+Verification codes are six digits, expire after `EMAIL_VERIFICATION_CODE_TTL_MINUTES` (default 10, clamped 5–60), and are stored only as a purpose-separated keyed hash bound to the immutable account id and keyed address hash. Each code allows at most five failed attempts; each account and purpose may issue at most five codes per rolling hour. Both limits are enforced in catalog transactions. Sending a replacement invalidates previous unused codes. The send endpoint uses the reset rate limit, while verify uses the password rate limit (10/minute); all wrong, expired, used, and unknown codes return the same generic 400. The code email uses the account's Display language and the shared email sender. Its console-dev backend prints the code for local development.
 
 ```mermaid
 flowchart LR
-    Login["Login / Register"] --> Check{"GET /auth/email"}
-    Check -- "email present" --> Dashboard["Dashboard / Onboarding"]
-    Check -- "email missing" --> Gate["Email Gate (blocking)"]
-    Gate -- "POST /auth/email" --> Dashboard
+    Login["Login / Register"] --> Check{"GET /auth/me: recovery_email_verified"}
+    Check -- "verified" --> Dashboard["Dashboard / Onboarding"]
+    Check -- "missing or unverified" --> Gate["Recovery Email Gate (blocking)"]
+    Gate -- "POST /auth/email (missing or corrected address)" --> Send["Send code"]
+    Gate -- "saved unverified address" --> Verify["Enter code"]
+    Send -- "POST /auth/email/verification-code" --> Verify["Enter code"]
+    Verify -- "POST /auth/email/verify succeeds" --> Dashboard
+    Verify -- "resend or correct address" --> Send
     Check -- "401 expired" --> Login
     Check -- "404 stale service" --> Ops["'Restart service' message"]
 ```
-
-In the legacy client, the sidebar's "Password & Recovery" panel edits the linked email after the gate.
 
 ---
 

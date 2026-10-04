@@ -27,6 +27,7 @@ _EMAIL_ADDRESS_TOKEN = re.compile(
 )
 
 PURPOSE_PASSWORD_RESET = "password_reset"
+PURPOSE_RECOVERY_EMAIL_VERIFICATION = "recovery_email_verification"
 PURPOSE_NO_ACCOUNT_NOTICE = "no_account_notice"
 PURPOSE_ASSIGNMENT_NOTICE = "assignment_notice"
 PURPOSE_PROGRAM_REQUEST_NOTICE = "program_request_notice"
@@ -300,6 +301,46 @@ def send_password_reset_email(
         body,
         delivery=DeliveryContext(PURPOSE_PASSWORD_RESET, account_id, to_email),
     )
+
+
+def send_recovery_email_verification_code(
+    to_email: str,
+    code: str,
+    display_language: str,
+    *,
+    account_id: str | None = None,
+) -> bool:
+    """Sends a short-lived recovery-email code in the account's Display language."""
+    from service.email_verification import verification_code_ttl
+
+    minutes = max(1, int(verification_code_ttl().total_seconds() // 60))
+    subject, body = _recovery_email_verification_copy(code, display_language, minutes)
+    return _deliver(
+        to_email,
+        subject,
+        body,
+        delivery=DeliveryContext(PURPOSE_RECOVERY_EMAIL_VERIFICATION, account_id, to_email),
+    )
+
+
+def _recovery_email_verification_copy(
+    code: str, display_language: str, minutes: int
+) -> tuple[str, str]:
+    if display_language == "ar":
+        subject = "رمز تأكيد البريد الإلكتروني للاسترداد في MAYOS"
+        body = (
+            "استخدم الرمز التالي لتأكيد بريدك الإلكتروني للاسترداد في MAYOS:\n\n"
+            f"{code}\n\n"
+            f"هذا الرمز صالح لمدة {minutes} دقائق ويُستخدم مرة واحدة. إذا لم تطلبه، فتجاهل هذه الرسالة."
+        )
+    else:
+        subject = "Verify your MAYOS recovery email"
+        body = (
+            "Enter this code in MAYOS to verify your recovery email:\n\n"
+            f"{code}\n\n"
+            f"This single-use code expires in {minutes} minutes. If you did not request it, ignore this email."
+        )
+    return subject, body
 
 
 def send_no_account_notice_email(to_email: str, signup_link: str) -> bool:

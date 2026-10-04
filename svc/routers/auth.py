@@ -1,6 +1,7 @@
 """Registration, login, Google linked sign-in, sign-in-method management, password recovery, and logout."""
 
 import asyncio
+import json
 from typing import Annotated, Any
 
 import jwt
@@ -12,6 +13,7 @@ from service import auth as auth_service
 from service import coach_ai as coach_ai_service
 from service import google_sign_in as google_service
 from service import password_reset as reset_service
+from service.email_verification import GENERIC_CODE_ERROR
 from service import plans as plans_service
 from svc.auth import create_access_token, create_signup_ticket, remember_me_hours, revoke_token, signup_ticket_subject
 from svc.dependencies import (
@@ -303,9 +305,10 @@ async def read_current_account(
             plans_service.plans_for_account(db, account),
             auth_service.account_has_password(db, account),
             db.list_linked_sign_in_providers(account["account_id"]),
+            db.is_recovery_email_verified(account["account_id"]),
         )
 
-    account, plans, has_password, linked_sign_ins = await asyncio.to_thread(_run)
+    account, plans, has_password, linked_sign_ins, recovery_email_verified = await asyncio.to_thread(_run)
     return AccountOut(
         account_id=account["account_id"],
         trainee_id=account["username"],
@@ -314,6 +317,7 @@ async def read_current_account(
         has_password=has_password,
         linked_sign_ins=linked_sign_ins,
         display_language=account["display_language"],
+        recovery_email_verified=recovery_email_verified,
         coach_ai_enabled=coach_ai_service.coach_ai_enabled(),
     )
 
@@ -471,10 +475,13 @@ async def read_recovery_email(
     player: Annotated[VerifiedPlayer, Depends(get_verified_player)], db: Annotated[Any, Depends(get_db)]
 ):
     def _run():
-        return reset_service.get_recovery_email(db, player.account_id)
+        return (
+            reset_service.get_recovery_email(db, player.account_id),
+            db.is_recovery_email_verified(player.account_id),
+        )
 
-    email = await asyncio.to_thread(_run)
-    return RecoveryEmailOut(email=email)
+    email, verified = await asyncio.to_thread(_run)
+    return RecoveryEmailOut(email=email, verified=verified)
 
 
 @router.post("/email", response_model=RecoveryEmailOut)
@@ -489,10 +496,49 @@ async def set_recovery_email(
         result = reset_service.set_recovery_email(db, player.account_id, body.email)
         if not result["ok"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
-        return result["email"]
+        return result["email"], db.is_recovery_email_verified(player.account_id)
 
-    email = await asyncio.to_thread(_run)
-    return RecoveryEmailOut(email=email)
+    email, verified = await asyncio.to_thread(_run)
+    return RecoveryEmailOut(email=email, verified=verified)
+
+
+@router.post("/email/verification-code", response_model=MessageOut)
+@limiter.limit(RESET_LIMIT)
+async def request_recovery_email_code(
+    request: Request,
+    player: Annotated[VerifiedPlayer, Depends(get_verified_player)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Sends a one-time code to the account's current unverified recovery email."""
+    sent = await asyncio.to_thread(
+        reset_service.issue_recovery_email_verification_code, db, player.account_id
+    )
+    if not sent:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=GENERIC_CODE_ERROR)
+    return MessageOut(message="A verification code has been sent.")
+
+
+@router.post("/email/verify", response_model=MessageOut)
+@limiter.limit(PASSWORD_LIMIT)
+async def verify_recovery_email(
+    request: Request,
+    player: Annotated[VerifiedPlayer, Depends(get_verified_player)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Consumes the code and confirms the account's current recovery email."""
+    try:
+        body = json.loads(await request.body())
+    except ValueError:  # malformed JSON, bad encoding, or a number too long to parse
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=GENERIC_CODE_ERROR) from None
+    code = body.get("code") if isinstance(body, dict) else None
+    if not isinstance(code, str):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=GENERIC_CODE_ERROR)
+    verified = await asyncio.to_thread(
+        reset_service.verify_recovery_email_code, db, player.account_id, code
+    )
+    if not verified:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=GENERIC_CODE_ERROR)
+    return MessageOut(message="Recovery email verified.")
 
 
 @router.post("/forgot-password", response_model=MessageOut, status_code=status.HTTP_202_ACCEPTED)

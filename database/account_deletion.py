@@ -215,6 +215,10 @@ class AccountDeletionMixin:
                 "DELETE FROM password_reset_tokens WHERE trainee_id = ? OR trainee_id = ?",
                 (account_id, legacy_key),
             )
+            cursor.execute(
+                "DELETE FROM email_verification_codes WHERE account_id = ?",
+                (account_id,),
+            )
             cursor.execute("DELETE FROM coach_invites WHERE account_id = ?", (account_id,))
             # Linked sign-ins (Google) go with the account, in this same
             # transaction: the subject is freed so it can later create (or

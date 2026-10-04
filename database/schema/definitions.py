@@ -319,7 +319,8 @@ class SchemaMixin:
                 CREATE TABLE IF NOT EXISTS trainee_emails (
                     trainee_id TEXT PRIMARY KEY,
                     email TEXT NOT NULL UNIQUE,
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL,
+                    verified INTEGER NOT NULL DEFAULT 0 CHECK (verified IN (0, 1))
                 );
                 CREATE TABLE IF NOT EXISTS password_reset_tokens (
                     token_hash TEXT PRIMARY KEY,
@@ -329,6 +330,21 @@ class SchemaMixin:
                     created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_reset_tokens_trainee ON password_reset_tokens(trainee_id);
+                CREATE TABLE IF NOT EXISTS email_verification_codes (
+                    code_id TEXT PRIMARY KEY,
+                    code_hash TEXT NOT NULL,
+                    account_id TEXT NOT NULL,
+                    address_hash TEXT NOT NULL,
+                    purpose TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    used_at TEXT,
+                    failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts BETWEEN 0 AND 5),
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_email_verification_account
+                    ON email_verification_codes(account_id, purpose, created_at);
+                CREATE INDEX IF NOT EXISTS idx_email_verification_hash
+                    ON email_verification_codes(code_hash, account_id, purpose);
                 CREATE TABLE IF NOT EXISTS password_reset_notice_limits (
                     email_hash TEXT PRIMARY KEY,
                     claimed_at TEXT NOT NULL
@@ -657,6 +673,8 @@ class SchemaMixin:
             # ADR 056 removes claim-code credential material with the claim flow.
             self.catalog_conn.execute("DROP TABLE IF EXISTS account_claim_codes")
             self._create_coach_alerts_schema()
+            self._ensure_recovery_email_verified_column()
+            self._ensure_email_verification_attempts_column()
             self._ensure_accounts_last_seen_at()
             self._ensure_accounts_display_language()
             self._ensure_roster_attendance_timezone()
@@ -668,6 +686,24 @@ class SchemaMixin:
             self._ensure_coach_invites_revoked_at()
             self._commit_catalog()
             self._account_schema_ready = True
+
+    def _ensure_recovery_email_verified_column(self) -> None:
+        """Adds verification state to legacy recovery addresses, which start unverified."""
+        columns = self._table_columns(self.catalog_conn.cursor(), "trainee_emails")
+        if "verified" not in columns:
+            self.catalog_conn.execute(
+                "ALTER TABLE trainee_emails ADD COLUMN verified INTEGER NOT NULL DEFAULT 0"
+                " CHECK (verified IN (0, 1))"
+            )
+            self.catalog_conn.execute("UPDATE trainee_emails SET verified = 0")
+
+    def _ensure_email_verification_attempts_column(self) -> None:
+        columns = self._table_columns(self.catalog_conn.cursor(), "email_verification_codes")
+        if "failed_attempts" not in columns:
+            self.catalog_conn.execute(
+                "ALTER TABLE email_verification_codes ADD COLUMN failed_attempts "
+                "INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts BETWEEN 0 AND 5)"
+            )
 
     _COACH_ALERTS_TABLE_SQL = (
         "alert_id TEXT PRIMARY KEY,"

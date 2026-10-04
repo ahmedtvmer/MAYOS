@@ -14,10 +14,13 @@ AuthState _authenticated({
   required bool coach,
   required bool onboarded,
   bool hasRecoveryEmail = true,
+  bool? recoveryEmailVerified,
 }) =>
     AuthState.authenticated(
       AccountSession(
-        account: _account(coach: coach),
+        account: _account(coach: coach).copyWith(
+          recoveryEmailVerified: recoveryEmailVerified ?? hasRecoveryEmail,
+        ),
         onboarded: onboarded,
         hasRecoveryEmail: hasRecoveryEmail,
       ),

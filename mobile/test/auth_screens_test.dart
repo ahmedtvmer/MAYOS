@@ -424,6 +424,11 @@ void main() {
     await tester.enterText(
         find.byKey(const Key('recovery_email')), 'coach@example.com');
     await tester.tap(find.byKey(const Key('recovery_submit')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('recovery_verification_code')));
+    await tester.enterText(find.byKey(const Key('recovery_verification_code')),
+        fake.currentRecoveryEmailCode!);
+    await tester.tap(find.byKey(const Key('recovery_submit')));
     await _pumpUntilFound(tester, find.text('Roster'));
     expect(_routerOf(tester).routeInformationProvider.value.uri.path,
         coachRosterPath);
@@ -480,8 +485,93 @@ void main() {
     await tester.enterText(
         find.byKey(const Key('recovery_email')), 'alice@example.com');
     await tester.tap(find.byKey(const Key('recovery_submit')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('recovery_verification_code')));
+    await tester.enterText(find.byKey(const Key('recovery_verification_code')),
+        fake.currentRecoveryEmailCode!);
+    await tester.tap(find.byKey(const Key('recovery_submit')));
     await _pumpUntilFound(tester, find.text('Hosted AI processing'));
     expect(fake.recoveryEmail, 'alice@example.com');
+  });
+
+  testWidgets('saved unverified recovery email opens code entry and can be corrected',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _loginFake()..recoveryEmailVerified = false;
+    await _pumpAuth(tester, fake);
+    await tester.enterText(find.byKey(const Key('login_username')), 'alice');
+    await tester.enterText(
+        find.byKey(const Key('login_password')), 'correct-horse-1');
+    await tester.tap(find.byKey(const Key('login_submit')));
+
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('recovery_verification_code')));
+    expect(fake.recoveryEmailCodesSent, 0);
+    expect(find.text('Send code'), findsOneWidget);
+    await tester.tap(find.text('Change email'));
+    await _pumpUntilFound(tester, find.byKey(const Key('recovery_email')));
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('recovery_email')))
+          .controller
+          ?.text,
+      'alice@example.com',
+    );
+
+    await tester.enterText(
+        find.byKey(const Key('recovery_email')), 'corrected@example.com');
+    await tester.tap(find.byKey(const Key('recovery_submit')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('recovery_verification_code')));
+
+    expect(fake.recoveryEmail, 'corrected@example.com');
+    expect(fake.recoveryEmailVerified, isFalse);
+    expect(fake.recoveryEmailCodesSent, 1);
+  });
+
+  testWidgets('saved unverified recovery email sends only when requested',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _loginFake()..recoveryEmailVerified = false;
+    await _pumpAuth(tester, fake);
+    await tester.enterText(find.byKey(const Key('login_username')), 'alice');
+    await tester.enterText(
+        find.byKey(const Key('login_password')), 'correct-horse-1');
+    await tester.tap(find.byKey(const Key('login_submit')));
+
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('recovery_verification_code')));
+    expect(fake.recoveryEmailCodesSent, 0);
+    await tester.tap(find.text('Send code'));
+    await _pumpUntilFound(tester, find.text('We sent a code to your recovery email.'));
+    expect(fake.recoveryEmailCodesSent, 1);
+    expect(find.text('Resend code'), findsOneWidget);
+
+    await tester.tap(find.text('Resend code'));
+    await _pumpUntilFound(tester, find.text('We sent a code to your recovery email.'));
+    expect(fake.recoveryEmailCodesSent, 2);
+  });
+
+  testWidgets('saving the unchanged verified recovery email releases the gate',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _loginFake()..recoveryEmailVerified = false;
+    await _pumpAuth(tester, fake);
+    await tester.enterText(find.byKey(const Key('login_username')), 'alice');
+    await tester.enterText(
+        find.byKey(const Key('login_password')), 'correct-horse-1');
+    await tester.tap(find.byKey(const Key('login_submit')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('recovery_verification_code')));
+    expect(fake.recoveryEmailCodesSent, 0);
+
+    fake.recoveryEmailVerified = true;
+    await tester.tap(find.text('Change email'));
+    await _pumpUntilFound(tester, find.byKey(const Key('recovery_email')));
+    await tester.tap(find.byKey(const Key('recovery_submit')));
+    await tester.pumpAndSettle();
+
+    expect(fake.recoveryEmailVerified, isTrue);
+    expect(fake.recoveryEmailCodesSent, 0);
+    expect(_routerOf(tester).routeInformationProvider.value.uri.path, homePath);
+    expect(find.byKey(const Key('recovery_verification_code')), findsNothing);
   });
 
   testWidgets('forgot-password still returns the constant confirmation',
