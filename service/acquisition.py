@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
+import socket
 from collections.abc import Mapping
 from urllib.parse import urlsplit
 from typing import Any
@@ -14,8 +16,23 @@ _UTM_VALUE = re.compile(r"[a-z0-9._-]{1,64}")
 _HOST_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
 
 
+def is_ip_literal(value: str) -> bool:
+    try:
+        ipaddress.ip_address(value)
+    except ValueError:
+        try:
+            socket.inet_aton(value)
+        except OSError:
+            return False
+    return True
+
+
 def is_normalized_utm_label(label: Any) -> bool:
-    return isinstance(label, str) and _UTM_VALUE.fullmatch(label) is not None
+    return (
+        isinstance(label, str)
+        and _UTM_VALUE.fullmatch(label) is not None
+        and not is_ip_literal(label)
+    )
 
 
 def is_normalized_referrer_host(host: Any) -> bool:
@@ -23,6 +40,7 @@ def is_normalized_referrer_host(host: Any) -> bool:
         isinstance(host, str)
         and len(host) <= 253
         and all(part and _HOST_LABEL.fullmatch(part) for part in host.split("."))
+        and not is_ip_literal(host)
     )
 
 

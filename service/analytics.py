@@ -29,7 +29,11 @@ POSTHOG_EU_HOST = "https://eu.i.posthog.com"
 POSTHOG_EU_API_HOST = "https://eu.posthog.com"
 PERSON_DELETION_TIMEOUT_SECONDS = 2.0
 _EVENT_NAMESPACE = uuid.UUID("a9aa465e-a723-5e59-a850-447d8d73e8fd")
-_APP_VERSION = re.compile(r"^(?:unknown|[0-9]{1,3}(?:\.[0-9A-Za-z_-]{1,16}){0,3}(?:\+[0-9A-Za-z.-]{1,12})?)$")
+_APP_VERSION = re.compile(
+    r"^(?:unknown|(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){2}"
+    r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$"
+)
 _ENVIRONMENTS = frozenset({"development", "production", "test"})
 _CLIENT_HEADER = re.compile(r"^(android|web)/([0-9][0-9A-Za-z.+_-]{0,31})$")
 
@@ -137,11 +141,12 @@ def _model_list() -> PropertyType:
     return PropertyType(is_model_list, "a bounded list of configured model ids or other", maximum=5)
 
 
+def _is_version_label(value: Any) -> bool:
+    return isinstance(value, str) and _APP_VERSION.fullmatch(value) is not None
+
+
 def _version_label() -> PropertyType:
-    return PropertyType(
-        lambda value: isinstance(value, str) and _APP_VERSION.fullmatch(value) is not None,
-        "a version label or unknown",
-    )
+    return PropertyType(_is_version_label, "a version label or unknown")
 
 
 def _account_id() -> PropertyType:
@@ -420,6 +425,7 @@ EVENT_CATALOGUE: dict[str, EventContract] = {
         "server",
         {
             **_COMMON_PROPERTIES,
+            "alert_kind": PROPERTY_TYPES["alert_kind"],
             "time_open_seconds": PROPERTY_TYPES["time_open_seconds"],
             "is_coaching_action": PROPERTY_TYPES["is_coaching_action"],
         },
@@ -428,6 +434,7 @@ EVENT_CATALOGUE: dict[str, EventContract] = {
         "server",
         {
             **_COMMON_PROPERTIES,
+            "alert_kind": PROPERTY_TYPES["alert_kind"],
             "time_open_seconds": PROPERTY_TYPES["time_open_seconds"],
             "is_coaching_action": PROPERTY_TYPES["is_coaching_action"],
         },
@@ -647,6 +654,8 @@ def resolve_dimensions(client_header: str | None, *, role: str) -> dict[str, str
         match = _CLIENT_HEADER.fullmatch(client_header.strip())
         if match:
             platform, app_version = match.groups()
+            if not PROPERTY_TYPES["app_version"].validate(app_version):
+                app_version = "unknown"
     return {
         "role": role if role in _DIMENSION_VALUES["role"] else "unknown",
         "platform": platform,

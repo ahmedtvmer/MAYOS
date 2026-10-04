@@ -147,7 +147,11 @@ def _time_open_seconds(alert: dict[str, Any], now: datetime) -> int:
 
 
 def _alert_action_properties(alert: dict[str, Any], now: datetime) -> dict[str, Any]:
-    return {"time_open_seconds": _time_open_seconds(alert, now), "is_coaching_action": True}
+    return {
+        "alert_kind": alert["kind"],
+        "time_open_seconds": _time_open_seconds(alert, now),
+        "is_coaching_action": True,
+    }
 
 
 def _capture_alert_transition(

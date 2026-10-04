@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
 from database.database_manager import DatabaseManager
-from service import analytics
+from service import acquisition, analytics
 from service._tokens import hash_token
 from svc.app import create_app
 from svc.auth import create_signup_ticket
@@ -768,11 +768,13 @@ def test_server_events_resolve_android_web_and_missing_client_dimensions(analyti
 
     _register(client, "analytics-android", client_header="android/1.2.3")
     _register(client, "analytics-web", client_header="web/2.4.0")
+    _register(client, "analytics-invalid-version", client_header="android/192.0.2.10")
     _register(client, "analytics-unknown")
 
     for username, expected in (
         ("analytics-android", ("android", "1.2.3")),
         ("analytics-web", ("web", "2.4.0")),
+        ("analytics-invalid-version", ("android", "unknown")),
         ("analytics-unknown", ("unknown", "unknown")),
     ):
         account = db.get_active_account_by_username(username)
@@ -1811,25 +1813,157 @@ def test_workout_sync_failure_reason_does_not_widen_invite_reason_code():
     assert not analytics.PROPERTY_TYPES["reason_code"].validate("network")
 
 
+def test_catalogued_properties_reject_private_values_and_property_names():
+    private_values = (
+        "pain in my left shoulder after training",
+        "member@example.com",
+        "@coach_ahmed",
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature-that-is-long-enough-to-look-like-a-jwt",
+        "192.0.2.10",
+        "2001:db8::1",
+    )
+    property_types = dict(analytics.PROPERTY_TYPES)
+    property_types.update(analytics.PERSON_PROPERTY_CATALOGUE)
+    for contract in analytics.EVENT_CATALOGUE.values():
+        property_types.update(contract.properties)
+    for property_name, property_type in property_types.items():
+        for value in private_values:
+            assert not property_type.validate(value), f"{property_name} accepted {value!r}"
+    assert analytics.PROPERTY_TYPES["app_version"].validate("2.4.1-rc.1+build.7")
+    assert not analytics.PROPERTY_TYPES["app_version"].validate("192.0.2.10")
+
+    event_properties = {
+        property_name
+        for contract in analytics.EVENT_CATALOGUE.values()
+        for property_name in contract.properties
+    }
+    person_properties = set(analytics.PERSON_PROPERTY_CATALOGUE)
+    property_names = event_properties | person_properties
+    sensitive_name = re.compile(
+        r"(?:^|_)(?:ip(?:v[46])?(?:_?address)?|email(?:_address)?|user_?name|password|note|text|prompt|completion|jwt)(?:_|$)"
+        r"|(?:^|_)(?:access|refresh|auth)_tokens?(?:_|$)|(?:^|_)tokens?(?:_|$)",
+        re.IGNORECASE,
+    )
+    token_count_properties = {
+        "input_tokens",
+        "output_tokens",
+        "tokens",
+        "tokens_today",
+        "tokens_daily_limit",
+    }
+    assert all(
+        name in token_count_properties or sensitive_name.search(name) is None
+        for name in property_names
+    )
+
+    acquisition_values = acquisition.normalize_first_touch(
+        {
+            "utm_source": "192.0.2.10",
+            "utm_medium": "referral",
+            "utm_campaign": "public-launch",
+            "referrer_host": "https://192.0.2.10/start",
+        }
+    )
+    assert acquisition_values == {
+        "utm_source": None,
+        "utm_medium": "referral",
+        "utm_campaign": "public-launch",
+        "referrer_host": None,
+    }
+    for ip_literal in (
+        "192.0.2.10",
+        "2001:db8::1",
+        "127.1",
+        "2130706433",
+        "0x7f000001",
+        "0177.0.0.1",
+    ):
+        assert acquisition.is_ip_literal(ip_literal)
+        assert acquisition.normalize_first_touch({"utm_source": ip_literal})["utm_source"] is None
+
+
 def test_tracking_plan_events_and_properties_match_code_catalogue():
     document = TRACKING_PLAN.read_text(encoding="utf-8")
     section = document.split("<!-- event-catalogue:start -->", 1)[1].split("<!-- event-catalogue:end -->", 1)[0]
     documented: dict[str, tuple[str, set[str]]] = {}
+    implemented_names: list[str] = []
+    planned_names: list[str] = []
     for row in section.splitlines():
         columns = [column.strip() for column in row.strip().strip("|").split("|")]
-        if len(columns) != 4 or not columns[0].startswith("`"):
+        if len(columns) != 10 or columns[0] not in {"implemented", "planned"}:
             continue
-        event_name = columns[0].strip("`")
-        documented[event_name] = (columns[1].strip("`"), set(re.findall(r"`([a-z_]+)`", columns[3])))
+        assert all(columns[index] for index in range(2, 10))
+        assert columns[5] in {"server", "client"}
+        event_name = columns[1]
+        required_properties = set() if columns[7] == "none" else set(columns[7].split(", "))
+        optional_properties = set() if columns[8] == "none" else set(columns[8].split(", "))
+        properties = required_properties | optional_properties
+        if columns[0] == "implemented":
+            assert columns[8] == "none", f"{event_name} has optional properties"
+            assert properties <= analytics.PROPERTY_TYPES.keys(), (
+                f"{event_name} documents unknown properties: "
+                f"{properties - analytics.PROPERTY_TYPES.keys()}"
+            )
+            implemented_names.append(event_name)
+            documented[event_name] = (columns[5], properties)
+        else:
+            assert columns[2], f"{event_name} has no owning ticket"
+            planned_names.append(event_name)
     assert documented == {
         name: (contract.origin, set(contract.properties)) for name, contract in analytics.EVENT_CATALOGUE.items()
     }
+    planned = set(planned_names)
+    assert len(implemented_names) == len(set(implemented_names))
+    assert len(planned_names) == len(planned)
+    assert planned == {
+        "coach_roster_cap_blocked",
+        "checkout_started",
+        "checkout_succeeded",
+        "checkout_failed",
+        "payment_succeeded",
+        "payment_failed",
+        "payment_refunded",
+        "subscription_plan_changed",
+        "subscription_cancelled",
+        "subscription_expired",
+        "subscription_status_viewed",
+        "founding_status_granted",
+        "promotion_period_started",
+        "promotion_period_ended",
+        "founding_plan_converted",
+        "referral_qualified",
+        "referral_reversed",
+        "coach_free_grace_started",
+        "coach_free_grace_expired",
+        "pricing_viewed",
+        "upgrade_prompt_viewed",
+        "template_created",
+        "template_viewed",
+        "template_applied",
+    }
+    assert planned.isdisjoint(documented)
 
-    property_table = document.split("### Property definitions", 1)[1]
-    documented_properties = set(re.findall(r"\|\s*`([a-z_]+)`\s*\|", property_table))
+    planned_property_table = document.split("### Planned properties", 1)[1].split(
+        "### Property definitions", 1
+    )[0]
+    planned_property_names = set(re.findall(r"\|\s*`([a-z_]+)`\s*\|", planned_property_table))
     catalogue_properties = set(analytics.PERSON_PROPERTY_CATALOGUE)
     for contract in analytics.EVENT_CATALOGUE.values():
         catalogue_properties.update(contract.properties)
+    assert planned_property_names.isdisjoint(catalogue_properties)
+    for row in section.splitlines():
+        columns = [column.strip() for column in row.strip().strip("|").split("|")]
+        if len(columns) != 10 or columns[0] != "planned":
+            continue
+        names = set() if columns[7] == "none" else set(columns[7].split(", "))
+        names |= set() if columns[8] == "none" else set(columns[8].split(", "))
+        assert names - analytics.PROPERTY_TYPES.keys() <= planned_property_names, (
+            f"{columns[1]} uses undocumented planned properties: "
+            f"{names - analytics.PROPERTY_TYPES.keys() - planned_property_names}"
+        )
+
+    property_table = document.split("### Property definitions", 1)[1]
+    documented_properties = set(re.findall(r"\|\s*`([a-z_]+)`\s*\|", property_table))
     assert documented_properties == catalogue_properties
 
 
@@ -2563,10 +2697,19 @@ def test_coach_alert_and_review_events_are_committed_private_and_deduplicated(an
     ]
     assert all(event["distinct_id"] == coach_id for event in actions)
     assert all(event["properties"]["is_coaching_action"] is True for event in actions)
+    assert all(event["properties"]["alert_kind"] == alert["kind"] for event in actions)
     assert all(event["properties"]["time_open_seconds"] >= 0 for event in actions)
     assert all(
         set(event["properties"])
-        == {"role", "platform", "app_version", "env", "time_open_seconds", "is_coaching_action"}
+        == {
+            "role",
+            "platform",
+            "app_version",
+            "env",
+            "alert_kind",
+            "time_open_seconds",
+            "is_coaching_action",
+        }
         for event in actions
     )
 
