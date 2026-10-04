@@ -114,7 +114,7 @@ def _make_coach(client, db, username, capacity=10):
 
 def _assigned_player(api, player_name="p1"):
     """Coach "coach" is actively assigned "p1"; returns headers, assignment id, accounts."""
-    client, db, _ = api
+    client, db = api[:2]
     coach_headers = _make_coach(client, db, "coach", capacity=5)
     token = client.post("/coach/assignments/invites", headers=coach_headers).json()["token"]
     player = _register(client, player_name)
@@ -551,6 +551,30 @@ def test_profile_rebuild_blocked_during_control(api, monkeypatch):
     after = _active(db)
     assert after.program_name == "Coach Plan"
     assert after.version == before.version
+
+
+def test_coach_frequency_override_preserves_profile_and_drives_weekly_streak_fallback(shipped_library_api):
+    client, db = shipped_library_api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player((client, db))
+    with db.open_ledger("p1") as ledger:
+        ledger.upsert_player_profile({"weekly_frequency": 2})
+
+    published = client.post(
+        f"/coach/assignments/{assignment_id}/program",
+        headers=coach_headers,
+        json={"frequency_override": 4},
+    )
+
+    assert published.status_code == 200, published.text
+    assert published.json()["weekly_frequency"] == 4
+    with db.open_ledger("p1") as ledger:
+        assert ledger.get_player_profile()["weekly_frequency"] == 2
+
+    profile_edit = client.put("/profile", headers=player_headers, json={"weekly_frequency": 3})
+    assert profile_edit.status_code == 200, profile_edit.text
+    assert profile_edit.json()["profile"]["weekly_frequency"] == 3
+    assert profile_edit.json()["program_blocked"] is True
+    assert client.get("/dashboard/training-status", headers=player_headers).json()["week_target"] == 4
 
 
 def test_coached_profile_edit_saves_equipment_goal_weight_without_rebuild(api, monkeypatch):

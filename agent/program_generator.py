@@ -385,7 +385,7 @@ def generate_program_pipeline(
     else:
         freq = validate_frequency(profile.get("weekly_frequency", 4))
 
-    if freq != profile.get("weekly_frequency"):
+    if published_by_coach_account_id is None and freq != profile.get("weekly_frequency"):
         ledger.update_player_frequency(freq)
 
     clean_split_override = user_split_override
