@@ -220,6 +220,59 @@ class CoachCopy {
   String get customProgram =>
       isArabic ? 'برنامج تدريبي مخصص' : 'Custom program';
   String get dayName => isArabic ? 'اسم اليوم' : 'Day name';
+  String trainingDayNumber(int number) => isArabic
+      ? 'يوم التدريب ${_ltr('$number')}'
+      : 'Training day $number';
+  String dayDuplicateName(String name) =>
+      isArabic ? '$name (نسخة)' : '$name copy';
+  String get addDay => isArabic ? 'إضافة يوم تدريب' : 'Add training day';
+  String get duplicateDay => isArabic ? 'نسخ يوم التدريب' : 'Duplicate day';
+  String get removeDay => isArabic ? 'حذف يوم التدريب' : 'Remove day';
+  String get moveDayUp => isArabic ? 'نقل اليوم لأعلى' : 'Move day up';
+  String get moveDayDown => isArabic ? 'نقل اليوم لأسفل' : 'Move day down';
+  String get duplicateExercise => isArabic ? 'نسخ التمرين' : 'Duplicate exercise';
+  String get moveExerciseUp => isArabic ? 'نقل التمرين لأعلى' : 'Move exercise up';
+  String get moveExerciseDown => isArabic ? 'نقل التمرين لأسفل' : 'Move exercise down';
+  String get addWarmupMovement => isArabic ? 'إضافة حركة إحماء' : 'Add warm-up movement';
+  String get removeWarmupMovement => isArabic ? 'حذف حركة الإحماء' : 'Remove warm-up movement';
+  String get moveWarmupMovementUp => isArabic ? 'نقل حركة الإحماء لأعلى' : 'Move warm-up movement up';
+  String get moveWarmupMovementDown => isArabic ? 'نقل حركة الإحماء لأسفل' : 'Move warm-up movement down';
+  String get warmupMovementName => isArabic ? 'اسم حركة الإحماء' : 'Warm-up movement';
+  String get movementSets => isArabic ? 'المجموعات' : 'Sets';
+  String get movementReps => isArabic ? 'التكرارات' : 'Reps';
+  String get restSeconds => isArabic ? 'الراحة بالثواني' : 'Rest (seconds)';
+  String get rampedWarmupSets => isArabic
+      ? 'مجموعات الإحماء المتدرجة (${_ltr('${ProgramDraftPrescription.minWarmupSets}')}–${_ltr('${ProgramDraftPrescription.maxWarmupSets}')})'
+      : 'Ramped warm-up sets (${ProgramDraftPrescription.minWarmupSets}–${ProgramDraftPrescription.maxWarmupSets})';
+  String get tempo => isArabic ? 'الإيقاع (اختياري)' : 'Tempo (optional)';
+  String get notesOptional => isArabic ? 'ملاحظات (اختيارية)' : 'Notes (optional)';
+  String get leaveUnsavedChangesTitle =>
+      isArabic ? 'تغييرات غير محفوظة' : 'Unsaved changes';
+  String get leaveUnsavedChangesPrompt => isArabic
+      ? 'هل تريد مغادرة محرر البرنامج دون حفظ التغييرات؟'
+      : 'Leave the program editor without saving your changes?';
+  String get leaveWithoutSaving => isArabic ? 'مغادرة' : 'Leave';
+  String get invalidWarmupSets => isArabic
+      ? 'يجب أن تكون مجموعات الإحماء من ${_ltr('${ProgramDraftPrescription.minWarmupSets}')} إلى ${_ltr('${ProgramDraftPrescription.maxWarmupSets}')}.'
+      : 'Warm-up sets must be from ${ProgramDraftPrescription.minWarmupSets} to ${ProgramDraftPrescription.maxWarmupSets}.';
+  String get invalidMovementSets => isArabic
+      ? 'تحتاج حركة الإحماء إلى ${_ltr('${ProgramDraftPrescription.minWarmupMovementSets}')} إلى ${_ltr('${ProgramDraftPrescription.maxWarmupMovementSets}')} مجموعات.'
+      : 'Warm-up movements need ${ProgramDraftPrescription.minWarmupMovementSets} to ${ProgramDraftPrescription.maxWarmupMovementSets} sets.';
+  String get invalidMovementReps => isArabic
+      ? 'يجب أن تكون تكرارات حركة الإحماء من ${_ltr('${ProgramDraftPrescription.minWarmupMovementReps}')} إلى ${_ltr('${ProgramDraftPrescription.maxWarmupMovementReps}')}.'
+      : 'Warm-up movement reps must be from ${ProgramDraftPrescription.minWarmupMovementReps} to ${ProgramDraftPrescription.maxWarmupMovementReps}.';
+  String get invalidProgramDays => isArabic
+      ? 'يجب أن يكون عدد أيام التدريب من ${_ltr('1')} إلى ${_ltr('${ProgramDraftPrescription.maxDays}')}.'
+      : 'A program must have 1 to ${ProgramDraftPrescription.maxDays} training days.';
+  String get tempoTooLong => isArabic
+      ? 'يجب ألا يتجاوز الإيقاع ${_ltr('${ProgramDraftPrescription.maxTempoLength}')} حرفًا.'
+      : 'Tempo must be at most ${ProgramDraftPrescription.maxTempoLength} characters.';
+  String get notesTooLong => isArabic
+      ? 'يجب ألا تتجاوز الملاحظات ${_ltr('${ProgramDraftPrescription.maxProgramNotesLength}')} حرفًا.'
+      : 'Notes must be at most ${ProgramDraftPrescription.maxProgramNotesLength} characters.';
+  String get cardioNote => isArabic ? 'ملاحظة اللياقة (اختيارية)' : 'Cardio note (optional)';
+  String get noTrainingDays => isArabic ? 'أضف يوم تدريب لبدء البرنامج.' : 'Add a training day to start the program.';
+  String get invalidWholeNumber => isArabic ? 'أدخل عددًا صحيحًا.' : 'Enter a whole number.';
   String get addExercise => isArabic ? 'إضافة تمرين' : 'Add exercise';
   String get removeExercise => isArabic ? 'حذف التمرين' : 'Remove exercise';
   String get workingSets => isArabic ? 'مجموعات العمل' : 'Working sets';
@@ -257,12 +310,16 @@ class CoachCopy {
         'too_many_exercises' => isArabic
             ? 'يمكن أن يحتوي يوم التدريب على 14 تمرينًا كحد أقصى.'
             : 'A training day can have at most 14 exercises.',
-        'invalid_warmup_sets' => isArabic
-            ? 'يجب أن تكون مجموعات الإحماء من 0 إلى 4.'
-            : 'Warm-up sets must be from 0 to 4.',
-        'invalid_day_order' || 'invalid_weekly_frequency' => isArabic
-            ? 'راجع ترتيب أيام التدريب وعددها أسبوعيًا.'
-            : 'Check the training day order and weekly frequency.',
+        'invalid_warmup_sets' => invalidWarmupSets,
+        'invalid_warmup_reps' => isArabic
+            ? 'يجب أن تكون تكرارات الإحماء من ${_ltr('${ProgramDraftPrescription.minWarmupMovementReps}')} إلى ${_ltr('${ProgramDraftPrescription.maxWarmupMovementReps}')}'
+            : 'Warm-up reps must be from ${ProgramDraftPrescription.minWarmupMovementReps} to ${ProgramDraftPrescription.maxWarmupMovementReps}.',
+        'invalid_movement_sets' => invalidMovementSets,
+        'invalid_movement_reps' => invalidMovementReps,
+        'tempo_too_long' => tempoTooLong,
+        'notes_too_long' => notesTooLong,
+        'invalid_day_order' || 'invalid_weekly_frequency' || 'too_many_days' =>
+          invalidProgramDays,
         _ => isArabic
             ? 'راجع هذا الحقل في البرنامج التدريبي.'
             : 'Check this Training program field.',

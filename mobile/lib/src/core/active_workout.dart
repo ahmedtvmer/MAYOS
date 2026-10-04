@@ -63,24 +63,39 @@ class ActiveWarmupMovement {
     required this.sets,
     this.exerciseId,
     this.equipment,
+    this.prescribedSets,
+    this.prescribedReps,
+    this.restSeconds,
+    this.notes,
   });
 
-  factory ActiveWarmupMovement.fromJson(Map<String, dynamic> json) =>
-      ActiveWarmupMovement(
-        exerciseId: json['exercise_id'] as String?,
-        equipment: json['equipment'] as String?,
-        exerciseName: json['exercise_name'] as String,
-        sets: (json['sets'] as List<dynamic>? ?? const <dynamic>[])
+  factory ActiveWarmupMovement.fromJson(Map<String, dynamic> json) {
+    final List<ActiveWarmupSet> sets =
+        (json['sets'] as List<dynamic>? ?? const <dynamic>[])
             .map((dynamic set) =>
                 ActiveWarmupSet.fromJson(set as Map<String, dynamic>))
-            .toList(growable: false),
-      );
+            .toList(growable: false);
+    return ActiveWarmupMovement(
+      exerciseId: json['exercise_id'] as String?,
+      equipment: json['equipment'] as String?,
+      exerciseName: json['exercise_name'] as String,
+      sets: sets,
+      prescribedSets: (json['prescribed_sets'] as num?)?.toInt(),
+      prescribedReps: (json['prescribed_reps'] as num?)?.toInt(),
+      restSeconds: (json['rest_seconds'] as num?)?.toInt(),
+      notes: json['notes'] as String?,
+    );
+  }
 
   factory ActiveWarmupMovement.fromPrescription(WarmupExercise movement) =>
       ActiveWarmupMovement(
         exerciseId: movement.exerciseId,
         equipment: movement.equipment,
         exerciseName: movement.exerciseName,
+        prescribedSets: movement.sets,
+        prescribedReps: movement.reps,
+        restSeconds: movement.restSeconds,
+        notes: movement.notes,
         sets: <ActiveWarmupSet>[
           for (int i = 0; i < movement.sets; i++)
             ActiveWarmupSet(reps: movement.reps),
@@ -91,6 +106,10 @@ class ActiveWarmupMovement {
   final String? equipment;
   final String exerciseName;
   final List<ActiveWarmupSet> sets;
+  final int? prescribedSets;
+  final int? prescribedReps;
+  final int? restSeconds;
+  final String? notes;
 
   ActiveWarmupMovement copyWith({List<ActiveWarmupSet>? sets}) =>
       ActiveWarmupMovement(
@@ -98,12 +117,20 @@ class ActiveWarmupMovement {
         equipment: equipment,
         exerciseName: exerciseName,
         sets: sets ?? this.sets,
+        prescribedSets: prescribedSets,
+        prescribedReps: prescribedReps,
+        restSeconds: restSeconds,
+        notes: notes,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'exercise_id': exerciseId,
     if (equipment != null) 'equipment': equipment,
     'exercise_name': exerciseName,
+    if (prescribedSets != null) 'prescribed_sets': prescribedSets,
+    if (prescribedReps != null) 'prescribed_reps': prescribedReps,
+    if (restSeconds != null) 'rest_seconds': restSeconds,
+    if (notes != null) 'notes': notes,
     'sets': <Map<String, dynamic>>[
       for (final ActiveWarmupSet set in sets) set.toJson(),
     ],

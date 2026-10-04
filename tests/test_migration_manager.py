@@ -65,7 +65,7 @@ def test_v18_upgrade_adds_deload_choice(temp_db_env):
         default_ledger_id="v18lifter",
     )
     try:
-        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 23
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 24
         assert migrated.ledger.conn.execute(
             "SELECT started_at FROM onboarding_analytics WHERE id = 1"
         ).fetchone() is None
@@ -123,7 +123,7 @@ def test_v20_upgrade_allows_most_reps_records_without_backfilling(temp_db_env):
 
     apply_lazy_migrations(conn, "v20player", db.ledgers_dir, backups_dir)
 
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 23
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 24
     assert conn.execute(
         "SELECT id, record_type, value FROM personal_records"
     ).fetchall() == [("old", "max_weight", 100.0)]
@@ -146,7 +146,27 @@ def test_v22_upgrade_adds_program_drafts(temp_db_env):
 
     columns = {row[1] for row in conn.execute("PRAGMA table_info(program_drafts)")}
     assert columns == {"assignment_id", "draft_json", "created_at", "updated_at"}
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 23
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 24
+    conn.close()
+
+
+def test_v23_upgrade_adds_tempo_to_program_exercises(temp_db_env):
+    db, _, backups_dir = temp_db_env
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        "CREATE TABLE program_exercises (id TEXT PRIMARY KEY, notes TEXT);"
+        "INSERT INTO program_exercises VALUES ('exercise-1', 'Keep control');"
+        "PRAGMA user_version = 23;"
+    )
+
+    apply_lazy_migrations(conn, "v23player", db.ledgers_dir, backups_dir)
+
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(program_exercises)")}
+    assert "tempo" in columns
+    assert conn.execute(
+        "SELECT notes, tempo FROM program_exercises WHERE id = 'exercise-1'"
+    ).fetchone() == ("Keep control", None)
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 24
     conn.close()
 
 

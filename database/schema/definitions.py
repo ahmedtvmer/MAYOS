@@ -158,6 +158,7 @@ class SchemaMixin:
                 target_reps_max INTEGER NOT NULL,
                 target_rpe REAL,
                 rest_seconds INTEGER DEFAULT 120,
+                tempo TEXT,
                 notes TEXT,
                 FOREIGN KEY(day_id) REFERENCES program_days(id) ON DELETE CASCADE
             );

@@ -267,6 +267,16 @@ class ApiClient {
           serverDetails: details,
         );
       }
+      if (body['detail'] is List) {
+        return ApiException(
+          'The request contains invalid fields.',
+          statusCode: status,
+          errorCode: 'validation_failed',
+          serverDetails: <String, dynamic>{
+            'pydantic_errors': List<dynamic>.from(body['detail'] as List),
+          },
+        );
+      }
       if (body['error'] is String) {
         final String code = body['error'] as String;
         final String message = _messageForError(code);

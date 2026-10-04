@@ -16,7 +16,7 @@ from utils.equipment_access import (
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 23
+CURRENT_LEDGER_SCHEMA_VERSION: int = 24
 
 PROGRAM_DRAFTS_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS program_drafts ("
@@ -596,6 +596,15 @@ def _migrate_v22_to_v23(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _migrate_v23_to_v24(conn: sqlite3.Connection) -> None:
+    """Persists the optional coach-authored exercise tempo cue."""
+    if not _ledger_table_exists(conn, "program_exercises"):
+        return
+    columns = {column[1] for column in conn.execute("PRAGMA table_info(program_exercises)")}
+    if "tempo" not in columns:
+        conn.execute("ALTER TABLE program_exercises ADD COLUMN tempo TEXT")
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -704,6 +713,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     20: _migrate_v20_to_v21,
     21: _migrate_v21_to_v22,
     22: _migrate_v22_to_v23,
+    23: _migrate_v23_to_v24,
 }
 
 

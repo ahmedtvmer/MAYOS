@@ -102,6 +102,35 @@ const ProgramDay _warmupDay = ProgramDay(
   ],
 );
 
+const ProgramDay _prescribedDetailsDay = ProgramDay(
+  dayName: 'Upper with details',
+  dayOrder: 1,
+  warmupExercises: <WarmupExercise>[
+    WarmupExercise(
+      exerciseName: 'Cat-Cow',
+      sets: 1,
+      reps: 8,
+      restSeconds: 30,
+      notes: 'Move smoothly',
+    ),
+  ],
+  exercises: <ProgramExercise>[
+    ProgramExercise(
+      exerciseId: 'bench_press',
+      exerciseName: 'Bench Press',
+      targetSets: 2,
+      targetRepsMin: 6,
+      targetRepsMax: 8,
+      targetRpe: 8.5,
+      warmupSets: 2,
+      restSeconds: 150,
+      tempo: '3-1-1',
+      notes: 'Pause on the chest',
+    ),
+  ],
+  cardio: 'Cycle for 10 minutes',
+);
+
 const ProgramDay _warmupEquipmentDay = ProgramDay(
   dayName: 'Warm-up equipment',
   dayOrder: 1,
@@ -754,6 +783,63 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Workout summary'), findsNothing);
     expect(find.text('Log at least one set'), findsOneWidget);
+  });
+
+  testWidgets('logger carries tempo, notes, warm-up sets, and day blocks',
+      (tester) async {
+    final InMemoryActiveWorkoutStore store = await _openLogger(
+      tester,
+      day: _prescribedDetailsDay,
+    );
+
+    expect(find.byKey(const ValueKey<String>('logger.warmup.section')),
+        findsOneWidget);
+    expect(find.text('Cycle for 10 minutes'), findsOneWidget);
+    expect(find.text('1 × 8 · rest 30s'), findsOneWidget);
+    expect(find.text('Exercise notes: Move smoothly'), findsOneWidget);
+    final ActiveWorkout activeWorkout = (await store.read(_account))!;
+    expect(
+      find.textContaining('2 ramped warm-up sets · 3 sets · 6–8 reps'),
+      findsOneWidget,
+    );
+    expect(find.text('Tempo: 3-1-1'), findsOneWidget);
+    expect(find.text('Exercise notes: Pause on the chest'), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('logger.row.0.0')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('logger.row.0.1')), findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(find.descendant(
+            of: find.byKey(const ValueKey<String>('logger.setlabel.0.0')),
+            matching: find.byType(Text),
+          ))
+          .data,
+      '1',
+    );
+    expect(
+      tester
+          .widget<Text>(find.descendant(
+            of: find.byKey(const ValueKey<String>('logger.setlabel.0.1')),
+            matching: find.byType(Text),
+          ))
+          .data,
+      '2',
+    );
+    expect(
+      tester
+          .widget<Text>(find.descendant(
+            of: find.byKey(const ValueKey<String>('logger.setlabel.0.2')),
+            matching: find.byType(Text),
+          ))
+          .data,
+      '3',
+    );
+    expect(
+      activeWorkout.exercises.first.sets
+          .where((ActiveWorkoutSet set) => set.isWarmup)
+          .length,
+      0,
+    );
+    expect(workoutProgressOf(activeWorkout).setsTotal, 3);
   });
 
   for (final String languageCode in <String>['en', 'ar']) {

@@ -55,6 +55,25 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       tester, find.text(fake.coach ? 'Roster' : 'Home'));
 }
 
+Future<void> _openProgramEditor(WidgetTester tester, FakeMayosApi fake) async {
+  final bool isArabic = fake.displayLanguage == 'ar';
+  await _pumpApp(tester, fake);
+  await _pumpUntilFound(
+    tester,
+    find.text(isArabic ? 'علاقات التدريب النشطة' : 'Active assignments'),
+  );
+  await tester.tap(find.text('bob'));
+  await _pumpUntilFound(
+    tester,
+    find.text(isArabic ? 'مجموعات محسوبة لكل عضلة' : 'Volume (weighted working sets)'),
+  );
+  await tester.tap(find.byKey(const Key('player_page_actions')));
+  final String writeProgram = isArabic ? 'اكتب برنامجًا تدريبيًا' : 'Write program';
+  await _pumpUntilFound(tester, find.text(writeProgram));
+  await tester.tap(find.text(writeProgram));
+  await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_day')));
+}
+
 FakeMayosApi _coachFake() {
   final FakeMayosApi fake = FakeMayosApi();
   fake.issuedToken = 'token-alice';
@@ -108,19 +127,29 @@ void main() {
     await tester.tap(find.byKey(const Key('player_page_actions')));
     await _pumpUntilFound(tester, find.text('Write program'));
     await tester.tap(find.text('Write program'));
-    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_exercise')));
-    await tester.enterText(find.byKey(const Key('program_draft_day_name')), 'Full A');
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_exercise_0')));
+    await tester.enterText(find.byKey(const Key('program_draft_day_name_0')), 'Full A');
 
-    await tester.tap(find.byKey(const Key('program_draft_add_exercise')));
+    await tester.tap(find.byKey(const Key('program_draft_add_exercise_0')));
     await _pumpUntilFound(tester, find.text('Search'));
     await tester.enterText(find.byType(TextField).last, 'Bench Press');
     await tester.tap(find.text('Search').last);
     await _pumpUntilFound(tester, find.text('Bench Press'));
     await tester.tap(find.text('Bench Press').last);
-    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_sets_0')));
-    await tester.enterText(find.byKey(const Key('program_draft_sets_0')), '3');
-    await tester.enterText(find.byKey(const Key('program_draft_reps_0')), '6-8');
-    await tester.enterText(find.byKey(const Key('program_draft_rir_0')), '1');
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_sets_0_0')));
+    await tester.enterText(find.byKey(const Key('program_draft_sets_0_0')), '3');
+    await tester.enterText(find.byKey(const Key('program_draft_reps_0_0')), '6-8');
+    await tester.enterText(find.byKey(const Key('program_draft_rir_0_0')), '1');
+    await tester.enterText(
+      find.byKey(const Key('program_draft_warmup_sets_0_0')),
+      '2',
+    );
+    await tester.enterText(find.byKey(const Key('program_draft_rest_0_0')), '150');
+    await tester.enterText(find.byKey(const Key('program_draft_tempo_0_0')), '3-1-1');
+    await tester.enterText(
+      find.byKey(const Key('program_draft_notes_0_0')),
+      'Pause on the chest',
+    );
     await tester.tap(find.byKey(const Key('program_draft_publish')));
     await _pumpUntilFound(tester,
         find.text('Publish this Training program now? It will become the active program.'));
@@ -138,6 +167,10 @@ void main() {
     expect(exercise['target_reps_min'], 6);
     expect(exercise['target_reps_max'], 8);
     expect(exercise['target_rpe'], 9);
+    expect(exercise['warmup_sets'], 2);
+    expect(exercise['rest_seconds'], 150);
+    expect(exercise['tempo'], '3-1-1');
+    expect(exercise['notes'], 'Pause on the chest');
   });
 
   testWidgets('coach sees localized server validation beside the exercise field',
@@ -163,14 +196,14 @@ void main() {
     await tester.tap(find.byKey(const Key('player_page_actions')));
     await _pumpUntilFound(tester, find.text('Write program'));
     await tester.tap(find.text('Write program'));
-    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_exercise')));
-    await tester.tap(find.byKey(const Key('program_draft_add_exercise')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_exercise_0')));
+    await tester.tap(find.byKey(const Key('program_draft_add_exercise_0')));
     await _pumpUntilFound(tester, find.text('Search'));
     await tester.enterText(find.byType(TextField).last, 'Bench Press');
     await tester.tap(find.text('Search').last);
     await _pumpUntilFound(tester, find.text('Bench Press'));
     await tester.tap(find.text('Bench Press').last);
-    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_reps_0')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_reps_0_0')));
     await tester.tap(find.byKey(const Key('program_draft_publish')));
     await _pumpUntilFound(
       tester,
@@ -183,7 +216,379 @@ void main() {
       find.text('Enter 4–30 reps or a range such as 6-8.'),
     );
     expect(find.text('Enter 4–30 reps or a range such as 6-8.'), findsOneWidget);
-    expect(find.byKey(const Key('program_draft_reps_0')), findsOneWidget);
+    expect(find.byKey(const Key('program_draft_reps_0_0')), findsOneWidget);
+  });
+
+  testWidgets('coach sees Save validation beside the warm-up movement',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..programDraftReplaceError = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'type': 'less_than_equal',
+          'loc': <Object>[
+            'body', 'days', 0, 'warmup_exercises', 0, 'sets',
+          ],
+          'msg': 'Input should be less than or equal to 3',
+        },
+        <String, dynamic>{
+          'type': 'greater_than_equal',
+          'loc': <Object>['body', 'days', 0, 'day_order'],
+          'msg': 'Input should be greater than or equal to 1',
+        },
+      ];
+    await _openProgramEditor(tester, fake);
+    await tester.tap(find.byKey(const Key('program_draft_warmup_add_0')));
+    await tester.tap(find.byKey(const Key('program_draft_save')));
+
+    await _pumpUntilFound(
+      tester,
+      find.text('Warm-up movements need 1 to 3 sets.'),
+    );
+    expect(find.text('Warm-up movements need 1 to 3 sets.'), findsOneWidget);
+    expect(find.text('A program must have 1 to 5 training days.'), findsOneWidget);
+  });
+
+  testWidgets('coach validates ramped warm-up sets before saving',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _openProgramEditor(tester, fake);
+    await tester.tap(find.byKey(const Key('program_draft_add_exercise_0')));
+    await _pumpUntilFound(tester, find.text('Search'));
+    await tester.enterText(find.byType(TextField).last, 'Bench Press');
+    await tester.tap(find.text('Search').last);
+    await _pumpUntilFound(tester, find.text('Bench Press'));
+    await tester.tap(find.text('Bench Press').last);
+    final Finder warmupSets =
+        find.byKey(const Key('program_draft_warmup_sets_0_0'));
+    await _pumpUntilFound(tester, warmupSets);
+    await tester.enterText(warmupSets, '5');
+    await tester.tap(find.byKey(const Key('program_draft_save')));
+
+    await _pumpUntilFound(
+      tester,
+      find.text('Warm-up sets must be from 0 to 4.'),
+    );
+    final List<dynamic> savedDays = fake.programDraft!['days'] as List<dynamic>;
+    expect(savedDays, hasLength(1));
+    expect((savedDays.single as Map)['exercises'], isEmpty);
+  });
+
+  testWidgets('unsaved program edits ask before leaving', (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _openProgramEditor(tester, fake);
+    await tester.enterText(
+      find.byKey(const Key('program_draft_day_name_0')),
+      'Changed day',
+    );
+    await tester.tap(find.byTooltip('Back').hitTestable().last);
+    await _pumpUntilFound(tester, find.text('Unsaved changes'));
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextButton),
+      ),
+      findsNWidgets(2),
+    );
+    await tester.tap(find.byKey(const Key('program_draft_confirm_cancel')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('program_draft_save')), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Back').hitTestable().last);
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_confirm_action')),
+    );
+    await tester.tap(find.byKey(const Key('program_draft_confirm_action')));
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+  });
+
+  testWidgets('coach reorders and duplicates training days', (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _openProgramEditor(tester, fake);
+
+    await tester.tap(find.byKey(const Key('program_draft_add_day')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_day_name_1')));
+    await tester.enterText(
+      find.byKey(const Key('program_draft_day_name_1')),
+      'Lower A',
+    );
+    await tester.tap(find.byKey(const Key('program_draft_day_duplicate_1')));
+    await tester.drag(find.byType(ListView).first, const Offset(0, -900));
+    await tester.pumpAndSettle();
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_day_up_2')));
+    await tester.tap(find.byKey(const Key('program_draft_day_up_2')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('program_draft_save')));
+    await _pumpUntilFound(tester, find.text('Draft saved.'));
+
+    final List<dynamic> days = fake.programDraft!['days'] as List<dynamic>;
+    expect(days.map((dynamic day) => (day as Map)['day_name']), <String>[
+      'Day 1',
+      'Lower A copy',
+      'Lower A',
+    ]);
+    expect(days.map((dynamic day) => (day as Map)['day_order']), <int>[1, 2, 3]);
+    expect(fake.programDraft!['weekly_frequency'], 3);
+  });
+
+  testWidgets('coach saves warm-up movements and the day cardio note',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _openProgramEditor(tester, fake);
+
+    await tester.tap(find.byKey(const Key('program_draft_warmup_add_0')));
+    final Finder movementName =
+        find.byKey(const Key('program_draft_warmup_name_0_0'));
+    await _pumpUntilFound(tester, movementName);
+    await tester.ensureVisible(movementName);
+    await tester.enterText(movementName, 'Band Pull Apart');
+    final Finder movementNotes =
+        find.byKey(const Key('program_draft_warmup_notes_0_0'));
+    await _pumpUntilFound(tester, movementNotes);
+    await tester.ensureVisible(movementNotes);
+    await tester.enterText(movementNotes, 'Easy pace');
+    await tester.ensureVisible(
+      find.byKey(const Key('program_draft_warmup_add_0')),
+    );
+    await tester.tap(find.byKey(const Key('program_draft_warmup_add_0')));
+    final Finder secondMovementName =
+        find.byKey(const Key('program_draft_warmup_name_0_1'));
+    await _pumpUntilFound(tester, secondMovementName);
+    await tester.ensureVisible(secondMovementName);
+    await tester.enterText(secondMovementName, 'Cat-Cow');
+    final Finder moveWarmupUp =
+        find.byKey(const Key('program_draft_warmup_up_0_1'));
+    await tester.ensureVisible(moveWarmupUp);
+    await tester.tap(moveWarmupUp);
+    final Finder cardio = find.byKey(const Key('program_draft_cardio_0'));
+    await _pumpUntilFound(tester, cardio);
+    await tester.ensureVisible(cardio);
+    await tester.enterText(cardio, 'Cycle for 10 minutes');
+    await tester.tap(find.byKey(const Key('program_draft_save')));
+    await _pumpUntilFound(tester, find.text('Draft saved.'));
+
+    final Map<String, dynamic> day =
+        (fake.programDraft!['days'] as List<dynamic>).single
+            as Map<String, dynamic>;
+    final List<dynamic> movements = day['warmup_exercises'] as List<dynamic>;
+    expect(
+      movements.map((dynamic movement) => (movement as Map)['exercise_name']),
+      <String>['Cat-Cow', 'Band Pull Apart'],
+    );
+    final Map<String, dynamic> bandMovement =
+        movements[1] as Map<String, dynamic>;
+    expect(bandMovement['sets'], 2);
+    expect(bandMovement['reps'], 10);
+    expect(bandMovement['rest_seconds'], 45);
+    expect(bandMovement['notes'], 'Easy pace');
+    expect(day['cardio'], 'Cycle for 10 minutes');
+
+    await tester.tap(find.byTooltip('Back').hitTestable().last);
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await tester.tap(find.byKey(const Key('player_page_actions')));
+    await _pumpUntilFound(tester, find.text('Write program'));
+    await tester.tap(find.text('Write program'));
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_warmup_name_0_0')),
+    );
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('program_draft_warmup_name_0_0')))
+          .controller!
+          .text,
+      'Cat-Cow',
+    );
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('program_draft_cardio_0')))
+          .controller!
+          .text,
+      'Cycle for 10 minutes',
+    );
+  });
+
+  testWidgets('coach reorders and duplicates exercises within a training day',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.programDraft = <String, dynamic>{
+      'program_name': 'Custom program',
+      'split_type': 'custom',
+      'weekly_frequency': 1,
+      'instructions': '',
+      'days': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'day_name': 'Upper A',
+          'day_order': 1,
+          'warmup_exercises': <dynamic>[],
+          'exercises': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'exercise_id': 'bench_press',
+              'exercise_name': 'Bench Press',
+              'target_sets': 3,
+              'target_reps_min': 6,
+              'target_reps_max': 8,
+              'target_rir': 2,
+            },
+            <String, dynamic>{
+              'exercise_id': 'barbell_row',
+              'exercise_name': 'Barbell Row',
+              'target_sets': 3,
+              'target_reps_min': 8,
+              'target_reps_max': 10,
+              'target_rir': 2,
+            },
+          ],
+          'cardio': null,
+        },
+      ],
+    };
+    await _openProgramEditor(tester, fake);
+
+    await tester.tap(
+      find.byKey(const Key('program_draft_exercise_duplicate_0_0')),
+    );
+    final Finder moveDuplicateDown =
+        find.byKey(const Key('program_draft_exercise_down_0_1'));
+    await _pumpUntilFound(tester, moveDuplicateDown);
+    await tester.ensureVisible(moveDuplicateDown);
+    await tester.tap(moveDuplicateDown);
+    await tester.tap(find.byKey(const Key('program_draft_save')));
+    await _pumpUntilFound(tester, find.text('Draft saved.'));
+
+    final List<dynamic> exercises =
+        ((fake.programDraft!['days'] as List<dynamic>).single
+                as Map<String, dynamic>)['exercises']
+            as List<dynamic>;
+    expect(
+      exercises.map((dynamic exercise) => (exercise as Map)['exercise_id']),
+      <String>['bench_press', 'barbell_row', 'bench_press'],
+    );
+  });
+
+  testWidgets('coach editor localizes prescription fields and follows Arabic RTL',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()..displayLanguage = 'ar';
+    fake.programDraft = <String, dynamic>{
+      'program_name': 'برنامج تدريبي',
+      'split_type': 'custom',
+      'weekly_frequency': 1,
+      'instructions': '',
+      'days': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'day_name': 'Upper A',
+          'day_order': 1,
+          'warmup_exercises': <dynamic>[],
+          'exercises': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'exercise_id': 'bench_press',
+              'exercise_name': 'Bench Press',
+              'target_sets': 2,
+              'target_reps_min': 8,
+              'target_reps_max': 10,
+              'target_rir': 2,
+            },
+          ],
+          'cardio': null,
+        },
+      ],
+    };
+    await _openProgramEditor(tester, fake);
+
+    expect(find.text('مجموعات العمل'), findsOneWidget);
+    expect(find.text('التكرارات أو النطاق'), findsOneWidget);
+    expect(find.text('RIR المستهدف'), findsOneWidget);
+    expect(find.text('ملاحظة اللياقة (اختيارية)'), findsOneWidget);
+    expect(
+      Directionality.of(
+        tester.element(find.byKey(const Key('program_draft_day_name_0'))),
+      ),
+      TextDirection.rtl,
+    );
+  });
+
+  testWidgets('coach editor lays out at phone and desktop widths',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.programDraft = <String, dynamic>{
+      'program_name': 'Custom program',
+      'split_type': 'custom',
+      'weekly_frequency': 1,
+      'instructions': '',
+      'days': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'day_name': 'Upper A',
+          'day_order': 1,
+          'warmup_exercises': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'exercise_name': 'Band Pull Apart',
+              'sets': 2,
+              'reps': 10,
+              'rest_seconds': 45,
+              'notes': 'Easy pace',
+            },
+          ],
+          'exercises': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'exercise_id': 'bench_press',
+              'exercise_name': 'Bench Press',
+              'target_sets': 3,
+              'target_reps_min': 6,
+              'target_reps_max': 8,
+              'target_rir': 2,
+              'warmup_sets': 2,
+              'rest_seconds': 150,
+              'tempo': '3-1-1',
+              'notes': 'Pause on the chest',
+            },
+          ],
+          'cardio': 'Cycle for 10 minutes',
+        },
+      ],
+    };
+    await _openProgramEditor(tester, fake);
+
+    tester.view.physicalSize = const Size(720, 1600);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.takeException(), isNull);
+
+    tester.view.physicalSize = const Size(2560, 1800);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('coach sees validation beside the offending training day',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..programDraftPublishError = <String, dynamic>{
+        'errors': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'code': 'invalid_day_order',
+            'location': <String, dynamic>{
+              'day_index': 1,
+              'exercise_index': null,
+              'field': 'day_order',
+            },
+          },
+        ],
+      };
+    await _openProgramEditor(tester, fake);
+    await tester.tap(find.byKey(const Key('program_draft_add_day')));
+    await tester.tap(find.byKey(const Key('program_draft_publish')));
+    await _pumpUntilFound(
+      tester,
+      find.text('Publish this Training program now? It will become the active program.'),
+    );
+    await tester.tap(find.text('Publish').last);
+
+    await _pumpUntilFound(
+      tester,
+      find.text('A program must have 1 to 5 training days.'),
+    );
+    expect(
+      find.text('A program must have 1 to 5 training days.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('coach publishes a program and sees the published version',

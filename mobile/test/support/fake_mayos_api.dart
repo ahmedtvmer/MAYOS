@@ -144,6 +144,7 @@ class FakeMayosApi {
   String? programPublishedByCoachAccountId;
   Map<String, dynamic>? programDraft;
   Map<String, dynamic>? programDraftPublishError;
+  Object? programDraftReplaceError;
   String? _programNameOverride;
   String? _splitTypeOverride;
   int? _weeklyFrequencyOverride;
@@ -1830,7 +1831,15 @@ class FakeMayosApi {
           404, <String, dynamic>{'detail': 'Program draft not found.'});
     }
     if (request.method == 'POST') programDraft ??= request.body;
-    if (request.method == 'PUT') programDraft = request.body;
+    if (request.method == 'PUT') {
+      if (programDraftReplaceError != null) {
+        return FakeResponse(
+          422,
+          <String, dynamic>{'detail': programDraftReplaceError},
+        );
+      }
+      programDraft = request.body;
+    }
     if (request.method == 'DELETE') {
       programDraft = null;
       return const FakeResponse(204);
@@ -2787,6 +2796,7 @@ class FakeMayosApi {
                     'target_reps_max': 8,
                     'target_rpe': 8.5,
                     'rest_seconds': 180,
+                    'tempo': '3-1-1',
                     'notes': 'Pause on the chest.',
                     'suggested_substitutes': <Map<String, String>>[
                       <String, String>{

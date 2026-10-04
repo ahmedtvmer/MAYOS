@@ -816,7 +816,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                     ),
                     const SizedBox(height: MayosSpacing.md),
                     if (day.hasWarmup) ...<Widget>[
-                      _SectionLabel(displayCopyOf(context).warmup),
+                      _SectionLabel(workoutCopyOf(context).warmup),
                       for (final WarmupExercise warmup in day.warmupExercises)
                         _WarmupRow(warmup: warmup),
                     ],
@@ -824,6 +824,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                     for (final ProgramExercise exercise in day.exercises)
                       _ExerciseRow(
                         exercise: exercise,
+                        showCoachNotes: program.isCoachPublished,
                         onTap: () => _openExercise(day, exercise),
                         onSubstitute: _substituting || _pickerBusy
                             ? null
@@ -921,11 +922,13 @@ class _ProvenanceLabel extends StatelessWidget {
 class _ExerciseRow extends StatelessWidget {
   const _ExerciseRow({
     required this.exercise,
+    required this.showCoachNotes,
     required this.onTap,
     required this.onSubstitute,
   });
 
   final ProgramExercise exercise;
+  final bool showCoachNotes;
   final VoidCallback onTap;
   final VoidCallback? onSubstitute;
 
@@ -982,6 +985,20 @@ class _ExerciseRow extends StatelessWidget {
                     ].join(' · '),
                     style: MayosTypography.caption.copyWith(color: c.textMuted),
                   ),
+                  if (exercise.tempo != null && exercise.tempo!.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 2),
+                    Text(
+                      workoutCopyOf(context).tempoCue(exercise.tempo!),
+                      style: MayosTypography.caption.copyWith(color: c.textMuted),
+                    ),
+                  ],
+                  if (showCoachNotes && exercise.hasNotes) ...<Widget>[
+                    const SizedBox(height: 2),
+                    Text(
+                      exercise.notes!,
+                      style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1044,6 +1061,14 @@ class _WarmupRow extends StatelessWidget {
               ),
               style: MayosTypography.caption.copyWith(color: c.textMuted),
             ),
+            if (warmup.hasNotes) ...<Widget>[
+              const SizedBox(height: 2),
+              Text(
+                warmup.notes!,
+                style: MayosTypography.bodySecondary
+                    .copyWith(color: c.textSecondary),
+              ),
+            ],
           ],
         ),
       ),

@@ -1931,6 +1931,7 @@ class ProgramExercise {
     this.equipment,
     this.warmupSets = 0,
     this.restSeconds,
+    this.tempo,
     this.notes,
     this.suggestedSubstitutes = const <SuggestedSubstitute>[],
     this.imagePath,
@@ -1949,6 +1950,7 @@ class ProgramExercise {
         // A missing `rest_seconds` is *unset*, not 180: the rest timer then
         // resolves it to the flat 2:00 instead of a phantom 3:00 (#125).
         restSeconds: (json['rest_seconds'] as num?)?.toInt(),
+        tempo: json['tempo'] as String?,
         notes: json['notes'] as String?,
         suggestedSubstitutes:
             (json['suggested_substitutes'] as List<dynamic>? ??
@@ -1979,6 +1981,7 @@ class ProgramExercise {
   /// wherever a length is needed. Display falls back to the same default, so
   /// a program that omits the field still reads "rest 120s".
   final int? restSeconds;
+  final String? tempo;
   final String? notes;
 
   /// Equipment access-compatible Staple exercises listed after the prescribed one.
@@ -2022,6 +2025,9 @@ class ProgramExercise {
       json['rest_seconds'] = restSeconds;
     }
     json['notes'] = notes;
+    if (tempo != null) {
+      json['tempo'] = tempo;
+    }
     if (suggestedSubstitutes.isNotEmpty) {
       json['suggested_substitutes'] = suggestedSubstitutes
           .map((SuggestedSubstitute item) => item.toJson())

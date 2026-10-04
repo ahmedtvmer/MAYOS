@@ -123,7 +123,7 @@ void main() {
     // Warm-up, working-set details, and cardio are all rendered.
     expect(find.text('Warm-up'), findsOneWidget);
     expect(find.text('Band Pull-Apart'), findsOneWidget);
-    expect(find.textContaining('Squeeze at the top.'), findsNothing);
+    expect(find.textContaining('Squeeze at the top.'), findsOneWidget);
     expect(find.text('Working sets'), findsOneWidget);
     expect(find.textContaining('rest 180s'), findsOneWidget);
     expect(find.textContaining('Pause on the chest.'), findsNothing);

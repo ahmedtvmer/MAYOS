@@ -118,6 +118,8 @@ class LedgerTrainingProgramMixin:
                         exercise_values["suggested_substitutes_json"] = json.dumps(
                             ex.get("suggested_substitutes", []), ensure_ascii=False
                         )
+                    if "tempo" in exercise_cols:
+                        exercise_values["tempo"] = ex.get("tempo")
                     cursor.execute(
                         f"INSERT INTO program_exercises ({', '.join(exercise_values)}) "
                         f"VALUES ({', '.join(['?'] * len(exercise_values))})",
@@ -182,6 +184,7 @@ class LedgerTrainingProgramMixin:
         has_slot_key = "slot_key" in exercise_cols
         has_warmup_sets = "warmup_sets" in exercise_cols
         has_suggested_substitutes = "suggested_substitutes_json" in exercise_cols
+        has_tempo = "tempo" in exercise_cols
 
         days = []
         try:
@@ -201,6 +204,8 @@ class LedgerTrainingProgramMixin:
                     select_cols += ", pe.warmup_sets"
                 if has_suggested_substitutes:
                     select_cols += ", pe.suggested_substitutes_json"
+                if has_tempo:
+                    select_cols += ", pe.tempo"
                 select_cols += ", e.equipment"
                 cursor.execute(
                     f"""
@@ -240,6 +245,7 @@ class LedgerTrainingProgramMixin:
                             slot_key=r[10] if has_slot_key else None,
                             warmup_sets=int(r[11]) if has_warmup_sets and r[11] is not None else 0,
                             suggested_substitutes=suggested_substitutes,
+                            tempo=row_by_column.get("tempo"),
                         )
                     )
 

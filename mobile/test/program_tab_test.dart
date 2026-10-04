@@ -378,8 +378,9 @@ void main() {
     expect(find.textContaining('2 warm-up sets · rest 180s'), findsOneWidget);
     expect(find.text('Band Pull-Apart'), findsOneWidget);
     expect(find.text('2 × 15 · rest 45s'), findsOneWidget);
-    expect(find.text('Pause on the chest.'), findsNothing);
-    expect(find.text('Squeeze at the top.'), findsNothing);
+    expect(find.text('Pause on the chest.'), findsOneWidget);
+    expect(find.text('Tempo: 3-1-1'), findsOneWidget);
+    expect(find.text('Squeeze at the top.'), findsOneWidget);
     expect(find.text('Cardio'), findsOneWidget);
   });
 

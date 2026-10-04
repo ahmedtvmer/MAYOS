@@ -975,7 +975,11 @@ void main() {
 
     final Finder addUnplanned =
         find.widgetWithText(OutlinedButton, 'Add exercise');
-    await tester.ensureVisible(addUnplanned);
+    await tester.scrollUntilVisible(
+      addUnplanned,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pump(const Duration(milliseconds: 100));
     await tester.tap(addUnplanned);
     await _pumpUntilFound(tester, find.text('Search the exercise catalog'));

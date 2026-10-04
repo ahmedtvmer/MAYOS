@@ -5,6 +5,7 @@ import '../../../core/active_workout.dart';
 import '../../../core/baselines.dart';
 import '../../../core/config.dart';
 import '../../../core/display_language/feature_copy_context.dart';
+import '../../../core/display_language/copy_context.dart';
 import '../../../core/effort.dart';
 import '../../../core/models.dart';
 import '../../../core/personal_records.dart';
@@ -550,6 +551,30 @@ class ExerciseLoggingCard extends StatelessWidget {
                               .copyWith(color: c.textMuted),
                           textAlign: copy.isArabic ? TextAlign.end : null,
                         ),
+                        if (exercise.exercise['tempo'] case final String tempo
+                            when tempo.isNotEmpty)
+                          Padding(
+                            padding:
+                                const EdgeInsets.only(top: MayosSpacing.xxs),
+                            child: Text(
+                              copy.tempoCue(tempo),
+                              textAlign: copy.isArabic ? TextAlign.end : null,
+                              style: MayosTypography.caption
+                                  .copyWith(color: c.textMuted),
+                            ),
+                          ),
+                        if (exercise.exercise['notes'] case final String notes
+                            when notes.isNotEmpty)
+                          Padding(
+                            padding:
+                                const EdgeInsets.only(top: MayosSpacing.xxs),
+                            child: Text(
+                              '${copy.exerciseNotes}: $notes',
+                              textAlign: copy.isArabic ? TextAlign.end : null,
+                              style: MayosTypography.caption
+                                  .copyWith(color: c.textSecondary),
+                            ),
+                          ),
                         if (lastSession.isNotEmpty)
                           Padding(
                             padding:
@@ -581,12 +606,21 @@ class ExerciseLoggingCard extends StatelessWidget {
   }
 
   String _prescriptionLine(WorkoutCopy copy) {
+    final int warmupSets =
+        (exercise.exercise['warmup_sets'] as num?)?.toInt() ?? 0;
     if (!copy.isArabic) {
-      return exercisePrescriptionLine(exercise, restSeconds: restSeconds);
+      final String line = exercisePrescriptionLine(
+        exercise,
+        restSeconds: restSeconds,
+      );
+      return warmupSets > 0
+          ? '${copy.warmupSetCount(warmupSets)} · $line'
+          : line;
     }
     final ExercisePrescriptionProjection projection =
         projectExercisePrescription(exercise, restSeconds: restSeconds);
     final List<String> parts = <String>[
+      if (warmupSets > 0) copy.warmupSetCount(warmupSets),
       copy.prescriptionSetCount(projection.setCount),
       if (projection.minimumReps > 0 && projection.maximumReps > 0)
         copy.prescriptionReps(
@@ -633,6 +667,24 @@ class WarmupMovementLoggingCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             _heading(context),
+            Text(
+              displayCopyOf(context).warmupPrescription(
+                movement.prescribedSets ?? movement.sets.length,
+                movement.prescribedReps ??
+                    (movement.sets.isEmpty ? 10 : movement.sets.first.reps),
+                movement.restSeconds ?? 45,
+              ),
+              style: MayosTypography.caption.copyWith(
+                color: MayosTheme.of(context).textMuted,
+              ),
+            ),
+            if (movement.notes != null && movement.notes!.isNotEmpty)
+              Text(
+                '${workoutCopyOf(context).exerciseNotes}: ${movement.notes}',
+                style: MayosTypography.caption.copyWith(
+                  color: MayosTheme.of(context).textSecondary,
+                ),
+              ),
             const SizedBox(height: MayosSpacing.xs),
             _columnHeadings(context),
             for (int setIndex = 0; setIndex < movement.sets.length; setIndex++)

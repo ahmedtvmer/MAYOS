@@ -7,10 +7,20 @@ from pydantic import ValidationError
 from agent.ProgramState import PersistedProgramSchema
 from agent.program_prescription import (
     DEFAULT_TARGET_RIR,
+    MAX_EXERCISES_PER_DAY,
+    MAX_PROGRAM_DAYS,
+    MAX_PROGRAM_NOTES_LENGTH,
     MAX_REPS,
+    MAX_RAMPED_WARMUP_SETS,
+    MAX_TEMPO_LENGTH,
     MAX_TARGET_RIR,
+    MAX_WARMUP_MOVEMENT_REPS,
+    MAX_WARMUP_MOVEMENT_SETS,
     MIN_REPS,
+    MIN_RAMPED_WARMUP_SETS,
     MIN_TARGET_RIR,
+    MIN_WARMUP_MOVEMENT_REPS,
+    MIN_WARMUP_MOVEMENT_SETS,
 )
 from service import analytics
 from service.assignments import authorized_player_ledger
@@ -41,6 +51,7 @@ class ProgramDraftValidationError(Exception):
         *,
         day_index: int | None = None,
         exercise_index: int | None = None,
+        warmup_movement_index: int | None = None,
         field: str,
     ) -> "ProgramDraftValidationError":
         return cls(
@@ -51,6 +62,7 @@ class ProgramDraftValidationError(Exception):
                     "location": {
                         "day_index": day_index,
                         "exercise_index": exercise_index,
+                        "warmup_movement_index": warmup_movement_index,
                         "field": field,
                     },
                 }
@@ -121,6 +133,7 @@ def _pydantic_issue(error: dict[str, Any]) -> dict[str, Any]:
     loc = list(error.get("loc", ()))
     day_index = None
     exercise_index = None
+    warmup_movement_index = None
     field = "program"
     if "days" in loc:
         day_at = loc.index("days")
@@ -128,13 +141,21 @@ def _pydantic_issue(error: dict[str, Any]) -> dict[str, Any]:
             day_index = loc[day_at + 1]
         if len(loc) > day_at + 2:
             section = loc[day_at + 2]
-            if section in {"exercises", "warmup_exercises"}:
+            if section == "exercises":
                 if len(loc) > day_at + 3 and isinstance(loc[day_at + 3], int):
                     exercise_index = loc[day_at + 3]
                 if len(loc) > day_at + 4:
                     field = str(loc[day_at + 4])
                 else:
                     field = str(section)
+            elif section == "warmup_exercises":
+                if len(loc) > day_at + 3 and isinstance(loc[day_at + 3], int):
+                    warmup_movement_index = loc[day_at + 3]
+                field = (
+                    str(loc[day_at + 4])
+                    if len(loc) > day_at + 4
+                    else str(section)
+                )
             else:
                 field = str(section)
         elif len(loc) > day_at + 1:
@@ -143,8 +164,10 @@ def _pydantic_issue(error: dict[str, Any]) -> dict[str, Any]:
         field = str(loc[0])
 
     error_type = str(error.get("type", ""))
-    if field == "exercises" and error_type == "too_long":
-        code, message = "too_many_exercises", "A training day can have at most 14 exercises."
+    if field == "days" and error_type == "too_long":
+        code, message = "too_many_days", f"A program can have at most {MAX_PROGRAM_DAYS} training days."
+    elif field == "exercises" and error_type == "too_long":
+        code, message = "too_many_exercises", f"A training day can have at most {MAX_EXERCISES_PER_DAY} exercises."
     elif field == "exercises" and error_type == "too_short":
         code, message = "empty_day", "Each training day needs at least one exercise."
     elif field == "target_sets":
@@ -154,11 +177,19 @@ def _pydantic_issue(error: dict[str, Any]) -> dict[str, Any]:
     elif field == "target_rpe":
         code, message = "invalid_rir", f"Target RIR must be from {MIN_TARGET_RIR:g} to {MAX_TARGET_RIR:g}."
     elif field == "warmup_sets":
-        code, message = "invalid_warmup_sets", "Warm-up sets must be from 0 to 4."
+        code, message = "invalid_warmup_sets", f"Warm-up sets must be from {MIN_RAMPED_WARMUP_SETS} to {MAX_RAMPED_WARMUP_SETS}."
+    elif field == "sets":
+        code, message = "invalid_movement_sets", f"Warm-up movements need {MIN_WARMUP_MOVEMENT_SETS} to {MAX_WARMUP_MOVEMENT_SETS} sets."
+    elif field == "reps":
+        code, message = "invalid_movement_reps", f"Warm-up movement reps must be from {MIN_WARMUP_MOVEMENT_REPS} to {MAX_WARMUP_MOVEMENT_REPS}."
     elif field == "day_order":
-        code, message = "invalid_day_order", "Training day order must be from 1 to 5."
+        code, message = "invalid_day_order", f"Training day order must be from 1 to {MAX_PROGRAM_DAYS}."
     elif field == "weekly_frequency":
-        code, message = "invalid_weekly_frequency", "Weekly frequency must be from 1 to 5."
+        code, message = "invalid_weekly_frequency", f"Weekly frequency must be from 1 to {MAX_PROGRAM_DAYS}."
+    elif field == "tempo" and error_type == "string_too_long":
+        code, message = "tempo_too_long", f"Tempo must be at most {MAX_TEMPO_LENGTH} characters."
+    elif field == "notes" and error_type == "string_too_long":
+        code, message = "notes_too_long", f"Notes must be at most {MAX_PROGRAM_NOTES_LENGTH} characters."
     else:
         code, message = "invalid_program_field", "This program field is invalid."
     return {
@@ -167,6 +198,7 @@ def _pydantic_issue(error: dict[str, Any]) -> dict[str, Any]:
         "location": {
             "day_index": day_index,
             "exercise_index": exercise_index,
+            "warmup_movement_index": warmup_movement_index,
             "field": field,
         },
     }

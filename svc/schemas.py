@@ -17,6 +17,19 @@ from agent.program_prescription import (
     DEFAULT_TARGET_SETS,
     MAX_REPS,
     MAX_TARGET_RIR,
+    DEFAULT_EXERCISE_REST_SECONDS,
+    DEFAULT_WARMUP_MOVEMENT_REPS,
+    DEFAULT_WARMUP_MOVEMENT_REST_SECONDS,
+    DEFAULT_WARMUP_MOVEMENT_SETS,
+    MAX_PROGRAM_DAYS,
+    MAX_PROGRAM_NOTES_LENGTH,
+    MAX_RAMPED_WARMUP_SETS,
+    MAX_TEMPO_LENGTH,
+    MAX_WARMUP_MOVEMENT_REPS,
+    MAX_WARMUP_MOVEMENT_SETS,
+    MIN_RAMPED_WARMUP_SETS,
+    MIN_WARMUP_MOVEMENT_REPS,
+    MIN_WARMUP_MOVEMENT_SETS,
     MIN_REPS,
     MIN_TARGET_RIR,
 )
@@ -872,12 +885,18 @@ class ProgramGenerateIn(BaseModel):
     user_split_override: str | None = None
 
 
-class ProgramDraftExerciseIn(BaseModel):
+class ProgramDraftInput(BaseModel):
+    """Strict draft input that rejects all unknown fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ProgramDraftExerciseIn(ProgramDraftInput):
     exercise_id: str = Field(min_length=1, max_length=200)
     exercise_name: str = ""
     equipment: str | None = None
     slot_key: str | None = None
-    warmup_sets: int = 0
+    warmup_sets: int = Field(default=MIN_RAMPED_WARMUP_SETS, ge=MIN_RAMPED_WARMUP_SETS, le=MAX_RAMPED_WARMUP_SETS)
     target_sets: int = DEFAULT_TARGET_SETS
     target_reps_min: int = Field(
         default=DEFAULT_TARGET_REPS_MIN,
@@ -891,8 +910,9 @@ class ProgramDraftExerciseIn(BaseModel):
         default=DEFAULT_TARGET_RIR,
         description=f"Target RIR, from {MIN_TARGET_RIR:g} to {MAX_TARGET_RIR:g}.",
     )
-    rest_seconds: int = 180
-    notes: str | None = None
+    rest_seconds: int = DEFAULT_EXERCISE_REST_SECONDS
+    tempo: str | None = Field(default=None, max_length=MAX_TEMPO_LENGTH)
+    notes: str | None = Field(default=None, max_length=MAX_PROGRAM_NOTES_LENGTH)
     image_path: str | None = None
     gif_path: str | None = None
     suggested_substitutes: list[SuggestedSubstitute] = Field(default_factory=list)
@@ -912,33 +932,43 @@ class ProgramDraftExerciseIn(BaseModel):
         return normalized
 
 
-class ProgramDraftWarmupExerciseIn(BaseModel):
+class ProgramDraftWarmupExerciseIn(ProgramDraftInput):
     exercise_id: str | None = None
     equipment: str | None = None
     exercise_name: str
-    sets: int = 2
-    reps: int = 10
-    rest_seconds: int = 45
-    notes: str | None = None
+    sets: int = Field(default=DEFAULT_WARMUP_MOVEMENT_SETS, ge=MIN_WARMUP_MOVEMENT_SETS, le=MAX_WARMUP_MOVEMENT_SETS)
+    reps: int = Field(default=DEFAULT_WARMUP_MOVEMENT_REPS, ge=MIN_WARMUP_MOVEMENT_REPS, le=MAX_WARMUP_MOVEMENT_REPS)
+    rest_seconds: int = DEFAULT_WARMUP_MOVEMENT_REST_SECONDS
+    notes: str | None = Field(default=None, max_length=MAX_PROGRAM_NOTES_LENGTH)
     image_path: str | None = None
     gif_path: str | None = None
 
 
-class ProgramDraftDayIn(BaseModel):
+class ProgramDraftDayIn(ProgramDraftInput):
 
     day_name: str = Field(default="Day 1", min_length=1, max_length=100)
-    day_order: int = Field(default=1, ge=1, le=5)
+    day_order: int = Field(default=1, ge=1, le=MAX_PROGRAM_DAYS)
     warmup_exercises: list[ProgramDraftWarmupExerciseIn] = Field(default_factory=list)
     exercises: list[ProgramDraftExerciseIn] = Field(default_factory=list)
     cardio: str | None = None
 
 
-class CoachProgramDraftIn(BaseModel):
+class CoachProgramDraftIn(ProgramDraftInput):
     program_name: str = Field(default="Custom program", min_length=1, max_length=120)
     split_type: str = "custom"
-    weekly_frequency: int = Field(default=1, ge=1, le=5)
+    weekly_frequency: int = Field(default=1, ge=1, le=MAX_PROGRAM_DAYS)
     instructions: str = ""
-    days: list[ProgramDraftDayIn] = Field(default_factory=list)
+    days: list[ProgramDraftDayIn] = Field(default_factory=list, max_length=MAX_PROGRAM_DAYS)
+
+    @model_validator(mode="before")
+    @classmethod
+    def strip_server_metadata(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        for field_name in ("version", "published_by_coach_account_id"):
+            normalized.pop(field_name, None)
+        return normalized
 
 
 class CoachProgramDraftOut(BaseModel):

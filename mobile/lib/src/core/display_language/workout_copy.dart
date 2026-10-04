@@ -21,12 +21,18 @@ class WorkoutCopy {
   String get kilogramsShort => 'KG';
   String get repsShort => isArabic ? 'تكرارات' : 'REPS';
   String get warmup => isArabic ? 'الإحماء' : 'Warm-up';
+  String warmupSetCount(int count) => isArabic
+      ? '${_ltr('$count')} مجموعات إحماء متدرجة'
+      : '$count ramped warm-up sets';
   String get exercises => isArabic ? 'التمارين' : 'Exercises';
   String get warmupMovementTag => isArabic ? 'حركة إحماء' : 'Warm-up';
   String get unplanned => isArabic ? 'غير مخطط' : 'Unplanned';
   String get cardio => isArabic ? 'تمارين اللياقة' : 'Cardio';
   String get minutes => isArabic ? 'دقائق' : 'Minutes';
   String get restTime => isArabic ? 'مدة الراحة…' : 'Rest time…';
+  String get exerciseNotes => isArabic ? 'ملاحظات التمرين' : 'Exercise notes';
+  String tempoCue(String value) =>
+      isArabic ? 'الإيقاع: ${_ltr(value)}' : 'Tempo: $value';
   String restNotificationTitle(String time) =>
       isArabic ? 'MAYOS · راحة ${_ltr(time)}' : 'MAYOS · Rest $time';
   String restNotificationLine({

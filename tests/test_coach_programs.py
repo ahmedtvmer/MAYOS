@@ -282,25 +282,55 @@ def test_program_draft_can_be_created_empty(api):
     assert created.json()["draft"]["days"] == []
 
 
-def test_program_draft_strips_client_ids_and_publication_metadata(api):
+def test_program_draft_strips_draft_level_publication_metadata(api):
     client, _, _ = api
     coach_headers, _, assignment_id, _, _ = _assigned_player(api)
     supplied = _one_day_draft()
-    supplied.update(id="old-program", created_at="2001-01-01", version=99)
+    supplied.update(version=99)
     supplied["published_by_coach_account_id"] = "foreign-coach"
-    supplied["days"][0].update(id="old-day", created_at="2001-01-02")
-    supplied["days"][0]["exercises"][0].update(id="old-exercise", created_at="2001-01-03")
 
     created = client.post(_program_draft_path(assignment_id), headers=coach_headers, json=supplied)
 
     assert created.status_code == 200, created.text
     response = created.json()
-    assert "id" not in response["draft"]
-    assert "created_at" not in response["draft"]
     assert "version" not in response["draft"]
     assert "published_by_coach_account_id" not in response["draft"]
-    assert "id" not in response["draft"]["days"][0]
-    assert "id" not in response["draft"]["days"][0]["exercises"][0]
+
+
+def test_program_draft_rejects_nested_server_metadata(api):
+    client, _, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+    supplied = _one_day_draft()
+    supplied["id"] = "old-program"
+    supplied["days"][0]["exercises"][0]["id"] = "old-exercise"
+    supplied["days"][0]["exercises"][0]["version"] = 12
+
+    response = client.post(_program_draft_path(assignment_id), headers=coach_headers, json=supplied)
+
+    assert response.status_code == 422
+    locations = [issue["loc"][1:] for issue in response.json()["detail"]]
+    assert ["id"] in locations
+    assert ["days", 0, "exercises", 0, "id"] in locations
+    assert ["days", 0, "exercises", 0, "version"] in locations
+
+
+def test_program_draft_rejects_fields_outside_the_program_shape(api):
+    client, _, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+    supplied = _one_day_draft()
+    supplied["unrecognized_program_field"] = "unexpected"
+
+    response = client.post(
+        _program_draft_path(assignment_id),
+        headers=coach_headers,
+        json=supplied,
+    )
+
+    assert response.status_code == 422
+    assert any(
+        issue["loc"][-1] == "unrecognized_program_field"
+        for issue in response.json()["detail"]
+    )
 
 
 def test_program_draft_write_that_races_assignment_end_is_discarded(api, monkeypatch):
@@ -351,7 +381,6 @@ def test_program_draft_denies_unknown_foreign_and_ended_assignments_identically(
         (_one_day_draft(target_reps_min=31, target_reps_max=31), "invalid_reps", "target_reps_min"),
         (_one_day_draft(target_reps_min=10, target_reps_max=8), "invalid_reps", "target_reps_min"),
         (_one_day_draft(target_rir=6), "invalid_rir", "target_rir"),
-        (_one_day_draft(warmup_sets=5), "invalid_warmup_sets", "warmup_sets"),
         (
             {
                 **_one_day_draft(),
@@ -384,6 +413,51 @@ def test_program_draft_publish_rejects_invalid_structure(api, draft, code, field
     matching = next(issue for issue in issues if issue["code"] == code)
     assert matching["location"]["field"] == field
     assert matching["message"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_location"),
+    [
+        ("warmup_sets", 5, ["days", 0, "exercises", 0, "warmup_sets"]),
+        ("tempo", "x" * 51, ["days", 0, "exercises", 0, "tempo"]),
+        ("notes", "x" * 2001, ["days", 0, "exercises", 0, "notes"]),
+    ],
+)
+def test_program_draft_save_validates_exercise_ranges_and_lengths(
+    api, field, value, expected_location
+):
+    client, _, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+    created = client.post(path, headers=coach_headers, json=_one_day_draft())
+    assert created.status_code == 200, created.text
+    draft = created.json()["draft"]
+    draft["days"][0]["exercises"][0][field] = value
+
+    response = client.put(path, headers=coach_headers, json=draft)
+
+    assert response.status_code == 422
+    issue = next(
+        issue for issue in response.json()["detail"] if issue["loc"][1:] == expected_location
+    )
+    assert issue["type"] in {"less_than_equal", "string_too_long"}
+
+
+def test_program_draft_save_validation_locates_warmup_movement(api):
+    client, _, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+    created = client.post(path, headers=coach_headers, json=_one_day_draft())
+    draft = created.json()["draft"]
+    draft["days"][0]["warmup_exercises"] = [
+        {"exercise_name": "Band pull apart", "sets": 4}
+    ]
+
+    response = client.put(path, headers=coach_headers, json=draft)
+
+    assert response.status_code == 422
+    issue = response.json()["detail"][0]
+    assert issue["loc"] == ["body", "days", 0, "warmup_exercises", 0, "sets"]
 
 
 def test_coach_publication_loads_broader_prescription_range(api):
@@ -471,6 +545,134 @@ def test_program_draft_preserves_fractional_rir_as_target_rpe(api):
 
     assert published.status_code == 200, published.text
     assert published.json()["days"][0]["exercises"][0]["target_rpe"] == 8.5
+
+
+def test_multi_day_program_draft_round_trips_every_field_through_publish(api):
+    client, _, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+    draft = {
+        "program_name": "Four day strength plan",
+        "split_type": "Upper/Lower",
+        "weekly_frequency": 2,
+        "instructions": "Keep all reps controlled.",
+        "days": [
+            {
+                "day_name": "Upper A",
+                "day_order": 1,
+                "warmup_exercises": [
+                    {
+                        "exercise_id": "band_pull_apart",
+                        "equipment": "Band",
+                        "exercise_name": "Band Pull Apart",
+                        "sets": 2,
+                        "reps": 12,
+                        "rest_seconds": 30,
+                        "notes": "Easy pace",
+                        "image_path": "warmup.png",
+                        "gif_path": "warmup.gif",
+                    }
+                ],
+                "exercises": [
+                    {
+                        "exercise_id": "bp",
+                        "target_sets": 4,
+                        "target_reps_min": 6,
+                        "target_reps_max": 8,
+                        "target_rir": 1.5,
+                        "slot_key": "horizontal_press",
+                        "warmup_sets": 3,
+                        "rest_seconds": 150,
+                        "tempo": "3-1-1",
+                        "notes": "Pause on the chest",
+                        "suggested_substitutes": [
+                            {"exercise_id": "incline_bp", "exercise_name": "Incline Bench Press"}
+                        ],
+                    }
+                ],
+                "cardio": "Cycle for 10 minutes",
+            },
+            {
+                "day_name": "Lower A",
+                "day_order": 2,
+                "warmup_exercises": [
+                    {
+                        "exercise_name": "Bodyweight squat",
+                        "sets": 1,
+                        "reps": 10,
+                        "rest_seconds": 20,
+                        "notes": "Smooth range",
+                    }
+                ],
+                "exercises": [
+                    {
+                        "exercise_id": "sq",
+                        "target_sets": 3,
+                        "target_reps_min": 8,
+                        "target_reps_max": 10,
+                        "target_rir": 2,
+                        "warmup_sets": 1,
+                        "rest_seconds": 210,
+                        "tempo": None,
+                        "notes": None,
+                    }
+                ],
+                "cardio": None,
+            },
+        ],
+    }
+
+    created = client.post(path, headers=coach_headers, json=draft)
+    assert created.status_code == 200, created.text
+    saved = client.put(path, headers=coach_headers, json=created.json()["draft"])
+    assert saved.status_code == 200, saved.text
+    reopened = client.get(path, headers=coach_headers)
+    assert reopened.status_code == 200
+    saved_days = reopened.json()["draft"]["days"]
+    assert [day["day_name"] for day in saved_days] == ["Upper A", "Lower A"]
+    assert [day["day_order"] for day in saved_days] == [1, 2]
+    assert saved_days[0]["warmup_exercises"][0]["notes"] == "Easy pace"
+    assert saved_days[0]["warmup_exercises"][0]["image_path"] == "warmup.png"
+    assert saved_days[0]["warmup_exercises"][0]["gif_path"] == "warmup.gif"
+    assert saved_days[0]["exercises"][0]["target_rir"] == 1.5
+    assert saved_days[0]["exercises"][0]["slot_key"] == "horizontal_press"
+    assert saved_days[0]["exercises"][0]["warmup_sets"] == 3
+    assert saved_days[0]["exercises"][0]["rest_seconds"] == 150
+    assert saved_days[0]["exercises"][0]["tempo"] == "3-1-1"
+    assert saved_days[0]["exercises"][0]["notes"] == "Pause on the chest"
+    assert saved_days[0]["exercises"][0]["suggested_substitutes"] == [
+        {"exercise_id": "incline_bp", "exercise_name": "Incline Bench Press"}
+    ]
+    assert saved_days[0]["cardio"] == "Cycle for 10 minutes"
+    assert saved_days[1]["warmup_exercises"][0]["notes"] == "Smooth range"
+    assert saved_days[1]["cardio"] is None
+
+    published = client.post(f"{path}/publish", headers=coach_headers)
+
+    assert published.status_code == 200, published.text
+    days = published.json()["days"]
+    assert len(days) == 2
+    assert [day["day_name"] for day in days] == ["Upper A", "Lower A"]
+    assert days[0]["warmup_exercises"][0]["notes"] == "Easy pace"
+    assert days[0]["warmup_exercises"][0]["image_path"] == "warmup.png"
+    assert days[0]["warmup_exercises"][0]["gif_path"] == "warmup.gif"
+    assert days[0]["cardio"] == "Cycle for 10 minutes"
+    upper_exercise = days[0]["exercises"][0]
+    assert upper_exercise["target_rpe"] == 8.5
+    assert upper_exercise["warmup_sets"] == 3
+    assert upper_exercise["rest_seconds"] == 150
+    assert upper_exercise["tempo"] == "3-1-1"
+    assert upper_exercise["notes"] == "Pause on the chest"
+    assert upper_exercise["slot_key"] == "horizontal_press"
+    assert upper_exercise["suggested_substitutes"] == [
+        {"exercise_id": "incline_bp", "exercise_name": "Incline Bench Press"}
+    ]
+    assert days[1]["warmup_exercises"][0]["notes"] == "Smooth range"
+    assert days[1]["cardio"] is None
+
+    active = client.get("/programs/active", headers=player_headers)
+    assert active.status_code == 200, active.text
+    assert active.json()["days"] == days
 
 
 def test_ending_assignment_discards_program_draft(api):
