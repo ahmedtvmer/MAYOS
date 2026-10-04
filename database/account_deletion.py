@@ -39,8 +39,67 @@ class AccountDeletionMixin:
             columns = {row[1] for row in self.deletions_conn.execute("PRAGMA table_info(account_deletions)")}
             if "applied_at" not in columns:
                 self.deletions_conn.execute("ALTER TABLE account_deletions ADD COLUMN applied_at TEXT")
+            if "analytics_deleted_at" not in columns:
+                self.deletions_conn.execute("ALTER TABLE account_deletions ADD COLUMN analytics_deleted_at TEXT")
+            if "analytics_delete_attempts" not in columns:
+                self.deletions_conn.execute(
+                    "ALTER TABLE account_deletions ADD COLUMN analytics_delete_attempts INTEGER NOT NULL DEFAULT 0"
+                )
+            if "analytics_delete_last_attempt_at" not in columns:
+                self.deletions_conn.execute(
+                    "ALTER TABLE account_deletions ADD COLUMN analytics_delete_last_attempt_at TEXT"
+                )
+            if "analytics_delete_status" not in columns:
+                self.deletions_conn.execute(
+                    "ALTER TABLE account_deletions ADD COLUMN analytics_delete_status TEXT NOT NULL DEFAULT 'pending'"
+                )
             self.deletions_conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_deletions_ledger ON account_deletions(ledger_id)"
+            )
+            self.deletions_conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_deletions_analytics_pending"
+                " ON account_deletions(analytics_delete_status, analytics_delete_attempts,"
+                " analytics_delete_last_attempt_at, deleted_at)"
+            )
+            self.deletions_conn.commit()
+
+    def _pending_analytics_deletions(self, not_before: str, limit: int) -> list[tuple[str, str]]:
+        """Returns mature, pending ids in bounded retry-fairness order."""
+        if limit <= 0:
+            return []
+        with self._deletions_lock:
+            rows = self.deletions_conn.execute(
+                "SELECT account_id, deleted_at FROM account_deletions"
+                " WHERE analytics_delete_status = 'pending' AND deleted_at <= ?"
+                " ORDER BY analytics_delete_attempts ASC, analytics_delete_last_attempt_at ASC,"
+                " deleted_at ASC, account_id ASC LIMIT ?",
+                (not_before, limit),
+            ).fetchall()
+        return [(str(row[0]), str(row[1])) for row in rows]
+
+    def _mark_analytics_deletion_attempt(
+        self, account_id: str, outcome: str, *, attempted: bool, delivered: bool
+    ) -> None:
+        """Persists the provider outcome and advances attempt metadata if a request ran."""
+        attempted_at = datetime.now(UTC).isoformat() if attempted else None
+        delivered_at = attempted_at if delivered else None
+        with self._deletions_lock:
+            self.deletions_conn.execute(
+                "UPDATE account_deletions SET analytics_delete_attempts = analytics_delete_attempts + ?,"
+                " analytics_delete_last_attempt_at = CASE WHEN ? THEN ? ELSE analytics_delete_last_attempt_at END,"
+                " analytics_delete_status = ?,"
+                " analytics_deleted_at = CASE WHEN ? THEN COALESCE(analytics_deleted_at, ?)"
+                " ELSE analytics_deleted_at END"
+                " WHERE account_id = ? AND analytics_delete_status = 'pending'",
+                (
+                    int(attempted),
+                    attempted,
+                    attempted_at,
+                    outcome,
+                    delivered,
+                    delivered_at,
+                    str(account_id),
+                ),
             )
             self.deletions_conn.commit()
 
@@ -266,6 +325,8 @@ class AccountDeletionMixin:
             # The import audit carries the source file name and operator's
             # opt-in reference, so it is removed with the account (ADR 015/039).
             cursor.execute("DELETE FROM account_imports WHERE account_id = ?", (account_id,))
+            cursor.execute("DELETE FROM first_touch_acquisition WHERE account_id = ?", (account_id,))
+            cursor.execute("DELETE FROM account_analytics_preferences WHERE account_id = ?", (account_id,))
             cursor.execute("DELETE FROM coach_profiles WHERE account_id = ?", (account_id,))
             cursor.execute(
                 "UPDATE coach_exercises SET note = NULL, video_url = NULL WHERE coach_account_id = ?",

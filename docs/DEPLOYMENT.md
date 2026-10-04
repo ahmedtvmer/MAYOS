@@ -131,6 +131,11 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `ADMIN_TOTP_SECRET` | unset | Owner authenticator secret in Base32; generate it with `.venv/bin/python scripts/admin_credentials.py` and add its URI to an authenticator app |
 | `JWT_EXPIRY_HOURS` | `2` | Access-token lifetime |
 | `GOOGLE_WEB_CLIENT_ID` | unset (⇒ `/auth/google*` returns 503) | **Secret-ish config**: the OAuth web client ID Google ID tokens are verified against (issue #113). Use the *Web* client ID from the Google Cloud console; Android requests its ID token with this value as `serverClientId`, so it is the only audience the API needs. Unset disables Google sign-in only — password auth is unaffected |
+| `POSTHOG_API_KEY` | unset | PostHog project key for server events; unset or `TESTING=1` disables analytics |
+| `POSTHOG_HOST` | `https://eu.i.posthog.com` | PostHog event-ingestion host |
+| `POSTHOG_PERSONAL_API_KEY` | unset | Private API key restricted to the MAYOS project with only the `person:write` scope; set only in server secrets |
+| `POSTHOG_PROJECT_ID` | unset | MAYOS PostHog project id used by the private persons API |
+| `POSTHOG_API_HOST` | `https://eu.posthog.com` | Private PostHog API host; change only for a different PostHog deployment |
 | `UI_BASE_URL` | `http://localhost:7357` | CORS origins: one, or several comma-separated (web app host + local Flutter web dev). Not used for reset links |
 | `RESET_LINK_BASE_URL` | `http://localhost:8000` | Reset-link / App Link base; must match the App Link host |
 | `ANDROID_APP_PACKAGE` | `com.mayos.mayos_mobile` | App Link `assetlinks.json` package |
@@ -753,6 +758,12 @@ fly secrets set LLM_API_KEY="<hosted-provider-key>"
 fly secrets set SMTP_HOST="smtp.gmail.com" SMTP_PORT="587" SMTP_USE_TLS="true" \
   SMTP_USER="<trial-gmail-address>" SMTP_PASSWORD="<gmail-app-password>" \
   SMTP_FROM="<trial-gmail-address>"
+
+# Product analytics. Restrict the personal key to the MAYOS project and only
+# the person:write scope.
+fly secrets set POSTHOG_API_KEY="<project-key>" \
+  POSTHOG_PERSONAL_API_KEY="<personal-api-key>" \
+  POSTHOG_PROJECT_ID="<project-id>"
 
 # Google sign-in audience (issue #113). Unset leaves Google sign-in off (the
 # /auth/google* endpoints answer 503) while password auth keeps working.

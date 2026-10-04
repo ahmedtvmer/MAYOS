@@ -1388,8 +1388,6 @@ def test_owner_delete_replay_emits_committed_relationship_events_once(admin_api,
                 "SELECT status FROM assignments WHERE assignment_id = ?", (assignment_id,)
             ).fetchone()
             assert status_row == ("ended",)
-        elif event == "coach_capability_disabled":
-            assert db.get_account(account_id)["deleted_at"] is not None
         capture_attempts.append((account_id, event, event_uuid, dict(properties)))
         sink_capture(account_id, event, event_uuid, properties)
 
@@ -1421,22 +1419,24 @@ def test_owner_delete_replay_emits_committed_relationship_events_once(admin_api,
     assert capture_attempts == []
 
     assert replay_deletions(db) == 1
-    deleted_at = db.get_account(coach["account_id"])["deleted_at"]
+    from service.alert_sweep import run_sweep
+
+    run_sweep(db)
     ended_uuid = deterministic_event_uuid("assignment_ended", f"{assignment_id}:ended")
-    disabled_uuid = deterministic_event_uuid(
-        "coach_capability_disabled", f"{coach['account_id']}:disabled:{deleted_at}"
-    )
     ended = [attempt for attempt in capture_attempts if attempt[1] == "assignment_ended"]
-    disabled = [attempt for attempt in capture_attempts if attempt[1] == "coach_capability_disabled"]
-    assert len(ended) == len(disabled) == 1
+    assert len(ended) == 1
     assert ended[0][0] == player["account_id"]
     assert ended[0][2] == ended_uuid
     assert ended[0][3]["ended_by"] == "account_deleted"
     assert ended[0][3]["active_roster_size"] == 0
-    assert disabled[0][0] == coach["account_id"]
-    assert disabled[0][2] == disabled_uuid
     assert not db.catalog_conn.in_transaction
     assert coach["account_id"] not in recording_analytics.deleted_people
+    deletion_status = db.deletions_conn.execute(
+        "SELECT analytics_deleted_at, analytics_delete_attempts, analytics_delete_status"
+        " FROM account_deletions WHERE account_id = ?",
+        (coach["account_id"],),
+    ).fetchone()
+    assert deletion_status == (None, 0, "pending")
 
     replay_queries = []
     db.catalog_conn.set_trace_callback(replay_queries.append)
@@ -1444,7 +1444,7 @@ def test_owner_delete_replay_emits_committed_relationship_events_once(admin_api,
         assert replay_deletions(db, full=True) == 1
     finally:
         db.catalog_conn.set_trace_callback(None)
-    assert len(capture_attempts) == 2
+    assert len(capture_attempts) == 1
     assert not any("GROUP BY coach_account_id" in query for query in replay_queries)
     assert not any(
         "SELECT assignment_id, coach_account_id, player_account_id, started_at FROM assignments" in query
@@ -1585,11 +1585,15 @@ def test_owner_can_delete_coach_only_account(admin_api):
     assert not db.ledger_exists(account["ledger_id"])
 
 
-def test_owner_delete_failed_notice_does_not_block_deletion_and_is_audited(admin_api, monkeypatch):
+def test_owner_delete_failed_notice_does_not_block_deletion_and_is_audited(
+    admin_api, recording_analytics, monkeypatch
+):
     from service import email_sender
 
     client, db, now, _ = admin_api
     account, _ = _register_account(client, db, "deleteemailfailure")
+    assert db.get_first_touch_acquisition(account["account_id"]) is not None
+    assert db.set_account_analytics_allowed(account["account_id"], False) is True
     db.set_account_email(account["account_id"], "notice-failed@example.com")
     monkeypatch.setattr(
         email_sender,
@@ -1613,6 +1617,12 @@ def test_owner_delete_failed_notice_does_not_block_deletion_and_is_audited(admin
 
     assert response.status_code == 303
     assert db.get_account(account["account_id"])["deleted_at"] is not None
+    assert db.get_first_touch_acquisition(account["account_id"]) is None
+    assert db.catalog_conn.execute(
+        "SELECT COUNT(*) FROM account_analytics_preferences WHERE account_id = ?",
+        (account["account_id"],),
+    ).fetchone()[0] == 0
+    assert account["account_id"] in recording_analytics.deleted_people
     deleted = client.get(
         f"/admin/audit?action=account_deleted&account_id={account['account_id']}"
     )

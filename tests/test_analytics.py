@@ -421,6 +421,7 @@ def test_account_analytics_preference_defaults_allowed_and_gates_every_server_pa
     client, db, sink = analytics_api
     headers = _register(client, "analytics-opt-out")
     account_id = db.get_active_account_by_username("analytics-opt-out")["account_id"]
+    assert db.get_first_touch_acquisition(account_id) is not None
     sink.people_updates.clear()
     original_set_person = sink.set_person
 
@@ -551,7 +552,9 @@ def test_account_analytics_preference_defaults_allowed_and_gates_every_server_pa
     assert db.catalog_conn.execute(
         "SELECT COUNT(*) FROM account_analytics_preferences WHERE account_id = ?",
         (account_id,),
-    ).fetchone()[0] == 1
+    ).fetchone()[0] == 0
+    assert db.get_first_touch_acquisition(account_id) is None
+    assert account_id in sink.deleted_people
 
 
 def test_opted_out_account_suppresses_http_onboarding_and_program_events(analytics_api, monkeypatch):
@@ -1481,6 +1484,50 @@ def test_posthog_sink_drops_invalid_payload_without_logging_private_event(caplog
     assert any(record.levelname == "WARNING" for record in caplog.records)
 
 
+@pytest.mark.parametrize(
+    ("status", "body", "expected"),
+    [
+        (202, {"persons_found": 1, "persons_queued_for_deletion": 1, "deletion_errors": []}, "delivered"),
+        (202, {"persons_found": 1, "persons_queued_for_deletion": 0, "deletion_errors": [{"step": "delete"}]}, "pending"),
+        (202, {"persons_found": 0, "persons_queued_for_deletion": 0, "deletion_errors": []}, "delivered"),
+        (403, {"detail": "forbidden"}, "pending"),
+    ],
+)
+def test_posthog_person_deletion_uses_synchronous_private_api(monkeypatch, caplog, status, body, expected):
+    import httpx
+
+    from service.analytics import PostHogAnalyticsSink
+
+    request_details = {}
+
+    def open_request(url, *, headers, json, timeout):
+        request_details["url"] = url
+        request_details["authorization"] = headers["Authorization"]
+        request_details["body"] = json
+        request_details["timeout"] = timeout
+        return httpx.Response(status, json=body, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr("service.analytics.httpx.post", open_request)
+    sink = PostHogAnalyticsSink.__new__(PostHogAnalyticsSink)
+    sink.person_api_key = "private-key"
+    sink.project_id = "1234"
+    sink.person_api_host = "https://eu.posthog.com"
+
+    account_id = str(uuid.uuid4())
+    assert sink.delete_person(account_id).value == expected
+    assert request_details["url"] == "https://eu.posthog.com/api/projects/1234/persons/bulk_delete/"
+    assert request_details["authorization"] == "Bearer private-key"
+    assert request_details["body"] == {
+        "distinct_ids": [account_id],
+        "delete_events": True,
+        "delete_recordings": False,
+    }
+    assert request_details["timeout"] == 2.0
+    if status == 403:
+        assert "person:write" in caplog.text
+        assert "private-key" not in caplog.text
+
+
 def test_onboarding_step_viewed_is_a_client_event_with_allowlisted_identifiers():
     contract = analytics.EVENT_CATALOGUE["onboarding_step_viewed"]
     assert contract.origin == "client"
@@ -1749,10 +1796,11 @@ def test_coach_disablement_and_account_deletion_emit_assignment_ends_once(analyt
         for event in sink.events
         if event["event"] == "coach_capability_disabled" and event["distinct_id"] == deleted_coach_id
     ]
-    assert len(deleted_coach_disable) == 1
+    assert deleted_coach_disable == []
+    assert deleted_coach_id in sink.deleted_people
     assert assigned_player_id in sink.people and sink.people[assigned_player_id]["coached"] is False
-    assert sink.people[deleted_coach_id]["is_coach"] is False
-    assert sink.people[deleted_coach_id]["active_roster_size"] == 0
+    assert deleted_coach_id not in sink.people
+    assert deleted_coach_id not in sink.people_set_once
     for capture in sink.capture_attempts:
         assert _capture_attempt_count(sink, capture["event"], capture["uuid"]) == 1
 
@@ -1945,17 +1993,247 @@ def test_invite_redemption_failures_are_reason_coded_and_raising_sink_is_isolate
     assert redeemed.status_code == 200, redeemed.text
 
 
-def test_hourly_sweep_does_not_delete_analytics_person_profiles(analytics_api, monkeypatch):
-    client, db, _sink = analytics_api
+def test_hourly_sweep_retries_failed_person_deletion_once_until_delivered(analytics_api, monkeypatch):
+    client, db, sink = analytics_api
     headers = _register(client, "analytics-deletion-retry")
+    account_id = db.get_active_account_by_username("analytics-deletion-retry")["account_id"]
+    sink_delete_person = sink.delete_person
+    attempts = 0
+
+    def fail_first_person_deletion(distinct_id):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("sink unavailable")
+        return sink_delete_person(distinct_id)
+
+    monkeypatch.setattr(sink, "delete_person", fail_first_person_deletion)
     deleted = client.request(
         "DELETE", "/auth/account", headers=headers, json={"password": "correct-horse-1"}
     )
     assert deleted.status_code == 200, deleted.text
+    assert attempts == 1
+    assert account_id not in sink.deleted_people
+    deletion_state = db.deletions_conn.execute(
+        "SELECT deleted_at, analytics_deleted_at, analytics_delete_attempts, analytics_delete_status"
+        " FROM account_deletions WHERE account_id = ?",
+        (account_id,),
+    ).fetchone()
+    assert deletion_state[1:] == (None, 1, "pending")
+    deleted_at = datetime.fromisoformat(deletion_state[0])
 
-    deletion_attempts = []
-    monkeypatch.setattr(analytics, "delete_person", deletion_attempts.append)
+    from service.alert_sweep import run_sweep
+
+    run_sweep(db, now=deleted_at + timedelta(minutes=30))
+    assert attempts == 1
+    unchanged = db.deletions_conn.execute(
+        "SELECT analytics_deleted_at, analytics_delete_attempts, analytics_delete_status"
+        " FROM account_deletions WHERE account_id = ?",
+        (account_id,),
+    ).fetchone()
+    assert unchanged == (None, 1, "pending")
+
+    run_sweep(db, now=deleted_at + timedelta(hours=1))
+    assert attempts == 2
+    assert account_id in sink.deleted_people
+    deletion_state = db.deletions_conn.execute(
+        "SELECT analytics_deleted_at, analytics_delete_attempts, analytics_delete_status"
+        " FROM account_deletions WHERE account_id = ?",
+        (account_id,),
+    ).fetchone()
+    assert deletion_state[0] is not None
+    assert deletion_state[1:] == (2, "delivered")
+    run_sweep(db)
+    assert attempts == 2
+
+
+def test_empty_posthog_result_stays_pending_until_grace_period(analytics_api, monkeypatch):
+    import httpx
+
+    client, db, _sink = analytics_api
+    headers = _register(client, "analytics-deletion-grace")
+    account_id = db.get_active_account_by_username("analytics-deletion-grace")["account_id"]
+    posthog_sink = analytics.PostHogAnalyticsSink.__new__(analytics.PostHogAnalyticsSink)
+    posthog_sink.person_api_key = "private-key"
+    posthog_sink.project_id = "1234"
+    posthog_sink.person_api_host = analytics.POSTHOG_EU_API_HOST
+    requests = []
+
+    def accepted_empty_delete(url, **_kwargs):
+        requests.append(url)
+        return httpx.Response(
+            202,
+            json={"persons_found": 0, "persons_queued_for_deletion": 0, "deletion_errors": []},
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr("service.analytics.httpx.post", accepted_empty_delete)
+    analytics.set_sink(posthog_sink)
+    deleted = client.request(
+        "DELETE", "/auth/account", headers=headers, json={"password": "correct-horse-1"}
+    )
+    assert deleted.status_code == 200, deleted.text
+    deleted_at = datetime.fromisoformat(
+        db.deletions_conn.execute(
+            "SELECT deleted_at FROM account_deletions WHERE account_id = ?", (account_id,)
+        ).fetchone()[0]
+    )
+    state = db.deletions_conn.execute(
+        "SELECT analytics_deleted_at, analytics_delete_attempts, analytics_delete_status"
+        " FROM account_deletions WHERE account_id = ?",
+        (account_id,),
+    ).fetchone()
+    assert state == (None, 1, "pending")
+    assert len(requests) == 1
+
+    from service.alert_sweep import run_sweep
+
+    run_sweep(db, now=deleted_at + timedelta(minutes=59))
+    assert len(requests) == 1
+    run_sweep(db, now=deleted_at + timedelta(hours=1))
+    assert len(requests) == 2
+    state = db.deletions_conn.execute(
+        "SELECT analytics_deleted_at, analytics_delete_attempts, analytics_delete_status"
+        " FROM account_deletions WHERE account_id = ?",
+        (account_id,),
+    ).fetchone()
+    assert state[0] is not None and state[1:] == (2, "delivered")
+    run_sweep(db, now=deleted_at + timedelta(hours=2))
+    assert len(requests) == 2
+
+
+def test_unconfigured_analytics_deletion_stays_pending_without_attempts(analytics_api):
+    client, db, _sink = analytics_api
+    analytics.set_sink(analytics.NoOpAnalyticsSink())
+    headers = _register(client, "analytics-deletion-noop")
+    account_id = db.get_active_account_by_username("analytics-deletion-noop")["account_id"]
+
+    deleted = client.request(
+        "DELETE", "/auth/account", headers=headers, json={"password": "correct-horse-1"}
+    )
+
+    assert deleted.status_code == 200, deleted.text
+    deletion_state = db.deletions_conn.execute(
+        "SELECT analytics_deleted_at, analytics_delete_attempts, analytics_delete_status"
+        " FROM account_deletions WHERE account_id = ?",
+        (account_id,),
+    ).fetchone()
+    assert deletion_state == (None, 0, "pending")
+
     from service.alert_sweep import run_sweep
 
     run_sweep(db)
-    assert deletion_attempts == []
+    assert db.deletions_conn.execute(
+        "SELECT analytics_deleted_at, analytics_delete_attempts, analytics_delete_status"
+        " FROM account_deletions WHERE account_id = ?",
+        (account_id,),
+    ).fetchone() == (None, 0, "pending")
+
+
+def test_missing_posthog_person_credentials_skip_deletion_batch(analytics_api, monkeypatch):
+    client, db, _sink = analytics_api
+    headers = _register(client, "analytics-deletion-missing-creds")
+    account_id = db.get_active_account_by_username("analytics-deletion-missing-creds")["account_id"]
+    posthog_sink = analytics.PostHogAnalyticsSink.__new__(analytics.PostHogAnalyticsSink)
+    posthog_sink.person_api_key = ""
+    posthog_sink.project_id = ""
+    posthog_sink.person_api_host = analytics.POSTHOG_EU_API_HOST
+    analytics.set_sink(posthog_sink)
+
+    deleted = client.request(
+        "DELETE", "/auth/account", headers=headers, json={"password": "correct-horse-1"}
+    )
+    assert deleted.status_code == 200, deleted.text
+    row = db.deletions_conn.execute(
+        "SELECT analytics_deleted_at, analytics_delete_attempts, analytics_delete_status"
+        " FROM account_deletions WHERE account_id = ?",
+        (account_id,),
+    ).fetchone()
+    assert row == (None, 0, "pending")
+
+    from service.alert_sweep import run_sweep
+
+    run_sweep(db)
+    assert db.deletions_conn.execute(
+        "SELECT analytics_deleted_at, analytics_delete_attempts, analytics_delete_status"
+        " FROM account_deletions WHERE account_id = ?",
+        (account_id,),
+    ).fetchone() == (None, 0, "pending")
+
+
+def test_posthog_four_xx_deletion_response_stays_pending(analytics_api, monkeypatch, caplog):
+    import httpx
+
+    client, db, _sink = analytics_api
+    headers = _register(client, "analytics-deletion-scope-error")
+    account_id = db.get_active_account_by_username("analytics-deletion-scope-error")["account_id"]
+    posthog_sink = analytics.PostHogAnalyticsSink.__new__(analytics.PostHogAnalyticsSink)
+    posthog_sink.person_api_key = "private-secret"
+    posthog_sink.project_id = "1234"
+    posthog_sink.person_api_host = analytics.POSTHOG_EU_API_HOST
+    requests = []
+
+    def reject_request(url, **kwargs):
+        requests.append((url, kwargs))
+        return httpx.Response(
+            403, json={"detail": "forbidden"}, request=httpx.Request("POST", url)
+        )
+
+    monkeypatch.setattr("service.analytics.httpx.post", reject_request)
+    analytics.set_sink(posthog_sink)
+    deleted = client.request(
+        "DELETE", "/auth/account", headers=headers, json={"password": "correct-horse-1"}
+    )
+    assert deleted.status_code == 200, deleted.text
+    deleted_at = datetime.fromisoformat(
+        db.deletions_conn.execute(
+            "SELECT deleted_at FROM account_deletions WHERE account_id = ?", (account_id,)
+        ).fetchone()[0]
+    )
+
+    from service.account_deletion import retry_analytics_deletions
+
+    retry_analytics_deletions(db, now=deleted_at + timedelta(hours=1))
+    state = db.deletions_conn.execute(
+        "SELECT analytics_deleted_at, analytics_delete_attempts, analytics_delete_status"
+        " FROM account_deletions WHERE account_id = ?",
+        (account_id,),
+    ).fetchone()
+    assert state == (None, 2, "pending")
+    assert len(requests) == 2
+    assert "person:write" in caplog.text
+    assert "private-secret" not in caplog.text
+
+
+def test_reused_username_gets_a_new_analytics_identity_after_deletion(analytics_api):
+    client, db, sink = analytics_api
+    first_headers = _register(
+        client,
+        "analytics-reused-identity",
+        first_touch={"utm_source": "old-channel"},
+    )
+    first_id = db.get_active_account_by_username("analytics-reused-identity")["account_id"]
+    deleted = client.request(
+        "DELETE",
+        "/auth/account",
+        headers=first_headers,
+        json={"password": "correct-horse-1"},
+    )
+    assert deleted.status_code == 200, deleted.text
+    assert first_id in sink.deleted_people
+
+    _register(
+        client,
+        "analytics-reused-identity",
+        first_touch={"utm_source": "new-channel"},
+    )
+    second_id = db.get_active_account_by_username("analytics-reused-identity")["account_id"]
+
+    assert second_id != first_id
+    assert second_id not in sink.deleted_people
+    assert db.analytics_preference_allows(second_id)
+    assert db.get_first_touch_acquisition(second_id)["utm_source"] == "new-channel"
+    assert any(
+        event["event"] == "account_created" and event["distinct_id"] == second_id
+        for event in sink.events
+    )

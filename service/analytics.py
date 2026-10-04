@@ -6,14 +6,17 @@ the outcome of an account or onboarding operation.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Protocol
 
+import httpx
 from fastapi import Request
 
 from database.registry.accounts import FIRST_TOUCH_ACQUISITION_FIELDS
@@ -22,6 +25,8 @@ from service import acquisition
 logger = logging.getLogger(__name__)
 
 POSTHOG_EU_HOST = "https://eu.i.posthog.com"
+POSTHOG_EU_API_HOST = "https://eu.posthog.com"
+PERSON_DELETION_TIMEOUT_SECONDS = 2.0
 _EVENT_NAMESPACE = uuid.UUID("a9aa465e-a723-5e59-a850-447d8d73e8fd")
 _APP_VERSION = re.compile(r"^(?:unknown|[0-9]{1,3}(?:\.[0-9A-Za-z_-]{1,16}){0,3}(?:\+[0-9A-Za-z.-]{1,12})?)$")
 _ENVIRONMENTS = frozenset({"development", "production", "test"})
@@ -56,6 +61,13 @@ class AnalyticsEvent:
     properties: dict[str, Any] | None = None
 
 
+class PersonDeletionOutcome(str, Enum):
+    """Whether the deletion request remains pending or was accepted."""
+
+    PENDING = "pending"
+    DELIVERED = "delivered"
+
+
 @dataclass(frozen=True)
 class ClientContext:
     """Client platform header of the HTTP request that caused an event, if any."""
@@ -80,7 +92,9 @@ class AnalyticsSink(Protocol):
 
     def set_person_once(self, account_id: str, properties: dict[str, Any]) -> None: ...
 
-    def delete_person(self, account_id: str) -> None: ...
+    def person_deletion_configured(self) -> bool: ...
+
+    def delete_person(self, account_id: str) -> PersonDeletionOutcome: ...
 
 
 def _enum(values: frozenset[str]) -> PropertyType:
@@ -379,8 +393,11 @@ class NoOpAnalyticsSink:
     def set_person_once(self, *_args: Any) -> None:
         return None
 
-    def delete_person(self, *_args: Any) -> None:
-        return None
+    def person_deletion_configured(self) -> bool:
+        return False
+
+    def delete_person(self, *_args: Any) -> PersonDeletionOutcome:
+        return PersonDeletionOutcome.PENDING
 
 
 def _validate_property(name: str, value: Any, property_type: PropertyType) -> None:
@@ -420,6 +437,66 @@ def _validate_person(properties: dict[str, Any], catalogue: Mapping[str, Propert
         raise AnalyticsContractError(f"Unknown analytics person property {sorted(unknown)[0]!r}.")
     for name, value in properties.items():
         _validate_property(name, value, catalogue[name])
+
+
+def _posthog_person_deletion_url(host: str, project_id: str) -> str | None:
+    try:
+        parsed_host = httpx.URL(host)
+    except httpx.InvalidURL:
+        return None
+    if (
+        parsed_host.scheme != "https"
+        or parsed_host.host is None
+        or parsed_host.path not in {"", "/"}
+        or parsed_host.query
+        or parsed_host.fragment
+        or re.fullmatch(r"[0-9]+", project_id) is None
+    ):
+        return None
+    return f"{str(parsed_host).rstrip('/')}/api/projects/{project_id}/persons/bulk_delete/"
+
+
+def _posthog_person_deletion_request(url: str, api_key: str, account_id: str) -> bytes | None:
+    payload = {"distinct_ids": [account_id], "delete_events": True, "delete_recordings": False}
+    try:
+        response = httpx.post(
+            url,
+            json=payload,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=PERSON_DELETION_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        return response.content
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        if 400 <= status < 500:
+            logger.error(
+                "PostHog person deletion rejected with HTTP %s; verify person:write scope and POSTHOG_PROJECT_ID.",
+                status,
+            )
+        else:
+            logger.warning("PostHog person deletion request failed with HTTP %s.", status)
+        return None
+    except httpx.HTTPError as exc:
+        logger.warning("PostHog person deletion request failed (%s).", type(exc).__name__)
+        return None
+
+
+def _posthog_person_deletion_accepted(response_body: bytes | None) -> bool:
+    if response_body is None:
+        return False
+    if not response_body:
+        return True
+    try:
+        response = json.loads(response_body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        logger.warning("PostHog person deletion returned an unreadable response.")
+        return False
+    if not isinstance(response, dict) or response.get("deletion_errors"):
+        return False
+    found = response.get("persons_found")
+    queued = response.get("persons_queued_for_deletion")
+    return type(found) is int and (found == 0 or (found > 0 and type(queued) is int and queued == found))
 
 
 def deterministic_event_uuid(event: str, domain_key: str) -> str:
@@ -496,15 +573,19 @@ class RecordingAnalyticsSink:
         for name, value in properties.items():
             current.setdefault(name, value)
 
-    def delete_person(self, account_id: str) -> None:
+    def person_deletion_configured(self) -> bool:
+        return True
+
+    def delete_person(self, account_id: str) -> PersonDeletionOutcome:
         _validate_account_id(account_id)
         self.people.pop(account_id, None)
         self.people_set_once.pop(account_id, None)
         self.deleted_people.add(account_id)
+        return PersonDeletionOutcome.DELIVERED
 
 
 class PostHogAnalyticsSink:
-    """PostHog EU cloud adapter. SDK capture uses its background queue."""
+    """PostHog EU cloud adapter. Events use the SDK queue; deletion awaits API acceptance."""
 
     def __init__(self, api_key: str, host: str | None = None) -> None:
         from posthog import Posthog
@@ -516,6 +597,11 @@ class PostHogAnalyticsSink:
             enable_exception_autocapture=False,
             log_captured_exceptions=False,
             sync_mode=False,
+        )
+        self.person_api_key = os.getenv("POSTHOG_PERSONAL_API_KEY", "").strip()
+        self.project_id = os.getenv("POSTHOG_PROJECT_ID", "").strip()
+        self.person_api_host = (
+            os.getenv("POSTHOG_API_HOST", "").strip().rstrip("/") or POSTHOG_EU_API_HOST
         )
 
     @staticmethod
@@ -559,19 +645,26 @@ class PostHogAnalyticsSink:
             return
         self.client.set_once(distinct_id=account_id, properties=properties, disable_geoip=True)
 
-    def delete_person(self, account_id: str) -> None:
+    def person_deletion_configured(self) -> bool:
+        return bool(
+            self.person_api_key
+            and self.project_id
+            and _posthog_person_deletion_url(self.person_api_host, self.project_id)
+        )
+
+    def delete_person(self, account_id: str) -> PersonDeletionOutcome:
         try:
             _validate_account_id(account_id)
         except AnalyticsContractError as exc:
             self._drop_contract_error(exc, "person_delete")
-            return
-        self.client.capture(
-            "$delete",
-            distinct_id=account_id,
-            properties={"$delete_person_profile": True},
-            uuid=deterministic_event_uuid("person_deleted", account_id),
-            disable_geoip=True,
+            return PersonDeletionOutcome.PENDING
+        url = _posthog_person_deletion_url(self.person_api_host, self.project_id)
+        if not self.person_api_key or url is None:
+            return PersonDeletionOutcome.PENDING
+        accepted = _posthog_person_deletion_accepted(
+            _posthog_person_deletion_request(url, self.person_api_key, account_id)
         )
+        return PersonDeletionOutcome.DELIVERED if accepted else PersonDeletionOutcome.PENDING
 
 
 def create_sink_from_environment() -> NoOpAnalyticsSink | PostHogAnalyticsSink:
@@ -640,18 +733,19 @@ def register_configured_sink() -> None:
         _install_sink(create_sink_from_environment())
 
 
-def _observe(action: Callable[[], None], failure: str) -> None:
+def _observe(action: Callable[[], Any], failure: str) -> Any | None:
     """Runs one sink call so that a provider failure never reaches the operation.
 
     Contract violations still propagate: only the strict test sink raises them,
     while the production adapter drops and logs invalid payloads itself.
     """
     try:
-        action()
+        return action()
     except AnalyticsContractError:
         raise
     except Exception:
         logger.exception("Product analytics %s failed; the operation continues.", failure)
+        return None
 
 
 def capture(event: AnalyticsEvent, client: ClientContext = UNKNOWN_CLIENT) -> None:
@@ -694,6 +788,28 @@ def set_person_once(account_id: str, properties: dict[str, Any]) -> None:
     _observe(lambda: _sink.set_person_once(account_id, properties), "set-once update")
 
 
-def delete_person(account_id: str) -> None:
+def person_deletion_configured() -> bool:
+    """Reports whether the active sink can make a person-deletion request."""
+    configured = getattr(_sink, "person_deletion_configured", None)
+    try:
+        return configured() if callable(configured) else not isinstance(_sink, NoOpAnalyticsSink)
+    except Exception as exc:
+        logger.warning("Person deletion is unavailable (%s).", type(exc).__name__)
+        return False
+
+
+def delete_person(account_id: str) -> PersonDeletionOutcome:
     """Requests best-effort deletion of one PostHog person."""
-    _observe(lambda: _sink.delete_person(account_id), "person deletion")
+    if not person_deletion_configured():
+        return PersonDeletionOutcome.PENDING
+    try:
+        outcome = _sink.delete_person(account_id)
+    except AnalyticsContractError:
+        raise
+    except Exception:
+        logger.exception("Product analytics person deletion failed; the operation continues.")
+        return PersonDeletionOutcome.PENDING
+    if not isinstance(outcome, PersonDeletionOutcome):
+        logger.error("Analytics sink returned an invalid person-deletion outcome.")
+        return PersonDeletionOutcome.PENDING
+    return outcome

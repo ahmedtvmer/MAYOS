@@ -27,7 +27,7 @@ the owner audit log.
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any
 
@@ -44,6 +44,8 @@ logger = logging.getLogger(__name__)
 GOOGLE_TOKEN_MAX_AGE_SECONDS = 5 * 60
 #: Clock drift between the app server and Google before a token is "from the future".
 GOOGLE_IAT_FUTURE_SKEW_SECONDS = 10
+ANALYTICS_DELETION_BATCH_SIZE = 100
+PERSON_DELETION_GRACE_PERIOD = timedelta(hours=1)
 
 # Lazily built so importing this module stays cheap; one bcrypt verification is
 # spent against it for every refusal that has no stored hash to compare with.
@@ -125,6 +127,7 @@ def delete_account(
         account["account_id"], datetime.now(UTC).isoformat(), ledger_id=account["ledger_id"]
     )
     _capture_deleted_relationships(deletion, client=client)
+    _request_analytics_person_deletion(db, account["account_id"], deletion["deleted_at"])
     return {"ok": True, "account_id": account["account_id"], "trainee_id": account["ledger_id"]}
 
 
@@ -142,26 +145,6 @@ def _capture_deleted_relationships(
             analytics_service.set_person(
                 assignment.coach_account_id, {"active_roster_size": roster_size}
             )
-    if deletion["was_coach"]:
-        _capture_deleted_coach(account_id, deletion["deleted_at"], client=client)
-        analytics_service.set_person(account_id, {"is_coach": False, "active_roster_size": 0})
-
-
-def _capture_deleted_coach(
-    account_id: str,
-    deleted_at: str,
-    *,
-    client: analytics_service.ClientContext,
-) -> None:
-    analytics_service.capture(
-        analytics_service.AnalyticsEvent(
-            account_id=account_id,
-            event="coach_capability_disabled",
-            domain_key=f"{account_id}:disabled:{deleted_at}",
-            role="coach",
-        ),
-        client,
-    )
 
 
 def owner_delete_account(
@@ -260,8 +243,50 @@ def _apply_owner_delete(
     if not deletion.get("ok"):
         return {"outcome": "not_found"}
     _capture_deleted_relationships(deletion, client=client)
+    _request_analytics_person_deletion(db, request.account_id, deletion["deleted_at"])
     _audit_owner_deletion(db, request, email_failed)
     return {"outcome": "deleted", "account_id": request.account_id}
+
+
+def retry_analytics_deletions(db: Any, *, now: datetime | None = None) -> None:
+    """Retries a bounded batch of person deletions not accepted by the provider."""
+    if not analytics_service.person_deletion_configured():
+        return
+    current_time = now or datetime.now(UTC)
+    cutoff = (current_time - PERSON_DELETION_GRACE_PERIOD).isoformat()
+    for account_id, deleted_at in db._pending_analytics_deletions(
+        cutoff, ANALYTICS_DELETION_BATCH_SIZE
+    ):
+        _request_analytics_person_deletion(db, account_id, deleted_at, now=current_time)
+
+
+def _request_analytics_person_deletion(
+    db: Any, account_id: str, deleted_at: str, *, now: datetime | None = None
+) -> None:
+    if not analytics_service.person_deletion_configured():
+        return
+    attempted = True
+    try:
+        outcome = analytics_service.delete_person(account_id)
+    except analytics_service.AnalyticsContractError as exc:
+        logger.warning("Skipping invalid analytics person deletion (%s).", type(exc).__name__)
+        outcome = analytics_service.PersonDeletionOutcome.PENDING
+        attempted = False
+    deletion_time = datetime.fromisoformat(deleted_at)
+    if deletion_time.tzinfo is None:
+        deletion_time = deletion_time.replace(tzinfo=UTC)
+    if (now or datetime.now(UTC)) < deletion_time + PERSON_DELETION_GRACE_PERIOD:
+        outcome = analytics_service.PersonDeletionOutcome.PENDING
+    try:
+        db._mark_analytics_deletion_attempt(
+            account_id,
+            outcome.value,
+            attempted=attempted,
+            delivered=outcome is analytics_service.PersonDeletionOutcome.DELIVERED,
+        )
+    except Exception as exc:
+        # This marker is ancillary; without it, a later sweep retries the durable record.
+        logger.error("Analytics deletion state could not be saved (%s).", type(exc).__name__)
 
 
 def _send_owner_deletion_notice(

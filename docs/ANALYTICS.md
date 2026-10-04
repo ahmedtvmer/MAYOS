@@ -16,7 +16,8 @@ and capture can lose an event.
   analytics boundary, and disables the Flutter client for that Account. The
   sole exception is one best-effort person update after the preference change
   commits. If the registry preference cannot be read, the service suppresses
-  the send.
+  the send. A deleted Account is also denied by the gate even after its
+  preference row has been removed.
 - The gate follows an event or person update's `distinct_id`. An opted-out
   Account's own events and person updates are suppressed. A counterpart's event
   can still be sent when that Account allows analytics; for example, an
@@ -55,6 +56,29 @@ and capture can lose an event.
   GeoIP enrichment is disabled. Events never contain usernames, emails, passwords, tokens, IP
   addresses, free text, onboarding answers, prompts, completions, or workout
   contents.
+- Account deletion removes `first_touch_acquisition` and
+  `account_analytics_preferences` in the registry teardown transaction. After
+  that transaction commits, the service makes a best-effort PostHog deletion
+  request by immutable `distinct_id`, including prior events. PostHog processes
+  event removal asynchronously ([PostHog persons API](https://posthog.com/docs/api/persons)).
+  The durable `account_deletions` row remains pending until a successful
+  request made at least one hour after `deleted_at`; an immediate request is
+  best-effort and cannot mark the row delivered. After that grace period, a
+  successful 2xx response, including `persons_found == 0`, marks it delivered
+  and it is not repeated. Requests use `POSTHOG_PERSONAL_API_KEY` (scoped only
+  to `person:write` for the MAYOS project), `POSTHOG_PROJECT_ID`, and
+  `POSTHOG_API_HOST` (defaults to `https://eu.posthog.com`), with a two-second
+  timeout. Missing deletion credentials or a no-op sink leave the record
+  pending without incrementing attempts; the hourly sweep skips deletion work
+  entirely when credentials are absent. Provider errors leave the record
+  pending. Each sweep retries at most 100 mature records, ordered by attempt
+  count and then oldest last attempt so repeated failures do not starve newer
+  deletions. These failures never undo account deletion. Events about the
+  deleted Account itself are suppressed by the live-account gate, while an
+  allowed surviving Coach's or Player's `assignment_ended` event still sends.
+  Historical events attributed to a surviving Player retain the deleted
+  Coach's opaque `coach_id` property; deleting the Coach person does not rewrite
+  another Account's event properties.
 - Event UUIDs are UUID5 values derived from the event name and its domain key.
   Assignment events use the assignment or invite identity; Coach capability
   transitions use the Account id and committed timestamp; failed redemption
@@ -116,7 +140,7 @@ registry.
 |---|---|---|---|
 | `account_created` | server | A password or Google registration has committed and its account ledger is ready. | `role`, `platform`, `app_version`, `env`, `signup_phase`, `invite_used` |
 | `coach_capability_granted` | server | A Coach invite redemption has committed and granted Coach capability. | `role`, `platform`, `app_version`, `env` |
-| `coach_capability_disabled` | server | Coach capability has been cleared by disablement or account deletion, after any active assignments end. | `role`, `platform`, `app_version`, `env` |
+| `coach_capability_disabled` | server | A Coach has explicitly disabled Coach capability after any active Assignments end. | `role`, `platform`, `app_version`, `env` |
 | `onboarding_started` | server | The first committed onboarding write: disclosure, first named answer, or legacy start/answer. Reads do not create this event. | `role`, `platform`, `app_version`, `env` |
 | `onboarding_completed` | server | The first successful onboarding completion has committed and its completion time is persisted. Retries and replayed confirmation do not create another event. | `role`, `platform`, `app_version`, `env`, `duration_seconds`, `prefilled_fields_count` |
 | `onboarding_step_viewed` | client | A Player is shown one onboarding step. Sent on each display of that step; answer values are excluded. | `role`, `platform`, `app_version`, `env`, `step` |
@@ -196,10 +220,10 @@ rosters, completed workouts, and acquisition or financial records. Revenue,
 MRR, payment reconciliation, contribution margin, and infrastructure cost are
 not reconstructed from analytics events.
 
-The service uses the PostHog SDK's background queue. It sends no events without a
-key and never sends from test mode. Person deletion is exposed by the MAYOS
-analytics interface and is handled independently of these coaching relationship
-events.
+The service uses the PostHog SDK's background queue for events. It sends no
+events without a project key and never sends from test mode. Person deletion is
+exposed by the MAYOS analytics interface and uses PostHog's private persons API;
+the deletion request is independent of coaching relationship events.
 
 ## Privacy-notice draft — Draft — awaiting owner approval
 

@@ -236,9 +236,9 @@ class RegistryAccountsMixin:
         )
 
     def analytics_preference_allows(self, account_id: str) -> bool:
-        """Returns true only for a registered account whose preference allows sends."""
+        """Returns true only for a live account whose preference allows sends."""
         account = self.get_account(account_id)
-        return account is not None and account["analytics_allowed"] is True
+        return self.is_live_account(account) and account["analytics_allowed"] is True
 
     def get_account(self, account_id: str) -> dict[str, Any] | None:
         """Reads an account by immutable id. Returns ``None`` when absent (fail closed)."""

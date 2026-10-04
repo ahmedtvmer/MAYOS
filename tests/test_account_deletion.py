@@ -532,7 +532,40 @@ def test_restore_reapplies_durable_deletion(api):
     assert db.reapply_deletions() >= 1
     assert db.get_account(account_id)["deleted_at"] is not None
     assert not db.ledger_exists("alice")
+    assert db.deletions_conn.execute(
+        "SELECT analytics_deleted_at, analytics_delete_attempts, analytics_delete_status"
+        " FROM account_deletions WHERE account_id = ?",
+        (account_id,),
+    ).fetchone() == (None, 1, "pending")
     assert client.get("/auth/me", headers=_authed(token)).json() == {"error": "account_deleted"}
+
+
+def test_pending_analytics_deletions_prioritize_fewest_attempts_then_oldest_attempt(api):
+    _client, db, _ledgers_dir = api
+    ids = ["delete-old", "delete-recent", "delete-retried", "delete-never-tried"]
+    for index, account_id in enumerate(ids):
+        db.record_account_deletion(account_id, f"ledger-{index}", "2025-01-01T00:00:00+00:00")
+    with db._deletions_lock:
+        db.deletions_conn.executemany(
+            "UPDATE account_deletions SET analytics_delete_attempts = ?,"
+            " analytics_delete_last_attempt_at = ? WHERE account_id = ?",
+            [
+                (1, "2026-01-01T00:00:00+00:00", ids[0]),
+                (1, "2026-02-01T00:00:00+00:00", ids[1]),
+                (3, "2025-12-01T00:00:00+00:00", ids[2]),
+                (0, None, ids[3]),
+            ],
+        )
+        db.deletions_conn.commit()
+
+    selected = db._pending_analytics_deletions("2026-01-01T00:00:00+00:00", limit=4)
+
+    assert [account_id for account_id, _deleted_at in selected] == [
+        "delete-never-tried",
+        "delete-old",
+        "delete-recent",
+        "delete-retried",
+    ]
 
 
 # --------------------------------------------------------------------------

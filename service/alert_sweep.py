@@ -80,4 +80,9 @@ def run_sweep(db: Any, now: datetime | None = None) -> dict[str, int]:
     except Exception:
         counts["errors"] += 1
         logger.exception("Model spend-alert evaluation failed")
+    try:
+        account_deletion_service.retry_analytics_deletions(db, now=now)
+    except Exception:
+        counts["errors"] += 1
+        logger.exception("Analytics deletion retry failed during the sweep")
     return counts
