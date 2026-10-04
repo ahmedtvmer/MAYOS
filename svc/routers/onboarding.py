@@ -20,6 +20,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from service import analytics as analytics_service
 from service import intake as intake_service
 from service import onboarding as onboarding_service
+from service.program_analytics import ProgramAnalyticsActor
 from svc.dependencies import account_id_of, get_current_player, get_db, get_ledger, get_verified_player
 from svc.rate_limit import ONBOARDING_LIMIT, limiter
 from svc.schemas import (
@@ -244,7 +245,11 @@ async def confirm_intake(
         answers = ledger.load_intake_answers()
         try:
             result = intake_service.confirm_intake(
-                db, str(player), player_account_id=account_id_of(player), ledger=ledger
+                db,
+                str(player),
+                player_account_id=account_id_of(player),
+                ledger=ledger,
+                client=analytics_service.client_context(request),
             )
         except intake_service.IntakeDisclosureRequired as exc:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from None
@@ -280,13 +285,25 @@ async def complete_onboarding(
                 else onboarding_service.start_onboarding(db, player, player_account_id=account_id, ledger=ledger)
             )
             result = onboarding_service.complete_onboarding(
-                db, player, state, player_account_id=account_id, ledger=ledger
+                db,
+                player,
+                state,
+                player_account_id=account_id,
+                ledger=ledger,
+                emit_program_analytics=False,
             )
             answers = ledger.load_intake_answers()
             ledger.clear_onboarding_state()
             program = result["program"]
             intake_service.record_legacy_completion(
-                db, player, program, result.get("program_message"), ledger=ledger
+                db,
+                player,
+                program,
+                result.get("program_message"),
+                ledger=ledger,
+                actor=ProgramAnalyticsActor(account_id, "player"),
+                program_generated=result.get("program_generated", False),
+                client=analytics_service.client_context(request),
             )
             completed = (
                 {"program_name": None, "weekly_frequency": None, "program_message": result["program_message"]}

@@ -75,6 +75,7 @@ def build_turn_state(
         "intent": None,
         "intent_metadata": {},
         "program_updated": False,
+        "program_change": None,
         "response_content": None,
         "request_suggestion": None,
     }

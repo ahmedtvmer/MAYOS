@@ -25,6 +25,14 @@ from service.email_sender import (
     send_program_request_email,
 )
 from service.programs import player_controls_program
+from service.program_analytics import (
+    ProgramAnalyticsActor,
+    capture_program_exercise_swapped,
+    capture_program_generated,
+    capture_program_request_created,
+    capture_program_request_resolved,
+)
+from service import analytics
 from service.program_substitution import (
     ProgramSubstitution,
     SubstitutionErrorCode,
@@ -72,13 +80,19 @@ def _notify_player(db: Any, player_account_id: str, assignment_id: str, message:
 
 
 def create_request(
-    db: Any, player_account_id: str, payload: dict[str, Any], ledger: Any | None = None
+    db: Any,
+    player_actor: ProgramAnalyticsActor,
+    payload: dict[str, Any],
+    ledger: Any | None = None,
+    *,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> dict[str, Any]:
     """Records a pending request against the player's coach-controlled active program.
 
     Returns ``{"ok": False, "error": ...}`` for a refusal and never writes the
     program. The exact active version, day, and slot are pinned on the request.
     """
+    player_account_id = player_actor.account_id
     kind = payload.get("kind")
     if kind not in REQUEST_KINDS:
         return {"ok": False, "error": "Choose an exercise substitution or a split change."}
@@ -169,6 +183,7 @@ def create_request(
         email_sent = _notify_coach(db, coach_account_id, assignment["assignment_id"], account["username"], now_iso)
 
         request = db.get_program_request(request_id)
+        capture_program_request_created(player_actor, request, client=client)
         return {"ok": True, "request": request, "email_sent": email_sent}
 
 
@@ -223,13 +238,21 @@ def _pending_request(db: Any, coach_account_id: str, assignment_id: Any, request
     return request
 
 
-def apply_request(db: Any, coach_account_id: str, assignment_id: Any, request_id: Any) -> dict[str, Any] | None:
+def apply_request(
+    db: Any,
+    coach_actor: ProgramAnalyticsActor,
+    assignment_id: Any,
+    request_id: Any,
+    *,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+) -> dict[str, Any] | None:
     """Revalidates and applies a pending request, writing a NEW immutable program version.
 
     ``None`` is the generic assignment denial. A stale target stays pending and
     leaves the program untouched; the pending→applied claim runs before any write
     so a double apply or a racing cancel cannot both succeed.
     """
+    coach_account_id = coach_actor.account_id
     authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
     if authorized is None:
         return None
@@ -320,13 +343,32 @@ def apply_request(db: Any, coach_account_id: str, assignment_id: Any, request_id
             f"Your coach applied your program change. Program version {version}.",
             _now_iso(),
         )
-        return {"ok": True, "request": db.get_program_request(request_id), "program_version": version}
+        resolved_request = db.get_program_request(request_id)
+        if published is not None:
+            if request["kind"] == EXERCISE_SUBSTITUTION:
+                capture_program_exercise_swapped(
+                    coach_actor, published, player_account_id=request["player_account_id"], client=client
+                )
+            else:
+                capture_program_generated(
+                    coach_actor, "coach_request", published,
+                    player_account_id=request["player_account_id"], client=client,
+                )
+        capture_program_request_resolved(coach_actor, resolved_request, client=client)
+        return {"ok": True, "request": resolved_request, "program_version": version}
 
 
 def decline_request(
-    db: Any, coach_account_id: str, assignment_id: Any, request_id: Any, response: str
+    db: Any,
+    coach_actor: ProgramAnalyticsActor,
+    assignment_id: Any,
+    request_id: Any,
+    response: str,
+    *,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> dict[str, Any] | None:
     """Declines a pending request with a short player-visible response; program untouched."""
+    coach_account_id = coach_actor.account_id
     authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
     if authorized is None:
         return None
@@ -355,11 +397,20 @@ def decline_request(
             f"Your coach declined your program change: {response}",
             _now_iso(),
         )
-        return {"ok": True, "request": db.get_program_request(request_id)}
+        resolved_request = db.get_program_request(request_id)
+        capture_program_request_resolved(coach_actor, resolved_request, client=client)
+        return {"ok": True, "request": resolved_request}
 
 
-def cancel_request(db: Any, player_account_id: str, request_id: Any) -> dict[str, Any]:
+def cancel_request(
+    db: Any,
+    player_actor: ProgramAnalyticsActor,
+    request_id: Any,
+    *,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+) -> dict[str, Any]:
     """Cancels the player's own pending request; another player's or a resolved one is refused."""
+    player_account_id = player_actor.account_id
     request = db.get_program_request(request_id) if isinstance(request_id, str) and request_id else None
     if request is None or request["player_account_id"] != str(player_account_id):
         return {"ok": False, "error": REQUEST_NOT_FOUND_ERROR}
@@ -368,7 +419,9 @@ def cancel_request(db: Any, player_account_id: str, request_id: Any) -> dict[str
     claimed = db.resolve_program_request(request_id, "cancelled", None, "player", _now_iso())
     if not claimed["ok"]:
         return {"ok": False, "error": NOT_PENDING_ERROR}
-    return {"ok": True, "request": db.get_program_request(request_id)}
+    resolved_request = db.get_program_request(request_id)
+    capture_program_request_resolved(player_actor, resolved_request, client=client)
+    return {"ok": True, "request": resolved_request}
 
 
 def list_player_requests(db: Any, player_account_id: str) -> list[dict[str, Any]]:

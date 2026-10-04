@@ -452,7 +452,7 @@ def test_deleted_coach_becomes_former_coach_and_returns_program_authority(api, m
     def fake_player_generation(**kwargs):
         return _program("Player Plan"), "md"
 
-    monkeypatch.setattr("svc.routers.programs.generate_program_pipeline", fake_player_generation)
+    monkeypatch.setattr("service.programs.generate_program_pipeline", fake_player_generation)
     monkeypatch.setattr("service.programs.generate_program_pipeline", fake_player_generation)
     assert client.post("/programs/generate", headers=player_headers, json={}).status_code == 200
 

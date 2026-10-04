@@ -46,6 +46,9 @@ and capture can lose an event.
   Assignment events use the assignment or invite identity; Coach capability
   transitions use the Account id and committed timestamp; failed redemption
   events use one generated attempt identity.
+  Account-scoped events use the immutable account id; program events use the
+  program version (or assignment publication) and request events use the
+  request id plus its transition.
 - The code catalogue and current server events are contract-tested for exact
   name parity. The strict recording sink rejects unknown events, extra or
   missing properties, and values outside each property's safe type or
@@ -66,6 +69,11 @@ and capture can lose an event.
 | `assignment_started` | server | A Player has consented and the invite claim and active Assignment have committed; the Coach (roster owner) is the distinct id. | `role`, `platform`, `app_version`, `env`, `coach_id`, `active_roster_size`, `time_since_invite_seconds` |
 | `assignment_ended` | server | An active Assignment has ended through either participant, Coach disablement, or account deletion; the Coach (roster owner) is the distinct id unless that Coach was deleted, in which case it is the surviving Player. | `role`, `platform`, `app_version`, `env`, `ended_by`, `duration_seconds`, `active_roster_size` |
 | `invite_redemption_failed` | server | A Player's Assignment invite redemption was refused. | `role`, `platform`, `app_version`, `env`, `reason_code` |
+| `program_generated` | server | A program version is created during onboarding, a profile rebuild, a player request, a coach split-change apply, or lazy synthesis on the active-program read. | `role`, `platform`, `app_version`, `env`, `trigger`, `day_count` |
+| `coach_program_published` | server | A Coach publishes a program to an active Assignment after the program version commits. Coaching action. | `role`, `platform`, `app_version`, `env`, `day_count`, `first_for_assignment`, `is_coaching_action` |
+| `program_exercise_swapped` | server | A Player swaps or undoes an exercise swap, or a Coach applies an exercise-substitution request after the new program version commits. The `role` identifies who acted. | `role`, `platform`, `app_version`, `env` |
+| `program_request_created` | server | A Player's program request has committed to the registry. | `role`, `platform`, `app_version`, `env`, `kind` |
+| `program_request_resolved` | server | A Coach applies or declines a request, or a Player cancels it, after the registry transition commits. Coach resolutions are coaching actions. | `role`, `platform`, `app_version`, `env`, `outcome`, `time_open_seconds`, `is_coaching_action` |
 <!-- event-catalogue:end -->
 
 ### Property definitions
@@ -89,6 +97,13 @@ and capture can lose an event.
 | `reason_code` | `unknown_code`, `already_redeemed`, `expired`, `coach_unavailable`, `not_a_player`, `self_assignment`, `already_assigned`, `capacity`, or `consent_required` | Coded reason for a refused Assignment invite redemption; a same-Player retry after a successful redemption is `already_redeemed`. The HTTP error remains generic for unknown, redeemed, expired, unavailable-Coach, and non-Player cases. No token or free text is sent. |
 | `prefilled_fields_count` | Integer from 0 to 100 | Number of legacy-prefilled answers at completion. Answer values are never sent. |
 | `step` | Allowlisted onboarding step identifier | One of `disclosure`, each field in `service/intake.py::INTAKE_FIELDS`, or `review`. No answer values are sent. |
+| `trigger` | `onboarding`, `profile_rebuild`, `player_request`, `synthesized`, or `coach_request` | Why a program version was generated. |
+| `day_count` | Integer from 0 to 100 | Number of days in the saved program. Program names and exercise names are never sent. |
+| `first_for_assignment` | Boolean | Whether this is the first coach publication since the active Assignment began. |
+| `is_coaching_action` | Boolean | True for a recorded coaching action. Coach publication and request resolution by a Coach are true; Player cancellation is false. |
+| `kind` | `exercise_substitution` or `split_change` | Program request category. Request reason and split preference are never sent. |
+| `outcome` | `applied`, `declined`, or `cancelled` | Program request's committed resolution. A decline response is never sent. |
+| `time_open_seconds` | Bounded nonnegative integer | Whole seconds between request creation and resolution, capped at one year. |
 
 ## PostHog and operational database boundary
 

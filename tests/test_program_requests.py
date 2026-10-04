@@ -23,6 +23,7 @@ from database.database_manager import DatabaseManager
 from service import coach as coach_service
 from service import coach_history as coach_history_service
 from service import program_requests as program_requests_service
+from service.program_analytics import ProgramAnalyticsActor
 from svc.app import create_app
 from svc.dependencies import get_db
 
@@ -495,7 +496,9 @@ def test_apply_replacement_missing_after_creation_stays_pending(api, monkeypatch
 
     monkeypatch.setattr(db, "get_exercise_library_entry", lambda exercise_id: None)
 
-    result = program_requests_service.apply_request(db, coach_account_id, assignment_id, request_id)
+    result = program_requests_service.apply_request(
+        db, ProgramAnalyticsActor(coach_account_id, "coach"), assignment_id, request_id
+    )
     assert result["ok"] is False
     assert result["error"] == program_requests_service.STALE_REQUEST_ERROR
 
@@ -530,7 +533,9 @@ def test_apply_refuses_replacement_already_on_target_day(api, monkeypatch):
 
     created = _create(client, player_headers, **_substitution())
     request_id = created.json()["request_id"]
-    result = program_requests_service.apply_request(db, coach_account_id, assignment_id, request_id)
+    result = program_requests_service.apply_request(
+        db, ProgramAnalyticsActor(coach_account_id, "coach"), assignment_id, request_id
+    )
 
     assert result["ok"] is False
     assert result["error"] == "That replacement exercise is already on the target day."
@@ -557,7 +562,9 @@ def test_apply_write_failure_reverts_request_to_pending(api, monkeypatch):
     monkeypatch.setattr(TrainingLedger, "save_training_program", boom)
 
     with pytest.raises(ValueError):
-        program_requests_service.apply_request(db, coach_account_id, assignment_id, request_id)
+        program_requests_service.apply_request(
+            db, ProgramAnalyticsActor(coach_account_id, "coach"), assignment_id, request_id
+        )
 
     # The claim is reverted, so the request is pending again and the program is unchanged.
     reverted = db.get_program_request(request_id)

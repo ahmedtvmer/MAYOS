@@ -15,7 +15,9 @@ from fastapi.responses import StreamingResponse
 
 from agent.assistant_graph import stream_assistant_turn
 from agent.prompts import DEFAULT_ASSISTANT_STYLE
+from service import analytics, programs as programs_service
 from service import chat as chat_service
+from service.program_analytics import ProgramAnalyticsActor
 from service.model_limits import admit_model_request
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
 from svc.llm import InferenceScope, bound_stream
@@ -50,7 +52,8 @@ def _run_turn(
     player: Any,
     content: str,
     out: "queue.Queue[tuple[str, Any]]",
-    account_id: str | None = None,
+    account_id: str,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> None:
     """Executes the sync turn on a worker thread, bridging chunks into the queue.
 
@@ -75,7 +78,7 @@ def _run_turn(
                 tail,
                 coach_tone=profile.get("coach_tone", DEFAULT_ASSISTANT_STYLE),
                 custom_instructions=profile.get("custom_instructions", ""),
-                player_account_id=account_id_of(player),
+                player_account_id=account_id,
             )
             for piece in bound_stream(
                 stream_assistant_turn,
@@ -88,6 +91,15 @@ def _run_turn(
             ):
                 out.put(("token", piece))
             chat_service.persist_assistant_message(ledger, state.get("response_content"))
+            change = state.get("program_change")
+            persisted = ledger.get_active_program() if change else None
+            if change and persisted is not None:
+                programs_service.record_program_change(
+                    ProgramAnalyticsActor(account_id, "player"),
+                    change,
+                    persisted,
+                    client=client,
+                )
         done_payload = {
             "response_content": state.get("response_content") or "",
             "program_updated": bool(state.get("program_updated")),
@@ -117,7 +129,9 @@ async def post_message(
 
     out: "queue.Queue[tuple[str, Any]]" = queue.Queue()
     worker = threading.Thread(
-        target=_run_turn, args=(db, player, body.content, out, account_id), daemon=True
+        target=_run_turn,
+        args=(db, player, body.content, out, account_id, analytics.client_context(request)),
+        daemon=True,
     )
     worker.start()
 

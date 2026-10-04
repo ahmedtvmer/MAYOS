@@ -4,8 +4,10 @@ from typing import Any
 
 from agent.program_generator import generate_program_pipeline
 from service._base import ledger_scope
+from service import analytics
 from service.profile_change_alerts import normalize_profile_value
 from service.programs import COACH_CONTROLLED_ERROR, player_controls_program
+from service.program_analytics import ProgramAnalyticsActor, capture_program_generated
 from utils.equipment_access import map_equipment_access
 
 # Profile facts that alter program structure. The intake API exposes this list
@@ -29,6 +31,8 @@ def update_profile(
     payload: dict[str, Any],
     player_account_id: str | None = None,
     ledger: Any | None = None,
+    *,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> dict[str, Any]:
     """Upserts the profile; rebuilds when program-shaping inputs change.
 
@@ -79,6 +83,15 @@ def update_profile(
                 ledger.upsert_player_profile(updated)
         else:
             ledger.upsert_player_profile(updated)
+        if program is not None and player_account_id:
+            persisted = ledger.get_active_program()
+            if persisted is not None:
+                capture_program_generated(
+                    ProgramAnalyticsActor(player_account_id, "player"),
+                    "profile_rebuild",
+                    persisted,
+                    client=client,
+                )
         return {
             "profile": ledger.get_player_profile(),
             "program_rebuilt": program is not None,

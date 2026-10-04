@@ -4,6 +4,8 @@ from typing import Any
 
 from agent.program_generator import generate_program_pipeline
 from service._base import ledger_scope
+from service import analytics
+from service.program_analytics import ProgramAnalyticsActor, capture_program_exercise_swapped, capture_program_generated
 
 COACH_CONTROLLED_ERROR = "Your assigned coach controls your program. Ask your coach for changes."
 COACH_CONTROLLED_REQUEST_ERROR = (
@@ -58,7 +60,15 @@ def with_library_equipment(program: Any, db: Any) -> dict[str, Any]:
 
 
 def ensure_active_program(
-    db: Any, ledger_id: str, player_account_id: str | None = None, ledger: Any | None = None
+    db: Any,
+    ledger_id: str,
+    player_account_id: str | None = None,
+    ledger: Any | None = None,
+    *,
+    actor_role: str = "player",
+    trigger: str = "synthesized",
+    emit_analytics: bool = True,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> Any:
     """Returns the saved routine, synthesizing one when the profile exists but none is saved.
 
@@ -78,4 +88,55 @@ def ensure_active_program(
         program, _ = generate_program_pipeline(
             rep_preference_override=profile.get("rep_preference", "balanced"), ledger=ledger
         )
+        if emit_analytics and player_account_id:
+            persisted = ledger.get_active_program()
+            if persisted is None:
+                raise RuntimeError("Generated program is missing from the player ledger after save.")
+            capture_program_generated(
+                ProgramAnalyticsActor(player_account_id, actor_role), trigger, persisted, client=client
+            )
         return program
+
+
+def generate_program_version(
+    db: Any,
+    ledger: Any,
+    actor: ProgramAnalyticsActor,
+    trigger: str,
+    *,
+    user_split_override: str | None = None,
+    rep_preference_override: str | None = None,
+    frequency_override: int | None = None,
+    purpose: str = "program_generate",
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+) -> Any:
+    """Generates a new persisted version and reports it after the save commits."""
+    from svc.llm import InferenceScope, run_inference_sync
+
+    program, _ = run_inference_sync(
+        generate_program_pipeline,
+        user_split_override=user_split_override,
+        rep_preference_override=rep_preference_override,
+        frequency_override=frequency_override,
+        ledger=ledger,
+        scope=InferenceScope(account_id=actor.account_id, role=actor.role, purpose=purpose, store=db),
+    )
+    persisted = ledger.get_active_program()
+    if persisted is None:
+        raise RuntimeError("Generated program is missing from the player ledger after save.")
+    capture_program_generated(actor, trigger, persisted, client=client)
+    return program
+
+
+def record_program_change(
+    actor: ProgramAnalyticsActor,
+    change: str,
+    program: Any,
+    *,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+) -> None:
+    """Reports one successful assistant program mutation from its committed version."""
+    if change == "regenerated":
+        capture_program_generated(actor, "player_request", program, client=client)
+    elif change == "swapped":
+        capture_program_exercise_swapped(actor, program, client=client)

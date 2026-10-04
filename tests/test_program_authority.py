@@ -182,7 +182,7 @@ def _coach_generation(db, monkeypatch):
 
 def _player_generation(db, monkeypatch):
     fake, calls = _counting_saver(db, "Player Plan")
-    monkeypatch.setattr("svc.routers.programs.generate_program_pipeline", fake)
+    monkeypatch.setattr("service.programs.generate_program_pipeline", fake)
     return fake, calls
 
 

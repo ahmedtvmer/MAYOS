@@ -37,6 +37,31 @@ def _test_program() -> GeneratedProgramSchema:
     )
 
 
+def _program_ledger_id_for_event(
+    db: DatabaseManager, account_id: str, event: str, role: str
+) -> str:
+    owner_account_id = account_id
+    if role == "coach":
+        with db.catalog_locked() as connection:
+            if event == "coach_program_published":
+                row = connection.execute(
+                    "SELECT player_account_id FROM assignments"
+                    " WHERE coach_account_id = ? AND status = 'active' ORDER BY started_at DESC LIMIT 1",
+                    (account_id,),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    "SELECT player_account_id FROM program_requests"
+                    " WHERE coach_account_id = ? AND status = 'applied' ORDER BY resolved_at DESC LIMIT 1",
+                    (account_id,),
+                ).fetchone()
+        assert row is not None
+        owner_account_id = str(row[0])
+    owner = db.get_account(owner_account_id)
+    assert owner is not None
+    return str(owner["ledger_id"])
+
+
 def _assert_authoritative_write_committed(
     db: DatabaseManager, account_id: str, event: str, event_uuid: str, properties: dict
 ) -> None:
@@ -59,7 +84,7 @@ def _assert_authoritative_write_committed(
                     or ledger.get_active_program()
                     or ledger.get_chat_history()
                 )
-            else:
+            elif event == "onboarding_completed":
                 assert ledger.get_onboarding_analytics_completed_at()
                 intake_state = ledger.get_intake_state()
                 assert intake_state is None or intake_state["status"] == "confirmed"
@@ -131,6 +156,14 @@ def _assert_authoritative_write_committed(
             0, int((datetime.fromisoformat(ended[5]) - datetime.fromisoformat(ended[4])).total_seconds())
         )
         assert properties["duration_seconds"] == duration
+    if event in {"program_request_created", "program_request_resolved"}:
+        assert not db.catalog_conn.in_transaction
+        assert db.catalog_conn.execute("SELECT COUNT(*) FROM program_requests").fetchone()[0] > 0
+    if event in {"program_generated", "coach_program_published", "program_exercise_swapped"}:
+        owner_ledger_id = _program_ledger_id_for_event(db, account_id, event, properties["role"])
+        with db.open_ledger(owner_ledger_id) as ledger:
+            assert not ledger.conn.in_transaction
+            assert ledger.get_active_program() is not None
 
 
 @pytest.fixture
@@ -156,7 +189,7 @@ def analytics_api(tmp_path, monkeypatch, recording_analytics):
     """)
     catalog_connection.executemany(
         "INSERT INTO exercises (id, name, body_part, target_muscle) VALUES (?, ?, ?, ?)",
-        [(f"ex{index}", f"Test exercise {index}", "Chest", "Chest") for index in range(1, 4)],
+        [(f"ex{index}", f"Test exercise {index}", "Chest", "Chest") for index in range(1, 5)],
     )
     catalog_connection.commit()
     catalog_connection.close()
@@ -248,6 +281,70 @@ def _install_fake_program_generator(monkeypatch) -> None:
     monkeypatch.setattr("agent.program_generator.generate_program_pipeline", fake_program)
 
 
+def _analytics_program() -> GeneratedProgramSchema:
+    exercises = [
+        ProgramExerciseSchema(
+            exercise_id=exercise_id,
+            exercise_name=f"Test exercise {exercise_id.removeprefix('ex')}",
+            target_reps_min=8,
+            target_reps_max=12,
+        )
+        for exercise_id in ("ex1", "ex3", "ex4")
+    ]
+    day = ProgramDaySchema(
+        day_name="Full A",
+        day_order=1,
+        exercises=exercises,
+    )
+    return GeneratedProgramSchema(
+        program_name="Private program title",
+        split_type="Full body",
+        weekly_frequency=1,
+        days=[day],
+    )
+
+
+def _install_analytics_program_generators(monkeypatch) -> None:
+    def fake_program(*_args, ledger, published_by_coach_account_id=None, **_kwargs):
+        program = _analytics_program()
+        ledger.save_training_program(
+            program.model_dump(), published_by_coach_account_id=published_by_coach_account_id
+        )
+        return program, "private program markdown"
+
+    monkeypatch.setattr("service.programs.generate_program_pipeline", fake_program)
+    monkeypatch.setattr("service.coach_programs.generate_program_pipeline", fake_program)
+    monkeypatch.setattr("service.profile.generate_program_pipeline", fake_program)
+    monkeypatch.setattr("service.program_requests.generate_program_pipeline", fake_program)
+
+
+def _assigned_analytics_player(client, db, player_headers):
+    from service import coach as coach_service
+
+    coach_headers = _register(client, "analytics-coach")
+    issued = coach_service.issue_coach_invite(db, "analytics-coach", actor="test")
+    assert issued["ok"]
+    redeemed_coach = client.post(
+        "/coach/invite/redeem", headers=coach_headers, json={"token": issued["token"]}
+    )
+    assert redeemed_coach.status_code == 200, redeemed_coach.text
+    configured = client.put(
+        "/coach/profile",
+        headers=coach_headers,
+        json={"display_name": "Coach", "bio": "", "specialization": "", "capacity": 5},
+    )
+    assert configured.status_code == 200, configured.text
+    invite = client.post("/coach/assignments/invites", headers=coach_headers)
+    assert invite.status_code == 200, invite.text
+    assignment = client.post(
+        "/assignments/invites/redeem",
+        headers=player_headers,
+        json={"token": invite.json()["token"], "consent": True},
+    )
+    assert assignment.status_code == 200, assignment.text
+    return coach_headers, assignment.json()["assignment"]["assignment_id"]
+
+
 class RaisingAnalyticsSink:
     def capture(self, *_args, **_kwargs):
         raise RuntimeError("sink unavailable")
@@ -306,6 +403,9 @@ def test_registration_and_onboarding_events_follow_successful_api_writes(analyti
     assert completion["uuid"] == analytics.deterministic_event_uuid(
         "onboarding_completed", account["account_id"]
     )
+    generated = [event for event in sink.events if event["event"] == "program_generated"]
+    assert len(generated) == 1
+    assert generated[0]["properties"]["trigger"] == "onboarding"
     with db.open_ledger(account["ledger_id"]) as ledger:
         assert ledger.get_intake_state()["status"] == "confirmed"
 
@@ -418,10 +518,10 @@ def test_legacy_completion_is_captured_once_across_a_retry(analytics_api, monkey
         "messages": [],
     }
     with db.open_ledger(account["ledger_id"]) as ledger:
-        ledger.save_training_program(_test_program().model_dump())
         ledger.save_onboarding_state(saved_state)
 
     monkeypatch.setattr(onboarding_graph, "invoke", lambda state, **_kwargs: state)
+    _install_fake_program_generator(monkeypatch)
     for _ in range(2):
         completed = client.post("/onboarding/complete", headers=headers)
         assert completed.status_code == 200, completed.text
@@ -429,6 +529,9 @@ def test_legacy_completion_is_captured_once_across_a_retry(analytics_api, monkey
     completions = [event for event in sink.events if event["event"] == "onboarding_completed"]
     assert len(completions) == 1
     assert completions[0]["properties"]["prefilled_fields_count"] == 2
+    generated = [event for event in sink.events if event["event"] == "program_generated"]
+    assert len(generated) == 1
+    assert generated[0]["properties"]["trigger"] == "onboarding"
 
 
 def test_raising_sink_does_not_fail_structured_or_legacy_completion(analytics_api, monkeypatch):
@@ -450,6 +553,390 @@ def test_raising_sink_does_not_fail_structured_or_legacy_completion(analytics_ap
         )
     completed = client.post("/onboarding/complete", headers=legacy_headers)
     assert completed.status_code == 200, completed.text
+
+
+def test_program_and_request_events_follow_committed_api_operations(analytics_api, monkeypatch):
+    client, db, sink = analytics_api
+    _install_analytics_program_generators(monkeypatch)
+
+    player_headers = _register(client, "analytics-program-player")
+    player_account = db.get_active_account_by_username("analytics-program-player")
+    player_id = player_account["account_id"]
+    player_headers = {**player_headers, "X-MAYOS-Client": "android/2.4.1"}
+
+    generated = client.post("/programs/generate", headers=player_headers, json={})
+    assert generated.status_code == 200, generated.text
+    generated_events = [event for event in sink.events if event["event"] == "program_generated"]
+    assert len(generated_events) == 1
+    assert generated_events[0]["distinct_id"] == player_id
+    assert generated_events[0]["properties"] == {
+        "role": "player",
+        "platform": "android",
+        "app_version": "2.4.1",
+        "env": "development",
+        "trigger": "player_request",
+        "day_count": 1,
+    }
+
+    with db.open_ledger(player_account["ledger_id"]) as ledger:
+        ledger.upsert_player_profile(
+            {"equipment_access": "Commercial gym", "weekly_frequency": 1, "rep_preference": "balanced"}
+        )
+    rebuilt = client.put("/profile", headers=player_headers, json={"weekly_frequency": 2})
+    assert rebuilt.status_code == 200, rebuilt.text
+    generated_events = [event for event in sink.events if event["event"] == "program_generated"]
+    assert [event["properties"]["trigger"] for event in generated_events] == [
+        "player_request",
+        "profile_rebuild",
+    ]
+
+    swap = client.post(
+        "/programs/active/substitutions",
+        headers=player_headers,
+        json={
+            "day_name": "Full A",
+            "exercise_id": "ex1",
+            "replacement_exercise_id": "ex2",
+            "expected_active_version": 2,
+        },
+    )
+    assert swap.status_code == 200, swap.text
+    assert swap.json()["version"] == 3
+    player_swaps = [event for event in sink.events if event["event"] == "program_exercise_swapped"]
+    assert len(player_swaps) == 1
+    assert player_swaps[0]["properties"]["role"] == "player"
+
+    undone = client.post(
+        "/programs/active/substitutions/undo",
+        headers=player_headers,
+        json={"restore_version": 2, "expected_active_version": 3},
+    )
+    assert undone.status_code == 200, undone.text
+    assert undone.json()["version"] == 4
+    player_swaps = [event for event in sink.events if event["event"] == "program_exercise_swapped"]
+    assert len(player_swaps) == 2
+
+    failed_swap = client.post(
+        "/programs/active/substitutions",
+        headers=player_headers,
+        json={"day_name": "Full A", "exercise_id": "ex1", "replacement_exercise_id": "missing"},
+    )
+    assert failed_swap.status_code == 404
+    assert len([event for event in sink.events if event["event"] == "program_exercise_swapped"]) == 2
+
+    coach_headers, assignment_id = _assigned_analytics_player(client, db, player_headers)
+    coach_headers = {**coach_headers, "X-MAYOS-Client": "web/5.1.0"}
+    for expected_first in (True, False):
+        published = client.post(
+            f"/coach/assignments/{assignment_id}/program", headers=coach_headers, json={}
+        )
+        assert published.status_code == 200, published.text
+        publication_events = [event for event in sink.events if event["event"] == "coach_program_published"]
+        assert publication_events[-1]["properties"] == {
+            "role": "coach",
+            "platform": "web",
+            "app_version": "5.1.0",
+            "env": "development",
+            "day_count": 1,
+            "first_for_assignment": expected_first,
+            "is_coaching_action": True,
+        }
+
+    invalid_request = client.post(
+        "/assignments/me/program-requests",
+        headers=player_headers,
+        json={"kind": "split_change", "desired_weekly_frequency": 2, "reason": "   "},
+    )
+    assert invalid_request.status_code == 400
+    assert not [event for event in sink.events if event["event"] == "program_request_created"]
+
+    created_request = client.post(
+        "/assignments/me/program-requests",
+        headers=player_headers,
+        json={
+            "kind": "exercise_substitution",
+            "day_name": "Full A",
+            "exercise_id": "ex1",
+            "replacement_exercise_id": "ex2",
+            "reason": "PRIVATE_REQUEST_SENTINEL",
+        },
+    )
+    assert created_request.status_code == 200, created_request.text
+    apply_path = (
+        f"/coach/assignments/{assignment_id}/program-requests/"
+        f"{created_request.json()['request_id']}/apply"
+    )
+    applied = client.post(apply_path, headers=coach_headers)
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["status"] == "applied"
+    replayed_apply = client.post(apply_path, headers=coach_headers)
+    assert replayed_apply.status_code == 400
+    assert len([event for event in sink.events if event["event"] == "program_request_resolved"]) == 1
+
+    split_request = client.post(
+        "/assignments/me/program-requests",
+        headers=player_headers,
+        json={"kind": "split_change", "desired_weekly_frequency": 3, "reason": "PRIVATE_SPLIT_SENTINEL"},
+    )
+    assert split_request.status_code == 200, split_request.text
+    split_applied = client.post(
+        f"/coach/assignments/{assignment_id}/program-requests/{split_request.json()['request_id']}/apply",
+        headers=coach_headers,
+    )
+    assert split_applied.status_code == 200, split_applied.text
+    generated_events = [event for event in sink.events if event["event"] == "program_generated"]
+    assert generated_events[-1]["properties"]["trigger"] == "coach_request"
+    assert generated_events[-1]["properties"]["role"] == "coach"
+
+    declined_request = client.post(
+        "/assignments/me/program-requests",
+        headers=player_headers,
+        json={"kind": "split_change", "desired_weekly_frequency": 2, "reason": "PRIVATE_REASON_SENTINEL"},
+    )
+    assert declined_request.status_code == 200, declined_request.text
+    declined = client.post(
+        f"/coach/assignments/{assignment_id}/program-requests/"
+        f"{declined_request.json()['request_id']}/decline",
+        headers=coach_headers,
+        json={"response": "PRIVATE_RESPONSE_SENTINEL"},
+    )
+    assert declined.status_code == 200, declined.text
+
+    cancelled_request = client.post(
+        "/assignments/me/program-requests",
+        headers=player_headers,
+        json={"kind": "split_change", "desired_weekly_frequency": 3, "reason": "PRIVATE_CANCEL_SENTINEL"},
+    )
+    assert cancelled_request.status_code == 200, cancelled_request.text
+    cancelled = client.post(
+        f"/assignments/me/program-requests/{cancelled_request.json()['request_id']}/cancel",
+        headers=player_headers,
+    )
+    assert cancelled.status_code == 200, cancelled.text
+
+    all_events = [event for event in sink.events if event["event"].startswith("program_") or event["event"] == "coach_program_published"]
+    assert len([event for event in all_events if event["event"] == "program_generated"]) == 3
+    assert len([event for event in all_events if event["event"] == "coach_program_published"]) == 2
+    swaps = [event for event in all_events if event["event"] == "program_exercise_swapped"]
+    assert [event["properties"]["role"] for event in swaps] == ["player", "player", "coach"]
+    requests_created = [event for event in all_events if event["event"] == "program_request_created"]
+    assert len(requests_created) == 4
+    assert {event["properties"]["kind"] for event in requests_created} == {
+        "exercise_substitution",
+        "split_change",
+    }
+    resolutions = [event for event in all_events if event["event"] == "program_request_resolved"]
+    assert {event["properties"]["outcome"] for event in resolutions} == {"applied", "declined", "cancelled"}
+    assert all(event["properties"]["time_open_seconds"] >= 0 for event in resolutions)
+    assert all(event["properties"]["is_coaching_action"] for event in resolutions if event["properties"]["role"] == "coach")
+    assert next(event for event in resolutions if event["properties"]["outcome"] == "cancelled")["properties"]["is_coaching_action"] is False
+    for event in all_events:
+        assert "PRIVATE_" not in repr(event)
+        assert event["distinct_id"] not in {"analytics-program-player", "analytics-coach"}
+
+    with db.open_ledger(player_account["ledger_id"]) as ledger:
+        assert not ledger.conn.in_transaction
+        assert ledger.get_active_program().version == 8
+    assert not db.catalog_conn.in_transaction
+
+
+def test_failed_program_generation_emits_no_event(analytics_api, monkeypatch):
+    client, _, sink = analytics_api
+    headers = _register(client, "analytics-program-failure")
+
+    def fail_generation(*_args, **_kwargs):
+        raise ValueError("generation rejected")
+
+    monkeypatch.setattr("service.programs.generate_program_pipeline", fail_generation)
+    failed = client.post("/programs/generate", headers=headers, json={})
+    assert failed.status_code == 400
+    assert not [event for event in sink.events if event["event"] == "program_generated"]
+
+
+def test_active_program_lazy_synthesis_emits_once_with_synthesized_trigger(analytics_api, monkeypatch):
+    client, db, sink = analytics_api
+    headers = _register(client, "analytics-synthesized")
+    headers["X-MAYOS-Client"] = "web/4.2.0"
+    account = db.get_active_account_by_username("analytics-synthesized")
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        ledger.upsert_player_profile(
+            {"equipment_access": "Commercial gym", "weekly_frequency": 1, "rep_preference": "balanced"}
+        )
+    _install_fake_program_generator(monkeypatch)
+
+    for _ in range(2):
+        response = client.get("/programs/active", headers=headers)
+        assert response.status_code == 200, response.text
+    generated = [event for event in sink.events if event["event"] == "program_generated"]
+    assert len(generated) == 1
+    assert generated[0]["properties"]["trigger"] == "synthesized"
+    assert generated[0]["properties"]["platform"] == "web"
+
+
+def test_chat_regeneration_and_swap_emit_once_through_http(analytics_api, monkeypatch):
+    client, db, sink = analytics_api
+    headers = _register(client, "analytics-chat")
+    account = db.get_active_account_by_username("analytics-chat")
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        ledger.save_training_program(_analytics_program().model_dump())
+    _install_fake_program_generator(monkeypatch)
+
+    def fake_turn(state, *, ledger, store, **_kwargs):
+        user_text = state["messages"][-1].content
+        if user_text == "rebuild my split":
+            program = _analytics_program()
+            ledger.save_training_program(program.model_dump())
+            state["program_change"] = "regenerated"
+        else:
+            from service.program_substitution import ProgramSubstitution, substitute_program_exercise
+
+            active = ledger.get_active_program()
+            result = substitute_program_exercise(
+                ledger,
+                store,
+                active,
+                ProgramSubstitution(
+                    day_name=active.days[0].day_name,
+                    exercise_id=active.days[0].exercises[0].exercise_id,
+                    replacement_exercise_id="ex2",
+                ),
+            )
+            assert result["ok"]
+            state["program_change"] = "swapped"
+        state["program_updated"] = True
+        state["response_content"] = "Your program was updated."
+        yield state["response_content"]
+
+    monkeypatch.setattr("svc.routers.chat.stream_assistant_turn", fake_turn)
+    for content in ("rebuild my split", "swap this exercise"):
+        with client.stream("POST", "/chat/messages", headers=headers, json={"content": content}) as response:
+            payload = response.read().decode()
+        assert response.status_code == 200
+        assert '"done": true' in payload
+    program_events = [
+        event for event in sink.events
+        if event["event"] in {"program_generated", "program_exercise_swapped"}
+    ]
+    assert [event["event"] for event in program_events] == [
+        "program_generated",
+        "program_exercise_swapped",
+    ]
+    assert program_events[0]["properties"]["trigger"] == "player_request"
+
+
+def test_recording_sink_keeps_every_capture_call_and_coach_events_use_player_owner(recording_analytics):
+    from types import SimpleNamespace
+
+    from service.program_analytics import ProgramAnalyticsActor, capture_program_generated
+
+    account_id = uuid.uuid4().hex
+    event = analytics.AnalyticsEvent(
+        account_id=account_id,
+        event="onboarding_started",
+        domain_key=account_id,
+        role="player",
+    )
+    analytics.capture(event)
+    analytics.capture(event)
+    assert len(recording_analytics.events) == 2
+
+    recording_analytics.events.clear()
+    coach = ProgramAnalyticsActor(account_id, "coach")
+    program = SimpleNamespace(version=1, days=[])
+    capture_program_generated(coach, "coach_request", program, player_account_id="player-one")
+    capture_program_generated(coach, "coach_request", program, player_account_id="player-two")
+    assert recording_analytics.events[0]["uuid"] != recording_analytics.events[1]["uuid"]
+
+
+def test_raising_sink_does_not_fail_program_generation(analytics_api, monkeypatch):
+    client, db, _sink = analytics_api
+    _install_analytics_program_generators(monkeypatch)
+    headers = _register(client, "analytics-program-raising")
+    account = db.get_active_account_by_username("analytics-program-raising")
+    analytics.set_sink(RaisingAnalyticsSink())
+
+    generated = client.post("/programs/generate", headers=headers, json={})
+    assert generated.status_code == 200, generated.text
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        assert ledger.get_active_program() is not None
+
+
+def test_raising_sink_does_not_fail_program_request_or_swap_operations(analytics_api, monkeypatch):
+    client, db, _sink = analytics_api
+    _install_analytics_program_generators(monkeypatch)
+    player_headers = _register(client, "analytics-raising-requests")
+    account = db.get_active_account_by_username("analytics-raising-requests")
+    assert client.post("/programs/generate", headers=player_headers, json={}).status_code == 200
+    coach_headers, assignment_id = _assigned_analytics_player(client, db, player_headers)
+
+    analytics.set_sink(RaisingAnalyticsSink())
+    published = client.post(f"/coach/assignments/{assignment_id}/program", headers=coach_headers, json={})
+    assert published.status_code == 200, published.text
+
+    def create_split_request(frequency):
+        return client.post(
+            "/assignments/me/program-requests",
+            headers=player_headers,
+            json={"kind": "split_change", "desired_weekly_frequency": frequency, "reason": "private"},
+        )
+
+    split_request = create_split_request(3)
+    assert split_request.status_code == 200, split_request.text
+    applied = client.post(
+        f"/coach/assignments/{assignment_id}/program-requests/{split_request.json()['request_id']}/apply",
+        headers=coach_headers,
+    )
+    assert applied.status_code == 200, applied.text
+
+    declined_request = create_split_request(2)
+    assert declined_request.status_code == 200, declined_request.text
+    declined = client.post(
+        f"/coach/assignments/{assignment_id}/program-requests/{declined_request.json()['request_id']}/decline",
+        headers=coach_headers,
+        json={"response": "not now"},
+    )
+    assert declined.status_code == 200, declined.text
+
+    cancelled_request = create_split_request(2)
+    assert cancelled_request.status_code == 200, cancelled_request.text
+    cancelled = client.post(
+        f"/assignments/me/program-requests/{cancelled_request.json()['request_id']}/cancel",
+        headers=player_headers,
+    )
+    assert cancelled.status_code == 200, cancelled.text
+
+    swap_request = client.post(
+        "/assignments/me/program-requests",
+        headers=player_headers,
+        json={
+            "kind": "exercise_substitution",
+            "day_name": "Full A",
+            "exercise_id": "ex1",
+            "replacement_exercise_id": "ex2",
+            "reason": "private swap request",
+        },
+    )
+    assert swap_request.status_code == 200, swap_request.text
+    swap_applied = client.post(
+        f"/coach/assignments/{assignment_id}/program-requests/{swap_request.json()['request_id']}/apply",
+        headers=coach_headers,
+    )
+    assert swap_applied.status_code == 200, swap_applied.text
+
+    revoked = client.post(f"/coach/assignments/{assignment_id}/revoke", headers=coach_headers)
+    assert revoked.status_code == 200, revoked.text
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        active = ledger.get_active_program()
+    player_swap = client.post(
+        "/programs/active/substitutions",
+        headers=player_headers,
+        json={
+            "day_name": active.days[0].day_name,
+            "exercise_id": active.days[0].exercises[-1].exercise_id,
+            "replacement_exercise_id": "ex1",
+        },
+    )
+    assert player_swap.status_code == 200, player_swap.text
 
 
 def test_account_created_marks_invite_use_and_release_phase_once(analytics_api, monkeypatch):

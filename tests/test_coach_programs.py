@@ -163,14 +163,14 @@ def _coach_generation(db, monkeypatch):
 
 
 def _player_generation(db, monkeypatch):
-    """Replaces the pipeline at the player router seam (self-service, no provenance)."""
+    """Replaces the pipeline at the player service seam (self-service, no provenance)."""
 
     def fake(**kwargs):
         program = _program()
         kwargs["ledger"].save_training_program(program.model_dump())
         return program, "md"
 
-    monkeypatch.setattr("svc.routers.programs.generate_program_pipeline", fake)
+    monkeypatch.setattr("service.programs.generate_program_pipeline", fake)
 
 
 def _publish(client, coach_headers, assignment_id, **body):

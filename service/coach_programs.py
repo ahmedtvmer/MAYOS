@@ -14,29 +14,38 @@ from typing import Any
 
 from agent.program_generator import generate_program_pipeline
 from service.assignments import authorized_player_ledger
+from service.program_analytics import ProgramAnalyticsActor, capture_coach_program_published
 from service import stall_alerts
+from service import analytics
 
 logger = logging.getLogger(__name__)
 
 
 def publish_program(
     db: Any,
-    coach_account_id: str,
+    actor: ProgramAnalyticsActor,
     assignment_id: Any,
+    *,
     user_split_override: str | None = None,
     rep_preference_override: str | None = None,
     frequency_override: int | None = None,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> Any:
     """Generates and activates a coach-owned program for an assigned player.
 
     Returns the persisted program (carrying its stable version and provenance),
     or ``None`` when the assignment is not active and owned by this coach.
     """
+    coach_account_id = actor.account_id
     authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
     if authorized is None:
         return None
     ledger, context = authorized
     with ledger:
+        assignment = context["assignment"]
+        prior_publication = ledger.has_program_published_by_coach_since(
+            coach_account_id, assignment["started_at"]
+        )
         from svc.llm import InferenceScope, run_inference_sync
 
         _program, _ = run_inference_sync(
@@ -55,12 +64,27 @@ def publish_program(
         if published is None:
             raise RuntimeError("Published program is missing from the player ledger after save.")
 
-        record_program_publication(db, context, published)
+        record_program_publication(
+            db,
+            context,
+            published,
+            actor=actor,
+            first_for_assignment=not prior_publication,
+            client=client,
+        )
         return published
 
 
-def record_program_publication(db: Any, context: dict[str, Any], published: Any) -> None:
-    """Records the shared catalog effects of activating a coach program."""
+def record_program_publication(
+    db: Any,
+    context: dict[str, Any],
+    published: Any,
+    *,
+    actor: ProgramAnalyticsActor,
+    first_for_assignment: bool,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+) -> None:
+    """Records the shared catalog and analytics effects of activating a coach program."""
     assignment_id = context["assignment"]["assignment_id"]
     player_account_id = context["player"]["account_id"]
     now = datetime.now(UTC)
@@ -77,3 +101,11 @@ def record_program_publication(db: Any, context: dict[str, Any], published: Any)
     )
     # Attendance evaluation is not run here, so refresh the roster's cached name.
     db.set_roster_program_name(assignment_id, published.program_name)
+    capture_coach_program_published(
+        actor,
+        str(assignment_id),
+        published,
+        first_for_assignment,
+        player_account_id=player_account_id,
+        client=client,
+    )

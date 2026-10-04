@@ -41,6 +41,7 @@ class PropertyType:
 
     validate: Callable[[Any], bool]
     description: str
+    maximum: int | None = None
 
 
 @dataclass(frozen=True)
@@ -90,7 +91,11 @@ def _boolean() -> PropertyType:
 
 
 def _bounded_int(maximum: int) -> PropertyType:
-    return PropertyType(lambda value: type(value) is int and 0 <= value <= maximum, "a bounded nonnegative integer")
+    return PropertyType(
+        lambda value: type(value) is int and 0 <= value <= maximum,
+        "a bounded nonnegative integer",
+        maximum=maximum,
+    )
 
 
 def _version_label() -> PropertyType:
@@ -118,6 +123,11 @@ _ONBOARDING_STEPS = frozenset(field.name for field in INTAKE_FIELDS) | {
     "disclosure",
     "review",
 }
+_PROGRAM_TRIGGERS = frozenset(
+    {"onboarding", "profile_rebuild", "player_request", "synthesized", "coach_request"}
+)
+_PROGRAM_REQUEST_KINDS = frozenset({"exercise_substitution", "split_change"})
+_PROGRAM_REQUEST_OUTCOMES = frozenset({"applied", "declined", "cancelled"})
 _DIMENSION_VALUES: dict[str, frozenset[str]] = {
     "role": frozenset({"player", "coach", "unknown"}),
     "platform": frozenset({"android", "web", "unknown"}),
@@ -132,6 +142,13 @@ PROPERTY_TYPES: dict[str, PropertyType] = {
     "duration_seconds": _bounded_int(3_155_760_000),
     "time_since_invite_seconds": _bounded_int(31_557_600),
     "prefilled_fields_count": _bounded_int(100),
+    "day_count": _bounded_int(100),
+    "trigger": _enum(_PROGRAM_TRIGGERS),
+    "first_for_assignment": _boolean(),
+    "is_coaching_action": _boolean(),
+    "kind": _enum(_PROGRAM_REQUEST_KINDS),
+    "outcome": _enum(_PROGRAM_REQUEST_OUTCOMES),
+    "time_open_seconds": _bounded_int(31_557_600),
     "is_player": _boolean(),
     "is_coach": _boolean(),
     "step": _enum(_ONBOARDING_STEPS),
@@ -203,6 +220,32 @@ EVENT_CATALOGUE: dict[str, EventContract] = {
     ),
     "invite_redemption_failed": EventContract(
         "server", {**_COMMON_PROPERTIES, "reason_code": PROPERTY_TYPES["reason_code"]}
+    ),
+    "program_generated": EventContract(
+        "server",
+        {**_COMMON_PROPERTIES, "trigger": PROPERTY_TYPES["trigger"], "day_count": PROPERTY_TYPES["day_count"]},
+    ),
+    "coach_program_published": EventContract(
+        "server",
+        {
+            **_COMMON_PROPERTIES,
+            "day_count": PROPERTY_TYPES["day_count"],
+            "first_for_assignment": PROPERTY_TYPES["first_for_assignment"],
+            "is_coaching_action": PROPERTY_TYPES["is_coaching_action"],
+        },
+    ),
+    "program_exercise_swapped": EventContract("server", dict(_COMMON_PROPERTIES)),
+    "program_request_created": EventContract(
+        "server", {**_COMMON_PROPERTIES, "kind": PROPERTY_TYPES["kind"]}
+    ),
+    "program_request_resolved": EventContract(
+        "server",
+        {
+            **_COMMON_PROPERTIES,
+            "outcome": PROPERTY_TYPES["outcome"],
+            "time_open_seconds": PROPERTY_TYPES["time_open_seconds"],
+            "is_coaching_action": PROPERTY_TYPES["is_coaching_action"],
+        },
     ),
 }
 
@@ -321,15 +364,11 @@ class RecordingAnalyticsSink:
         self.people: dict[str, dict[str, Any]] = {}
         self.people_set_once: dict[str, dict[str, Any]] = {}
         self.deleted_people: set[str] = set()
-        self._event_ids: set[str] = set()
 
     def capture(self, account_id: str, event: str, event_uuid: str, properties: dict[str, Any]) -> None:
         _validate_account_id(account_id)
         _validate_account_id(event_uuid)
         validate_event(event, properties)
-        if event_uuid in self._event_ids:
-            return
-        self._event_ids.add(event_uuid)
         self.events.append(
             {"distinct_id": account_id, "event": event, "uuid": event_uuid, "properties": dict(properties)}
         )

@@ -12,8 +12,10 @@ from agent.program_prescription import (
     MIN_REPS,
     MIN_TARGET_RIR,
 )
+from service import analytics
 from service.assignments import authorized_player_ledger
 from service.coach_programs import record_program_publication
+from service.program_analytics import ProgramAnalyticsActor
 
 
 class ProgramDraftNotFound(Exception):
@@ -253,12 +255,20 @@ def _published_program(draft: dict[str, Any], db: Any) -> dict[str, Any]:
     return validated.model_dump()
 
 
-def publish_program_draft(db: Any, coach_account_id: str, assignment_id: str) -> Any | None:
+def publish_program_draft(
+    db: Any,
+    coach_account_id: str,
+    assignment_id: str,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+) -> Any | None:
     authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
     if authorized is None:
         return None
     ledger, context = authorized
     with ledger:
+        prior_publication = ledger.has_program_published_by_coach_since(
+            coach_account_id, context["assignment"]["started_at"]
+        )
         with ledger.ledger_transaction():
             draft_record = ledger.get_program_draft(assignment_id)
             if draft_record is None:
@@ -269,5 +279,12 @@ def publish_program_draft(db: Any, coach_account_id: str, assignment_id: str) ->
             published = ledger.get_active_program()
         if published is None:
             raise RuntimeError("Published program is missing from the player ledger after save.")
-    record_program_publication(db, context, published)
+    record_program_publication(
+        db,
+        context,
+        published,
+        actor=ProgramAnalyticsActor(coach_account_id, "coach"),
+        first_for_assignment=not prior_publication,
+        client=client,
+    )
     return published

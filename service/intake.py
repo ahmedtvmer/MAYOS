@@ -27,6 +27,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from service import onboarding as onboarding_service
+from service import analytics
+from service.program_analytics import ProgramAnalyticsActor, capture_program_generated
 from service.profile import PROFILE_REBUILD_FIELDS
 from service._base import ledger_scope
 from utils.equipment_access import (
@@ -403,7 +405,15 @@ def structured_intake_active(db: Any, ledger_id: str, ledger: Any | None = None)
 
 
 def record_legacy_completion(
-    db: Any, ledger_id: str, program: Any, program_message: str | None, ledger: Any | None = None
+    db: Any,
+    ledger_id: str,
+    program: Any,
+    program_message: str | None,
+    ledger: Any | None = None,
+    *,
+    actor: ProgramAnalyticsActor,
+    program_generated: bool,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> None:
     """Marks an existing structured intake confirmed when legacy ``/complete`` runs.
 
@@ -412,15 +422,19 @@ def record_legacy_completion(
     a second program.
     """
     with ledger_scope(db, ledger, ledger_id) as ledger:
-        if ledger.get_intake_state() is None:
-            return
-        ledger.save_intake_state(
-            status=STATUS_CONFIRMED,
-            confirmed_at=datetime.now(UTC).isoformat(),
-            program_name=program.program_name if program is not None else None,
-            weekly_frequency=program.weekly_frequency if program is not None else None,
-            program_message=program_message,
-        )
+        if ledger.get_intake_state() is not None:
+            ledger.save_intake_state(
+                status=STATUS_CONFIRMED,
+                confirmed_at=datetime.now(UTC).isoformat(),
+                program_name=program.program_name if program is not None else None,
+                weekly_frequency=program.weekly_frequency if program is not None else None,
+                program_message=program_message,
+            )
+    if program_generated:
+        with ledger_scope(db, ledger, ledger_id) as ledger:
+            persisted = ledger.get_active_program()
+        if persisted is not None:
+            capture_program_generated(actor, "onboarding", persisted, client=client)
 
 
 def build_view(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, Any]:
@@ -521,7 +535,12 @@ def _confirmation_result(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def confirm_intake(
-    db: Any, ledger_id: str, player_account_id: str | None = None, ledger: Any | None = None
+    db: Any,
+    ledger_id: str,
+    player_account_id: str | None = None,
+    ledger: Any | None = None,
+    *,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> dict[str, Any]:
     """Writes the confirmed profile and creates the first program, exactly once.
 
@@ -566,7 +585,12 @@ def confirm_intake(
 
         try:
             result = onboarding_service.complete_onboarding(
-                db, ledger_id, {}, player_account_id=player_account_id, ledger=ledger
+                db,
+                ledger_id,
+                {},
+                player_account_id=player_account_id,
+                ledger=ledger,
+                emit_program_analytics=False,
             )
         except BaseException:
             ledger.release_intake_confirmation(datetime.now(UTC).isoformat())
@@ -595,6 +619,14 @@ def confirm_intake(
             weekly_frequency=program.weekly_frequency,
             program_message=None,
         )
+        persisted = ledger.get_active_program()
+        if result.get("program_generated") and player_account_id and persisted is not None:
+            capture_program_generated(
+                ProgramAnalyticsActor(player_account_id, "player"),
+                "onboarding",
+                persisted,
+                client=client,
+            )
         return {
             "status": STATUS_CONFIRMED,
             "program_name": program.program_name,

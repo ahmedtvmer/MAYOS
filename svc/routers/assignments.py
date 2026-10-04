@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, Response
 
 from agent.ProgramState import GeneratedProgramSchema, PersistedProgramSchema
+from service import analytics
 from service import assignments as assignment_service
 from service import analytics as analytics_service
 from service import check_ins as check_ins_service
@@ -28,6 +29,7 @@ from service import coach_history as coach_history_service
 from service import coach_programs as coach_programs_service
 from service import coach_program_drafts as coach_program_drafts_service
 from service import program_requests as program_requests_service
+from service.program_analytics import ProgramAnalyticsActor
 from svc.dependencies import (
     VerifiedPlayer,
     get_current_coach,
@@ -376,11 +378,12 @@ async def publish_assigned_player_program(
     def _run():
         published = coach_programs_service.publish_program(
             db,
-            coach.account_id,
+            ProgramAnalyticsActor(coach.account_id, "coach"),
             assignment_id,
             user_split_override=body.user_split_override,
             rep_preference_override=body.rep_preference_override,
             frequency_override=body.frequency_override,
+            client=analytics.client_context(request),
         )
         if published is None:
             raise _no_active_assignment()
@@ -480,6 +483,7 @@ async def publish_assigned_player_program_draft(
             db,
             coach.account_id,
             assignment_id,
+            analytics.client_context(request),
         )
     except coach_program_drafts_service.ProgramDraftValidationError as exc:
         raise HTTPException(
@@ -538,7 +542,13 @@ async def apply_assignment_program_request(
     """Revalidates and applies a pending request, publishing a new immutable version."""
 
     def _run():
-        result = program_requests_service.apply_request(db, coach.account_id, assignment_id, request_id)
+        result = program_requests_service.apply_request(
+            db,
+            ProgramAnalyticsActor(coach.account_id, "coach"),
+            assignment_id,
+            request_id,
+            client=analytics.client_context(request),
+        )
         if result is None:
             raise _no_active_assignment()
         if not result["ok"]:
@@ -562,7 +572,12 @@ async def decline_assignment_program_request(
 
     def _run():
         result = program_requests_service.decline_request(
-            db, coach.account_id, assignment_id, request_id, body.response
+            db,
+            ProgramAnalyticsActor(coach.account_id, "coach"),
+            assignment_id,
+            request_id,
+            body.response,
+            client=analytics.client_context(request),
         )
         if result is None:
             raise _no_active_assignment()
@@ -730,7 +745,13 @@ async def create_my_program_request(
     """Records a pending exercise-substitution or split-change request; the program is untouched."""
 
     def _run():
-        return program_requests_service.create_request(db, player.account_id, body.model_dump(), ledger=ledger)
+        return program_requests_service.create_request(
+            db,
+            ProgramAnalyticsActor(player.account_id, "player"),
+            body.model_dump(),
+            ledger=ledger,
+            client=analytics.client_context(request),
+        )
 
     result = await asyncio.to_thread(_run)
     if not result["ok"]:
@@ -754,7 +775,12 @@ async def cancel_my_program_request(
     """Cancels the caller's own pending request."""
 
     def _run():
-        result = program_requests_service.cancel_request(db, player.account_id, request_id)
+        result = program_requests_service.cancel_request(
+            db,
+            ProgramAnalyticsActor(player.account_id, "player"),
+            request_id,
+            client=analytics.client_context(request),
+        )
         if not result["ok"]:
             raise _bad_request(result["error"])
         return result["request"]

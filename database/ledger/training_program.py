@@ -17,6 +17,15 @@ logger = MyosLogger().get_logger(__name__)
 
 
 class LedgerTrainingProgramMixin:
+    def has_program_published_by_coach_since(self, coach_account_id: str, started_at: str) -> bool:
+        """Whether this coach has already published in the active Assignment."""
+        row = self.conn.execute(
+            "SELECT 1 FROM training_programs"
+            " WHERE published_by_coach_account_id = ? AND created_at >= ? LIMIT 1",
+            (coach_account_id, started_at),
+        ).fetchone()
+        return row is not None
+
     def save_training_program(
         self, program_data: dict, published_by_coach_account_id: str | None = None
     ) -> str:

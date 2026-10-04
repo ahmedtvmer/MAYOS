@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from service import analytics
+from service.program_analytics import ProgramAnalyticsActor, capture_program_exercise_swapped
 from service.programs import COACH_CONTROLLED_ERROR, player_controls_program
 
 
@@ -74,7 +76,13 @@ def substitute_program_exercise(
 
 
 def substitute_active_program_exercise(
-    db: Any, ledger: Any, player_account_id: str | None, request: ProgramSubstitution
+    db: Any,
+    ledger: Any,
+    player_account_id: str | None,
+    request: ProgramSubstitution,
+    *,
+    actor: ProgramAnalyticsActor,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> dict[str, Any]:
     """Authorize, check the version, publish one substitution, and reread it."""
     active, failure = _player_active_program(db, ledger, player_account_id)
@@ -83,7 +91,13 @@ def substitute_active_program_exercise(
     if request.expected_active_version is not None and active.version != request.expected_active_version:
         return _failure(SubstitutionErrorCode.PROGRAM_CHANGED)
     substitution = substitute_program_exercise(ledger, db, active, request)
-    return substitution if not substitution["ok"] else _updated_program_result(ledger, active.version)
+    if not substitution["ok"]:
+        return substitution
+    result = _updated_program_result(ledger, active.version)
+    updated = ledger.get_active_program()
+    if updated is not None:
+        capture_program_exercise_swapped(actor, updated, client=client)
+    return result
 
 
 def undo_active_program_substitution(
@@ -91,6 +105,9 @@ def undo_active_program_substitution(
     ledger: Any,
     player_account_id: str | None,
     request: ProgramSubstitutionUndo,
+    *,
+    actor: ProgramAnalyticsActor,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> dict[str, Any]:
     """Restore an exact historical snapshot as a fresh, player-owned version."""
     active, failure = _player_active_program(db, ledger, player_account_id)
@@ -101,7 +118,11 @@ def undo_active_program_substitution(
     snapshot = ledger.get_program_by_version(request.restore_version)
     if snapshot is None:
         return _failure(SubstitutionErrorCode.RESTORE_VERSION_NOT_FOUND)
-    return _restore_program_snapshot(ledger, active.version, snapshot)
+    result = _restore_program_snapshot(ledger, active.version, snapshot)
+    updated = ledger.get_active_program()
+    if updated is not None:
+        capture_program_exercise_swapped(actor, updated, client=client)
+    return result
 
 
 def _player_active_program(db: Any, ledger: Any, account_id: str | None) -> tuple[Any, dict[str, Any] | None]:

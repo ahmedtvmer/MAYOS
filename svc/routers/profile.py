@@ -3,9 +3,9 @@
 import asyncio
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from service import profile as profile_service
+from service import analytics, profile as profile_service
 from service.programs import player_controls_program
 from service import schedule as schedule_service
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
@@ -42,6 +42,7 @@ async def read_profile(
 
 @router.put("")
 async def update_profile(
+    request: Request,
     body: ProfileUpdate,
     player: Annotated[Any, Depends(get_verified_player)],
     ledger: Annotated[Any, Depends(get_ledger)],
@@ -50,7 +51,12 @@ async def update_profile(
     payload = {key: value for key, value in body.model_dump().items() if value is not None}
     result = await asyncio.to_thread(
         profile_service.update_profile,
-        db, str(player), payload, account_id_of(player), ledger,
+        db,
+        str(player),
+        payload,
+        account_id_of(player),
+        ledger,
+        client=analytics.client_context(request),
     )
     result["profile"] = {
         **(result.get("profile") or {}),

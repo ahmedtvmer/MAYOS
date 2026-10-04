@@ -11,6 +11,7 @@ from typing import Any
 
 from database.ledger.onboarding import OnboardingAnalyticsStart
 from langchain_core.messages import HumanMessage
+from service import analytics
 from service.keyed_locks import KeyedLocks
 
 _ONBOARDING_LOCKS = KeyedLocks()
@@ -141,11 +142,26 @@ def _record_welcome_message_once(ledger: Any, message: str) -> None:
     ledger.add_chat_message("assistant", welcome_message)
 
 
-def _resolve_onboarding_program(db: Any, ledger: Any, player_account_id: str | None) -> tuple[Any, str]:
+def _resolve_onboarding_program(
+    db: Any,
+    ledger: Any,
+    player_account_id: str | None,
+    client: analytics.ClientContext,
+    emit_program_analytics: bool,
+) -> tuple[Any, str, bool]:
     from agent.program_generator import generate_program_pipeline
     from service.programs import COACH_CONTROLLED_ERROR, ensure_active_program, player_controls_program
 
-    program = ensure_active_program(db, ledger.ledger_id, player_account_id=player_account_id, ledger=ledger)
+    had_program = ledger.get_active_program() is not None
+    program = ensure_active_program(
+        db,
+        ledger.ledger_id,
+        player_account_id=player_account_id,
+        ledger=ledger,
+        trigger="onboarding",
+        emit_analytics=emit_program_analytics,
+        client=client,
+    )
     if program is None and player_controls_program(db, ledger, player_account_id):
         program = generate_program_pipeline(ledger=ledger)[0]
 
@@ -157,7 +173,7 @@ def _resolve_onboarding_program(db: Any, ledger: Any, player_account_id: str | N
         "log your work in **Active Workout Logger**, or query me here."
     )
     _record_welcome_message_once(ledger, program_message)
-    return program, program_message
+    return program, program_message, not had_program and program is not None
 
 
 def complete_onboarding(
@@ -166,6 +182,9 @@ def complete_onboarding(
     state: dict[str, Any],
     player_account_id: str | None = None,
     ledger: Any | None = None,
+    *,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+    emit_program_analytics: bool = True,
 ) -> dict[str, Any]:
     from svc.llm import InferenceScope, run_inference_sync
 
@@ -174,15 +193,22 @@ def complete_onboarding(
     with ledger_scope(db, ledger, ledger_id) as ledger:
         # Keep duplicate completions out of the inference gate while they wait here.
         with _onboarding_lock(ledger.ledger_id):
-            program, program_message = run_inference_sync(
+            program, program_message, program_generated = run_inference_sync(
                 _resolve_onboarding_program,
                 db,
                 ledger,
                 player_account_id,
+                client,
+                emit_program_analytics,
                 scope=InferenceScope(
                     account_id=player_account_id, role="player", purpose="onboarding_complete", store=db
                 ),
             )
         if program is None:
-            return {"program": None, "state": state, "program_message": program_message}
-        return {"program": program, "state": state}
+            return {
+                "program": None,
+                "state": state,
+                "program_message": program_message,
+                "program_generated": False,
+            }
+        return {"program": program, "state": state, "program_generated": program_generated}

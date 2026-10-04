@@ -306,6 +306,7 @@ class AssistantState(TypedDict):
     intent_metadata: dict[str, Any]
     active_intents: list[dict[str, Any]] | None
     program_updated: bool
+    program_change: str | None
     response_content: str | None
     request_suggestion: dict[str, Any] | None
     pipeline_error: str | None
@@ -1494,7 +1495,12 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
             f"- **Installed:** {replacement['name'].title()} (`{replacement['target_muscle']}` | `{replacement['equipment']}`)\n"
             f"- **Execution Directive:** *{new_notes}*{note_suffix}"
         )
-        return {"program_updated": True, "response_content": msg, "messages": [AIMessage(content=msg)]}
+        return {
+            "program_updated": True,
+            "program_change": "swapped",
+            "response_content": msg,
+            "messages": [AIMessage(content=msg)],
+        }
 
     msg = substitution["error"]
     return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
@@ -1521,7 +1527,12 @@ def program_mutation_node(state: AssistantState, config: dict[str, Any] | None =
         # Intentional fresh-start: a rebuilt split invalidates routine-specific dialogue context.
         ledger.clear_chat_history()
         msg = f"Rebuilt routine: **{prog.program_name}** ({prog.weekly_frequency} Days/Week). Context cleared for new routine."
-        return {"program_updated": True, "response_content": msg, "messages": [AIMessage(content=msg)]}
+        return {
+            "program_updated": True,
+            "program_change": "regenerated",
+            "response_content": msg,
+            "messages": [AIMessage(content=msg)],
+        }
     except Exception as e:
         logger.error(f"Mutation failure: {e}")
         msg = "Could not rebuild split with those parameters."
@@ -1782,6 +1793,7 @@ def composite_intent_node(state: AssistantState, config: dict[str, Any] | None =
     preceding = []
     veto_pending = False
     any_program_updated = False
+    program_change = None
     request_suggestion = None
 
     handler_map = {
@@ -1813,6 +1825,7 @@ def composite_intent_node(state: AssistantState, config: dict[str, Any] | None =
             res = handler(sub_state, config)
             if res.get("program_updated"):
                 any_program_updated = True
+                program_change = res.get("program_change", program_change)
             if request_suggestion is None:
                 request_suggestion = res.get("request_suggestion")
             content = res.get("response_content", "")
@@ -1826,6 +1839,7 @@ def composite_intent_node(state: AssistantState, config: dict[str, Any] | None =
     combined_response = "\n\n---\n\n".join(responses) if responses else "Actions processed."
     return {
         "program_updated": any_program_updated,
+        "program_change": program_change,
         "request_suggestion": request_suggestion,
         "response_content": combined_response,
         "messages": [AIMessage(content=combined_response)],
@@ -2044,6 +2058,7 @@ def stream_assistant_turn(
     state.update(
         response_content=content,
         program_updated=bool(result and result.get("program_updated")),
+        program_change=result.get("program_change") if result else None,
         request_suggestion=result.get("request_suggestion") if result else None,
     )
     state["messages"] = original_messages + [AIMessage(content=content)]
