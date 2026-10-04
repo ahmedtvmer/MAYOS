@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -37,6 +37,8 @@ import 'support/fake_api_adapter.dart';
 import 'support/fake_mayos_api.dart';
 
 const String _account = 'account-alice';
+
+enum _WorkoutSeedVariant { standard, firstExerciseReplaced }
 
 /// The day the tests start from, built for the real controller to seed — the
 /// same `ProgramDay` the Program tab hands [ActiveWorkoutController
@@ -335,6 +337,7 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
   ThemeMode themeMode = ThemeMode.light,
   DateTime Function()? clock,
   ProgramDay day = _day,
+  _WorkoutSeedVariant workoutSeedVariant = _WorkoutSeedVariant.standard,
   FakeMayosApi? fakeApi,
   bool webDirectCommit = false,
   String? languageCode,
@@ -356,6 +359,33 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
       workoutCache: workoutCache,
     ),
   ))!;
+  if (workoutSeedVariant == _WorkoutSeedVariant.firstExerciseReplaced) {
+    final ActiveWorkout seeded = (await store.read(_account))!;
+    final ActiveWorkoutExercise replacedExercise =
+        seeded.exercises.first.copyWith(
+      sets: const <ActiveWorkoutSet>[],
+      replaced: true,
+    );
+    final ActiveWorkoutExercise replacementExercise = ActiveWorkoutExercise(
+      exercise: <String, dynamic>{
+        ...seeded.exercises.first.exercise,
+        'exercise_id': 'cable_fly',
+        'exercise_name': 'Cable Fly',
+      },
+      sets: const <ActiveWorkoutSet>[],
+      unplanned: true,
+    );
+    await store.write(
+      _account,
+      seeded.copyWith(
+        exercises: <ActiveWorkoutExercise>[
+          replacedExercise,
+          replacementExercise,
+          ...seeded.exercises.skip(1),
+        ],
+      ),
+    );
+  }
 
   await _pumpApp(
     tester,
@@ -558,7 +588,23 @@ void main() {
 
     expect(find.byKey(const ValueKey<String>('logger.warmup.section')),
         findsOneWidget);
+    final Finder exercisesSection =
+        find.byKey(const ValueKey<String>('logger.exercises.section'));
+    expect(exercisesSection, findsOneWidget);
+    expect(find.text('Exercises'), findsOneWidget);
     expect(find.byType(WarmupMovementLoggingCard), findsNWidgets(2));
+    expect(
+      tester.getRect(exercisesSection).top,
+      greaterThanOrEqualTo(
+        tester.getRect(find.byType(WarmupMovementLoggingCard).last).bottom,
+      ),
+    );
+    expect(
+      tester.getRect(exercisesSection).bottom,
+      lessThanOrEqualTo(
+        tester.getRect(find.byType(ExerciseLoggingCard).first).top,
+      ),
+    );
     expect(
       tester
           .widget<TextFormField>(
@@ -598,14 +644,72 @@ void main() {
     expect(find.text('Log at least one set'), findsOneWidget);
   });
 
-  testWidgets('a day without warm-up movements has no warm-up section',
+  for (final String languageCode in <String>['en', 'ar']) {
+    testWidgets(
+        '$languageCode workout without Warm-up has no section headers',
+        (WidgetTester tester) async {
+      await _openLogger(tester, languageCode: languageCode);
+
+      expect(find.byKey(const ValueKey<String>('logger.warmup.section')),
+          findsNothing);
+      expect(find.byKey(const ValueKey<String>('logger.exercises.section')),
+          findsNothing);
+      expect(
+        find.text(languageCode == 'ar' ? 'التمارين' : 'Exercises'),
+        findsNothing,
+      );
+      expect(find.byType(WarmupMovementLoggingCard), findsNothing);
+      expect(find.byType(CardioLoggingCard), findsNothing);
+    });
+  }
+
+  testWidgets('Arabic section headers render with right-to-left direction',
       (WidgetTester tester) async {
-    await _openLogger(tester);
+    await _openLogger(tester, day: _warmupDay, languageCode: 'ar');
+
+    final Finder exercisesSection =
+        find.byKey(const ValueKey<String>('logger.exercises.section'));
+    expect(exercisesSection, findsOneWidget);
+    expect(find.text('التمارين'), findsOneWidget);
+    expect(
+      Directionality.of(tester.element(exercisesSection)),
+      TextDirection.rtl,
+    );
+    expect(
+      tester
+          .renderObject<RenderParagraph>(find.text('التمارين'))
+          .textDirection,
+      TextDirection.rtl,
+    );
+    expect(
+      tester.renderObject<RenderParagraph>(find.text('التمارين')).textAlign,
+      TextAlign.start,
+    );
 
     expect(find.byKey(const ValueKey<String>('logger.warmup.section')),
-        findsNothing);
-    expect(find.byType(WarmupMovementLoggingCard), findsNothing);
-    expect(find.byType(CardioLoggingCard), findsNothing);
+        findsOneWidget);
+    expect(find.text('الإحماء'), findsOneWidget);
+  });
+
+  testWidgets('Exercises header precedes the first visible card after replace',
+      (WidgetTester tester) async {
+    await _openLogger(
+      tester,
+      day: _warmupDay,
+      workoutSeedVariant: _WorkoutSeedVariant.firstExerciseReplaced,
+    );
+
+    expect(find.text('Bench Press'), findsNothing);
+    expect(find.text('Cable Fly'), findsOneWidget);
+    expect(find.text('Incline Press'), findsOneWidget);
+    final Finder exercisesSection =
+        find.byKey(const ValueKey<String>('logger.exercises.section'));
+    expect(
+      tester.getRect(exercisesSection).bottom,
+      lessThanOrEqualTo(
+        tester.getRect(find.byType(ExerciseLoggingCard).first).top,
+      ),
+    );
   });
 
   testWidgets(

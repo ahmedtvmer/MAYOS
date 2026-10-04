@@ -1561,6 +1561,12 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
                           exerciseId: workout.warmupMovements[i].exerciseId!,
                         ),
               ),
+            MayosSectionHeader(
+              key: const ValueKey<String>('logger.exercises.section'),
+              title: _copy.exercises,
+              padding: EdgeInsets.zero,
+            ),
+            const SizedBox(height: MayosSpacing.xs),
           ],
           for (int i = 0; i < workout.exercises.length; i++)
             // A replaced planned exercise (#162) keeps its place in the

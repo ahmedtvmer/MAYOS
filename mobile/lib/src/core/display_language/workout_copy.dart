@@ -19,6 +19,7 @@ class WorkoutCopy {
   String get kilogramsShort => 'KG';
   String get repsShort => isArabic ? 'تكرارات' : 'REPS';
   String get warmup => isArabic ? 'الإحماء' : 'Warm-up';
+  String get exercises => isArabic ? 'التمارين' : 'Exercises';
   String get warmupMovementTag => isArabic ? 'حركة إحماء' : 'Warm-up';
   String get unplanned => isArabic ? 'غير مخطط' : 'Unplanned';
   String get cardio => isArabic ? 'تمارين اللياقة' : 'Cardio';
