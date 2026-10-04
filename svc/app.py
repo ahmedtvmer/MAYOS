@@ -16,7 +16,7 @@ from slowapi.errors import RateLimitExceeded
 from database.storage import storage_status
 from service.admin_auth import AdminSecurity, partial_secret_configuration
 from service import account_deletion as account_deletion_service
-from service.analytics import register_configured_sink
+from service.analytics import register_analytics_preference_reader, register_configured_sink
 from service.model_limits import ModelLimitExceeded
 from service.model_metering import record_model_usage
 from service.periodic_status import (
@@ -187,6 +187,7 @@ async def lifespan(app: FastAPI):
             configure_database_offsite_backup(db, log_disabled=True)
             # The app owns the one store; requests receive it via get_db.
             app.state.db = db
+            register_analytics_preference_reader(db.analytics_preference_allows)
             # Complete any deletion whose catalog transaction did not finish, so
             # a crash cannot leave a half-deleted account (ADR 015/039).
             await asyncio.to_thread(account_deletion_service.replay_deletions, db)

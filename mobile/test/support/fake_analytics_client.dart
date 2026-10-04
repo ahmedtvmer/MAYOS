@@ -5,8 +5,16 @@ class FakeAnalyticsClient implements AnalyticsClient {
   final List<String> identifiedRoles = <String>[];
   final List<String> resetAccountIds = <String>[];
   final List<Map<String, Object>> events = <Map<String, Object>>[];
+  final List<bool> enabledChanges = <bool>[];
 
   String? _currentAccountId;
+  bool enabled = true;
+
+  @override
+  void setEnabled(bool value) {
+    enabled = value;
+    enabledChanges.add(value);
+  }
 
   @override
   void identify(String accountId, {required String role}) {

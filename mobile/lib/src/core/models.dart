@@ -98,6 +98,7 @@ class Account {
     this.hasPassword = false,
     this.linkedSignIns = const <String>[],
     this.displayLanguage = 'en',
+    this.analyticsAllowed = true,
     this.recoveryEmailVerified = false,
   });
 
@@ -121,6 +122,7 @@ class Account {
           ? rawLinked.whereType<String>().toList(growable: false)
           : const <String>[],
       displayLanguage: normalizeDisplayLanguage(json['display_language']),
+      analyticsAllowed: json['analytics_allowed'] as bool? ?? true,
       recoveryEmailVerified: json['recovery_email_verified'] as bool? ?? false,
     );
   }
@@ -144,6 +146,9 @@ class Account {
   final List<String> linkedSignIns;
   final String displayLanguage;
 
+  /// Whether the registry allows product analytics for this Account.
+  final bool analyticsAllowed;
+
   /// Whether `/auth/me` confirms the current recovery email address.
   final bool recoveryEmailVerified;
 
@@ -156,6 +161,7 @@ class Account {
     bool? hasPassword,
     List<String>? linkedSignIns,
     String? displayLanguage,
+    bool? analyticsAllowed,
     bool? recoveryEmailVerified,
   }) =>
       Account(
@@ -167,6 +173,7 @@ class Account {
         hasPassword: hasPassword ?? this.hasPassword,
         linkedSignIns: linkedSignIns ?? this.linkedSignIns,
         displayLanguage: displayLanguage ?? this.displayLanguage,
+        analyticsAllowed: analyticsAllowed ?? this.analyticsAllowed,
         recoveryEmailVerified:
             recoveryEmailVerified ?? this.recoveryEmailVerified,
       );

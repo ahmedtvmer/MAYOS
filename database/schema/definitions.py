@@ -373,6 +373,11 @@ class SchemaMixin:
                     last_seen_at TEXT,
                     display_language TEXT NOT NULL DEFAULT 'en' CHECK (display_language IN ('en', 'ar'))
                 );
+                CREATE TABLE IF NOT EXISTS account_analytics_preferences (
+                    account_id TEXT PRIMARY KEY,
+                    analytics_allowed INTEGER NOT NULL DEFAULT 1
+                        CHECK (analytics_allowed IN (0, 1))
+                );
                 -- Partial unique index: a username is unique among live accounts, so a
                 -- deleted username can later be registered under a new immutable id.
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_active_username

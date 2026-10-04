@@ -11,8 +11,19 @@ and capture can lose an event.
 
 - PostHog `distinct_id` is the immutable Account id. It is never a username,
   email, token, or client identifier.
-- Mutable person properties are `is_player`, `is_coach`, `coached`, and
-  `active_roster_size`. The initial `signup_phase` is set once from
+- The registry stores each Account's analytics preference, allowed by default.
+  Opting out suppresses that Account's server events and person updates at the
+  analytics boundary, and disables the Flutter client for that Account. The
+  sole exception is one best-effort person update after the preference change
+  commits. If the registry preference cannot be read, the service suppresses
+  the send.
+- The gate follows an event or person update's `distinct_id`. An opted-out
+  Account's own events and person updates are suppressed. A counterpart's event
+  can still be sent when that Account allows analytics; for example, an
+  `assignment_started` event from an opted-out Player redeeming an invite is
+  attributed to the Coach. That event does not identify the opted-out Player.
+- Mutable person properties are `is_player`, `is_coach`, `coached`,
+  `active_roster_size`, and `analytics_opted_out`. The initial `signup_phase` is set once from
   `MAYOS_RELEASE_PHASE` (`closed_trial` by default; `public` after launch).
 - Every event carries `role`, `platform`, `app_version`, and `env`.
   `X-MAYOS-Client` uses `platform/version` (for example, `android/1.2.3`);
@@ -84,6 +95,7 @@ and capture can lose an event.
 | `is_coach` | Boolean person property | The Account has Coach capability. |
 | `coached` | Boolean person property | The Player has an active Assignment. |
 | `active_roster_size` | Integer from 0 to 200; person property and assignment event property | The Coach's count of active Assignments, read from committed registry state. |
+| `analytics_opted_out` | Boolean person property | Whether the Account holder turned product analytics off. Updated once after the preference change commits. |
 | `role` | `player`, `coach`, or `unknown` | Capability for the event's distinct id; Assignment lifecycle events describe the roster owner except when the Coach is deleted. |
 | `platform` | `android`, `web`, or `unknown` | Flutter client platform; server events use `X-MAYOS-Client`. |
 | `app_version` | Safe version label or `unknown` | Flutter build name; server events use `X-MAYOS-Client`. |
@@ -117,3 +129,17 @@ The service uses the PostHog SDK's background queue. It sends no events without 
 key and never sends from test mode. Person deletion is exposed by the MAYOS
 analytics interface and is handled independently of these coaching relationship
 events.
+
+## Privacy-notice draft — Draft — awaiting owner approval
+
+MAYOS uses PostHog (EU) as a product-analytics processor. MAYOS sends
+pseudonymous events associated with an immutable Account id to measure feature
+use, such as onboarding, workouts, coaching, programs, and AI. Events use
+allowlisted properties such as event names, capabilities, counts, and timing
+metadata; they do not contain free text, chat messages, onboarding answers,
+prompts, or workout contents. Account
+holders can turn product analytics off in Settings. When analytics is off,
+MAYOS stops sending that Account's own server and Flutter client analytics
+events. Events attributed to a counterpart remain subject to that counterpart's
+choice and do not identify the opted-out Account. The choice is stored with the
+Account and applies again after signing in on another session.

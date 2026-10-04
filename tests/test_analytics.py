@@ -199,6 +199,7 @@ def analytics_api(tmp_path, monkeypatch, recording_analytics):
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
+    analytics.register_analytics_preference_reader(db.analytics_preference_allows)
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
     sink = recording_analytics
@@ -408,6 +409,264 @@ def test_registration_and_onboarding_events_follow_successful_api_writes(analyti
     assert generated[0]["properties"]["trigger"] == "onboarding"
     with db.open_ledger(account["ledger_id"]) as ledger:
         assert ledger.get_intake_state()["status"] == "confirmed"
+
+
+def test_account_analytics_preference_defaults_allowed_and_gates_every_server_path(
+    analytics_api, monkeypatch
+):
+    client, db, sink = analytics_api
+    headers = _register(client, "analytics-opt-out")
+    account_id = db.get_active_account_by_username("analytics-opt-out")["account_id"]
+    sink.people_updates.clear()
+    original_set_person = sink.set_person
+
+    def record_after_preference_commit(distinct_id, properties):
+        if "analytics_opted_out" in properties:
+            assert not db.catalog_conn.in_transaction
+            assert db.get_account(distinct_id)["analytics_allowed"] is not properties["analytics_opted_out"]
+        original_set_person(distinct_id, properties)
+
+    monkeypatch.setattr(sink, "set_person", record_after_preference_commit)
+
+    account_info = client.get("/auth/me", headers=headers)
+    assert account_info.status_code == 200, account_info.text
+    assert account_info.json()["analytics_allowed"] is True
+    assert db.get_account(account_id)["analytics_allowed"] is True
+
+    disabled = client.put(
+        "/auth/analytics-preference",
+        headers=headers,
+        json={"analytics_allowed": False},
+    )
+    assert disabled.status_code == 200, disabled.text
+    assert disabled.json() == {"analytics_allowed": False}
+    assert db.get_account(account_id)["analytics_allowed"] is False
+    assert sink.people[account_id]["analytics_opted_out"] is True
+    assert sink.people_updates == [
+        {
+            "distinct_id": account_id,
+            "properties": {"analytics_opted_out": True},
+            "operation": "set",
+        }
+    ]
+
+    # All server sends share this boundary, including future event families and
+    # mutable/set-once person updates.
+    sink.events.clear()
+    before_person = dict(sink.people[account_id])
+    analytics.capture(
+        analytics.AnalyticsEvent(
+            account_id=account_id,
+            event="account_created",
+            domain_key=f"{account_id}:retry",
+            role="player",
+            properties={"signup_phase": "closed_trial", "invite_used": False},
+        )
+    )
+    analytics.set_person(account_id, {"coached": True})
+    analytics.set_person_once(account_id, {"signup_phase": "public"})
+    assert sink.events == []
+    assert sink.people[account_id] == before_person
+    assert sink.people_set_once[account_id] == {"signup_phase": "closed_trial"}
+
+    repeated = client.put(
+        "/auth/analytics-preference",
+        headers=headers,
+        json={"analytics_allowed": False},
+    )
+    assert repeated.status_code == 200, repeated.text
+    assert sink.people[account_id]["analytics_opted_out"] is True
+    assert len(sink.people_updates) == 1
+    refreshed = client.get("/auth/me", headers=headers)
+    assert refreshed.json()["analytics_allowed"] is False
+
+    with db.catalog_transaction(immediate=True):
+        db.catalog_conn.execute(
+            "CREATE TRIGGER reject_analytics_preference_delete "
+            "BEFORE DELETE ON account_analytics_preferences "
+            "BEGIN SELECT RAISE(ABORT, 'preference write failed'); END"
+        )
+    with pytest.raises(sqlite3.IntegrityError, match="preference write failed"):
+        client.put(
+            "/auth/analytics-preference",
+            headers=headers,
+            json={"analytics_allowed": True},
+        )
+    assert db.get_account(account_id)["analytics_allowed"] is False
+    assert len(sink.people_updates) == 1
+    with db.catalog_transaction(immediate=True):
+        db.catalog_conn.execute("DROP TRIGGER reject_analytics_preference_delete")
+
+    enabled = client.put(
+        "/auth/analytics-preference",
+        headers=headers,
+        json={"analytics_allowed": True},
+    )
+    assert enabled.status_code == 200, enabled.text
+    assert db.get_account(account_id)["analytics_allowed"] is True
+    assert sink.people[account_id]["analytics_opted_out"] is False
+    assert sink.people_updates[-1] == {
+        "distinct_id": account_id,
+        "properties": {"analytics_opted_out": False},
+        "operation": "set",
+    }
+    repeated_enable = client.put(
+        "/auth/analytics-preference",
+        headers=headers,
+        json={"analytics_allowed": True},
+    )
+    assert repeated_enable.status_code == 200, repeated_enable.text
+    assert len(sink.people_updates) == 2
+    analytics.capture(
+        analytics.AnalyticsEvent(
+            account_id=account_id,
+            event="account_created",
+            domain_key=f"{account_id}:resumed",
+            role="player",
+            properties={"signup_phase": "closed_trial", "invite_used": False},
+        )
+    )
+    assert len(sink.events) == 1
+
+    disabled_again = client.put(
+        "/auth/analytics-preference",
+        headers=headers,
+        json={"analytics_allowed": False},
+    )
+    assert disabled_again.status_code == 200, disabled_again.text
+    assert len(sink.people_updates) == 3
+    sink.events.clear()
+    deleted = client.request(
+        "DELETE",
+        "/auth/account",
+        headers=headers,
+        json={"password": "correct-horse-1"},
+    )
+    assert deleted.status_code == 200, deleted.text
+    assert sink.events == []
+    assert db.catalog_conn.execute(
+        "SELECT COUNT(*) FROM account_analytics_preferences WHERE account_id = ?",
+        (account_id,),
+    ).fetchone()[0] == 1
+
+
+def test_opted_out_account_suppresses_http_onboarding_and_program_events(analytics_api, monkeypatch):
+    client, db, sink = analytics_api
+    _install_analytics_program_generators(monkeypatch)
+    headers = _register(client, "analytics-opt-out-onboarding")
+    account = db.get_active_account_by_username("analytics-opt-out-onboarding")
+    disabled = client.put(
+        "/auth/analytics-preference",
+        headers=headers,
+        json={"analytics_allowed": False},
+    )
+    assert disabled.status_code == 200, disabled.text
+    sink.events.clear()
+
+    _fill_required_intake(client, headers)
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        ledger.save_intake_answer("gender", "female", prefilled=True)
+    completed = client.post("/onboarding/intake/confirm", headers=headers)
+    generated = client.post("/programs/generate", headers=headers, json={})
+
+    assert completed.status_code == 200, completed.text
+    assert generated.status_code == 200, generated.text
+    assert sink.events == []
+    assert sink.people[account["account_id"]]["analytics_opted_out"] is True
+
+
+def test_opted_out_accounts_suppress_http_assignment_events(analytics_api):
+    client, db, sink = analytics_api
+    coach_headers, coach_id = _grant_analytics_coach(client, db, "analytics-opt-out-coach")
+    _set_analytics_coach_profile(client, coach_headers, capacity=1)
+    invite = client.post("/coach/assignments/invites", headers=coach_headers)
+    assert invite.status_code == 200, invite.text
+    coach_opt_out = client.put(
+        "/auth/analytics-preference",
+        headers=coach_headers,
+        json={"analytics_allowed": False},
+    )
+    assert coach_opt_out.status_code == 200, coach_opt_out.text
+
+    player_headers = _register(client, "analytics-opt-out-player")
+    player = db.get_active_account_by_username("analytics-opt-out-player")
+    player_opt_out = client.put(
+        "/auth/analytics-preference",
+        headers=player_headers,
+        json={"analytics_allowed": False},
+    )
+    assert player_opt_out.status_code == 200, player_opt_out.text
+    sink.events.clear()
+
+    redeemed = client.post(
+        "/assignments/invites/redeem",
+        headers=player_headers,
+        json={"token": invite.json()["token"], "consent": True},
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    ended = client.post("/assignments/me/end", headers=player_headers)
+
+    assert ended.status_code == 200, ended.text
+    assert sink.events == []
+    assert sink.people[player["account_id"]]["analytics_opted_out"] is True
+    assert sink.people[coach_id]["analytics_opted_out"] is True
+
+
+def test_opted_out_player_assignment_redemption_is_attributed_to_allowed_coach(analytics_api):
+    client, db, sink = analytics_api
+    coach_headers, coach_id = _grant_analytics_coach(client, db, "analytics-mixed-coach")
+    _set_analytics_coach_profile(client, coach_headers, capacity=1)
+    invite = client.post("/coach/assignments/invites", headers=coach_headers)
+    assert invite.status_code == 200, invite.text
+
+    player_headers = _register(client, "analytics-mixed-player")
+    player_id = db.get_active_account_by_username("analytics-mixed-player")["account_id"]
+    opted_out = client.put(
+        "/auth/analytics-preference",
+        headers=player_headers,
+        json={"analytics_allowed": False},
+    )
+    assert opted_out.status_code == 200, opted_out.text
+    sink.events.clear()
+    sink.capture_attempts.clear()
+    sink.people_updates.clear()
+
+    redeemed = client.post(
+        "/assignments/invites/redeem",
+        headers=player_headers,
+        json={"token": invite.json()["token"], "consent": True},
+    )
+
+    assert redeemed.status_code == 200, redeemed.text
+    assert [event["event"] for event in sink.events] == ["assignment_started"]
+    assignment_started = sink.events[0]
+    assert assignment_started["distinct_id"] == coach_id
+    assert assignment_started["properties"]["coach_id"] == coach_id
+    assert all(event["distinct_id"] != player_id for event in sink.events)
+    assert all(attempt["distinct_id"] != player_id for attempt in sink.capture_attempts)
+    assert all(update["distinct_id"] != player_id for update in sink.people_updates)
+
+
+def test_analytics_boundary_fails_closed_when_registry_preference_cannot_be_read(recording_analytics):
+    account_id = "00000000-0000-0000-0000-000000000001"
+    analytics.register_analytics_preference_reader(lambda _account_id: (_ for _ in ()).throw(OSError()))
+
+    analytics.capture(
+        analytics.AnalyticsEvent(
+            account_id=account_id,
+            event="account_created",
+            domain_key=account_id,
+            role="player",
+            properties={"signup_phase": "closed_trial", "invite_used": False},
+        )
+    )
+    analytics.set_person(account_id, {"is_player": True})
+    analytics.set_person_once(account_id, {"signup_phase": "closed_trial"})
+
+    assert recording_analytics.events == []
+    assert recording_analytics.people == {}
+    assert recording_analytics.people_set_once == {}
+    analytics.register_analytics_preference_reader(None)
 
 
 def test_server_events_resolve_android_web_and_missing_client_dimensions(analytics_api):
@@ -829,6 +1088,7 @@ def test_recording_sink_keeps_every_capture_call_and_coach_events_use_player_own
 
     from service.program_analytics import ProgramAnalyticsActor, capture_program_generated
 
+    analytics.register_analytics_preference_reader(lambda _account_id: True)
     account_id = uuid.uuid4().hex
     event = analytics.AnalyticsEvent(
         account_id=account_id,

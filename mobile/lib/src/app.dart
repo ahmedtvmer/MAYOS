@@ -31,6 +31,7 @@ class _MayosAppState extends ConsumerState<MayosApp>
     with WidgetsBindingObserver {
   String? _analyticsAccountId;
   String? _analyticsRole;
+  bool _analyticsAllowed = true;
   late final ProviderSubscription<AuthState> _analyticsAuthSubscription;
 
   @override
@@ -189,15 +190,22 @@ class _MayosAppState extends ConsumerState<MayosApp>
             : account.capabilities.coach
                 ? 'coach'
                 : 'unknown';
-    if (accountId == _analyticsAccountId && role == _analyticsRole) return;
+    final bool allowed = account?.analyticsAllowed ?? true;
+    if (accountId == _analyticsAccountId &&
+        role == _analyticsRole &&
+        allowed == _analyticsAllowed) {
+      return;
+    }
 
     final AnalyticsClient analytics = ref.read(analyticsClientProvider);
     if (_analyticsAccountId != null && _analyticsAccountId != accountId) {
       analytics.reset();
     }
-    if (accountId != null) analytics.identify(accountId, role: role!);
+    analytics.setEnabled(allowed);
+    if (accountId != null && allowed) analytics.identify(accountId, role: role!);
     _analyticsAccountId = accountId;
     _analyticsRole = role;
+    _analyticsAllowed = allowed;
   }
 
   ThemeData _responsiveOverlayTheme(

@@ -98,6 +98,16 @@ class SettingsCopy {
   String get privacySubtitle => isArabic
       ? 'ما يجمعه MAYOS، ومن يمكنه الاطلاع عليه، وكيفية الحذف'
       : 'What MAYOS collects, who can see it, and deletion';
+  String get productAnalytics =>
+      isArabic ? 'تحليلات المنتج' : 'Product analytics';
+  String get allowAnalytics =>
+      isArabic ? 'السماح بتحليلات المنتج' : 'Allow product analytics';
+  String get analyticsDescription => isArabic
+      ? 'يستخدم MAYOS خدمة PostHog (في الاتحاد الأوروبي) لقياس استخدام الميزات عبر أحداث بمعرّف مستعار. لا تتضمن الأحداث نصوصًا تكتبها. يمكنك إيقاف ذلك في أي وقت.'
+      : 'MAYOS uses PostHog (EU) to measure feature use through pseudonymous events. Events exclude text you write. You can turn this off at any time.';
+  String get analyticsSaveFailed => isArabic
+      ? 'تعذر حفظ تفضيل التحليلات. حاول مرة أخرى.'
+      : 'Could not save your analytics preference. Please try again.';
   String get credits => isArabic ? 'الاعتمادات' : 'Credits';
   String get logOut => isArabic ? 'تسجيل الخروج' : 'Log out';
   String get styleLead => isArabic

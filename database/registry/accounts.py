@@ -8,6 +8,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+_ANALYTICS_ALLOWED_SQL = (
+    "COALESCE((SELECT analytics_allowed FROM account_analytics_preferences "
+    "WHERE account_id = accounts.account_id), 1)"
+)
+
 
 class RegistryAccountsMixin:
     def ledger_exists(self, username: str) -> bool:
@@ -15,7 +20,8 @@ class RegistryAccountsMixin:
         return (self.ledgers_dir / f"{sanitized}.db").is_file() if sanitized else False
 
     _ACCOUNT_COLUMNS = (
-        "account_id, username, ledger_id, status, is_player, is_coach, session_epoch, created_at, deleted_at, last_seen_at, display_language"
+        "account_id, username, ledger_id, status, is_player, is_coach, session_epoch, created_at, deleted_at, last_seen_at, display_language, "
+        + _ANALYTICS_ALLOWED_SQL
     )
 
     @staticmethod
@@ -34,6 +40,7 @@ class RegistryAccountsMixin:
             "deleted_at": row[8],
             "last_seen_at": row[9],
             "display_language": row[10] or "en",
+            "analytics_allowed": bool(row[11]),
         }
 
     @staticmethod
@@ -129,6 +136,48 @@ class RegistryAccountsMixin:
             )
             self._commit_catalog()
             return cursor.rowcount == 1
+
+    def set_account_analytics_allowed(
+        self,
+        account_id: str,
+        allowed: bool,
+    ) -> bool | None:
+        """Saves an account's analytics preference; returns None if it is not live."""
+        self.ensure_account_schema()
+        with self.catalog_transaction(immediate=True):
+            current = self._live_account_analytics_preference(account_id)
+            if current is None:
+                return None
+            if current == allowed:
+                return False
+            self._write_account_analytics_preference(account_id, allowed)
+        return True
+
+    def _live_account_analytics_preference(self, account_id: str) -> bool | None:
+        row = self.catalog_conn.execute(
+            f"SELECT {_ANALYTICS_ALLOWED_SQL} FROM accounts "
+            "WHERE account_id = ? AND status = 'active' AND deleted_at IS NULL",
+            (str(account_id),),
+        ).fetchone()
+        return None if row is None else bool(row[0])
+
+    def _write_account_analytics_preference(self, account_id: str, allowed: bool) -> None:
+        if allowed:
+            self.catalog_conn.execute(
+                "DELETE FROM account_analytics_preferences WHERE account_id = ?",
+                (str(account_id),),
+            )
+            return
+        self.catalog_conn.execute(
+            "INSERT INTO account_analytics_preferences (account_id, analytics_allowed)"
+            " VALUES (?, 0) ON CONFLICT(account_id) DO UPDATE SET analytics_allowed = 0",
+            (str(account_id),),
+        )
+
+    def analytics_preference_allows(self, account_id: str) -> bool:
+        """Returns true only for a registered account whose preference allows sends."""
+        account = self.get_account(account_id)
+        return account is not None and account["analytics_allowed"] is True
 
     def get_account(self, account_id: str) -> dict[str, Any] | None:
         """Reads an account by immutable id. Returns ``None`` when absent (fail closed)."""

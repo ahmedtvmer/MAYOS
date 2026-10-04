@@ -40,6 +40,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   int _selectorRevision = 0;
   bool _savingLanguage = false;
+  bool _savingAnalytics = false;
 
   Future<void> _openRecoveryEmail() async {
     await context.push(recoveryEmailSettingsPath);
@@ -325,6 +326,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ],
             ),
           ),
+          const SizedBox(height: MayosSpacing.lg),
+          MayosSectionHeader(title: ui.productAnalytics),
+          MayosCard(
+            padding: const EdgeInsets.symmetric(horizontal: MayosSpacing.xs),
+            child: SwitchListTile(
+              key: const Key('analytics_preference_switch'),
+              contentPadding: EdgeInsets.zero,
+              value: session?.account.analyticsAllowed ?? true,
+              onChanged: session == null || _savingAnalytics
+                  ? null
+                  : (bool value) => _saveAnalyticsPreference(
+                      value,
+                      accountId: session.account.accountId,
+                    ),
+              title: Text(ui.allowAnalytics),
+              subtitle: Text(ui.analyticsDescription),
+            ),
+          ),
           const SizedBox(height: MayosSpacing.xl),
           MayosCard(
             padding: const EdgeInsets.symmetric(
@@ -405,6 +424,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
     } finally {
       if (mounted) setState(() => _savingLanguage = false);
+    }
+  }
+
+  Future<void> _saveAnalyticsPreference(
+    bool value, {
+    required String accountId,
+  }) async {
+    setState(() => _savingAnalytics = true);
+    final authController = ref.read(authControllerProvider.notifier);
+    final SettingsCopy ui = SettingsCopy(ref.read(displayLanguageProvider));
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    try {
+      await authController.updateAnalyticsAllowed(accountId, value);
+    } on ApiException {
+      if (!mounted) return;
+      if (authController.ownsAccount(accountId)) {
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(SnackBar(content: Text(ui.analyticsSaveFailed)));
+      }
+    } finally {
+      if (mounted) setState(() => _savingAnalytics = false);
     }
   }
 }

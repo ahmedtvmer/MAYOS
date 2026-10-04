@@ -20,6 +20,8 @@ class FakeMayosApi {
   bool tokenValid = true;
   bool loginNetworkFails = false;
   bool displayLanguageUpdateFails = false;
+  bool analyticsPreferenceUpdateFails = false;
+  bool analyticsAllowed = true;
   bool coach = false;
   bool playerCapability = true;
   // Account deletion (issue #40). `accountDeleted` makes every authenticated
@@ -443,6 +445,8 @@ class FakeMayosApi {
         return _me(request);
       case '/auth/display-language':
         return _updateDisplayLanguage(request);
+      case '/auth/analytics-preference':
+        return _updateAnalyticsPreference(request);
       case '/auth/email':
         return _recoveryEmail(request);
       case '/auth/email/change':
@@ -772,6 +776,7 @@ class FakeMayosApi {
       'linked_sign_ins': linkedSignIns.toList(growable: false),
       'display_language':
           currentAccountDisplayLanguageOverride ?? displayLanguage,
+      'analytics_allowed': analyticsAllowed,
       'recovery_email_verified':
           recoveryEmail != null && recoveryEmailVerified,
     });
@@ -793,6 +798,19 @@ class FakeMayosApi {
     displayLanguage = language as String;
     return FakeResponse(
         200, <String, dynamic>{'display_language': displayLanguage});
+  }
+
+  FakeResponse _updateAnalyticsPreference(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (analyticsPreferenceUpdateFails) {
+      return const FakeResponse(503, <String, dynamic>{'detail': 'offline'});
+    }
+    analyticsAllowed = request.body['analytics_allowed'] as bool;
+    return FakeResponse(
+        200, <String, dynamic>{'analytics_allowed': analyticsAllowed});
   }
 
   Map<String, dynamic> _plansBody() => <String, dynamic>{

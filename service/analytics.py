@@ -166,6 +166,7 @@ PROPERTY_TYPES: dict[str, PropertyType] = {
     "step": _onboarding_step(),
     "coached": _boolean(),
     "active_roster_size": _bounded_int(200),
+    "analytics_opted_out": _boolean(),
     "coach_id": _account_id(),
     "ended_by": _enum(frozenset({"player", "coach", "coach_capability_disabled", "account_deleted"})),
     "reason_code": _enum(
@@ -263,10 +264,18 @@ EVENT_CATALOGUE: dict[str, EventContract] = {
 
 PERSON_PROPERTY_CATALOGUE: dict[str, PropertyType] = {
     name: PROPERTY_TYPES[name]
-    for name in ("is_player", "is_coach", "coached", "active_roster_size", "signup_phase")
+    for name in (
+        "is_player",
+        "is_coach",
+        "coached",
+        "active_roster_size",
+        "analytics_opted_out",
+        "signup_phase",
+    )
 }
 _MUTABLE_PERSON_PROPERTIES = {
-    name: PERSON_PROPERTY_CATALOGUE[name] for name in ("is_player", "is_coach", "coached", "active_roster_size")
+    name: PERSON_PROPERTY_CATALOGUE[name]
+    for name in ("is_player", "is_coach", "coached", "active_roster_size", "analytics_opted_out")
 }
 _SET_ONCE_PERSON_PROPERTIES = {"signup_phase": PERSON_PROPERTY_CATALOGUE["signup_phase"]}
 
@@ -374,6 +383,7 @@ class RecordingAnalyticsSink:
     def __init__(self) -> None:
         self.events: list[dict[str, Any]] = []
         self.people: dict[str, dict[str, Any]] = {}
+        self.people_updates: list[dict[str, Any]] = []
         self.people_set_once: dict[str, dict[str, Any]] = {}
         self.deleted_people: set[str] = set()
 
@@ -388,11 +398,17 @@ class RecordingAnalyticsSink:
     def set_person(self, account_id: str, properties: dict[str, Any]) -> None:
         _validate_account_id(account_id)
         _validate_person(properties, _MUTABLE_PERSON_PROPERTIES)
+        self.people_updates.append(
+            {"distinct_id": account_id, "properties": dict(properties), "operation": "set"}
+        )
         self.people.setdefault(account_id, {}).update(properties)
 
     def set_person_once(self, account_id: str, properties: dict[str, Any]) -> None:
         _validate_account_id(account_id)
         _validate_person(properties, _SET_ONCE_PERSON_PROPERTIES)
+        self.people_updates.append(
+            {"distinct_id": account_id, "properties": dict(properties), "operation": "set_once"}
+        )
         current = self.people_set_once.setdefault(account_id, {})
         for name, value in properties.items():
             current.setdefault(name, value)
@@ -485,6 +501,32 @@ def create_sink_from_environment() -> NoOpAnalyticsSink | PostHogAnalyticsSink:
 
 _sink: AnalyticsSink = NoOpAnalyticsSink()
 _sink_is_override = False
+_analytics_preference_reader: Callable[[str], bool] | None = None
+
+
+def register_analytics_preference_reader(reader: Callable[[str], bool] | None) -> None:
+    """Registers the registry lookup used to gate account-scoped sends.
+
+    Analytics stays a leaf module: the application supplies the registry seam
+    rather than importing database code here. A missing or failing reader
+    suppresses sends.
+    """
+    global _analytics_preference_reader
+    _analytics_preference_reader = reader
+
+
+def _account_allows_analytics(account_id: str) -> bool:
+    reader = _analytics_preference_reader
+    if reader is None:
+        return False
+    try:
+        return reader(account_id) is True
+    except Exception as exc:
+        logger.warning(
+            "Suppressing product analytics because the account preference could not be read (%s).",
+            type(exc).__name__,
+        )
+        return False
 
 
 def _install_sink(sink: AnalyticsSink) -> None:
@@ -521,6 +563,8 @@ def _observe(action: Callable[[], None], failure: str) -> None:
 
 def capture(event: AnalyticsEvent, client: ClientContext = UNKNOWN_CLIENT) -> None:
     """Captures one server event with safe dimensions and a deterministic UUID."""
+    if not _account_allows_analytics(event.account_id):
+        return
     payload = {**resolve_dimensions(client.header, role=event.role), **(event.properties or {})}
     _observe(
         lambda: _sink.capture(
@@ -537,11 +581,23 @@ def capture_for_request(request: Request, event: AnalyticsEvent) -> None:
 
 def set_person(account_id: str, properties: dict[str, Any]) -> None:
     """Sets mutable allowlisted person properties without affecting the request."""
+    if not _account_allows_analytics(account_id):
+        return
     _observe(lambda: _sink.set_person(account_id, properties), "person update")
+
+
+def record_opt_out_change(account_id: str, opted_out: bool) -> None:
+    """Records the committed analytics choice through the opt-out gate once."""
+    _observe(
+        lambda: _sink.set_person(account_id, {"analytics_opted_out": opted_out}),
+        "analytics preference update",
+    )
 
 
 def set_person_once(account_id: str, properties: dict[str, Any]) -> None:
     """Sets allowlisted person properties once without affecting the request."""
+    if not _account_allows_analytics(account_id):
+        return
     _observe(lambda: _sink.set_person_once(account_id, properties), "set-once update")
 
 

@@ -42,6 +42,7 @@ __all__ = [
     "AccountCapabilitiesOut",
     "AccountOut",
     "AccountPlansOut",
+    "AnalyticsPreferenceIn",
     "AssignmentAccessOut",
     "AssignmentEndOut",
     "AssignmentInviteIssueOut",
@@ -172,6 +173,10 @@ class DisplayLanguageIn(BaseModel):
     display_language: Literal["en", "ar"]
 
 
+class AnalyticsPreferenceIn(BaseModel):
+    analytics_allowed: bool
+
+
 class GoogleSignInIn(BaseModel):
     """Google ID token from the client. Verified server-side; never trusted as-is."""
 
@@ -263,6 +268,7 @@ class AccountOut(BaseModel):
     has_password: bool
     linked_sign_ins: list[str]
     display_language: Literal["en", "ar"]
+    analytics_allowed: bool = True
     recovery_email_verified: bool = False
     coach_ai_enabled: bool = False
 

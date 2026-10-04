@@ -59,12 +59,16 @@ def api(tmp_path: Path, monkeypatch):
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
+    from service.analytics import register_analytics_preference_reader
+
+    register_analytics_preference_reader(db.analytics_preference_allows)
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
     try:
         with TestClient(app) as client:
             yield client, db, tmp_path / "users"
     finally:
+        register_analytics_preference_reader(None)
         if db.ledger_conn is not None:
             db.ledger_conn.close()
         db.catalog_conn.close()

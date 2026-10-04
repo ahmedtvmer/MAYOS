@@ -43,6 +43,7 @@ from svc.schemas import (
     AccountCapabilitiesOut,
     AccountDeleteIn,
     AccountOut,
+    AnalyticsPreferenceIn,
     DisplayLanguageIn,
     AccountPlansOut,
     EmailUpdateIn,
@@ -386,6 +387,7 @@ async def read_current_account(
         has_password=has_password,
         linked_sign_ins=linked_sign_ins,
         display_language=account["display_language"],
+        analytics_allowed=account["analytics_allowed"],
         recovery_email_verified=recovery_email_verified,
         coach_ai_enabled=coach_ai_service.coach_ai_enabled(),
     )
@@ -404,6 +406,32 @@ async def update_display_language(
     if not saved:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found.")
     return {"display_language": body.display_language}
+
+
+@router.put("/analytics-preference")
+@limiter.limit(PASSWORD_LIMIT)
+async def update_analytics_preference(
+    request: Request,
+    body: AnalyticsPreferenceIn,
+    account: Annotated[VerifiedAccount, Depends(get_verified_account)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Saves the account's analytics choice in the registry."""
+    account_id = account.account_id
+    changed = await asyncio.to_thread(
+        db.set_account_analytics_allowed,
+        account_id,
+        body.analytics_allowed,
+    )
+    if changed is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found.")
+    if changed:
+        await asyncio.to_thread(
+            analytics_service.record_opt_out_change,
+            account_id,
+            not body.analytics_allowed,
+        )
+    return {"analytics_allowed": body.analytics_allowed}
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

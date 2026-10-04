@@ -295,6 +295,23 @@ class AuthController extends StateNotifier<AuthState> {
     return true;
   }
 
+  Future<bool> updateAnalyticsAllowed(String accountId, bool allowed) async {
+    if (!ownsAccount(accountId)) return false;
+    await _repository.updateAnalyticsAllowed(allowed);
+    final AccountSession? session = state.session;
+    if (session == null || !ownsAccount(accountId)) return false;
+    state = AuthState.authenticated(
+      AccountSession(
+        account: session.account.copyWith(analyticsAllowed: allowed),
+        onboarded: session.onboarded,
+        hasRecoveryEmail: session.hasRecoveryEmail,
+        recoveryEmail: session.recoveryEmail,
+      ),
+      notice: state.notice,
+    );
+    return true;
+  }
+
   /// One "Continue with Google" tap: get an ID token, then hand it to
   /// `POST /auth/google`. A linked subject signs in exactly like password
   /// login; any other subject parks a signup ticket for the picker.

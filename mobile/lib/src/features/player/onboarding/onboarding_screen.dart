@@ -88,6 +88,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   void _reportStepViewed(String? step) {
     if (step == null) return;
+    final Account? account =
+        ref.read(authControllerProvider).session?.account;
+    if (account?.analyticsAllowed == false) return;
     ref.read(analyticsClientProvider).onboardingStepViewed(step);
   }
 

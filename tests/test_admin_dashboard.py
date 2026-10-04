@@ -67,6 +67,9 @@ def admin_api(tmp_path: Path, monkeypatch):
         backups_dir=tmp_path / "backups",
         default_ledger_id="bootstrap",
     )
+    from service.analytics import register_analytics_preference_reader
+
+    register_analytics_preference_reader(db.analytics_preference_allows)
     app = create_app()
     app.state.db = db
     app.dependency_overrides[get_db] = lambda: db
@@ -77,6 +80,7 @@ def admin_api(tmp_path: Path, monkeypatch):
     try:
         yield client, db, current_time, sent_emails
     finally:
+        register_analytics_preference_reader(None)
         client.close()
         if db.ledger_conn is not None:
             db.ledger_conn.close()

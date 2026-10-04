@@ -478,6 +478,13 @@ class ApiClient {
         ));
   }
 
+  Future<void> updateAnalyticsAllowed(bool allowed) async {
+    await _send(() => _dio.put<dynamic>(
+          '/auth/analytics-preference',
+          data: <String, dynamic>{'analytics_allowed': allowed},
+        ));
+  }
+
   /// Redeems a single-use Coach invite from MAYOS and returns the updated account.
   Future<Account> redeemCoachInvite(String token) async {
     final response = await _send(

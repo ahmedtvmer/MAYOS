@@ -29,6 +29,8 @@ const Set<String> onboardingAnalyticsSteps = <String>{
 };
 
 abstract interface class AnalyticsClient {
+  void setEnabled(bool enabled);
+
   void identify(String accountId, {required String role});
 
   void onboardingStepViewed(String step);
@@ -38,6 +40,9 @@ abstract interface class AnalyticsClient {
 
 class NoOpAnalyticsClient implements AnalyticsClient {
   const NoOpAnalyticsClient();
+
+  @override
+  void setEnabled(bool enabled) {}
 
   @override
   void identify(String accountId, {required String role}) {}
@@ -89,6 +94,8 @@ class PostHogAnalyticsClient implements AnalyticsClient {
   final bool _isWeb;
   final Map<String, String> _commonDimensions;
   final Future<bool> _ready;
+  Future<void> _permissionChange = Future<void>.value();
+  bool _accountEnabled = true;
 
   static Future<void> _initialize(
     String clientKey, {
@@ -126,10 +133,27 @@ class PostHogAnalyticsClient implements AnalyticsClient {
   Future<void> _run(Future<void> Function() action) async {
     try {
       if (!await _ready) return;
+      await _permissionChange;
+      if (!_accountEnabled) return;
       await action();
     } on Object {
       // Analytics failures must not interrupt MAYOS account or onboarding work.
     }
+  }
+
+  @override
+  void setEnabled(bool enabled) {
+    _accountEnabled = enabled;
+    _permissionChange = _permissionChange.then((_) async {
+      if (!await _ready) return;
+      if (enabled) {
+        await Posthog().enable();
+      } else {
+        await Posthog().disable();
+      }
+    }).catchError((Object _) {
+      // The local gate remains authoritative if the SDK call fails.
+    });
   }
 
   Future<void> _identify(String accountId, String role) async {
@@ -180,7 +204,12 @@ class PostHogAnalyticsClient implements AnalyticsClient {
   @override
   void reset() {
     _currentRole = null;
-    unawaited(_run(_isWeb ? resetPostHogWeb : Posthog().reset));
+    _permissionChange = _permissionChange.then((_) async {
+      if (!await _ready) return;
+      await (_isWeb ? resetPostHogWeb() : Posthog().reset());
+    }).catchError((Object _) {
+      // Reset is best effort and must not affect sign-out.
+    });
   }
 
   String? _currentRole;
