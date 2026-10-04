@@ -346,6 +346,7 @@ class ApiClient {
     bool rememberMe = false,
     String? coachInviteCode,
     String displayLanguage = 'en',
+    Map<String, String>? firstTouch,
   }) async {
     final response = await _send(
       () => _dio.post<dynamic>(
@@ -356,6 +357,7 @@ class ApiClient {
           'remember_me': rememberMe,
           if (coachInviteCode != null) 'coach_invite_code': coachInviteCode,
           'display_language': displayLanguage,
+          if (firstTouch != null && firstTouch.isNotEmpty) 'first_touch': firstTouch,
         },
         options: Options(extra: {_skipAuth: true}),
       ),
@@ -455,6 +457,7 @@ class ApiClient {
     required String username,
     required String idToken,
     String displayLanguage = 'en',
+    Map<String, String>? firstTouch,
   }) async {
     final response = await _send(
       () => _dio.post<dynamic>(
@@ -464,6 +467,7 @@ class ApiClient {
           'username': username,
           'id_token': idToken,
           'display_language': displayLanguage,
+          if (firstTouch != null && firstTouch.isNotEmpty) 'first_touch': firstTouch,
         },
         options: Options(extra: {_skipAuth: true}),
       ),

@@ -179,6 +179,10 @@ dart run flutter_launcher_icons
 
 ## 8. Data safety form (answer key, derived from `docs/PRIVACY_POLICY.md`)
 
+The `play_install_referrer` library adds the Android
+`BIND_GET_INSTALL_REFERRER_SERVICE` permission. The app reads the Play install
+referrer once per install and sends only parsed UTM labels during registration.
+
 **Data types collected** — map each row to the matching Play category:
 
 | Play data type | Collected | Required / optional | Purpose | Shared with |

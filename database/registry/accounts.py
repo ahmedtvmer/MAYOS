@@ -14,6 +14,15 @@ _ANALYTICS_ALLOWED_SQL = (
 )
 
 
+FIRST_TOUCH_ACQUISITION_FIELDS = (
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "referrer_host",
+    "referring_coach_id",
+)
+
+
 class RegistryAccountsMixin:
     def ledger_exists(self, username: str) -> bool:
         sanitized = self._sanitize_username(username)
@@ -124,6 +133,58 @@ class RegistryAccountsMixin:
                 self._rollback_catalog()
                 return None
         return account_id
+
+    def record_first_touch_acquisition_once(
+        self, account_id: str, first_touch: dict[str, str | None]
+    ) -> None:
+        """Inserts acquisition once; caller includes it in the account transaction."""
+        self.ensure_account_schema()
+        columns = ", ".join(FIRST_TOUCH_ACQUISITION_FIELDS)
+        placeholders = ", ".join("?" for _ in FIRST_TOUCH_ACQUISITION_FIELDS)
+        values = tuple(first_touch.get(field) for field in FIRST_TOUCH_ACQUISITION_FIELDS)
+        with self._catalog_lock:
+            self.catalog_conn.execute(
+                f"INSERT OR IGNORE INTO first_touch_acquisition (account_id, {columns}) "
+                f"VALUES (?, {placeholders})",
+                (str(account_id), *values),
+            )
+            self._commit_catalog()
+
+    def record_first_touch_referring_coach_once(
+        self, account_id: str, coach_account_id: str, referred_at: str
+    ) -> str | None:
+        """Sets the first redeemed Assignment's Coach inside the caller's transaction."""
+        columns = ", ".join(FIRST_TOUCH_ACQUISITION_FIELDS)
+        placeholders = ", ".join("NULL" for _ in FIRST_TOUCH_ACQUISITION_FIELDS)
+        with self._catalog_lock:
+            self.catalog_conn.execute(
+                f"INSERT OR IGNORE INTO first_touch_acquisition "
+                f"(account_id, {columns}, referred_at) VALUES (?, {placeholders}, NULL)",
+                (str(account_id),),
+            )
+            self.catalog_conn.execute(
+                "UPDATE first_touch_acquisition SET referring_coach_id = ?, referred_at = ? "
+                "WHERE account_id = ? AND referring_coach_id IS NULL AND referred_at IS NULL",
+                (str(coach_account_id), referred_at, str(account_id)),
+            )
+            row = self.catalog_conn.execute(
+                "SELECT referring_coach_id FROM first_touch_acquisition WHERE account_id = ?",
+                (str(account_id),),
+            ).fetchone()
+        return str(row[0]) if row is not None and row[0] is not None else None
+
+    def get_first_touch_acquisition(self, account_id: str) -> dict[str, str | None] | None:
+        """Reads the immutable first-touch snapshot for a registered Account."""
+        self.ensure_account_schema()
+        columns = ", ".join(FIRST_TOUCH_ACQUISITION_FIELDS)
+        with self._catalog_lock:
+            row = self.catalog_conn.execute(
+                f"SELECT {columns} FROM first_touch_acquisition WHERE account_id = ?",
+                (str(account_id),),
+            ).fetchone()
+        if row is None:
+            return None
+        return dict(zip(FIRST_TOUCH_ACQUISITION_FIELDS, row, strict=True))
 
     def set_account_display_language(self, account_id: str, language: str) -> bool:
         if language not in ("en", "ar"):

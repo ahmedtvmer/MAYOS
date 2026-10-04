@@ -16,6 +16,8 @@ from typing import Any, Protocol
 
 from fastapi import Request
 
+from database.registry.accounts import FIRST_TOUCH_ACQUISITION_FIELDS
+from service import acquisition
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +119,30 @@ def _account_id() -> PropertyType:
     return PropertyType(is_account_id, "an immutable account UUID")
 
 
+def _utm_value() -> PropertyType:
+    return PropertyType(
+        acquisition.is_normalized_utm_label,
+        "a normalized UTM label",
+        maximum=64,
+    )
+
+
+def _host_value() -> PropertyType:
+    return PropertyType(
+        acquisition.is_normalized_referrer_host,
+        "a hostname",
+        maximum=253,
+    )
+
+
+def _acquisition_value(name: str) -> PropertyType:
+    if name.startswith("utm_"):
+        return _utm_value()
+    if name == "referrer_host":
+        return _host_value()
+    return _account_id()
+
+
 _PHASES = frozenset({"closed_trial", "public"})
 
 
@@ -185,6 +211,7 @@ PROPERTY_TYPES: dict[str, PropertyType] = {
         )
     ),
 }
+PROPERTY_TYPES.update({name: _acquisition_value(name) for name in FIRST_TOUCH_ACQUISITION_FIELDS})
 _COMMON_PROPERTIES = {name: PROPERTY_TYPES[name] for name in ("role", "platform", "app_version", "env")}
 EVENT_CATALOGUE: dict[str, EventContract] = {
     "account_created": EventContract(
@@ -271,13 +298,17 @@ PERSON_PROPERTY_CATALOGUE: dict[str, PropertyType] = {
         "active_roster_size",
         "analytics_opted_out",
         "signup_phase",
+        *FIRST_TOUCH_ACQUISITION_FIELDS,
     )
 }
 _MUTABLE_PERSON_PROPERTIES = {
     name: PERSON_PROPERTY_CATALOGUE[name]
     for name in ("is_player", "is_coach", "coached", "active_roster_size", "analytics_opted_out")
 }
-_SET_ONCE_PERSON_PROPERTIES = {"signup_phase": PERSON_PROPERTY_CATALOGUE["signup_phase"]}
+_SET_ONCE_PERSON_PROPERTIES = {
+    name: PERSON_PROPERTY_CATALOGUE[name]
+    for name in ("signup_phase", *FIRST_TOUCH_ACQUISITION_FIELDS)
+}
 
 
 class AnalyticsContractError(ValueError):

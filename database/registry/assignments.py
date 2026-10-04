@@ -285,6 +285,9 @@ class RegistryAssignmentsMixin:
                         now_iso,
                     ),
                 )
+                referring_coach_id = self.record_first_touch_referring_coach_once(
+                    player_account_id, coach_account_id, now_iso
+                )
                 roster_size = self.count_active_assignments_for_coach(coach_account_id)
                 conn.commit()
             except sqlite3.IntegrityError:
@@ -302,6 +305,7 @@ class RegistryAssignmentsMixin:
                 "started_at": now_iso,
                 "invite_created_at": target["invite_created_at"],
                 "roster_size": roster_size,
+                "referring_coach_id": referring_coach_id,
             }
 
     def end_assignment(self, assignment_id: str, account_id: str, now_iso: str, ended_by: str) -> dict[str, Any]:

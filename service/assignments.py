@@ -334,6 +334,12 @@ def redeem_assignment_invite(
         _capture_redemption_failure(player_account_id, result["reason"], client)
         return {"ok": False, "error": _reason_error(result["reason"])}
 
+    if result.get("referring_coach_id"):
+        analytics_service.set_person_once(
+            player_account_id,
+            {"referring_coach_id": result["referring_coach_id"]},
+        )
+
     _capture_assignment_started(player_account_id, result, client)
 
     identity = {"display_name": "", "bio": "", "specialization": ""}

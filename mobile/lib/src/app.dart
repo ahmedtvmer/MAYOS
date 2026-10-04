@@ -10,6 +10,7 @@ import 'core/analytics_client.dart';
 import 'core/app_mode.dart';
 import 'core/connectivity.dart';
 import 'core/display_language/controller.dart';
+import 'core/first_touch.dart';
 import 'core/models.dart';
 import 'core/theme/mayos_spacing.dart';
 import 'core/theme/mayos_theme.dart';
@@ -49,6 +50,9 @@ class _MayosAppState extends ConsumerState<MayosApp>
     if (ref.read(offlineBannerEnabledProvider)) {
       ref.read(connectivityControllerProvider);
     }
+    // Construct the source before auth navigation can replace the initial URL;
+    // startup reads it only after authentication confirms this device is signed out.
+    final firstTouchCapture = ref.read(firstTouchCaptureProvider);
     // Eagerly build the draft sync service so its auth listener is attached
     // before any screen reads it, so a stored session starts syncing at app
     // start rather than only once the home screen mounts (ADR 020/033).
@@ -58,7 +62,7 @@ class _MayosAppState extends ConsumerState<MayosApp>
     ref.read(trainingStatusProvider.notifier);
     // Session startup and preference storage are independent. A delayed or
     // unavailable language-store plugin must never hold authentication open.
-    unawaited(_initializeAuthentication());
+    unawaited(_initializeAuthentication(firstTouchCapture));
     unawaited(_initializeDisplayLanguage());
     // Load the persisted appearance choice off the first frame.
     Future<void>.microtask(
@@ -83,10 +87,12 @@ class _MayosAppState extends ConsumerState<MayosApp>
     }
   }
 
-  Future<void> _initializeAuthentication() async {
+  Future<void> _initializeAuthentication(FirstTouchCapture firstTouch) async {
     final bool definitivelySignedOut =
         await ref.read(authControllerProvider.notifier).initialize();
-    if (!mounted || !definitivelySignedOut) return;
+    if (!mounted) return;
+    if (definitivelySignedOut) unawaited(firstTouch.capture());
+    if (!definitivelySignedOut) return;
     // No token or a rejected token means the cached Account is no longer
     // active. Restore the local manual choice, or the latest system language.
     if (ref.read(authControllerProvider).session == null) {

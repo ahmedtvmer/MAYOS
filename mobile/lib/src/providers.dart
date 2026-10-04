@@ -4,6 +4,7 @@ import 'package:flutter/material.dart'
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/account_data_eraser.dart';
+import 'core/acquisition_source.dart';
 import 'core/active_program.dart';
 import 'core/active_workout.dart';
 import 'core/analytics_client.dart';
@@ -82,6 +83,14 @@ final Provider<AnalyticsClient> analyticsClientProvider =
   ),
 );
 
+final Provider<AcquisitionSource> acquisitionSourceProvider =
+    Provider<AcquisitionSource>((ref) => createAcquisitionSource());
+
+final Provider<FirstTouchCapture> firstTouchCaptureProvider =
+    Provider<FirstTouchCapture>(
+  (ref) => FirstTouchCapture(ref.watch(acquisitionSourceProvider)),
+);
+
 final recoveryEmailDetailsProvider =
     FutureProvider.autoDispose<RecoveryEmailDetails>(
   (ref) => ref.watch(apiClientProvider).recoveryEmailDetails(),
@@ -94,6 +103,9 @@ final Provider<AuthRepository> authRepositoryProvider =
     tokens: ref.watch(tokenStoreProvider),
     chatCache: ref.watch(chatCacheStoreProvider),
     displayLanguageStore: ref.watch(displayLanguageStoreProvider),
+    readFirstTouch: () => ref.read(firstTouchCaptureProvider).capture(),
+    clearFirstTouch: () =>
+        ref.read(firstTouchCaptureProvider).clearAfterRegistration(),
     eraser: AccountDataEraser(
       drafts: ref.watch(draftStoreProvider),
       workoutCache: ref.watch(workoutCacheStoreProvider),

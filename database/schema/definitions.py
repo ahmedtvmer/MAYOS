@@ -384,6 +384,17 @@ class SchemaMixin:
                     ON accounts(username) WHERE deleted_at IS NULL;
                 CREATE INDEX IF NOT EXISTS idx_accounts_ledger ON accounts(ledger_id);
 
+                -- One immutable, privacy-safe acquisition snapshot per registered account.
+                CREATE TABLE IF NOT EXISTS first_touch_acquisition (
+                    account_id TEXT PRIMARY KEY,
+                    utm_source TEXT,
+                    utm_medium TEXT,
+                    utm_campaign TEXT,
+                    referrer_host TEXT,
+                    referring_coach_id TEXT,
+                    referred_at TEXT
+                );
+
                 -- No account foreign key: deletion events outlive the account they target.
                 CREATE TABLE IF NOT EXISTS audit_log (
                     id TEXT PRIMARY KEY,
@@ -701,6 +712,7 @@ class SchemaMixin:
             # ADR 056 removes claim-code credential material with the claim flow.
             self.catalog_conn.execute("DROP TABLE IF EXISTS account_claim_codes")
             self._create_coach_alerts_schema()
+            self._ensure_first_touch_referred_at_column()
             self._ensure_recovery_email_verified_column()
             self._ensure_email_verification_attempts_column()
             self._ensure_pending_recovery_email_address_is_not_unique()
@@ -713,8 +725,31 @@ class SchemaMixin:
             self._ensure_model_spend_alert_columns()
             self._ensure_linked_sign_in_account_provider()
             self._ensure_coach_invites_revoked_at()
+            self.catalog_conn.execute("DROP TRIGGER IF EXISTS first_touch_acquisition_no_update")
+            self.catalog_conn.execute(
+                "CREATE TRIGGER first_touch_acquisition_no_update "
+                "BEFORE UPDATE ON first_touch_acquisition "
+                "WHEN NOT ("
+                " OLD.referring_coach_id IS NULL"
+                " AND NEW.referring_coach_id IS NOT NULL"
+                " AND OLD.referred_at IS NULL"
+                " AND NEW.referred_at IS NOT NULL"
+                " AND OLD.account_id IS NEW.account_id"
+                " AND OLD.utm_source IS NEW.utm_source"
+                " AND OLD.utm_medium IS NEW.utm_medium"
+                " AND OLD.utm_campaign IS NEW.utm_campaign"
+                " AND OLD.referrer_host IS NEW.referrer_host"
+                ") BEGIN SELECT RAISE(ABORT, 'first-touch acquisition records are immutable'); END"
+            )
             self._commit_catalog()
             self._account_schema_ready = True
+
+    def _ensure_first_touch_referred_at_column(self) -> None:
+        columns = self._table_columns(self.catalog_conn.cursor(), "first_touch_acquisition")
+        if "referred_at" not in columns:
+            self.catalog_conn.execute(
+                "ALTER TABLE first_touch_acquisition ADD COLUMN referred_at TEXT"
+            )
 
     def _ensure_pending_recovery_email_address_is_not_unique(self) -> None:
         cursor = self.catalog_conn.cursor()

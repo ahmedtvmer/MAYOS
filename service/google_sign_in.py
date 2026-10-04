@@ -24,7 +24,7 @@ import sqlite3
 from datetime import UTC, datetime
 from typing import Any, NamedTuple
 
-from service import admin_accounts, auth as auth_service, password_reset
+from service import acquisition, admin_accounts, auth as auth_service, password_reset
 
 
 class GoogleIdentity(NamedTuple):
@@ -45,6 +45,7 @@ class GoogleSignupCompletion(NamedTuple):
     display_language: str = "en"
     identity: GoogleIdentity | None = None
     recovery_email_conflict: bool = False
+    first_touch: dict[str, Any] | None = None
 
 
 PROVIDER = "google"
@@ -169,6 +170,7 @@ def complete_signup(db: Any, completion: GoogleSignupCompletion) -> dict[str, An
     healed = _self_heal(db, completion.subject, clean)
     if healed is not None:
         return healed
+    first_touch = acquisition.normalize_first_touch(completion.first_touch)
     linked_at = datetime.now(UTC).isoformat()
     with db.catalog_transaction(immediate=True):
         existing_id = db.get_linked_sign_in_account_id(PROVIDER, completion.subject)
@@ -182,6 +184,7 @@ def complete_signup(db: Any, completion: GoogleSignupCompletion) -> dict[str, An
         account_id = db.create_account(clean, display_language=completion.display_language)
         if account_id is None:
             raise SignUpConflictError(USERNAME_TAKEN)
+        db.record_first_touch_acquisition_once(account_id, first_touch)
         try:
             db.link_sign_in(PROVIDER, completion.subject, account_id, linked_at=linked_at)
         except sqlite3.IntegrityError:
@@ -201,6 +204,7 @@ def complete_signup(db: Any, completion: GoogleSignupCompletion) -> dict[str, An
         "trainee_id": ledger_id,
         "session_epoch": account.get("session_epoch", 1),
         "display_language": account.get("display_language", "en"),
+        "first_touch": first_touch,
     }
 
 

@@ -154,12 +154,24 @@ __all__ = [
 ]
 
 
+class FirstTouchIn(BaseModel):
+    """Untrusted acquisition input; the service keeps only normalized fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    utm_source: str | None = Field(default=None, max_length=2048)
+    utm_medium: str | None = Field(default=None, max_length=2048)
+    utm_campaign: str | None = Field(default=None, max_length=2048)
+    referrer_host: str | None = Field(default=None, max_length=2048)
+
+
 class TraineeIn(BaseModel):
     trainee_id: str = Field(min_length=1, max_length=60)
     password: str = Field(min_length=8, max_length=128)
     remember_me: bool = False
     coach_invite_code: str | None = None
     display_language: Literal["en", "ar"] = "en"
+    first_touch: FirstTouchIn | None = None
 
 
 class TokenOut(BaseModel):
@@ -205,6 +217,7 @@ class GoogleCompleteIn(BaseModel):
     username: str
     display_language: Literal["en", "ar"] = "en"
     id_token: str | None = None
+    first_touch: FirstTouchIn | None = None
 
 
 class GoogleLinkIn(BaseModel):

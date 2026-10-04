@@ -9,6 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from service import account_deletion as deletion_service
+from service import acquisition as acquisition_service
 from service import analytics as analytics_service
 from service import auth as auth_service
 from service import coach as coach_service
@@ -73,14 +74,30 @@ def _invalid_google_credentials() -> HTTPException:
     )
 
 
-def _record_account_created(request: Request, account_id: str, *, invite_used: bool) -> None:
+def _first_touch_payload(body: TraineeIn | GoogleCompleteIn) -> dict[str, str] | None:
+    return body.first_touch.model_dump(exclude_none=True) if body.first_touch else None
+
+
+def _record_account_created(
+    request: Request,
+    account_id: str,
+    *,
+    invite_used: bool,
+    first_touch: dict[str, str | None] | None = None,
+) -> None:
     """Updates the PostHog person and records the committed account creation."""
     signup_phase = analytics_service.release_phase()
     person_properties = {"is_player": True, "is_coach": invite_used}
     if invite_used:
         person_properties["active_roster_size"] = 0
     analytics_service.set_person(account_id, person_properties)
-    analytics_service.set_person_once(account_id, {"signup_phase": signup_phase})
+    analytics_service.set_person_once(
+        account_id,
+        {
+            "signup_phase": signup_phase,
+            **acquisition_service.first_touch_person_properties(first_touch or {}),
+        },
+    )
     analytics_service.capture_for_request(
         request,
         analytics_service.AnalyticsEvent(
@@ -97,7 +114,16 @@ def _record_account_created(request: Request, account_id: str, *, invite_used: b
 @limiter.limit(REGISTER_LIMIT)
 async def register(request: Request, body: TraineeIn, db: Annotated[Any, Depends(get_db)]):
     def _run():
-        result = auth_service.register_player(db, body.trainee_id, body.password, body.coach_invite_code, body.display_language)
+        result = auth_service.register_player(
+            db,
+            body.trainee_id,
+            body.password,
+            auth_service.PlayerRegistration(
+                coach_invite_code=body.coach_invite_code,
+                display_language=body.display_language,
+                first_touch=_first_touch_payload(body),
+            ),
+        )
         if not result["ok"]:
             status_code = (
                 status.HTTP_409_CONFLICT
@@ -108,7 +134,12 @@ async def register(request: Request, body: TraineeIn, db: Annotated[Any, Depends
         return result
 
     result = await asyncio.to_thread(_run)
-    _record_account_created(request, result["account_id"], invite_used=body.coach_invite_code is not None)
+    _record_account_created(
+        request,
+        result["account_id"],
+        invite_used=body.coach_invite_code is not None,
+        first_touch=result["first_touch"],
+    )
     if result["coach_granted_at"] is not None:
         coach_service.capture_coach_capability_granted_event(
             result["account_id"],
@@ -261,6 +292,7 @@ async def google_complete(
                     display_language=body.display_language,
                     identity=identity,
                     recovery_email_conflict=claims.get("recovery_email_conflict") is True,
+                    first_touch=_first_touch_payload(body),
                 ),
             )
         except ValueError as exc:
@@ -269,7 +301,12 @@ async def google_complete(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from None
 
     result = await asyncio.to_thread(_run)
-    _record_account_created(request, result["account_id"], invite_used=False)
+    _record_account_created(
+        request,
+        result["account_id"],
+        invite_used=False,
+        first_touch=result.get("first_touch"),
+    )
     return TokenOut(
         access_token=create_access_token(
             result["account_id"],

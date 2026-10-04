@@ -4,6 +4,7 @@ import '../../../core/account_data_eraser.dart';
 import '../../../core/api_client.dart';
 import '../../../core/chat_storage.dart';
 import '../../../core/display_language/store.dart';
+import '../../../core/first_touch.dart';
 import '../../../core/models.dart';
 import '../../../core/token_store.dart';
 import '../../../core/token_subject.dart';
@@ -43,17 +44,45 @@ class AuthRepository {
     required AccountDataEraser eraser,
     ChatCacheStore? chatCache,
     DisplayLanguageStore? displayLanguageStore,
+    Future<FirstTouch?> Function()? readFirstTouch,
+    Future<void> Function()? clearFirstTouch,
   })  : _api = api,
         _tokens = tokens,
         _eraser = eraser,
         _chatCache = chatCache,
-        _displayLanguageStore = displayLanguageStore;
+        _displayLanguageStore = displayLanguageStore,
+        _readFirstTouch = readFirstTouch,
+        _clearFirstTouch = clearFirstTouch;
 
   final ApiClient _api;
   final TokenStore _tokens;
   final AccountDataEraser _eraser;
   final ChatCacheStore? _chatCache;
   final DisplayLanguageStore? _displayLanguageStore;
+  final Future<FirstTouch?> Function()? _readFirstTouch;
+  final Future<void> Function()? _clearFirstTouch;
+
+  Future<Map<String, String>?> _registrationFirstTouch() async {
+    final Future<FirstTouch?> Function()? readFirstTouch = _readFirstTouch;
+    if (readFirstTouch == null) return null;
+    try {
+      final FirstTouch? touch = await Future<FirstTouch?>.sync(readFirstTouch)
+          .timeout(firstTouchCaptureTimeout);
+      return touch?.toJson();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _clearFirstTouchAfterRegistration() async {
+    final Future<void> Function()? clearFirstTouch = _clearFirstTouch;
+    if (clearFirstTouch == null) return;
+    try {
+      await clearFirstTouch().timeout(firstTouchCaptureTimeout);
+    } catch (_) {
+      // A storage failure must not fail a successful registration.
+    }
+  }
 
   Future<AccountSession> register({
     required String username,
@@ -61,15 +90,20 @@ class AuthRepository {
     bool rememberMe = false,
     String? coachInviteCode,
     String displayLanguage = 'en',
-  }) {
-    return _establishSession(
-      () => _api.register(
-          traineeId: username,
-          password: password,
-          rememberMe: rememberMe,
-          coachInviteCode: coachInviteCode,
-          displayLanguage: displayLanguage),
-    );
+  }) async {
+    final Map<String, String>? firstTouch = await _registrationFirstTouch();
+    return _establishSession(() async {
+      final AuthTokens tokens = await _api.register(
+        traineeId: username,
+        password: password,
+        rememberMe: rememberMe,
+        coachInviteCode: coachInviteCode,
+        displayLanguage: displayLanguage,
+        firstTouch: firstTouch,
+      );
+      await _clearFirstTouchAfterRegistration();
+      return tokens;
+    });
   }
 
   Future<AccountSession> login({
@@ -107,14 +141,19 @@ class AuthRepository {
     required String username,
     required String idToken,
     String displayLanguage = 'en',
-  }) {
-    return _establishSession(
-      () => _api.googleComplete(
-          signupTicket: signupTicket,
-          username: username,
-          idToken: idToken,
-          displayLanguage: displayLanguage),
-    );
+  }) async {
+    final Map<String, String>? firstTouch = await _registrationFirstTouch();
+    return _establishSession(() async {
+      final AuthTokens tokens = await _api.googleComplete(
+        signupTicket: signupTicket,
+        username: username,
+        idToken: idToken,
+        displayLanguage: displayLanguage,
+        firstTouch: firstTouch,
+      );
+      await _clearFirstTouchAfterRegistration();
+      return tokens;
+    });
   }
 
   /// Asks whether [username] is still free, authorised by the signup ticket.

@@ -742,6 +742,144 @@ def test_google_completion_captures_only_after_account_creation(analytics_api):
     assert created[0]["properties"]["invite_used"] is False
 
 
+def test_registration_stores_normalized_first_touch_once_and_login_does_not_replace_it(analytics_api):
+    client, db, sink = analytics_api
+    first_touch = {
+        "utm_source": " Google-Ads ",
+        "utm_medium": "paid search",
+        "utm_campaign": "Summer_2026",
+        "referrer_host": "https://www.Example.com/landing?email=private@example.com",
+    }
+    _register(client, "first-touch-player", first_touch=first_touch, client_header="web/1.2.3")
+    account = db.get_active_account_by_username("first-touch-player")
+    account_id = account["account_id"]
+    stored = db.get_first_touch_acquisition(account_id)
+    assert stored == {
+        "utm_source": "google-ads",
+        "utm_medium": None,
+        "utm_campaign": "summer_2026",
+        "referrer_host": "www.example.com",
+        "referring_coach_id": None,
+    }
+    assert "private@example.com" not in str(stored)
+    assert sink.people_set_once[account_id] == {
+        "signup_phase": "closed_trial",
+        "utm_source": "google-ads",
+        "utm_campaign": "summer_2026",
+        "referrer_host": "www.example.com",
+    }
+
+    columns = {
+        row[1]
+        for row in db.catalog_conn.execute("PRAGMA table_info(first_touch_acquisition)").fetchall()
+    }
+    assert columns == {
+        "account_id",
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "referrer_host",
+        "referring_coach_id",
+        "referred_at",
+    }
+    with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+        db.catalog_conn.execute(
+            "UPDATE first_touch_acquisition SET utm_source = 'later' WHERE account_id = ?", (account_id,)
+        )
+    db.catalog_conn.rollback()
+
+    login = client.post(
+        "/auth/login",
+        json={
+            "trainee_id": "first-touch-player",
+            "password": "correct-horse-1",
+            "first_touch": {"utm_source": "later-session"},
+        },
+    )
+    assert login.status_code == 200, login.text
+    retry = client.post(
+        "/auth/register",
+        json={
+            "trainee_id": "first-touch-player",
+            "password": "correct-horse-1",
+            "first_touch": {"utm_source": "later-registration"},
+        },
+    )
+    assert retry.status_code == 409
+    assert db.get_first_touch_acquisition(account_id) == stored
+    assert sink.people_set_once[account_id]["utm_source"] == "google-ads"
+    assert len([event for event in sink.events if event["event"] == "account_created"]) == 1
+
+
+def test_google_signup_accepts_only_device_parsed_install_referrer_labels(analytics_api):
+    client, db, sink = analytics_api
+    ticket = create_signup_ticket("analytics-google-first-touch")
+    referrer = "utm_source=google-play&utm_medium=organic&utm_campaign=trial_launch&gclid=private-click-id"
+    raw_referrer = client.post(
+        "/auth/google/complete",
+        json={
+            "signup_ticket": ticket,
+            "username": "google-first-touch",
+            "first_touch": {"install_referrer": referrer},
+        },
+    )
+    assert raw_referrer.status_code == 422
+    completed = client.post(
+        "/auth/google/complete",
+        json={
+            "signup_ticket": ticket,
+            "username": "google-first-touch",
+            "first_touch": {
+                "utm_source": "google-play",
+                "utm_medium": "organic",
+                "utm_campaign": "trial_launch",
+            },
+        },
+    )
+    assert completed.status_code == 200, completed.text
+    account = db.get_active_account_by_username("google-first-touch")
+    stored = db.get_first_touch_acquisition(account["account_id"])
+    assert stored == {
+        "utm_source": "google-play",
+        "utm_medium": "organic",
+        "utm_campaign": "trial_launch",
+        "referrer_host": None,
+        "referring_coach_id": None,
+    }
+    assert "gclid" not in str(stored)
+    assert sink.people_set_once[account["account_id"]] == {
+        "signup_phase": "closed_trial",
+        "utm_source": "google-play",
+        "utm_medium": "organic",
+        "utm_campaign": "trial_launch",
+    }
+
+
+def test_first_assignment_invite_sets_referring_coach_once_after_commit(analytics_api):
+    client, db, sink = analytics_api
+    player_headers = _register(client, "analytics-referred-player")
+    _assigned_analytics_player(client, db, player_headers)
+
+    player = db.get_active_account_by_username("analytics-referred-player")
+    coach = db.get_active_account_by_username("analytics-coach")
+    record = db.get_first_touch_acquisition(player["account_id"])
+    assert record["referring_coach_id"] == coach["account_id"]
+    assert db.catalog_conn.execute(
+        "SELECT referred_at FROM first_touch_acquisition WHERE account_id = ?",
+        (player["account_id"],),
+    ).fetchone()[0]
+    assert sink.people_set_once[player["account_id"]]["referring_coach_id"] == coach["account_id"]
+    assert not db.catalog_conn.in_transaction
+
+    with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+        db.catalog_conn.execute(
+            "UPDATE first_touch_acquisition SET referring_coach_id = ?, referred_at = ? "
+            "WHERE account_id = ?",
+            ("0" * 32, datetime.now(UTC).isoformat(), player["account_id"]),
+        )
+    db.catalog_conn.rollback()
+
+
 def test_legacy_start_captures_once_after_its_first_write(analytics_api):
     client, db, sink = analytics_api
     headers = _register(client, "analytics-legacy-start")
@@ -1205,7 +1343,14 @@ def test_account_created_marks_invite_use_and_release_phase_once(analytics_api, 
     code = "coach-invite-code-123"
     expires = (datetime.now(UTC) + timedelta(days=1)).isoformat()
     assert db.issue_new_account_coach_invite(hash_token(code), "invited-coach", expires)
-    _register(client, "invited-coach", coach_invite_code=code)
+    _register(
+        client,
+        "invited-coach",
+        coach_invite_code=code,
+        first_touch={"utm_source": "owner-invite"},
+    )
+    account = db.get_active_account_by_username("invited-coach")
+    assert db.get_first_touch_acquisition(account["account_id"])["utm_source"] == "owner-invite"
 
     event = _event(sink, "account_created")
     assert event["properties"]["signup_phase"] == "public"
@@ -1221,7 +1366,10 @@ def test_account_created_marks_invite_use_and_release_phase_once(analytics_api, 
         "is_coach": True,
         "active_roster_size": 0,
     }
-    assert sink.people_set_once[event["distinct_id"]] == {"signup_phase": "public"}
+    assert sink.people_set_once[event["distinct_id"]] == {
+        "signup_phase": "public",
+        "utm_source": "owner-invite",
+    }
 
 
 def test_recording_sink_rejects_unknown_contract_and_private_values(recording_analytics):

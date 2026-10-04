@@ -25,6 +25,8 @@ and capture can lose an event.
 - Mutable person properties are `is_player`, `is_coach`, `coached`,
   `active_roster_size`, and `analytics_opted_out`. The initial `signup_phase` is set once from
   `MAYOS_RELEASE_PHASE` (`closed_trial` by default; `public` after launch).
+  UTM and referrer properties are set once at registration; referral Coach
+  attribution is set once after the first successful Assignment invite redemption.
 - Every event carries `role`, `platform`, `app_version`, and `env`.
   `X-MAYOS-Client` uses `platform/version` (for example, `android/1.2.3`);
   missing or invalid headers resolve to `unknown`. The service owns that
@@ -65,6 +67,48 @@ and capture can lose an event.
   missing properties, and values outside each property's safe type or
   vocabulary. The production adapter drops and logs contract violations.
 
+## First-touch acquisition
+
+Registration accepts an optional `first_touch` object on password registration
+and Google signup completion. Web writes its first UTM/referrer snapshot to
+browser storage only when no earlier snapshot exists, preserving it across
+refreshes, the splash-to-login redirect, and return visits until registration;
+it clears that snapshot after a successful registration. Android persists the
+parsed Play Install Referrer result or an empty-read marker, so the plugin is
+called at most once per install. The app does not read it for a signed-in
+account. Web captures `utm_source`, `utm_medium`, and `utm_campaign` from the
+initial URL plus only the host of `document.referrer`.
+
+The Android device parses the install-referrer query string locally and sends
+only its three UTM labels; click identifiers and other query parameters never
+reach the service.
+
+The registry stores one row in `first_touch_acquisition` with the normalized
+UTM labels and `referrer_host`. It is inserted in the Account creation
+transaction and cannot be changed, except to attach the first redeemed
+Assignment's Coach id and `referred_at`. Person properties use PostHog's
+set-once operation for the same populated fields. The
+service lowercases UTM labels, accepts at most 64 characters from
+`[a-z0-9._-]`, and drops a label that does not meet that rule. It extracts and
+stores only the hostname from a referrer; URL paths, query strings, and
+credentials are discarded. The install referrer is parsed and discarded: click
+identifiers and all non-UTM parameters are not stored or sent to PostHog.
+
+On the first successful Assignment invite redemption, the registry sets
+`referring_coach_id` to the opaque Account id of the Coach whose invite the
+account redeemed first, with `referred_at` in the same redemption transaction.
+That value can move only from NULL to its first Coach id and is mirrored to the
+PostHog person with a set-once update after commit.
+
+Channel names are not stored in the app or registry. PostHog and BI apply an
+editable classification with this precedence: a `referring_coach_id` is a
+Coach referral; otherwise a recognized `utm_medium` mapping determines the
+channel, with `utm_source` and `utm_campaign` used for breakdowns; otherwise a
+known `referrer_host` mapping determines the referrer channel; with no signal,
+classify as direct or unknown. Unknown UTM labels remain available as raw,
+normalized values so the PostHog/BI mapping can change without rewriting the
+registry.
+
 ## Current event catalogue
 
 <!-- event-catalogue:start -->
@@ -101,6 +145,11 @@ and capture can lose an event.
 | `app_version` | Safe version label or `unknown` | Flutter build name; server events use `X-MAYOS-Client`. |
 | `env` | `development`, `production`, or `test` | Release Flutter events use `production`; server uses `MAYOS_ENV`, defaulting to `development`. |
 | `signup_phase` | `closed_trial` or `public` | Release phase at account creation; also set once on the person. |
+| `utm_source` | Lowercase `[a-z0-9._-]`, 1–64 characters | First-touch source label; set once on the person and stored in `first_touch_acquisition`. |
+| `utm_medium` | Lowercase `[a-z0-9._-]`, 1–64 characters | First-touch medium label; set once on the person and stored in `first_touch_acquisition`. |
+| `utm_campaign` | Lowercase `[a-z0-9._-]`, 1–64 characters | First-touch campaign label; set once on the person and stored in `first_touch_acquisition`. |
+| `referrer_host` | Lowercase hostname, up to 253 characters | Host extracted from the first web document referrer; paths and query strings are discarded. |
+| `referring_coach_id` | Immutable Account UUID | Opaque Account id of the Coach whose Assignment invite the account redeemed first; set once after account creation. |
 | `invite_used` | Boolean | Whether registration consumed a new-account Coach invite. No invite code is sent. |
 | `duration_seconds` | Bounded nonnegative integer | For onboarding, elapsed whole seconds from the first persisted start to completion; for an Assignment, elapsed whole seconds from its committed start to end. |
 | `coach_id` | Immutable Account UUID | Opaque id of the Coach on an `assignment_started` event. |

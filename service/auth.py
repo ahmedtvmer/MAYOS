@@ -5,11 +5,13 @@ indistinguishable (``Invalid credentials.``); only registration reveals
 ID-taken, which is inherent to signup.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 import bcrypt
 
+from service import acquisition
 from service._base import ledger_scope
 from service.coach import (
     DEFAULT_CAPACITY,
@@ -23,6 +25,13 @@ INVALID_CREDENTIALS = "Invalid credentials."
 MIN_COACH_INVITE_CODE_LENGTH = 10
 MAX_COACH_INVITE_CODE_LENGTH = 128
 USERNAME_TAKEN = "This Trainee ID already exists. Please log in."
+
+
+@dataclass(frozen=True)
+class PlayerRegistration:
+    coach_invite_code: str | None = None
+    display_language: str = "en"
+    first_touch: dict[str, Any] | None = None
 
 
 def validate_password(password: Any) -> str:
@@ -43,7 +52,10 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def register_player(
-    db: Any, username: str, password: str, coach_invite_code: str | None = None, display_language: str = "en"
+    db: Any,
+    username: str,
+    password: str,
+    registration: PlayerRegistration = PlayerRegistration(),
 ) -> dict[str, Any]:
     """Creates an immutable account identity plus its ledger.
 
@@ -53,24 +65,34 @@ def register_player(
     """
     clean_id = db._sanitize_username(username)
     coach_granted_at = None
+    normalized_first_touch = acquisition.normalize_first_touch(registration.first_touch)
     if not clean_id:
         return {"ok": False, "error": "Trainee ID is empty after sanitization."}
-    if coach_invite_code is not None:
+    if registration.coach_invite_code is not None:
         try:
             validate_password(password)
         except ValueError as exc:
             return {"ok": False, "error": str(exc), "code": "weak_new"}
-        if not isinstance(coach_invite_code, str) or not (
-            MIN_COACH_INVITE_CODE_LENGTH <= len(coach_invite_code) <= MAX_COACH_INVITE_CODE_LENGTH
+        if not isinstance(registration.coach_invite_code, str) or not (
+            MIN_COACH_INVITE_CODE_LENGTH
+            <= len(registration.coach_invite_code)
+            <= MAX_COACH_INVITE_CODE_LENGTH
         ):
             return {"ok": False, "error": GENERIC_NEW_ACCOUNT_INVITE_ERROR, "code": "invalid_coach_invite"}
         coach_granted_at = datetime.now(UTC).isoformat()
-        account = db.register_account_with_coach_invite(
-            hash_token(coach_invite_code), clean_id, coach_granted_at, DEFAULT_CAPACITY, display_language
-        )
+        with db.catalog_transaction(immediate=True):
+            account = db.register_account_with_coach_invite(
+                hash_token(registration.coach_invite_code),
+                clean_id,
+                coach_granted_at,
+                DEFAULT_CAPACITY,
+                registration.display_language,
+            )
+            if account is not None:
+                account_id = account["account_id"]
+                db.record_first_touch_acquisition_once(account_id, normalized_first_touch)
         if account is None:
             return {"ok": False, "error": GENERIC_NEW_ACCOUNT_INVITE_ERROR, "code": "invalid_coach_invite"}
-        account_id = account["account_id"]
     else:
         if (
             db.get_active_account_by_username(clean_id) is not None
@@ -82,7 +104,13 @@ def register_player(
             validate_password(password)
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
-        account_id = db.create_account(clean_id, display_language=display_language)
+        with db.catalog_transaction(immediate=True):
+            account_id = db.create_account(
+                clean_id,
+                display_language=registration.display_language,
+            )
+            if account_id is not None:
+                db.record_first_touch_acquisition_once(account_id, normalized_first_touch)
     if account_id is None:
         return {"ok": False, "error": USERNAME_TAKEN, "code": "username_taken"}
     account = db.get_account(account_id) or {}
@@ -99,6 +127,7 @@ def register_player(
         "coach_granted_at": coach_granted_at,
         "session_epoch": account.get("session_epoch", 1),
         "display_language": account.get("display_language", "en"),
+        "first_touch": normalized_first_touch,
     }
 
 
