@@ -80,6 +80,22 @@ def test_no_account_notice_uses_console_sender_without_personal_details(monkeypa
     assert recipient not in caplog.text
 
 
+def test_coach_invite_console_sender_never_logs_the_code_or_recovery_email(monkeypatch, caplog):
+    recipient = "private.player@example.com"
+    code = "one-time-coach-code"
+    monkeypatch.setenv("SMTP_HOST", "")
+
+    with caplog.at_level(logging.INFO, logger="service.email_sender"):
+        delivered = email_sender.send_coach_invite_email(
+            recipient, code, "en", account_id="account-coach-invite"
+        )
+
+    assert delivered is True
+    assert code not in caplog.text
+    assert recipient not in caplog.text
+    assert "[redacted one-time coach invite code]" in caplog.text
+
+
 def test_email_reference_and_notice_keys_are_purpose_separated_without_secret(monkeypatch):
     from service.email_hash_keys import derive_email_hash_key
 

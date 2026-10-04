@@ -2152,6 +2152,211 @@ def test_admin_coach_invite_is_shown_once_and_redeems(admin_api, caplog):
     assert token not in live_page.text and "Used" in live_page.text
 
 
+def test_admin_coach_invite_can_be_emailed_in_display_language(admin_api, caplog, mark_recovery_email_verified):
+    client, db, now, sent_emails = admin_api
+    account, _ = _register_account(client, db, "coachinviteemail")
+    db.set_account_email(account["account_id"], "alice@gmail.com")
+    mark_recovery_email_verified(db, account["account_id"])
+    assert db.set_account_display_language(account["account_id"], "ar")
+    assert _login(client, now[0]).status_code == 303
+
+    account_page = client.get(f"/admin/accounts/{account['account_id']}")
+    issued = client.post(
+        f"/admin/accounts/{account['account_id']}/coach-invites",
+        data={"csrf_token": _csrf(account_page.text), "ttl_minutes": "60"},
+    )
+
+    assert issued.status_code == 200
+    assert "Send by email to a***@gmail.com" in issued.text
+    assert 'id="issued_coach_code" type="text" readonly' in issued.text
+    assert "Share on WhatsApp" in issued.text
+    token = html.unescape(re.search(r'id="issued_coach_code"[^>]+value="([^"]+)"', issued.text).group(1))
+    assert f"Your MAYOS coach code: {token}." in html.unescape(issued.text)
+    assert f'action="/admin/accounts/{account["account_id"]}/coach-invites/email"' in issued.text
+
+    failed_csrf = client.post(
+        f"/admin/accounts/{account['account_id']}/coach-invites/email",
+        data={"csrf_token": "wrong-token", "coach_invite_code": token},
+    )
+    assert failed_csrf.status_code == 403
+    sent = client.post(
+        f"/admin/accounts/{account['account_id']}/coach-invites/email",
+        data={"csrf_token": _csrf(issued.text), "coach_invite_code": token},
+        follow_redirects=False,
+    )
+
+    assert sent.status_code == 303
+    assert sent.headers["location"] == f"/admin/accounts/{account['account_id']}?coach_invite_email=sent"
+    assert token not in sent.headers["location"]
+    confirmation = client.get(sent.headers["location"])
+    assert "Coach invite email sent to a***@gmail.com." in confirmation.text
+    assert token not in confirmation.text
+    assert "alice@gmail.com" not in confirmation.text
+    email = next(message for message in sent_emails if message[1] == "دعوة تفعيل دور المدرب في MAYOS")
+    assert email[0] == "alice@gmail.com"
+    assert token in email[2]
+    assert "الإعدادات" in email[2]
+    assert "كن مدربًا" in email[2]
+    assert "علاقة تدريب" in email[2]
+
+    audit = client.get(
+        f"/admin/audit?action=coach_invite_emailed&account_id={account['account_id']}"
+    )
+    assert audit.status_code == 200
+    assert audit.text.count("<strong>Action:</strong> coach_invite_emailed") == 1
+    assert account["account_id"] in audit.text
+    assert "alice@gmail.com" not in audit.text + caplog.text
+    assert token not in audit.text + caplog.text
+
+
+@pytest.mark.parametrize(
+    ("recovery_email", "expected_outcome", "explanation"),
+    [
+        (None, "no_recovery_email", "This account has no recovery email; email delivery is unavailable."),
+        ("pending@gmail.com", "unverified", "is unverified; email delivery is unavailable."),
+    ],
+)
+def test_admin_coach_invite_email_is_unavailable_without_verified_recovery_email(
+    admin_api,
+    recovery_email,
+    expected_outcome,
+    explanation,
+):
+    client, db, now, sent_emails = admin_api
+    account, _ = _register_account(client, db, f"coachinvite{expected_outcome}")
+    if recovery_email:
+        db.set_account_email(account["account_id"], recovery_email)
+    assert _login(client, now[0]).status_code == 303
+    account_page = client.get(f"/admin/accounts/{account['account_id']}")
+    issued = client.post(
+        f"/admin/accounts/{account['account_id']}/coach-invites",
+        data={"csrf_token": _csrf(account_page.text), "ttl_minutes": "60"},
+    )
+
+    assert issued.status_code == 200
+    assert explanation in issued.text
+    assert "Send by email to" not in issued.text
+    if recovery_email:
+        assert "p***@gmail.com" in issued.text
+        assert recovery_email not in issued.text
+    token = html.unescape(re.search(r'id="issued_coach_code"[^>]+value="([^"]+)"', issued.text).group(1))
+    rejected = client.post(
+        f"/admin/accounts/{account['account_id']}/coach-invites/email",
+        data={"csrf_token": _csrf(issued.text), "coach_invite_code": token},
+        follow_redirects=False,
+    )
+    assert rejected.status_code == 303
+    assert rejected.headers["location"].endswith(f"?coach_invite_email={expected_outcome}")
+    assert all("Coach invite" not in email[1] for email in sent_emails)
+    audit = client.get(f"/admin/audit?account_id={account['account_id']}")
+    expected_action = (
+        "coach_invite_email_unavailable"
+        if expected_outcome == "no_recovery_email"
+        else "coach_invite_email_unverified"
+    )
+    assert expected_action in audit.text
+    assert "coach_invite_emailed" not in audit.text
+    assert token not in audit.text
+    if recovery_email:
+        assert recovery_email not in audit.text
+
+
+def test_admin_coach_invite_email_failure_is_shown_and_audited(
+    admin_api, monkeypatch, mark_recovery_email_verified
+):
+    from service import email_sender
+
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "coachinviteemailfail")
+    db.set_account_email(account["account_id"], "failure@gmail.com")
+    mark_recovery_email_verified(db, account["account_id"])
+    assert _login(client, now[0]).status_code == 303
+    account_page = client.get(f"/admin/accounts/{account['account_id']}")
+    issued = client.post(
+        f"/admin/accounts/{account['account_id']}/coach-invites",
+        data={"csrf_token": _csrf(account_page.text), "ttl_minutes": "60"},
+    )
+    token = html.unescape(re.search(r'id="issued_coach_code"[^>]+value="([^"]+)"', issued.text).group(1))
+    monkeypatch.setattr(email_sender, "_deliver", lambda *_args, **_kwargs: False)
+
+    failed = client.post(
+        f"/admin/accounts/{account['account_id']}/coach-invites/email",
+        data={"csrf_token": _csrf(issued.text), "coach_invite_code": token},
+        follow_redirects=False,
+    )
+
+    assert failed.status_code == 303
+    assert failed.headers["location"].endswith("?coach_invite_email=send_failed")
+    confirmation = client.get(failed.headers["location"])
+    assert "Could not send the Coach invite email." in confirmation.text
+    assert token not in confirmation.text + failed.headers["location"]
+    assert "failure@gmail.com" not in confirmation.text
+    audit = client.get(
+        f"/admin/audit?action=coach_invite_email_failed&account_id={account['account_id']}"
+    )
+    assert audit.status_code == 200
+    assert "coach_invite_email_failed" in audit.text
+    assert account["account_id"] in audit.text
+    assert "failure@gmail.com" not in audit.text
+    assert token not in audit.text
+
+
+def test_admin_coach_invite_email_rejects_codes_outside_live_account_binding(admin_api):
+    from service import coach as coach_service
+    from service._tokens import hash_token
+
+    client, db, now, sent_emails = admin_api
+    target, _ = _register_account(client, db, "coachemailtarget")
+    foreign, _ = _register_account(client, db, "coachemailforeign")
+    assert _login(client, now[0]).status_code == 303
+
+    def issue(account):
+        account_id = account["account_id"]
+        page = client.get(f"/admin/accounts/{account_id}")
+        response = client.post(
+            f"/admin/accounts/{account_id}/coach-invites",
+            data={"csrf_token": _csrf(page.text), "ttl_minutes": "60"},
+        )
+        assert response.status_code == 200
+        raw_code = html.unescape(
+            re.search(r'id="issued_coach_code"[^>]+value="([^"]+)"', response.text).group(1)
+        )
+        return raw_code, _csrf(response.text)
+
+    def post_email(account, raw_code, csrf_token):
+        response = client.post(
+            f"/admin/accounts/{account['account_id']}/coach-invites/email",
+            data={"csrf_token": csrf_token, "coach_invite_code": raw_code},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"].endswith("?coach_invite_email=invite_unavailable")
+
+    target_code, target_csrf = issue(target)
+    post_email(target, "not-a-valid-coach-invite-code", target_csrf)
+    assert coach_service.revoke_coach_invite(
+        db, hash_token(target_code), actor="owner"
+    )["ok"]
+    post_email(target, target_code, target_csrf)
+
+    used_code, used_csrf = issue(target)
+    foreign_code, _ = issue(foreign)
+    post_email(target, foreign_code, target_csrf)
+
+    assert coach_service.redeem_coach_invite(db, target["account_id"], used_code)["ok"]
+    post_email(target, used_code, used_csrf)
+
+    coach_subjects = {"Your MAYOS Coach invite", "دعوة تفعيل دور المدرب في MAYOS"}
+    assert not any(message[1] in coach_subjects for message in sent_emails)
+    for account in (target, foreign):
+        audit = client.get(f"/admin/audit?account_id={account['account_id']}")
+        assert "coach_invite_emailed" not in audit.text
+        assert "coach_invite_email_failed" not in audit.text
+        assert target_code not in audit.text
+        assert foreign_code not in audit.text
+        assert used_code not in audit.text
+
+
 def test_admin_invites_issues_coach_invite_and_redeems(admin_api, caplog):
     client, db, now, _ = admin_api
     account, auth_headers = _register_account(client, db, "invitefrompage")
@@ -2257,6 +2462,8 @@ def test_admin_invites_issue_requires_login_and_csrf(admin_api):
 def test_admin_coach_invite_posts_require_login_and_csrf(admin_api):
     client, db, now, _ = admin_api
     account, _ = _register_account(client, db, "coachinvitecsrf")
+    email_path = f"/admin/accounts/{account['account_id']}/coach-invites/email"
+    assert client.post(email_path, data={"csrf_token": "bad", "coach_invite_code": "any-code"}).status_code == 404
     assert client.post(
         f"/admin/accounts/{account['account_id']}/coach-invites",
         data={"csrf_token": "bad", "ttl_minutes": "1440"},
@@ -2265,6 +2472,7 @@ def test_admin_coach_invite_posts_require_login_and_csrf(admin_api):
     page = client.get(f"/admin/accounts/{account['account_id']}")
     issue_path = f"/admin/accounts/{account['account_id']}/coach-invites"
     assert client.post(issue_path, data={"csrf_token": "bad", "ttl_minutes": "1440"}).status_code == 403
+    assert client.post(email_path, data={"csrf_token": "bad", "coach_invite_code": "any-code"}).status_code == 403
     assert client.post(issue_path, data={"csrf_token": _csrf(page.text), "ttl_minutes": "5"}).status_code == 400
     issued = client.post(
         issue_path,

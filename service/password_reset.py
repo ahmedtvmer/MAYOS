@@ -89,11 +89,23 @@ def _live_reset_account(db: Any, account_id: str) -> dict[str, Any] | None:
     return account
 
 
-def _write_owner_reset_audit(db: Any, event: audit_log.AuditEvent) -> None:
+def write_owner_audit(db: Any, event: audit_log.AuditEvent) -> None:
     try:
         audit_log.write_audit_entry(db, event)
     except Exception:
-        logger.error("Owner password-reset audit write failed")
+        logger.error("Owner audit write failed")
+
+
+def verified_recovery_email(
+    db: Any, account_id: str
+) -> tuple[str | None, str | None]:
+    """Returns the normalized recovery email and its owner-action eligibility."""
+    email = normalize_email(db.get_account_email(account_id))
+    if email is None:
+        return None, "no_recovery_email"
+    if not db.is_recovery_email_verified(account_id):
+        return email, "unverified"
+    return email, None
 
 
 def _deliver_owner_reset_email(email: str, raw_token: str, account_id: str) -> bool:
@@ -112,11 +124,11 @@ def owner_send_reset_email(db: Any, account_id: str, actor: str, source_ip: str 
     account = _live_reset_account(db, account_id)
     if account is None:
         return {"outcome": "not_found"}
-    email = normalize_email(db.get_account_email(account_id))
-    if email is None:
-        return {"outcome": "no_recovery_email"}
-    if not db.is_recovery_email_verified(account_id):
-        _write_owner_reset_audit(
+    email, ineligible_outcome = verified_recovery_email(db, account_id)
+    if ineligible_outcome == "no_recovery_email":
+        return {"outcome": ineligible_outcome}
+    if ineligible_outcome == "unverified":
+        write_owner_audit(
             db,
             audit_log.AuditEvent(
                 actor=actor,
@@ -125,13 +137,13 @@ def owner_send_reset_email(db: Any, account_id: str, actor: str, source_ip: str 
                 source_ip=source_ip,
             ),
         )
-        return {"outcome": "unverified"}
+        return {"outcome": ineligible_outcome}
 
     try:
         raw_token, _ = _new_reset_token(db, account_id, reset_ttl())
     except Exception:
         logger.error("Owner password-reset token storage failed")
-        _write_owner_reset_audit(
+        write_owner_audit(
             db,
             audit_log.AuditEvent(
                 actor=actor,
@@ -144,7 +156,7 @@ def owner_send_reset_email(db: Any, account_id: str, actor: str, source_ip: str 
     db.prune_reset_tokens(datetime.now(UTC).isoformat())
     delivered = _deliver_owner_reset_email(email, raw_token, account_id)
     action = "reset_email_sent" if delivered else "reset_email_failed"
-    _write_owner_reset_audit(
+    write_owner_audit(
         db,
         audit_log.AuditEvent(actor=actor, action=action, target_account_id=account_id, source_ip=source_ip),
     )
@@ -161,7 +173,7 @@ def owner_issue_reset_link(db: Any, account_id: str, actor: str, source_ip: str 
         db.invalidate_unused_reset_tokens(account_id, now.isoformat())
         db.store_reset_token(hash_token(raw_token), account_id, expires_at.isoformat())
     db.prune_reset_tokens(now.isoformat())
-    _write_owner_reset_audit(
+    write_owner_audit(
         db,
         audit_log.AuditEvent(
             actor=actor,
@@ -184,7 +196,7 @@ def owner_set_password(
     actor: str,
 ) -> tuple[str, int, bool]:
     ledger_id, epoch, enrolled, account_id = _set_owner_password(db, username_or_ledger_id, new_password)
-    _write_owner_reset_audit(
+    write_owner_audit(
         db,
         audit_log.AuditEvent(actor=actor, action="password_set_by_owner", target_account_id=account_id),
     )

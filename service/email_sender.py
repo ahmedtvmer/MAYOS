@@ -27,6 +27,7 @@ _EMAIL_ADDRESS_TOKEN = re.compile(
 )
 
 PURPOSE_PASSWORD_RESET = "password_reset"
+PURPOSE_COACH_INVITE = "coach_invite"
 PURPOSE_RECOVERY_EMAIL_VERIFICATION = "recovery_email_verification"
 PURPOSE_NO_ACCOUNT_NOTICE = "no_account_notice"
 PURPOSE_ASSIGNMENT_NOTICE = "assignment_notice"
@@ -127,6 +128,8 @@ def _console_send(
     recipient_ref = _recipient_reference(delivery)
     if recipient_ref:
         details.append(f"recipient_ref={recipient_ref}")
+    if delivery.purpose == PURPOSE_COACH_INVITE:
+        safe_body = "[redacted one-time coach invite code]"
     logger.info("CONSOLE email backend: %s subject=%s\n%s", " ".join(details), subject, safe_body)
     return True
 
@@ -300,6 +303,44 @@ def send_password_reset_email(
         subject,
         body,
         delivery=DeliveryContext(PURPOSE_PASSWORD_RESET, account_id, to_email),
+    )
+
+
+def send_coach_invite_email(
+    to_email: str,
+    code: str,
+    display_language: str,
+    *,
+    account_id: str | None = None,
+) -> bool:
+    """Sends an account-bound Coach invite in the recipient's Display language."""
+    subject, body = _coach_invite_copy(code, display_language)
+    return _deliver(
+        to_email,
+        subject,
+        body,
+        delivery=DeliveryContext(PURPOSE_COACH_INVITE, account_id, to_email),
+    )
+
+
+def _coach_invite_copy(code: str, display_language: str) -> tuple[str, str]:
+    if display_language == "ar":
+        return (
+            "دعوة تفعيل دور المدرب في MAYOS",
+            "تمت دعوتك لتفعيل دور المدرب في حسابك على MAYOS.\n\n"
+            f"رمز دعوة تفعيل دور المدرب:\n{code}\n\n"
+            "سجّل الدخول إلى تطبيق MAYOS، ثم افتح الإعدادات واختر «كن مدربًا» وأدخل هذا الرمز. "
+            "يفعّل الرمز وضع المدرب في حسابك، ولا ينشئ علاقة تدريب. يمكن استخدامه مرة واحدة.\n\n"
+            "إذا لم تكن تتوقع هذه الدعوة، فتجاهل هذه الرسالة."
+        )
+    return (
+        "Your MAYOS Coach invite",
+        "You have been invited to enable Coach capability on your MAYOS account.\n\n"
+        f"Coach invite code:\n{code}\n\n"
+        "Sign in to the MAYOS app, open Settings, choose “Become a coach”, and enter this code. "
+        "It enables Coach mode on your account and does not create an Assignment. "
+        "This code can be used once.\n\n"
+        "If you were not expecting this invite, ignore this email."
     )
 
 

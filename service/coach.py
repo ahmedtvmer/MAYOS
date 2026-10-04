@@ -12,13 +12,15 @@ Only SHA-256 hashes of invite tokens are stored (ADR-007 pattern); the raw code
 is returned once to the operator. The client body can never set ``is_coach``.
 """
 
+import hmac
 import os
 import re
 import secrets
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
-from service import audit_log
+from service import audit_log, email_sender
 from service._tokens import hash_token
 
 DEFAULT_CAPACITY = 10
@@ -34,6 +36,14 @@ DEFAULT_NEW_ACCOUNT_INVITE_TTL_MINUTES = 1440
 
 GENERIC_INVITE_ERROR = "Invalid or expired invite code."
 GENERIC_NEW_ACCOUNT_INVITE_ERROR = "This coach invite code isn't valid for this username"
+
+
+@dataclass(frozen=True)
+class OwnerCoachInviteEmailRequest:
+    account_id: str
+    raw_code: str
+    actor: str
+    source_ip: str | None
 
 
 def _bounded_ttl_minutes(minutes: int, maximum: int = MAX_INVITE_TTL_MINUTES) -> int:
@@ -205,6 +215,66 @@ def list_coach_invites(db: Any, account_id: str | None = None) -> list[dict[str,
             status, status_at = "live", None
         invites.append({**row, "mode": "Account-bound", "status": status, "status_at": status_at})
     return invites
+
+
+def owner_send_coach_invite_email(db: Any, request: OwnerCoachInviteEmailRequest) -> dict[str, str]:
+    """Emails a currently live, account-bound Coach invite to a verified address."""
+    account = db.get_account(request.account_id)
+    if not db.is_live_account(account):
+        return {"outcome": "not_found"}
+    invite = _live_bound_invite(db, request.account_id, request.raw_code)
+    if invite is None or account["is_coach"]:
+        return {"outcome": "invite_unavailable"}
+    from service.password_reset import verified_recovery_email, write_owner_audit
+
+    email, ineligible_outcome = verified_recovery_email(db, request.account_id)
+    if ineligible_outcome:
+        action = (
+            "coach_invite_email_unavailable"
+            if email is None
+            else "coach_invite_email_unverified"
+        )
+        write_owner_audit(
+            db,
+            audit_log.AuditEvent(
+                actor=request.actor,
+                action=action,
+                target_account_id=request.account_id,
+                source_ip=request.source_ip,
+            ),
+        )
+        return {"outcome": ineligible_outcome}
+    delivered = email_sender.send_coach_invite_email(
+        email,
+        request.raw_code,
+        account["display_language"],
+        account_id=request.account_id,
+    )
+    action = "coach_invite_emailed" if delivered else "coach_invite_email_failed"
+    write_owner_audit(
+        db,
+        audit_log.AuditEvent(
+            actor=request.actor,
+            action=action,
+            target_account_id=request.account_id,
+            source_ip=request.source_ip,
+        ),
+    )
+    return {"outcome": "sent" if delivered else "send_failed"}
+
+
+def _live_bound_invite(db: Any, account_id: str, raw_code: str) -> dict[str, Any] | None:
+    if not isinstance(raw_code, str) or not 10 <= len(raw_code) <= 128:
+        return None
+    code_hash = hash_token(raw_code)
+    return next(
+        (
+            invite
+            for invite in list_coach_invites(db, account_id)
+            if invite["status"] == "live" and hmac.compare_digest(invite["token_hash"], code_hash)
+        ),
+        None,
+    )
 
 
 def redeem_coach_invite(db: Any, account_id: str, token: str) -> dict[str, Any]:

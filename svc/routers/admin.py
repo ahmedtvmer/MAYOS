@@ -304,6 +304,8 @@ async def admin_issue_coach_invite_from_invites(request: Request, db: Annotated[
                 status_code,
             ),
         )
+    metadata = await asyncio.to_thread(admin_accounts_service.account_metadata, db, account)
+    issued["email_action"] = _coach_invite_email_availability(metadata)
     return _coach_invite_result_response(
         account, issued, session.csrf_token, security.login_alert_failed
     )
@@ -344,7 +346,28 @@ async def admin_account_detail(
     if outcome not in {"sent", "send_failed", "no_recovery_email", "unverified"}:
         outcome = ""
     reset_result = {"outcome": outcome}
-    body += _account_detail_page(account, metadata, session.csrf_token, reset_result, coach_invites)
+    coach_email_outcome = request.query_params.get("coach_invite_email", "")
+    if coach_email_outcome not in {
+        "sent",
+        "send_failed",
+        "no_recovery_email",
+        "unverified",
+        "invite_unavailable",
+    }:
+        coach_email_outcome = ""
+    coach_email_result = (
+        {"outcome": coach_email_outcome, "masked_email": metadata["recovery_email"]}
+        if coach_email_outcome
+        else None
+    )
+    body += _account_detail_page(
+        account,
+        metadata,
+        session.csrf_token,
+        reset_result,
+        coach_invites,
+        coach_email_result,
+    )
     return _document(f"Account · {account['username']}", body)
 
 
@@ -437,6 +460,15 @@ def _live_coach_invites(db: Any, account_id: str) -> list[dict[str, Any]]:
     return [invite for invite in invites if invite["status"] == "live"]
 
 
+def _coach_invite_email_availability(metadata: dict[str, Any]) -> dict[str, str | bool]:
+    masked_email = metadata["recovery_email"]
+    if masked_email == "Not set":
+        return {"available": False, "reason": "missing", "masked_email": masked_email}
+    if not metadata["recovery_email_verified"]:
+        return {"available": False, "reason": "unverified", "masked_email": masked_email}
+    return {"available": True, "reason": "", "masked_email": masked_email}
+
+
 @router.post("/accounts/{account_id}/reset-email", include_in_schema=False)
 async def admin_account_reset_email(request: Request, account_id: str, db: Annotated[Any, Depends(get_db)]):
     security = request.app.state.admin_security
@@ -510,8 +542,35 @@ async def admin_issue_coach_invite(request: Request, account_id: str, db: Annota
         else:
             status_code = 409
         return HTMLResponse(html.escape(issued["error"]), status_code=status_code)
+    metadata = await asyncio.to_thread(admin_accounts_service.account_metadata, db, account)
+    issued["email_action"] = _coach_invite_email_availability(metadata)
     return _coach_invite_result_response(
         account, issued, session.csrf_token, security.login_alert_failed
+    )
+
+
+@router.post("/accounts/{account_id}/coach-invites/email", include_in_schema=False)
+async def admin_email_coach_invite(request: Request, account_id: str, db: Annotated[Any, Depends(get_db)]):
+    form = await request.form()
+    access = await _admin_account_action_access(request, account_id, db, form)
+    if isinstance(access, Response):
+        return access
+    _, account = access
+    outcome = await asyncio.to_thread(
+        coach_service.owner_send_coach_invite_email,
+        db,
+        coach_service.OwnerCoachInviteEmailRequest(
+            account_id=account_id,
+            raw_code=_form_text(form, "coach_invite_code"),
+            actor=_owner_actor(request.app.state.admin_security),
+            source_ip=_source_ip(request),
+        ),
+    )
+    if outcome["outcome"] == "not_found":
+        return not_found_response()
+    return RedirectResponse(
+        f"/admin/accounts/{account['account_id']}?coach_invite_email={outcome['outcome']}",
+        status_code=303,
     )
 
 
@@ -805,6 +864,7 @@ def _coach_invite_result_response(
     body = _admin_nav(csrf_token, login_alert_failed, "invites") + (
         '<main><h1>Coach invite issued</h1><section class="health-panel">'
         + _issued_coach_invite(issued)
+        + _coach_invite_email_action(account_id, issued, csrf_token)
         + f'<p><a href="/admin/accounts/{account_id}">Back to account: {username}</a></p>'
         '<p><a href="/admin/invites">Back to Invites</a></p>'
         "</section></main>"
@@ -812,6 +872,25 @@ def _coach_invite_result_response(
     response = _document("Coach invite issued", body)
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+def _coach_invite_email_action(account_id: str, issued: dict[str, Any], csrf_token: str) -> str:
+    availability = issued["email_action"]
+    if availability["available"]:
+        return (
+            f'<form method="post" action="/admin/accounts/{account_id}/coach-invites/email">'
+            f'<input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}">'
+            '<input type="hidden" name="coach_invite_code" '
+            f'value="{html.escape(str(issued["token"]), quote=True)}">'
+            f'<button type="submit">Send by email to {html.escape(availability["masked_email"])}</button>'
+            "</form>"
+        )
+    if availability["reason"] == "unverified":
+        return (
+            f'<p class="note">The recovery email {html.escape(availability["masked_email"])} '
+            "is unverified; email delivery is unavailable.</p>"
+        )
+    return '<p class="note">This account has no recovery email; email delivery is unavailable.</p>'
 
 
 def _invite_table(headers: tuple[str, ...], rows: str, empty: str) -> str:
@@ -1345,7 +1424,7 @@ def _account_detail_page(
     csrf_token: str,
     reset_result: dict[str, str],
     coach_invites: list[dict[str, Any]],
-    coach_issue: dict[str, Any] | None = None,
+    coach_email_result: dict[str, str] | None = None,
 ) -> str:
     return (
         "<main><h1>Account</h1><dl>"
@@ -1357,7 +1436,7 @@ def _account_detail_page(
         + _limit_hit_summary(metadata["limit_hits_month"])
         + "</ul>"
         + _password_card(account, metadata, csrf_token, reset_result)
-        + _coach_access_card(account, csrf_token, coach_invites, coach_issue)
+        + _coach_access_card(account, csrf_token, coach_invites, coach_email_result)
         + _account_delete_card(account)
         + "</main>"
     )
@@ -1427,7 +1506,7 @@ def _coach_access_card(
     account: dict[str, Any],
     csrf_token: str,
     invites: list[dict[str, Any]],
-    issued: dict[str, Any] | None,
+    coach_email_result: dict[str, str] | None,
 ) -> str:
     account_id = html.escape(account["account_id"], quote=True)
     issue_action = ""
@@ -1439,10 +1518,27 @@ def _coach_access_card(
         '<section class="health-panel" aria-labelledby="coach-access-title">'
         '<h2 id="coach-access-title">Coach access</h2>'
         + issue_action
-        + (_issued_coach_invite(issued) if issued is not None else "")
+        + _coach_invite_email_notice(coach_email_result)
         + _account_live_invites(invites, csrf_token)
         + "</section>"
     )
+
+
+def _coach_invite_email_notice(outcome: dict[str, str] | None) -> str:
+    if outcome is None:
+        return ""
+    messages = {
+        "sent": f'Coach invite email sent to {outcome["masked_email"]}.',
+        "send_failed": "Could not send the Coach invite email.",
+        "no_recovery_email": "This account has no recovery email; email delivery is unavailable.",
+        "unverified": "The recovery email is unverified; email delivery is unavailable.",
+        "invite_unavailable": "This Coach invite is no longer available to email.",
+    }
+    message = messages.get(outcome["outcome"])
+    if message is None:
+        return ""
+    role = "status" if outcome["outcome"] == "sent" else "alert"
+    return f'<p class="note" role="{role}">{html.escape(message)}</p>'
 
 
 def _coach_invite_form(account_id: str, csrf_token: str) -> str:
