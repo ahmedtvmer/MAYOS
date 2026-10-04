@@ -24,11 +24,16 @@ shell or password manager.
 5. **Account Resources:** `Include` · your account (not "All accounts").
 6. Leave Client IP filtering empty, optionally set a TTL, then
    **Continue to summary** → **Create Token**. Copy it now; it is shown once.
-7. Keep it locally, for example in `~/.config/mayos/cloudflare.env` (mode 600):
+7. Keep it locally in `~/.config/mayos/web.env` (mode 600), the file
+   `scripts/deploy_web.sh` sources, together with the other web build inputs:
 
    ```bash
-   export CLOUDFLARE_API_TOKEN="<token>"
-   export CLOUDFLARE_ACCOUNT_ID="<account id>"
+   mkdir -p ~/.config/mayos && touch ~/.config/mayos/web.env && chmod 600 ~/.config/mayos/web.env
+   # ~/.config/mayos/web.env
+   CLOUDFLARE_API_TOKEN="<token>"
+   CLOUDFLARE_ACCOUNT_ID="<account id>"
+   GOOGLE_WEB_CLIENT_ID="<web-client-id>.apps.googleusercontent.com"
+   POSTHOG_CLIENT_KEY="phc_<public-project-key>"
    ```
 
    Never paste it into `.env`, `fly.toml`, an issue, or a commit.
@@ -38,7 +43,7 @@ shell or password manager.
 The CLI route is exact and needs only Node (`npx` fetches wrangler):
 
 ```bash
-source ~/.config/mayos/cloudflare.env
+set -a; source ~/.config/mayos/web.env; set +a
 npx wrangler pages project create mayos --production-branch=main
 # If the name is taken in your account, use the fallback:
 # npx wrangler pages project create mayos-app --production-branch=main

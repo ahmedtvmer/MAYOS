@@ -759,10 +759,10 @@ fly secrets set SMTP_HOST="smtp.gmail.com" SMTP_PORT="587" SMTP_USE_TLS="true" \
   SMTP_USER="<trial-gmail-address>" SMTP_PASSWORD="<gmail-app-password>" \
   SMTP_FROM="<trial-gmail-address>"
 
-# Product analytics. Restrict the personal key to the MAYOS project and only
-# the person:write scope.
-fly secrets set POSTHOG_API_KEY="<project-key>" \
-  POSTHOG_PERSONAL_API_KEY="<personal-api-key>" \
+# Product analytics (full runbook: "Product analytics (PostHog) setup" below).
+# --stage applies them on the next deploy instead of restarting the Machine now.
+fly secrets set --stage POSTHOG_API_KEY="phc_<project-key>" \
+  POSTHOG_PERSONAL_API_KEY="phx_<personal-api-key>" \
   POSTHOG_PROJECT_ID="<project-id>"
 
 # Google sign-in audience (issue #113). Unset leaves Google sign-in off (the
@@ -1105,9 +1105,11 @@ distributing through Play, so debug/CI installs and Play installs both verify.
 ```bash
 cd mobile
 GOOGLE_WEB_CLIENT_ID="<web-client-id>.apps.googleusercontent.com"
+POSTHOG_CLIENT_KEY="phc_<public-project-key>"   # release builds only
 flutter build appbundle --release -PappLinkHost=mayos-api.fly.dev \
   --dart-define=MAYOS_API_BASE_URL=https://mayos-api.fly.dev \
-  --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID"
+  --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
+  --dart-define=POSTHOG_CLIENT_KEY="$POSTHOG_CLIENT_KEY"
 # or: flutter build apk --debug -PappLinkHost=mayos-api.fly.dev \
 #   --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID"
 ```
@@ -1182,10 +1184,25 @@ token, project and origin setup: [CLOUDFLARE_PAGES_SETUP.md](CLOUDFLARE_PAGES_SE
 **Deploy** (from a machine with Flutter and Node; token and account ID from your
 own environment, never the repo):
 
+Keep the deploy inputs in a private env file outside the repo,
+`~/.config/mayos/web.env` (mode 600; another path via `MAYOS_WEB_ENV`):
+
 ```bash
-source ~/.config/mayos/cloudflare.env
-GOOGLE_WEB_CLIENT_ID="<web client id>" POSTHOG_CLIENT_KEY="<public project key>" scripts/deploy_web.sh   # add --preview for a preview URL
+CLOUDFLARE_API_TOKEN="<token>"
+CLOUDFLARE_ACCOUNT_ID="<account id>"
+GOOGLE_WEB_CLIENT_ID="<web-client-id>.apps.googleusercontent.com"
+POSTHOG_CLIENT_KEY="phc_<public-project-key>"
 ```
+
+```bash
+scripts/deploy_web.sh             # production
+scripts/deploy_web.sh --preview   # preview URL, production untouched
+```
+
+The script sources that file when it exists (values already exported in the
+shell win, so `POSTHOG_CLIENT_KEY= scripts/deploy_web.sh` builds without
+analytics) and warns when a production build lacks `GOOGLE_WEB_CLIENT_ID` or
+`POSTHOG_CLIENT_KEY`.
 
 The script runs `flutter build web --release --no-web-resources-cdn
 --pwa-strategy=none` with `--dart-define=MAYOS_API_BASE_URL=https://mayos-api.fly.dev`
@@ -1223,3 +1240,59 @@ and rerun `scripts/deploy_web.sh`.)
 errors in the browser console, open a deep path such as `/anything` and reload
 (must still load), and sign in against the Fly API. The last step needs #113 and
 the Fly `UI_BASE_URL` change.
+
+## 12. Product analytics (PostHog) setup
+
+ADR 040; event contracts in [ANALYTICS.md](ANALYTICS.md). Analytics stays off
+everywhere until these keys are set, so this can be done at any time.
+
+**Prerequisite — privacy policy.** The live privacy policy
+(`docs/PRIVACY_POLICY.md`, served at `/privacy`) must name PostHog before any
+key is used in production; the owner-approval draft is in ANALYTICS.md
+("Privacy-notice draft").
+
+**1. PostHog project settings** (EU Cloud, project MAYOS):
+- Project settings → **Discard client IP data: ON**.
+- Session replay, autocapture, heatmaps and surveys: off (the app also turns
+  them off in code).
+- Note the **Project API key** (`phc_…`, public, ingestion only) and the
+  **Project ID**.
+
+**2. Personal API key** for person deletion (#95): avatar → Settings →
+Personal API keys → Create — label `MAYOS server – person deletion`,
+organization/project access **MAYOS only**, scopes **Person: Write** only
+(`person:write`). It is a secret (`phx_…`): Fly only, never a client build,
+never `.env`.
+
+**3. Server (Fly secrets)** — staged so they apply on the next `fly deploy`:
+
+```bash
+fly secrets set --stage POSTHOG_API_KEY="phc_<project-key>" \
+  POSTHOG_PERSONAL_API_KEY="phx_<personal-api-key>" \
+  POSTHOG_PROJECT_ID="<project-id>"
+fly secrets list | grep POSTHOG     # Staged until the next deploy
+```
+
+`MAYOS_ENV=production` is already in `fly.toml`; `POSTHOG_HOST` and
+`POSTHOG_API_HOST` default to the EU hosts.
+
+**4. Clients (release builds only)** — the same public `phc_` key as a
+dart-define, never read from Fly:
+- Web: `POSTHOG_CLIENT_KEY` in `~/.config/mayos/web.env`, then
+  `scripts/deploy_web.sh` (section 11).
+- Android: `--dart-define=POSTHOG_CLIENT_KEY=...` in the release build
+  ([PLAY_RELEASE.md](PLAY_RELEASE.md), section 6).
+Debug and profile builds never initialize PostHog.
+
+**5. Local development** — leave `POSTHOG_API_KEY` blank in `.env` (or use a
+separate "MAYOS dev" project's key) so local runs never send into trial data;
+`MAYOS_ENV=development`.
+
+| Variable | Where | Value |
+| :--- | :--- | :--- |
+| `POSTHOG_API_KEY` | Fly secret | Project API key `phc_…` |
+| `POSTHOG_PERSONAL_API_KEY` | Fly secret | Personal key `phx_…`, `person:write`, MAYOS only |
+| `POSTHOG_PROJECT_ID` | Fly secret | Numeric project id |
+| `MAYOS_ENV` | `fly.toml` `[env]` | `production` |
+| `MAYOS_RELEASE_PHASE` | env | `closed_trial` now, `public` at launch |
+| `POSTHOG_CLIENT_KEY` | release build define | Same `phc_…` key |

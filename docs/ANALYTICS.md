@@ -7,6 +7,11 @@ captured after their domain writes commit, and provider failures never fail an
 operation. There is no transactional outbox, so a process crash between commit
 and capture can lose an event.
 
+## Setup
+
+Keys, PostHog project settings and the release-build defines are set up in
+[DEPLOYMENT.md, section 12](DEPLOYMENT.md#12-product-analytics-posthog-setup).
+
 ## Identity and privacy
 
 - PostHog `distinct_id` is the immutable Account id. It is never a username,
@@ -412,7 +417,7 @@ records.
 | Insight (type) | Events or database source | Filters / breakdowns |
 |---|---|---|
 | Coach activation: capability granted → program published → invite issued → Assignment started → Player's first Workout completed (joined funnel) | coach_capability_granted, coach_program_published, assignment_invite_issued, assignment_started, workout_completed with is_first_workout | signup_phase, platform, role, coached; the last event is attributed to the Player, so connecting it to the Coach's Assignment requires a registry/BI join across distinct_id values. |
-| Player activation: Account created → onboarding started → completed → program generated/published → first Workout (funnel) | account_created, onboarding_started, onboarding_completed, program_generated, coach_program_published, workout_completed with is_first_workout | coached, signup_phase, platform, role, trigger. |
+| Player activation: Account created → onboarding started → completed → program generated/published → first Workout (funnel) | account_created, onboarding_started, onboarding_completed, program_generated, coach_program_published, workout_completed with is_first_workout. `coach_program_published` is attributed to the Coach, so a coached Player's publication step needs a registry/BI join on the Assignment; in PostHog use `program_generated` for independent Players. | coached, signup_phase, platform, role, trigger. |
 | Invite-to-Assignment and Assignment-to-first-Workout elapsed time (trend) | assignment_invite_issued, assignment_started, workout_completed; assignment facts for authoritative joins | platform, signup_phase, coached; event time_since_invite_seconds and is_first_workout. |
 | Active Accounts, WAU/MAU and W1/W2/W4/W8/M3/M6/M12 cohort retention (retention) | account_created cohorts; workout_completed for Players; recorded Coaching action events for Coaches | role, signup_phase, platform, coached, AI adoption, alert adoption. Count a Coach as active only for a Coaching action. |
 | Acquisition activation and founding conversion (funnel / cohort) | account_created and first_touch_acquisition in the registry; planned pricing, checkout, founding and referral events | normalized UTM source/medium/campaign, referrer host, referring Coach, signup_phase, platform, plan. Money reconciles in BI. |
@@ -433,7 +438,7 @@ records.
 
 | Insight (type) | Events or database source | Filters / breakdowns |
 |---|---|---|
-| Player activation through onboarding, program and first completed Workout (funnel) | account_created, onboarding_started, onboarding_step_viewed, onboarding_completed, program_generated, coach_program_published, workout_completed | coached versus independent, signup_phase, platform, role, trigger. |
+| Player activation through onboarding, program and first completed Workout (funnel) | account_created, onboarding_started, onboarding_step_viewed, onboarding_completed, program_generated, coach_program_published, workout_completed. `coach_program_published` is attributed to the Coach, so a coached Player's publication step needs a registry/BI join on the Assignment; in PostHog use `program_generated` for independent Players. | coached versus independent, signup_phase, platform, role, trigger. |
 | WAU/MAU and W1/W2/W4/W8/M3/M6/M12 retention (retention) | account_created cohorts and workout_completed activity | coached, signup_phase, platform, role, AI adoption, alert adoption. Workout activity is the Player return signal. |
 | Workout starts, completions and discarded drafts (funnel / trend) | workout_started, workout_draft_discarded, workout_completed | platform, app_version, coached, signup_phase; start/discard events are client-only. |
 | Logging completeness, offline capture and sync delay (trend) | workout_completed aggregate counts and schedule events; Training ledger for adherence calculations | platform, app_version, coached, plan once subscription events exist. Never expose individual training values. |

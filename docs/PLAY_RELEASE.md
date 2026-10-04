@@ -105,7 +105,7 @@ fly secrets set ANDROID_APP_SHA256_CERT_FINGERPRINTS="AA:BB:…,DD:EE:…"
 cd mobile
 flutter pub get
 GOOGLE_WEB_CLIENT_ID="<web-client-id>.apps.googleusercontent.com"
-POSTHOG_CLIENT_KEY="<public-posthog-project-key>"
+POSTHOG_CLIENT_KEY="phc_<public-posthog-project-key>"   # same key as the web build; see DEPLOYMENT.md section 12
 flutter build appbundle --release \
   --dart-define=MAYOS_API_BASE_URL=https://<api-host> \
   --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
