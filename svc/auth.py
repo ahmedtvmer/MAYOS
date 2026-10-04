@@ -1,6 +1,9 @@
 """JWT issuance and verification (HS256, shared secret)."""
 
+import hashlib
+import hmac
 import os
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -84,12 +87,18 @@ def decode_access_token(token: str) -> str:
     return str(token_claims(token)["sub"])
 
 
-def create_signup_ticket(subject: str) -> str:
-    """Signs a 15-minute Google signup ticket carrying **only** the Google subject.
+def create_signup_ticket(
+    subject: str,
+    recovery_email_conflict: bool = False,
+    original_id_token: str | None = None,
+) -> str:
+    """Signs a 15-minute Google signup ticket without carrying Google's email.
 
     Same secret as the session tokens, different purpose: ``type``/``aud`` mark
     it, and there is deliberately no ``jti`` or ``tv``, so it can never satisfy
-    :func:`token_claims`. No email or name from Google ever enters a token.
+    :func:`token_claims`. The conflict marker preserves the signup-time choice
+    not to reuse an address that belongs to a live account. The optional token
+    digest binds any completion email proof to the token used at sign-in.
     """
     if not isinstance(subject, str) or not subject:
         raise ValueError("A signup ticket needs the Google subject.")
@@ -102,17 +111,23 @@ def create_signup_ticket(subject: str) -> str:
         "nbf": now,
         "exp": now + timedelta(minutes=SIGNUP_TICKET_MINUTES),
     }
+    if recovery_email_conflict is True:
+        payload["recovery_email_conflict"] = True
+    if original_id_token is not None:
+        if not isinstance(original_id_token, str):
+            raise ValueError("A signup ticket ID token must be a string.")
+        payload["id_token_sha256"] = hashlib.sha256(original_id_token.encode("utf-8")).hexdigest()
     return jwt.encode(payload, _secret(), algorithm=ALGORITHM)
 
 
-def signup_ticket_subject(token: str) -> str:
-    """The Google subject on a valid signup ticket, else raises :class:`jwt.PyJWTError`.
+def signup_ticket_claims(token: str) -> dict[str, Any]:
+    """The claims from a valid Google signup ticket, else raises :class:`jwt.PyJWTError`.
 
     ``options={"require": [...]}`` makes ``exp``, ``aud`` and ``sub``
-    mandatory, so a stripped or hand-rolled ticket never decodes: ``audience=``
-    refuses a session token (or any other JWT), ``exp`` refuses a ticket with
-    its lifetime removed, the ``type`` marker refuses everything that is not a
-    signup ticket, and the signature check refuses tampering.
+    mandatory, so a ticket with its lifetime stripped never validates:
+    ``audience=`` refuses a session token (or any other JWT), the ``type``
+    marker refuses everything that is not a signup ticket, and the signature
+    check refuses tampering.
     """
     if not isinstance(token, str) or not token:
         raise jwt.InvalidTokenError("Signup ticket is missing.")
@@ -128,7 +143,26 @@ def signup_ticket_subject(token: str) -> str:
     subject = payload.get("sub")
     if not isinstance(subject, str) or not subject:
         raise jwt.InvalidTokenError("Signup ticket is missing subject.")
-    return subject
+    if type(payload.get("recovery_email_conflict", False)) is not bool:
+        raise jwt.InvalidTokenError("Signup ticket has an invalid recovery-email marker.")
+    token_digest = payload.get("id_token_sha256")
+    if token_digest is not None and (not isinstance(token_digest, str) or re.fullmatch(r"[0-9a-f]{64}", token_digest) is None):
+        raise jwt.InvalidTokenError("Signup ticket has an invalid ID-token digest.")
+    return payload
+
+
+def signup_ticket_matches_id_token(claims: dict[str, Any], id_token: str) -> bool:
+    """Checks that completion reuses the ID token bound to the signup ticket."""
+    expected = claims.get("id_token_sha256")
+    if not isinstance(expected, str):
+        return False
+    actual = hashlib.sha256(id_token.encode("utf-8")).hexdigest()
+    return hmac.compare_digest(expected, actual)
+
+
+def signup_ticket_subject(token: str) -> str:
+    """Returns the Google subject from the already-verified signup ticket."""
+    return str(signup_ticket_claims(token)["sub"])
 
 
 def revoke_token(db: Any, token: str) -> None:

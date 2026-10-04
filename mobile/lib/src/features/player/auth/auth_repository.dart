@@ -25,11 +25,13 @@ final class GoogleUsernameRequired extends GoogleSignInFlowResult {
   const GoogleUsernameRequired({
     required this.signupTicket,
     required this.suggestedUsername,
+    required this.idToken,
     this.existingAccountHint = false,
   });
 
   final String signupTicket;
   final String suggestedUsername;
+  final String idToken;
   final bool existingAccountHint;
 }
 
@@ -94,6 +96,7 @@ class AuthRepository {
     return GoogleUsernameRequired(
       signupTicket: ticket.signupTicket,
       suggestedUsername: ticket.suggestedUsername,
+      idToken: ticket.idToken,
       existingAccountHint: ticket.existingAccountHint,
     );
   }
@@ -102,12 +105,14 @@ class AuthRepository {
   Future<AccountSession> completeGoogleSignup({
     required String signupTicket,
     required String username,
+    required String idToken,
     String displayLanguage = 'en',
   }) {
     return _establishSession(
       () => _api.googleComplete(
           signupTicket: signupTicket,
           username: username,
+          idToken: idToken,
           displayLanguage: displayLanguage),
     );
   }

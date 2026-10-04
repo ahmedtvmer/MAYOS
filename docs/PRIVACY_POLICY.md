@@ -32,7 +32,15 @@ served over https from the address of this page.
 - Your **recovery email**, if you have added one. It is required before you can
   use the app, it lives in the shared account store (not in your training
   data), and it is used only to send password-reset links and to answer
-  password-recovery requests.
+  password-recovery requests. If you sign up with Google, MAYOS may keep a
+  verified Google email as your recovery email when it is not already used as
+  another account's recovery email; that address is marked verified at signup.
+  If the address already belongs to a live account, MAYOS shows a reminder but
+  does not store Google's address if you create a separate account, and you
+  must add and verify a recovery email with a code. When you later sign in with
+  or connect Google, its verified email can verify your current unverified
+  recovery email only when the addresses match. It never replaces a different
+  address and is never used to link or merge accounts.
 - **Sign-in tokens** (short-lived JSON Web Tokens). If you tick "Keep me signed
   in", the token lasts up to 30 days; otherwise about 2 hours. You can end a
   session at any time by logging out.

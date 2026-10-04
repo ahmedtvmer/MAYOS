@@ -18,11 +18,13 @@ class PendingGoogleSignup {
   const PendingGoogleSignup({
     required this.signupTicket,
     required this.suggestedUsername,
+    required this.idToken,
     this.existingAccountHint = false,
   });
 
   final String signupTicket;
   final String suggestedUsername;
+  final String idToken;
   final bool existingAccountHint;
 }
 
@@ -328,6 +330,7 @@ class AuthController extends StateNotifier<AuthState> {
       _pendingSignup = PendingGoogleSignup(
         signupTicket: required.signupTicket,
         suggestedUsername: required.suggestedUsername,
+        idToken: required.idToken,
         existingAccountHint: required.existingAccountHint,
       );
       return const GoogleSignUpPrompt();
@@ -363,6 +366,7 @@ class AuthController extends StateNotifier<AuthState> {
       final AccountSession session = await _repository.completeGoogleSignup(
         signupTicket: pending.signupTicket,
         username: username,
+        idToken: pending.idToken,
         displayLanguage: displayLanguage,
       );
       _pendingSignup = null;

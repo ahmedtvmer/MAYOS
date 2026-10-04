@@ -506,6 +506,27 @@ void main() {
     expect(find.byKey(const Key('recovery_email')), findsOneWidget);
   });
 
+  testWidgets('verified Google signup skips the recovery-email gate',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..googleCompleteRecoveryEmailVerified = true;
+    final ProviderContainer container =
+        await _pumpAuth(tester, fake, google: FakeGoogleAuthGateway());
+
+    await _openPicker(tester);
+    await _awaitAvailability(tester);
+    await tester.tap(find.byKey(const Key('google_signup_submit')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('onboarding_disclosure_continue')));
+
+    expect(
+      container.read(authControllerProvider).session?.account.recoveryEmailVerified,
+      isTrue,
+    );
+    expect(find.byKey(const Key('recovery_email')), findsNothing);
+    expect(fake.googleCompletedIdTokens, <String>['fake-google-id-token']);
+  });
+
   testWidgets(
       'leaving the picker creates nothing and clears the Google SDK state',
       (WidgetTester tester) async {

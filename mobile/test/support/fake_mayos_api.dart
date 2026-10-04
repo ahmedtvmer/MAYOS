@@ -85,7 +85,9 @@ class FakeMayosApi {
   int googleSignInRequests = 0;
   int usernameAvailableRequests = 0;
   int googleCompleteRequests = 0;
+  bool googleCompleteRecoveryEmailVerified = false;
   final List<String> googleCompletedUsernames = <String>[];
+  final List<String> googleCompletedIdTokens = <String>[];
 
   // Sign-in methods in Settings (#114/#116): what `GET /auth/me` reports and
   // what the connect/disconnect/set-password/change-password routes do.
@@ -543,6 +545,7 @@ class FakeMayosApi {
     googleCompleteRequests++;
     final String? ticket = request.body['signup_ticket'] as String?;
     final String? username = request.body['username'] as String?;
+    final String? idToken = request.body['id_token'] as String?;
     if (googleTicketExpired || ticket != googleSignupTicket) {
       return const FakeResponse(401,
           <String, dynamic>{'detail': 'Invalid or expired signup ticket.'});
@@ -560,7 +563,14 @@ class FakeMayosApi {
       return const FakeResponse(
           409, <String, dynamic>{'detail': 'That username is taken.'});
     }
+    if (idToken != null && idToken.isEmpty) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Invalid Google credentials.'});
+    }
     googleCompletedUsernames.add(username);
+    if (idToken != null) {
+      googleCompletedIdTokens.add(idToken);
+    }
     displayLanguage = request.body['display_language'] == 'ar' ? 'ar' : 'en';
     // A fresh Google sign-up creates a Google-only account (#113).
     hasPassword = false;
@@ -568,6 +578,10 @@ class FakeMayosApi {
       ..clear()
       ..add('google');
     _beginSession(username, fresh: true);
+    if (googleCompleteRecoveryEmailVerified && idToken != null) {
+      recoveryEmail = 'google@example.com';
+      recoveryEmailVerified = true;
+    }
     return FakeResponse(200, _tokenBody(username));
   }
 

@@ -63,11 +63,13 @@ final class GoogleAuthSignupTicket extends GoogleAuthStart {
   const GoogleAuthSignupTicket({
     required this.signupTicket,
     required this.suggestedUsername,
+    required this.idToken,
     this.existingAccountHint = false,
   });
 
   final String signupTicket;
   final String suggestedUsername;
+  final String idToken;
 
   /// True when a verified Google email matched a live recovery email (#174).
   final bool existingAccountHint;
@@ -344,6 +346,7 @@ class ApiClient {
     if (ticket is String) {
       return GoogleAuthSignupTicket(
         signupTicket: ticket,
+        idToken: idToken,
         suggestedUsername: data['suggested_username'] is String
             ? data['suggested_username'] as String
             : '',
@@ -386,6 +389,7 @@ class ApiClient {
   Future<AuthTokens> googleComplete({
     required String signupTicket,
     required String username,
+    required String idToken,
     String displayLanguage = 'en',
   }) async {
     final response = await _send(
@@ -394,6 +398,7 @@ class ApiClient {
         data: <String, dynamic>{
           'signup_ticket': signupTicket,
           'username': username,
+          'id_token': idToken,
           'display_language': displayLanguage,
         },
         options: Options(extra: {_skipAuth: true}),

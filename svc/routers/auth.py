@@ -15,7 +15,14 @@ from service import google_sign_in as google_service
 from service import password_reset as reset_service
 from service.email_verification import GENERIC_CODE_ERROR
 from service import plans as plans_service
-from svc.auth import create_access_token, create_signup_ticket, remember_me_hours, revoke_token, signup_ticket_subject
+from svc.auth import (
+    create_access_token,
+    create_signup_ticket,
+    remember_me_hours,
+    revoke_token,
+    signup_ticket_claims,
+    signup_ticket_matches_id_token,
+)
 from svc.dependencies import (
     VerifiedPlayer,
     GoogleIdentityError,
@@ -54,6 +61,13 @@ from svc.schemas import (
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 _bearer = HTTPBearer(auto_error=False)
+
+
+def _invalid_google_credentials() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid Google credentials.",
+    )
 
 
 @router.post("/register", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
@@ -124,7 +138,7 @@ async def google_sign_in(
     try:
         identity = await asyncio.to_thread(verifier, body.id_token)
     except GoogleIdentityError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google credentials.") from None
+        raise _invalid_google_credentials() from None
 
     def _run():
         return google_service.sign_in(db, identity)
@@ -141,7 +155,11 @@ async def google_sign_in(
             display_language=result.get("display_language", "en"),
         )
     return GoogleSignUpOut(
-        signup_ticket=create_signup_ticket(identity.sub),
+        signup_ticket=create_signup_ticket(
+            identity.sub,
+            recovery_email_conflict=result["existing_account_hint"],
+            original_id_token=body.id_token,
+        ),
         suggested_username=result["suggested_username"],
         existing_account_hint=result["existing_account_hint"],
     )
@@ -179,6 +197,7 @@ async def google_complete(
     body: GoogleCompleteIn,
     db: Annotated[Any, Depends(get_db)],
     google_enabled: Annotated[Any, Depends(google_sign_in_enabled)],
+    verifier: Annotated[Any, Depends(get_google_verifier)],
 ):
     """Creates the account and its link in one catalog transaction (#113).
 
@@ -187,15 +206,33 @@ async def google_complete(
     concurrently is a 409, and the losing request creates no account.
     """
     try:
-        subject = signup_ticket_subject(body.signup_ticket)
+        claims = signup_ticket_claims(body.signup_ticket)
     except jwt.PyJWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired signup ticket."
         ) from None
+    subject = claims["sub"]
+    identity = None
+    if body.id_token is not None:
+        try:
+            identity = await asyncio.to_thread(verifier, body.id_token)
+        except GoogleIdentityError:
+            raise _invalid_google_credentials() from None
+        if identity.sub != subject or not signup_ticket_matches_id_token(claims, body.id_token):
+            raise _invalid_google_credentials()
 
     def _run():
         try:
-            return google_service.complete_signup(db, subject, body.username, body.display_language)
+            return google_service.complete_signup(
+                db,
+                google_service.GoogleSignupCompletion(
+                    subject=subject,
+                    username=body.username,
+                    display_language=body.display_language,
+                    identity=identity,
+                    recovery_email_conflict=claims.get("recovery_email_conflict") is True,
+                ),
+            )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
         except google_service.SignUpConflictError as exc:
@@ -236,11 +273,11 @@ async def link_google(
     try:
         identity = await asyncio.to_thread(verifier, body.id_token)
     except GoogleIdentityError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google credentials.") from None
+        raise _invalid_google_credentials() from None
 
     def _run():
         try:
-            result = google_service.link_account(db, player.account_id, identity.sub)
+            result = google_service.link_account(db, player.account_id, identity)
         except google_service.SignInMethodError as exc:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from None
         if not result["ok"]:

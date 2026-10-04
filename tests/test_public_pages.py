@@ -217,6 +217,9 @@ def test_policy_source_file_exists_and_every_section_is_served(api):
         "owner-only admin page",
         "Recovery-email lookups and owner actions are audited",
         "never shows your training content or chats",
+        "verified Google email",
+        "keep a verified Google email as your recovery email",
+        "already used as another account's recovery email",
     ):
         assert phrase in flat, f"missing from {POLICY_PATH.name}: {phrase!r}"
 

@@ -2,10 +2,10 @@
 
 A Verified Google identity is matched for sign-in by ``sub`` only. No name from
 the token is persisted: ``given_name`` seeds a *suggestion* that the person
-may change before anything is written. A verified email is used only for the
-signup nudge against the recovery-email store; it is never stored or logged.
-No account exists until a username is picked, so abandoning the flow leaves
-nothing behind.
+may change before anything is written. A verified email is used for the signup
+nudge and may become the new account's verified recovery email only when it is
+unused. On an existing account it can verify only a matching unverified
+recovery address; no Google email is logged.
 
 Once an account exists, the same identity can be connected or disconnected
 (:func:`link_account` / :func:`unlink_account`): connect is idempotent and
@@ -24,17 +24,27 @@ import sqlite3
 from datetime import UTC, datetime
 from typing import Any, NamedTuple
 
-from service import admin_accounts, auth as auth_service
+from service import admin_accounts, auth as auth_service, password_reset
 
 
 class GoogleIdentity(NamedTuple):
-    """Verified Google claims; email remains transient for the signup nudge."""
+    """Verified Google claims, including the transient email proof."""
 
     sub: str
     iat: int | None = None
     given_name: str | None = None
     email: str | None = None
     email_verified: bool = False
+
+
+class GoogleSignupCompletion(NamedTuple):
+    """Verified data needed to complete a first Google sign-in."""
+
+    subject: str
+    username: Any
+    display_language: str = "en"
+    identity: GoogleIdentity | None = None
+    recovery_email_conflict: bool = False
 
 
 PROVIDER = "google"
@@ -109,13 +119,16 @@ def sign_in(db: Any, identity: GoogleIdentity) -> dict[str, Any]:
     person simply picks a username again and the link is re-pointed in the
     completion transaction. For an unlinked subject, a verified email that
     matches a live account's recovery email adds a nudge to the signup answer;
-    it never links or creates an account. A live account whose ledger never
-    materialised (an interrupted completion) is repaired here before the
-    session is issued, so nobody is stranded behind the registry's ledger gate.
+    it never links or creates an account. For a linked subject, it may verify
+    only the account's matching current recovery email. A live account whose
+    ledger never materialised (an interrupted completion) is repaired here
+    before the session is issued, so nobody is stranded behind the registry's
+    ledger gate.
     """
     account_id = db.get_linked_sign_in_account_id(PROVIDER, identity.sub)
     account = db.get_account(account_id) if account_id else None
     if db.is_live_account(account):
+        _verify_matching_recovery_email(db, account["account_id"], identity)
         return {
             "kind": "session",
             "account_id": account["account_id"],
@@ -123,12 +136,11 @@ def sign_in(db: Any, identity: GoogleIdentity) -> dict[str, Any]:
             "session_epoch": account["session_epoch"],
             "display_language": account.get("display_language", "en"),
         }
+    verified_email = _verified_email(identity)
     return {
         "kind": "signup",
         "suggested_username": suggest_username(db, identity.given_name),
-        "existing_account_hint": identity.email_verified and _has_live_recovery_email(
-            db, identity.email
-        ),
+        "existing_account_hint": verified_email is not None and _has_live_recovery_email(db, verified_email),
     }
 
 
@@ -141,7 +153,7 @@ def _has_live_recovery_email(db: Any, email: str | None) -> bool:
     return admin_accounts.find_by_recovery_email(db, email) is not None
 
 
-def complete_signup(db: Any, subject: str, username: Any, display_language: str = "en") -> dict[str, Any]:
+def complete_signup(db: Any, completion: GoogleSignupCompletion) -> dict[str, Any]:
     """Creates the account and the link in one catalog transaction.
 
     Mirrors ``register_player``: player capability, its own ledger, no password
@@ -153,29 +165,30 @@ def complete_signup(db: Any, subject: str, username: Any, display_language: str 
     while materialising the ledger heals into that account's session only when
     the requested username matches the committed account.
     """
-    clean = validate_username(username)
-    healed = _self_heal(db, subject, clean)
+    clean = validate_username(completion.username)
+    healed = _self_heal(db, completion.subject, clean)
     if healed is not None:
         return healed
     linked_at = datetime.now(UTC).isoformat()
     with db.catalog_transaction(immediate=True):
-        existing_id = db.get_linked_sign_in_account_id(PROVIDER, subject)
+        existing_id = db.get_linked_sign_in_account_id(PROVIDER, completion.subject)
         if existing_id is not None:
             if db.is_live_account(db.get_account(existing_id)):
                 raise SignUpConflictError(ALREADY_LINKED)
             # A dead account's link is replaced here, in the same transaction.
-            db.remove_linked_sign_in(PROVIDER, subject)
+            db.remove_linked_sign_in(PROVIDER, completion.subject)
         if not _is_free(db, clean):
             raise SignUpConflictError(USERNAME_TAKEN)
-        account_id = db.create_account(clean, display_language=display_language)
+        account_id = db.create_account(clean, display_language=completion.display_language)
         if account_id is None:
             raise SignUpConflictError(USERNAME_TAKEN)
         try:
-            db.link_sign_in(PROVIDER, subject, account_id, linked_at=linked_at)
+            db.link_sign_in(PROVIDER, completion.subject, account_id, linked_at=linked_at)
         except sqlite3.IntegrityError:
             # UNIQUE(provider, subject): the other completion won the race, and
             # unwinding here takes the freshly created account with it.
             raise SignUpConflictError(ALREADY_LINKED) from None
+        _store_signup_recovery_email(db, account_id, completion)
     account = db.get_account(account_id) or {}
     # Materialise the ledger, as registration does when it stores the hash, so
     # the session this returns passes the registry's ledger-existence gate.
@@ -191,7 +204,7 @@ def complete_signup(db: Any, subject: str, username: Any, display_language: str 
     }
 
 
-def link_account(db: Any, account_id: str, subject: str) -> dict[str, Any]:
+def link_account(db: Any, account_id: str, identity: GoogleIdentity) -> dict[str, Any]:
     """Connects a verified Google identity to the signed-in caller's account (#114).
 
     Idempotent when that exact subject is already connected. Both conflict
@@ -205,6 +218,7 @@ def link_account(db: Any, account_id: str, subject: str) -> dict[str, Any]:
     catalog transaction, so no second account is ever created for it. The
     session epoch is untouched: connecting is not a credential change.
     """
+    subject = identity.sub
     account = db.get_account(account_id)
     if not db.is_live_account(account) or not account["is_player"]:
         return {"ok": False, "error": "Trainee ledger not found."}
@@ -212,6 +226,7 @@ def link_account(db: Any, account_id: str, subject: str) -> dict[str, Any]:
     with db.catalog_transaction():
         holder = db.get_linked_sign_in_account_id(PROVIDER, subject)
         if holder == account_id:
+            _verify_matching_recovery_email(db, account_id, identity)
             return {"ok": True, "message": "Google account already connected."}
         if holder is not None:
             if db.is_live_account(db.get_account(holder)):
@@ -224,7 +239,39 @@ def link_account(db: Any, account_id: str, subject: str) -> dict[str, Any]:
             db.link_sign_in(PROVIDER, subject, account_id, linked_at=linked_at)
         except sqlite3.IntegrityError:
             raise _link_conflict(db, account_id, subject) from None
+        _verify_matching_recovery_email(db, account_id, identity)
     return {"ok": True, "message": "Google account connected."}
+
+
+def _verified_email(identity: GoogleIdentity) -> str | None:
+    if identity.email_verified is not True:
+        return None
+    return password_reset.normalize_email(identity.email)
+
+
+def _verify_matching_recovery_email(
+    db: Any, account_id: str, identity: GoogleIdentity | None
+) -> None:
+    if identity is None:
+        return
+    email = _verified_email(identity)
+    if email is not None:
+        db.mark_recovery_email_verified_if_matches(account_id, email)
+
+
+def _store_signup_recovery_email(
+    db: Any, account_id: str, completion: GoogleSignupCompletion
+) -> None:
+    if completion.recovery_email_conflict:
+        return
+    identity = completion.identity
+    if identity is None:
+        return
+    email = _verified_email(identity)
+    if email is None or db.get_account_by_email(email) is not None:
+        return
+    db.set_account_email(account_id, email)
+    db.mark_recovery_email_verified_if_matches(account_id, email)
 
 
 def _link_conflict(db: Any, account_id: str, subject: str) -> SignInMethodError:

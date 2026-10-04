@@ -159,11 +159,12 @@ class GoogleSignUpOut(BaseModel):
 
 
 class GoogleCompleteIn(BaseModel):
-    """Completes a first Google sign-in: the verified subject plus the picked name."""
+    """Completes a first Google sign-in with its short-lived verified ID token."""
 
     signup_ticket: str
     username: str
     display_language: Literal["en", "ar"] = "en"
+    id_token: str | None = None
 
 
 class GoogleLinkIn(BaseModel):

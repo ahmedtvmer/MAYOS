@@ -178,7 +178,7 @@ An account's chosen English or Arabic language for the app and MAYOS messages, i
 _Avoid_: Locale (implementation term), app language
 
 **Linked sign-in**:
-An external identity, such as a Google account, attached to exactly one MAYOS account and usable to sign in to it. It never replaces the account's username. An account always keeps at least one way to sign in, so a Linked sign-in can be removed only while the account has a password.
+An external identity, such as a Google account, attached to exactly one MAYOS account and usable to sign in to it. Sign-in and connection match only by provider and subject; accounts are never linked or merged by email. Google's verified email may be kept as the recovery email when a new account is created and no live account already uses it. On an existing account, it can verify the current unverified recovery email only when the addresses match; it never replaces a different address. It never replaces the account's username. An account always keeps at least one way to sign in, so a Linked sign-in can be removed only while the account has a password.
 
 **Workout**:
 A single training session recorded by a player, distinct from an individual exercise within it.

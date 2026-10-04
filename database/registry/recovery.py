@@ -44,7 +44,7 @@ class RegistryRecoveryMixin:
         """Links a normalized email to an account. Raises ValueError if taken by another ledger."""
         self.ensure_account_schema()
         now = datetime.now(UTC).isoformat()
-        with self._catalog_lock, self.catalog_conn:
+        with self.catalog_transaction():
             cursor = self.catalog_conn.cursor()
             cursor.execute("SELECT trainee_id FROM trainee_emails WHERE email = ?", (email,))
             row = cursor.fetchone()
@@ -70,6 +70,17 @@ class RegistryRecoveryMixin:
                     " WHERE account_id = ? AND used_at IS NULL",
                     (now, account_id),
                 )
+
+    def mark_recovery_email_verified_if_matches(self, account_id: str, email: str) -> bool:
+        """Verifies only the current unverified recovery address that matches ``email``."""
+        self.ensure_account_schema()
+        with self.catalog_transaction():
+            updated = self.catalog_conn.execute(
+                "UPDATE trainee_emails SET verified = 1"
+                " WHERE trainee_id = ? AND lower(trim(email)) = ? AND verified = 0",
+                (account_id, email),
+            )
+            return updated.rowcount == 1
 
     def get_account_email(self, account_id: str) -> str | None:
         self.ensure_account_schema()

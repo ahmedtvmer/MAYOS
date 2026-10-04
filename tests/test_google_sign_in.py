@@ -1,5 +1,6 @@
 """Google linked sign-in API tests (#113): fake verifier, no network, no real tokens."""
 
+import hashlib
 import sqlite3
 import threading
 from datetime import UTC, datetime, timedelta
@@ -128,7 +129,7 @@ def _recovery_state(db):
                 "SELECT provider, subject, account_id FROM linked_sign_ins ORDER BY subject"
             ).fetchall(),
             conn.execute(
-                "SELECT trainee_id, email FROM trainee_emails ORDER BY trainee_id"
+                "SELECT trainee_id, email, verified FROM trainee_emails ORDER BY trainee_id"
             ).fetchall(),
         )
 
@@ -235,11 +236,430 @@ def test_verified_recovery_email_match_returns_only_a_nudge_and_writes_nothing(a
         algorithms=["HS256"],
         audience=SIGNUP_TICKET_AUDIENCE,
     )
-    assert set(payload) == {"sub", "type", "aud", "iat", "nbf", "exp"}
+    assert payload["recovery_email_conflict"] is True
+    assert "email" not in payload
     assert _recovery_state(db) == before
     assert db.get_account_email(existing["account_id"]) == "you@gmail.com"
     # The verified Google email must not cross the logging boundary either.
     assert "YOU@gmail.com" not in caplog.text
+
+
+def test_verified_unused_google_email_is_the_new_verified_recovery_email(api, caplog):
+    client, db, verifier = api
+    google_email = "  New.Player@Example.com "
+    normalized_email = "new.player@example.com"
+    verifier.identities["verified-unused"] = GoogleIdentity(
+        sub="unused-google-sub",
+        iat=1_700_000_000,
+        given_name="New Player",
+        email=google_email,
+        email_verified=True,
+    )
+
+    signup = _sign_in_for_ticket(client, "verified-unused")
+    assert signup["existing_account_hint"] is False
+    assert normalized_email not in str(signup)
+    ticket = pyjwt.decode(
+        signup["signup_ticket"],
+        TEST_JWT_SECRET,
+        algorithms=["HS256"],
+        audience=SIGNUP_TICKET_AUDIENCE,
+    )
+    assert "email" not in ticket
+    assert normalized_email not in str(ticket)
+    assert ticket["id_token_sha256"] == hashlib.sha256(b"verified-unused").hexdigest()
+    complete = client.post(
+        "/auth/google/complete",
+        json={
+            "signup_ticket": signup["signup_ticket"],
+            "username": "new-player",
+            "id_token": "verified-unused",
+        },
+    )
+
+    assert complete.status_code == 200, complete.text
+    account = db.get_active_account_by_username("new-player")
+    assert account is not None
+    assert db.get_account_email(account["account_id"]) == normalized_email
+    assert db.is_recovery_email_verified(account["account_id"]) is True
+    me = client.get("/auth/me", headers=_headers(complete.json()["access_token"]))
+    assert me.json()["recovery_email_verified"] is True
+    assert normalized_email not in complete.text
+    assert normalized_email not in caplog.text
+    with db.catalog_locked() as conn:
+        audit = conn.execute("SELECT * FROM audit_log").fetchall()
+    assert all(normalized_email not in str(tuple(row)).lower() for row in audit)
+
+
+def test_signup_email_taken_after_sign_in_is_not_saved(api):
+    client, db, verifier = api
+    google_email = "claimed.after.signin@example.com"
+    verifier.identities["claimed-after-signin"] = GoogleIdentity(
+        sub="new-google-sub",
+        iat=1_700_000_000,
+        given_name="New Player",
+        email=google_email,
+        email_verified=True,
+    )
+
+    signup = _sign_in_for_ticket(client, "claimed-after-signin")
+    assert signup["existing_account_hint"] is False
+
+    _create_account_with_recovery_email(client, db, "later-owner", google_email)
+    complete = client.post(
+        "/auth/google/complete",
+        json={
+            "signup_ticket": signup["signup_ticket"],
+            "username": "new-player",
+            "id_token": "claimed-after-signin",
+        },
+    )
+
+    assert complete.status_code == 200, complete.text
+    account = db.get_active_account_by_username("new-player")
+    assert account is not None
+    assert db.get_account_email(account["account_id"]) is None
+    assert db.is_recovery_email_verified(account["account_id"]) is False
+    me = client.get("/auth/me", headers=_headers(complete.json()["access_token"]))
+    assert me.status_code == 200
+    assert me.json()["recovery_email_verified"] is False
+    assert google_email not in complete.text
+
+
+def test_email_conflict_hint_keeps_google_email_out_of_separate_signup(api, caplog):
+    client, db, verifier = api
+    google_email = "separate.owner@example.com"
+    _create_account_with_recovery_email(client, db, "recovery-owner", google_email)
+    verifier.identities["separate-account"] = GoogleIdentity(
+        sub="separate-google-sub",
+        iat=1_700_000_000,
+        given_name="Separate Player",
+        email=google_email,
+        email_verified=True,
+    )
+    signup = _sign_in_for_ticket(client, "separate-account")
+    assert signup["existing_account_hint"] is True
+
+    complete = client.post(
+        "/auth/google/complete",
+        json={
+            "signup_ticket": signup["signup_ticket"],
+            "username": "separate-player",
+            "id_token": "separate-account",
+        },
+    )
+
+    assert complete.status_code == 200, complete.text
+    account = db.get_active_account_by_username("separate-player")
+    assert account is not None
+    assert db.get_account_email(account["account_id"]) is None
+    assert db.is_recovery_email_verified(account["account_id"]) is False
+    me = client.get("/auth/me", headers=_headers(complete.json()["access_token"]))
+    assert me.json()["recovery_email_verified"] is False
+    assert google_email not in complete.text
+    assert google_email not in caplog.text
+    with db.catalog_locked() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize(
+    ("email", "email_verified"),
+    [("unverified@example.com", False), (None, True)],
+)
+def test_google_signup_without_verified_email_keeps_recovery_email_empty(api, email, email_verified):
+    client, db, verifier = api
+    verifier.identities["no-verified-email"] = GoogleIdentity(
+        sub="no-verified-email-sub",
+        iat=1_700_000_000,
+        given_name="Plain Player",
+        email=email,
+        email_verified=email_verified,
+    )
+    signup = _sign_in_for_ticket(client, "no-verified-email")
+    complete = client.post(
+        "/auth/google/complete",
+        json={
+            "signup_ticket": signup["signup_ticket"],
+            "username": "plain-player",
+            "id_token": "no-verified-email",
+        },
+    )
+
+    assert complete.status_code == 200, complete.text
+    account = db.get_active_account_by_username("plain-player")
+    assert account is not None
+    assert db.get_account_email(account["account_id"]) is None
+    assert db.is_recovery_email_verified(account["account_id"]) is False
+
+
+def test_google_signup_refuses_a_same_subject_token_substitution(api):
+    client, db, verifier = api
+    verifier.identities["original-token"] = GoogleIdentity(
+        sub="same-google-subject",
+        iat=1_700_000_000,
+        email="original@example.com",
+        email_verified=True,
+    )
+    verifier.identities["replacement-token"] = GoogleIdentity(
+        sub="same-google-subject",
+        iat=1_700_000_001,
+        email="replacement@example.com",
+        email_verified=True,
+    )
+
+    signup = _sign_in_for_ticket(client, "original-token")
+    substituted = client.post(
+        "/auth/google/complete",
+        json={
+            "signup_ticket": signup["signup_ticket"],
+            "username": "token-player",
+            "id_token": "replacement-token",
+        },
+    )
+
+    assert substituted.status_code == 401
+    assert db.get_active_account_by_username("token-player") is None
+    assert db.get_account_by_email("original@example.com") is None
+    assert db.get_account_by_email("replacement@example.com") is None
+
+
+@pytest.mark.parametrize("bad_id_token", ["bad-expired-id-token", "bad-wrong-audience-id-token"])
+def test_google_signup_rejects_expired_or_wrong_audience_completion_token(api, bad_id_token):
+    client, db, _verifier = api
+    signup = _sign_in_for_ticket(client, "still-valid-sign-in-token")
+
+    complete = client.post(
+        "/auth/google/complete",
+        json={
+            "signup_ticket": signup["signup_ticket"],
+            "username": "invalid-token-player",
+            "id_token": bad_id_token,
+        },
+    )
+
+    assert complete.status_code == 401
+    assert db.get_active_account_by_username("invalid-token-player") is None
+    assert _link_rows(db) == []
+
+
+def test_google_signup_string_email_verified_does_not_store_email(api):
+    client, db, verifier = api
+    verifier.identities["string-email-verified"] = GoogleIdentity(
+        sub="string-verified-subject",
+        iat=1_700_000_000,
+        email="string-verified@example.com",
+        email_verified="true",
+    )
+    signup = _sign_in_for_ticket(client, "string-email-verified")
+
+    complete = client.post(
+        "/auth/google/complete",
+        json={
+            "signup_ticket": signup["signup_ticket"],
+            "username": "string-verified-player",
+            "id_token": "string-email-verified",
+        },
+    )
+
+    assert complete.status_code == 200, complete.text
+    account = db.get_active_account_by_username("string-verified-player")
+    assert account is not None
+    assert db.get_account_email(account["account_id"]) is None
+    assert db.is_recovery_email_verified(account["account_id"]) is False
+
+
+def test_google_signup_without_completion_token_keeps_verified_email_empty(api):
+    client, db, verifier = api
+    verifier.identities["tokenless-completion"] = GoogleIdentity(
+        sub="tokenless-subject",
+        iat=1_700_000_000,
+        email="tokenless@example.com",
+        email_verified=True,
+    )
+    signup = _sign_in_for_ticket(client, "tokenless-completion")
+
+    complete = client.post(
+        "/auth/google/complete",
+        json={"signup_ticket": signup["signup_ticket"], "username": "tokenless-player"},
+    )
+
+    assert complete.status_code == 200, complete.text
+    account = db.get_active_account_by_username("tokenless-player")
+    assert account is not None
+    assert db.get_account_email(account["account_id"]) is None
+    assert db.is_recovery_email_verified(account["account_id"]) is False
+
+
+@pytest.mark.parametrize("operation", ["sign-in", "connect"])
+@pytest.mark.parametrize("email_verified", [False, "true", None], ids=["false", "string-true", "missing"])
+def test_google_sign_in_and_connect_do_not_verify_without_boolean_true(api, operation, email_verified):
+    client, db, verifier = api
+    registered = client.post(
+        "/auth/register",
+        json={"trainee_id": f"negative-{operation}", "password": "StrongPass123"},
+    )
+    assert registered.status_code == 201, registered.text
+    account = db.get_active_account_by_username(f"negative-{operation}")
+    assert account is not None
+    db.set_account_email(account["account_id"], "current.owner@example.com")
+
+    google_subject = "linked-negative-subject" if operation == "sign-in" else "connect-negative-subject"
+    if operation == "sign-in":
+        verifier.identities["negative-seed-link"] = GoogleIdentity(
+            sub=google_subject,
+            iat=1_700_000_000,
+            email_verified=False,
+        )
+        linked = client.post(
+            "/auth/google/link",
+            json={"id_token": "negative-seed-link"},
+            headers=_headers(registered.json()["access_token"]),
+        )
+        assert linked.status_code == 200, linked.text
+
+    claims = {
+        "sub": google_subject,
+        "iat": 1_700_000_000,
+        "email": "current.owner@example.com",
+    }
+    if email_verified is not None:
+        claims["email_verified"] = email_verified
+    verifier.identities["negative-email-proof"] = GoogleIdentity(**claims)
+
+    if operation == "sign-in":
+        response = client.post("/auth/google", json={"id_token": "negative-email-proof"})
+    else:
+        response = client.post(
+            "/auth/google/link",
+            json={"id_token": "negative-email-proof"},
+            headers=_headers(registered.json()["access_token"]),
+        )
+
+    assert response.status_code == 200, response.text
+    assert db.get_account_email(account["account_id"]) == "current.owner@example.com"
+    assert db.is_recovery_email_verified(account["account_id"]) is False
+
+
+def test_google_signup_rolls_back_account_link_and_recovery_email_after_write_failure(api, monkeypatch):
+    client, db, verifier = api
+    verifier.identities["rollback-token"] = GoogleIdentity(
+        sub="rollback-subject",
+        iat=1_700_000_000,
+        email="rollback@example.com",
+        email_verified=True,
+    )
+    signup = _sign_in_for_ticket(client, "rollback-token")
+    failure_state = {"account_id": None, "verified_before_raise": False}
+    mark_verified = db.mark_recovery_email_verified_if_matches
+
+    def fail_after_mark(account_id, email):
+        mark_verified(account_id, email)
+        failure_state["account_id"] = account_id
+        failure_state["verified_before_raise"] = db.is_recovery_email_verified(account_id)
+        raise ValueError("injected failure after recovery email write")
+
+    monkeypatch.setattr(db, "mark_recovery_email_verified_if_matches", fail_after_mark)
+    complete = client.post(
+        "/auth/google/complete",
+        json={
+            "signup_ticket": signup["signup_ticket"],
+            "username": "rollback-player",
+            "id_token": "rollback-token",
+        },
+    )
+
+    assert complete.status_code == 400
+    assert failure_state["verified_before_raise"] is True
+    assert failure_state["account_id"] is not None
+    assert db.is_recovery_email_verified(failure_state["account_id"]) is False
+    assert db.get_active_account_by_username("rollback-player") is None
+    assert db.get_account_by_email("rollback@example.com") is None
+    assert _accounts(client) == []
+    assert _link_rows(db) == []
+    with db.catalog_locked() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM trainee_emails").fetchone()[0] == 0
+
+
+def test_google_signup_rejects_an_id_token_for_another_subject(api):
+    client, db, verifier = api
+    signup = _sign_in_for_ticket(client, "ticket-subject")
+    verifier.identities["different-subject"] = GoogleIdentity(
+        sub="unrelated-subject",
+        iat=1_700_000_000,
+        email="unrelated@example.com",
+        email_verified=True,
+    )
+
+    response = client.post(
+        "/auth/google/complete",
+        json={
+            "signup_ticket": signup["signup_ticket"],
+            "username": "ticket-player",
+            "id_token": "different-subject",
+        },
+    )
+
+    assert response.status_code == 401
+    assert db.get_active_account_by_username("ticket-player") is None
+    assert db.get_account_by_email("unrelated@example.com") is None
+
+
+@pytest.mark.parametrize("operation", ["sign-in", "connect"])
+@pytest.mark.parametrize(
+    ("google_email", "expected_verified"),
+    [(" Current.Owner@Example.com ", True), ("other@example.com", False)],
+)
+def test_google_sign_in_and_connect_verify_only_a_matching_recovery_email(
+    api, operation, google_email, expected_verified, caplog
+):
+    client, db, verifier = api
+    registered = client.post(
+        "/auth/register",
+        json={"trainee_id": f"google-{operation}", "password": "StrongPass123"},
+    )
+    assert registered.status_code == 201, registered.text
+    account = db.get_active_account_by_username(f"google-{operation}")
+    assert account is not None
+    db.set_account_email(account["account_id"], "current.owner@example.com")
+    assert db.is_recovery_email_verified(account["account_id"]) is False
+
+    if operation == "sign-in":
+        verifier.identities["seed-link"] = GoogleIdentity(
+            sub="linked-google-sub", iat=1_700_000_000, email_verified=False
+        )
+        linked = client.post(
+            "/auth/google/link",
+            json={"id_token": "seed-link"},
+            headers=_headers(registered.json()["access_token"]),
+        )
+        assert linked.status_code == 200, linked.text
+
+    verifier.identities["email-check"] = GoogleIdentity(
+        sub="linked-google-sub" if operation == "sign-in" else "new-google-sub",
+        iat=1_700_000_000,
+        email=google_email,
+        email_verified=True,
+    )
+    if operation == "sign-in":
+        response = client.post("/auth/google", json={"id_token": "email-check"})
+    else:
+        response = client.post(
+            "/auth/google/link",
+            json={"id_token": "email-check"},
+            headers=_headers(registered.json()["access_token"]),
+        )
+
+    assert response.status_code == 200, response.text
+    assert db.get_account_email(account["account_id"]) == "current.owner@example.com"
+    assert db.is_recovery_email_verified(account["account_id"]) is expected_verified
+    assert "current.owner@example.com" not in response.text
+    assert "other@example.com" not in response.text
+    with db.catalog_locked() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM trainee_emails").fetchone()[0] == 1
+        audit = conn.execute("SELECT * FROM audit_log").fetchall()
+    assert "other@example.com" not in str(audit)
+    assert "current.owner@example.com" not in caplog.text
+    assert "other@example.com" not in caplog.text
 
 
 def test_verified_recovery_email_match_hints_for_a_coach_only_account(api):
@@ -314,7 +734,7 @@ def test_deleted_recovery_account_does_not_return_hint(api):
     assert response.json()["existing_account_hint"] is False
 
 
-def test_signup_ticket_carries_only_the_subject_and_fifteen_minutes(api):
+def test_signup_ticket_carries_subject_and_token_digest_for_fifteen_minutes(api):
     client, _, _verifier = api
     signup = _sign_in_for_ticket(client, "carol-token:Carol")
 
@@ -324,11 +744,14 @@ def test_signup_ticket_carries_only_the_subject_and_fifteen_minutes(api):
         algorithms=["HS256"],
         audience=SIGNUP_TICKET_AUDIENCE,
     )
-    assert set(payload) == {"sub", "type", "aud", "iat", "nbf", "exp"}
+    assert set(payload) == {"sub", "type", "aud", "iat", "nbf", "exp", "id_token_sha256"}
     assert payload["sub"] == "sub-carol-token"
+    assert payload["id_token_sha256"] == hashlib.sha256(b"carol-token:Carol").hexdigest()
+    assert "carol-token:Carol" not in str(payload)
     assert payload["type"] == SIGNUP_TICKET_TYPE
     assert payload["aud"] == SIGNUP_TICKET_AUDIENCE
     assert payload["exp"] - payload["iat"] == 15 * 60
+    assert "recovery_email_conflict" not in payload
     # No email or name travels in the ticket.
     assert "email" not in payload
     assert "given_name" not in payload
@@ -594,7 +1017,14 @@ def test_concurrent_completion_creates_one_account_and_one_link(api):
     def complete(username: str) -> None:
         barrier.wait(timeout=5)
         try:
-            outcomes.append(google_service.complete_signup(db, "sub-race-token", username))
+            outcomes.append(
+                google_service.complete_signup(
+                    db,
+                    google_service.GoogleSignupCompletion(
+                        subject="sub-race-token", username=username
+                    ),
+                )
+            )
         except Exception as exc:  # the loser's failure mode is the assertion
             outcomes.append(exc)
 
