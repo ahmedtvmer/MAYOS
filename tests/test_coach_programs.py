@@ -402,6 +402,31 @@ def test_coach_publication_loads_broader_prescription_range(api):
     assert active.json()["days"][0]["exercises"][0]["target_sets"] == 5
 
 
+def test_manual_program_publish_records_one_coach_publication_event(api, recording_analytics):
+    client, _, _ = api
+    coach_headers, _, assignment_id, coach_account_id, _ = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+    assert client.post(path, headers=coach_headers, json=_one_day_draft()).status_code == 200
+
+    published = client.post(
+        f"{path}/publish", headers={**coach_headers, "X-MAYOS-Client": "web/1.4.0"}
+    )
+
+    assert published.status_code == 200, published.text
+    events = [event for event in recording_analytics.events if event["event"] == "coach_program_published"]
+    assert len(events) == 1
+    assert events[0]["distinct_id"] == coach_account_id
+    assert events[0]["properties"] | {"env": "test"} == {
+        "role": "coach",
+        "platform": "web",
+        "app_version": "1.4.0",
+        "env": "test",
+        "day_count": 1,
+        "first_for_assignment": True,
+        "is_coaching_action": True,
+    }
+
+
 def test_manual_program_publish_sets_rir_provenance_version_notice_and_authority(api, monkeypatch):
     client, db, _ = api
     coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)

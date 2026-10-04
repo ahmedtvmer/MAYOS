@@ -16,7 +16,6 @@ from typing import Any, Protocol
 
 from fastapi import Request
 
-from service.intake import INTAKE_FIELDS
 
 logger = logging.getLogger(__name__)
 
@@ -119,10 +118,23 @@ def _account_id() -> PropertyType:
 
 
 _PHASES = frozenset({"closed_trial", "public"})
-_ONBOARDING_STEPS = frozenset(field.name for field in INTAKE_FIELDS) | {
-    "disclosure",
-    "review",
-}
+
+
+def _onboarding_step() -> PropertyType:
+    """Steps are the intake fields plus the disclosure and review screens.
+
+    Resolved on use: the intake module depends on services that capture events.
+    """
+
+    def is_step(value: Any) -> bool:
+        from service.intake import INTAKE_FIELDS
+
+        steps = {field.name for field in INTAKE_FIELDS} | {"disclosure", "review"}
+        return isinstance(value, str) and value in steps
+
+    return PropertyType(is_step, "an onboarding step identifier")
+
+
 _PROGRAM_TRIGGERS = frozenset(
     {"onboarding", "profile_rebuild", "player_request", "synthesized", "coach_request"}
 )
@@ -151,7 +163,7 @@ PROPERTY_TYPES: dict[str, PropertyType] = {
     "time_open_seconds": _bounded_int(31_557_600),
     "is_player": _boolean(),
     "is_coach": _boolean(),
-    "step": _enum(_ONBOARDING_STEPS),
+    "step": _onboarding_step(),
     "coached": _boolean(),
     "active_roster_size": _bounded_int(200),
     "coach_id": _account_id(),

@@ -59,7 +59,7 @@
     },
     "create_assignment_invite": {
       "kind": "method",
-      "signature": "(self, token_hash: str, coach_account_id: str, expires_at: str) -> None"
+      "signature": "(self, token_hash: str, coach_account_id: str, expires_at: str) -> int"
     },
     "create_assignment_notice": {
       "kind": "method",

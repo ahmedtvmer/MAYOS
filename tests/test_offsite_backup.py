@@ -318,6 +318,7 @@ def test_r2_restore_cli_removes_download_after_immediate_restore(tmp_path, monke
             "restored_ledgers": [],
             "deletions_reapplied": 0,
             "quarantined_ledgers": [],
+            "deletion_facts": [],
         }
 
     monkeypatch.setattr(restore_cli, "restore_daily_backup", restore)
