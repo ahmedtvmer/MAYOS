@@ -17,6 +17,23 @@ class SettingsCopy {
   String get personalization => isArabic ? 'التخصيص' : 'Personalization';
   String get assistantStyle => isArabic ? 'أسلوب المساعد' : 'Assistant style';
   String get account => isArabic ? 'الحساب' : 'Account';
+  String get username => isArabic ? 'اسم المستخدم' : 'Username';
+  String get linkedSignIn => isArabic ? 'تسجيل الدخول المرتبط' : 'Linked sign-in';
+  String get linkedSignInSubtitle => isArabic
+      ? 'إدارة كلمة المرور وتسجيل الدخول باستخدام Google'
+      : 'Manage your password and Google sign-in';
+  String get trainingProfile => isArabic ? 'الملف التدريبي' : 'Training profile';
+  String get lifterPlan => isArabic ? 'خطة اللاعب' : 'Lifter plan';
+  String get coachProfile => isArabic ? 'ملف المدرب' : 'Coach profile';
+  String get editCoachProfile =>
+      isArabic ? 'تعديل ملف المدرب' : 'Edit coach profile';
+  String get coachPlan => isArabic ? 'خطة المدرب' : 'Coach plan';
+  String get notifications => isArabic ? 'الإشعارات' : 'Notifications';
+  String get notificationSettings =>
+      isArabic ? 'عرض الإشعارات' : 'View notifications';
+  String get coachNotificationsSubtitle => isArabic
+      ? 'تنبيهات انتهاء الصلاحية واللاعبين الذين يحتاجون إلى متابعة'
+      : 'Expiry and attention alerts';
   String get recoveryEmail => isArabic ? 'البريد الإلكتروني للاسترداد' : 'Recovery email';
   String get recoveryEmailVerified => isArabic ? 'تم التحقق' : 'Verified';
   String get recoveryEmailNotVerified => isArabic ? 'لم يتم التحقق' : 'Not verified';
@@ -62,18 +79,6 @@ class SettingsCopy {
   String get recoveryEmailChangeSuccessLead => isArabic
       ? 'أصبح البريد الإلكتروني الجديد عنوانك الموثق للاسترداد.'
       : 'The new address is now your verified recovery email.';
-  String get profile => isArabic ? 'الملف الشخصي' : 'Profile';
-  String get profileSubtitle => isArabic
-      ? 'تفضيلات التدريب والجدول والحساب'
-      : 'Training preferences, schedule, and account';
-  String get plan => isArabic ? 'الخطة' : 'Plan';
-  String get planSubtitle =>
-      isArabic ? 'حالة خطتي اللاعب والمدرب' : 'Lifter and Coach plan states';
-  String get coaching => isArabic ? 'التدريب مع مدرب' : 'Coaching';
-  String get coachingAssignment =>
-      isArabic ? 'علاقة التدريب' : 'Coaching assignment';
-  String get coachingSubtitle =>
-      isArabic ? 'مدربك وسجلات التواصل' : 'Your coach and check-ins';
   String get enableCoaching =>
       isArabic ? 'تفعيل وضع المدرب' : 'Enable coaching';
   String get enableCoachingSubtitle => isArabic

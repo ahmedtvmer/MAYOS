@@ -71,8 +71,14 @@ FakeMayosApi _signedInFake({required bool coach}) {
 
 Future<void> _openPlan(WidgetTester tester) async {
   await _openSettings(tester);
-  await tester.tap(find.text('Plan'));
-  await _pumpUntilFound(tester, find.text('Lifter Free'));
+  final Finder coachPlan = find.text('Coach plan');
+  if (coachPlan.evaluate().isNotEmpty) {
+    await tester.tap(coachPlan);
+    await _pumpUntilFound(tester, find.text('Coach Free'));
+  } else {
+    await tester.tap(find.text('Lifter plan'));
+    await _pumpUntilFound(tester, find.text('Lifter Free'));
+  }
 }
 
 /// Player mode carries the header Settings icon; Coach mode reaches Settings
@@ -166,17 +172,17 @@ void main() {
     expect(find.textContaining('publish'), findsNothing);
   });
 
-  testWidgets('dual-capability account sees independent Lifter and Coach plans',
+  testWidgets('Coach mode shows only the Coach plan for a dual-capability account',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _signedInFake(coach: true);
     await _pumpApp(tester, fake);
     await _openPlan(tester);
 
-    expect(find.text('Lifter Free'), findsOneWidget);
     expect(find.text('Coach Free'), findsOneWidget);
     expect(find.text('Coach profile and player invites'), findsOneWidget);
     expect(find.text('Active roster with assignment status'), findsOneWidget);
-    expect(find.text('Automatic training program'), findsOneWidget);
+    expect(find.text('Lifter Free'), findsNothing);
+    expect(find.text('Automatic training program'), findsNothing);
   });
 
   testWidgets('server-owned plan state is displayed, not inferred',
@@ -185,7 +191,7 @@ void main() {
     fake.lifterPlan = 'pro';
     await _pumpApp(tester, fake);
     await _openSettings(tester);
-    await tester.tap(find.text('Plan'));
+    await tester.tap(find.text('Lifter plan'));
     await _pumpUntilFound(tester, find.text('Lifter Pro'));
 
     expect(find.text('Lifter Pro'), findsOneWidget);

@@ -165,7 +165,7 @@ void main() {
       tester,
       fake,
       google: google,
-      initialRoute: planPath,
+      initialRoute: lifterPlanPath,
     );
 
     google.emitAuthenticationOutcome(
@@ -183,7 +183,7 @@ void main() {
           .currentConfiguration
           .uri
           .queryParameters['from'],
-      planPath,
+      lifterPlanPath,
     );
   });
 
@@ -227,7 +227,7 @@ void main() {
       tester,
       FakeMayosApi(),
       google: google,
-      initialRoute: planPath,
+      initialRoute: lifterPlanPath,
     );
 
     google.emitAuthenticationOutcome(
@@ -239,7 +239,7 @@ void main() {
     expect(router.routerDelegate.currentConfiguration.uri.path, googleSignupPath);
     expect(
       router.routerDelegate.currentConfiguration.uri.queryParameters['from'],
-      planPath,
+      lifterPlanPath,
     );
     expect(google.authenticateCalls, 0);
   });
@@ -278,7 +278,7 @@ void main() {
       tester,
       fake,
       google: google,
-      initialRoute: planPath,
+      initialRoute: lifterPlanPath,
     );
 
     await _openPicker(tester);
@@ -287,7 +287,7 @@ void main() {
         router.routerDelegate.currentConfiguration.uri.path, googleSignupPath);
     expect(
       router.routerDelegate.currentConfiguration.uri.queryParameters['from'],
-      planPath,
+      lifterPlanPath,
     );
 
     await tester.tap(find.byKey(const Key('google_signup_cancel')));
@@ -296,14 +296,14 @@ void main() {
     expect(router.routerDelegate.currentConfiguration.uri.path, loginPath);
     expect(
       router.routerDelegate.currentConfiguration.uri.queryParameters['from'],
-      planPath,
+      lifterPlanPath,
     );
 
     google.idToken = fake.googleLinkedIdToken;
     await tester.tap(find.text('Continue with Google'));
     await _pumpUntilFound(tester, find.byType(PlanScreen));
     expect(find.byType(PlanScreen), findsOneWidget);
-    expect(router.routerDelegate.currentConfiguration.uri.path, planPath);
+    expect(router.routerDelegate.currentConfiguration.uri.path, lifterPlanPath);
   });
 
   testWidgets(

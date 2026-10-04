@@ -568,7 +568,8 @@ void main() {
     testWidgets('54 sweep profile $theme', (WidgetTester tester) async {
       await _pumpApp(tester, _fake(), mode: mode);
       await _openSettings(tester);
-      await _tapSettingsTile(tester, 'Profile', find.text('Training profile'));
+      await _tapSettingsTile(
+          tester, 'Training profile', find.byKey(const Key('current_goal_field')));
       await _assertNoOverflowAt2x(tester, _small);
     });
 
@@ -576,7 +577,7 @@ void main() {
       await _pumpApp(tester, _fake(), mode: mode);
       await _openSettings(tester);
       await _tapSettingsTile(
-          tester, 'Plan', find.textContaining('Lifter and Coach'));
+          tester, 'Lifter plan', find.text('Lifter Free'));
       await _assertNoOverflowAt2x(tester, _small);
     });
 
@@ -584,7 +585,7 @@ void main() {
       await _pumpApp(tester, _fake(), mode: mode);
       await _openSettings(tester);
       await _tapSettingsTile(
-          tester, 'Coaching assignment', find.text('Coach assignment'));
+          tester, 'My coach', find.text('Invite code from your coach'));
       await _assertNoOverflowAt2x(tester, _small);
     });
 

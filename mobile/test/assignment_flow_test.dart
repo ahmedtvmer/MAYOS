@@ -111,7 +111,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await _pumpUntilFound(tester, find.text('المظهر'));
     expect(find.text('الحساب'), findsOneWidget);
-    expect(find.text('الملف الشخصي'), findsOneWidget);
+    expect(find.text('اسم المستخدم'), findsOneWidget);
     expect(
       Directionality.of(tester.element(find.text('المظهر'))),
       TextDirection.rtl,
@@ -133,7 +133,15 @@ void main() {
     await _pumpUntilFound(tester, find.text('المظهر'));
 
     await tester.tap(find.byIcon(Icons.badge_outlined));
-    await _pumpUntilFound(tester, find.text('علاقة التدريب مع المدرب'));
+    await _pumpUntilFound(tester, find.text('مدربي'));
+    expect(find.text('مغادرة المدرب'), findsOneWidget);
+    expect(
+      find.text(
+        'أثناء نشاط علاقتك بمدربك، يمكنه الاطلاع على بيانات تدريبك الحالية '
+        'والسابقة. مغادرتك لمدربك تلغي إمكانية الاطلاع فورًا.',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('مدربك'), findsOneWidget);
     expect(find.text('طلبات البرنامج التدريبي'), findsOneWidget);
     expect(find.text('لا توجد طلبات للبرنامج التدريبي بعد.'), findsOneWidget);
@@ -172,12 +180,13 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await _pumpUntilFound(tester, find.text('المظهر'));
-    await tester.tap(find.byIcon(Icons.person_outline));
+    expect(find.text('تسجيل الدخول المرتبط'), findsOneWidget);
+    await tester.tap(find.text('الملف التدريبي'));
     await _pumpUntilFound(tester, find.byKey(const Key('weight_kg_field')));
 
-    expect(find.text('الملف التدريبي'), findsOneWidget);
+    expect(find.text('الملف التدريبي'), findsWidgets);
     expect(find.text('جدول التدريب'), findsOneWidget);
-    expect(find.text('طرق تسجيل الدخول'), findsOneWidget);
+    expect(find.text('طرق تسجيل الدخول'), findsNothing);
     expect(find.text('Build strength.'), findsOneWidget);
     final TextField weightField =
         tester.widget<TextField>(find.byKey(const Key('weight_kg_field')));
@@ -185,7 +194,7 @@ void main() {
     // this Double value stays `75.0` in Western digits in either language.
     expect(weightField.controller!.text, '75.0');
     expect(
-      Directionality.of(tester.element(find.text('الملف التدريبي'))),
+      Directionality.of(tester.element(find.text('الملف التدريبي').first)),
       TextDirection.rtl,
     );
     expect(
@@ -206,13 +215,14 @@ void main() {
     // Open the player assignment surface from the app bar.
     await _openSettings(tester);
     await tester.tap(find.byIcon(Icons.badge_outlined));
-    await _pumpUntilFound(tester, find.text('Coach assignment'));
+    await _pumpUntilFound(tester, find.text('My coach'));
 
     expect(find.text('Invite code from your coach'), findsOneWidget);
     expect(
       find.text(
-        'Enter the invite code from your coach. Your coach can only see your training data '
-        'after you accept, and access ends when either of you ends the assignment.',
+        'Enter your coach’s invite code. Your coach can view your training data '
+        'only after you accept, and access ends when either of you leaves the '
+        'coaching relationship.',
       ),
       findsOneWidget,
     );
@@ -247,10 +257,10 @@ void main() {
     expect(fake.activeAssignmentId, 'assignment-1');
 
     // The player can end it; the invite section returns.
-    await tester.tap(find.widgetWithText(OutlinedButton, 'End assignment'));
-    await _pumpUntilFound(tester, find.text('End assignment?'));
-    await tester.tap(find.widgetWithText(FilledButton, 'End assignment'));
-    await _pumpUntilFound(tester, find.text('Coach assignment'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Leave coach'));
+    await _pumpUntilFound(tester, find.text('Leave coach?'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Leave coach'));
+    await _pumpUntilFound(tester, find.text('My coach'));
     expect(fake.activeAssignmentId, isNull);
   });
 
@@ -264,7 +274,7 @@ void main() {
     await _openSettings(tester);
 
     await tester.tap(find.byIcon(Icons.badge_outlined));
-    await _pumpUntilFound(tester, find.text('Coach assignment'));
+    await _pumpUntilFound(tester, find.text('My coach'));
 
     await tester.enterText(
         find.byKey(const Key('assignment_code_field')), 'coach-a-token-123456');
@@ -301,7 +311,7 @@ void main() {
     await _openSettings(tester);
 
     await tester.tap(find.byIcon(Icons.badge_outlined));
-    await _pumpUntilFound(tester, find.text('Coach assignment'));
+    await _pumpUntilFound(tester, find.text('My coach'));
 
     await tester.enterText(
         find.byKey(const Key('assignment_code_field')), 'coach-b-token-123456');

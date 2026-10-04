@@ -250,11 +250,8 @@ void main() {
 
       await tester.tap(find.byIcon(Icons.settings_outlined));
       await _pumpUntilFound(tester, find.text('Appearance'));
-      await tester.tap(find.text('Plan'));
-      await _pumpUntilFound(
-        tester,
-        find.text('Lifter and Coach plans are independent.'),
-      );
+      await tester.tap(find.text('Lifter plan'));
+      await _pumpUntilFound(tester, find.text('Lifter Free'));
       final Rect pushedBody = tester.getRect(
         find.byKey(MayosScaffold.bodyContentKey),
       );

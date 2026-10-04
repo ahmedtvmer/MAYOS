@@ -194,8 +194,8 @@ class _PlayerAssignmentScreenState
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: Text(_copy.endAssignmentQuestion),
-        content: Text(_copy.endAssignmentLead),
+        title: Text(_copy.leaveCoachQuestion),
+        content: Text(_copy.leaveCoachLead),
         actions: <Widget>[
           MayosButton(
             label: _copy.cancel,
@@ -204,7 +204,7 @@ class _PlayerAssignmentScreenState
             onPressed: () => Navigator.of(context).pop(false),
           ),
           MayosButton(
-            label: _copy.endAssignment,
+            label: _copy.leaveCoach,
             expand: false,
             onPressed: () => Navigator.of(context).pop(true),
           ),
@@ -225,7 +225,7 @@ class _PlayerAssignmentScreenState
         _assignment = null;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_copy.assignmentEnded)),
+        SnackBar(content: Text(_copy.leaveCoachComplete)),
       );
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -518,7 +518,7 @@ class _PlayerAssignmentScreenState
   Widget _activeAssignment(BuildContext context, Assignment assignment) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final String specialization = assignment.coach.specialization.isEmpty
-        ? _copy.activeAssignment
+        ? _copy.yourCoach
         : assignment.coach.specialization;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -542,7 +542,7 @@ class _PlayerAssignmentScreenState
         ),
         const SizedBox(height: MayosSpacing.lg),
         MayosButton(
-          label: _copy.endAssignment,
+          label: _copy.leaveCoach,
           icon: Icons.link_off,
           variant: MayosButtonVariant.secondary,
           expand: false,
@@ -560,7 +560,7 @@ class _PlayerAssignmentScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        MayosSectionHeader(title: _copy.coachAssignment),
+        MayosSectionHeader(title: _copy.myCoach),
         Text(
           _copy.inviteExplanation,
           style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/app_mode.dart';
+import 'core/display_language/assignment_copy.dart';
 import 'core/display_language/catalog.dart';
 import 'core/display_language/controller.dart';
 import 'core/models.dart';
@@ -51,7 +52,8 @@ const String homePath = '/home';
 const String settingsPath = '/settings';
 const String recoveryEmailSettingsPath = '/settings/recovery-email';
 const String personalizationPath = '/personalization';
-const String planPath = '/plan';
+const String lifterPlanPath = '/lifter-plan';
+const String coachPlanPath = '/coach-plan';
 const String profilePath = '/profile';
 const String coachPath = '/coach';
 const String coachRosterRoutePath = 'roster';
@@ -405,18 +407,27 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
-        path: planPath,
+        path: lifterPlanPath,
         builder: (BuildContext context, GoRouterState state) =>
             _localizedPlayerPage(
-          title: (String languageCode) => SettingsCopy(languageCode).plan,
-          body: const PlanScreen(),
+          title: (String languageCode) => SettingsCopy(languageCode).lifterPlan,
+          body: const PlanScreen(capability: PlanCapability.lifter),
+        ),
+      ),
+      GoRoute(
+        path: coachPlanPath,
+        builder: (BuildContext context, GoRouterState state) =>
+            _localizedPlayerPage(
+          title: (String languageCode) => SettingsCopy(languageCode).coachPlan,
+          body: const PlanScreen(capability: PlanCapability.coach),
         ),
       ),
       GoRoute(
         path: profilePath,
         builder: (BuildContext context, GoRouterState state) =>
             _localizedPlayerPage(
-          title: (String languageCode) => SettingsCopy(languageCode).profile,
+          title: (String languageCode) =>
+              SettingsCopy(languageCode).trainingProfile,
           body: ProfileScreen(),
         ),
       ),
@@ -517,7 +528,8 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: assignmentPath,
         builder: (BuildContext context, GoRouterState state) =>
             _localizedPlayerPage(
-          title: (String languageCode) => SettingsCopy(languageCode).coaching,
+          title: (String languageCode) =>
+              AssignmentCopy(languageCode).myCoach,
           body: const PlayerAssignmentScreen(),
         ),
       ),

@@ -767,7 +767,7 @@ void main() {
 
     await _openSettings(tester);
 
-    await tester.tap(find.text('Profile'));
+    await tester.tap(find.text('Training profile'));
     await _pumpUntilFound(tester, find.text('Training schedule'));
     await tester.drag(find.byType(ListView).first, const Offset(0, -900));
     await tester.pump();

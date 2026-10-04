@@ -854,11 +854,21 @@ Future<void> _logout(WidgetTester tester) async {
     await tester.tap(settingsLabel);
   }
   await tester.pumpAndSettle();
-  final Finder logOut = find.text('Log out').evaluate().isNotEmpty
-      ? find.text('Log out')
-      : find.text('تسجيل الخروج');
-  await tester.scrollUntilVisible(logOut, 250,
-      scrollable: find.byType(Scrollable).first);
+  final Finder settingsList = find.byKey(const Key('settings_section_list'));
+  final Finder logOut = find.byWidgetPredicate(
+    (Widget widget) =>
+        widget is Text &&
+        (widget.data == 'Log out' || widget.data == 'تسجيل الخروج'),
+  );
+  await tester.scrollUntilVisible(
+    logOut,
+    250,
+    scrollable: find.descendant(
+      of: settingsList,
+      matching: find.byType(Scrollable),
+    ),
+  );
+  await tester.pumpAndSettle();
   await tester.tap(logOut);
   await tester.pumpAndSettle();
 }

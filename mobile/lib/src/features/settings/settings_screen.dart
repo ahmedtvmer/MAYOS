@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
+import '../../core/app_mode.dart';
 import '../../core/config.dart';
+import '../../core/display_language/assignment_copy.dart';
 import '../../core/display_language/catalog.dart';
 import '../../core/display_language/controller.dart';
 import '../../core/display_language/settings_copy.dart';
@@ -19,6 +21,7 @@ import '../../core/ui/mayos_segmented_control.dart';
 import '../../core/ui/mayos_settings_tile.dart';
 import '../../providers.dart';
 import '../../router.dart';
+import 'account_security_section.dart';
 import 'credits_dialog.dart';
 import 'logout_confirmation.dart';
 
@@ -50,17 +53,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final AccountSession? session = ref.watch(authControllerProvider).session;
     final bool isCoach = session?.account.isCoach ?? false;
     final bool hasPlayerProfile = session?.account.capabilities.player ?? false;
+    final bool coachMode = isCoach &&
+        ref.watch(appModeControllerProvider).mode == AppMode.coach;
     final bool offlineDrafts = ref.watch(offlineWorkoutDraftsEnabledProvider);
     final String language = ref.watch(displayLanguageProvider);
     final AsyncValue<RecoveryEmailDetails> recoveryEmail =
         ref.watch(recoveryEmailDetailsProvider);
     final MayosCopy copy = MayosCopy(language);
     final SettingsCopy ui = SettingsCopy(language);
+    final AssignmentCopy assignmentCopy = AssignmentCopy(language);
 
     return MayosScaffold(
       title: copy.settings,
       showBack: true,
       body: ListView(
+        key: const Key('settings_section_list'),
         padding: MayosSpacing.screen,
         children: <Widget>[
           MayosSectionHeader(
@@ -90,16 +97,124 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ],
           ),
           const SizedBox(height: MayosSpacing.xl),
-          if (hasPlayerProfile) ...<Widget>[
-            MayosSectionHeader(title: ui.personalization),
+          if (coachMode) ...<Widget>[
             MayosCard(
               padding: const EdgeInsets.symmetric(
                   horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
               child: MayosSettingsTile(
-                key: const Key('personalization_entry'),
-                icon: Icons.forum_outlined,
-                title: ui.assistantStyle,
-                onTap: () => context.push(personalizationPath),
+                icon: Icons.badge_outlined,
+                title: ui.coachProfile,
+                subtitle: ui.editCoachProfile,
+                onTap: () => context.go(coachProfilePath),
+              ),
+            ),
+            const SizedBox(height: MayosSpacing.xl),
+            MayosCard(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
+              child: MayosSettingsTile(
+                icon: Icons.card_membership_outlined,
+                title: ui.coachPlan,
+                onTap: () => context.push(coachPlanPath),
+              ),
+            ),
+            const SizedBox(height: MayosSpacing.xl),
+          ] else ...<Widget>[
+            if (hasPlayerProfile) ...<Widget>[
+              MayosCard(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
+                child: MayosSettingsTile(
+                  icon: Icons.person_outline,
+                  title: ui.trainingProfile,
+                  onTap: () => context.push(profilePath),
+                ),
+              ),
+              const SizedBox(height: MayosSpacing.xl),
+              MayosCard(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
+                child: MayosSettingsTile(
+                  icon: Icons.card_membership_outlined,
+                  title: ui.lifterPlan,
+                  onTap: () => context.push(lifterPlanPath),
+                ),
+              ),
+              const SizedBox(height: MayosSpacing.xl),
+            ],
+            MayosCard(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
+              child: Column(
+                children: <Widget>[
+                  MayosSettingsTile(
+                    icon: Icons.badge_outlined,
+                    title: assignmentCopy.myCoach,
+                    onTap: () => context.push(assignmentPath),
+                  ),
+                  if (!isCoach) ...<Widget>[
+                    Divider(height: 1, color: c.border),
+                    MayosSettingsTile(
+                      icon: Icons.workspace_premium_outlined,
+                      title: ui.enableCoaching,
+                      subtitle: ui.enableCoachingSubtitle,
+                      onTap: () => context.push(coachInvitePath),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: MayosSpacing.xl),
+            if (hasPlayerProfile) ...<Widget>[
+              MayosSectionHeader(title: ui.personalization),
+              MayosCard(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
+                child: MayosSettingsTile(
+                  key: const Key('personalization_entry'),
+                  icon: Icons.forum_outlined,
+                  title: ui.assistantStyle,
+                  onTap: () => context.push(personalizationPath),
+                ),
+              ),
+              const SizedBox(height: MayosSpacing.xl),
+              MayosSectionHeader(title: ui.training),
+              MayosCard(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
+                child: Column(
+                  children: <Widget>[
+                    MayosSettingsTile(
+                      icon: Icons.forum_outlined,
+                      title: ui.assistant,
+                      subtitle: ui.assistantSubtitle,
+                      onTap: () => context.push(chatPath),
+                    ),
+                    if (offlineDrafts) ...<Widget>[
+                      Divider(height: 1, color: c.border),
+                      MayosSettingsTile(
+                        icon: Icons.cloud_upload_outlined,
+                        title: ui.workoutDrafts,
+                        subtitle: ui.workoutDraftsSubtitle,
+                        onTap: () => context.push(workoutsPath),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: MayosSpacing.xl),
+            ],
+          ],
+          if (coachMode) ...<Widget>[
+            MayosSectionHeader(title: ui.notifications),
+            MayosCard(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
+              child: MayosSettingsTile(
+                icon: Icons.notifications_outlined,
+                title: ui.notificationSettings,
+                subtitle: ui.coachNotificationsSubtitle,
+                onTap: () => context.go(coachAlertsPath),
               ),
             ),
             const SizedBox(height: MayosSpacing.xl),
@@ -112,16 +227,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               children: <Widget>[
                 MayosSettingsTile(
                   icon: Icons.person_outline,
-                  title: ui.profile,
-                  subtitle: ui.profileSubtitle,
-                  onTap: () => context.push(profilePath),
-                ),
-                Divider(height: 1, color: c.border),
-                MayosSettingsTile(
-                  icon: Icons.card_membership_outlined,
-                  title: ui.plan,
-                  subtitle: ui.planSubtitle,
-                  onTap: () => context.push(planPath),
+                  title: ui.username,
+                  subtitle: session?.account.traineeId,
+                  trailing: const SizedBox(width: MayosIconSizes.medium),
+                  onTap: null,
                 ),
                 Divider(height: 1, color: c.border),
                 MayosSettingsTile(
@@ -144,91 +253,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ],
             ),
           ),
-          const SizedBox(height: MayosSpacing.xl),
-          MayosSectionHeader(title: ui.coaching),
-          MayosCard(
-            padding: const EdgeInsets.symmetric(
-                horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
-            child: Column(
-              children: <Widget>[
-                MayosSettingsTile(
-                  icon: Icons.badge_outlined,
-                  title: ui.coachingAssignment,
-                  subtitle: ui.coachingSubtitle,
-                  onTap: () => context.push(assignmentPath),
-                ),
-                if (!isCoach) ...<Widget>[
-                  Divider(height: 1, color: c.border),
-                  MayosSettingsTile(
-                    icon: Icons.workspace_premium_outlined,
-                    title: ui.enableCoaching,
-                    subtitle: ui.enableCoachingSubtitle,
-                    onTap: () => context.push(coachInvitePath),
-                  ),
-                ],
-              ],
+          const SizedBox(height: MayosSpacing.lg),
+          if (session != null)
+            AccountSecuritySection(
+              account: session.account,
+              title: ui.linkedSignIn,
+              subtitle: ui.linkedSignInSubtitle,
             ),
-          ),
-          const SizedBox(height: MayosSpacing.xl),
-          MayosSectionHeader(title: ui.training),
-          MayosCard(
-            padding: const EdgeInsets.symmetric(
-                horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
-            child: Column(
-              children: <Widget>[
-                MayosSettingsTile(
-                  icon: Icons.forum_outlined,
-                  title: ui.assistant,
-                  subtitle: ui.assistantSubtitle,
-                  onTap: () => context.push(chatPath),
-                ),
-                if (offlineDrafts) ...<Widget>[
-                  Divider(height: 1, color: c.border),
-                  MayosSettingsTile(
-                    icon: Icons.cloud_upload_outlined,
-                    title: ui.workoutDrafts,
-                    subtitle: ui.workoutDraftsSubtitle,
-                    onTap: () => context.push(workoutsPath),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: MayosSpacing.xl),
-          MayosSectionHeader(title: ui.about),
-          MayosCard(
-            padding: const EdgeInsets.symmetric(
-                horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
-            child: Column(
-              children: <Widget>[
-                MayosSettingsTile(
-                  icon: Icons.privacy_tip_outlined,
-                  title: ui.privacyPolicy,
-                  subtitle: ui.privacySubtitle,
-                  onTap: () => openPrivacyPolicy(context, ref),
-                ),
-                Divider(height: 1, color: c.border),
-                MayosSettingsTile(
-                  icon: Icons.image_outlined,
-                  title: ui.credits,
-                  subtitle: gymVisualCreditShort,
-                  onTap: () => showMediaCredits(context, ref),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: MayosSpacing.xl),
-          MayosCard(
-            padding: const EdgeInsets.symmetric(
-                horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
-            child: MayosSettingsTile(
-              icon: Icons.logout,
-              title: ui.logOut,
-              destructive: true,
-              onTap: () => confirmLogout(context, ref),
-            ),
-          ),
-          const SizedBox(height: MayosSpacing.xl),
+          const SizedBox(height: MayosSpacing.lg),
           MayosSectionHeader(title: copy.displayLanguage),
           InputDecorator(
             decoration: InputDecoration(
@@ -270,6 +302,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ],
             ),
           ),
+          const SizedBox(height: MayosSpacing.xl),
+          MayosSectionHeader(title: ui.about),
+          MayosCard(
+            padding: const EdgeInsets.symmetric(
+                horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
+            child: Column(
+              children: <Widget>[
+                MayosSettingsTile(
+                  icon: Icons.privacy_tip_outlined,
+                  title: ui.privacyPolicy,
+                  subtitle: ui.privacySubtitle,
+                  onTap: () => openPrivacyPolicy(context, ref),
+                ),
+                Divider(height: 1, color: c.border),
+                MayosSettingsTile(
+                  icon: Icons.image_outlined,
+                  title: ui.credits,
+                  subtitle: gymVisualCreditShort,
+                  onTap: () => showMediaCredits(context, ref),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: MayosSpacing.xl),
+          MayosCard(
+            padding: const EdgeInsets.symmetric(
+                horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
+            child: MayosSettingsTile(
+              icon: Icons.logout,
+              title: ui.logOut,
+              destructive: true,
+              onTap: () => confirmLogout(context, ref),
+            ),
+          ),
+          const SizedBox(height: MayosSpacing.xl),
           const SizedBox(height: MayosSpacing.xxl),
         ],
       ),

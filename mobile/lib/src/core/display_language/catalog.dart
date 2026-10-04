@@ -182,9 +182,6 @@ class MayosCopy {
   String get noPlanAvailable => isArabic
       ? 'لا تتوفر خطة لهذا الحساب.'
       : 'No plan is available for this account.';
-  String get independentPlans => isArabic
-      ? 'خطتا اللاعب والمدرب مستقلتان.'
-      : 'Lifter and Coach plans are independent.';
   String get playerPlanLabel => isArabic ? 'اللاعب' : 'Lifter';
   String get coachPlanLabel => isArabic ? 'المدرب' : 'Coach';
   String get ongoingPlanNotTrial => isArabic

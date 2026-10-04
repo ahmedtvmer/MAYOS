@@ -10,15 +10,15 @@ class AssignmentCopy {
 
   String get assignmentAccepted =>
       isArabic ? 'تم قبول علاقة التدريب.' : 'Assignment accepted.';
-  String get endAssignmentQuestion =>
-      isArabic ? 'إنهاء علاقة التدريب؟' : 'End assignment?';
-  String get endAssignmentLead => isArabic
-      ? 'سيفقد مدربك فورًا إمكانية الاطلاع على سجل تدريبك.'
-      : 'Your coach will immediately lose access to your training history.';
-  String get endAssignment =>
-      isArabic ? 'إنهاء علاقة التدريب' : 'End assignment';
-  String get assignmentEnded =>
-      isArabic ? 'انتهت علاقة التدريب.' : 'Assignment ended.';
+  String get leaveCoachQuestion =>
+      isArabic ? 'مغادرة المدرب؟' : 'Leave coach?';
+  String get leaveCoachLead => isArabic
+      ? 'مغادرتك لمدربك تلغي وصوله إلى سجل تدريبك فورًا.'
+      : 'Leaving your coach immediately revokes their access to your training '
+          'history.';
+  String get leaveCoach => isArabic ? 'مغادرة المدرب' : 'Leave coach';
+  String get leaveCoachComplete =>
+      isArabic ? 'غادرت مدربك.' : 'You left your coach.';
   String get programRequests =>
       isArabic ? 'طلبات البرنامج التدريبي' : 'Program requests';
   String get requestChange => isArabic ? 'طلب تغيير' : 'Request a change';
@@ -70,18 +70,18 @@ class AssignmentCopy {
   String coachUsername(String username) =>
       isArabic ? 'المدرب ${_ltr(username)}' : 'Coach $username';
   String get assignmentEndedStatus =>
-      isArabic ? 'انتهت علاقة التدريب' : 'assignment ended';
+      isArabic ? 'انتهت علاقة التدريب' : 'coaching ended';
   String get yourCoach => isArabic ? 'مدربك' : 'Your coach';
-  String get activeAssignment =>
-      isArabic ? 'علاقة التدريب نشطة' : 'Coaching assignment active';
   String get activeAssignmentAccess => isArabic
-      ? 'أثناء نشاط علاقة التدريب، يمكن لمدربك الاطلاع على بيانات تدريبك الحالية والسابقة. يؤدي إنهاؤها إلى إلغاء إمكانية الاطلاع فورًا.'
-      : 'While this assignment is active, your coach can view your current and historical training data. Ending it revokes that access immediately.';
-  String get coachAssignment =>
-      isArabic ? 'علاقة التدريب مع المدرب' : 'Coach assignment';
+      ? 'أثناء نشاط علاقتك بمدربك، يمكنه الاطلاع على بيانات تدريبك الحالية والسابقة. مغادرتك لمدربك تلغي إمكانية الاطلاع فورًا.'
+      : 'While you have a coach, they can view your current and historical '
+          'training data. Leaving your coach revokes that access immediately.';
+  String get myCoach => isArabic ? 'مدربي' : 'My coach';
   String get inviteExplanation => isArabic
-      ? 'أدخل رمز الدعوة من مدربك. لن يتمكن مدربك من الاطلاع على بيانات تدريبك إلا بعد موافقتك، وينتهي ذلك عند إنهاء أحدكما علاقة التدريب.'
-      : 'Enter the invite code from your coach. Your coach can only see your training data after you accept, and access ends when either of you ends the assignment.';
+      ? 'أدخل رمز الدعوة من مدربك. لن يتمكن مدربك من الاطلاع على بيانات تدريبك إلا بعد موافقتك، وينتهي وصوله عندما تغادر مدربك أو يغادر هو.'
+      : 'Enter your coach’s invite code. Your coach can view your training data '
+          'only after you accept, and access ends when either of you leaves the '
+          'coaching relationship.';
   String get inviteCodeFromCoach =>
       isArabic ? 'رمز الدعوة من مدربك' : 'Invite code from your coach';
   String get previewAccess =>

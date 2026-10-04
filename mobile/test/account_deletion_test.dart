@@ -416,15 +416,19 @@ void main() {
 
       await _openSettings(tester);
 
-      await tester.tap(find.text('Profile'));
-      await _pumpUntilFound(tester, find.text('Training profile'));
-
+      final Finder deleteButton =
+          find.byKey(const Key('delete_account_button'));
       await tester.scrollUntilVisible(
-        find.byKey(const Key('delete_account_button')),
+        deleteButton,
         200,
-        scrollable: find.byType(Scrollable).first,
+        scrollable: find.descendant(
+          of: find.byKey(const Key('settings_section_list')),
+          matching: find.byType(Scrollable),
+        ),
       );
-      await tester.tap(find.byKey(const Key('delete_account_button')));
+      await tester.ensureVisible(deleteButton);
+      await tester.pump();
+      await tester.tap(deleteButton);
       await _pumpUntilFound(tester, find.text('Delete account?'));
 
       // A wrong password keeps the account and the local drafts.

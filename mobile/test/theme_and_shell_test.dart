@@ -222,20 +222,35 @@ void main() {
     await tester.tap(find.text('Settings'));
     await _pumpUntilFound(tester, find.text('Appearance'));
 
-    // ... and keeps the shared entry points reachable, while the coach-only
-    // destinations live in the shell tabs now (#119 removed the settings tiles).
+    // ... and keeps the shared account controls reachable beside coach-only
+    // profile and plan entries.
     for (final String entry in <String>[
-      'Profile',
-      'Plan',
-      'Coaching assignment',
-      'Assistant',
-      'Workout drafts',
+      'Coach profile',
+      'Coach plan',
+      'Notifications',
+      'Account',
+      'Username',
+      'Linked sign-in',
+      'Recovery email',
+      'Display language',
       'Log out',
     ]) {
-      expect(find.text(entry), findsOneWidget, reason: 'missing $entry');
+      if (find.text(entry).evaluate().isEmpty) {
+        await tester.drag(
+          find.byKey(const Key('settings_section_list')),
+          const Offset(0, -300),
+        );
+        await tester.pump();
+      }
+      expect(find.text(entry), findsWidgets, reason: 'missing $entry');
     }
     for (final String gone in <String>[
-      'Coach profile',
+      'Training profile',
+      'Lifter plan',
+      'My coach',
+      'Assistant',
+      'Assistant style',
+      'Personalization',
       'Roster & invites',
       'Alert center',
     ]) {

@@ -128,7 +128,7 @@ void main() {
     await _pumpApp(tester, fake);
 
     await _openSettings(tester);
-    await tester.tap(find.text('Profile'));
+    await tester.tap(find.text('Training profile'));
     await _pumpUntilFound(tester, find.text('Rep preference'));
 
     expect(tester.takeException(), isNull);
@@ -153,7 +153,7 @@ void main() {
     await _pumpApp(tester, fake);
 
     await _openSettings(tester);
-    await tester.tap(find.text('Profile'));
+    await tester.tap(find.text('Training profile'));
     await _pumpUntilFound(tester, find.text('Equipment access'));
 
     expect(find.text('Home gym'), findsOneWidget);

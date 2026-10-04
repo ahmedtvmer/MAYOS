@@ -44,15 +44,15 @@ String? _hold(String requested) =>
 void main() {
   test('a cold deep link to an allowed page survives the startup hold', () {
     // The requested location is carried on the splash location, query intact.
-    final String held = _hold(planPath)!;
+    final String held = _hold(lifterPlanPath)!;
     expect(held, startsWith('$splashPath?from='));
-    expect(_carried(held), planPath);
+    expect(_carried(held), lifterPlanPath);
 
     // Once the session and mode are resolved, splash releases onto it.
     final AuthState player = _authenticated(coach: false, onboarded: true);
     expect(
-        redirectFor(player, splashPath, _mode(AppMode.player), from: planPath),
-        planPath);
+        redirectFor(player, splashPath, _mode(AppMode.player), from: lifterPlanPath),
+        lifterPlanPath);
 
     // A deep link with its own query keeps that query.
     const String withQuery = '$exerciseDetailPath/12?tab=activity';
@@ -86,25 +86,25 @@ void main() {
               coach: false, onboarded: true, hasRecoveryEmail: false),
           splashPath,
           _mode(AppMode.player),
-          from: planPath),
-      withCarry(recoveryEmailPath, planPath),
+          from: lifterPlanPath),
+      withCarry(recoveryEmailPath, lifterPlanPath),
     );
     // Onboarding still gates the deferred intake.
     expect(
       redirectFor(_authenticated(coach: false, onboarded: false), splashPath,
           _mode(AppMode.player),
-          from: planPath),
+          from: lifterPlanPath),
       onboardingPath,
     );
     // The mode hold keeps the carry instead of dropping it to plain splash.
     expect(
       redirectFor(_authenticated(coach: false, onboarded: true), splashPath,
           _mode(AppMode.player, ready: false),
-          from: planPath),
+          from: lifterPlanPath),
       isNull,
     );
     expect(
-      redirectFor(_authenticated(coach: false, onboarded: true), planPath,
+      redirectFor(_authenticated(coach: false, onboarded: true), lifterPlanPath,
           _mode(AppMode.player, ready: false)),
       splashPath,
     );
@@ -119,8 +119,8 @@ void main() {
     expect(_hold(recoveryEmailPath), splashPath);
     expect(_hold(forgotPasswordPath), isNull);
     expect(_hold(resetPasswordPath), isNull);
-    expect(splashHold(planPath),
-        '$splashPath?from=${Uri.encodeComponent(planPath)}');
+    expect(splashHold(lifterPlanPath),
+        '$splashPath?from=${Uri.encodeComponent(lifterPlanPath)}');
 
     // Nor do they survive when they arrive on the splash query.
     final AuthState player = _authenticated(coach: false, onboarded: true);
@@ -153,19 +153,19 @@ void main() {
     expect(
       redirectFor(
           const AuthState.unauthenticated(), splashPath, _mode(AppMode.player),
-          from: planPath),
-      withCarry(loginPath, planPath),
+          from: lifterPlanPath),
+      withCarry(loginPath, lifterPlanPath),
     );
     // A plain current route can be a logout and must not become a carry.
     expect(
       redirectFor(
-          const AuthState.unauthenticated(), planPath, _mode(AppMode.player)),
+          const AuthState.unauthenticated(), lifterPlanPath, _mode(AppMode.player)),
       loginPath,
     );
     expect(
         redirectFor(
             const AuthState.unauthenticated(), loginPath, _mode(AppMode.player),
-            from: planPath),
+            from: lifterPlanPath),
         isNull);
     expect(
       redirectFor(
@@ -186,8 +186,8 @@ void main() {
       loginPath,
     );
     expect(
-        redirectFor(const AuthState.loading(), planPath, _mode(AppMode.player)),
-        splashHold(planPath));
+        redirectFor(const AuthState.loading(), lifterPlanPath, _mode(AppMode.player)),
+        splashHold(lifterPlanPath));
   });
 
   test('login and recovery email release the carry through routing rules', () {
@@ -196,22 +196,22 @@ void main() {
       onboarded: true,
       hasRecoveryEmail: false,
     );
-    final String recovery = withCarry(recoveryEmailPath, planPath);
+    final String recovery = withCarry(recoveryEmailPath, lifterPlanPath);
     expect(
       redirectFor(playerWithoutEmail, loginPath, _mode(AppMode.player),
-          from: planPath),
+          from: lifterPlanPath),
       recovery,
     );
     expect(
       redirectFor(playerWithoutEmail, recoveryEmailPath, _mode(AppMode.player),
-          from: planPath),
+          from: lifterPlanPath),
       isNull,
     );
     expect(
       redirectFor(_authenticated(coach: false, onboarded: true),
           recoveryEmailPath, _mode(AppMode.player),
-          from: planPath),
-      planPath,
+          from: lifterPlanPath),
+      lifterPlanPath,
     );
     // The player cannot release a crafted carried coach path.
     expect(
@@ -236,7 +236,7 @@ void main() {
     );
     // In Player mode the intake wins over the requested page.
     expect(
-      redirectFor(coach, splashPath, _mode(AppMode.player), from: planPath),
+      redirectFor(coach, splashPath, _mode(AppMode.player), from: lifterPlanPath),
       playerSetupPath,
     );
   });

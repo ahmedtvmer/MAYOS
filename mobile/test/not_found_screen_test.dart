@@ -58,12 +58,16 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Go to home'));
     await _pumpUntilFound(tester, find.text('Program'));
     expect(find.text('Page not found'), findsNothing);
+
+    container.read(routerProvider).go('/plan');
+    await _pumpUntilFound(tester, find.text('Page not found'));
+    expect(find.text('Page not found'), findsOneWidget);
   });
 
   testWidgets('a cold deep link survives the splash hold in the real router',
       (WidgetTester tester) async {
     // The browser address (or an app link) at launch.
-    tester.binding.platformDispatcher.defaultRouteNameTestValue = planPath;
+    tester.binding.platformDispatcher.defaultRouteNameTestValue = lifterPlanPath;
     addTearDown(
         tester.binding.platformDispatcher.clearDefaultRouteNameTestValue);
     final FakeMayosApi fake = _signedInFake();
@@ -84,13 +88,13 @@ void main() {
             .currentConfiguration
             .uri
             .path,
-        planPath);
+        lifterPlanPath);
     expect(find.byType(PlanScreen), findsOneWidget);
   });
 
   testWidgets('a signed-out cold deep link survives password login',
       (WidgetTester tester) async {
-    tester.binding.platformDispatcher.defaultRouteNameTestValue = planPath;
+    tester.binding.platformDispatcher.defaultRouteNameTestValue = lifterPlanPath;
     addTearDown(
         tester.binding.platformDispatcher.clearDefaultRouteNameTestValue);
     final FakeMayosApi fake = _signedInFake()
@@ -107,7 +111,7 @@ void main() {
     final Uri loginUri =
         container.read(routerProvider).routerDelegate.currentConfiguration.uri;
     expect(loginUri.path, loginPath);
-    expect(loginUri.queryParameters['from'], planPath);
+    expect(loginUri.queryParameters['from'], lifterPlanPath);
 
     await tester.enterText(find.byKey(const Key('login_username')), 'alice');
     await tester.enterText(
@@ -123,13 +127,13 @@ void main() {
           .currentConfiguration
           .uri
           .path,
-      planPath,
+      lifterPlanPath,
     );
   });
 
   testWidgets('register and return to login keep the requested page',
       (WidgetTester tester) async {
-    tester.binding.platformDispatcher.defaultRouteNameTestValue = planPath;
+    tester.binding.platformDispatcher.defaultRouteNameTestValue = lifterPlanPath;
     addTearDown(
         tester.binding.platformDispatcher.clearDefaultRouteNameTestValue);
     await tester.pumpWidget(authApp(FakeMayosApi(), InMemoryTokenStore()));
@@ -144,17 +148,17 @@ void main() {
     Uri currentUri() =>
         container.read(routerProvider).routerDelegate.currentConfiguration.uri;
     expect(currentUri().path, registerPath);
-    expect(currentUri().queryParameters['from'], planPath);
+    expect(currentUri().queryParameters['from'], lifterPlanPath);
 
     await tester.tap(find.text('I already have an account'));
     await _pumpUntilFound(tester, find.byKey(const Key('login_username')));
     expect(currentUri().path, loginPath);
-    expect(currentUri().queryParameters['from'], planPath);
+    expect(currentUri().queryParameters['from'], lifterPlanPath);
   });
 
   testWidgets('the recovery-email gate releases a carried page after saving',
       (WidgetTester tester) async {
-    tester.binding.platformDispatcher.defaultRouteNameTestValue = planPath;
+    tester.binding.platformDispatcher.defaultRouteNameTestValue = lifterPlanPath;
     addTearDown(
         tester.binding.platformDispatcher.clearDefaultRouteNameTestValue);
     final FakeMayosApi fake = _signedInFake()
@@ -177,7 +181,7 @@ void main() {
     final Uri recoveryUri =
         container.read(routerProvider).routerDelegate.currentConfiguration.uri;
     expect(recoveryUri.path, recoveryEmailPath);
-    expect(recoveryUri.queryParameters['from'], planPath);
+    expect(recoveryUri.queryParameters['from'], lifterPlanPath);
 
     await tester.enterText(
         find.byKey(const Key('recovery_email')), 'alice@example.com');

@@ -181,7 +181,7 @@ void main() {
 
     expect(find.text('2026-09-20 · Email'), findsOneWidget);
     expect(find.textContaining('Coach bobcoach'), findsOneWidget);
-    expect(find.textContaining('assignment ended'), findsOneWidget);
+    expect(find.textContaining('coaching ended'), findsOneWidget);
     expect(find.textContaining('Quick catch-up'), findsOneWidget);
   });
 

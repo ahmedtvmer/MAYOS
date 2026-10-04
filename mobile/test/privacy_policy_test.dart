@@ -144,9 +144,14 @@ void main() {
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await _pumpUntilFound(tester, find.text('Appearance'));
 
-    // The About section sits below the fold on this viewport.
-    await tester.drag(find.byType(ListView), const Offset(0, -800));
-    await _pumpUntilFound(tester, find.text('Privacy policy'));
+    await tester.scrollUntilVisible(
+      find.text('Privacy policy'),
+      300,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('settings_section_list')),
+        matching: find.byType(Scrollable),
+      ),
+    );
 
     await tester.tap(find.text('Privacy policy'));
     await tester.pumpAndSettle();

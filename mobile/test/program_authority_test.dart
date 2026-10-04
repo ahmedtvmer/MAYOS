@@ -80,7 +80,7 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
 /// Opens the profile editor and changes training days 4 → 3, warranting a rebuild.
 Future<void> _changeTrainingDays(WidgetTester tester) async {
   await _openSettings(tester);
-  await tester.tap(find.text('Profile'));
+  await tester.tap(find.text('Training profile'));
   await _pumpUntilFound(tester, find.text('Training profile'));
 
   await tester.tap(find.byType(DropdownButtonFormField<int>));
@@ -91,7 +91,7 @@ Future<void> _changeTrainingDays(WidgetTester tester) async {
 
 Future<void> _openProfile(WidgetTester tester) async {
   await _openSettings(tester);
-  await tester.tap(find.text('Profile'));
+  await tester.tap(find.text('Training profile'));
   await _pumpUntilFound(tester, find.text('Training profile'));
 }
 
@@ -174,7 +174,7 @@ void main() {
       ..legacyEquipmentIntakeContract = true;
     await _pumpApp(tester, fake);
     await _openSettings(tester);
-    await tester.tap(find.text('Profile'));
+    await tester.tap(find.text('Training profile'));
     await _pumpUntilFound(
       tester,
       find.text(
@@ -267,7 +267,7 @@ void main() {
       }
       await _pumpApp(tester, fake);
       await _openSettings(tester);
-      await tester.tap(find.text('Profile'));
+      await tester.tap(find.text('Training profile'));
       final Finder error = find.text(
         'The service needs an update before this profile can be edited. Please try again later.',
       );

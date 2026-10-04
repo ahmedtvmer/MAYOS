@@ -64,7 +64,7 @@ Future<void> _seedSignedIn(
 
 /// The signed-in app with both fakes wired: the Google SDK, the API, and the
 /// in-memory stores the account-deletion erase path needs.
-Future<void> _pumpProfile(
+Future<void> _pumpSettings(
   WidgetTester tester,
   FakeMayosApi fake,
   InMemoryTokenStore tokens, {
@@ -72,7 +72,6 @@ Future<void> _pumpProfile(
   InMemoryDraftStore? drafts,
   InMemoryWorkoutCacheStore? cache,
   InMemoryChatCacheStore? chat,
-  bool openProfile = true,
 }) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 2.0;
@@ -124,18 +123,9 @@ Future<void> _pumpProfile(
     await tester.tap(find.text('Settings'));
   }
   await _pumpUntilFound(tester, find.text('Appearance'));
-  if (!openProfile) return;
-  await tester.tap(find.text('Profile'));
-  await _pumpUntilFound(tester, find.text('Training profile'));
-  await tester.scrollUntilVisible(
-    find.text('Sign-in methods'),
-    300,
-    scrollable: find.byType(Scrollable).first,
-  );
-  await _pumpUntilFound(tester, find.text('Sign-in methods'));
 }
 
-/// Brings a finder into view inside the profile list before tapping it.
+/// Brings a finder into view inside the Settings list before tapping it.
 Future<void> _reveal(WidgetTester tester, Finder finder) async {
   if (finder.evaluate().isEmpty) {
     await tester.scrollUntilVisible(
@@ -143,6 +133,10 @@ Future<void> _reveal(WidgetTester tester, Finder finder) async {
       300,
       scrollable: find.byType(Scrollable).first,
     );
+  }
+  if (finder.evaluate().isNotEmpty) {
+    await tester.ensureVisible(finder.first);
+    await tester.pump();
   }
   await _pumpUntilFound(tester, finder);
 }
@@ -155,8 +149,8 @@ void main() {
       final FakeMayosApi fake = FakeMayosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
-      await _pumpProfile(tester, fake, tokens,
-          google: FakeGoogleAuthGateway(), openProfile: false);
+      await _pumpSettings(tester, fake, tokens,
+          google: FakeGoogleAuthGateway());
 
       final Finder selector =
           find.byKey(const Key('account_display_language_en-0'));
@@ -196,9 +190,9 @@ void main() {
       final FakeMayosApi fake = FakeMayosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
-      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
+      await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
-      expect(find.text('Sign-in methods'), findsOneWidget);
+      expect(find.text('Linked sign-in'), findsOneWidget);
       expect(find.text('Password set'), findsOneWidget);
       expect(find.text('Change password'), findsOneWidget);
       expect(find.text('Set password'), findsNothing);
@@ -216,7 +210,7 @@ void main() {
       final FakeMayosApi fake = FakeMayosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: false, googleLinked: true);
-      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
+      await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
       expect(find.text('No password yet'), findsOneWidget);
       expect(find.byKey(const Key('set_password_button')), findsOneWidget);
@@ -238,7 +232,7 @@ void main() {
       final FakeMayosApi fake = FakeMayosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: true);
-      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
+      await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
       expect(find.text('Password set'), findsOneWidget);
       expect(find.text('Change password'), findsOneWidget);
@@ -258,7 +252,7 @@ void main() {
       final FakeMayosApi fake = FakeMayosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
-      await _pumpProfile(
+      await _pumpSettings(
         tester,
         fake,
         tokens,
@@ -280,7 +274,7 @@ void main() {
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
       final FakeGoogleAuthGateway google = FakeGoogleAuthGateway()
         ..idToken = 'fresh-connect-token';
-      await _pumpProfile(tester, fake, tokens, google: google);
+      await _pumpSettings(tester, fake, tokens, google: google);
 
       await _reveal(tester, find.byKey(const Key('connect_google_button')));
       final int meBefore =
@@ -307,7 +301,7 @@ void main() {
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
       final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
           buttonStyle: GoogleSignInButtonStyle.webRendered);
-      await _pumpProfile(tester, fake, tokens, google: google);
+      await _pumpSettings(tester, fake, tokens, google: google);
 
       await _reveal(tester, find.byKey(const Key('connect_google_web_button')));
       google.emitAuthenticationOutcome(
@@ -333,7 +327,7 @@ void main() {
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
       final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
           buttonStyle: GoogleSignInButtonStyle.webRendered);
-      await _pumpProfile(tester, fake, tokens, google: google);
+      await _pumpSettings(tester, fake, tokens, google: google);
 
       await _reveal(tester, find.byKey(const Key('connect_google_web_button')));
       google.emitAuthenticationOutcome(const GoogleAuthIdToken('first-token'));
@@ -362,7 +356,7 @@ void main() {
         ..googleLinkConflictElsewhere = true;
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
-      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
+      await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
       await _reveal(tester, find.byKey(const Key('connect_google_button')));
       await tester.tap(find.byKey(const Key('connect_google_button')));
@@ -382,7 +376,7 @@ void main() {
         ..googleLinkConflictDifferent = true;
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
-      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
+      await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
       await _reveal(tester, find.byKey(const Key('connect_google_button')));
       await tester.tap(find.byKey(const Key('connect_google_button')));
@@ -403,7 +397,7 @@ void main() {
       final FakeMayosApi fake = FakeMayosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: true);
-      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
+      await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
       await _reveal(tester, find.byKey(const Key('disconnect_google_button')));
       await tester.tap(find.byKey(const Key('disconnect_google_button')));
@@ -433,7 +427,7 @@ void main() {
       final FakeMayosApi fake = FakeMayosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
-      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
+      await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
       await _reveal(tester, find.byKey(const Key('change_password_button')));
       await tester.tap(find.byKey(const Key('change_password_button')));
@@ -470,7 +464,7 @@ void main() {
       final FakeMayosApi fake = FakeMayosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: false, googleLinked: true);
-      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
+      await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
       await _reveal(tester, find.byKey(const Key('set_password_button')));
       await tester.tap(find.byKey(const Key('set_password_button')));
@@ -523,7 +517,7 @@ void main() {
       final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
           buttonStyle: GoogleSignInButtonStyle.webRendered);
       fake.googleDeleteIdToken = 'web-delete-token';
-      await _pumpProfile(tester, fake, tokens, google: google);
+      await _pumpSettings(tester, fake, tokens, google: google);
 
       await _reveal(tester, find.byKey(const Key('delete_account_button')));
       await tester.tap(find.byKey(const Key('delete_account_button')));
@@ -587,7 +581,7 @@ void main() {
       final FakeGoogleAuthGateway google = FakeGoogleAuthGateway()
         ..idToken = 'fresh-delete-token';
       fake.googleDeleteIdToken = 'fresh-delete-token';
-      await _pumpProfile(tester, fake, tokens,
+      await _pumpSettings(tester, fake, tokens,
           google: google, drafts: drafts, cache: cache, chat: chat);
 
       await _reveal(tester, find.byKey(const Key('delete_account_button')));
@@ -621,7 +615,7 @@ void main() {
       await _seedSignedIn(fake, tokens, hasPassword: false, googleLinked: true);
       final FakeGoogleAuthGateway google = FakeGoogleAuthGateway()
         ..idToken = null;
-      await _pumpProfile(tester, fake, tokens, google: google);
+      await _pumpSettings(tester, fake, tokens, google: google);
 
       await _reveal(tester, find.byKey(const Key('delete_account_button')));
       await tester.tap(find.byKey(const Key('delete_account_button')));
@@ -644,7 +638,7 @@ void main() {
       final FakeMayosApi fake = FakeMayosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
-      await _pumpProfile(tester, fake, tokens, google: FakeGoogleAuthGateway());
+      await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
 
       await _reveal(tester, find.byKey(const Key('delete_account_button')));
       await tester.tap(find.byKey(const Key('delete_account_button')));
