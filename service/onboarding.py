@@ -2,13 +2,75 @@
 
 from __future__ import annotations
 
+import logging
+import sqlite3
 import threading
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
+from database.ledger.onboarding import OnboardingAnalyticsStart
 from langchain_core.messages import HumanMessage
 from service.keyed_locks import KeyedLocks
 
 _ONBOARDING_LOCKS = KeyedLocks()
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class OnboardingCompletionAnalytics:
+    duration_seconds: int
+    prefilled_fields_count: int
+    first_completion: bool
+
+
+def mark_onboarding_started(ledger: Any) -> OnboardingAnalyticsStart | None:
+    """Persists the first committed onboarding write time for event timing."""
+    try:
+        return ledger.start_onboarding_analytics(datetime.now(UTC).isoformat())
+    except sqlite3.Error:
+        logger.exception("Could not persist onboarding analytics start time; onboarding continues.")
+        return None
+
+
+def _onboarding_duration_seconds(started_at: str) -> int | None:
+    try:
+        started = datetime.fromisoformat(started_at)
+    except (TypeError, ValueError):
+        logger.warning("Ignoring invalid onboarding start time for analytics.")
+        return None
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=UTC)
+    return max(0, int((datetime.now(UTC) - started.astimezone(UTC)).total_seconds()))
+
+
+def _prefilled_fields_count(answers: dict[str, dict[str, Any]], legacy_state: dict[str, Any] | None) -> int:
+    if answers:
+        return sum(1 for answer in answers.values() if answer["prefilled"])
+    from service.intake import legacy_prefill
+
+    return len(legacy_prefill(legacy_state))
+
+
+def record_onboarding_completion(
+    ledger: Any,
+    answers: dict[str, dict[str, Any]],
+    legacy_state: dict[str, Any] | None = None,
+) -> OnboardingCompletionAnalytics | None:
+    """Persists the one-time completion fact and returns safe event properties."""
+    try:
+        started_at = ledger.get_onboarding_analytics_started_at()
+        if started_at is None:
+            return None
+        duration_seconds = _onboarding_duration_seconds(started_at)
+        if duration_seconds is None:
+            return None
+        prefilled_fields_count = _prefilled_fields_count(answers, legacy_state)
+        first_completion = ledger.mark_onboarding_analytics_completed(datetime.now(UTC).isoformat())
+    except sqlite3.Error:
+        logger.exception("Could not persist onboarding analytics completion; onboarding continues.")
+        return None
+    return OnboardingCompletionAnalytics(duration_seconds, prefilled_fields_count, first_completion)
 
 
 def _onboarding_lock(ledger_id: str) -> threading.Lock:

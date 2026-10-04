@@ -22,6 +22,9 @@ os.environ["LLM_API_KEY"] = ""
 os.environ["LLM_API_BASE"] = ""
 os.environ["LLM_EXTRA_BODY"] = ""
 os.environ["LLM_ENABLE_THINKING"] = ""
+# A developer's configured analytics key must never receive test traffic.
+# Keep the model-loading TESTING switch unset for tests that exercise its mocks.
+os.environ["POSTHOG_API_KEY"] = ""
 
 # Same for outbound email: a developer `.env` with real SMTP settings must not
 # make tests send mail. ``service/email_sender._deliver`` treats an empty
@@ -33,6 +36,19 @@ os.environ["SMTP_USER"] = ""
 os.environ["SMTP_PASSWORD"] = ""
 os.environ["SMTP_FROM"] = ""
 os.environ["OWNER_ALERT_EMAIL"] = ""
+
+
+@pytest.fixture(autouse=True)
+def recording_analytics():
+    """Installs the strict analytics contract sink for every test."""
+    from service.analytics import RecordingAnalyticsSink, set_sink
+
+    sink = RecordingAnalyticsSink()
+    set_sink(sink)
+    try:
+        yield sink
+    finally:
+        set_sink(None)
 
 
 @pytest.fixture(autouse=True)

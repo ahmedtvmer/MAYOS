@@ -65,7 +65,14 @@ def test_v18_upgrade_adds_deload_choice(temp_db_env):
         default_ledger_id="v18lifter",
     )
     try:
-        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 21
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 22
+        assert migrated.ledger.conn.execute(
+            "SELECT started_at FROM onboarding_analytics WHERE id = 1"
+        ).fetchone() is None
+        analytics_columns = {
+            row[1] for row in migrated.ledger.conn.execute("PRAGMA table_info(onboarding_analytics)")
+        }
+        assert {"started_at", "completed_at"} <= analytics_columns
         assert migrated.ledger.get_deload_choice() is None
         migrated.ledger.set_deload_choice("undo")
         assert migrated.ledger.get_deload_choice() == "undo"
@@ -116,7 +123,7 @@ def test_v20_upgrade_allows_most_reps_records_without_backfilling(temp_db_env):
 
     apply_lazy_migrations(conn, "v20player", db.ledgers_dir, backups_dir)
 
-    assert get_ledger_schema_version(conn) == 21
+    assert get_ledger_schema_version(conn) == 22
     assert conn.execute(
         "SELECT id, record_type, value FROM personal_records"
     ).fetchall() == [("old", "max_weight", 100.0)]

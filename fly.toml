@@ -22,6 +22,7 @@ primary_region = "fra"
   dockerfile = "Dockerfile.fly"
 
 [env]
+  MAYOS_ENV = "production"
   # Catalog, ledgers, and the migration/backup work area all derive from /data.
   MAYOS_DATA_DIR = "/data"
   # Fail closed at boot/readiness when the volume is not a writable mount.

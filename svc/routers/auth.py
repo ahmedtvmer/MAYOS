@@ -9,6 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from service import account_deletion as deletion_service
+from service import analytics as analytics_service
 from service import auth as auth_service
 from service import coach_ai as coach_ai_service
 from service import google_sign_in as google_service
@@ -70,6 +71,23 @@ def _invalid_google_credentials() -> HTTPException:
     )
 
 
+def _record_account_created(request: Request, account_id: str, *, invite_used: bool) -> None:
+    """Updates the PostHog person and records the committed account creation."""
+    signup_phase = analytics_service.release_phase()
+    analytics_service.set_person(account_id, {"is_player": True, "is_coach": invite_used})
+    analytics_service.set_person_once(account_id, {"signup_phase": signup_phase})
+    analytics_service.capture_for_request(
+        request,
+        analytics_service.AnalyticsEvent(
+            account_id=account_id,
+            event="account_created",
+            domain_key=account_id,
+            role="player",
+            properties={"signup_phase": signup_phase, "invite_used": invite_used},
+        ),
+    )
+
+
 @router.post("/register", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
 @limiter.limit(REGISTER_LIMIT)
 async def register(request: Request, body: TraineeIn, db: Annotated[Any, Depends(get_db)]):
@@ -85,6 +103,7 @@ async def register(request: Request, body: TraineeIn, db: Annotated[Any, Depends
         return result
 
     result = await asyncio.to_thread(_run)
+    _record_account_created(request, result["account_id"], invite_used=body.coach_invite_code is not None)
     return TokenOut(
         access_token=create_access_token(
             result["account_id"],
@@ -239,6 +258,7 @@ async def google_complete(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from None
 
     result = await asyncio.to_thread(_run)
+    _record_account_created(request, result["account_id"], invite_used=False)
     return TokenOut(
         access_token=create_access_token(
             result["account_id"],

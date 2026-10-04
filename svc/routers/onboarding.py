@@ -10,12 +10,14 @@ request around the onboarding graph (ADR 041).
 """
 
 import asyncio
+from dataclasses import dataclass
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from langchain_core.messages import AIMessage, HumanMessage
 
+from service import analytics as analytics_service
 from service import intake as intake_service
 from service import onboarding as onboarding_service
 from svc.dependencies import account_id_of, get_current_player, get_db, get_ledger, get_verified_player
@@ -30,6 +32,48 @@ from svc.schemas import (
 )
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
+
+
+@dataclass(frozen=True)
+class _OnboardingRouteOutcome:
+    response_body: dict[str, Any]
+    completion: onboarding_service.OnboardingCompletionAnalytics | None = None
+
+
+def _record_onboarding_started(request: Request, account_id: str | None, ledger: Any) -> None:
+    marker = onboarding_service.mark_onboarding_started(ledger)
+    if account_id and marker and marker.first_write:
+        analytics_service.capture_for_request(
+            request,
+            analytics_service.AnalyticsEvent(
+                account_id=account_id,
+                event="onboarding_started",
+                domain_key=account_id,
+                role="player",
+            ),
+        )
+
+
+def _capture_onboarding_completed(
+    request: Request,
+    account_id: str | None,
+    completion: onboarding_service.OnboardingCompletionAnalytics | None,
+) -> None:
+    if not account_id or completion is None or not completion.first_completion:
+        return
+    analytics_service.capture_for_request(
+        request,
+        analytics_service.AnalyticsEvent(
+            account_id=account_id,
+            event="onboarding_completed",
+            domain_key=account_id,
+            role="player",
+            properties={
+                "duration_seconds": completion.duration_seconds,
+                "prefilled_fields_count": completion.prefilled_fields_count,
+            },
+        ),
+    )
 
 
 def _serialize(state: dict[str, Any]) -> dict[str, Any]:
@@ -74,7 +118,9 @@ def _load_or_start(db: Any, ledger: Any, player: str, account_id: str | None) ->
 
 @router.post("/start", response_model=OnboardingStartOut)
 async def start_onboarding(
-    player: Annotated[str, Depends(get_current_player)], db: Annotated[Any, Depends(get_db)]
+    request: Request,
+    player: Annotated[str, Depends(get_current_player)],
+    db: Annotated[Any, Depends(get_db)],
 ):
     """Starts intake, or resumes saved progress with the assistant prompts so far.
 
@@ -88,6 +134,8 @@ async def start_onboarding(
                 raise intake_service.StructuredIntakeActive()
             state = _load_or_start(db, ledger, player, account_id_of(player))
             ledger.save_onboarding_state(_serialize(state))
+            if not state.get("is_complete"):
+                _record_onboarding_started(request, account_id_of(player), ledger)
             return _public_view(state)
 
     try:
@@ -120,6 +168,8 @@ async def answer_step(
                     db, player, state, body.content, player_account_id=account_id, ledger=ledger
                 )
             ledger.save_onboarding_state(_serialize(state))
+            if not state.get("is_complete"):
+                _record_onboarding_started(request, account_id, ledger)
             return _public_view(state, only_new=state.get("messages", [])[seen:])
 
     try:
@@ -140,12 +190,16 @@ async def read_intake(
 
 @router.post("/intake/disclosure", response_model=IntakeOut)
 async def acknowledge_intake_disclosure(
+    request: Request,
     player: Annotated[Any, Depends(get_verified_player)],
     ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Records the hosted-processing disclosure before any answer is accepted (ADR 016/036)."""
-    return await asyncio.to_thread(intake_service.acknowledge_disclosure, db, str(player), ledger)
+    result = await asyncio.to_thread(intake_service.acknowledge_disclosure, db, str(player), ledger)
+    if result["status"] == intake_service.STATUS_IN_PROGRESS:
+        _record_onboarding_started(request, account_id_of(player), ledger)
+    return result
 
 
 @router.put("/intake/answers/{field}", response_model=IntakeOut)
@@ -170,7 +224,10 @@ async def save_intake_answer(
         except intake_service.IntakeValidationError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
 
-    return await asyncio.to_thread(_run)
+    result = await asyncio.to_thread(_run)
+    if result["status"] == intake_service.STATUS_IN_PROGRESS:
+        _record_onboarding_started(request, account_id_of(player), ledger)
+    return result
 
 
 @router.post("/intake/confirm", response_model=IntakeConfirmOut)
@@ -184,24 +241,34 @@ async def confirm_intake(
     """Writes the confirmed profile and creates the first program exactly once (ADR 021)."""
 
     def _run():
+        answers = ledger.load_intake_answers()
         try:
-            return intake_service.confirm_intake(
+            result = intake_service.confirm_intake(
                 db, str(player), player_account_id=account_id_of(player), ledger=ledger
             )
         except intake_service.IntakeDisclosureRequired as exc:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from None
         except intake_service.IntakeValidationError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+        if result.get("status") != intake_service.STATUS_CONFIRMED:
+            return _OnboardingRouteOutcome(result)
+        _record_onboarding_started(request, account_id_of(player), ledger)
+        completion = onboarding_service.record_onboarding_completion(ledger, answers)
+        return _OnboardingRouteOutcome(result, completion)
 
     try:
-        return await asyncio.to_thread(_run)
+        outcome = await asyncio.to_thread(_run)
+        _capture_onboarding_completed(request, account_id_of(player), outcome.completion)
+        return outcome.response_body
     except intake_service.IntakeConfirmInProgress:
         return JSONResponse(status_code=409, content={"error": "confirm_in_progress"})
 
 
 @router.post("/complete")
 async def complete_onboarding(
-    player: Annotated[str, Depends(get_current_player)], db: Annotated[Any, Depends(get_db)]
+    request: Request,
+    player: Annotated[str, Depends(get_current_player)],
+    db: Annotated[Any, Depends(get_db)],
 ):
     def _run():
         with db.open_ledger(str(player)) as ledger:
@@ -215,13 +282,21 @@ async def complete_onboarding(
             result = onboarding_service.complete_onboarding(
                 db, player, state, player_account_id=account_id, ledger=ledger
             )
+            answers = ledger.load_intake_answers()
             ledger.clear_onboarding_state()
             program = result["program"]
             intake_service.record_legacy_completion(
                 db, player, program, result.get("program_message"), ledger=ledger
             )
-        if program is None:
-            return {"program_name": None, "weekly_frequency": None, "program_message": result["program_message"]}
-        return {"program_name": program.program_name, "weekly_frequency": program.weekly_frequency}
+            completed = (
+                {"program_name": None, "weekly_frequency": None, "program_message": result["program_message"]}
+                if program is None
+                else {"program_name": program.program_name, "weekly_frequency": program.weekly_frequency}
+            )
+            _record_onboarding_started(request, account_id, ledger)
+            completion = onboarding_service.record_onboarding_completion(ledger, answers, saved or state)
+        return _OnboardingRouteOutcome(completed, completion)
 
-    return await asyncio.to_thread(_run)
+    outcome = await asyncio.to_thread(_run)
+    _capture_onboarding_completed(request, account_id_of(player), outcome.completion)
+    return outcome.response_body

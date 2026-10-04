@@ -1,14 +1,52 @@
-"""LedgerOnboardingMixin (database split, #78).
+"""LedgerOnboardingMixin database operations.
 
 Extracted from DatabaseManager; behaviour is unchanged.
 """
 
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 
+@dataclass(frozen=True)
+class OnboardingAnalyticsStart:
+    started_at: str
+    first_write: bool
+
+
 class LedgerOnboardingMixin:
+    def start_onboarding_analytics(self, started_at: str) -> OnboardingAnalyticsStart:
+        """Persists the first start time once for duration and retry-safe events."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "INSERT OR IGNORE INTO onboarding_analytics (id, started_at) VALUES (1, ?)",
+            (str(started_at),),
+        )
+        created = cursor.rowcount == 1
+        row = self.conn.execute("SELECT started_at FROM onboarding_analytics WHERE id = 1").fetchone()
+        self.conn.commit()
+        return OnboardingAnalyticsStart(str(row["started_at"]), created)
+
+    def get_onboarding_analytics_started_at(self) -> str | None:
+        """Returns the persisted start time, if onboarding has started."""
+        row = self.conn.execute("SELECT started_at FROM onboarding_analytics WHERE id = 1").fetchone()
+        return str(row["started_at"]) if row is not None else None
+
+    def get_onboarding_analytics_completed_at(self) -> str | None:
+        """Returns the persisted first completion time, if onboarding completed."""
+        row = self.conn.execute("SELECT completed_at FROM onboarding_analytics WHERE id = 1").fetchone()
+        return str(row["completed_at"]) if row is not None and row["completed_at"] is not None else None
+
+    def mark_onboarding_analytics_completed(self, completed_at: str) -> bool:
+        """Stores the first completion time and reports whether this call won."""
+        cursor = self.conn.execute(
+            "UPDATE onboarding_analytics SET completed_at = ? WHERE id = 1 AND completed_at IS NULL",
+            (str(completed_at),),
+        )
+        self.conn.commit()
+        return cursor.rowcount == 1
+
     def save_onboarding_state(self, state: dict[str, Any]) -> None:
         """Persists onboarding intake progress in the bound user's ledger (survives restarts)."""
         cursor = self.conn.cursor()

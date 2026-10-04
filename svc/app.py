@@ -15,6 +15,7 @@ from slowapi.errors import RateLimitExceeded
 
 from database.storage import storage_status
 from service.admin_auth import AdminSecurity, partial_secret_configuration
+from service.analytics import register_configured_sink
 from service.model_limits import ModelLimitExceeded
 from service.model_metering import record_model_usage
 from service.periodic_status import (
@@ -104,6 +105,7 @@ def _register_model_metering() -> None:
     from utils import model_metering
 
     model_metering.set_recorder(record_model_usage)
+
 
 async def _periodic_loop(db: object, interval_seconds: float, step: object, job: str) -> None:
     """Runs ``step(db)`` once at startup, then every interval, until cancelled.
@@ -259,6 +261,7 @@ def create_app() -> FastAPI:
         logger.warning("Owner admin secrets are partially configured; /admin stays disabled.")
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     _register_model_metering()
+    register_configured_sink()
 
     @app.exception_handler(ModelLimitExceeded)
     async def model_limit_handler(request: Request, exc: ModelLimitExceeded):

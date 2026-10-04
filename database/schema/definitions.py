@@ -13,6 +13,7 @@ from database.migration_manager import EQUIPMENT_ACCESS_DDL
 from database.migration_manager import CHECKPOINT_REVIEWS_DDL
 from database.migration_manager import DELOAD_CHOICES_DDL
 from database.migration_manager import INTAKE_DDL
+from database.migration_manager import ONBOARDING_ANALYTICS_DDL
 from database.migration_manager import PERFORMED_DATE_CORRECTIONS_DDL
 from database.migration_manager import SESSION_CARDIO_DDL
 from database.migration_manager import SESSION_WARMUP_SETS_DDL
@@ -287,6 +288,7 @@ class SchemaMixin:
             for statement in (
                 *PERFORMED_DATE_CORRECTIONS_DDL,
                 *INTAKE_DDL,
+                *ONBOARDING_ANALYTICS_DDL,
                 *SESSION_WARMUP_SETS_DDL,
                 *SESSION_CARDIO_DDL,
                 *CHECKPOINT_REVIEWS_DDL,
