@@ -11,9 +11,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from agent.debrief import generate_session_debrief
 from agent.progression_engine import (
+    SessionExerciseRecord,
     WorkingSetAggregates,
+    best_zero_load_reps as _best_zero_load_reps,
+    evaluate_session_most_reps,
     evaluate_session_prs,
     evaluate_systemic_fatigue,
+    is_body_weight_or_band_equipment,
     project_next_load,
     set_e1rm,
 )
@@ -432,19 +436,22 @@ def _to_rir(rpe: Any) -> float | None:
     return rir_from_rpe(rpe)
 
 
-def _baseline_rows(ledger: Any) -> list[dict[str, Any]]:
+def _baseline_rows(ledger: Any, db: Any) -> list[dict[str, Any]]:
     """One row per exercise with previous performance or weighted records (#122).
 
-    Two queries total, neither per exercise: every working set (which supplies
-    the strict record aggregates and session count) plus one window query for
-    each exercise's latest previous-performance session and its sets. The
-    ``last_session`` display/autofill data includes non-warm-up sets with reps
-    at any load; record aggregates come only from the strict weighted working
-    sets so a body-weight-only history does not become a record baseline.
+    Three ledger-wide queries provide weighted working sets, all working sets
+    with reps, and the latest previous-performance session. Exercise library
+    rows are fetched in batches; equipment determines which zero-load reps are
+    eligible for the record. Weighted record aggregates keep their strict
+    definition.
     """
     working_by_exercise: dict[str, list[dict[str, Any]]] = {}
     for row in ledger.working_set_rows():
         working_by_exercise.setdefault(str(row["exercise_id"]), []).append(row)
+
+    performance_by_exercise: dict[str, list[dict[str, Any]]] = {}
+    for row in ledger.rep_working_set_rows():
+        performance_by_exercise.setdefault(str(row["exercise_id"]), []).append(row)
 
     sets_by_exercise: dict[str, list[dict[str, Any]]] = {}
     performed_date: dict[str, str] = {}
@@ -454,14 +461,25 @@ def _baseline_rows(ledger: Any) -> list[dict[str, Any]]:
         performed_date.setdefault(exercise_id, str(row["session_date"]))
 
     rows: list[dict[str, Any]] = []
-    exercise_ids = working_by_exercise.keys() | sets_by_exercise.keys()
+    exercise_ids = working_by_exercise.keys() | performance_by_exercise.keys() | sets_by_exercise.keys()
+    library_entries = db.get_exercise_library_entries(sorted(exercise_ids))
     for exercise_id in sorted(exercise_ids):
         working = working_by_exercise.get(exercise_id, [])
+        performance = performance_by_exercise.get(exercise_id, [])
         aggregates = WorkingSetAggregates.from_sets(working)
+        exercise = library_entries.get(exercise_id)
+        equipment = exercise.get("equipment") if exercise else None
+        best_zero_load_reps = (
+            _best_zero_load_reps(performance)
+            if is_body_weight_or_band_equipment(equipment)
+            else None
+        )
         rows.append(
             {
                 "exercise_id": exercise_id,
                 "sessions_logged": len({str(row["session_id"]) for row in working}),
+                "performance_sessions_logged": len({str(row["session_id"]) for row in performance}),
+                "best_zero_load_reps": best_zero_load_reps,
                 "max_weight_kg": aggregates.max_weight_kg,
                 "best_e1rm_kg": aggregates.best_e1rm_kg,
                 "last_session": {
@@ -487,10 +505,11 @@ def baselines(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, A
     zero-load sets. ``max_weight_kg``, ``best_e1rm_kg``, and ``sessions_logged``
     use only strict weighted working sets (ADR 042); ``last_session`` carries
     the latest non-warm-up sets with reps at any load for display and autofill.
-    Reads only the caller's own ledger.
+    The most-reps fields use all prior non-warm-up working sessions and only
+    0 kg sets for body-weight/band equipment. Reads only the caller's own ledger.
     """
     with ledger_scope(db, ledger, ledger_id) as open_ledger:
-        return {"baselines": _baseline_rows(open_ledger)}
+        return {"baselines": _baseline_rows(open_ledger, db)}
 
 
 def _persist_session(
@@ -686,18 +705,32 @@ def _persist_session(
     ledger.record_session_divergences(session_id, divergences, now_iso)
 
     pr_events: list[dict[str, Any]] = []
+    most_reps_records_by_exercise: dict[str, SessionExerciseRecord] = {}
     for item in sets_by_exercise:
         ex_obj = item["exercise"]
-        pr_events.extend(
-            evaluate_session_prs(
-                ledger,
-                session_id,
-                str(ex_obj.exercise_id),
-                item["sets"],
-                exercise_name=ex_obj.exercise_name,
-                achieved_at=now_iso,
-            )
+        record = SessionExerciseRecord(
+            session_id=session_id,
+            exercise_id=str(ex_obj.exercise_id),
+            sets=item["sets"],
+            exercise_name=ex_obj.exercise_name,
+            equipment=(db.get_exercise_library_entry(str(ex_obj.exercise_id)) or {}).get("equipment"),
+            achieved_at=now_iso,
         )
+        pr_events.extend(evaluate_session_prs(ledger, record, include_most_reps=False))
+        existing = most_reps_records_by_exercise.get(record.exercise_id)
+        if existing is None:
+            most_reps_records_by_exercise[record.exercise_id] = record
+        else:
+            most_reps_records_by_exercise[record.exercise_id] = SessionExerciseRecord(
+                session_id=record.session_id,
+                exercise_id=record.exercise_id,
+                sets=[*existing.sets, *record.sets],
+                exercise_name=existing.exercise_name or record.exercise_name,
+                equipment=existing.equipment or record.equipment,
+                achieved_at=record.achieved_at or existing.achieved_at,
+            )
+    for record in most_reps_records_by_exercise.values():
+        pr_events.extend(evaluate_session_most_reps(ledger, record))
 
     fatigue_post = evaluate_systemic_fatigue(ledger)
     debrief_content = generate_session_debrief(

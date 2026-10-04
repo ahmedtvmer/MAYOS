@@ -1035,12 +1035,14 @@ class BaselineLastSessionOut(BaseModel):
 
 
 class BaselineOut(BaseModel):
-    """One exercise's baseline: the aggregates a device freezes for live record checks (ADR 042)."""
+    """One exercise's baseline: the aggregates a device freezes for live record checks."""
 
     exercise_id: str
     sessions_logged: int = Field(ge=0)
+    performance_sessions_logged: int = Field(default=0, ge=0)
     max_weight_kg: float | None = None
     best_e1rm_kg: float | None = None
+    best_zero_load_reps: int | None = Field(default=None, ge=1)
     last_session: BaselineLastSessionOut
 
 

@@ -110,6 +110,11 @@ def format_pr_events(pr_events: List[Dict[str, Any]]) -> str:
                 parts.append(f"heaviest {float(event['value']):g} kg for {int(event['reps'])} reps ({prev})")
             elif event.get("record_type") == "max_e1rm":
                 parts.append(f"e1RM {float(event['value']):.1f} kg ({prev})")
+            elif event.get("record_type") == "most_reps":
+                previous_reps = int(event.get("prev_value") or 0)
+                parts.append(
+                    f"most reps {int(event['value'])} reps (prev {previous_reps} reps)"
+                )
         if parts:
             lines.append(f"- 🏆 New PR: {name} — " + " | ".join(parts))
     return "\n".join(lines)

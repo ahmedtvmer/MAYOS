@@ -16,7 +16,7 @@ from utils.equipment_access import (
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 20
+CURRENT_LEDGER_SCHEMA_VERSION: int = 21
 
 _EQUIPMENT_ACCESS_NOT_IN = "NEW.equipment_access NOT IN (" + ", ".join(
     "'" + value.replace("'", "''") + "'" for value in EQUIPMENT_ACCESS_VALUES
@@ -529,6 +529,41 @@ def _migrate_v19_to_v20(conn: sqlite3.Connection) -> None:
         )
 
 
+def _migrate_v20_to_v21(conn: sqlite3.Connection) -> None:
+    """Allows most-reps Personal record history without backfilling old sessions."""
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    if "personal_records" not in tables:
+        return
+
+    session_foreign_key = (
+        ", FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE"
+        if "workout_sessions" in tables
+        else ""
+    )
+    conn.execute("DROP INDEX IF EXISTS idx_pr_exercise")
+    conn.execute("ALTER TABLE personal_records RENAME TO personal_records_v20")
+    conn.execute(f"""
+        CREATE TABLE personal_records (
+            id TEXT PRIMARY KEY,
+            exercise_id TEXT NOT NULL,
+            record_type TEXT NOT NULL CHECK (record_type IN ('max_weight', 'max_e1rm', 'most_reps')),
+            reps INTEGER,
+            value REAL NOT NULL,
+            prev_value REAL,
+            achieved_at TEXT NOT NULL,
+            session_id TEXT
+            {session_foreign_key}
+        )
+    """)
+    conn.execute("""
+        INSERT INTO personal_records (id, exercise_id, record_type, reps, value, prev_value, achieved_at, session_id)
+        SELECT id, exercise_id, record_type, reps, value, prev_value, achieved_at, session_id
+        FROM personal_records_v20
+    """)
+    conn.execute("DROP TABLE personal_records_v20")
+    conn.execute("CREATE INDEX idx_pr_exercise ON personal_records(exercise_id, record_type)")
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -634,6 +669,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     17: _migrate_v17_to_v18,
     18: _migrate_v18_to_v19,
     19: _migrate_v19_to_v20,
+    20: _migrate_v20_to_v21,
 }
 
 

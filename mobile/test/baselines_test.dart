@@ -1,13 +1,17 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mayos_mobile/src/core/active_workout.dart';
 import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/effort.dart';
 import 'package:mayos_mobile/src/core/models.dart';
+import 'package:mayos_mobile/src/core/personal_records.dart';
 
 BaselineExercise _serverBaseline({
   String exerciseId = 'bench_press',
   int sessionsLogged = 2,
   double? maxWeightKg = 100.0,
   double? bestE1rmKg = 120.0,
+  int performanceSessionsLogged = 2,
+  int? bestZeroLoadReps,
   String performedDate = '2026-09-20',
   List<BaselineSet> sets = const <BaselineSet>[
     BaselineSet(weightKg: 90, reps: 5, rir: 2),
@@ -18,6 +22,8 @@ BaselineExercise _serverBaseline({
       sessionsLogged: sessionsLogged,
       maxWeightKg: maxWeightKg,
       bestE1rmKg: bestE1rmKg,
+      performanceSessionsLogged: performanceSessionsLogged,
+      bestZeroLoadReps: bestZeroLoadReps,
       lastSession:
           BaselineLastSession(performedDate: performedDate, sets: sets),
     );
@@ -43,9 +49,14 @@ WorkoutDraft _draft({
       updatedAt: capturedAt,
     );
 
-Map<String, dynamic> _exerciseJson(String id) => <String, dynamic>{
+Map<String, dynamic> _exerciseJson(
+  String id, {
+  String? equipment,
+}) =>
+    <String, dynamic>{
       'exercise_id': id,
       'exercise_name': id,
+      if (equipment != null) 'equipment': equipment,
       'target_sets': 3,
       'target_reps_min': 5,
       'target_reps_max': 8,
@@ -174,6 +185,108 @@ void main() {
   });
 
   group('foldDraftsIntoBaselines', () {
+    test('folds a pending zero-load best into the next session baseline', () {
+      final BaselineExercise committed = _serverBaseline(
+        exerciseId: 'push_up',
+        maxWeightKg: null,
+        bestE1rmKg: null,
+        performanceSessionsLogged: 1,
+        bestZeroLoadReps: 8,
+      );
+      final List<BaselineExercise> folded = foldDraftsIntoBaselines(
+        baselines: <BaselineExercise>[committed],
+        drafts: <WorkoutDraft>[
+          _draft(
+            performedDate: '2026-09-26',
+            capturedAt: '2026-09-26T10:00:00.000Z',
+            exercises: <DraftExercise>[
+              DraftExercise(
+                exercise: _exerciseJson('push_up', equipment: 'body weight'),
+                sets: const <WorkoutSetLog>[
+                  WorkoutSetLog(weightKg: 0, reps: 10),
+                ],
+              ),
+              DraftExercise(
+                exercise: _exerciseJson('push_up', equipment: 'body weight'),
+                sets: const <WorkoutSetLog>[
+                  WorkoutSetLog(weightKg: 0, reps: 12),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
+
+      expect(folded.single.performanceSessionsLogged, 2);
+      expect(folded.single.bestZeroLoadReps, 12);
+      final Map<String, SetRecordBadges> badges = exerciseRecordBadges(
+        sets: <ActiveWorkoutSet>[
+          ActiveWorkoutSet(
+            id: 'next',
+            weightKg: 0,
+            reps: 10,
+            ticked: true,
+          ),
+        ],
+        baseline: folded.single,
+        equipment: 'body weight',
+      );
+      expect(badges, isEmpty);
+    });
+
+    test(
+        'a first zero-load draft after weighted history establishes reps baseline',
+        () {
+      final List<BaselineExercise> folded = foldDraftsIntoBaselines(
+        baselines: <BaselineExercise>[
+          _serverBaseline(
+            exerciseId: 'push_up',
+            sessionsLogged: 1,
+            maxWeightKg: 20,
+            bestE1rmKg: 24,
+            performanceSessionsLogged: 3,
+          ),
+        ],
+        drafts: <WorkoutDraft>[
+          _draft(
+            performedDate: '2026-09-26',
+            capturedAt: '2026-09-26T10:00:00.000Z',
+            exercises: <DraftExercise>[
+              DraftExercise(
+                exercise: _exerciseJson('push_up', equipment: 'body weight'),
+                sets: const <WorkoutSetLog>[
+                  WorkoutSetLog(weightKg: 0, reps: 12),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
+
+      expect(folded.single.performanceSessionsLogged, 4);
+      expect(folded.single.bestZeroLoadReps, 12);
+      final Map<String, SetRecordBadges> badges = exerciseRecordBadges(
+        sets: <ActiveWorkoutSet>[
+          ActiveWorkoutSet(
+            id: 'first-zero',
+            weightKg: 0,
+            reps: 11,
+            ticked: true,
+          ),
+          ActiveWorkoutSet(
+            id: 'later',
+            weightKg: 0,
+            reps: 13,
+            ticked: true,
+          ),
+        ],
+        baseline: folded.single,
+        equipment: 'body weight',
+      );
+      expect(badges['first-zero'], isNull);
+      expect(badges['later']!.current, contains(PrRecordKind.mostReps));
+    });
+
     test('folds a newer unsynced draft: count, maxima, and last session', () {
       final List<BaselineExercise> folded = foldDraftsIntoBaselines(
         baselines: <BaselineExercise>[_serverBaseline()],

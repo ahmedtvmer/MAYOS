@@ -9,12 +9,16 @@ BaselineExercise _baseline({
   int sessionsLogged = 3,
   double? maxWeightKg = 100.0,
   double? bestE1rmKg = 121.67,
+  int? performanceSessionsLogged,
+  int? bestZeroLoadReps,
 }) =>
     BaselineExercise(
       exerciseId: 'bench_press',
       sessionsLogged: sessionsLogged,
       maxWeightKg: maxWeightKg,
       bestE1rmKg: bestE1rmKg,
+      performanceSessionsLogged: performanceSessionsLogged,
+      bestZeroLoadReps: bestZeroLoadReps,
       lastSession: const BaselineLastSession(
         performedDate: '2026-09-26',
         sets: <BaselineSet>[BaselineSet(weightKg: 100, reps: 5, rir: 1)],
@@ -42,10 +46,12 @@ ActiveWorkoutSet _set({
 Map<String, SetRecordBadges> _badges(
   List<ActiveWorkoutSet> sets, {
   BaselineExercise? baseline,
+  String? equipment,
 }) =>
     exerciseRecordBadges(
       sets: sets,
       baseline: baseline ?? _baseline(),
+      equipment: equipment,
     );
 
 void main() {
@@ -200,6 +206,89 @@ void main() {
       expect(_badges(sets), isEmpty);
     });
 
+    test('most reps requires a prior exercise session and strict zero-load PR',
+        () {
+      final BaselineExercise baseline = _baseline(
+        bestZeroLoadReps: 8,
+        performanceSessionsLogged: 2,
+      );
+      expect(
+        _badges(
+          <ActiveWorkoutSet>[_set(id: 'tie', weightKg: 0, reps: 8)],
+          baseline: baseline,
+          equipment: 'body weight',
+        ),
+        isEmpty,
+      );
+
+      final Map<String, SetRecordBadges> badges = _badges(
+        <ActiveWorkoutSet>[
+          _set(id: 's1', weightKg: 0, reps: 10),
+          _set(id: 's2', weightKg: 0, reps: 12),
+          _set(id: 's3', weightKg: 0, reps: 14),
+        ],
+        baseline: baseline,
+        equipment: 'resistance band',
+      );
+      expect(badges['s1']!.beaten, contains(PrRecordKind.mostReps));
+      expect(badges['s2']!.beaten, contains(PrRecordKind.mostReps));
+      expect(badges['s3']!.current, contains(PrRecordKind.mostReps));
+
+      expect(
+        _badges(
+          <ActiveWorkoutSet>[_set(id: 'first', weightKg: 0, reps: 10)],
+          baseline: _baseline(
+            sessionsLogged: 0,
+            maxWeightKg: null,
+            bestE1rmKg: null,
+            performanceSessionsLogged: 0,
+          ),
+          equipment: 'body weight',
+        ),
+        isEmpty,
+      );
+    });
+
+    test('first zero-load session stays baseline after weighted-only history',
+        () {
+      final Map<String, SetRecordBadges> badges = _badges(
+        <ActiveWorkoutSet>[_set(id: 'first-zero', weightKg: 0, reps: 12)],
+        baseline: _baseline(
+          bestZeroLoadReps: null,
+          performanceSessionsLogged: 3,
+        ),
+        equipment: 'body weight',
+      );
+
+      expect(badges, isEmpty);
+    });
+
+    test('warm-ups and zero-load sets on other equipment never earn most reps',
+        () {
+      final BaselineExercise baseline = _baseline(
+        bestZeroLoadReps: 8,
+        performanceSessionsLogged: 2,
+      );
+      expect(
+        _badges(
+          <ActiveWorkoutSet>[
+            _set(id: 'warmup', weightKg: 0, reps: 20, isWarmup: true),
+          ],
+          baseline: baseline,
+          equipment: 'band',
+        ),
+        isEmpty,
+      );
+      expect(
+        _badges(
+          <ActiveWorkoutSet>[_set(id: 'barbell', weightKg: 0, reps: 20)],
+          baseline: baseline,
+          equipment: 'barbell',
+        ),
+        isEmpty,
+      );
+    });
+
     test('an unticked working set earns nothing until it is ticked', () {
       final List<ActiveWorkoutSet> sets = <ActiveWorkoutSet>[
         _set(id: 's1', weightKg: 150, reps: 5, rir: 1, ticked: false),
@@ -322,6 +411,39 @@ void main() {
           'Bench Press · PR 110 kg',
           'Bench Press · PR e1RM 132 kg',
         ],
+      );
+    });
+
+    test('lists a most-reps record in reps with no weight unit', () {
+      final ActiveWorkout workout = ActiveWorkout(
+        id: 'aw-bw',
+        accountId: 'account-alice',
+        startedAt: '2026-09-28T08:00:00.000Z',
+        dayOrder: 1,
+        dayName: 'Full A',
+        programVersion: 3,
+        exercises: <ActiveWorkoutExercise>[
+          ActiveWorkoutExercise(
+            exercise: <String, dynamic>{
+              'exercise_id': 'push_up',
+              'exercise_name': 'Push-up',
+              'equipment': 'body weight',
+            },
+            sets: <ActiveWorkoutSet>[
+              _set(id: 'reps', weightKg: 0, reps: 12),
+            ],
+          ),
+        ],
+        baselines: <String, BaselineExercise>{
+          'push_up': _baseline(
+            bestZeroLoadReps: 10,
+            performanceSessionsLogged: 2,
+          ),
+        },
+      );
+      expect(
+        workoutRecords(workout).map((WorkoutRecord record) => record.line),
+        <String>['Push-up · Most reps 12 reps'],
       );
     });
 

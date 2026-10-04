@@ -12,6 +12,7 @@ import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/models.dart';
+import '../../../core/personal_records.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -650,7 +651,8 @@ class _RecordsSection extends StatelessWidget {
                               .copyWith(color: c.textPrimary),
                         ),
                         Text(
-                          record.recordType,
+                          displayCopyOf(context)
+                              .personalRecordType(record.recordType),
                           style: MayosTypography.caption
                               .copyWith(color: c.textMuted),
                         ),
@@ -660,7 +662,11 @@ class _RecordsSection extends StatelessWidget {
                   Directionality(
                     textDirection: TextDirection.ltr,
                     child: Text(
-                      '${_formatValue(record.value)} kg × ${record.reps}',
+                      PrRecordKind.fromRecordType(record.recordType) ==
+                              PrRecordKind.mostReps
+                          ? displayCopyOf(context)
+                              .personalRecordReps(record.reps)
+                          : '${_formatValue(record.value)} kg × ${record.reps}',
                       style: MayosTypography.numericSmall
                           .copyWith(color: c.textPrimary),
                     ),

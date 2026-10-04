@@ -597,6 +597,35 @@ class LedgerWorkoutsMixin:
         cursor.execute(sql, params)
         return [dict(row) for row in cursor.fetchall()]
 
+    def rep_working_set_rows(
+        self,
+        exercise_id: str | None = None,
+        *,
+        exclude_session_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Previous working sets with reps, including eligible zero-load work.
+
+        This broader view supports the first-session baseline and the most-reps
+        record. Weighted PR aggregates continue to use :meth:`working_set_rows`.
+        """
+        sql = (
+            "SELECT ws.exercise_id, ws.session_id, ws.weight_kg, ws.reps"
+            " FROM workout_sets ws"
+            " JOIN workout_sessions s ON ws.session_id = s.id"
+            " WHERE ws.is_warmup = 0 AND ws.reps > 0"
+        )
+        params: list[Any] = []
+        if exercise_id is not None:
+            sql += " AND ws.exercise_id = ?"
+            params.append(exercise_id)
+        if exclude_session_id is not None:
+            sql += " AND ws.session_id <> ?"
+            params.append(exclude_session_id)
+        sql += " ORDER BY ws.exercise_id ASC, ws.rowid ASC"
+        cursor = self.conn.cursor()
+        cursor.execute(sql, params)
+        return [dict(row) for row in cursor.fetchall()]
+
     def baseline_last_sessions(self) -> list[dict[str, Any]]:
         """Each exercise's latest committed session with previous performance.
 

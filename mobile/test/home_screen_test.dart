@@ -174,6 +174,35 @@ void main() {
     expect(find.text('No personal records yet.'), findsOneWidget);
   });
 
+  testWidgets('the Personal records shelf localizes most reps and its value',
+      (tester) async {
+    for (final String language in <String>['en', 'ar']) {
+      final FakeMayosApi fake = _signedInFake()
+        ..personalRecordsBody = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'exercise_id': 'push_up',
+            'name': 'Push-up',
+            'record_type': 'most_reps',
+            'reps': 12,
+            'value': 12,
+            'prev_value': 8,
+            'achieved_at': '2026-09-26T10:00:00Z',
+            'session_id': 'session-2',
+          },
+        ];
+      await _pumpHome(tester, fake, languageCode: language);
+
+      expect(
+        find.text(language == 'ar' ? 'أكبر عدد من التكرارات' : 'Most reps'),
+        findsOneWidget,
+      );
+      expect(
+          find.text(language == 'ar' ? '\u206612\u2069 تكرارًا' : '12 reps'),
+          findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
   testWidgets('the no-program action reaches the assistant from Program',
       (tester) async {
     final FakeMayosApi fake = _signedInFake();

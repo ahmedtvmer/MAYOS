@@ -169,6 +169,7 @@ class FakeMayosApi {
   // Home empty states can be captured and tested.
   bool volumeEmpty = false;
   bool recordsEmpty = false;
+  List<Map<String, dynamic>>? personalRecordsBody;
   List<Map<String, dynamic>> checkpointReviewRows = <Map<String, dynamic>>[];
   final Map<int, Map<String, dynamic>> checkpointReviewDetails =
       <int, Map<String, dynamic>>{};
@@ -3416,6 +3417,9 @@ class FakeMayosApi {
     }
     if (recordsEmpty) {
       return const FakeResponse(200, <Map<String, dynamic>>[]);
+    }
+    if (personalRecordsBody != null) {
+      return FakeResponse(200, personalRecordsBody!);
     }
     return const FakeResponse(200, <Map<String, dynamic>>[
       <String, dynamic>{

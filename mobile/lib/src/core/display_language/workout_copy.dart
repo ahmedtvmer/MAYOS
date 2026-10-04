@@ -1,4 +1,5 @@
 import 'arabic_count.dart';
+import '../personal_records.dart';
 import '../training_status_projection.dart';
 import '../workout_equipment.dart';
 
@@ -190,14 +191,31 @@ class WorkoutCopy {
       : 'Notes (pumps, joint aches, fatigue)';
   String get personalRecords =>
       isArabic ? 'الأرقام القياسية الشخصية' : 'Personal records';
-  String recordBadge(String kind) => isArabic
-      ? 'رقم قياسي · ${kind == 'weight' ? 'kg' : 'e1RM'}'
-      : kind == 'weight'
-          ? 'PR kg'
-          : 'PR e1RM';
-  String recordCelebration(String exercise, String kind, String value) => isArabic
-      ? '${_ltr(exercise)} · رقم قياسي ${kind == 'weight' ? '' : 'e1RM '}${_ltr('$value kg')}'
-      : '$exercise · ${kind == 'weight' ? 'PR ' : 'PR e1RM '}$value kg';
+  String recordBadge(PrRecordKind kind) {
+    if (kind == PrRecordKind.mostReps) {
+      return isArabic ? 'أكبر عدد من التكرارات' : 'Most reps';
+    }
+    if (isArabic) {
+      return 'رقم قياسي · ${kind == PrRecordKind.weight ? 'kg' : 'e1RM'}';
+    }
+    return kind == PrRecordKind.weight ? 'PR kg' : 'PR e1RM';
+  }
+
+  String recordCelebration(
+    String exercise,
+    PrRecordKind kind,
+    String value,
+  ) {
+    if (kind == PrRecordKind.mostReps) {
+      final int count = int.tryParse(value) ?? 0;
+      return isArabic
+          ? '${_ltr(exercise)} · أكبر عدد من التكرارات: ${arabicCountPhrase(count, ArabicCountNoun.repetition, isolateCount: true)}'
+          : '$exercise · Most reps $value reps';
+    }
+    return isArabic
+        ? '${_ltr(exercise)} · رقم قياسي ${kind == PrRecordKind.weight ? '' : 'e1RM '}${_ltr('$value kg')}'
+        : '$exercise · ${kind == PrRecordKind.weight ? 'PR ' : 'PR e1RM '}$value kg';
+  }
   String checkpointWorkout(int number) => isArabic
       ? 'حصة تدريبية رقم ${_ltr('$number')}!'
       : 'Your ${_ordinal(number)} workout!';

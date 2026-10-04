@@ -65,7 +65,7 @@ def test_v18_upgrade_adds_deload_choice(temp_db_env):
         default_ledger_id="v18lifter",
     )
     try:
-        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 20
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 21
         assert migrated.ledger.get_deload_choice() is None
         migrated.ledger.set_deload_choice("undo")
         assert migrated.ledger.get_deload_choice() == "undo"
@@ -92,6 +92,41 @@ def test_v19_upgrade_adds_staple_substitute_storage_and_backfills_empty_list(tem
         "SELECT suggested_substitutes_json FROM program_exercises WHERE id = 'program-exercise-1'"
     ).fetchone()[0] == "[]"
     assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
+    conn.close()
+
+
+def test_v20_upgrade_allows_most_reps_records_without_backfilling(temp_db_env):
+    db, _, backups_dir = temp_db_env
+    conn = sqlite3.connect(":memory:")
+    conn.executescript("""
+        CREATE TABLE personal_records (
+            id TEXT PRIMARY KEY,
+            exercise_id TEXT NOT NULL,
+            record_type TEXT NOT NULL CHECK (record_type IN ('max_weight', 'max_e1rm')),
+            reps INTEGER,
+            value REAL NOT NULL,
+            prev_value REAL,
+            achieved_at TEXT NOT NULL,
+            session_id TEXT
+        );
+        INSERT INTO personal_records VALUES
+            ('old', 'bench', 'max_weight', 5, 100, NULL, '2026-01-01', NULL);
+        PRAGMA user_version = 20;
+    """)
+
+    apply_lazy_migrations(conn, "v20player", db.ledgers_dir, backups_dir)
+
+    assert get_ledger_schema_version(conn) == 21
+    assert conn.execute(
+        "SELECT id, record_type, value FROM personal_records"
+    ).fetchall() == [("old", "max_weight", 100.0)]
+    conn.execute(
+        "INSERT INTO personal_records (id, exercise_id, record_type, reps, value, achieved_at)"
+        " VALUES ('new', 'push_up', 'most_reps', 12, 12, '2026-01-02')"
+    )
+    assert conn.execute(
+        "SELECT record_type, value FROM personal_records WHERE id = 'new'"
+    ).fetchone() == ("most_reps", 12.0)
     conn.close()
 
 

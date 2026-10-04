@@ -2,6 +2,7 @@ import '../app_failure.dart';
 import '../password_policy.dart';
 import '../checkpoint_ordinal.dart';
 import '../effort.dart';
+import '../personal_records.dart';
 import 'arabic_count.dart';
 
 /// Small hand-written app catalog entry point. Product copy is added here as
@@ -343,6 +344,17 @@ class MayosCopy {
       : 'No sets logged in the last 7 days.';
   String get noPersonalRecords =>
       isArabic ? 'لا توجد أرقام قياسية شخصية بعد.' : 'No personal records yet.';
+  String personalRecordType(String type) =>
+      switch (PrRecordKind.fromRecordType(type)) {
+        PrRecordKind.weight => isArabic ? 'أثقل وزن' : 'Heaviest weight',
+        PrRecordKind.e1rm => isArabic ? 'أفضل e1RM' : 'Best e1RM',
+        PrRecordKind.mostReps =>
+          isArabic ? 'أكبر عدد من التكرارات' : 'Most reps',
+        null => type,
+      };
+  String personalRecordReps(int count) => isArabic
+      ? arabicCountPhrase(count, ArabicCountNoun.repetition, isolateCount: true)
+      : '$count reps';
   String get loadHomeFailed =>
       isArabic ? 'تعذر تحميل الصفحة الرئيسية.' : 'Could not load your home.';
   String get offlineSavedProgram => isArabic

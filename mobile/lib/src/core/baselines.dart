@@ -3,6 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'effort.dart';
 import 'models.dart';
 import 'secure_store.dart';
+import 'workout_equipment.dart';
 
 export 'effort.dart' show rirFromRpe, round2;
 
@@ -18,7 +19,10 @@ class BaselineExercise {
     required this.maxWeightKg,
     required this.bestE1rmKg,
     required this.lastSession,
-  });
+    int? performanceSessionsLogged,
+    this.bestZeroLoadReps,
+  }) : performanceSessionsLogged =
+            performanceSessionsLogged ?? sessionsLogged;
 
   factory BaselineExercise.fromJson(Map<String, dynamic> json) =>
       BaselineExercise(
@@ -26,6 +30,9 @@ class BaselineExercise {
         sessionsLogged: (json['sessions_logged'] as num?)?.toInt() ?? 0,
         maxWeightKg: (json['max_weight_kg'] as num?)?.toDouble(),
         bestE1rmKg: (json['best_e1rm_kg'] as num?)?.toDouble(),
+        performanceSessionsLogged:
+            (json['performance_sessions_logged'] as num?)?.toInt(),
+        bestZeroLoadReps: (json['best_zero_load_reps'] as num?)?.toInt(),
         lastSession: BaselineLastSession.fromJson(
             json['last_session'] as Map<String, dynamic>? ??
                 const <String, dynamic>{}),
@@ -43,6 +50,13 @@ class BaselineExercise {
   /// Best working-set e1RM (ADR 042), or null when none is known.
   final double? bestE1rmKg;
 
+  /// Earlier sessions with non-warm-up reps at any load. Most-reps also needs
+  /// [bestZeroLoadReps] from a prior eligible 0 kg working set.
+  final int performanceSessionsLogged;
+
+  /// Best earlier 0 kg reps on body-weight/band equipment, or null when none.
+  final int? bestZeroLoadReps;
+
   /// The latest non-warm-up sets with reps at any load, in logged order.
   final BaselineLastSession lastSession;
 
@@ -50,6 +64,8 @@ class BaselineExercise {
     int? sessionsLogged,
     double? maxWeightKg,
     double? bestE1rmKg,
+    int? performanceSessionsLogged,
+    int? bestZeroLoadReps,
     BaselineLastSession? lastSession,
   }) =>
       BaselineExercise(
@@ -57,6 +73,9 @@ class BaselineExercise {
         sessionsLogged: sessionsLogged ?? this.sessionsLogged,
         maxWeightKg: maxWeightKg ?? this.maxWeightKg,
         bestE1rmKg: bestE1rmKg ?? this.bestE1rmKg,
+        performanceSessionsLogged:
+            performanceSessionsLogged ?? this.performanceSessionsLogged,
+        bestZeroLoadReps: bestZeroLoadReps ?? this.bestZeroLoadReps,
         lastSession: lastSession ?? this.lastSession,
       );
 
@@ -65,6 +84,8 @@ class BaselineExercise {
         'sessions_logged': sessionsLogged,
         'max_weight_kg': maxWeightKg,
         'best_e1rm_kg': bestE1rmKg,
+        'performance_sessions_logged': performanceSessionsLogged,
+        'best_zero_load_reps': bestZeroLoadReps,
         'last_session': lastSession.toJson(),
       };
 }
@@ -204,8 +225,9 @@ bool draftWillCommit(WorkoutDraft draft) =>
 /// Only [draftWillCommit] drafts are folded.
 ///
 /// Previous performance accepts non-warm-up sets with reps at any load.
-/// `sessions_logged` and the maxima still accept only weighted working sets
-/// ([isWorkingSet]), matching the server's record baseline.
+/// `performance_sessions_logged` counts each exercise once per draft;
+/// `best_zero_load_reps` folds eligible 0 kg working sets. `sessions_logged`
+/// and the maxima still accept only weighted working sets ([isWorkingSet]).
 ///
 /// "Latest" mirrors the server's `LAST_SESSION_ORDER`
 /// (`database/ledger/workouts.py`: `started_at DESC, rowid DESC`), **not** the
@@ -234,16 +256,30 @@ List<BaselineExercise> foldDraftsIntoBaselines({
     }
     final DateTime? startedAt =
         _parseTime(draft.capturedAt) ?? _parseTime(draft.updatedAt);
+    final Set<String> performanceSessionsCounted = <String>{};
     for (final DraftExercise exercise in draft.exercises) {
       if (exercise.skipped) {
         continue;
       }
+      final String exerciseId = exercise.exerciseId;
       final List<WorkoutSetLog> previousPerformance = <WorkoutSetLog>[
         for (final WorkoutSetLog set in exercise.sets)
           if (!set.isWarmup && set.reps > 0) set,
       ];
       if (previousPerformance.isEmpty) {
         continue;
+      }
+      final bool countsPerformanceSession =
+          performanceSessionsCounted.add(exerciseId);
+      final String? equipment = exercise.exercise['equipment'] as String?;
+      int? bestZeroLoadReps;
+      if (isBodyWeightOrBandEquipment(equipment)) {
+        for (final WorkoutSetLog set in previousPerformance) {
+          if (set.weightKg == 0 &&
+              (bestZeroLoadReps == null || set.reps > bestZeroLoadReps)) {
+            bestZeroLoadReps = set.reps;
+          }
+        }
       }
       final List<WorkoutSetLog> working = <WorkoutSetLog>[
         for (final WorkoutSetLog set in exercise.sets)
@@ -281,7 +317,6 @@ List<BaselineExercise> foldDraftsIntoBaselines({
             ),
         ],
       );
-      final String exerciseId = exercise.exerciseId;
       final BaselineExercise? current = byExercise[exerciseId];
       if (current == null) {
         byExercise[exerciseId] = BaselineExercise(
@@ -289,6 +324,8 @@ List<BaselineExercise> foldDraftsIntoBaselines({
           sessionsLogged: working.isEmpty ? 0 : 1,
           maxWeightKg: working.isEmpty ? null : round2(maxWeight),
           bestE1rmKg: working.isEmpty ? null : round2(bestE1rm),
+          performanceSessionsLogged: countsPerformanceSession ? 1 : 0,
+          bestZeroLoadReps: bestZeroLoadReps,
           lastSession: draftSession,
         );
         latestStartedAt[exerciseId] = startedAt;
@@ -305,6 +342,10 @@ List<BaselineExercise> foldDraftsIntoBaselines({
       }
       byExercise[exerciseId] = current.copyWith(
         sessionsLogged: current.sessionsLogged + (working.isEmpty ? 0 : 1),
+        performanceSessionsLogged: current.performanceSessionsLogged +
+            (countsPerformanceSession ? 1 : 0),
+        bestZeroLoadReps:
+            _maxIntOrNull(current.bestZeroLoadReps, bestZeroLoadReps),
         maxWeightKg: working.isEmpty
             ? current.maxWeightKg
             : _maxOrNull(current.maxWeightKg, round2(maxWeight)),
@@ -321,6 +362,12 @@ List<BaselineExercise> foldDraftsIntoBaselines({
 
 double? _maxOrNull(double? current, double candidate) =>
     current == null ? candidate : (candidate > current ? candidate : current);
+
+int? _maxIntOrNull(int? current, int? candidate) {
+  if (current == null) return candidate;
+  if (candidate == null || candidate <= current) return current;
+  return candidate;
+}
 
 /// True when the session at [date]/[startedAt] comes after
 /// [thanDate]/[thanStartedAt], ordered by start instant the way the server's

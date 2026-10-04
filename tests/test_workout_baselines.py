@@ -291,6 +291,258 @@ def test_body_weight_history_is_previous_performance_but_not_a_record_baseline(a
     assert rows[0]["last_session"]["performed_date"] == "2026-09-26"
 
 
+@pytest.mark.parametrize("equipment", ["body weight", "band", "resistance band"])
+def test_commit_records_only_strict_zero_load_reps_for_eligible_equipment(api, equipment):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    db.catalog_conn.execute("UPDATE exercises SET equipment = ? WHERE id = 'row'", (equipment,))
+    db.catalog_conn.commit()
+
+    first = _commit(
+        client,
+        headers,
+        version,
+        [
+            {
+                "exercise": _exercise_payload("row", "Row"),
+                "sets": [{"weight_kg": 0.0, "reps": 8, "rpe": 8.0}],
+            },
+            {
+                "exercise": _exercise_payload("sq", "Squat"),
+                "sets": [{"weight_kg": 0.0, "reps": 8, "rpe": 8.0}],
+            },
+        ],
+        client_session_id=CLIENT_A,
+        performed_date="2026-09-25",
+        captured_at="2026-09-25T11:00:00+00:00",
+    )
+    assert first["new_prs"] == []
+
+    second = _commit(
+        client,
+        headers,
+        version,
+        [
+            {
+                "exercise": _exercise_payload("row", "Row"),
+                "sets": [
+                    {"weight_kg": 0.0, "reps": 30, "rpe": 7.0, "is_warmup": True},
+                    {"weight_kg": 0.0, "reps": 12, "rpe": 8.0},
+                    {"weight_kg": 0.0, "reps": 10, "rpe": 8.0},
+                ],
+            },
+            {
+                "exercise": _exercise_payload("sq", "Squat"),
+                "sets": [{"weight_kg": 0.0, "reps": 25, "rpe": 8.0}],
+            },
+        ],
+        client_session_id=CLIENT_B,
+        performed_date="2026-09-26",
+        captured_at="2026-09-26T11:00:00+00:00",
+    )
+    assert len(second["new_prs"]) == 1
+    event = second["new_prs"][0]
+    assert {
+        key: event[key]
+        for key in ("exercise_id", "record_type", "reps", "value", "prev_value", "session_id", "name")
+    } == {
+        "exercise_id": "row",
+        "record_type": "most_reps",
+        "reps": 12,
+        "value": 12,
+        "prev_value": 8,
+        "session_id": second["session_id"],
+        "name": "Row",
+    }
+    db.switch_user("alice")
+    stored = db.conn.execute(
+        "SELECT record_type, reps, value, prev_value FROM personal_records WHERE session_id = ?",
+        (second["session_id"],),
+    ).fetchall()
+    assert [tuple(row) for row in stored] == [("most_reps", 12, 12.0, 8.0)]
+
+    tie = _commit(
+        client,
+        headers,
+        version,
+        [
+            {
+                "exercise": _exercise_payload("row", "Row"),
+                "sets": [{"weight_kg": 0.0, "reps": 12, "rpe": 8.0}],
+            }
+        ],
+        client_session_id="33333333-3333-4333-8333-333333333333",
+        performed_date="2026-09-24",
+        captured_at="2026-09-24T11:00:00+00:00",
+    )
+    assert tie["new_prs"] == []
+
+    baseline = next(
+        row for row in client.get("/workouts/baselines", headers=headers).json()["baselines"]
+        if row["exercise_id"] == "row"
+    )
+    assert baseline["best_zero_load_reps"] == 12
+    assert baseline["performance_sessions_logged"] == 3
+    records = client.get("/dashboard/personal-records", headers=headers)
+    assert records.status_code == 200, records.text
+    assert any(row["record_type"] == "most_reps" and row["value"] == 12 for row in records.json())
+
+    weighted_baseline = _commit(
+        client,
+        headers,
+        version,
+        [
+            {
+                "exercise": _exercise_payload("row", "Row"),
+                "sets": [{"weight_kg": 40.0, "reps": 5, "rpe": 8.0}],
+            }
+        ],
+        client_session_id="44444444-4444-4444-8444-444444444444",
+        performed_date="2026-09-23",
+        captured_at="2026-09-23T11:00:00+00:00",
+    )
+    assert weighted_baseline["new_prs"] == []
+    weighted_record = _commit(
+        client,
+        headers,
+        version,
+        [
+            {
+                "exercise": _exercise_payload("row", "Row"),
+                "sets": [{"weight_kg": 45.0, "reps": 5, "rpe": 8.0}],
+            }
+        ],
+        client_session_id="55555555-5555-4555-8555-555555555555",
+        performed_date="2026-09-22",
+        captured_at="2026-09-22T11:00:00+00:00",
+    )
+    assert {event["record_type"] for event in weighted_record["new_prs"]} == {
+        "max_weight",
+        "max_e1rm",
+    }
+
+
+def test_first_zero_load_session_after_weighted_history_is_its_baseline(api):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+
+    weighted = _commit(
+        client,
+        headers,
+        version,
+        [{"exercise": _exercise_payload("row", "Row"), "sets": [
+            {"weight_kg": 40.0, "reps": 8, "rpe": 8.0},
+        ]}],
+        client_session_id=CLIENT_A,
+        performed_date="2026-09-25",
+        captured_at="2026-09-25T11:00:00+00:00",
+    )
+    assert weighted["new_prs"] == []
+
+    first_zero_load = _commit(
+        client,
+        headers,
+        version,
+        [{"exercise": _exercise_payload("row", "Row"), "sets": [
+            {"weight_kg": 0.0, "reps": 8, "rpe": 8.0},
+        ]}],
+        client_session_id=CLIENT_B,
+        performed_date="2026-09-26",
+        captured_at="2026-09-26T11:00:00+00:00",
+    )
+    assert first_zero_load["new_prs"] == []
+
+    next_zero_load = _commit(
+        client,
+        headers,
+        version,
+        [{"exercise": _exercise_payload("row", "Row"), "sets": [
+            {"weight_kg": 0.0, "reps": 10, "rpe": 8.0},
+        ]}],
+        client_session_id="33333333-3333-4333-8333-333333333333",
+        performed_date="2026-09-26",
+        captured_at="2026-09-26T11:30:00+00:00",
+    )
+    assert [event["record_type"] for event in next_zero_load["new_prs"]] == ["most_reps"]
+    assert next_zero_load["new_prs"][0]["prev_value"] == 8
+
+
+def test_duplicate_exercise_entries_share_one_session_wide_most_reps_record(api):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    _commit(
+        client,
+        headers,
+        version,
+        [{"exercise": _exercise_payload("row", "Row"), "sets": [
+            {"weight_kg": 0.0, "reps": 8, "rpe": 8.0},
+        ]}],
+        client_session_id=CLIENT_A,
+        performed_date="2026-09-25",
+        captured_at="2026-09-25T11:00:00+00:00",
+    )
+
+    result = _commit(
+        client,
+        headers,
+        version,
+        [
+            {"exercise": _exercise_payload("row", "Row"), "sets": [
+                {"weight_kg": 0.0, "reps": 12, "rpe": 8.0},
+            ]},
+            {"exercise": _exercise_payload("row", "Row"), "sets": [
+                {"weight_kg": 0.0, "reps": 15, "rpe": 8.0},
+            ]},
+        ],
+        client_session_id=CLIENT_B,
+        performed_date="2026-09-26",
+        captured_at="2026-09-26T11:00:00+00:00",
+    )
+
+    assert len(result["new_prs"]) == 1
+    assert result["new_prs"][0]["record_type"] == "most_reps"
+    assert result["new_prs"][0]["reps"] == 15
+    db.switch_user("alice")
+    records = db.conn.execute(
+        "SELECT record_type, reps FROM personal_records WHERE session_id = ?",
+        (result["session_id"],),
+    ).fetchall()
+    assert [tuple(row) for row in records] == [("most_reps", 15)]
+
+
+def test_zero_load_sets_on_non_eligible_equipment_do_not_record(api):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    db.catalog_conn.execute("UPDATE exercises SET equipment = 'barbell' WHERE id = 'sq'")
+    db.catalog_conn.commit()
+
+    first = _commit(
+        client,
+        headers,
+        version,
+        [{"exercise": _exercise_payload("sq", "Squat"), "sets": [
+            {"weight_kg": 0.0, "reps": 8, "rpe": 8.0},
+        ]}],
+        client_session_id=CLIENT_A,
+        performed_date="2026-09-25",
+        captured_at="2026-09-25T11:00:00+00:00",
+    )
+    second = _commit(
+        client,
+        headers,
+        version,
+        [{"exercise": _exercise_payload("sq", "Squat"), "sets": [
+            {"weight_kg": 0.0, "reps": 12, "rpe": 8.0},
+        ]}],
+        client_session_id=CLIENT_B,
+        performed_date="2026-09-26",
+        captured_at="2026-09-26T11:00:00+00:00",
+    )
+
+    assert first["new_prs"] == []
+    assert second["new_prs"] == []
+
+
 def test_assistant_deload_choice_is_one_workout_and_replay_safe(api, monkeypatch):
     client, db = api
     headers, version = _prepare_player(client, db, "deload-player")

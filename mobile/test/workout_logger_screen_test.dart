@@ -211,6 +211,8 @@ List<Map<String, dynamic>> _baselinesBody() => <Map<String, dynamic>>[
       <String, dynamic>{
         'exercise_id': 'bench_press',
         'sessions_logged': 3,
+        'performance_sessions_logged': 3,
+        'best_zero_load_reps': null,
         'max_weight_kg': 100.0,
         'best_e1rm_kg': 121.67,
         'last_session': <String, dynamic>{
@@ -224,6 +226,8 @@ List<Map<String, dynamic>> _baselinesBody() => <Map<String, dynamic>>[
       <String, dynamic>{
         'exercise_id': 'incline_press',
         'sessions_logged': 1,
+        'performance_sessions_logged': 1,
+        'best_zero_load_reps': null,
         'max_weight_kg': 40.0,
         'best_e1rm_kg': 53.33,
         'last_session': <String, dynamic>{
@@ -243,6 +247,8 @@ List<Map<String, dynamic>> _pushUpBaseline({
       <String, dynamic>{
         'exercise_id': 'push_up',
         'sessions_logged': weightKg > 0 ? 1 : 0,
+        'performance_sessions_logged': 1,
+        'best_zero_load_reps': weightKg == 0 ? reps : null,
         'max_weight_kg': weightKg > 0 ? weightKg : null,
         'best_e1rm_kg': weightKg > 0 ? weightKg * 1.2 : null,
         'last_session': <String, dynamic>{
@@ -507,7 +513,11 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
 }
 
 Future<void> _finishAndOpenSummary(WidgetTester tester) async {
-  await tester.tap(find.widgetWithText(FilledButton, 'Finish workout'));
+  Finder finish = find.widgetWithText(FilledButton, 'Finish workout');
+  if (finish.evaluate().isEmpty) {
+    finish = find.widgetWithText(FilledButton, 'إنهاء الحصة');
+  }
+  await tester.tap(finish);
   await tester.pumpAndSettle();
   final Finder discard = find.text('Discard unticked sets and finish');
   if (discard.evaluate().isNotEmpty) {
@@ -1365,6 +1375,62 @@ void main() {
     expect(set.ticked, isTrue);
     expect(set.weightKg, 0);
     expect(find.text('Hide'), findsNothing);
+  });
+
+  testWidgets('the logger and summary show localized most-reps records',
+      (WidgetTester tester) async {
+    for (final String language in <String>['en', 'ar']) {
+      await _openLogger(
+        tester,
+        day: _bodyweightDay,
+        languageCode: language,
+        baselines: _pushUpBaseline(weightKg: 0, reps: 10),
+      );
+
+      await _typeCell(tester, 0, 0, 'reps', '12');
+      await tester.tap(_tick(0, 0));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(_badge(0, 0, PrRecordKind.mostReps), findsOneWidget);
+      expect(
+        find.text(language == 'ar' ? 'أكبر عدد من التكرارات' : 'Most reps'),
+        findsOneWidget,
+      );
+
+      await _finishAndOpenSummary(tester);
+      if (language == 'ar') {
+        final Finder celebration =
+            find.textContaining('أكبر عدد من التكرارات');
+        expect(celebration, findsOneWidget);
+        expect(
+          tester.widget<Text>(celebration).data,
+          contains('\u206612\u2069 تكرارًا'),
+        );
+      } else {
+        expect(find.text('Push-Up · Most reps 12 reps'), findsOneWidget);
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets(
+      'the logger does not badge the first zero-load session after weighted history',
+      (WidgetTester tester) async {
+    final List<Map<String, dynamic>> baseline =
+        _pushUpBaseline(weightKg: 20, reps: 10);
+    baseline.single['performance_sessions_logged'] = 3;
+    baseline.single['best_zero_load_reps'] = null;
+    await _openLogger(
+      tester,
+      day: _bodyweightDay,
+      baselines: baseline,
+    );
+
+    await _typeCell(tester, 0, 0, 'kg', '0');
+    await _typeCell(tester, 0, 0, 'reps', '12');
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(_badge(0, 0, PrRecordKind.mostReps), findsNothing);
   });
 
   testWidgets(

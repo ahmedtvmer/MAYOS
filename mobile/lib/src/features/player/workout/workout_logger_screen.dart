@@ -548,6 +548,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     return exerciseRecordBadges(
       sets: exercise.sets,
       baseline: workout.baselines[exercise.exerciseId],
+      equipment: exercise.equipment,
     );
   }
 
@@ -2277,7 +2278,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
               child: Text(
                 workoutCopyOf(context).recordCelebration(
                   record.exerciseName,
-                  record.kind.name,
+                  record.kind,
                   formatRecordKg(record.value),
                 ),
                 style: MayosTypography.bodySecondary.copyWith(

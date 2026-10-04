@@ -161,6 +161,10 @@
       "kind": "method",
       "signature": "(self, exercise_id: str) -> dict[str, typing.Any] | None"
     },
+    "get_exercise_library_entries": {
+      "kind": "method",
+      "signature": "(self, exercise_ids: Iterable[str]) -> dict[str, dict[str, typing.Any]]"
+    },
     "get_exercise_library_entry": {
       "kind": "method",
       "signature": "(self, exercise_id: str) -> dict[str, typing.Any] | None"

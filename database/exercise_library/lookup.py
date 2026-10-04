@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Iterable, Literal
 from database.shared import _normalize_exercise_name
 from database.exercise_library.names import near_miss_exercise_ids
 from database.exercise_library.schema import (
@@ -158,6 +158,50 @@ def _find_name_rows(cursor, search: _NameSearch):
 
 
 class ExerciseLookupMixin:
+    def get_exercise_library_entries(
+        self,
+        exercise_ids: Iterable[str],
+    ) -> dict[str, dict[str, Any]]:
+        """Fetch Exercise library rows in batches, without one query per exercise."""
+        ids = list(dict.fromkeys(
+            exercise_id
+            for exercise_id in exercise_ids
+            if isinstance(exercise_id, str) and exercise_id
+        ))
+        if not ids:
+            return {}
+
+        name_expression, display_name_join = effective_exercise_name_sql()
+        entries: dict[str, dict[str, Any]] = {}
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            for start in range(0, len(ids), 500):
+                batch = ids[start : start + 500]
+                placeholders = ", ".join("?" for _ in batch)
+                cursor.execute(
+                    f"SELECT e.id, {name_expression} AS name, e.body_part, e.target_muscle, "
+                    f"e.equipment, e.instructions, e.image_path, e.gif_path, "
+                    "COALESCE(p.provenance, 'ExerciseDB') AS provenance "
+                    f"FROM exercises e {display_name_join} "
+                    "LEFT JOIN exercise_provenance p ON p.exercise_id = e.id "
+                    f"WHERE e.id IN ({placeholders})",
+                    batch,
+                )
+                for row in cursor.fetchall():
+                    exercise_id = str(row[0])
+                    entries[exercise_id] = {
+                        "id": exercise_id,
+                        "name": row[1],
+                        "body_part": row[2],
+                        "target_muscle": row[3],
+                        "equipment": row[4],
+                        "instructions": row[5],
+                        "image_path": row[6],
+                        "gif_path": row[7],
+                        "provenance": row[8],
+                    }
+        return entries
+
     def get_exercise_library_entry(self, exercise_id: str) -> dict[str, Any] | None:
         """One exercise by exact id, using its display name when it has one."""
         if not isinstance(exercise_id, str) or not exercise_id:

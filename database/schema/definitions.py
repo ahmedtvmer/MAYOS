@@ -211,7 +211,7 @@ class SchemaMixin:
             CREATE TABLE IF NOT EXISTS personal_records (
                 id TEXT PRIMARY KEY,
                 exercise_id TEXT NOT NULL,
-                record_type TEXT NOT NULL CHECK (record_type IN ('max_weight', 'max_e1rm')),
+                record_type TEXT NOT NULL CHECK (record_type IN ('max_weight', 'max_e1rm', 'most_reps')),
                 reps INTEGER,
                 value REAL NOT NULL,
                 prev_value REAL,

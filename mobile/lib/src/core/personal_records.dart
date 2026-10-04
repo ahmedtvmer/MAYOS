@@ -3,29 +3,52 @@ import 'package:flutter/foundation.dart' show immutable;
 import 'active_workout.dart';
 import 'baselines.dart';
 import 'training_status_projection.dart';
+import 'workout_equipment.dart';
 
-/// The two exercise-wide records a player is told about (ADR 042, #124):
-/// heaviest working-set weight and best working-set e1RM.
+/// The exercise-wide records a player is told about: weighted records and
+/// most reps on zero-load body-weight/band sets.
 enum PrRecordKind {
   /// Heaviest weight, any rep count.
   weight,
 
   /// Best e1RM, by the server's `set_e1rm` formula.
-  e1rm;
+  e1rm,
 
-  /// The badge text: `PR kg` / `PR e1RM` (#107 resolution, #124).
-  String get badgeLabel => this == PrRecordKind.weight ? 'PR kg' : 'PR e1RM';
+  /// Most reps in a zero-load working set on body-weight/band equipment.
+  mostReps;
+
+  /// The Personal record type stored by the service and ledger.
+  static PrRecordKind? fromRecordType(String recordType) =>
+      switch (recordType) {
+        'max_weight' => PrRecordKind.weight,
+        'max_e1rm' => PrRecordKind.e1rm,
+        'most_reps' => PrRecordKind.mostReps,
+        _ => null,
+      };
+
+  /// The logger badge label.
+  String get badgeLabel => switch (this) {
+        PrRecordKind.weight => 'PR kg',
+        PrRecordKind.e1rm => 'PR e1RM',
+        PrRecordKind.mostReps => 'Most reps',
+      };
 
   /// The `PR … ` before the value in a celebration line: `PR 140 kg` for a
   /// heaviest-weight record, `PR e1RM 112.5 kg` for an e1RM one (#124).
-  String get celebrationPrefix =>
-      this == PrRecordKind.weight ? 'PR ' : 'PR e1RM ';
+  String get celebrationPrefix => switch (this) {
+        PrRecordKind.weight => 'PR ',
+        PrRecordKind.e1rm => 'PR e1RM ',
+        PrRecordKind.mostReps => 'Most reps ',
+      };
 
   /// The value this record tracks for one set row: the row's weight for
   /// [weight], its e1RM by the server's `set_e1rm` for [e1rm].
-  double valueOf(ActiveWorkoutSet set) => this == PrRecordKind.weight
-      ? set.weightKg
-      : setE1rm(weightKg: set.weightKg, reps: set.reps, rir: set.rir);
+  double valueOf(ActiveWorkoutSet set) => switch (this) {
+        PrRecordKind.weight => set.weightKg,
+        PrRecordKind.e1rm =>
+          setE1rm(weightKg: set.weightKg, reps: set.reps, rir: set.rir),
+        PrRecordKind.mostReps => set.reps.toDouble(),
+      };
 }
 
 /// `140`, `112.5`, `139.3` — how a record value reads in the celebration:
@@ -76,10 +99,12 @@ class SetRecordBadges {
 /// and it reproduces the badges from the persisted rows alone, so badge state
 /// is part of the Active workout and survives a restart without being stored.
 ///
-/// Rules (ADR 042, #124):
-/// - No baseline row, no strict weighted sessions, or a baseline missing
-///   either strict aggregate (the server's own first-session guard) → no badges.
-/// - Only ticked working sets are considered: warm-ups and unticked rows
+/// Rules:
+/// - No baseline row → no badge.
+/// - Weighted badges use the strict ADR 042 aggregates; most-reps badges use
+///   only eligible 0 kg sets on body-weight/band equipment and need an earlier
+///   eligible 0 kg working set in the baseline.
+/// - Only ticked working sets are considered; warm-ups and unticked rows
 ///   never earn a badge.
 /// - A record needs a strict improvement over the baseline (`ties are not
 ///   records`), rounded to 2 dp exactly like the server compares.
@@ -89,48 +114,65 @@ class SetRecordBadges {
 Map<String, SetRecordBadges> exerciseRecordBadges({
   required List<ActiveWorkoutSet> sets,
   required BaselineExercise? baseline,
+  String? equipment,
 }) {
   final Map<String, SetRecordBadges> badges = <String, SetRecordBadges>{};
-  if (baseline == null || baseline.sessionsLogged == 0) {
+  if (baseline == null) {
     return badges;
   }
   final double? baselineWeight = baseline.maxWeightKg;
   final double? baselineE1rm = baseline.bestE1rmKg;
-  if (baselineWeight == null || baselineE1rm == null) {
-    // The exercise's first committed session is its baseline, not a record
-    // (`evaluate_session_prs` returns nothing until both aggregates exist).
-    return badges;
-  }
-  double bestWeight = baselineWeight;
-  double bestE1rm = baselineE1rm;
+  double? bestWeight = baselineWeight;
+  double? bestE1rm = baselineE1rm;
+  int? bestReps = baseline.bestZeroLoadReps;
   String? holderWeight;
   String? holderE1rm;
+  String? holderReps;
 
   for (final ActiveWorkoutSet set in sets) {
-    if (!set.ticked || !set.countsAsWorkingSet) {
+    if (!set.ticked || set.isWarmup || set.reps <= 0) {
       continue;
     }
-    final double weight = round2(set.weightKg);
-    if (weight > bestWeight) {
-      if (holderWeight != null) {
-        _hold(badges, holderWeight, PrRecordKind.weight, solid: false);
+
+    if (set.weightKg > 0 &&
+        baseline.sessionsLogged > 0 &&
+        baselineWeight != null &&
+        baselineE1rm != null &&
+        set.countsAsWorkingSet) {
+      final double weight = round2(set.weightKg);
+      if (bestWeight != null && weight > bestWeight) {
+        if (holderWeight != null) {
+          _hold(badges, holderWeight, PrRecordKind.weight, solid: false);
+        }
+        holderWeight = set.id;
+        bestWeight = weight;
+        _hold(badges, set.id, PrRecordKind.weight, solid: true);
       }
-      holderWeight = set.id;
-      bestWeight = weight;
-      _hold(badges, set.id, PrRecordKind.weight, solid: true);
-    }
-    final double e1rm = round2(setE1rm(
-      weightKg: set.weightKg,
-      reps: set.reps,
-      rir: set.rir,
-    ));
-    if (e1rm > bestE1rm) {
-      if (holderE1rm != null) {
-        _hold(badges, holderE1rm, PrRecordKind.e1rm, solid: false);
+      final double e1rm = round2(setE1rm(
+        weightKg: set.weightKg,
+        reps: set.reps,
+        rir: set.rir,
+      ));
+      if (bestE1rm != null && e1rm > bestE1rm) {
+        if (holderE1rm != null) {
+          _hold(badges, holderE1rm, PrRecordKind.e1rm, solid: false);
+        }
+        holderE1rm = set.id;
+        bestE1rm = e1rm;
+        _hold(badges, set.id, PrRecordKind.e1rm, solid: true);
       }
-      holderE1rm = set.id;
-      bestE1rm = e1rm;
-      _hold(badges, set.id, PrRecordKind.e1rm, solid: true);
+    } else if (set.weightKg == 0 &&
+        baseline.performanceSessionsLogged > 0 &&
+        bestReps != null &&
+        isBodyWeightOrBandEquipment(equipment)) {
+      if (set.reps > bestReps) {
+        if (holderReps != null) {
+          _hold(badges, holderReps, PrRecordKind.mostReps, solid: false);
+        }
+        holderReps = set.id;
+        bestReps = set.reps;
+        _hold(badges, set.id, PrRecordKind.mostReps, solid: true);
+      }
     }
   }
   return badges;
@@ -171,7 +213,9 @@ class WorkoutRecord {
   final double value;
 
   /// The `PR … kg` half of the celebration line.
-  String get label => '${kind.celebrationPrefix}${formatRecordKg(value)} kg';
+  String get label => kind == PrRecordKind.mostReps
+      ? '${kind.celebrationPrefix}${formatRecordKg(value)} reps'
+      : '${kind.celebrationPrefix}${formatRecordKg(value)} kg';
 
   /// The full celebration line the summary lists.
   String get line => '$exerciseName · $label';
@@ -185,6 +229,7 @@ List<WorkoutRecord> workoutRecords(ActiveWorkout workout) {
     final Map<String, SetRecordBadges> badges = exerciseRecordBadges(
       sets: exercise.sets,
       baseline: workout.baselines[exercise.exerciseId],
+      equipment: exercise.equipment,
     );
     for (final ActiveWorkoutSet set in exercise.sets) {
       final SetRecordBadges? held = badges[set.id];

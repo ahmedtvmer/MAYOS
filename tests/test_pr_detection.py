@@ -5,7 +5,7 @@ import sqlite3
 import pytest
 
 from agent.debrief import generate_session_debrief
-from agent.progression_engine import calculate_e1rm, evaluate_session_prs
+from agent.progression_engine import SessionExerciseRecord, calculate_e1rm, evaluate_session_prs
 from database.ledger.handle import TrainingLedger
 
 
@@ -42,7 +42,7 @@ def pr_db(tmp_path):
         CREATE TABLE personal_records (
             id TEXT PRIMARY KEY,
             exercise_id TEXT NOT NULL,
-            record_type TEXT NOT NULL CHECK (record_type IN ('max_weight', 'max_e1rm')),
+            record_type TEXT NOT NULL CHECK (record_type IN ('max_weight', 'max_e1rm', 'most_reps')),
             reps INTEGER,
             value REAL NOT NULL,
             prev_value REAL,
@@ -85,7 +85,17 @@ def _evaluate(db, session_id, sets, exercise_id="squat", **kwargs):
             ),
         )
     conn.commit()
-    return evaluate_session_prs(db, session_id, exercise_id, sets, **kwargs)
+    return evaluate_session_prs(
+        db,
+        SessionExerciseRecord(
+            session_id=session_id,
+            exercise_id=exercise_id,
+            sets=sets,
+            exercise_name=kwargs.get("exercise_name"),
+            equipment=kwargs.get("equipment"),
+            achieved_at=kwargs.get("achieved_at"),
+        ),
+    )
 
 
 def _counts(conn):
@@ -373,6 +383,31 @@ def test_debrief_injects_deterministic_pr_lines():
     assert "**Overload Deltas**" in output
     assert "**Fatigue & CNS Check**" in output
     assert "**Next Session Directives**" in output
+
+
+def test_debrief_formats_most_reps_without_weight_units():
+    output = generate_session_debrief(
+        "Upper",
+        4,
+        "",
+        [{"name": "Row", "volume_load": 0.0, "current_e1rm": None, "e1rm_delta": None}],
+        total_tonnage=0.0,
+        pr_events=[
+            {
+                "exercise_id": "row",
+                "name": "Row",
+                "record_type": "most_reps",
+                "reps": 12,
+                "value": 12,
+                "prev_value": 8,
+                "achieved_at": "2026-01-02T00:00:00+00:00",
+                "session_id": "s2",
+            }
+        ],
+    )
+
+    assert "🏆 New PR: Row — most reps 12 reps (prev 8 reps)" in output
+    assert "most reps 12 kg" not in output
 
 
 def test_debrief_without_pr_events_unchanged():

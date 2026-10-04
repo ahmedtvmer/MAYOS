@@ -257,6 +257,15 @@ def _set_e1rm(set_data: dict[str, Any]) -> float:
     return set_e1rm(float(set_data["weight_kg"]), int(set_data["reps"]), set_data.get("rpe"))
 
 
+def is_body_weight_or_band_equipment(equipment: str | None) -> bool:
+    """Whether Exercise library equipment labels a zero load as body weight or band."""
+    return isinstance(equipment, str) and equipment.strip().lower() in {
+        "body weight",
+        "band",
+        "resistance band",
+    }
+
+
 @dataclass(frozen=True)
 class WorkingSetAggregates:
     """Exercise-wide previous bests derived from committed working sets (ADR 042).
@@ -292,6 +301,18 @@ class WorkingSetAggregates:
             max_weight_kg=max(best_by_reps.values()),
             best_e1rm_kg=round(best_e1rm, 2),
         )
+
+
+@dataclass(frozen=True)
+class SessionExerciseRecord:
+    """Exercise sets and Exercise library facts used for one commit's records."""
+
+    session_id: str
+    exercise_id: str
+    sets: list[dict[str, Any]]
+    exercise_name: str | None = None
+    equipment: str | None = None
+    achieved_at: str | None = None
 
 
 def exercise_working_set_aggregates(
@@ -411,63 +432,194 @@ def _record_event(
     }
 
 
+def _weighted_working_sets(sets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        set_row
+        for set_row in sets
+        if not set_row.get("is_warmup", False)
+        and float(set_row.get("weight_kg", 0) or 0) > 0
+        and int(set_row.get("reps", 0) or 0) > 0
+    ]
+
+
+def _zero_load_working_sets(record: SessionExerciseRecord) -> list[dict[str, Any]]:
+    if not is_body_weight_or_band_equipment(record.equipment):
+        return []
+    return [
+        set_row
+        for set_row in record.sets
+        if not set_row.get("is_warmup", False)
+        and float(set_row.get("weight_kg", 0) or 0) == 0
+        and int(set_row.get("reps", 0) or 0) > 0
+    ]
+
+
+def best_zero_load_reps(sets: Iterable[dict[str, Any]]) -> int | None:
+    """Best prior working-set reps at exactly 0 kg, or ``None`` without one."""
+    return max(
+        (
+            int(row["reps"])
+            for row in sets
+            if float(row.get("weight_kg", 0) or 0) == 0
+            and int(row.get("reps", 0) or 0) > 0
+        ),
+        default=None,
+    )
+
+
+def _weighted_record_events(
+    record: SessionExerciseRecord,
+    working: list[dict[str, Any]],
+    previous: WorkingSetAggregates,
+    stamp: str,
+) -> list[dict[str, Any]]:
+    if not working or previous.max_weight_kg is None or previous.best_e1rm_kg is None:
+        return []
+    heaviest_set = max(working, key=lambda set_row: float(set_row["weight_kg"]))
+    best_e1rm_set = max(working, key=_set_e1rm)
+    events = []
+
+    heaviest = round(float(heaviest_set["weight_kg"]), 2)
+    if heaviest > previous.max_weight_kg:
+        events.append(
+            _record_event(
+                record.exercise_id,
+                "max_weight",
+                heaviest_set,
+                heaviest,
+                previous.max_weight_kg,
+                stamp,
+                record.session_id,
+            )
+        )
+    best_e1rm = round(_set_e1rm(best_e1rm_set), 2)
+    if best_e1rm > previous.best_e1rm_kg:
+        events.append(
+            _record_event(
+                record.exercise_id,
+                "max_e1rm",
+                best_e1rm_set,
+                best_e1rm,
+                previous.best_e1rm_kg,
+                stamp,
+                record.session_id,
+            )
+        )
+    return events
+
+
+def _most_reps_event(
+    record: SessionExerciseRecord,
+    zero_load_sets: list[dict[str, Any]],
+    previous_performance: list[dict[str, Any]],
+    stamp: str,
+) -> dict[str, Any] | None:
+    if not zero_load_sets:
+        return None
+    best_set = max(zero_load_sets, key=lambda set_row: int(set_row["reps"]))
+    previous_reps = best_zero_load_reps(previous_performance)
+    if previous_reps is None:
+        return None
+    best_reps = int(best_set["reps"])
+    if best_reps <= previous_reps:
+        return None
+    return _record_event(
+        record.exercise_id,
+        "most_reps",
+        best_set,
+        best_reps,
+        previous_reps,
+        stamp,
+        record.session_id,
+    )
+
+
+def _store_most_reps_event(
+    db: DatabaseManager,
+    record: SessionExerciseRecord,
+    event: dict[str, Any],
+    achieved_at: str,
+) -> None:
+    _insert_record_row(
+        db,
+        record.exercise_id,
+        "most_reps",
+        int(event["reps"]),
+        float(event["value"]),
+        float(event["prev_value"]),
+        record.session_id,
+        achieved_at,
+    )
+
+
 def evaluate_session_prs(
     db: DatabaseManager,
-    session_id: str,
-    exercise_id: str,
-    sets: list[dict[str, Any]],
-    exercise_name: str | None = None,
-    achieved_at: str | None = None,
+    record: SessionExerciseRecord,
+    *,
+    include_most_reps: bool = True,
 ) -> list[dict[str, Any]]:
-    """Exercise-wide personal records for one session (ADR 042, amends ADR 009).
+    """Returns strict Personal records for one exercise in a committed session.
 
-    At most one **heaviest-weight** and one **best-e1RM** event per exercise is
-    returned, each carrying the session's best value and the previous best as
-    ``prev_value``; the previous best is ``exercise_working_set_aggregates``
-    over the player's earlier committed working sets (this session excluded),
-    and ties are not records. The exercise's first session is its baseline: no
-    event is returned and no ``personal_records`` row is stored. Warm-ups are
-    ignored. The ADR 009 per-rep-count rows are still stored for history views,
-    compared against the same aggregates, but never appear in the returned
-    events.
+    Weighted records use ADR 042 aggregates. A ``most_reps`` record compares
+    against prior 0 kg sets on body-weight/band equipment; the first eligible
+    zero-load working session is its baseline. Warm-up sets never count.
     """
-    working = [
-        s
-        for s in sets
-        if not s.get("is_warmup", False) and float(s.get("weight_kg", 0) or 0) > 0 and int(s.get("reps", 0) or 0) > 0
-    ]
-    if not working:
+    working = _weighted_working_sets(record.sets)
+    zero_load_sets = _zero_load_working_sets(record)
+    if not working and not zero_load_sets:
+        return []
+    previous_sets = db.rep_working_set_rows(record.exercise_id, exclude_session_id=record.session_id)
+    if not previous_sets:
         return []
 
-    stamp = achieved_at or datetime.now(UTC).isoformat()
-    previous = exercise_working_set_aggregates(db, exercise_id, exclude_session_id=session_id)
-    previous_weight = previous.max_weight_kg
-    previous_e1rm = previous.best_e1rm_kg
-    if previous_weight is None or previous_e1rm is None:
-        # The exercise's first committed session is its baseline, not a record.
-        return []
-
-    heaviest_set = max(working, key=lambda s: float(s["weight_kg"]))
-    best_e1rm_set = max(working, key=_set_e1rm)
-
-    events: list[dict[str, Any]] = []
-    heaviest = round(float(heaviest_set["weight_kg"]), 2)
-    if heaviest > previous_weight:
-        events.append(
-            _record_event(exercise_id, "max_weight", heaviest_set, heaviest, previous_weight, stamp, session_id)
+    stamp = record.achieved_at or datetime.now(UTC).isoformat()
+    weighted_previous = exercise_working_set_aggregates(
+        db, record.exercise_id, exclude_session_id=record.session_id
+    )
+    events = _weighted_record_events(record, working, weighted_previous, stamp)
+    if working and weighted_previous.max_weight_kg is not None and weighted_previous.best_e1rm_kg is not None:
+        _store_history_rows(
+            db,
+            record.exercise_id,
+            working,
+            weighted_previous,
+            session_id=record.session_id,
+            achieved_at=stamp,
         )
 
-    best_e1rm = round(_set_e1rm(best_e1rm_set), 2)
-    if best_e1rm > previous_e1rm:
-        events.append(
-            _record_event(exercise_id, "max_e1rm", best_e1rm_set, best_e1rm, previous_e1rm, stamp, session_id)
-        )
-
-    _store_history_rows(db, exercise_id, working, previous, session_id=session_id, achieved_at=stamp)
+    most_reps_event = (
+        _most_reps_event(record, zero_load_sets, previous_sets, stamp)
+        if include_most_reps
+        else None
+    )
+    if most_reps_event is not None:
+        events.append(most_reps_event)
+        _store_most_reps_event(db, record, most_reps_event, stamp)
 
     for event in events:
-        event["name"] = exercise_name or exercise_id
+        event["name"] = record.exercise_name or record.exercise_id
     return events
+
+
+def evaluate_session_most_reps(
+    db: DatabaseManager,
+    record: SessionExerciseRecord,
+) -> list[dict[str, Any]]:
+    """Evaluates one session-wide, exercise-wide most-reps comparison."""
+    zero_load_sets = _zero_load_working_sets(record)
+    if not zero_load_sets:
+        return []
+    previous_sets = db.rep_working_set_rows(
+        record.exercise_id,
+        exclude_session_id=record.session_id,
+    )
+    stamp = record.achieved_at or datetime.now(UTC).isoformat()
+    event = _most_reps_event(record, zero_load_sets, previous_sets, stamp)
+    if event is None:
+        return []
+    _store_most_reps_event(db, record, event, stamp)
+    event["name"] = record.exercise_name or record.exercise_id
+    return [event]
 
 
 def get_progression_signals(db: DatabaseManager) -> str:

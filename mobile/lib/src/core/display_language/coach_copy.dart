@@ -1,4 +1,5 @@
 import 'arabic_count.dart';
+import '../personal_records.dart';
 
 /// App-owned coach mode labels. Server supplied notices, alert descriptions,
 /// player notes, assistant replies, and checkpoint prose are rendered as sent.
@@ -275,9 +276,16 @@ class CoachCopy {
       isArabic ? 'محطة التقدم ${_ltr('$number')}' : 'Checkpoint $number';
   String checkpointPeriod(String start, String end) =>
       isArabic ? '${_ltr(start)} – ${_ltr(end)}' : '$start – $end';
-  String recordHistory(String type, String value, int reps, String date) => isArabic
-      ? '${_ltr(type)} · ${_ltr('$value kg')} × ${_count(reps, ArabicCountNoun.repetition)} (${_ltr(date)})'
-      : '$type · $value kg × $reps reps ($date)';
+  String recordHistory(String type, String value, int reps, String date) {
+    if (PrRecordKind.fromRecordType(type) == PrRecordKind.mostReps) {
+      return isArabic
+          ? 'أكبر عدد من التكرارات · ${_count(reps, ArabicCountNoun.repetition)} (${_ltr(date)})'
+          : 'Most reps · $reps reps ($date)';
+    }
+    return isArabic
+        ? '${_ltr(type)} · ${_ltr('$value kg')} × ${_count(reps, ArabicCountNoun.repetition)} (${_ltr(date)})'
+        : '$type · $value kg × $reps reps ($date)';
+  }
   String weekday(int weekday) {
     const List<String> english = <String>[
       'Mon',
@@ -414,9 +422,16 @@ class CoachCopy {
       isArabic ? 'لم تُسجل مجموعات تدريب بعد.' : 'No volume recorded yet.';
   String get personalRecordsTitle =>
       isArabic ? 'الأرقام القياسية الشخصية' : 'Personal records';
-  String recordSummary(String type, String value, int reps) => isArabic
-      ? '${_ltr(type)} · ${_ltr('$value kg')} × ${_count(reps, ArabicCountNoun.repetition)}'
-      : '$type · $value kg × $reps reps';
+  String recordSummary(String type, String value, int reps) {
+    if (PrRecordKind.fromRecordType(type) == PrRecordKind.mostReps) {
+      return isArabic
+          ? 'أكبر عدد من التكرارات · ${_count(reps, ArabicCountNoun.repetition)}'
+          : 'Most reps · $reps reps';
+    }
+    return isArabic
+        ? '${_ltr(type)} · ${_ltr('$value kg')} × ${_count(reps, ArabicCountNoun.repetition)}'
+        : '$type · $value kg × $reps reps';
+  }
   String sessionExercise(String name, int sets, String volume) => isArabic
       ? '${_ltr(name)}: ${_count(sets, ArabicCountNoun.trainingSet)} · إجمالي الوزن المرفوع ${_ltr('$volume kg')}'
       : '$name: $sets sets · $volume kg';

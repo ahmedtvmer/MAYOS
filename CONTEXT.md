@@ -165,7 +165,7 @@ The player's own estimate of how many more reps they could have completed in a s
 _Avoid_: RPE (internal legacy measure; RIR = 10 − RPE)
 
 **Personal record**:
-A player's best result on an exercise, measured as heaviest weight lifted or best estimated one-rep max. An exercise's first recorded session sets the baseline and is never itself a personal record.
+A player's best result on an exercise, measured as heaviest weight lifted, best estimated one-rep max, or most reps in a 0 kg working set on body-weight or band equipment. An exercise's first working-set session sets the baseline and is never itself a Personal record. For most reps, the first eligible 0 kg working-set session sets that record's baseline even when earlier weighted sessions exist (ADR 061).
 _Arabic_: رقم قياسي شخصي
 _Avoid_: PR (in prose), PB
 
