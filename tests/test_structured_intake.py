@@ -8,6 +8,8 @@ prefill, confirmation (once, idempotent), and the unchanged program rules
 
 import sqlite3
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -461,6 +463,64 @@ def test_concurrent_confirm_generates_exactly_one_program(api, monkeypatch):
     assert not thread.is_alive()
     assert calls["n"] == 1
     assert results and results[0].status_code == 200
+
+
+def test_concurrent_legacy_completion_reuses_one_program_and_welcome(api, monkeypatch):
+    client, db, _ = api
+    headers = _register(client, "legacy-racer")
+    with db.open_ledger("legacy-racer") as ledger:
+        ledger.upsert_player_profile({"rep_preference": "balanced", "weekly_frequency": 4})
+        ledger.save_onboarding_state(
+            {"intake_step": 3, "is_complete": True, "profile_data": None, "messages": []}
+        )
+
+    # Exercise the parallel inference behavior of the cloud backend while
+    # keeping generation deterministic and local to this test.
+    monkeypatch.setattr("utils.model_downloader.uses_cloud_backend", lambda: True)
+    monkeypatch.setattr("svc.llm._GATE", threading.Semaphore(2))
+    generation_barrier = threading.Barrier(2)
+
+    def fake_generation(**kwargs):
+        try:
+            generation_barrier.wait(timeout=0.5)
+        except threading.BrokenBarrierError:
+            # The per-ledger lock excludes the second generation call.
+            pass
+        program = _program()
+        write_started = time.monotonic()
+        with db.open_ledger("legacy-racer") as concurrent_ledger:
+            concurrent_ledger.add_chat_message("user", "Ledger writes stay available during generation.")
+        assert time.monotonic() - write_started < 3
+        kwargs["ledger"].save_training_program(program.model_dump())
+        return program, "markdown"
+
+    monkeypatch.setattr("service.programs.generate_program_pipeline", fake_generation)
+    monkeypatch.setattr("agent.program_generator.generate_program_pipeline", fake_generation)
+    request_barrier = threading.Barrier(2)
+
+    def complete():
+        request_barrier.wait(timeout=5)
+        return client.post("/onboarding/complete", headers=headers)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(lambda _: complete(), range(2)))
+
+    assert all(response.status_code == 200 for response in responses)
+    assert responses[0].json() == responses[1].json()
+
+    with db.open_ledger("legacy-racer") as ledger:
+        programs = ledger.conn.execute(
+            "SELECT id, is_active, version FROM training_programs ORDER BY version"
+        ).fetchall()
+        assert len(programs) == 1
+        assert programs[0]["is_active"] == 1
+        assert programs[0]["version"] == 1
+        welcome_messages = [
+            row
+            for row in ledger.get_chat_history()
+            if row["role"] == "assistant" and row["content"].startswith("Welcome!")
+        ]
+        assert len(welcome_messages) == 1
 
 
 def test_failed_generation_releases_claim_for_retry(api, monkeypatch):

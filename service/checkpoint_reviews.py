@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import threading
-import weakref
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -13,6 +12,7 @@ from typing import Any
 from agent.progression_engine import set_e1rm
 from service import training_status
 from service._base import ledger_scope
+from service.keyed_locks import KeyedLocks
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +37,7 @@ class CheckpointReviewNotFoundError(LookupError):
     """A review is missing after coach access has already been authorized."""
 
 
-_generation_locks = weakref.WeakValueDictionary()
-_generation_locks_guard = threading.Lock()
+_generation_locks = KeyedLocks()
 
 
 @dataclass(frozen=True)
@@ -302,12 +301,7 @@ def _get_review_row(context: _ReviewReadContext, opened_at: str | None = None) -
 
 def _generation_lock(ledger_id: str, checkpoint: int) -> threading.Lock:
     key = (ledger_id, checkpoint)
-    with _generation_locks_guard:
-        lock = _generation_locks.get(key)
-        if lock is None:
-            lock = threading.Lock()
-            _generation_locks[key] = lock
-        return lock
+    return _generation_locks.get(key)
 
 
 def _claim_generation_attempt(context: _ReviewReadContext, now: datetime) -> bool:
