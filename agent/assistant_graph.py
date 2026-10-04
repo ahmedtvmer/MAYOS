@@ -55,6 +55,7 @@ from agent.telemetry_reconciler import (
 )
 from database.exercise_library.names import near_miss_exercise_ids
 from service import programs as programs_service
+from service.program_requests import MAX_REASON_CHARS
 from service.program_substitution import ProgramSubstitution, substitute_program_exercise
 from utils.logger import MyosLogger
 from utils.equipment_access import COMMERCIAL_GYM, equipment_access_allows, map_equipment_access
@@ -306,6 +307,7 @@ class AssistantState(TypedDict):
     active_intents: list[dict[str, Any]] | None
     program_updated: bool
     response_content: str | None
+    request_suggestion: dict[str, Any] | None
     pipeline_error: str | None
 
 
@@ -1097,6 +1099,89 @@ def _requested_substitution_day(program: Any, query: str) -> str | None:
     return None
 
 
+def _source_request_fields(
+    program: Any, source_name: str, requested_day: str | None
+) -> tuple[str | None, str | None]:
+    if not program or not source_name:
+        return None, None
+    resolved_source = expand_fitness_abbreviations(
+        _remove_day_suffix(source_name.strip(), requested_day)
+    )
+    source_stem = clean_movement_stem(resolved_source.lower())
+    matches = [
+        (day, exercise)
+        for day in program.days
+        if requested_day is None or day.day_name == requested_day
+        for exercise in day.exercises
+        if _substitution_source_similarity(resolved_source, source_stem, exercise) == 1.0
+    ]
+    exercise_ids = {str(exercise.exercise_id) for _, exercise in matches}
+    if len(exercise_ids) != 1:
+        return None, None
+    exercise_id = exercise_ids.pop()
+    matching_days = {day.day_name for day, exercise in matches if str(exercise.exercise_id) == exercise_id}
+    day_name = next(iter(matching_days)) if len(matching_days) == 1 else None
+    return day_name, exercise_id
+
+
+def _substitution_request_suggestion(
+    store: Any, ledger: Any, query: str, metadata: dict[str, Any]
+) -> dict[str, Any]:
+    source_name = str(metadata.get("source_exercise") or "").strip()
+    target_name = str(metadata.get("target_exercise") or "").strip()
+    program = ledger.get_active_program()
+    requested_day = _requested_substitution_day(program, query) if program else None
+    day_name, exercise_id = _source_request_fields(program, source_name, requested_day)
+    replacement_name = (
+        expand_fitness_abbreviations(_remove_day_suffix(target_name, requested_day))
+        if target_name
+        else ""
+    )
+    replacement_id = (
+        store.find_unique_exercise_id_by_exact_name(replacement_name)
+        if replacement_name
+        else None
+    )
+    if replacement_id == exercise_id:
+        replacement_id = None
+    return {
+        "kind": "exercise_substitution",
+        "day_name": day_name,
+        "exercise_id": exercise_id,
+        "replacement_exercise_id": replacement_id,
+        "reason": _request_suggestion_reason(query),
+    }
+
+
+def _request_suggestion_reason(query: str) -> str:
+    return query[:MAX_REASON_CHARS]
+
+
+def _split_change_request_suggestion(query: str, metadata: dict[str, Any]) -> dict[str, Any]:
+    frequency = _extract_frequency(query)
+    if frequency is not None and not 1 <= frequency <= 5:
+        frequency = None
+    elif frequency is None:
+        supplied_frequency = metadata.get("target_frequency")
+        if type(supplied_frequency) is int and 1 <= supplied_frequency <= 5:
+            frequency = supplied_frequency
+    return {
+        "kind": "split_change",
+        "desired_weekly_frequency": frequency,
+        "desired_split_preference": None,
+        "reason": _request_suggestion_reason(query),
+    }
+
+
+def _coach_program_refusal(query: str) -> str:
+    if ARABIC_SCRIPT_RE.search(query):
+        return (
+            "يتولى مدربك المعيّن التحكم في برنامجك التدريبي. "
+            "يمكنك مراجعة طلب وإرساله إلى مدربك."
+        )
+    return programs_service.COACH_CONTROLLED_REQUEST_ERROR
+
+
 def _remove_day_suffix(exercise_name: str, day_name: str | None) -> str:
     if not day_name:
         return exercise_name
@@ -1125,7 +1210,8 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         return _response(AUTHORIZATION_RESPONSE)
 
     if not programs_service.player_controls_program(store, ledger, state.get("player_account_id")):
-        return _response(programs_service.COACH_CONTROLLED_ERROR)
+        suggestion = _substitution_request_suggestion(store, ledger, query, meta)
+        return _response(_coach_program_refusal(query), request_suggestion=suggestion)
 
     active_program = ledger.get_active_program()
     if not active_program:
@@ -1420,12 +1506,12 @@ def program_mutation_node(state: AssistantState, config: dict[str, Any] | None =
     if not _authorized_action(query, "program_mutation"):
         return _response(AUTHORIZATION_RESPONSE)
 
-    if not programs_service.player_controls_program(store, ledger, state.get("player_account_id")):
-        return _response(programs_service.COACH_CONTROLLED_ERROR)
-
     meta = state.get("intent_metadata", {})
     requested = _extract_frequency(query)
     supplied = meta.get("target_frequency")
+    if not programs_service.player_controls_program(store, ledger, state.get("player_account_id")):
+        suggestion = _split_change_request_suggestion(query, meta)
+        return _response(_coach_program_refusal(query), request_suggestion=suggestion)
     for frequency in (requested, supplied):
         if frequency is not None and (type(frequency) is not int or not 1 <= frequency <= 5):
             return _response("Training frequency must be 1–5 days per week (max 5 days). Please choose a supported frequency.")
@@ -1646,9 +1732,18 @@ def build_prompt_payload(state: Dict[str, Any]) -> list[BaseMessage]:
             raise PromptBudgetError(CONTEXT_TOO_LONG_RESPONSE)
 
 
-def _response(content: str, program_updated: bool = False) -> dict[str, Any]:
+def _response(
+    content: str,
+    program_updated: bool = False,
+    request_suggestion: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     cleaned = finalize_coach_output(content)
-    return {"response_content": cleaned, "program_updated": program_updated, "messages": [AIMessage(content=cleaned)]}
+    return {
+        "response_content": cleaned,
+        "program_updated": program_updated,
+        "request_suggestion": request_suggestion,
+        "messages": [AIMessage(content=cleaned)],
+    }
 
 
 def _finish_limited(message: Any) -> bool:
@@ -1687,6 +1782,7 @@ def composite_intent_node(state: AssistantState, config: dict[str, Any] | None =
     preceding = []
     veto_pending = False
     any_program_updated = False
+    request_suggestion = None
 
     handler_map = {
         "clinical_intercept": clinical_intercept_node,
@@ -1717,6 +1813,8 @@ def composite_intent_node(state: AssistantState, config: dict[str, Any] | None =
             res = handler(sub_state, config)
             if res.get("program_updated"):
                 any_program_updated = True
+            if request_suggestion is None:
+                request_suggestion = res.get("request_suggestion")
             content = res.get("response_content", "")
             if content and content.strip():
                 responses.append(content.strip())
@@ -1728,6 +1826,7 @@ def composite_intent_node(state: AssistantState, config: dict[str, Any] | None =
     combined_response = "\n\n---\n\n".join(responses) if responses else "Actions processed."
     return {
         "program_updated": any_program_updated,
+        "request_suggestion": request_suggestion,
         "response_content": combined_response,
         "messages": [AIMessage(content=combined_response)],
     }
@@ -1738,7 +1837,14 @@ def _safe_node(handler):
         try:
             result = handler(state, config)
             if "response_content" in result and handler is not generation_node:
-                return {**result, **_response(result.get("response_content") or "", result.get("program_updated", False))}
+                return {
+                    **result,
+                    **_response(
+                        result.get("response_content") or "",
+                        result.get("program_updated", False),
+                        result.get("request_suggestion"),
+                    ),
+                }
             return result
         except Exception:
             logger.exception("Assistant node failed: %s", handler.__name__)
@@ -1935,5 +2041,9 @@ def stream_assistant_turn(
         visible.append(piece)
         yield piece
     content = "".join(visible)
-    state.update(response_content=content, program_updated=bool(result and result.get("program_updated")))
+    state.update(
+        response_content=content,
+        program_updated=bool(result and result.get("program_updated")),
+        request_suggestion=result.get("request_suggestion") if result else None,
+    )
     state["messages"] = original_messages + [AIMessage(content=content)]

@@ -238,6 +238,7 @@ class FakeMayosApi {
   bool chatSendError = false;
   // When true, the done frame reports `program_updated: true`.
   bool chatProgramUpdated = false;
+  Map<String, dynamic>? chatRequestSuggestion;
   List<String> chatReplyChunks = <String>['Keep your ', 'elbows tucked.'];
 
   // Exact method+path pairs that fail as a dropped connection (offline
@@ -1418,6 +1419,9 @@ class FakeMayosApi {
       ]);
     }
     final String reply = chatReplyChunks.join();
+    final String suggestionJson = chatRequestSuggestion == null
+        ? ''
+        : ', "request_suggestion": ${jsonEncode(chatRequestSuggestion)}';
     chatHistory.add(<String, dynamic>{
       'id': 'chat-${++_chatSeq}',
       'role': 'assistant',
@@ -1428,7 +1432,8 @@ class FakeMayosApi {
       for (final String chunk in chatReplyChunks)
         'data: {"token": ${jsonEncode(chunk)}}\n\n',
       'data: {"done": true, "response_content": ${jsonEncode(reply)}, '
-          '"program_updated": ${chatProgramUpdated ? 'true' : 'false'}}\n\n',
+          '"program_updated": ${chatProgramUpdated ? 'true' : 'false'}'
+          '$suggestionJson}\n\n',
     ]);
   }
 

@@ -88,7 +88,13 @@ def _run_turn(
             ):
                 out.put(("token", piece))
             chat_service.persist_assistant_message(ledger, state.get("response_content"))
-        out.put(("done", {"response_content": state.get("response_content") or "", "program_updated": bool(state.get("program_updated"))}))
+        done_payload = {
+            "response_content": state.get("response_content") or "",
+            "program_updated": bool(state.get("program_updated")),
+        }
+        if state.get("request_suggestion") is not None:
+            done_payload["request_suggestion"] = state["request_suggestion"]
+        out.put(("done", done_payload))
     except Exception:
         out.put(("error", {"detail": PIPELINE_ERROR_RESPONSE}))
     finally:

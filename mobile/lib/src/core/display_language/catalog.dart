@@ -22,6 +22,8 @@ class MayosCopy {
   String get program => isArabic ? 'البرنامج التدريبي' : 'Program';
   String get progress => isArabic ? 'التقدم' : 'Progress';
   String get assistant => isArabic ? 'المساعد' : 'Assistant';
+  String get requestFromCoach =>
+      isArabic ? 'طلب من المدرب' : 'Request from coach';
   String get askAssistant => isArabic ? 'اسأل المساعد' : 'Ask the assistant';
   String get openAssistant => isArabic ? 'فتح المساعد' : 'Open assistant';
   String get wantDifferentProgramAskAssistant => isArabic

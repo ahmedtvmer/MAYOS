@@ -117,11 +117,19 @@ class AssignmentCopy {
   String get replacementExerciseId =>
       isArabic ? 'معرّف التمرين البديل' : 'Replacement exercise id';
   String get daysPerWeek => isArabic ? 'أيام في الأسبوع' : 'Days per week';
+  String get chooseFrequency =>
+      isArabic ? 'اختر عدد أيام التدريب' : 'Choose days per week';
   String get splitPreferenceOptional =>
       isArabic ? 'تفضيل التقسيمة (اختياري)' : 'Split preference (optional)';
   String get reason => isArabic ? 'السبب' : 'Reason';
   String get reasonRequired =>
       isArabic ? 'السبب مطلوب.' : 'A reason is required.';
+  String get reasonTooLong => isArabic
+      ? 'يجب ألا يتجاوز السبب 500 حرف.'
+      : 'The reason must be 500 characters or fewer.';
+  String reasonCharacterCount(int current, int maximum) => isArabic
+      ? '$current / $maximum حرفًا'
+      : '$current / $maximum characters';
   String get chooseSubstitutionValues => isArabic
       ? 'اختر اليوم والتمرين والبديل.'
       : 'Pick the day, the exercise, and its replacement.';

@@ -223,6 +223,28 @@ class ExerciseLookupMixin:
         detail["provenance"] = entry["provenance"]
         return detail
 
+    def find_unique_exercise_id_by_exact_name(self, query: str) -> str | None:
+        """Return an exercise id only when an exact source, display, or alias name is unique."""
+        clean = query.strip().lower()
+        normalized = _normalize_exercise_name(clean)
+        if not normalized:
+            return None
+        search = _NameSearch(
+            query=clean,
+            normalized_query=normalized,
+            muscle="",
+            muscle_clause="1 = 1",
+            muscle_params=(),
+            equipment_clause=None,
+            muscle_browse=False,
+            limit=None,
+        )
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            rows = _exact_name_rows(cursor, search)
+        exercise_ids = {str(row["id"]) for row in rows}
+        return next(iter(exercise_ids)) if len(exercise_ids) == 1 else None
+
     def find_exercises_by_name(
         self,
         query: str,

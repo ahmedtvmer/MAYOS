@@ -1821,11 +1821,18 @@ class ApiClient {
           : 'The assistant could not answer. Please retry.');
     }
     if (decoded['done'] == true) {
+      final dynamic suggestion = decoded['request_suggestion'];
+      final ProgramRequestDraft? requestSuggestion = suggestion is Map<String, dynamic> &&
+              (suggestion['kind'] == 'exercise_substitution' ||
+                  suggestion['kind'] == 'split_change')
+          ? ProgramRequestDraft.fromSuggestionJson(suggestion)
+          : null;
       return ChatDone(
         responseContent: decoded['response_content'] is String
             ? decoded['response_content'] as String
             : '',
         programUpdated: decoded['program_updated'] == true,
+        requestSuggestion: requestSuggestion,
       );
     }
     final dynamic token = decoded['token'];

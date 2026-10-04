@@ -1,5 +1,7 @@
 // Hosted player-assistant chat models (ADR 016/036).
 
+import 'models.dart';
+
 /// The hosted-processing disclosure shown before the first chat use (#37).
 ///
 /// Kept short and honest per ADR 016: it names the hosted provider and admits
@@ -17,6 +19,7 @@ class ChatMessage {
     required this.content,
     this.createdAt,
     this.kind = 'message',
+    this.requestSuggestion,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -37,6 +40,9 @@ class ChatMessage {
   /// session-logged pointer written at workout commit (ADR 033/036), else
   /// `message`. The client never re-derives it from the wording.
   final String kind;
+
+  /// A transient action from this streamed reply; never part of stored history.
+  final ProgramRequestDraft? requestSuggestion;
 
   bool get isUser => role == 'user';
 
@@ -69,10 +75,15 @@ class ChatToken extends ChatStreamEvent {
 
 /// The turn finished: the reply is final and may have changed the program.
 class ChatDone extends ChatStreamEvent {
-  const ChatDone({required this.responseContent, required this.programUpdated});
+  const ChatDone({
+    required this.responseContent,
+    required this.programUpdated,
+    this.requestSuggestion,
+  });
 
   final String responseContent;
   final bool programUpdated;
+  final ProgramRequestDraft? requestSuggestion;
 }
 
 /// The turn failed; [detail] is the service's fixed, non-leaking message.

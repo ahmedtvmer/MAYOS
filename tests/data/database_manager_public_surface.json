@@ -101,6 +101,10 @@
       "kind": "method",
       "signature": "(self, query: str, limit: int | None = 5, target_muscle: str | None = None, equipment_access: str | None = None, muscle_browse: bool = False) -> list[dict[str, typing.Any]]"
     },
+    "find_unique_exercise_id_by_exact_name": {
+      "kind": "method",
+      "signature": "(self, query: str) -> str | None"
+    },
     "get_account": {
       "kind": "method",
       "signature": "(self, account_id: str) -> dict[str, typing.Any] | None"

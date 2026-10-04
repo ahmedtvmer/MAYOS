@@ -7,6 +7,7 @@ onboarding completion, chat program mutation, and assistant exercise swap —
 each before coach publication, during coach control, and after unassignment.
 """
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -199,6 +200,17 @@ def _profile_generation(db, monkeypatch):
 
 def _publish(client, coach_headers, assignment_id, **body):
     return client.post(f"/coach/assignments/{assignment_id}/program", headers=coach_headers, json=body)
+
+
+def _chat_done_event(client, player_headers, content):
+    response = client.post("/chat/messages", headers=player_headers, json={"content": content})
+    assert response.status_code == 200, response.text
+    events = [
+        json.loads(line.removeprefix("data: "))
+        for line in response.text.splitlines()
+        if line.startswith("data: ")
+    ]
+    return next(event for event in events if event.get("done") is True)
 
 
 def _active(db, player="p1"):
@@ -719,7 +731,8 @@ def test_assistant_mutation_refused_during_control(api, monkeypatch):
         "intent_metadata": {"target_frequency": None},
     }
     result = assistant_graph.program_mutation_node(state, {"configurable": {"ledger": db.ledger, "store": db}})
-    assert result["response_content"] == programs_service.COACH_CONTROLLED_ERROR
+    assert result["response_content"] == programs_service.COACH_CONTROLLED_REQUEST_ERROR
+    assert result["request_suggestion"]["kind"] == "split_change"
     pipeline.assert_not_called()
 
 
@@ -801,8 +814,171 @@ def test_assistant_swap_refused_during_control(api, monkeypatch):
         "intent_metadata": {"mode": "direct_swap", "source_exercise": "Bench Press", "target_exercise": "Dumbbell Press"},
     }
     result = assistant_graph.exercise_substitution_node(state, {"configurable": {"ledger": db.ledger, "store": db}})
-    assert result["response_content"] == programs_service.COACH_CONTROLLED_ERROR
+    assert result["response_content"] == programs_service.COACH_CONTROLLED_REQUEST_ERROR
+    assert result["request_suggestion"]["kind"] == "exercise_substitution"
     swap.assert_not_called()
+
+
+def test_chat_api_suggests_prefilled_substitution_only_from_resolved_ledger_facts(api, monkeypatch):
+    from agent import assistant_graph
+    from service.program_requests import MAX_REASON_CHARS
+    from svc.routers import chat as chat_router
+
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+    monkeypatch.setattr(chat_router, "admit_model_request", lambda *args, **kwargs: None)
+
+    content = "swap bench press for dumbbell press"
+    done = _chat_done_event(client, player_headers, content)
+    assert done["response_content"] == programs_service.COACH_CONTROLLED_REQUEST_ERROR
+    assert done["program_updated"] is False
+    assert done["request_suggestion"] == {
+        "kind": "exercise_substitution",
+        "day_name": "Full A",
+        "exercise_id": "bp",
+        "replacement_exercise_id": "dbp",
+        "reason": content,
+    }
+
+    unresolved = "swap bench-ish press for dumbbell press"
+    unresolved_done = _chat_done_event(client, player_headers, unresolved)
+    assert unresolved_done["request_suggestion"]["day_name"] is None
+    assert unresolved_done["request_suggestion"]["exercise_id"] is None
+    assert unresolved_done["request_suggestion"]["replacement_exercise_id"] == "dbp"
+
+    long_reason = f"{content} " + "details " * 100
+    db.switch_user("p1")
+    substitution_suggestion = assistant_graph._substitution_request_suggestion(
+        db,
+        db.ledger,
+        long_reason,
+        {"source_exercise": "Bench Press", "target_exercise": "Dumbbell Press"},
+    )
+    split_suggestion = assistant_graph._split_change_request_suggestion(
+        long_reason, {}
+    )
+    assert substitution_suggestion["reason"] == long_reason[:MAX_REASON_CHARS]
+    assert split_suggestion["reason"] == long_reason[:MAX_REASON_CHARS]
+    history = client.get("/chat/history", headers=player_headers).json()
+    assert all("request_suggestion" not in message for message in history)
+    db.switch_user("p1")
+    assert db.ledger.get_active_program().version == 1
+
+
+def test_chat_api_suggests_split_change_for_coach_controlled_mutation(api, monkeypatch):
+    from svc.routers import chat as chat_router
+
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+    monkeypatch.setattr(chat_router, "admit_model_request", lambda *args, **kwargs: None)
+
+    content = "change routine to 3 days من فضلك"
+    done = _chat_done_event(client, player_headers, content)
+    assert done["response_content"] == (
+        "يتولى مدربك المعيّن التحكم في برنامجك التدريبي. "
+        "يمكنك مراجعة طلب وإرساله إلى مدربك."
+    )
+    assert done["program_updated"] is False
+    assert done["request_suggestion"] == {
+        "kind": "split_change",
+        "desired_weekly_frequency": 3,
+        "desired_split_preference": None,
+        "reason": content,
+    }
+    unresolved = _chat_done_event(client, player_headers, "change routine to 7 days")
+    assert unresolved["request_suggestion"]["desired_weekly_frequency"] is None
+
+
+def test_chat_api_composite_refusal_keeps_only_the_first_suggestion(api, monkeypatch):
+    from svc.routers import chat as chat_router
+
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+    monkeypatch.setattr(chat_router, "admit_model_request", lambda *args, **kwargs: None)
+
+    done = _chat_done_event(
+        client,
+        player_headers,
+        "swap bench press for dumbbell press; change routine to 3 days",
+    )
+    assert done["request_suggestion"] == {
+        "kind": "exercise_substitution",
+        "day_name": "Full A",
+        "exercise_id": "bp",
+        "replacement_exercise_id": "dbp",
+        "reason": "swap bench press for dumbbell press",
+    }
+    db.switch_user("p1")
+    assert db.ledger.get_active_program().version == 1
+
+
+def test_chat_api_keeps_deload_choice_available_under_coach_authority(api, monkeypatch):
+    from service import workouts as workouts_service
+    from svc.routers import chat as chat_router
+
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+    monkeypatch.setattr(chat_router, "admit_model_request", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        workouts_service,
+        "build_prescription",
+        lambda *args, **kwargs: {
+            "deload": {"state": "suggested", "reason": "fatigue signal"}
+        },
+    )
+
+    done = _chat_done_event(client, player_headers, "apply the deload")
+    assert done["program_updated"] is True
+    assert "request_suggestion" not in done
+    db.switch_user("p1")
+    assert db.ledger.get_deload_choice() == "apply"
+
+
+def test_chat_api_edits_player_controlled_program_without_suggestion(api, monkeypatch):
+    from agent import assistant_graph
+    from svc.routers import chat as chat_router
+
+    client, db, _ = api
+    _, player_headers, _, _, _ = _assigned_player(api)
+    _, calls = _player_generation(db, monkeypatch)
+    assert client.post("/programs/generate", headers=player_headers, json={}).status_code == 200
+    pipeline, mutation_calls = _counting_saver(db, "Mutated Plan")
+    monkeypatch.setattr(assistant_graph, "generate_program_pipeline", pipeline)
+    monkeypatch.setattr(chat_router, "admit_model_request", lambda *args, **kwargs: None)
+
+    done = _chat_done_event(client, player_headers, "rebuild my program")
+    assert done["program_updated"] is True
+    assert "request_suggestion" not in done
+    assert calls["n"] == 1
+    assert mutation_calls["n"] == 1
+    db.switch_user("p1")
+    assert db.ledger.get_active_program().program_name == "Mutated Plan"
+
+
+def test_chat_api_edits_player_controlled_exercise_without_suggestion(api, monkeypatch):
+    from svc.routers import chat as chat_router
+
+    client, db, _ = api
+    _, player_headers, _, _, _ = _assigned_player(api)
+    _player_generation(db, monkeypatch)
+    assert client.post("/programs/generate", headers=player_headers, json={}).status_code == 200
+    monkeypatch.setattr(chat_router, "admit_model_request", lambda *args, **kwargs: None)
+
+    done = _chat_done_event(
+        client, player_headers, "swap bench press for dumbbell press"
+    )
+    assert done["program_updated"] is True
+    assert "request_suggestion" not in done
+    db.switch_user("p1")
+    assert db.ledger.get_active_program().days[0].exercises[1].exercise_id == "dbp"
 
 
 def test_assistant_swap_proceeds_after_unassignment(api, monkeypatch):

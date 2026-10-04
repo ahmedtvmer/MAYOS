@@ -6,6 +6,10 @@ from agent.program_generator import generate_program_pipeline
 from service._base import ledger_scope
 
 COACH_CONTROLLED_ERROR = "Your assigned coach controls your program. Ask your coach for changes."
+COACH_CONTROLLED_REQUEST_ERROR = (
+    "Your assigned coach controls your program. "
+    "You can review and send a request to your coach."
+)
 
 
 def player_controls_program(db: Any, ledger: Any, player_account_id: str | None) -> bool:

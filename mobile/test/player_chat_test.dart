@@ -317,6 +317,162 @@ void main() {
         isTrue);
   });
 
+  testWidgets('refusal action opens a prefilled request form for confirmation',
+      (tester) async {
+    const String question = 'swap bench press for dumbbell press';
+    final InMemoryChatCacheStore store = InMemoryChatCacheStore();
+    final FakeMayosApi fake = _fakePlayer('alice')
+      ..coachControlsProgram = true
+      ..activeAssignmentId = 'assignment-1'
+      ..programVersion = 1
+      ..chatReplyChunks = <String>[
+        'Your assigned coach controls your program. You can review and send a request to your coach.',
+      ]
+      ..chatRequestSuggestion = <String, dynamic>{
+        'kind': 'exercise_substitution',
+        'day_name': 'Full A',
+        'exercise_id': 'bp',
+        'replacement_exercise_id': 'dbp',
+        'reason': question,
+      };
+    await _pumpChat(tester, fake, store: store, scopeKey: UniqueKey());
+    await _acceptDisclosure(tester);
+
+    await tester.enterText(find.byKey(const Key('chat_composer')), question);
+    await tester.tap(find.byKey(const Key('chat_send')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('chat_request_from_coach')));
+
+    expect(fake.programRequests, isEmpty);
+    expect(_chatMarkdown(
+      'Your assigned coach controls your program. You can review and send a request to your coach.',
+    ), findsOneWidget);
+    expect(fake.chatHistory.last.containsKey('request_suggestion'), isFalse);
+
+    await tester.tap(find.byKey(const Key('chat_request_from_coach')));
+    await _pumpUntilFound(tester, find.text('Request a program change'));
+    expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('program_request_day_field')))
+            .controller!
+            .text,
+        'Full A');
+    expect(
+        tester
+            .widget<TextField>(
+                find.byKey(const Key('program_request_exercise_field')))
+            .controller!
+            .text,
+        'bp');
+    expect(
+        tester
+            .widget<TextField>(
+                find.byKey(const Key('program_request_replacement_field')))
+            .controller!
+            .text,
+        'dbp');
+    expect(
+        tester
+            .widget<TextField>(
+                find.byKey(const Key('program_request_reason_field')))
+            .controller!
+            .text,
+        question);
+    expect(fake.programRequests, isEmpty);
+
+    final Finder reasonField =
+        find.byKey(const Key('program_request_reason_field'));
+    await tester.enterText(reasonField, 'r' * 501);
+    await tester.pump();
+    expect(find.text('501 / 500 characters'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('program_request_submit_button')));
+    await tester.pump();
+    expect(
+      find.text('The reason must be 500 characters or fewer.'),
+      findsOneWidget,
+    );
+    expect(find.text('Request a program change'), findsOneWidget);
+    expect(fake.programRequests, isEmpty);
+
+    await tester.enterText(reasonField, question);
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('program_request_submit_button')));
+    await _pumpUntilFound(tester,
+        find.text('Your program change request was sent to your coach.'));
+    expect(fake.programRequests, hasLength(1));
+    expect(fake.programRequests.single['day_name'], 'Full A');
+    expect(fake.programRequests.single['exercise_id'], 'bp');
+    expect(fake.programRequests.single['replacement_exercise_id'], 'dbp');
+    expect(fake.programRequests.single['reason'], question);
+    final List<ChatMessage> cached = await store.readHistory('account-alice');
+    final ChatMessage cachedAssistant = cached
+        .where((ChatMessage message) => message.role == 'assistant')
+        .single;
+    expect(cachedAssistant.requestSuggestion, isNotNull);
+    expect(cachedAssistant.toJson().containsKey('request_suggestion'), isFalse);
+  });
+
+  testWidgets('refusal action uses Arabic copy', (tester) async {
+    final FakeMayosApi fake = _fakePlayer('alice')
+      ..displayLanguage = 'ar'
+      ..coachControlsProgram = true
+      ..activeAssignmentId = 'assignment-1'
+      ..programVersion = 1
+      ..chatReplyChunks = <String>[
+        'يتولى مدربك المعيّن التحكم في برنامجك التدريبي. يمكنك مراجعة طلب وإرساله إلى مدربك.',
+      ]
+      ..chatRequestSuggestion = <String, dynamic>{
+        'kind': 'split_change',
+        'desired_weekly_frequency': 3,
+        'reason': 'change routine to 3 days من فضلك',
+      };
+    await _pumpChat(
+      tester,
+      fake,
+      store: InMemoryChatCacheStore(),
+      scopeKey: UniqueKey(),
+      languageCode: 'ar',
+    );
+    await _acceptDisclosure(tester);
+    await tester.enterText(
+      find.byKey(const Key('chat_composer')),
+      'change routine to 3 days من فضلك',
+    );
+    await tester.tap(find.byKey(const Key('chat_send')));
+
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('chat_request_from_coach')));
+    expect(tester.takeException(), isNull, reason: 'chat refusal layout');
+    expect(find.text('طلب من المدرب'), findsOneWidget);
+    expect(
+      _chatMarkdown(
+        'يتولى مدربك المعيّن التحكم في برنامجك التدريبي. يمكنك مراجعة طلب وإرساله إلى مدربك.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('chat_request_from_coach')));
+    await _pumpUntilFound(tester, find.text('طلب تغيير البرنامج التدريبي'));
+    expect(tester.takeException(), isNull, reason: 'request dialog layout');
+    expect(
+      tester
+          .widget<DropdownButtonFormField<int>>(
+              find.byKey(const Key('program_request_frequency_field')))
+          .initialValue,
+      3,
+    );
+    expect(fake.programRequests, isEmpty);
+    await tester.tap(find.byKey(const Key('program_request_submit_button')));
+    await _pumpUntilFound(
+      tester,
+      find.text('أُرسل طلب تغيير البرنامج التدريبي إلى مدربك.'),
+    );
+    expect(tester.takeException(), isNull, reason: 'request submission layout');
+    expect(fake.programRequests.single['kind'], 'split_change');
+    expect(fake.programRequests.single['desired_weekly_frequency'], 3);
+    expect(fake.programRequests.single['reason'], 'change routine to 3 days من فضلك');
+  });
+
   testWidgets(
       'partial Markdown streams into the same selectable history render at 360 dp',
       (tester) async {

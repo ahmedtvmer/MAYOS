@@ -18,6 +18,53 @@ def _seed_minimal_library(store, path):
     store.initialize_and_seed(path)
 
 
+def test_unique_exact_exercise_id_lookup_uses_names_and_rejects_ambiguity(tmp_path, monkeypatch):
+    from database.database_manager import DatabaseManager
+    from database.exercise_library import embeddings
+    from database.schema.definitions import EMBEDDING_DIM
+
+    fresh_store = DatabaseManager(
+        catalog_path=tmp_path / "catalog.db",
+        ledgers_dir=tmp_path / "users",
+        backups_dir=tmp_path / "backups",
+    )
+
+    class LocalEmbeddingStub:
+        def embed_query(self, text):
+            return [1.0] + [0.0] * (EMBEDDING_DIM - 1)
+
+    monkeypatch.setattr(embeddings, "_load_embedding_model", lambda: LocalEmbeddingStub())
+    _seed_minimal_library(fresh_store, tmp_path / "seed.csv")
+
+    assert fresh_store.find_unique_exercise_id_by_exact_name("Cable Row") == "9001"
+    with fresh_store.catalog_locked() as conn:
+        conn.execute(
+            "INSERT INTO exercise_display_names (display_name, exercise_id) VALUES (?, ?)",
+            ("Cable Row Display", "9001"),
+        )
+        conn.execute(
+            "INSERT INTO exercise_aliases (exercise_id, alias, normalized_alias) VALUES (?, ?, ?)",
+            ("9001", "Cable Row Alias", "cable row alias"),
+        )
+        conn.execute(
+            "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("9002", "Another Row", "back", "lats", "cable"),
+        )
+        conn.commit()
+
+    assert fresh_store.find_unique_exercise_id_by_exact_name("Cable Row Display") == "9001"
+    assert fresh_store.find_unique_exercise_id_by_exact_name("Cable Row Alias") == "9001"
+    with fresh_store.catalog_locked() as conn:
+        conn.execute(
+            "INSERT INTO exercise_aliases (exercise_id, alias, normalized_alias) VALUES (?, ?, ?)",
+            ("9002", "Cable Row Alias", "cable row alias"),
+        )
+        conn.commit()
+    assert fresh_store.find_unique_exercise_id_by_exact_name("Cable Row Alias") is None
+    fresh_store.catalog_conn.close()
+
+
 def test_mayos_authored_staples_are_searchable_and_have_reviewable_details(tmp_path, monkeypatch):
     from database.database_manager import DatabaseManager
     from database.exercise_library import embeddings

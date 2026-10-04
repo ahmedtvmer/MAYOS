@@ -279,7 +279,7 @@ def test_assistant_swap_refused_when_coach_controls_program(api, monkeypatch):
     result = assistant_graph.exercise_substitution_node(
         state, {"configurable": {"ledger": db.ledger, "store": db}}
     )
-    assert result["response_content"] == programs_service.COACH_CONTROLLED_ERROR
+    assert result["response_content"] == programs_service.COACH_CONTROLLED_REQUEST_ERROR
     swap.assert_not_called()
 
 
@@ -306,7 +306,7 @@ def test_assistant_mutation_refused_when_coach_controls_program(api, monkeypatch
     result = assistant_graph.program_mutation_node(
         state, {"configurable": {"ledger": db.ledger, "store": db}}
     )
-    assert result["response_content"] == programs_service.COACH_CONTROLLED_ERROR
+    assert result["response_content"] == programs_service.COACH_CONTROLLED_REQUEST_ERROR
     pipeline.assert_not_called()
 
 

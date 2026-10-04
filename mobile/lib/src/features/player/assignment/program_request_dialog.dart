@@ -11,27 +11,6 @@ import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
 
-/// A player program-request payload ready for the existing create-request API.
-class ProgramRequestDraft {
-  const ProgramRequestDraft({
-    required this.kind,
-    required this.reason,
-    this.dayName,
-    this.exerciseId,
-    this.replacementExerciseId,
-    this.desiredWeeklyFrequency,
-    this.desiredSplitPreference,
-  });
-
-  final String kind;
-  final String reason;
-  final String? dayName;
-  final String? exerciseId;
-  final String? replacementExerciseId;
-  final int? desiredWeeklyFrequency;
-  final String? desiredSplitPreference;
-}
-
 /// The read-only substitution slot shown before the player enters a reason.
 class ProgramSubstitutionRequestPrefill {
   const ProgramSubstitutionRequestPrefill({
@@ -51,14 +30,16 @@ class ProgramSubstitutionRequestPrefill {
 
 /// The shared request form used from both the assignment page and Program tab.
 class ProgramRequestDialog extends StatefulWidget {
-  const ProgramRequestDialog({super.key}) : substitution = null;
+  const ProgramRequestDialog({super.key, this.initialDraft}) : substitution = null;
 
   const ProgramRequestDialog.forSubstitution({
     super.key,
     required this.substitution,
-  }) : assert(substitution != null);
+  })  : assert(substitution != null),
+        initialDraft = null;
 
   final ProgramSubstitutionRequestPrefill? substitution;
+  final ProgramRequestDraft? initialDraft;
 
   @override
   State<ProgramRequestDialog> createState() => _ProgramRequestDialogState();
@@ -67,11 +48,14 @@ class ProgramRequestDialog extends StatefulWidget {
 Future<ProgramRequest?> requestProgramChange(
   BuildContext context,
   WidgetRef ref, {
+  ProgramRequestDraft? initialDraft,
   VoidCallback? onSubmitting,
 }) async {
   final ProgramRequestDraft? draft = await showDialog<ProgramRequestDraft>(
     context: context,
-    builder: (BuildContext context) => const ProgramRequestDialog(),
+    builder: (BuildContext context) => ProgramRequestDialog(
+      initialDraft: initialDraft,
+    ),
   );
   if (draft == null || !context.mounted) return null;
   onSubmitting?.call();
@@ -92,18 +76,29 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
   late final TextEditingController _replacement;
   final TextEditingController _preference = TextEditingController();
   final TextEditingController _reason = TextEditingController();
-  String _kind = 'exercise_substitution';
-  int _frequency = 4;
+  late String _kind;
+  int? _frequency;
   String? _localError;
 
   @override
   void initState() {
     super.initState();
-    _day = TextEditingController(text: widget.substitution?.dayName);
-    _exercise = TextEditingController(text: widget.substitution?.exerciseId);
-    _replacement = TextEditingController(
-      text: widget.substitution?.replacementExerciseId,
+    _kind = widget.initialDraft?.kind ?? 'exercise_substitution';
+    _frequency = widget.initialDraft == null
+        ? 4
+        : widget.initialDraft!.desiredWeeklyFrequency;
+    _day = TextEditingController(
+      text: widget.substitution?.dayName ?? widget.initialDraft?.dayName,
     );
+    _exercise = TextEditingController(
+      text: widget.substitution?.exerciseId ?? widget.initialDraft?.exerciseId,
+    );
+    _replacement = TextEditingController(
+      text: widget.substitution?.replacementExerciseId ??
+          widget.initialDraft?.replacementExerciseId,
+    );
+    _preference.text = widget.initialDraft?.desiredSplitPreference ?? '';
+    _reason.text = widget.initialDraft?.reason ?? '';
   }
 
   @override
@@ -128,11 +123,17 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
   String? _validationError(BuildContext context) {
     final AssignmentCopy copy = assignmentCopyOf(context);
     if (_reason.text.trim().isEmpty) return copy.reasonRequired;
+    if (_reason.text.trim().runes.length > maxProgramRequestReasonChars) {
+      return copy.reasonTooLong;
+    }
     if (_kind == 'exercise_substitution' &&
         (_day.text.trim().isEmpty ||
             _exercise.text.trim().isEmpty ||
             _replacement.text.trim().isEmpty)) {
       return copy.chooseSubstitutionValues;
+    }
+    if (_kind == 'split_change' && _frequency == null) {
+      return copy.chooseFrequency;
     }
     return null;
   }
@@ -154,6 +155,7 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
     final AssignmentCopy copy = assignmentCopyOf(context);
     return DropdownButtonFormField<String>(
       key: const Key('program_request_kind_field'),
+      isExpanded: true,
       initialValue: _kind,
       decoration: InputDecoration(
           labelText: copy.requestType, border: OutlineInputBorder()),
@@ -234,7 +236,9 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
     return <Widget>[
       DropdownButtonFormField<int>(
         key: const Key('program_request_frequency_field'),
+        isExpanded: true,
         initialValue: _frequency,
+        hint: Text(copy.chooseFrequency),
         decoration: InputDecoration(
             labelText: copy.daysPerWeek, border: OutlineInputBorder()),
         items: <DropdownMenuItem<int>>[
@@ -243,8 +247,7 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
                 value: day,
                 child: Text('$day', textDirection: TextDirection.ltr)),
         ],
-        onChanged: (int? value) =>
-            setState(() => _frequency = value ?? _frequency),
+        onChanged: (int? value) => setState(() => _frequency = value),
       ),
       const SizedBox(height: MayosSpacing.md),
       MayosTextField(
@@ -258,12 +261,27 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
   List<Widget> _buildReasonFields(
       BuildContext context, MayosThemeExtension colors) {
     final AssignmentCopy copy = assignmentCopyOf(context);
+    final int reasonLength = _reason.text.trim().runes.length;
     return <Widget>[
       MayosTextField(
         fieldKey: const Key('program_request_reason_field'),
         controller: _reason,
         maxLines: 2,
         label: copy.reason,
+        onChanged: (_) => setState(() => _localError = null),
+      ),
+      const SizedBox(height: MayosSpacing.xxs),
+      Align(
+        alignment: AlignmentDirectional.centerEnd,
+        child: Text(
+          copy.reasonCharacterCount(reasonLength, maxProgramRequestReasonChars),
+          key: const Key('program_request_reason_counter'),
+          style: MayosTypography.bodySecondary.copyWith(
+            color: reasonLength > maxProgramRequestReasonChars
+                ? colors.danger
+                : null,
+          ),
+        ),
       ),
       if (_localError != null) ...<Widget>[
         const SizedBox(height: MayosSpacing.sm),

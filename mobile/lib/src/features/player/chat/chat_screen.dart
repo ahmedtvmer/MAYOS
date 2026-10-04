@@ -22,6 +22,7 @@ import '../../../core/ui/mayos_text_field.dart';
 import '../../../core/ui/first_strong_direction.dart';
 import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
+import '../assignment/program_request_dialog.dart';
 
 /// Hosted player-assistant chat (#37, ADR 016/036).
 ///
@@ -219,7 +220,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             _setStateIfMounted(() => _streamingText = buffer);
           case ChatDone(
               :final String responseContent,
-              :final bool programUpdated
+              :final bool programUpdated,
+              :final ProgramRequestDraft? requestSuggestion
             ):
             finished = true;
             final String reply =
@@ -231,6 +233,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   id: assistantMessageId,
                   role: 'assistant',
                   content: reply,
+                  requestSuggestion: requestSuggestion,
                 ),
               ];
               _streamingText = null;
@@ -536,15 +539,57 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       context,
       role: message.role,
       child: message.role == 'assistant'
-          ? MayosMarkdown(
-              key: ValueKey<String>(message.id),
-              source: message.content,
-            )
+          ? _assistantReplyContent(message)
           : FirstStrongDirection(
               text: message.content,
               child: Text(message.content),
             ),
     );
+  }
+
+  Widget _assistantReplyContent(ChatMessage message) {
+    final ProgramRequestDraft? suggestion = message.requestSuggestion;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        MayosMarkdown(
+          key: ValueKey<String>(message.id),
+          source: message.content,
+        ),
+        if (suggestion != null) ...<Widget>[
+          const SizedBox(height: MayosSpacing.xs),
+          MayosButton(
+            key: const Key('chat_request_from_coach'),
+            label: _chatCopy(context).requestFromCoach,
+            icon: Icons.edit_note,
+            variant: MayosButtonVariant.tertiary,
+            expand: false,
+            onPressed: () => _openRequestSuggestion(suggestion),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _openRequestSuggestion(ProgramRequestDraft initialDraft) async {
+    try {
+      final ProgramRequest? created = await requestProgramChange(
+        context,
+        ref,
+        initialDraft: initialDraft,
+      );
+      if (created == null || !mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(displayCopyOf(context).programChangeRequestSent)),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      final String message = displayCopyOf(context).failureMessage(
+        apiFailureMessage(error),
+      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   Widget _bubble(BuildContext context,

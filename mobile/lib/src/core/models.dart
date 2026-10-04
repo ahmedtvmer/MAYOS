@@ -18,6 +18,7 @@ const List<String> equipmentAccessValues = <String>[
 ];
 const String defaultAssistantStyle = 'direct';
 const int maxAssistantStyleInstructions = 500;
+const int maxProgramRequestReasonChars = 500;
 const String deloadChoiceUndo = 'undo';
 const String deloadChoiceApply = 'apply';
 
@@ -344,6 +345,50 @@ class AssignmentNotice {
   final String? readAt;
 
   bool get isUnread => readAt == null || readAt!.isEmpty;
+}
+
+/// A request draft reviewed in the player's program-request form.
+class ProgramRequestDraft {
+  const ProgramRequestDraft({
+    required this.kind,
+    required this.reason,
+    this.dayName,
+    this.exerciseId,
+    this.replacementExerciseId,
+    this.desiredWeeklyFrequency,
+    this.desiredSplitPreference,
+  });
+
+  factory ProgramRequestDraft.fromSuggestionJson(Map<String, dynamic> json) {
+    final dynamic kind = json['kind'];
+    if (kind != 'exercise_substitution' && kind != 'split_change') {
+      throw const FormatException('Unknown program request kind.');
+    }
+    final dynamic frequency = json['desired_weekly_frequency'];
+    return ProgramRequestDraft(
+      kind: kind as String,
+      reason: json['reason'] is String ? json['reason'] as String : '',
+      dayName: _optionalString(json['day_name']),
+      exerciseId: _optionalString(json['exercise_id']),
+      replacementExerciseId:
+          _optionalString(json['replacement_exercise_id']),
+      desiredWeeklyFrequency:
+          frequency is num ? frequency.toInt() : null,
+      desiredSplitPreference:
+          _optionalString(json['desired_split_preference']),
+    );
+  }
+
+  static String? _optionalString(dynamic value) =>
+      value is String && value.isNotEmpty ? value : null;
+
+  final String kind;
+  final String reason;
+  final String? dayName;
+  final String? exerciseId;
+  final String? replacementExerciseId;
+  final int? desiredWeeklyFrequency;
+  final String? desiredSplitPreference;
 }
 
 /// A player's request against a coach-controlled program and its resolution

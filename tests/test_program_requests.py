@@ -306,6 +306,16 @@ def test_create_split_change_records_desired_fields(api, monkeypatch):
     assert body["day_name"] is None
 
 
+def test_create_rejects_reason_longer_than_request_limit(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+
+    response = _create(client, player_headers, **_substitution(reason="r" * 501))
+    assert response.status_code == 422
+
+
 def test_create_refused_when_player_controls_program(api, monkeypatch):
     client, db, _ = api
     _, player_headers, _, _, player_account_id = _assigned_player(api)
