@@ -204,7 +204,9 @@ def _pydantic_issue(error: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _published_program(draft: dict[str, Any], db: Any) -> dict[str, Any]:
+def _published_program(
+    draft: dict[str, Any], db: Any, coach_account_id: str, ledger: Any
+) -> dict[str, Any]:
     days = draft.get("days", [])
     if not days:
         raise ProgramDraftValidationError.one(
@@ -217,6 +219,13 @@ def _published_program(draft: dict[str, Any], db: Any) -> dict[str, Any]:
         published_day = {**day, "exercises": []}
         for exercise_index, exercise in enumerate(day.get("exercises", [])):
             entry = db.get_exercise_library_entry(exercise["exercise_id"])
+            is_coach_exercise = False
+            if entry is None:
+                entry = db.get_coach_exercise(coach_account_id, exercise["exercise_id"])
+                is_coach_exercise = entry is not None
+            if entry is None and ledger.has_exercise_in_program_history(exercise["exercise_id"]):
+                entry = db.get_coach_exercise_unscoped(exercise["exercise_id"])
+                is_coach_exercise = entry is not None
             if entry is None:
                 issues.append(
                     {
@@ -253,9 +262,14 @@ def _published_program(draft: dict[str, Any], db: Any) -> dict[str, Any]:
             published_exercise["target_rpe"] = 10 - target_rir
             published_exercise.update(
                 exercise_name=entry["name"],
+                body_part=entry.get("body_part") if is_coach_exercise else None,
                 equipment=entry["equipment"],
                 image_path=entry["image_path"],
                 gif_path=entry["gif_path"],
+                note=entry.get("note") if is_coach_exercise else None,
+                video_url=entry.get("video_url") if is_coach_exercise else None,
+                is_coach_exercise=is_coach_exercise,
+                suggested_substitutes=[] if is_coach_exercise else exercise.get("suggested_substitutes", []),
             )
             published_day["exercises"].append(published_exercise)
         program["days"].append(published_day)
@@ -305,7 +319,7 @@ def publish_program_draft(
             draft_record = ledger.get_program_draft(assignment_id)
             if draft_record is None:
                 raise ProgramDraftNotFound("Program draft not found.")
-            program_data = _published_program(draft_record["draft"], db)
+            program_data = _published_program(draft_record["draft"], db, coach_account_id, ledger)
             ledger.save_training_program(program_data, published_by_coach_account_id=coach_account_id)
             ledger.discard_program_draft(assignment_id)
             published = ledger.get_active_program()

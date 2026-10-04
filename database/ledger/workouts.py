@@ -7,6 +7,8 @@ import uuid
 from pathlib import Path
 from datetime import UTC, datetime
 from typing import Any
+
+from database.exercise_resolution import exercise_display_join, exercise_display_name_sql
 from database.migration_manager import create_atomic_backup
 from database.migration_manager import prune_ledger_backups
 
@@ -401,14 +403,14 @@ class LedgerWorkoutsMixin:
             return None
 
         cursor.execute(
-            """
-            SELECT COALESCE(e.name, ws.exercise_id) AS name,
+            f"""
+            SELECT {exercise_display_name_sql('ws.exercise_id')} AS name,
                    COUNT(*) AS sets, SUM(ws.reps) AS reps,
                    SUM(ws.weight_kg * ws.reps) AS volume_kg
             FROM workout_sets ws
-            LEFT JOIN exercises e ON e.id = ws.exercise_id
+            {exercise_display_join('ws.exercise_id')}
             WHERE ws.session_id = ? AND ws.is_warmup = 0
-            GROUP BY ws.exercise_id, e.name
+            GROUP BY ws.exercise_id, e.name, ce.name
             ORDER BY name COLLATE NOCASE, ws.exercise_id
             """,
             (session["id"],),
@@ -485,14 +487,14 @@ class LedgerWorkoutsMixin:
         Returns a flat, one-row-per-set list; grouping/nesting happens in the service layer.
         """
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT s.id AS session_id, s.session_date, s.split_name, s.readiness_score,
                    s.session_notes, s.started_at, s.completed_at,
-                   ws.exercise_id, COALESCE(e.name, ws.exercise_id) AS exercise_name,
+                   ws.exercise_id, {exercise_display_name_sql('ws.exercise_id')} AS exercise_name,
                    ws.set_index, ws.weight_kg, ws.reps, ws.rpe, ws.is_warmup, ws.logged_at
             FROM workout_sets ws
             JOIN workout_sessions s ON ws.session_id = s.id
-            LEFT JOIN exercises e ON e.id = ws.exercise_id
+            {exercise_display_join('ws.exercise_id')}
             ORDER BY s.session_date ASC, s.started_at ASC, s.rowid ASC, ws.rowid ASC
         """)
         return [dict(row) for row in cursor.fetchall()]
@@ -533,11 +535,12 @@ class LedgerWorkoutsMixin:
     def list_session_divergences(self, session_id: str) -> list[dict[str, Any]]:
         cursor = self.conn.cursor()
         cursor.execute(
-            """
+            f"""
             SELECT sd.session_id, sd.exercise_id,
-                   COALESCE(e.name, sd.exercise_name) AS exercise_name, sd.kind, sd.created_at
+                   {exercise_display_name_sql('sd.exercise_id', 'sd.exercise_name')} AS exercise_name,
+                   sd.kind, sd.created_at
             FROM session_divergences sd
-            LEFT JOIN exercises e ON e.id = sd.exercise_id
+            {exercise_display_join('sd.exercise_id')}
             WHERE sd.session_id = ?
             ORDER BY kind ASC, exercise_id ASC
         """,
@@ -548,11 +551,12 @@ class LedgerWorkoutsMixin:
     def list_divergences_by_session(self) -> dict[str, list[dict[str, Any]]]:
         """Every session's divergences keyed by session id, in a single query."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT sd.session_id, sd.exercise_id,
-                   COALESCE(e.name, sd.exercise_name) AS exercise_name, sd.kind
+                   {exercise_display_name_sql('sd.exercise_id', 'sd.exercise_name')} AS exercise_name,
+                   sd.kind
             FROM session_divergences sd
-            LEFT JOIN exercises e ON e.id = sd.exercise_id
+            {exercise_display_join('sd.exercise_id')}
             ORDER BY sd.kind ASC, sd.exercise_id ASC
         """)
         grouped: dict[str, list[dict[str, Any]]] = {}

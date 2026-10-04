@@ -291,6 +291,8 @@ Rate-limit keys combine the client IP with a bearer-token suffix when present, s
 
 An account holder deletes their account with `DELETE /auth/account` carrying **exactly one** proof (rate-limited with the password limit): `{"password": "..."}`, or `{"google_id_token": "..."}` for an account that signs in with a Linked sign-in (#114). The Google proof must be an ID token that passes the same verification sign-in uses **and** whose `sub` is linked to the caller **and** whose `iat` is within the last **5 minutes** — a stale, wrong-sub, or unverifiable token returns the very same generic `400 Invalid credentials.` as a wrong password, so the endpoint reveals nothing about the link. A wrong password likewise returns that generic 400 and changes nothing. On success every session is dead and the account's active data is gone. The full decision and per-table breakdown are ADR 039; the operator-facing recovery details are in [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
+When the deleted account is a Coach, Coach exercise ids, names, and body-part/equipment tags remain so players' retained programs and workout history keep resolving. Coach-authored notes and video links are cleared with the catalog cleanup (ADR 064).
+
 ```mermaid
 sequenceDiagram
     autonumber

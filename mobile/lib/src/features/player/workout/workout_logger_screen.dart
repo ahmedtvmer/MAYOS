@@ -1666,7 +1666,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       // Replace is for every player whatever the Program authority (#162);
       // a replacement is undone, any other unplanned exercise is removed.
       onReplace: () => unawaited(_onReplaceExercise(exerciseIndex)),
-      onOpenDetail: linkedExerciseId == null || linkedExerciseId.isEmpty
+      onOpenDetail: linkedExerciseId == null ||
+              linkedExerciseId.isEmpty ||
+              exercise.isCoachExercise
           ? null
           : () => openLoggerExerciseDetail(
                 context,

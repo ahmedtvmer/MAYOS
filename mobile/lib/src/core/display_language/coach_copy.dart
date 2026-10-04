@@ -274,6 +274,17 @@ class CoachCopy {
   String get noTrainingDays => isArabic ? 'أضف يوم تدريب لبدء البرنامج.' : 'Add a training day to start the program.';
   String get invalidWholeNumber => isArabic ? 'أدخل عددًا صحيحًا.' : 'Enter a whole number.';
   String get addExercise => isArabic ? 'إضافة تمرين' : 'Add exercise';
+  String get createExercise => isArabic ? 'إنشاء تمرين' : 'Create exercise';
+  String get yourExercise => isArabic ? 'تمرينك' : 'Your exercise';
+  String get noMatchingExercise => isArabic ? 'لا توجد تمارين مطابقة.' : 'No matching exercises.';
+  String get exerciseName => isArabic ? 'اسم التمرين' : 'Exercise name';
+  String get bodyPartTag => isArabic ? 'العضلة أو الجزء المستهدف (اختياري)' : 'Body part tag (optional)';
+  String get equipmentTag => isArabic ? 'المعدات (اختياري)' : 'Equipment tag (optional)';
+  String get exerciseNoteOptional => isArabic ? 'ملاحظة (اختيارية)' : 'Note (optional)';
+  String get videoLinkOptional => isArabic ? 'رابط الفيديو (اختياري)' : 'Video link (optional)';
+  String get exerciseNameRequired => isArabic ? 'أدخل اسم التمرين.' : 'Enter an exercise name.';
+  String get videoLinkMustUseHttps => isArabic ? 'يجب أن يبدأ رابط الفيديو بـ https.' : 'The video link must use https.';
+  String get saveExercise => isArabic ? 'حفظ التمرين' : 'Save exercise';
   String get removeExercise => isArabic ? 'حذف التمرين' : 'Remove exercise';
   String get workingSets => isArabic ? 'مجموعات العمل' : 'Working sets';
   String get repsOrRange => isArabic ? 'التكرارات أو النطاق' : 'Reps or range';

@@ -168,6 +168,7 @@ class MayosCopy {
   String get unavailableLink => isArabic
       ? 'تعذر فتح هذا الرابط في المتصفح.'
       : 'Could not open this link in your browser.';
+  String get watchExerciseVideo => isArabic ? 'مشاهدة فيديو التمرين' : 'Watch exercise video';
   String get unavailablePrivacyPolicy => isArabic
       ? 'تعذر فتح سياسة الخصوصية في المتصفح.'
       : 'Could not open the privacy policy in your browser.';

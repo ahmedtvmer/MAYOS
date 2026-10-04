@@ -1,6 +1,7 @@
 """Pydantic request/response contracts for the FastAPI service."""
 
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -91,6 +92,8 @@ __all__ = [
     "CoachProgramRequestListOut",
     "CoachProgramDraftIn",
     "CoachProgramDraftOut",
+    "CoachExerciseCreateIn",
+    "CoachExerciseOut",
     "ProgramDraftDayIn",
     "ProgramDraftExerciseIn",
     "CoachRosterEntryOut",
@@ -894,7 +897,11 @@ class ProgramDraftInput(BaseModel):
 class ProgramDraftExerciseIn(ProgramDraftInput):
     exercise_id: str = Field(min_length=1, max_length=200)
     exercise_name: str = ""
+    body_part: str | None = None
     equipment: str | None = None
+    note: str | None = None
+    video_url: str | None = None
+    is_coach_exercise: bool = False
     slot_key: str | None = None
     warmup_sets: int = Field(default=MIN_RAMPED_WARMUP_SETS, ge=MIN_RAMPED_WARMUP_SETS, le=MAX_RAMPED_WARMUP_SETS)
     target_sets: int = DEFAULT_TARGET_SETS
@@ -976,6 +983,52 @@ class CoachProgramDraftOut(BaseModel):
     draft: CoachProgramDraftIn
     created_at: str
     updated_at: str
+
+
+class CoachExerciseCreateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    body_part: str | None = Field(default=None, max_length=80)
+    equipment: str | None = Field(default=None, max_length=80)
+    note: str | None = Field(default=None, max_length=1000)
+    video_url: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("name", "body_part", "equipment", "note", "video_url", mode="before")
+    @classmethod
+    def trim_text(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            clean = value.strip()
+            return clean or None
+        return value
+
+    @field_validator("video_url")
+    @classmethod
+    def require_https_video_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            parsed = urlsplit(value)
+            valid = parsed.scheme == "https" and bool(parsed.hostname)
+        except ValueError:
+            valid = False
+        if not valid:
+            raise ValueError("Video link must use https.")
+        return value
+
+
+class CoachExerciseOut(BaseModel):
+    id: str
+    name: str
+    body_part: str | None = None
+    equipment: str | None = None
+    note: str | None = None
+    video_url: str | None = None
+    image_path: str | None = None
+    gif_path: str | None = None
+    is_coach_exercise: bool = True
+
+
+class CoachExerciseSearchOut(BaseModel):
+    exercises: list[CoachExerciseOut]
 
 
 class ProgramSubstitutionIn(BaseModel):

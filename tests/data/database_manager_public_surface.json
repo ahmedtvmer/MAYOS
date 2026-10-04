@@ -496,6 +496,22 @@
     "set_account_display_language": {
       "kind": "method",
       "signature": "(self, account_id: str, language: str) -> bool"
+    },
+    "create_coach_exercise": {
+      "kind": "method",
+      "signature": "(self, coach_account_id: str, fields: database.registry.coach_exercises.CoachExerciseCreate) -> dict[str, typing.Any]"
+    },
+    "get_coach_exercise": {
+      "kind": "method",
+      "signature": "(self, coach_account_id: str, exercise_id: str) -> dict[str, typing.Any] | None"
+    },
+    "get_coach_exercise_unscoped": {
+      "kind": "method",
+      "signature": "(self, exercise_id: str) -> dict[str, typing.Any] | None"
+    },
+    "search_coach_exercises": {
+      "kind": "method",
+      "signature": "(self, coach_account_id: str, query: str, limit: int = 10) -> list[dict[str, typing.Any]]"
     }
   },
   "module_names": [

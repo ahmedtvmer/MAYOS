@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/active_workout.dart';
 import '../../../core/baselines.dart';
@@ -7,6 +8,7 @@ import '../../../core/config.dart';
 import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/effort.dart';
+import '../../../core/external_url_launcher.dart';
 import '../../../core/models.dart';
 import '../../../core/personal_records.dart';
 import '../../../core/rest_length.dart';
@@ -528,6 +530,8 @@ class ExerciseLoggingCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (exercise.isCoachExercise)
+              _CoachExerciseLoggerDetails(exercise: exercise),
             // The picture sits beside the caption lines rather than the title
             // row (#161): the pill and the menu already fill that row at 2.0
             // text scale, and the caption text wraps into the room the fixed
@@ -640,6 +644,65 @@ class ExerciseLoggingCard extends StatelessWidget {
     ];
     return parts.join(' · ');
   }
+}
+
+class _CoachExerciseLoggerDetails extends StatelessWidget {
+  const _CoachExerciseLoggerDetails({required this.exercise});
+
+  final ActiveWorkoutExercise exercise;
+
+  @override
+  Widget build(BuildContext context) {
+    final String? note =
+        (exercise.exercise['note'] ?? exercise.exercise['exercise_note'])
+            as String?;
+    final String? videoUrl = exercise.exercise['video_url'] as String?;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        if (note?.trim().isNotEmpty == true) ...<Widget>[
+          const SizedBox(height: MayosSpacing.xxs),
+          Text(
+            note!,
+            style: MayosTypography.bodySecondary.copyWith(
+              color: MayosTheme.of(context).textSecondary,
+            ),
+          ),
+        ],
+        if (videoUrl?.trim().isNotEmpty == true)
+          _CoachExerciseLoggerVideoLink(
+            exerciseId: exercise.exerciseId,
+            videoUrl: videoUrl!,
+          ),
+      ],
+    );
+  }
+}
+
+class _CoachExerciseLoggerVideoLink extends ConsumerWidget {
+  const _CoachExerciseLoggerVideoLink({
+    required this.exerciseId,
+    required this.videoUrl,
+  });
+
+  final String exerciseId;
+  final String videoUrl;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => TextButton.icon(
+        key: Key('logger_coach_exercise_video_$exerciseId'),
+        onPressed: () async {
+          final bool opened =
+              await ref.read(externalUrlLauncherProvider)(videoUrl);
+          if (!opened && context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(displayCopyOf(context).unavailableLink)),
+            );
+          }
+        },
+        icon: const Icon(Icons.open_in_new, size: 16),
+        label: Text(displayCopyOf(context).watchExerciseVideo),
+      );
 }
 
 /// A prescribed preparation movement with independently tickable set rows.

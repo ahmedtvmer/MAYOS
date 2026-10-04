@@ -10,6 +10,8 @@ from agent.ProgramState import PersistedProgramDaySchema
 from agent.ProgramState import PersistedProgramExerciseSchema
 from agent.ProgramState import PersistedProgramSchema
 from agent.ProgramState import WarmupExerciseSchema
+from database.exercise_resolution import EXERCISE_DISPLAY_EQUIPMENT_SQL
+from database.exercise_resolution import exercise_display_join, exercise_display_name_sql
 
 from utils.logger import MyosLogger
 
@@ -25,6 +27,16 @@ class LedgerTrainingProgramMixin:
             (coach_account_id, started_at),
         ).fetchone()
         return row is not None
+
+    def has_exercise_in_program_history(self, exercise_id: str) -> bool:
+        cursor = self.conn.execute(
+            "SELECT 1 FROM program_exercises pe "
+            "JOIN program_days pd ON pd.id = pe.day_id "
+            "JOIN training_programs tp ON tp.id = pd.program_id "
+            "WHERE pe.exercise_id = ? LIMIT 1",
+            (str(exercise_id),),
+        )
+        return cursor.fetchone() is not None
 
     def save_training_program(
         self, program_data: dict, published_by_coach_account_id: str | None = None
@@ -194,7 +206,8 @@ class LedgerTrainingProgramMixin:
                 cardio = day_row[4] if "cardio" in day_cols and len(day_row) > 4 else None
 
                 select_cols = (
-                    "pe.exercise_id, e.name, pe.target_sets, pe.target_reps_min, "
+                    f"pe.exercise_id, {exercise_display_name_sql('pe.exercise_id')} AS name, "
+                    "pe.target_sets, pe.target_reps_min, "
                     "pe.target_reps_max, pe.target_rpe, pe.rest_seconds, pe.notes, "
                     "e.image_path, e.gif_path"
                 )
@@ -206,12 +219,17 @@ class LedgerTrainingProgramMixin:
                     select_cols += ", pe.suggested_substitutes_json"
                 if has_tempo:
                     select_cols += ", pe.tempo"
-                select_cols += ", e.equipment"
+                select_cols += (
+                    f", {EXERCISE_DISPLAY_EQUIPMENT_SQL} AS equipment"
+                    ", ce.body_part AS body_part"
+                    ", ce.note AS note, ce.video_url AS video_url"
+                    ", (ce.id IS NOT NULL) AS is_coach_exercise"
+                )
                 cursor.execute(
                     f"""
                     SELECT {select_cols}
                     FROM program_exercises pe
-                    JOIN exercises e ON pe.exercise_id = e.id
+                    {exercise_display_join('pe.exercise_id')}
                     WHERE pe.day_id = ?
                     ORDER BY pe.order_in_day ASC
                 """,
@@ -246,6 +264,10 @@ class LedgerTrainingProgramMixin:
                             warmup_sets=int(r[11]) if has_warmup_sets and r[11] is not None else 0,
                             suggested_substitutes=suggested_substitutes,
                             tempo=row_by_column.get("tempo"),
+                            body_part=row_by_column.get("body_part"),
+                            note=row_by_column.get("note"),
+                            video_url=row_by_column.get("video_url"),
+                            is_coach_exercise=bool(row_by_column.get("is_coach_exercise")),
                         )
                     )
 

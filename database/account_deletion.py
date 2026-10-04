@@ -267,6 +267,10 @@ class AccountDeletionMixin:
             # opt-in reference, so it is removed with the account (ADR 015/039).
             cursor.execute("DELETE FROM account_imports WHERE account_id = ?", (account_id,))
             cursor.execute("DELETE FROM coach_profiles WHERE account_id = ?", (account_id,))
+            cursor.execute(
+                "UPDATE coach_exercises SET note = NULL, video_url = NULL WHERE coach_account_id = ?",
+                (account_id,),
+            )
             cursor.execute("DELETE FROM account_plans WHERE account_id = ?", (account_id,))
             cursor.execute(
                 "DELETE FROM assignment_invites"

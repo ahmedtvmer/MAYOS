@@ -149,6 +149,8 @@ class FakeMayosApi {
   String? _splitTypeOverride;
   int? _weeklyFrequencyOverride;
   bool repeatBenchPressOnOtherDays = false;
+  final List<Map<String, dynamic>> coachExerciseRows = <Map<String, dynamic>>[];
+  int _coachExerciseSeq = 0;
   List<Map<String, dynamic>>? programDaysOverride;
   final List<Map<String, dynamic>> programSubstitutionRequests =
       <Map<String, dynamic>>[];
@@ -368,6 +370,9 @@ class FakeMayosApi {
     }
     if (path == '/workouts/exercises') {
       return _searchExercises(request);
+    }
+    if (path == '/coach/exercises') {
+      return _coachExercises(request);
     }
     if (path.startsWith('/workouts/exercises/')) {
       return _exerciseDetail(request);
@@ -3133,6 +3138,52 @@ class FakeMayosApi {
     return FakeResponse(200, <String, dynamic>{
       'exercises': List<Map<String, dynamic>>.from(matches)
     });
+  }
+
+  FakeResponse _coachExercises(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    if (request.method == 'POST') return _createCoachExercise(request);
+    final FakeResponse libraryResponse = _searchExercises(request);
+    final List<Map<String, dynamic>> library =
+        List<Map<String, dynamic>>.from(
+      (libraryResponse.body as Map<String, dynamic>)['exercises'] as List,
+    ).map((Map<String, dynamic> row) => <String, dynamic>{
+              ...row,
+              'is_coach_exercise': false,
+            }).toList(growable: false);
+    final String query = '${request.query['query'] ?? ''}'.toLowerCase();
+    final List<Map<String, dynamic>> owned = coachExerciseRows
+        .where((Map<String, dynamic> row) =>
+            '${row['name']}'.toLowerCase().contains(query))
+        .toList(growable: false);
+    return FakeResponse(200, <String, dynamic>{
+      'exercises': <Map<String, dynamic>>[...library, ...owned],
+    });
+  }
+
+  FakeResponse _createCoachExercise(FakeRequest request) {
+    final Map<String, dynamic> fields =
+        Map<String, dynamic>.from(request.body as Map);
+    final Map<String, dynamic> exercise = <String, dynamic>{
+      'id': 'coach:exercise-${++_coachExerciseSeq}',
+      'name': fields['name'],
+      'body_part': fields['body_part'],
+      'equipment': fields['equipment'],
+      'note': fields['note'],
+      'video_url': fields['video_url'],
+      'image_path': null,
+      'gif_path': null,
+      'is_coach_exercise': true,
+    };
+    coachExerciseRows.add(exercise);
+    return FakeResponse(201, exercise);
   }
 
   /// ExerciseDB-derived catalog detail for `GET /workouts/exercises/{id}`.

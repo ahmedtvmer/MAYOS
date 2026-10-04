@@ -455,6 +455,19 @@ class SchemaMixin:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS coach_exercises (
+                    id TEXT PRIMARY KEY,
+                    coach_account_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    body_part TEXT,
+                    equipment TEXT,
+                    note TEXT,
+                    video_url TEXT,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_coach_exercises_owner_name
+                    ON coach_exercises(coach_account_id, name COLLATE NOCASE);
+
                 -- Coach-issued player assignment invites (ADR 014, ticket #24). The code
                 -- is a bearer code, not recipient bound: only the SHA-256 hash is stored,
                 -- it is single-use, expiring, and bounded by roster capacity. Redemption

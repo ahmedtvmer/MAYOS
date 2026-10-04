@@ -4,6 +4,10 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Iterable
 
 from database.database_manager import DatabaseManager
+from database.exercise_resolution import EXERCISE_DISPLAY_BODY_PART_SQL
+from database.exercise_resolution import EXERCISE_DISPLAY_TARGET_MUSCLE_SQL
+from database.exercise_resolution import EXERCISE_DISPLAY_EQUIPMENT_SQL
+from database.exercise_resolution import exercise_display_join, exercise_display_name_sql
 from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
@@ -157,11 +161,12 @@ def get_weekly_muscle_volume(db: DatabaseManager, days_lookback: int = 7) -> dic
     cutoff_date = (datetime.now(UTC) - timedelta(days=days_lookback)).isoformat()[:10]
 
     cursor.execute(
-        """
-        SELECT ws.exercise_id, e.target_muscle, e.body_part
+        f"""
+        SELECT ws.exercise_id, {EXERCISE_DISPLAY_TARGET_MUSCLE_SQL},
+               {EXERCISE_DISPLAY_BODY_PART_SQL}
         FROM workout_sets ws
         JOIN workout_sessions s ON ws.session_id = s.id
-        JOIN exercises e ON ws.exercise_id = e.id
+        {exercise_display_join('ws.exercise_id')}
         WHERE s.session_date >= ? AND ws.is_warmup = 0
     """,
         (cutoff_date,),
@@ -633,11 +638,12 @@ def get_progression_signals(db: DatabaseManager) -> str:
 
     cutoff = (datetime.now(UTC) - timedelta(days=30)).isoformat()[:10]
     cursor.execute(
-        """
-        SELECT DISTINCT ws.exercise_id, e.name, e.equipment
+        f"""
+        SELECT DISTINCT ws.exercise_id, {exercise_display_name_sql('ws.exercise_id')},
+               {EXERCISE_DISPLAY_EQUIPMENT_SQL}
         FROM workout_sets ws
         JOIN workout_sessions s ON ws.session_id = s.id
-        JOIN exercises e ON ws.exercise_id = e.id
+        {exercise_display_join('ws.exercise_id')}
         WHERE s.session_date >= ? AND ws.is_warmup = 0
         LIMIT 5
     """,

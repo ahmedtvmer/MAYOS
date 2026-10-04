@@ -27,6 +27,7 @@ import 'package:mayos_mobile/src/core/ui/mayos_player_column.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_progress.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/workout/active_workout_controller.dart';
+import 'package:mayos_mobile/src/features/player/exercise/exercise_detail_screen.dart';
 import 'package:mayos_mobile/src/features/player/workout/logger_top_bar.dart';
 import 'package:mayos_mobile/src/features/player/workout/logger_card_widgets.dart';
 import 'package:mayos_mobile/src/features/player/workout/personal_record_badge.dart';
@@ -684,6 +685,37 @@ Future<void> _assertNoOverflowAt360(
 }
 
 void main() {
+  testWidgets('logger shows Coach exercise details without opening library details',
+      (WidgetTester tester) async {
+    const ProgramDay day = ProgramDay(
+      dayName: 'Upper A',
+      dayOrder: 1,
+      exercises: <ProgramExercise>[
+        ProgramExercise(
+          exerciseId: 'coach:pin-squat',
+          exerciseName: 'Pin Squat',
+          targetSets: 2,
+          targetRepsMin: 5,
+          targetRepsMax: 8,
+          targetRpe: 8,
+          note: 'Pause on the pins.',
+          videoUrl: 'https://example.com/pin-squat',
+          isCoachExercise: true,
+        ),
+      ],
+    );
+    await _openLogger(tester, day: day);
+
+    expect(find.text('Pause on the pins.'), findsOneWidget);
+    expect(find.text('Watch exercise video'), findsOneWidget);
+    await tester.tap(find.text('Pin Squat'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ExerciseDetailScreen), findsNothing);
+    expect(find.byKey(const Key('logger_coach_exercise_video_coach:pin-squat')),
+        findsOneWidget);
+  });
+
   testWidgets('workout logger shows the applied deload and opens the assistant',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _signedInFake()..prescriptionOffline = true;

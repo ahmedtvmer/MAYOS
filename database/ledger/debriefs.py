@@ -7,6 +7,7 @@ import sqlite3
 from typing import Any
 
 from core.effort import min_rir_label, rir_label
+from database.exercise_resolution import exercise_display_join, exercise_display_name_sql
 
 
 class LedgerDebriefsMixin:
@@ -139,10 +140,10 @@ class LedgerDebriefsMixin:
         prev_metadata = self._session_metadata(sessions[1]) if len(sessions) > 1 else None
 
         cursor.execute(
-            """
-            SELECT DISTINCT ws.exercise_id, COALESCE(e.name, ws.exercise_id) AS name
+            f"""
+            SELECT DISTINCT ws.exercise_id, {exercise_display_name_sql('ws.exercise_id')} AS name
             FROM workout_sets ws
-            LEFT JOIN exercises e ON e.id = ws.exercise_id
+            {exercise_display_join('ws.exercise_id')}
             WHERE ws.session_id = ? AND ws.is_warmup = 0
             ORDER BY name COLLATE NOCASE, ws.exercise_id
         """,
@@ -221,9 +222,10 @@ class LedgerDebriefsMixin:
         if last_session:
             s_id, s_date, s_split, s_readiness = last_session
             cursor.execute(
-                """
-                SELECT e.name, ws.weight_kg, ws.reps, ws.rpe
-                FROM workout_sets ws JOIN exercises e ON ws.exercise_id = e.id
+                f"""
+                SELECT {exercise_display_name_sql('ws.exercise_id')} AS name,
+                       ws.weight_kg, ws.reps, ws.rpe
+                FROM workout_sets ws {exercise_display_join('ws.exercise_id')}
                 WHERE ws.session_id = ? AND ws.is_warmup = 0 ORDER BY ws.weight_kg DESC LIMIT 1
             """,
                 (s_id,),

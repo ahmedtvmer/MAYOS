@@ -755,6 +755,7 @@ class ActiveWorkoutExercise {
   String get exerciseId => exercise['exercise_id'] as String;
   String get exerciseName => exercise['exercise_name'] as String;
   String? get equipment => exercise['equipment'] as String?;
+  bool get isCoachExercise => exercise['is_coach_exercise'] as bool? ?? false;
 
   /// A zero-load set is loggable even though [countsAsWorkingSet] excludes it.
   bool get hasLoggableSet => sets.any(

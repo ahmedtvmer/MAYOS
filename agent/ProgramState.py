@@ -36,7 +36,11 @@ class SuggestedSubstitute(BaseModel):
 class ProgramExerciseSchema(BaseModel):
     exercise_id: str = Field(description="Exact ID matching candidate from the database")
     exercise_name: str = Field(description="Exact name of the exercise")
+    body_part: str | None = Field(default=None, description="Optional Coach exercise body-part tag")
     equipment: str | None = Field(default=None, description="Exercise library equipment")
+    note: str | None = Field(default=None, description="Optional Coach exercise note")
+    video_url: str | None = Field(default=None, description="Coach exercise HTTPS video link")
+    is_coach_exercise: bool = Field(default=False, description="Coach-owned exercise, without Exercise library media")
     slot_key: str | None = Field(default=None, description="Movement slot that produced this exercise")
     warmup_sets: int = Field(
         default=MIN_RAMPED_WARMUP_SETS,

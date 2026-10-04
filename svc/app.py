@@ -35,6 +35,7 @@ from svc.routers import (
     chat,
     coach,
     coach_ai,
+    coach_exercises,
     checkpoint_reviews,
     dashboard,
     media,
@@ -326,6 +327,7 @@ def create_app() -> FastAPI:
     app.include_router(recovery.router)
     app.include_router(public_pages.router)
     app.include_router(coach.router)
+    app.include_router(coach_exercises.router)
     app.include_router(coach_ai.router)
     app.include_router(assignments.coach_router)
     app.include_router(assignments.coach_roster_router)

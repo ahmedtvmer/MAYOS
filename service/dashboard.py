@@ -5,6 +5,8 @@ from typing import Any
 
 from agent.progression_engine import get_exercise_progression_history, get_weekly_muscle_volume
 from core.effort import rir_label
+from database.exercise_resolution import exercise_display_join, exercise_display_name_sql
+from database.exercise_resolution import resolve_exercise_display_row
 from service._base import ledger_scope
 
 
@@ -52,11 +54,12 @@ def working_set_volume(
 def logged_exercises(db: Any, ledger_id: str, ledger: Any | None = None) -> list[dict[str, str]]:
     with ledger_scope(db, ledger, ledger_id) as ledger:
         cursor = ledger.conn.cursor()
-        cursor.execute("""
-            SELECT DISTINCT e.id, e.name
+        cursor.execute(f"""
+            SELECT DISTINCT ws.exercise_id AS id,
+                   {exercise_display_name_sql('ws.exercise_id')} AS name
             FROM workout_sets ws
-            JOIN exercises e ON ws.exercise_id = e.id
-            ORDER BY e.name ASC
+            {exercise_display_join('ws.exercise_id')}
+            ORDER BY name ASC
         """)
         return [{"id": row[0], "name": row[1]} for row in cursor.fetchall()]
 
@@ -69,8 +72,8 @@ def exercise_history(
 
 
 def exercise_equipment(db: Any, exercise_id: str) -> str | None:
-    """The Exercise library equipment for a history payload, when available."""
-    exercise = db.get_exercise_library_entry(exercise_id)
+    """The resolved exercise equipment for a history payload, when available."""
+    exercise = resolve_exercise_display_row(db, exercise_id)
     return exercise.get("equipment") if exercise is not None else None
 
 
@@ -90,11 +93,11 @@ def recent_personal_records(
     with ledger_scope(db, ledger, ledger_id) as ledger:
         cursor = ledger.conn.cursor()
         cursor.execute(
-            """
-            SELECT pr.exercise_id, COALESCE(e.name, pr.exercise_id) AS name, pr.record_type,
+            f"""
+            SELECT pr.exercise_id, {exercise_display_name_sql('pr.exercise_id')} AS name, pr.record_type,
                    pr.reps, pr.value, pr.prev_value, pr.achieved_at, pr.session_id
             FROM personal_records pr
-            LEFT JOIN exercises e ON e.id = pr.exercise_id
+            {exercise_display_join('pr.exercise_id')}
             ORDER BY pr.achieved_at DESC, pr.rowid DESC
             LIMIT ?
         """,

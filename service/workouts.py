@@ -22,6 +22,7 @@ from agent.progression_engine import (
     set_e1rm,
 )
 from core.effort import min_rir_label, rir_from_rpe
+from database.exercise_resolution import resolve_exercise_display_row
 from core.deload_choices import DELOAD_CHOICE_APPLY, DELOAD_CHOICE_UNDO
 from core.warmup import calculate_warmup_sets
 from service._base import ledger_scope
@@ -467,7 +468,9 @@ def _baseline_rows(ledger: Any, db: Any) -> list[dict[str, Any]]:
         working = working_by_exercise.get(exercise_id, [])
         performance = performance_by_exercise.get(exercise_id, [])
         aggregates = WorkingSetAggregates.from_sets(working)
-        exercise = library_entries.get(exercise_id)
+        exercise = resolve_exercise_display_row(
+            db, exercise_id, library_entries=library_entries
+        )
         equipment = exercise.get("equipment") if exercise else None
         best_zero_load_reps = (
             _best_zero_load_reps(performance)
@@ -713,7 +716,7 @@ def _persist_session(
             exercise_id=str(ex_obj.exercise_id),
             sets=item["sets"],
             exercise_name=ex_obj.exercise_name,
-            equipment=(db.get_exercise_library_entry(str(ex_obj.exercise_id)) or {}).get("equipment"),
+            equipment=(resolve_exercise_display_row(db, ex_obj.exercise_id) or {}).get("equipment"),
             achieved_at=now_iso,
         )
         pr_events.extend(evaluate_session_prs(ledger, record, include_most_reps=False))

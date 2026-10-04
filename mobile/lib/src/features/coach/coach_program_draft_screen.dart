@@ -18,7 +18,7 @@ import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
-import '../player/exercise_picker_dialog.dart';
+import 'coach_exercise_picker_dialog.dart';
 
 part 'program_editor/day_card.dart';
 part 'program_editor/exercise_card.dart';
@@ -226,7 +226,7 @@ class _CoachProgramDraftScreenState
     final ExerciseCatalogEntry? selected =
         await showDialog<ExerciseCatalogEntry>(
       context: context,
-      builder: (BuildContext context) => const ExercisePickerDialog(),
+      builder: (BuildContext context) => const CoachExercisePickerDialog(),
     );
     if (selected == null || !mounted) return;
     setState(() {
@@ -234,7 +234,11 @@ class _CoachProgramDraftScreenState
         _DraftExerciseEditor(<String, dynamic>{
           'exercise_id': selected.id,
           'exercise_name': selected.name,
+          'body_part': selected.bodyPart,
           'equipment': selected.equipment,
+          'note': selected.note,
+          'video_url': selected.videoUrl,
+          'is_coach_exercise': selected.isCoachExercise,
           'image_path': selected.imagePath,
           'warmup_sets': 0,
           'target_sets': ProgramDraftPrescription.defaultSets,

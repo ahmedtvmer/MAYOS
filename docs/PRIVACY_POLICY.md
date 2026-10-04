@@ -285,6 +285,10 @@ account all produce the same generic answer. If you have forgotten your
 password, reset it first from the app ("Forgot password") or contact
 {{PRIVACY_CONTACT}} and we will help.
 
+If you are a Coach, your Coach exercise names and body-part/equipment tags
+remain when they are part of a player's program or history. Your notes and
+video links are cleared.
+
 ## How we protect your data
 
 - All traffic is served over https; connections are encrypted in transit.

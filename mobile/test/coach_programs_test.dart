@@ -117,6 +117,54 @@ Future<void> _openSettings(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('coach creates and reuses a Coach exercise from the picker',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await tester.tap(find.byKey(const Key('player_page_actions')));
+    await _pumpUntilFound(tester, find.text('Write program'));
+    await tester.tap(find.text('Write program'));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_exercise_0')));
+
+    await tester.tap(find.byKey(const Key('program_draft_add_exercise_0')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_exercise_search')));
+    await tester.enterText(find.byType(TextField).last, 'Pin Squat');
+    await tester.tap(find.byKey(const Key('coach_exercise_search')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_create_exercise_open')));
+    await tester.tap(find.byKey(const Key('coach_create_exercise_open')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_exercise_name')));
+    await tester.enterText(find.byKey(const Key('coach_exercise_note')), 'Pause on the pins.');
+    await tester.enterText(
+      find.byKey(const Key('coach_exercise_video')),
+      'https://example.com/pin-squat',
+    );
+    await tester.tap(find.byKey(const Key('coach_exercise_create')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_sets_0_0')));
+    expect(fake.coachExerciseRows.single['image_path'], isNull);
+    expect(fake.coachExerciseRows.single['video_url'], 'https://example.com/pin-squat');
+
+    await tester.tap(find.byKey(const Key('program_draft_add_exercise_0')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_exercise_search')));
+    await tester.enterText(find.byType(TextField).last, 'Pin Squat');
+    await tester.tap(find.byKey(const Key('coach_exercise_search')));
+    await _pumpUntilFound(tester, find.text('Your exercise'));
+    await tester.tap(find.text('Pin Squat').last);
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_sets_0_1')));
+    await tester.tap(find.byKey(const Key('program_draft_save')));
+    await _pumpUntilFound(tester, find.text('Draft saved.'));
+
+    final List<dynamic> days = fake.programDraft!['days'] as List<dynamic>;
+    final List<dynamic> exercises =
+        (days.single as Map<String, dynamic>)['exercises'] as List<dynamic>;
+    expect(exercises, hasLength(2));
+    expect((exercises.first as Map<String, dynamic>)['exercise_id'], startsWith('coach:'));
+    expect((exercises.first as Map<String, dynamic>)['note'], 'Pause on the pins.');
+    expect((exercises.first as Map<String, dynamic>)['video_url'], 'https://example.com/pin-squat');
+  });
+
   testWidgets('coach builds one training day and publishes a Program draft',
       (tester) async {
     final FakeMayosApi fake = _coachFake();

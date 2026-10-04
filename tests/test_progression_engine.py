@@ -60,6 +60,9 @@ def test_progression_baseline_requires_empty_all_time_ledger(days_ago, exposures
         connection.executescript("""
             ATTACH DATABASE ':memory:' AS catalog;
             CREATE TABLE catalog.exercises (id TEXT, name TEXT, equipment TEXT);
+            CREATE TABLE catalog.coach_exercises (
+                id TEXT, name TEXT, equipment TEXT, body_part TEXT
+            );
             CREATE TABLE workout_sessions (id TEXT, session_date TEXT);
             CREATE TABLE workout_sets (
                 session_id TEXT, exercise_id TEXT, weight_kg REAL, reps INTEGER,

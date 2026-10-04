@@ -107,6 +107,11 @@ The shared reference set of exercises that programs, substitutions, and search d
 _Arabic_: مكتبة التمارين
 _Avoid_: Exercise catalog
 
+**Coach exercise**:
+An exercise a Coach creates when the Exercise library lacks the movement. It has a Coach-owned id, optional body-part and Equipment tags, an optional note, and an optional HTTPS video link stored as text. It has no media, is searchable only by its owner in Coach mode, and is visible to a Player when prescribed in that Coach's Training program. The Player keeps its logged history after the Assignment ends.
+_Arabic_: تمرين من إنشاء المدرب
+_Avoid_: Custom exercise
+
 **Exercise display name**:
 The gym-standard name a player sees for an exercise in the Exercise library, such as "Wide-Grip Lat Pulldown". The library's source name stays underneath and is never shown when a display name exists.
 

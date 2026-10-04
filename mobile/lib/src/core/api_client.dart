@@ -132,6 +132,8 @@ class ApiClient {
       'The service returned invalid program data.';
   static const String _invalidCoachProgramDraft =
       'The service returned invalid Program draft data.';
+  static const String _invalidCoachExercises =
+      'The service returned invalid Coach exercise data.';
   static const String _invalidNotices =
       'The service returned invalid assignment notices.';
   static const String _invalidProgramRequests =
@@ -887,6 +889,41 @@ class ApiClient {
       ),
     );
     return _parseBody(response.data, TrainingProgram.fromJson, _invalidProgram);
+  }
+
+  Future<List<ExerciseCatalogEntry>> coachSearchExercises(String query) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/coach/exercises',
+        queryParameters: <String, dynamic>{'query': query},
+      ),
+    );
+    final dynamic body = response.data;
+    if (body is! Map<String, dynamic>) {
+      throw ApiException(
+        _invalidCoachExercises,
+        failureMessage: _invalidServiceDataFailure(_invalidCoachExercises),
+      );
+    }
+    return _parseBodyList(
+      body['exercises'],
+      ExerciseCatalogEntry.fromJson,
+      _invalidCoachExercises,
+      failureMessage: _invalidServiceDataFailure(_invalidCoachExercises),
+    );
+  }
+
+  Future<ExerciseCatalogEntry> coachCreateExercise(
+    CoachExerciseCreateRequest request,
+  ) async {
+    final response = await _send(
+      () => _dio.post<dynamic>('/coach/exercises', data: request.toJson()),
+    );
+    return _parseBody(
+      response.data,
+      ExerciseCatalogEntry.fromJson,
+      _invalidCoachExercises,
+    );
   }
 
   Map<String, dynamic> _parseCoachProgramDraft(dynamic responseData) {

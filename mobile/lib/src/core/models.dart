@@ -1933,6 +1933,10 @@ class ProgramExercise {
     this.restSeconds,
     this.tempo,
     this.notes,
+    this.bodyPart,
+    this.note,
+    this.videoUrl,
+    this.isCoachExercise = false,
     this.suggestedSubstitutes = const <SuggestedSubstitute>[],
     this.imagePath,
   });
@@ -1952,6 +1956,10 @@ class ProgramExercise {
         restSeconds: (json['rest_seconds'] as num?)?.toInt(),
         tempo: json['tempo'] as String?,
         notes: json['notes'] as String?,
+        bodyPart: json['body_part'] as String?,
+        note: json['note'] as String? ?? json['exercise_note'] as String?,
+        videoUrl: json['video_url'] as String?,
+        isCoachExercise: json['is_coach_exercise'] as bool? ?? false,
         suggestedSubstitutes:
             (json['suggested_substitutes'] as List<dynamic>? ??
                     const <dynamic>[])
@@ -1983,6 +1991,10 @@ class ProgramExercise {
   final int? restSeconds;
   final String? tempo;
   final String? notes;
+  final String? bodyPart;
+  final String? note;
+  final String? videoUrl;
+  final bool isCoachExercise;
 
   /// Equipment access-compatible Staple exercises listed after the prescribed one.
   final List<SuggestedSubstitute> suggestedSubstitutes;
@@ -2028,6 +2040,10 @@ class ProgramExercise {
     if (tempo != null) {
       json['tempo'] = tempo;
     }
+    if (bodyPart != null) json['body_part'] = bodyPart;
+    if (note != null) json['note'] = note;
+    if (videoUrl != null) json['video_url'] = videoUrl;
+    if (isCoachExercise) json['is_coach_exercise'] = true;
     if (suggestedSubstitutes.isNotEmpty) {
       json['suggested_substitutes'] = suggestedSubstitutes
           .map((SuggestedSubstitute item) => item.toJson())
@@ -2952,6 +2968,10 @@ class ExerciseCatalogEntry {
     this.imagePath,
     this.targetMuscle,
     this.equipment,
+    this.bodyPart,
+    this.note,
+    this.videoUrl,
+    this.isCoachExercise = false,
   });
 
   factory ExerciseCatalogEntry.fromJson(Map<String, dynamic> json) =>
@@ -2961,6 +2981,10 @@ class ExerciseCatalogEntry {
         imagePath: json['image_path'] as String?,
         targetMuscle: json['target_muscle'] as String?,
         equipment: json['equipment'] as String?,
+        bodyPart: json['body_part'] as String?,
+        note: json['note'] as String?,
+        videoUrl: json['video_url'] as String?,
+        isCoachExercise: json['is_coach_exercise'] as bool? ?? false,
       );
 
   final String id;
@@ -2973,6 +2997,34 @@ class ExerciseCatalogEntry {
 
   /// The Exercise library equipment carried into the Active workout.
   final String? equipment;
+  final String? bodyPart;
+  final String? note;
+  final String? videoUrl;
+  final bool isCoachExercise;
+}
+
+class CoachExerciseCreateRequest {
+  const CoachExerciseCreateRequest({
+    required this.name,
+    this.bodyPart,
+    this.equipment,
+    this.note,
+    this.videoUrl,
+  });
+
+  final String name;
+  final String? bodyPart;
+  final String? equipment;
+  final String? note;
+  final String? videoUrl;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'name': name,
+        if (bodyPart != null) 'body_part': bodyPart,
+        if (equipment != null) 'equipment': equipment,
+        if (note != null) 'note': note,
+        if (videoUrl != null) 'video_url': videoUrl,
+      };
 }
 
 /// `GET /workouts/exercises/{exercise_id}`: read-only catalog detail for the

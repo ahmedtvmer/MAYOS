@@ -9,6 +9,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from database.exercise_resolution import resolve_exercise_display_row
 from service import sessions as sessions_service
 from service import workouts as workouts_service
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
@@ -36,11 +37,35 @@ def _day_plan(ledger: Any, day_order: int) -> Any:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
+def _prescribed_exercise_ids(ledger: Any, program_version: int | None) -> set[str]:
+    program = (
+        ledger.get_program_by_version(program_version)
+        if program_version is not None
+        else ledger.get_active_program()
+    )
+    if program is None:
+        if program_version is not None:
+            active_program = ledger.get_active_program()
+            raise workouts_service.ProgramVersionMismatchError(
+                active_program.version if active_program is not None else None
+            )
+        return set()
+    return {
+        str(exercise.exercise_id)
+        for day in program.days
+        for exercise in day.exercises
+    }
+
+
 def _sets_payload(db: Any, ledger: Any, body: SessionCommitIn) -> list[dict[str, Any]]:
     payload = []
+    prescribed_ids = _prescribed_exercise_ids(ledger, body.program_version)
     for item in body.sets:
         exercise_id = item.exercise.exercise_id
-        if db.get_exercise_library_entry(exercise_id) is None:
+        exercise = resolve_exercise_display_row(db, exercise_id)
+        if exercise is None or (
+            exercise.get("is_coach_exercise") and exercise_id not in prescribed_ids
+        ):
             raise workouts_service.SessionSyncValidationError(f"Unknown exercise id: {exercise_id}.")
         payload.append(
             {

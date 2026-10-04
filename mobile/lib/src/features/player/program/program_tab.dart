@@ -9,6 +9,7 @@ import '../../../core/app_failure.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/copy_context.dart';
+import '../../../core/external_url_launcher.dart';
 import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/api_client.dart';
 import '../../../core/connectivity_message.dart';
@@ -936,7 +937,7 @@ class _ExerciseRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
     return InkWell(
-      onTap: onTap,
+      onTap: exercise.isCoachExercise ? null : onTap,
       borderRadius: MayosRadii.smallRadius,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: MayosSpacing.sm),
@@ -953,6 +954,8 @@ class _ExerciseRow extends StatelessWidget {
                       color: c.textPrimary,
                     ),
                   ),
+                  if (exercise.isCoachExercise)
+                    _CoachExerciseDetails(exercise: exercise),
                   const SizedBox(height: 2),
                   Directionality(
                     textDirection: TextDirection.ltr,
@@ -1003,10 +1006,11 @@ class _ExerciseRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: MayosSpacing.xs),
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Icon(Icons.chevron_right, size: 20, color: c.textMuted),
-            ),
+            if (!exercise.isCoachExercise)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(Icons.chevron_right, size: 20, color: c.textMuted),
+              ),
             PopupMenuButton<String>(
               tooltip: displayCopyOf(context)
                   .moreActionsForExercise(exercise.exerciseName),
@@ -1027,6 +1031,62 @@ class _ExerciseRow extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _CoachExerciseDetails extends StatelessWidget {
+  const _CoachExerciseDetails({required this.exercise});
+
+  final ProgramExercise exercise;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          if (exercise.note?.trim().isNotEmpty == true) ...<Widget>[
+            const SizedBox(height: MayosSpacing.xxs),
+            Text(
+              exercise.note!,
+              style: MayosTypography.bodySecondary.copyWith(
+                color: MayosTheme.of(context).textSecondary,
+              ),
+            ),
+          ],
+          if (exercise.videoUrl?.trim().isNotEmpty == true)
+            _CoachExerciseVideoLink(
+              exerciseId: exercise.exerciseId,
+              videoUrl: exercise.videoUrl!,
+            ),
+        ],
+      );
+}
+
+class _CoachExerciseVideoLink extends ConsumerWidget {
+  const _CoachExerciseVideoLink({
+    required this.exerciseId,
+    required this.videoUrl,
+  });
+
+  final String exerciseId;
+  final String videoUrl;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => TextButton.icon(
+        key: Key('coach_exercise_video_$exerciseId'),
+        onPressed: () => _openVideo(context, ref),
+        icon: const Icon(Icons.open_in_new, size: 16),
+        label: Text(displayCopyOf(context).watchExerciseVideo),
+      );
+
+  Future<void> _openVideo(BuildContext context, WidgetRef ref) async {
+    final bool opened =
+        await ref.read(externalUrlLauncherProvider)(videoUrl);
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(displayCopyOf(context).unavailableLink)),
+      );
+    }
   }
 }
 

@@ -149,6 +149,68 @@ Future<void> _chooseCableFly(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('Player sees Coach exercise details without offering it as a substitute',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    fake.coachExerciseRows.add(<String, dynamic>{
+      'id': 'coach:pin-squat',
+      'name': 'Pin Squat',
+      'body_part': 'Quads',
+      'equipment': 'barbell',
+      'note': 'Pause on the pins.',
+      'video_url': 'https://example.com/pin-squat',
+      'image_path': null,
+      'gif_path': null,
+      'is_coach_exercise': true,
+    });
+    fake.programDaysOverride = <Map<String, dynamic>>[
+      <String, dynamic>{
+        'day_name': 'Lower 1',
+        'day_order': 1,
+        'warmup_exercises': <dynamic>[],
+        'exercises': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'exercise_id': 'coach:pin-squat',
+            'exercise_name': 'Pin Squat',
+            'body_part': 'Quads',
+            'equipment': 'barbell',
+            'note': 'Pause on the pins.',
+            'video_url': 'https://example.com/pin-squat',
+            'is_coach_exercise': true,
+            'target_sets': 2,
+            'target_reps_min': 5,
+            'target_reps_max': 8,
+            'target_rpe': 8.0,
+            'rest_seconds': 180,
+            'suggested_substitutes': <dynamic>[],
+          },
+        ],
+      },
+    ];
+
+    await _pumpProgram(tester, fake);
+    expect(find.text('Pause on the pins.'), findsOneWidget);
+    expect(find.text('Watch exercise video'), findsOneWidget);
+
+    final Finder actions = find.byTooltip('More actions for Pin Squat');
+    await tester.ensureVisible(actions);
+    await tester.tap(actions);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Substitute exercise'));
+    await tester.pumpAndSettle();
+    await _pumpUntilFound(tester, find.text('Replace exercise'));
+    await tester.enterText(find.byType(TextField).last, 'Pin Squat');
+    await tester.tap(find.text('Search').last);
+    await _pumpUntilFound(tester, find.text('No matching exercise found.'));
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byIcon(Icons.fitness_center),
+      ),
+      findsNothing,
+    );
+  });
+
   testWidgets(
       'Arabic program labels translate while split and exercise names remain',
       (tester) async {
