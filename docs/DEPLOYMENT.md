@@ -1246,10 +1246,10 @@ the Fly `UI_BASE_URL` change.
 ADR 040; event contracts in [ANALYTICS.md](ANALYTICS.md). Analytics stays off
 everywhere until these keys are set, so this can be done at any time.
 
-**Prerequisite — privacy policy.** The live privacy policy
-(`docs/PRIVACY_POLICY.md`, served at `/privacy`) must name PostHog before any
-key is used in production; the owner-approval draft is in ANALYTICS.md
-("Privacy-notice draft").
+**Privacy policy.** The live policy (`docs/PRIVACY_POLICY.md`, served at
+`/privacy`, version 1.2) names PostHog and the opt-out; keep it in step with
+ANALYTICS.md whenever what is sent changes. The served page updates with the
+next `fly deploy`.
 
 **1. PostHog project settings** (EU Cloud, project MAYOS):
 - Project settings → **Discard client IP data: ON**.

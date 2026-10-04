@@ -121,8 +121,11 @@ def test_privacy_page_discloses_coach_access_hosted_ai_and_retention(api):
     # Deletion is offered in-app and at the external URL.
     assert 'href="/account/delete-request"' in body
     assert "Settings &rarr; Profile &rarr; Delete account" in body or "Settings → Profile → Delete account" in body
-    # Analytics honesty: none are sent today.
-    assert "does not send product analytics in this release" in body
+    # Analytics: the processor, what is never sent, and the opt-out are named.
+    assert "PostHog (EU Cloud)" in body
+    assert "never contain free text" in body
+    assert "turn product analytics off" in body
+    assert "does not send product analytics" not in body
     # Coach-visible fields from the coach history/roster schemas.
     assert "time zone" in body
     assert "performed-date corrections" in body

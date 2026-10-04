@@ -9,7 +9,8 @@
 #
 # Env file: MAYOS_WEB_ENV (default ~/.config/mayos/web.env) is sourced when it
 # exists; variables already set in the shell take precedence. It holds:
-#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID   (required, wrangler auth)
+#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID   (wrangler auth; optional when
+#                                                 `npx wrangler login` is active)
 #   GOOGLE_WEB_CLIENT_ID                          (Google sign-in button)
 #   POSTHOG_CLIENT_KEY                            (public PostHog project key)
 # Optional env: PAGES_PROJECT (default mayos), MAYOS_API_BASE_URL
@@ -30,8 +31,10 @@ fi
 
 cd "$(dirname "$0")/../mobile"
 
-: "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN (Cloudflare Pages: Edit)}"
-: "${CLOUDFLARE_ACCOUNT_ID:?set CLOUDFLARE_ACCOUNT_ID}"
+if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]] && ! npx --yes wrangler@latest whoami >/dev/null 2>&1; then
+  echo "error: set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID (Cloudflare Pages: Edit) or run 'npx wrangler login'." >&2
+  exit 1
+fi
 project="${PAGES_PROJECT:-mayos}"
 api_url="${MAYOS_API_BASE_URL:-https://mayos-api.fly.dev}"
 branch="${PAGES_BRANCH:-main}"

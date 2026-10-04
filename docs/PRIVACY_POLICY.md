@@ -97,12 +97,31 @@ recipient address and message content to deliver it.
 
 ### Product analytics
 
-**MAYOS does not send product analytics in this release.** There is no
-third-party analytics, advertising, or session-replay SDK in the app or the
-service, and crash reports are not uploaded by the app itself. If product
-analytics are added later they will be observational and pseudonymous (no
-usernames, emails, free text, or IP addresses, with an in-app opt-out), and
-this policy and the app will be updated before anything is sent.
+MAYOS uses **PostHog (EU Cloud)** as a product-analytics processor to measure
+how the service is used — onboarding, workouts, coaching, programs, and AI.
+The service, and release builds of the Android and web app, send
+**pseudonymous events** tied to your immutable internal account id, never to
+your username or email.
+
+- Events carry only allowlisted facts: the event name, your capability
+  (player or coach), the app platform and version, counts, durations, and
+  similar coded values. They never contain free text, chat messages, onboarding
+  answers, check-in notes, prompts or AI responses, exercise names, loads, or
+  other workout contents.
+- Usernames, emails, passwords, and sign-in tokens are never sent. IP addresses
+  are discarded: the PostHog project is configured not to store client IP
+  data, and the app turns off session recording, autocapture, and similar
+  automatic collection.
+- When you register we record where you came from, once: campaign labels from
+  the link you opened (such as `utm_source`), the referring website's host name
+  (never the full address), the Android install referrer's campaign labels, and
+  the coach whose invite you first redeemed. This record is never changed
+  afterwards.
+- **You can turn product analytics off** in Settings. When it is off, MAYOS
+  stops sending events about your account from both the service and the app;
+  the choice is stored with your account and applies on every device you sign
+  in on. A coach's own events (for example, that their roster grew) are subject
+  to the coach's choice and never identify you.
 
 ### Model usage records
 
@@ -263,6 +282,10 @@ model usage records described above, attributed to your coach's account.
   cannot bring you back.
 - **Model usage rows** stay after deletion, keyed only by the opaque account
   id, for cost reconciliation.
+- **Product analytics**: deleting your account removes your registration-source
+  record and your analytics choice, and asks PostHog to delete your analytics
+  person and its events. If PostHog cannot be reached, MAYOS keeps retrying
+  automatically until the request succeeds.
 - **Other people's history**: check-ins you wrote as a coach and programs you
   published stay in the players' own accounts (you appear as "Former coach"),
   because those records are part of their history.

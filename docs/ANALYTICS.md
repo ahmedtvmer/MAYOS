@@ -463,7 +463,10 @@ records.
 | Assignment invite redemption failures by coded reason (trend) | invite_redemption_failed | reason_code, platform, app_version, role. |
 | Alert lifecycle delay and unresolved volume (trend) | coach_alert_created, coach_alert_acknowledged, coach_alert_resolved; operational alert rows for current open count | alert_kind, platform, signup_phase, plan. |
 
-## Privacy-notice draft — Draft — awaiting owner approval
+## Privacy notice — approved by the owner 2026-10-05
+
+Published as the "Product analytics" section of PRIVACY_POLICY.md (policy
+version 1.2). The approved summary:
 
 MAYOS uses PostHog (EU) as a product-analytics processor. MAYOS sends
 pseudonymous events associated with an immutable Account id to measure feature
