@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from service import account_deletion as account_deletion_service
+from service import coach_analytics
 from service.check_ins import evaluate_follow_up
 from service.missed_day_alerts import evaluate_assignment
 
@@ -29,6 +30,7 @@ def run_sweep(db: Any, now: datetime | None = None) -> dict[str, int]:
     ledger (ADR 031).
     """
     now = now or datetime.now(UTC)
+    coach_analytics.prune_daily_markers(db, now)
     counts = {
         "evaluated": 0,
         "skipped": 0,

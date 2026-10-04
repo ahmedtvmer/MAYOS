@@ -5,9 +5,9 @@
   },
   "class": "DatabaseManager",
   "methods": {
-    "acknowledge_coach_alert": {
+    "acknowledge_coach_alert_transition": {
       "kind": "method",
-      "signature": "(self, alert_id: str, coach_account_id: str, now_iso: str) -> dict[str, typing.Any] | None"
+      "signature": "(self, alert_id: str, coach_account_id: str, now_iso: str) -> tuple[dict[str, typing.Any] | None, bool]"
     },
     "bump_account_session_epoch": {
       "kind": "method",
@@ -20,6 +20,10 @@
     "catalog_transaction": {
       "kind": "method",
       "signature": "(self, *, immediate: bool = False) -> Iterator[NoneType]"
+    },
+    "claim_coach_analytics_daily_marker": {
+      "kind": "method",
+      "signature": "(self, coach_account_id: str, event_kind: str, utc_day: str, assignment_id: str | None = None) -> bool"
     },
     "claim_model_spend_alert": {
       "kind": "method",
@@ -297,6 +301,10 @@
       "kind": "method",
       "signature": "(self, now_iso: str) -> int"
     },
+    "prune_coach_analytics_daily_markers": {
+      "kind": "method",
+      "signature": "(self, before_utc_day: str) -> int"
+    },
     "prune_expired_notice_claims": {
       "kind": "method",
       "signature": "(self, cutoff: str) -> int"
@@ -333,9 +341,9 @@
       "kind": "method",
       "signature": "(self, *, full: bool = False) -> int"
     },
-    "resolve_coach_alert": {
+    "resolve_coach_alert_transition": {
       "kind": "method",
-      "signature": "(self, alert_id: str, coach_account_id: str, now_iso: str, resolved_by: str) -> dict[str, typing.Any] | None"
+      "signature": "(self, alert_id: str, coach_account_id: str, now_iso: str, resolved_by: str) -> tuple[dict[str, typing.Any] | None, bool]"
     },
     "revoke_coach_invite": {
       "kind": "method",

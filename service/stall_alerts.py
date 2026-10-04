@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from service.coach_notices import notify_coach, player_display_name
+from service import coach_analytics
 
 STALL_KIND = "stall"
 STALL_ALERT_THRESHOLD = 8
@@ -41,12 +42,11 @@ def evaluate_commit(
     """Open, extend, or close the one stall episode for a committing session."""
     now_iso = (now or datetime.now(UTC)).isoformat()
     assignment_id = str(assignment["assignment_id"])
-    notices = False
+    created_alert = None
     with db.catalog_transaction():
         if db.is_stall_session_processed(assignment_id, session_id):
             return {"evaluated": False, "alerts_created": 0, "alerts_resolved": 0}
         missed_streak = db.get_roster_missed_streak(assignment_id)
-        created = 0
         resolved = 0
         state = db.get_alert_signal_state(assignment_id, STALL_KIND, "")
         if missed_streak > 0 or stall_length < STALL_ALERT_THRESHOLD or not window_start_date:
@@ -57,20 +57,22 @@ def evaluate_commit(
             # remains reduced evidence on the alert itself.
             dedupe_key = session_id
             details = {"stall_length": int(stall_length), "window_start_date": str(window_start_date)}
-            inserted = db.insert_coach_alert(
-                uuid.uuid4().hex,
-                assignment_id,
-                assignment["coach_account_id"],
-                assignment["player_account_id"],
-                STALL_KIND,
-                dedupe_key,
-                details,
-                now_iso,
+            inserted = coach_analytics.create_coach_alert(
+                db,
+                coach_analytics.CoachAlertDraft(
+                    alert_id=uuid.uuid4().hex,
+                    assignment_id=assignment_id,
+                    coach_account_id=assignment["coach_account_id"],
+                    player_account_id=assignment["player_account_id"],
+                    alert_kind=STALL_KIND,
+                    dedupe_key=dedupe_key,
+                    details=details,
+                    created_at=now_iso,
+                ),
             )
             db.upsert_alert_signal_state(assignment_id, STALL_KIND, "", 1, dedupe_key, now_iso)
             if inserted["created"]:
-                created = 1
-                notices = True
+                created_alert = inserted["alert"]
         else:
             dedupe_key = str(state["episode_key"])
             alert = db.get_coach_alert_by_dedupe(assignment_id, STALL_KIND, dedupe_key)
@@ -80,7 +82,7 @@ def evaluate_commit(
                     {"stall_length": int(stall_length), "window_start_date": alert["details"]["window_start_date"]},
                 )
         db.mark_stall_session_processed(assignment_id, session_id, now_iso)
-    if notices:
+    if created_alert is not None:
         notify_coach(
             db,
             assignment,
@@ -88,4 +90,8 @@ def evaluate_commit(
             f"{player_display_name(db, assignment)} has a stall alert. Review the alert in your roster.",
             now_iso,
         )
-    return {"evaluated": True, "alerts_created": created, "alerts_resolved": resolved}
+    return {
+        "evaluated": True,
+        "alerts_created": int(created_alert is not None),
+        "alerts_resolved": resolved,
+    }

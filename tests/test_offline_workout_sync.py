@@ -226,7 +226,9 @@ def _sync_body(*, client_session_id=CLIENT_ID, version, day_order=1, performed_d
     }
 
 
-def test_roster_stall_length_recounts_commits_and_replays_through_routes(api, monkeypatch):
+def test_roster_stall_length_recounts_commits_and_replays_through_routes(
+    api, monkeypatch, recording_analytics
+):
     client, db = api
     coach_headers = _make_coach(client, db, "coach")
     player = _register(client, "p1")
@@ -315,7 +317,7 @@ def test_roster_stall_length_recounts_commits_and_replays_through_routes(api, mo
     assert not [alert for alert in client.get("/coach/alerts", headers=coach_headers).json()["alerts"] if alert["kind"] == "stall"]
 
     eighth_id = "41111111-1111-4111-8111-111111111111"
-    commit(eighth_id, "2026-09-29", current=FIXED_NOW + timedelta(days=3))
+    eighth = commit(eighth_id, "2026-09-29", current=FIXED_NOW + timedelta(days=3))
     stall_alerts = client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
     stall_alerts = [alert for alert in stall_alerts if alert["kind"] == "stall"]
     coach_id = db.get_active_account_by_username("coach")["account_id"]
@@ -333,6 +335,21 @@ def test_roster_stall_length_recounts_commits_and_replays_through_routes(api, mo
     assert stall_alert["exercise_name"] is None
     assert stall_alert["top_load"] is None
     assert "player_account_id" not in stall_alert
+    created_events = [
+        event
+        for event in recording_analytics.events
+        if event["event"] == "coach_alert_created"
+        and event["properties"]["alert_kind"] == "stall"
+    ]
+    assert len(created_events) == 1
+    replayed_eighth = commit(eighth_id, "2026-09-29", current=FIXED_NOW + timedelta(days=3))
+    assert replayed_eighth.json() == eighth.json()
+    assert len([
+        event
+        for event in recording_analytics.events
+        if event["event"] == "coach_alert_created"
+        and event["properties"]["alert_kind"] == "stall"
+    ]) == 1
     coach_id = db.get_active_account_by_username("coach")["account_id"]
     notices = [notice for notice in db.list_assignment_notices(coach_id) if notice["kind"] == "stall"]
     assert len(notices) == 1
@@ -1816,3 +1833,125 @@ def test_imported_count_is_excluded_when_a_later_commit_reaches_checkpoint(api):
         "SELECT checkpoint, period_start, period_end FROM checkpoint_reviews"
     ).fetchone()
     assert tuple(review) == (10, "2026-09-17", "2026-09-26")
+
+
+def test_workout_commit_emits_progression_alert_events_once_through_http(
+    api, monkeypatch, recording_analytics
+):
+    client, db = api
+    player_headers, version = _prepare_player(client, db, "progression-analytics-player")
+    coach_headers = _make_coach(client, db, "progression-analytics-coach")
+    assignment_id = _assign(client, coach_headers, player_headers)
+    coach_id = db.get_active_account_by_username("progression-analytics-coach")["account_id"]
+
+    original_capture = recording_analytics.capture
+
+    def capture_after_alert_commit(account_id, event, event_uuid, properties):
+        if event == "coach_alert_created":
+            assert not db.catalog_conn.in_transaction
+            row = db.catalog_conn.execute(
+                "SELECT alert_id FROM coach_alerts WHERE coach_account_id = ?",
+                (account_id,),
+            ).fetchall()
+            assert any(
+                analytics.deterministic_event_uuid(event, f"{item[0]}:created")
+                == event_uuid
+                for item in row
+            )
+        original_capture(account_id, event, event_uuid, properties)
+
+    monkeypatch.setattr(recording_analytics, "capture", capture_after_alert_commit)
+    deload_payload = _sync_body(
+        client_session_id="99111111-1111-4111-8111-111111111111",
+        version=version,
+        captured_at=FIXED_NOW.isoformat(),
+    )
+    deload_payload["readiness"] = 1
+    deload_commit = client.post(
+        "/workouts/sessions", headers=player_headers, json=deload_payload
+    )
+    assert deload_commit.status_code == 201, deload_commit.text
+
+    baseline_payload = _sync_body(
+        client_session_id="99222222-2222-4222-8222-222222222222",
+        version=version,
+        captured_at=FIXED_NOW.isoformat(),
+    )
+    baseline_commit = client.post(
+        "/workouts/sessions", headers=player_headers, json=baseline_payload
+    )
+    assert baseline_commit.status_code == 201, baseline_commit.text
+
+    regression_payload = _sync_body(
+        client_session_id="99333333-3333-4333-8333-333333333333",
+        version=version,
+        captured_at=FIXED_NOW.isoformat(),
+    )
+    for exercise in regression_payload["sets"]:
+        for logged_set in exercise["sets"]:
+            logged_set["weight_kg"] = float(logged_set["weight_kg"]) * 0.75
+    regression_commit = client.post(
+        "/workouts/sessions", headers=player_headers, json=regression_payload
+    )
+    assert regression_commit.status_code == 201, regression_commit.text
+    replayed = client.post(
+        "/workouts/sessions", headers=player_headers, json=regression_payload
+    )
+    assert replayed.status_code == 200, replayed.text
+    alert_events = [
+        event
+        for event in recording_analytics.events
+        if event["event"] == "coach_alert_created"
+    ]
+    assert {event["properties"]["alert_kind"] for event in alert_events} == {
+        "deload_recommended",
+        "performance_regression",
+    }
+    assert len({event["uuid"] for event in alert_events}) == len(alert_events)
+    assert all(event["distinct_id"] == coach_id for event in alert_events)
+    assert all(
+        set(event["properties"]) == {"role", "platform", "app_version", "env", "alert_kind"}
+        for event in alert_events
+    )
+    assert assignment_id == db.get_active_assignment_for_player(
+        db.get_active_account_by_username("progression-analytics-player")["account_id"]
+    )["assignment_id"]
+
+
+def test_workout_commit_emits_missed_day_alert_after_attendance_write(api, recording_analytics):
+    client, db = api
+    player_headers, version = _prepare_player(client, db, "missed-commit-player")
+    coach_headers = _make_coach(client, db, "missed-commit-coach")
+    assignment_id = _assign(client, coach_headers, player_headers)
+    coach_id = db.get_active_account_by_username("missed-commit-coach")["account_id"]
+    db.switch_user("missed-commit-player")
+    db.ledger.append_training_schedule(
+        "missed-commit-player",
+        [1, 2, 3, 4, 5, 6, 7],
+        "UTC",
+        "2026-09-01",
+        "2026-09-01T00:00:00+00:00",
+    )
+    db.catalog_conn.execute(
+        "UPDATE assignments SET started_at = ? WHERE assignment_id = ?",
+        ("2026-09-01T00:00:00+00:00", assignment_id),
+    )
+    db.catalog_conn.commit()
+    payload = _sync_body(
+        client_session_id="99111111-2222-4222-8222-111111111111",
+        version=version,
+        performed_date="2026-09-26",
+        captured_at=FIXED_NOW.isoformat(),
+    )
+    committed = client.post("/workouts/sessions", headers=player_headers, json=payload)
+    assert committed.status_code == 201, committed.text
+    replayed = client.post("/workouts/sessions", headers=player_headers, json=payload)
+    assert replayed.status_code == 200, replayed.text
+    events = [
+        event
+        for event in recording_analytics.events
+        if event["event"] == "coach_alert_created"
+        and event["properties"]["alert_kind"] == "missed_expected_days"
+    ]
+    assert len(events) == 1
+    assert events[0]["distinct_id"] == coach_id

@@ -5,6 +5,7 @@ import sys
 import threading
 from contextlib import contextmanager
 from pathlib import Path
+from collections.abc import Callable
 from typing import Iterator
 
 import sqlite_vec
@@ -34,6 +35,7 @@ from database.registry.coach_invites import RegistryCoachInvitesMixin
 from database.registry.assignments import RegistryAssignmentsMixin
 from database.registry.program_requests import RegistryProgramRequestsMixin
 from database.registry.coach_alerts import RegistryCoachAlertsMixin
+from database.registry.coach_analytics import RegistryCoachAnalyticsMixin
 from database.registry.check_ins import RegistryCheckInsMixin
 from database.registry.model_usage import RegistryModelUsageMixin
 from database.registry.coach_exercises import RegistryCoachExercisesMixin
@@ -62,6 +64,7 @@ class DatabaseManager(
     RegistryAssignmentsMixin,
     RegistryProgramRequestsMixin,
     RegistryCoachAlertsMixin,
+    RegistryCoachAnalyticsMixin,
     RegistryCheckInsMixin,
     RegistryModelUsageMixin,
     RegistryCoachExercisesMixin,
@@ -205,10 +208,13 @@ class DatabaseManager(
         so a competing connection cannot make a stale decision from the same
         username state.
         """
+        callbacks: list[Callable[[], None]] = []
         with self._catalog_lock:
             depth = getattr(self._local, "catalog_tx_depth", 0)
             self._local.catalog_tx_depth = depth + 1
             outermost = depth == 0
+            if outermost:
+                self._local.catalog_after_commit = []
             original_isolation = self.catalog_conn.isolation_level
             try:
                 if outermost:
@@ -222,10 +228,21 @@ class DatabaseManager(
             else:
                 if outermost:
                     self.catalog_conn.execute("COMMIT")
+                    callbacks = list(self._local.catalog_after_commit)
             finally:
                 self._local.catalog_tx_depth = depth
                 if outermost:
                     self.catalog_conn.isolation_level = original_isolation
+                    del self._local.catalog_after_commit
+        for callback in callbacks:
+            callback()
+
+    def _after_catalog_commit(self, callback: Callable[[], None]) -> None:
+        """Runs ``callback`` now or after the current outer catalog transaction commits."""
+        if getattr(self._local, "catalog_tx_depth", 0) == 0:
+            callback()
+        else:
+            self._local.catalog_after_commit.append(callback)
 
     def _commit_catalog(self) -> None:
         """Commits a standalone catalog write, or defers to the active transaction."""

@@ -8,6 +8,7 @@ from service import analytics
 from service.profile_change_alerts import normalize_profile_value
 from service.programs import COACH_CONTROLLED_ERROR, player_controls_program
 from service.program_analytics import ProgramAnalyticsActor, capture_program_generated
+from service import profile_change_alerts
 from utils.equipment_access import map_equipment_access
 
 # Profile facts that alter program structure. The intake API exposes this list
@@ -61,6 +62,15 @@ def update_profile(
         )
         updated = {**profile, **payload}
         ledger.upsert_player_profile(updated)
+        profile_change_alerts.record_profile_change(
+            db,
+            profile_change_alerts.ProfileChangeSnapshot(
+                player_account_id=player_account_id,
+                before_profile=profile,
+                after_profile=updated,
+                client=client,
+            ),
+        )
         program = None
         program_blocked = False
         if rebuild_requested:

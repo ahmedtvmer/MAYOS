@@ -34,6 +34,7 @@ from typing import Any
 
 from core.deload_choices import DELOAD_CHOICES
 from service.coach_notices import notify_coach, player_display_name
+from service import coach_analytics
 
 logger = logging.getLogger(__name__)
 
@@ -187,15 +188,18 @@ def _open_alert(
     now_iso: str,
 ) -> dict[str, Any]:
     """Insert-or-ignore the alert that opens an episode."""
-    return db.insert_coach_alert(
-        uuid.uuid4().hex,
-        assignment["assignment_id"],
-        assignment["coach_account_id"],
-        assignment["player_account_id"],
-        signal.kind,
-        _dedupe_key(signal.subject, session_id),
-        signal.details,
-        now_iso,
+    return coach_analytics.create_coach_alert(
+        db,
+        coach_analytics.CoachAlertDraft(
+            alert_id=uuid.uuid4().hex,
+            assignment_id=assignment["assignment_id"],
+            coach_account_id=assignment["coach_account_id"],
+            player_account_id=assignment["player_account_id"],
+            alert_kind=signal.kind,
+            dedupe_key=_dedupe_key(signal.subject, session_id),
+            details=signal.details,
+            created_at=now_iso,
+        ),
     )
 
 
@@ -206,15 +210,15 @@ def _open_or_extend(
     session_id: str,
     session_date: str,
     now_iso: str,
-) -> bool:
-    """Opens a new episode or extends the active one; returns whether an alert was created."""
+) -> dict[str, Any] | None:
+    """Opens a new episode or extends the active one, returning a newly created alert."""
     assignment_id = assignment["assignment_id"]
     state = db.get_alert_signal_state(assignment_id, signal.kind, signal.subject)
 
     if state is None or not int(state["active"]):
         inserted = _open_alert(db, assignment, signal, session_id, now_iso)
         db.upsert_alert_signal_state(assignment_id, signal.kind, signal.subject, 1, session_id, now_iso)
-        return bool(inserted["created"])
+        return inserted["alert"] if inserted["created"] else None
 
     episode_key = str(state["episode_key"])
     alert = db.get_coach_alert_by_dedupe(
@@ -234,7 +238,7 @@ def _open_or_extend(
         }
         db.update_coach_alert_details(alert["alert_id"], details)
     db.upsert_alert_signal_state(assignment_id, signal.kind, signal.subject, 1, episode_key, now_iso)
-    return False
+    return None
 
 
 def _close_episode(db: Any, assignment_id: str, kind: str, subject: str, now_iso: str) -> int:
@@ -288,7 +292,7 @@ def evaluate_commit(
         return _noop_result()
 
     assignment_id = assignment["assignment_id"]
-    notices: list[CommitSignal] = []
+    notices: list[tuple[CommitSignal, dict[str, Any]]] = []
     result = _noop_result()
     with db.catalog_transaction():
         if db.is_progression_session_processed(assignment_id, session_id):
@@ -300,9 +304,10 @@ def evaluate_commit(
         fired = {(signal.kind, signal.subject) for signal in signals}
         created = 0
         for signal in signals:
-            if _open_or_extend(db, assignment, signal, session_id, session_date, now_iso):
+            alert = _open_or_extend(db, assignment, signal, session_id, session_date, now_iso)
+            if alert is not None:
                 created += 1
-                notices.append(signal)
+                notices.append((signal, alert))
 
         resolved = 0
         if (DELOAD_KIND, "") not in fired:
@@ -323,6 +328,6 @@ def evaluate_commit(
             "signals": len(signals),
         }
 
-    for signal in notices:
+    for signal, _alert in notices:
         _notify(db, assignment, signal, now_iso)
     return result

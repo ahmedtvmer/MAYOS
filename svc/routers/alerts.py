@@ -11,6 +11,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
+from service import analytics as analytics_service
 from service import missed_day_alerts as alerts_service
 from service.assignments import DENIED_ERROR
 from svc.dependencies import VerifiedPlayer, get_current_coach, get_db
@@ -31,6 +32,7 @@ def _no_active_assignment() -> HTTPException:
 
 @router.get("", response_model=CoachAlertListOut)
 async def list_coach_alerts(
+    request: Request,
     coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
     state: Annotated[list[str] | None, Query()] = None,
@@ -43,7 +45,10 @@ async def list_coach_alerts(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="state must be new, acknowledged, or resolved.",
             )
-    rows = await asyncio.to_thread(alerts_service.list_alerts, db, coach.account_id, states)
+    client = analytics_service.client_context(request)
+    rows = await asyncio.to_thread(
+        alerts_service.list_alerts, db, coach.account_id, states, client=client
+    )
     return CoachAlertListOut(alerts=[CoachAlertOut(**row) for row in rows])
 
 
@@ -57,7 +62,11 @@ async def acknowledge_coach_alert(
 ):
     """Acknowledges one of the coach's alerts; an already-acknowledged alert is idempotent."""
     alert = await asyncio.to_thread(
-        alerts_service.acknowledge_alert, db, coach.account_id, alert_id
+        alerts_service.acknowledge_alert,
+        db,
+        coach.account_id,
+        alert_id,
+        client=analytics_service.client_context(request),
     )
     if alert is None:
         raise _no_active_assignment()
@@ -73,7 +82,13 @@ async def resolve_coach_alert(
     db: Annotated[Any, Depends(get_db)],
 ):
     """Resolves one of the coach's alerts; an already-resolved alert is idempotent."""
-    alert = await asyncio.to_thread(alerts_service.resolve_alert, db, coach.account_id, alert_id)
+    alert = await asyncio.to_thread(
+        alerts_service.resolve_alert,
+        db,
+        coach.account_id,
+        alert_id,
+        client=analytics_service.client_context(request),
+    )
     if alert is None:
         raise _no_active_assignment()
     return CoachAlertOut(**alert)

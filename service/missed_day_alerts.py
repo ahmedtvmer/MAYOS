@@ -29,6 +29,8 @@ from service.attendance import AttendanceEvaluation, evaluate_attendance
 from service.coach_notices import notify_coach, player_display_name
 from service.schedule import local_date_in, timezone_for_versions
 from service import stall_alerts
+from service import coach_analytics
+from service import analytics as analytics_service
 
 logger = logging.getLogger(__name__)
 
@@ -178,15 +180,18 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any], now: datetime | Non
             "last_missed_date": evaluation.trailing_streak_last.isoformat(),
             "missed_count": streak,
         }
-        inserted = db.insert_coach_alert(
-            uuid.uuid4().hex,
-            assignment_id,
-            coach_account_id,
-            player_account_id,
-            MISSED_DAY_KIND,
-            streak_start,
-            details,
-            now_iso,
+        inserted = coach_analytics.create_coach_alert(
+            db,
+            coach_analytics.CoachAlertDraft(
+                alert_id=uuid.uuid4().hex,
+                assignment_id=assignment_id,
+                coach_account_id=coach_account_id,
+                player_account_id=player_account_id,
+                alert_kind=MISSED_DAY_KIND,
+                dedupe_key=streak_start,
+                details=details,
+                created_at=now_iso,
+            ),
         )
         if inserted["created"]:
             created = 1
@@ -247,13 +252,25 @@ def present_alert(alert: dict[str, Any]) -> dict[str, Any]:
     return presented
 
 
-def list_alerts(db: Any, coach_account_id: str, states: tuple[str, ...]) -> list[dict[str, Any]]:
+def list_alerts(
+    db: Any,
+    coach_account_id: str,
+    states: tuple[str, ...],
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
+) -> list[dict[str, Any]]:
     """Catalog-only alert list for the coach's active assignments, newest-first.
 
     Unknown states are dropped; an empty selection lists nothing.
     """
     allowed = tuple(state for state in states if state in ALERT_STATES)
-    return [present_alert(alert) for alert in db.list_coach_alerts(coach_account_id, allowed)]
+    alerts = [present_alert(alert) for alert in db.list_coach_alerts(coach_account_id, allowed)]
+    if any(alert["state"] == "new" for alert in alerts):
+        coach_analytics.capture_coach_alerts_viewed(
+            db,
+            coach_analytics.CoachDailyView(coach_account_id, client=client),
+        )
+    return alerts
 
 
 def _active_alert(db: Any, coach_account_id: str, alert_id: Any) -> dict[str, Any] | None:
@@ -274,7 +291,13 @@ def _with_player_username(db: Any, alert: dict[str, Any]) -> dict[str, Any]:
     return present_alert(alert)
 
 
-def acknowledge_alert(db: Any, coach_account_id: str, alert_id: Any) -> dict[str, Any] | None:
+def acknowledge_alert(
+    db: Any,
+    coach_account_id: str,
+    alert_id: Any,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
+) -> dict[str, Any] | None:
     """Acknowledges an alert (``new`` → ``acknowledged``); already acknowledged is idempotent.
 
     A resolved alert stays resolved. ``None`` is the generic denial for an
@@ -282,17 +305,33 @@ def acknowledge_alert(db: Any, coach_account_id: str, alert_id: Any) -> dict[str
     """
     if _active_alert(db, coach_account_id, alert_id) is None:
         return None
-    result = db.acknowledge_coach_alert(
-        str(alert_id), coach_account_id, datetime.now(UTC).isoformat()
+    now = datetime.now(UTC)
+    alert_row, transitioned = db.acknowledge_coach_alert_transition(
+        str(alert_id), coach_account_id, now.isoformat()
     )
-    return _with_player_username(db, result) if result else None
+    presented = _with_player_username(db, alert_row) if alert_row is not None else None
+    if presented is not None and transitioned:
+        coach_analytics.capture_coach_alert_acknowledged(
+            alert_row, now, client=client
+        )
+    return presented
 
 
-def resolve_alert(db: Any, coach_account_id: str, alert_id: Any) -> dict[str, Any] | None:
+def resolve_alert(
+    db: Any,
+    coach_account_id: str,
+    alert_id: Any,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
+) -> dict[str, Any] | None:
     """Resolves an alert as the coach; already resolved is idempotent, denial is ``None``."""
     if _active_alert(db, coach_account_id, alert_id) is None:
         return None
-    result = db.resolve_coach_alert(
-        str(alert_id), coach_account_id, datetime.now(UTC).isoformat(), "coach"
+    now = datetime.now(UTC)
+    alert_row, transitioned = db.resolve_coach_alert_transition(
+        str(alert_id), coach_account_id, now.isoformat(), "coach"
     )
-    return _with_player_username(db, result) if result else None
+    presented = _with_player_username(db, alert_row) if alert_row is not None else None
+    if presented is not None and transitioned:
+        coach_analytics.capture_coach_alert_resolved(alert_row, now, client=client)
+    return presented

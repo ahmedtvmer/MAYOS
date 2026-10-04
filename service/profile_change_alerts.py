@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from service.coach_notices import notify_coach, player_display_name
+from service import analytics as analytics_service
+from service import coach_analytics
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +18,19 @@ PROFILE_CHANGE_KIND = "profile_change"
 PROFILE_CHANGE_FIELDS = ("injuries_or_limitations", "equipment_access")
 _OPEN_STATES = ("new", "acknowledged")
 
+
+@dataclass(frozen=True)
+class ProfileChangeSnapshot:
+    """The committed before/after profile values and request attribution."""
+
+    player_account_id: str | None
+    before_profile: dict[str, Any]
+    after_profile: dict[str, Any]
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT
+
+
 __all__ = [
+    "ProfileChangeSnapshot",
     "PROFILE_CHANGE_FIELDS",
     "PROFILE_CHANGE_KIND",
     "changed_fields",
@@ -67,20 +82,19 @@ def _episode_key(db: Any, assignment_id: str) -> tuple[str, dict[str, Any] | Non
 
 def record_profile_change(
     db: Any,
-    player_account_id: str | None,
-    before_profile: dict[str, Any],
-    after_profile: dict[str, Any],
+    snapshot: ProfileChangeSnapshot,
 ) -> None:
     """Best-effort profile-change alert after the Training profile write."""
+    player_account_id = snapshot.player_account_id
     if not player_account_id:
         return
-    changes = changed_fields(before_profile, after_profile)
+    changes = changed_fields(snapshot.before_profile, snapshot.after_profile)
     if not changes:
         return
 
     now_iso = datetime.now(UTC).isoformat()
     assignment = None
-    opened = False
+    created_alert = None
     try:
         with db.catalog_transaction():
             assignment = db.get_active_assignment_for_player(str(player_account_id))
@@ -107,18 +121,27 @@ def record_profile_change(
             if existing is not None:
                 db.update_coach_alert_details(existing["alert_id"], details)
                 return
-            inserted = db.insert_coach_alert(
-                uuid.uuid4().hex,
-                assignment["assignment_id"],
-                assignment["coach_account_id"],
-                str(player_account_id),
-                PROFILE_CHANGE_KIND,
-                dedupe_key,
-                details,
-                now_iso,
+            inserted = coach_analytics.create_coach_alert(
+                db,
+                coach_analytics.CoachAlertDraft(
+                    alert_id=uuid.uuid4().hex,
+                    assignment_id=assignment["assignment_id"],
+                    coach_account_id=assignment["coach_account_id"],
+                    player_account_id=str(player_account_id),
+                    alert_kind=PROFILE_CHANGE_KIND,
+                    dedupe_key=dedupe_key,
+                    details=details,
+                    created_at=now_iso,
+                ),
+                client=snapshot.client,
             )
-            opened = bool(inserted["created"])
-        if opened and assignment is not None:
+            if inserted["created"]:
+                created_alert = inserted["alert"]
+    except Exception:
+        logger.warning("Could not create profile-change Coach alert for account %s.", player_account_id, exc_info=True)
+        return
+    if assignment is not None and created_alert is not None:
+        try:
             notify_coach(
                 db,
                 assignment,
@@ -126,5 +149,5 @@ def record_profile_change(
                 f"{player_display_name(db, assignment)} changed their Training profile. Review the alert in your roster.",
                 now_iso,
             )
-    except Exception:
-        logger.warning("Could not create profile-change Coach alert for account %s.", player_account_id, exc_info=True)
+        except Exception:
+            logger.warning("Could not notify the Coach about a profile-change alert.", exc_info=True)

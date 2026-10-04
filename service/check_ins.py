@@ -32,6 +32,8 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from service.coach_notices import notify_coach, player_display_name
+from service import analytics as analytics_service
+from service import coach_analytics
 from service.schedule import local_date_in
 
 CHECK_IN_CHANNELS = (
@@ -143,7 +145,13 @@ def next_follow_up_on(
     return base + timedelta(days=FOLLOW_UP_CADENCE_DAYS)
 
 
-def evaluate_follow_up(db: Any, assignment: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
+def evaluate_follow_up(
+    db: Any,
+    assignment: dict[str, Any],
+    now: datetime | None = None,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
+) -> dict[str, Any]:
     """Reconciles the assignment's open follow-up alerts against the current due date.
 
     The single transition point for the follow-up kind:
@@ -177,15 +185,19 @@ def evaluate_follow_up(db: Any, assignment: dict[str, Any], now: datetime | None
 
     created = 0
     if is_due:
-        inserted = db.insert_coach_alert(
-            uuid.uuid4().hex,
-            assignment_id,
-            assignment["coach_account_id"],
-            assignment["player_account_id"],
-            FOLLOW_UP_KIND,
-            due_key,
-            {"due_on": due_key, "last_check_in_on": latest},
-            now_iso,
+        inserted = coach_analytics.create_coach_alert(
+            db,
+            coach_analytics.CoachAlertDraft(
+                alert_id=uuid.uuid4().hex,
+                assignment_id=assignment_id,
+                coach_account_id=assignment["coach_account_id"],
+                player_account_id=assignment["player_account_id"],
+                alert_kind=FOLLOW_UP_KIND,
+                dedupe_key=due_key,
+                details={"due_on": due_key, "last_check_in_on": latest},
+                created_at=now_iso,
+            ),
+            client=client,
         )
         if inserted["created"]:
             created = 1
@@ -221,6 +233,8 @@ def create_check_in(
     assignment_id: Any,
     payload: dict[str, Any],
     now: datetime | None = None,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
 ) -> dict[str, Any]:
     """Validates and records one check-in, then reconciles the follow-up alerts.
 
@@ -265,7 +279,10 @@ def create_check_in(
         note,
         now_iso,
     )
-    follow_up = evaluate_follow_up(db, assignment, now=now)
+    coach_analytics.capture_check_in_recorded(
+        coach_account_id, record["check_in_id"], client=client
+    )
+    follow_up = evaluate_follow_up(db, assignment, now=now, client=client)
     return {
         "ok": True,
         "check_in": record,

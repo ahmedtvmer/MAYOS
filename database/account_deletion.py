@@ -386,6 +386,18 @@ class AccountDeletionMixin:
                 "DELETE FROM coach_alerts WHERE coach_account_id = ? OR player_account_id = ?",
                 (account_id, account_id),
             )
+            if assignment_ids:
+                placeholders = ",".join("?" for _ in assignment_ids)
+                cursor.execute(
+                    "DELETE FROM coach_analytics_daily_markers"
+                    f" WHERE coach_account_id = ? OR assignment_id IN ({placeholders})",
+                    (account_id, *assignment_ids),
+                )
+            else:
+                cursor.execute(
+                    "DELETE FROM coach_analytics_daily_markers WHERE coach_account_id = ?",
+                    (account_id,),
+                )
             coach_ids = {assignment.coach_account_id for assignment in active_assignments}
             roster_counts_by_coach: dict[str, int] = {}
             if coach_ids:

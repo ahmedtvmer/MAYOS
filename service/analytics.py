@@ -178,6 +178,16 @@ def _onboarding_step() -> PropertyType:
 _PROGRAM_TRIGGERS = frozenset(
     {"onboarding", "profile_rebuild", "player_request", "synthesized", "coach_request"}
 )
+_COACH_ALERT_KINDS = frozenset(
+    {
+        "missed_expected_days",
+        "follow_up_due",
+        "profile_change",
+        "stall",
+        "deload_recommended",
+        "performance_regression",
+    }
+)
 _PROGRAM_REQUEST_KINDS = frozenset({"exercise_substitution", "split_change"})
 _PROGRAM_REQUEST_OUTCOMES = frozenset({"applied", "declined", "cancelled"})
 _PROGRAM_PROVENANCE = frozenset({"generated", "coach_published", "none"})
@@ -241,6 +251,7 @@ PROPERTY_TYPES: dict[str, PropertyType] = {
             }
         )
     ),
+    "alert_kind": _enum(_COACH_ALERT_KINDS),
 }
 PROPERTY_TYPES.update({name: _acquisition_value(name) for name in FIRST_TOUCH_ACQUISITION_FIELDS})
 _COMMON_PROPERTIES = {name: PROPERTY_TYPES[name] for name in ("role", "platform", "app_version", "env")}
@@ -343,6 +354,30 @@ EVENT_CATALOGUE: dict[str, EventContract] = {
     "schedule_pause_scheduled": EventContract(
         "server", {**_COMMON_PROPERTIES, "length_days": PROPERTY_TYPES["length_days"]}
     ),
+    "coach_alert_created": EventContract(
+        "server", {**_COMMON_PROPERTIES, "alert_kind": PROPERTY_TYPES["alert_kind"]}
+    ),
+    "coach_alerts_viewed": EventContract("server", dict(_COMMON_PROPERTIES)),
+    "coach_alert_acknowledged": EventContract(
+        "server",
+        {
+            **_COMMON_PROPERTIES,
+            "time_open_seconds": PROPERTY_TYPES["time_open_seconds"],
+            "is_coaching_action": PROPERTY_TYPES["is_coaching_action"],
+        },
+    ),
+    "coach_alert_resolved": EventContract(
+        "server",
+        {
+            **_COMMON_PROPERTIES,
+            "time_open_seconds": PROPERTY_TYPES["time_open_seconds"],
+            "is_coaching_action": PROPERTY_TYPES["is_coaching_action"],
+        },
+    ),
+    "check_in_recorded": EventContract(
+        "server", {**_COMMON_PROPERTIES, "is_coaching_action": PROPERTY_TYPES["is_coaching_action"]}
+    ),
+    "player_history_viewed": EventContract("server", dict(_COMMON_PROPERTIES)),
     "workout_sync_failed": EventContract(
         "server",
         {

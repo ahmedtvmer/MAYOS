@@ -10,6 +10,8 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from agent.progression_engine import set_e1rm
+from service import analytics as analytics_service
+from service import coach_analytics
 from service import training_status
 from service._base import ledger_scope
 from service.keyed_locks import KeyedLocks
@@ -430,7 +432,11 @@ def read_checkpoint_review(
 
 
 def coach_checkpoint_reviews(
-    db: Any, coach_account_id: str, assignment_id: str
+    db: Any,
+    coach_account_id: str,
+    assignment_id: str,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
 ) -> list[dict[str, Any]] | None:
     from service.assignments import authorized_player_ledger
 
@@ -439,11 +445,21 @@ def coach_checkpoint_reviews(
         return None
     ledger, context = authorized
     with ledger:
-        return list_checkpoint_reviews(db, context["player"]["ledger_id"], ledger)
+        reviews = list_checkpoint_reviews(db, context["player"]["ledger_id"], ledger)
+    coach_analytics.capture_player_history_viewed(
+        db,
+        coach_analytics.CoachDailyView(coach_account_id, assignment_id, client=client),
+    )
+    return reviews
 
 
 def coach_checkpoint_review(
-    db: Any, coach_account_id: str, assignment_id: str, checkpoint: int
+    db: Any,
+    coach_account_id: str,
+    assignment_id: str,
+    checkpoint: int,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
 ) -> dict[str, Any] | None:
     from service.assignments import authorized_player_ledger
 
@@ -456,4 +472,9 @@ def coach_checkpoint_review(
         if row is None:
             raise CheckpointReviewNotFoundError(checkpoint)
         language = resolve_display_language(context["player"]["account_id"])
-        return _neutral_review_from_row(row, language)
+        review = _neutral_review_from_row(row, language)
+    coach_analytics.capture_player_history_viewed(
+        db,
+        coach_analytics.CoachDailyView(coach_account_id, assignment_id, client=client),
+    )
+    return review

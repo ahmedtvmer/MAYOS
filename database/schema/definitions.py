@@ -590,6 +590,23 @@ class SchemaMixin:
                 CREATE INDEX IF NOT EXISTS idx_check_ins_assignment ON check_ins(assignment_id);
                 CREATE INDEX IF NOT EXISTS idx_check_ins_player ON check_ins(player_account_id);
 
+                -- Short-lived deduplication keys for coach analytics reads (ADR 040).
+                -- The assignment id is used only inside the registry key and is never
+                -- copied into an analytics event property.
+                CREATE TABLE IF NOT EXISTS coach_analytics_daily_markers (
+                    coach_account_id TEXT NOT NULL,
+                    assignment_id TEXT NOT NULL DEFAULT '',
+                    event_kind TEXT NOT NULL CHECK (event_kind IN ('coach_alerts_viewed', 'player_history_viewed')),
+                    utc_day TEXT NOT NULL,
+                    CHECK (
+                        (event_kind = 'coach_alerts_viewed' AND assignment_id = '') OR
+                        (event_kind = 'player_history_viewed' AND assignment_id <> '')
+                    ),
+                    PRIMARY KEY (coach_account_id, assignment_id, event_kind, utc_day)
+                );
+                CREATE INDEX IF NOT EXISTS idx_coach_analytics_daily_markers_day
+                    ON coach_analytics_daily_markers(utc_day);
+
                 -- Catalog-side episode state for the progression alerts (ADR 032,
                 -- ticket #33). ``subject`` is '' for the systemic deload signal and
                 -- the exercise id for performance regression, so a commit that does

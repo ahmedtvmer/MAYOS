@@ -121,6 +121,29 @@ def _assign(client, coach_headers, player_headers):
     return redeemed.json()["assignment"]["assignment_id"]
 
 
+def test_account_deletion_removes_coach_analytics_markers(api):
+    client, db, _ = api
+    coach_headers, coach_id = _make_coach(client, db, "marker-cleanup-coach")
+    player = _register(client, "marker-cleanup-player")
+    player_headers = _authed(player["access_token"])
+    assignment_id = _assign(client, coach_headers, player_headers)
+    day = "2026-10-04"
+    assert db.claim_coach_analytics_daily_marker(coach_id, "coach_alerts_viewed", day)
+    assert db.claim_coach_analytics_daily_marker(
+        coach_id, "player_history_viewed", day, assignment_id=assignment_id
+    )
+
+    response = client.request(
+        "DELETE", "/auth/account", headers=coach_headers, json={"password": "correct-horse-1"}
+    )
+    assert response.status_code == 200, response.text
+    with db.catalog_locked() as conn:
+        rows = conn.execute(
+            "SELECT coach_account_id, assignment_id FROM coach_analytics_daily_markers"
+        ).fetchall()
+    assert not [row for row in rows if row[0] == coach_id or row[1] == assignment_id]
+
+
 def _program(name: str = "Coach Plan") -> GeneratedProgramSchema:
     return GeneratedProgramSchema(
         program_name=name,

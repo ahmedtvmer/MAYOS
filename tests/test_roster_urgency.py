@@ -212,10 +212,16 @@ def _seed_alert(
         now_iso,
     )
     if state == "acknowledged":
-        acknowledged = db.acknowledge_coach_alert(alert_id, coach_account_id, now_iso)
+        acknowledged, transitioned = db.acknowledge_coach_alert_transition(
+            alert_id, coach_account_id, now_iso
+        )
+        assert transitioned
         assert acknowledged is not None and acknowledged["state"] == "acknowledged"
     elif state == "resolved":
-        resolved = db.resolve_coach_alert(alert_id, coach_account_id, now_iso, "coach")
+        resolved, transitioned = db.resolve_coach_alert_transition(
+            alert_id, coach_account_id, now_iso, "coach"
+        )
+        assert transitioned
         assert resolved is not None and resolved["state"] == "resolved"
     return alert_id
 

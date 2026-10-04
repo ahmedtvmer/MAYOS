@@ -8,6 +8,8 @@ so its existence is never revealed. Player-assistant chats are never read here.
 
 from typing import Any
 
+from service import analytics as analytics_service
+from service import coach_analytics
 from service import dashboard as dashboard_service
 from service.assignments import (  # noqa: F401  (DENIED_ERROR re-exported for routers)
     DENIED_ERROR,
@@ -79,7 +81,12 @@ def recent_sessions(ledger: Any, limit: int) -> list[dict[str, Any]]:
 
 
 def player_summary(
-    db: Any, coach_account_id: str, assignment_id: Any, days_lookback: int = 7
+    db: Any,
+    coach_account_id: str,
+    assignment_id: Any,
+    days_lookback: int = 7,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
 ) -> dict[str, Any] | None:
     """Identity, volume, latest session, and recent sessions for an assigned player."""
     authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
@@ -95,7 +102,7 @@ def player_summary(
                 latest_session.get("program_version"),
                 latest_session.get("active_program_version_at_sync"),
             )
-        return {
+        summary = {
             "player_username": context["player"]["username"],
             "started_at": context["assignment"]["started_at"],
             "status": context["assignment"]["status"],
@@ -107,10 +114,22 @@ def player_summary(
             "schedule": schedule,
             "pauses": pauses,
         }
+    coach_analytics.capture_player_history_viewed(
+        db,
+        coach_analytics.CoachDailyView(
+            coach_account_id, str(assignment_id), client=client
+        ),
+    )
+    return summary
 
 
 def player_personal_records(
-    db: Any, coach_account_id: str, assignment_id: Any, limit: int = 20
+    db: Any,
+    coach_account_id: str,
+    assignment_id: Any,
+    limit: int = 20,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
 ) -> list[dict[str, Any]] | None:
     """The assigned player's most recent personal records, newest-first."""
     authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
@@ -118,23 +137,50 @@ def player_personal_records(
         return None
     ledger, context = authorized
     with ledger:
-        return dashboard_service.recent_personal_records(
+        records = dashboard_service.recent_personal_records(
             db, context["player"]["ledger_id"], limit=limit, ledger=ledger
         )
+    coach_analytics.capture_player_history_viewed(
+        db,
+        coach_analytics.CoachDailyView(
+            coach_account_id, str(assignment_id), client=client
+        ),
+    )
+    return records
 
 
-def player_exercises(db: Any, coach_account_id: str, assignment_id: Any) -> list[dict[str, str]] | None:
+def player_exercises(
+    db: Any,
+    coach_account_id: str,
+    assignment_id: Any,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
+) -> list[dict[str, str]] | None:
     """The distinct exercises the assigned player has logged."""
     authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
     if authorized is None:
         return None
     ledger, context = authorized
     with ledger:
-        return dashboard_service.logged_exercises(db, context["player"]["ledger_id"], ledger=ledger)
+        exercises = dashboard_service.logged_exercises(
+            db, context["player"]["ledger_id"], ledger=ledger
+        )
+    coach_analytics.capture_player_history_viewed(
+        db,
+        coach_analytics.CoachDailyView(
+            coach_account_id, str(assignment_id), client=client
+        ),
+    )
+    return exercises
 
 
 def player_exercise_history(
-    db: Any, coach_account_id: str, assignment_id: Any, exercise_id: str
+    db: Any,
+    coach_account_id: str,
+    assignment_id: Any,
+    exercise_id: str,
+    *,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
 ) -> dict[str, Any] | None:
     """Progression history, latest caption, and records for one logged exercise."""
     authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
@@ -144,9 +190,16 @@ def player_exercise_history(
     with ledger:
         ledger_id = context["player"]["ledger_id"]
         history = dashboard_service.exercise_history(db, ledger_id, exercise_id, ledger=ledger)
-        return {
+        history_payload = {
             "history": history,
             "caption": dashboard_service.latest_record_caption(history),
             "records": dashboard_service.exercise_records(db, ledger_id, exercise_id, ledger=ledger),
             "equipment": dashboard_service.exercise_equipment(db, exercise_id),
         }
+    coach_analytics.capture_player_history_viewed(
+        db,
+        coach_analytics.CoachDailyView(
+            coach_account_id, str(assignment_id), client=client
+        ),
+    )
+    return history_payload

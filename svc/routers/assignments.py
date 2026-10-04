@@ -156,6 +156,7 @@ async def list_coach_assignments(
 
 @coach_router.get("/{assignment_id}/player/summary", response_model=CoachPlayerSummaryOut)
 async def read_assigned_player_summary(
+    request: Request,
     assignment_id: str,
     coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
@@ -165,7 +166,11 @@ async def read_assigned_player_summary(
 
     def _run():
         summary = coach_history_service.player_summary(
-            db, coach.account_id, assignment_id, days_lookback=max(1, min(days, 90))
+            db,
+            coach.account_id,
+            assignment_id,
+            days_lookback=max(1, min(days, 90)),
+            client=analytics_service.client_context(request),
         )
         if summary is None:
             raise _no_active_assignment()
@@ -176,6 +181,7 @@ async def read_assigned_player_summary(
 
 @coach_router.get("/{assignment_id}/player/personal-records", response_model=list[CoachPersonalRecordOut])
 async def read_assigned_player_personal_records(
+    request: Request,
     assignment_id: str,
     coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
@@ -185,7 +191,11 @@ async def read_assigned_player_personal_records(
 
     def _run():
         records = coach_history_service.player_personal_records(
-            db, coach.account_id, assignment_id, limit=max(1, min(limit, 100))
+            db,
+            coach.account_id,
+            assignment_id,
+            limit=max(1, min(limit, 100)),
+            client=analytics_service.client_context(request),
         )
         if records is None:
             raise _no_active_assignment()
@@ -199,6 +209,7 @@ async def read_assigned_player_personal_records(
     response_model=list[CheckpointReviewListItemOut],
 )
 async def list_assigned_player_checkpoint_reviews(
+    request: Request,
     assignment_id: str,
     coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
@@ -208,6 +219,7 @@ async def list_assigned_player_checkpoint_reviews(
         db,
         coach.account_id,
         assignment_id,
+        client=analytics_service.client_context(request),
     )
     if reviews is None:
         raise _no_active_assignment()
@@ -219,6 +231,7 @@ async def list_assigned_player_checkpoint_reviews(
     response_model=CheckpointReviewOut,
 )
 async def read_assigned_player_checkpoint_review(
+    request: Request,
     assignment_id: str,
     checkpoint: int,
     coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
@@ -231,6 +244,7 @@ async def read_assigned_player_checkpoint_review(
             coach.account_id,
             assignment_id,
             checkpoint,
+            client=analytics_service.client_context(request),
         )
     except checkpoint_reviews_service.CheckpointReviewNotFoundError:
         raise HTTPException(status_code=404, detail="Checkpoint review not found.")
@@ -241,6 +255,7 @@ async def read_assigned_player_checkpoint_review(
 
 @coach_router.get("/{assignment_id}/player/exercises", response_model=CoachPlayerExercisesOut)
 async def read_assigned_player_exercises(
+    request: Request,
     assignment_id: str,
     coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
@@ -248,7 +263,12 @@ async def read_assigned_player_exercises(
     """The distinct exercises the assigned player has logged."""
 
     def _run():
-        exercises = coach_history_service.player_exercises(db, coach.account_id, assignment_id)
+        exercises = coach_history_service.player_exercises(
+            db,
+            coach.account_id,
+            assignment_id,
+            client=analytics_service.client_context(request),
+        )
         if exercises is None:
             raise _no_active_assignment()
         return exercises
@@ -259,6 +279,7 @@ async def read_assigned_player_exercises(
 
 @coach_router.get("/{assignment_id}/player/exercises/{exercise_id}/history", response_model=CoachExerciseHistoryOut)
 async def read_assigned_player_exercise_history(
+    request: Request,
     assignment_id: str,
     exercise_id: str,
     coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
@@ -267,7 +288,13 @@ async def read_assigned_player_exercise_history(
     """Progression history, latest caption, and records for one exercise."""
 
     def _run():
-        history = coach_history_service.player_exercise_history(db, coach.account_id, assignment_id, exercise_id)
+        history = coach_history_service.player_exercise_history(
+            db,
+            coach.account_id,
+            assignment_id,
+            exercise_id,
+            client=analytics_service.client_context(request),
+        )
         if history is None:
             raise _no_active_assignment()
         return history
@@ -287,7 +314,13 @@ async def create_assignment_check_in(
     """Records an immutable check-in for an actively assigned player (ADR 031)."""
 
     def _run():
-        result = check_ins_service.create_check_in(db, coach.account_id, assignment_id, body.model_dump())
+        result = check_ins_service.create_check_in(
+            db,
+            coach.account_id,
+            assignment_id,
+            body.model_dump(),
+            client=analytics_service.client_context(request),
+        )
         if not result["ok"]:
             if result.get("denied"):
                 raise _no_active_assignment()

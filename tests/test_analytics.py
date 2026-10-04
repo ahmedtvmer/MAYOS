@@ -164,6 +164,55 @@ def _assert_authoritative_write_committed(
         with db.open_ledger(owner_ledger_id) as ledger:
             assert not ledger.conn.in_transaction
             assert ledger.get_active_program() is not None
+    if event in {
+        "coach_alert_created",
+        "coach_alert_acknowledged",
+        "coach_alert_resolved",
+    }:
+        rows = db.catalog_conn.execute(
+            "SELECT alert_id, kind, state FROM coach_alerts WHERE coach_account_id = ?",
+            (account_id,),
+        ).fetchall()
+        alert = next(
+            (
+                row
+                for row in rows
+                if analytics.deterministic_event_uuid(event, f"{row[0]}:{event.removeprefix('coach_alert_')}")
+                == event_uuid
+            ),
+            None,
+        )
+        assert alert is not None
+        if event == "coach_alert_created":
+            assert alert[1] == properties["alert_kind"] and alert[2] == "new"
+        elif event == "coach_alert_acknowledged":
+            assert alert[2] == "acknowledged"
+        else:
+            assert alert[2] == "resolved"
+    if event == "check_in_recorded":
+        rows = db.catalog_conn.execute(
+            "SELECT check_in_id FROM check_ins WHERE coach_account_id = ?", (account_id,)
+        ).fetchall()
+        assert any(
+            analytics.deterministic_event_uuid(event, f"{row[0]}:recorded") == event_uuid
+            for row in rows
+        )
+    if event in {"coach_alerts_viewed", "player_history_viewed"}:
+        rows = db.catalog_conn.execute(
+            "SELECT assignment_id, event_kind, utc_day FROM coach_analytics_daily_markers"
+            " WHERE coach_account_id = ?",
+            (account_id,),
+        ).fetchall()
+        assert any(
+            row[1] == event
+            and analytics.deterministic_event_uuid(
+                event,
+                f"{account_id}:{row[2]}" if event == "coach_alerts_viewed"
+                else f"{account_id}:{row[0]}:{row[2]}",
+            )
+            == event_uuid
+            for row in rows
+        )
 
 
 @pytest.fixture
@@ -323,11 +372,11 @@ def _install_analytics_program_generators(monkeypatch) -> None:
     monkeypatch.setattr("service.program_requests.generate_program_pipeline", fake_program)
 
 
-def _assigned_analytics_player(client, db, player_headers):
+def _assigned_analytics_player(client, db, player_headers, *, coach_username="analytics-coach"):
     from service import coach as coach_service
 
-    coach_headers = _register(client, "analytics-coach")
-    issued = coach_service.issue_coach_invite(db, "analytics-coach", actor="test")
+    coach_headers = _register(client, coach_username)
+    issued = coach_service.issue_coach_invite(db, coach_username, actor="test")
     assert issued["ok"]
     redeemed_coach = client.post(
         "/coach/invite/redeem", headers=coach_headers, json={"token": issued["token"]}
@@ -348,6 +397,21 @@ def _assigned_analytics_player(client, db, player_headers):
     )
     assert assignment.status_code == 200, assignment.text
     return coach_headers, assignment.json()["assignment"]["assignment_id"]
+
+
+def _insert_alert(db, coach_account_id, player_account_id, assignment_id, kind="missed_expected_days"):
+    inserted = db.insert_coach_alert(
+        uuid.uuid4().hex,
+        assignment_id,
+        coach_account_id,
+        player_account_id,
+        kind,
+        f"test:{uuid.uuid4().hex}",
+        {},
+        datetime.now(UTC).isoformat(),
+    )
+    assert inserted["created"]
+    return inserted["alert"]
 
 
 class RaisingAnalyticsSink:
@@ -2237,3 +2301,410 @@ def test_reused_username_gets_a_new_analytics_identity_after_deletion(analytics_
         event["event"] == "account_created" and event["distinct_id"] == second_id
         for event in sink.events
     )
+    assert deletion_attempts == []
+
+
+def test_coach_alert_and_review_events_are_committed_private_and_deduplicated(analytics_api):
+    client, db, sink = analytics_api
+    player_headers = _register(client, "analytics-coached-player")
+    coach_headers, assignment_id = _assigned_analytics_player(client, db, player_headers)
+    coach = db.get_active_account_by_username("analytics-coach")
+    coach_id = coach["account_id"]
+    client_headers = {**coach_headers, "X-MAYOS-Client": "web/1.2.3"}
+    sink.events.clear()
+
+    empty_list = client.get("/coach/alerts", headers=client_headers)
+    assert empty_list.status_code == 200
+    assert not [event for event in sink.events if event["event"] == "coach_alerts_viewed"]
+
+    started_at = datetime.now(UTC) - timedelta(days=9)
+    db.catalog_conn.execute(
+        "UPDATE assignments SET started_at = ? WHERE assignment_id = ?",
+        (started_at.isoformat(), assignment_id),
+    )
+    db.catalog_conn.commit()
+    from service.alert_sweep import run_sweep
+
+    sweep_now = datetime.now(UTC)
+    assert run_sweep(db, now=sweep_now)["follow_ups_created"] == 1
+    assert run_sweep(db, now=sweep_now)["follow_ups_created"] == 0
+    created = [event for event in sink.events if event["event"] == "coach_alert_created"]
+    assert len(created) == 1
+    assert created[0]["distinct_id"] == coach_id
+    assert created[0]["properties"]["alert_kind"] == "follow_up_due"
+    assert created[0]["properties"]["role"] == "coach"
+    assert set(created[0]["properties"]) == {
+        "role", "platform", "app_version", "env", "alert_kind"
+    }
+    alert = db.list_coach_alerts(coach_id, ("new",))[0]
+
+    first_list = client.get("/coach/alerts", headers=client_headers)
+    second_list = client.get("/coach/alerts", headers=client_headers)
+    assert first_list.status_code == second_list.status_code == 200
+    viewed = [event for event in sink.events if event["event"] == "coach_alerts_viewed"]
+    assert len(viewed) == 1
+    assert viewed[0]["distinct_id"] == coach_id
+    assert viewed[0]["properties"]["platform"] == "web"
+    assert "player_id" not in viewed[0]["properties"]
+
+    acknowledged = client.post(
+        f"/coach/alerts/{alert['alert_id']}/acknowledge", headers=client_headers
+    )
+    repeated_acknowledgement = client.post(
+        f"/coach/alerts/{alert['alert_id']}/acknowledge", headers=client_headers
+    )
+    assert acknowledged.status_code == repeated_acknowledgement.status_code == 200
+    resolved = client.post(f"/coach/alerts/{alert['alert_id']}/resolve", headers=client_headers)
+    assert resolved.status_code == 200
+    actions = [
+        event for event in sink.events
+        if event["event"] in {"coach_alert_acknowledged", "coach_alert_resolved"}
+    ]
+    assert [event["event"] for event in actions] == [
+        "coach_alert_acknowledged", "coach_alert_resolved"
+    ]
+    assert all(event["distinct_id"] == coach_id for event in actions)
+    assert all(event["properties"]["is_coaching_action"] is True for event in actions)
+    assert all(event["properties"]["time_open_seconds"] >= 0 for event in actions)
+    assert all(
+        set(event["properties"])
+        == {"role", "platform", "app_version", "env", "time_open_seconds", "is_coaching_action"}
+        for event in actions
+    )
+
+    check_in = client.post(
+        f"/coach/assignments/{assignment_id}/check-ins",
+        headers=client_headers,
+        json={"checked_in_on": sweep_now.date().isoformat(), "channel": "phone", "note": "private note"},
+    )
+    assert check_in.status_code == 200, check_in.text
+    check_in_event = next(event for event in sink.events if event["event"] == "check_in_recorded")
+    assert check_in_event["distinct_id"] == coach_id
+    assert check_in_event["properties"]["is_coaching_action"] is True
+    assert set(check_in_event["properties"]) == {
+        "role", "platform", "app_version", "env", "is_coaching_action"
+    }
+    assert "private note" not in repr(check_in_event)
+
+    sink.events.clear()
+    failed_check_in = client.post(
+        f"/coach/assignments/{assignment_id}/check-ins",
+        headers=client_headers,
+        json={"checked_in_on": sweep_now.date().isoformat(), "channel": "unknown", "note": "not recorded"},
+    )
+    assert failed_check_in.status_code == 400
+    assert not [event for event in sink.events if event["event"] == "check_in_recorded"]
+
+    history_url = f"/coach/assignments/{assignment_id}/player/summary"
+    assert client.get(history_url, headers=client_headers).status_code == 200
+    assert client.get(history_url, headers=client_headers).status_code == 200
+    exercise_url = f"/coach/assignments/{assignment_id}/player/exercises"
+    assert client.get(exercise_url, headers=client_headers).status_code == 200
+    history_events = [event for event in sink.events if event["event"] == "player_history_viewed"]
+    assert len(history_events) == 1
+    assert history_events[0]["distinct_id"] == coach_id
+    assert set(history_events[0]["properties"]) == {"role", "platform", "app_version", "env"}
+
+    sink.events.clear()
+    denied = client.get("/coach/assignments/not-an-active-assignment/player/summary", headers=client_headers)
+    assert denied.status_code == 403
+    assert not [event for event in sink.events if event["event"] == "player_history_viewed"]
+
+
+def test_raising_sink_does_not_fail_coach_check_in(analytics_api):
+    client, db, _sink = analytics_api
+    player_headers = _register(client, "analytics-raising-player")
+    coach_headers, assignment_id = _assigned_analytics_player(client, db, player_headers)
+    from service import analytics as analytics_service
+
+    analytics_service.set_sink(RaisingAnalyticsSink())
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/check-ins",
+        headers=coach_headers,
+        json={"checked_in_on": datetime.now(UTC).date().isoformat(), "channel": "phone", "note": "kept private"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["check_in"]["note"] == "kept private"
+
+
+def test_coach_history_api_events_cover_review_endpoints_and_utc_day_rollover(
+    analytics_api, monkeypatch
+):
+    client, db, sink = analytics_api
+    player_headers = _register(client, "analytics-history-player")
+    coach_headers, assignment_id = _assigned_analytics_player(client, db, player_headers)
+    coach_id = db.get_active_account_by_username("analytics-coach")["account_id"]
+    player = db.get_active_account_by_username("analytics-history-player")
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        ledger.log_workout_session(
+            "checkpoint-session",
+            "2026-10-01",
+            "Full A",
+            "2026-10-01T00:00:00+00:00",
+            "2026-10-01T01:00:00+00:00",
+            4,
+            "",
+        )
+        assert ledger.insert_checkpoint_review(
+            {
+                "checkpoint": 10,
+                "session_id": "checkpoint-session",
+                "period_start": "2026-09-01",
+                "period_end": "2026-10-01",
+                "facts_json": '{"workouts_in_period": 10}',
+                "rating_json": '[{"part":"consistency","label":"Holding"}]',
+                "created_at": "2026-10-01T00:00:00+00:00",
+            }
+        )
+
+    from service import coach_analytics
+
+    current = [datetime(2026, 10, 4, 23, 59, tzinfo=UTC)]
+    monkeypatch.setattr(coach_analytics, "_now", lambda: current[0])
+    base = f"/coach/assignments/{assignment_id}/player"
+    assert client.get(f"{base}/personal-records", headers=coach_headers).status_code == 200
+    assert client.get(f"{base}/personal-records", headers=coach_headers).status_code == 200
+    assert len([event for event in sink.events if event["event"] == "player_history_viewed"]) == 1
+
+    current[0] = datetime(2026, 10, 5, 0, 1, tzinfo=UTC)
+    history = client.get(f"{base}/exercises/ex1/history", headers=coach_headers)
+    assert history.status_code == 200, history.text
+    current[0] = datetime(2026, 10, 6, 0, 1, tzinfo=UTC)
+    assert client.get(f"{base}/checkpoint-reviews", headers=coach_headers).status_code == 200
+    current[0] = datetime(2026, 10, 7, 0, 1, tzinfo=UTC)
+    assert client.get(f"{base}/checkpoint-reviews/10", headers=coach_headers).status_code == 200
+    history_events = [event for event in sink.events if event["event"] == "player_history_viewed"]
+    assert len(history_events) == 4
+    assert all(event["distinct_id"] == coach_id for event in history_events)
+    assert all(set(event["properties"]) == {"role", "platform", "app_version", "env"} for event in history_events)
+
+    daily_alert = _insert_alert(
+        db,
+        coach_id,
+        player["account_id"],
+        assignment_id,
+        "missed_expected_days",
+    )
+    current[0] = datetime(2026, 10, 5, 23, 59, tzinfo=UTC)
+    assert client.get("/coach/alerts", headers=coach_headers).status_code == 200
+    assert client.get("/coach/alerts", headers=coach_headers).status_code == 200
+    current[0] = datetime(2026, 10, 6, 0, 1, tzinfo=UTC)
+    assert client.get("/coach/alerts", headers=coach_headers).status_code == 200
+    alert_views = [event for event in sink.events if event["event"] == "coach_alerts_viewed"]
+    assert len(alert_views) == 2
+    assert all(event["distinct_id"] == coach_id for event in alert_views)
+    assert daily_alert["assignment_id"] == assignment_id
+
+
+def test_coach_alert_api_denials_and_non_new_lists_emit_nothing(analytics_api):
+    client, db, sink = analytics_api
+    player_a_headers = _register(client, "analytics-denied-player-a")
+    coach_a_headers, assignment_a = _assigned_analytics_player(
+        client, db, player_a_headers, coach_username="analytics-denied-coach-a"
+    )
+    player_b_headers = _register(client, "analytics-denied-player-b")
+    coach_b_headers, assignment_b = _assigned_analytics_player(
+        client, db, player_b_headers, coach_username="analytics-denied-coach-b"
+    )
+    coach_a_id = db.get_active_account_by_username("analytics-denied-coach-a")["account_id"]
+    coach_b_id = db.get_active_account_by_username("analytics-denied-coach-b")["account_id"]
+    player_a = db.get_active_account_by_username("analytics-denied-player-a")
+    player_b = db.get_active_account_by_username("analytics-denied-player-b")
+    own_alert = _insert_alert(db, coach_a_id, player_a["account_id"], assignment_a)
+    foreign_alert = _insert_alert(db, coach_b_id, player_b["account_id"], assignment_b)
+
+    sink.events.clear()
+    for action in ("acknowledge", "resolve"):
+        response = client.post(
+            f"/coach/alerts/{foreign_alert['alert_id']}/{action}", headers=coach_a_headers
+        )
+        assert response.status_code == 403
+    ended = client.post("/assignments/me/end", headers=player_a_headers)
+    assert ended.status_code == 200, ended.text
+    for action in ("acknowledge", "resolve"):
+        response = client.post(
+            f"/coach/alerts/{own_alert['alert_id']}/{action}", headers=coach_a_headers
+        )
+        assert response.status_code == 403
+    assert client.get(
+        f"/coach/assignments/{assignment_a}/player/summary", headers=coach_a_headers
+    ).status_code == 403
+    assert client.get(
+        f"/coach/assignments/{assignment_b}/player/summary", headers=coach_a_headers
+    ).status_code == 403
+    assert not [
+        event
+        for event in sink.events
+        if event["event"] in {
+            "coach_alert_acknowledged",
+            "coach_alert_resolved",
+            "player_history_viewed",
+        }
+    ]
+
+    acknowledged, transitioned = db.acknowledge_coach_alert_transition(
+        foreign_alert["alert_id"], coach_b_id, datetime.now(UTC).isoformat()
+    )
+    assert transitioned and acknowledged is not None
+    db.catalog_conn.execute(
+        "DELETE FROM coach_analytics_daily_markers WHERE coach_account_id = ?", (coach_b_id,)
+    )
+    db.catalog_conn.commit()
+    sink.events.clear()
+    non_new = client.get("/coach/alerts?state=acknowledged", headers=coach_b_headers)
+    assert non_new.status_code == 200, non_new.text
+    assert any(alert["state"] == "acknowledged" for alert in non_new.json()["alerts"])
+    assert not [event for event in sink.events if event["event"] == "coach_alerts_viewed"]
+
+
+def test_raising_sink_does_not_fail_coach_alert_actions_or_history_reads(analytics_api):
+    client, db, _sink = analytics_api
+    player_headers = _register(client, "analytics-raising-coach-read-player")
+    coach_headers, assignment_id = _assigned_analytics_player(client, db, player_headers)
+    coach_id = db.get_active_account_by_username("analytics-coach")["account_id"]
+    player = db.get_active_account_by_username("analytics-raising-coach-read-player")
+    alert = _insert_alert(db, coach_id, player["account_id"], assignment_id)
+    analytics.set_sink(RaisingAnalyticsSink())
+
+    listed = client.get("/coach/alerts", headers=coach_headers)
+    assert listed.status_code == 200, listed.text
+    acknowledged = client.post(
+        f"/coach/alerts/{alert['alert_id']}/acknowledge", headers=coach_headers
+    )
+    assert acknowledged.status_code == 200, acknowledged.text
+    resolved = client.post(
+        f"/coach/alerts/{alert['alert_id']}/resolve", headers=coach_headers
+    )
+    assert resolved.status_code == 200, resolved.text
+    history = client.get(
+        f"/coach/assignments/{assignment_id}/player/summary", headers=coach_headers
+    )
+    assert history.status_code == 200, history.text
+
+
+def test_profile_change_alert_is_captured_from_the_profile_api(analytics_api, monkeypatch):
+    client, db, sink = analytics_api
+    player_headers = _register(client, "analytics-profile-alert-player")
+    _coach_headers, _assignment_id = _assigned_analytics_player(client, db, player_headers)
+    db.switch_user("analytics-profile-alert-player")
+    db.ledger.upsert_player_profile(
+        {"equipment_access": "Commercial gym", "injuries_or_limitations": "None"}
+    )
+    _install_analytics_program_generators(monkeypatch)
+    sink.events.clear()
+
+    updated = client.put(
+        "/profile", headers=player_headers, json={"equipment_access": "Home gym"}
+    )
+    assert updated.status_code == 200, updated.text
+    events = [event for event in sink.events if event["event"] == "coach_alert_created"]
+    assert len(events) == 1
+    assert events[0]["distinct_id"] == db.get_active_account_by_username("analytics-coach")["account_id"]
+    assert events[0]["properties"]["alert_kind"] == "profile_change"
+    assert set(events[0]["properties"]) == {
+        "role", "platform", "app_version", "env", "alert_kind"
+    }
+
+
+def test_consent_missed_day_alert_uses_the_shared_creation_event_seam(analytics_api, monkeypatch):
+    client, db, sink = analytics_api
+    player_headers = _register(client, "analytics-consent-missed-player")
+    player_id = db.get_active_account_by_username("analytics-consent-missed-player")["account_id"]
+    db.switch_user("analytics-consent-missed-player")
+    started = datetime.now(UTC) - timedelta(days=10)
+    db.ledger.append_training_schedule(
+        "analytics-consent-missed-player",
+        [1, 2, 3, 4, 5, 6, 7],
+        "UTC",
+        (started.date() - timedelta(days=1)).isoformat(),
+        started.isoformat(),
+    )
+
+    from service import coach as coach_service
+    import service.assignments as assignment_service
+
+    coach_headers = _register(client, "analytics-consent-missed-coach")
+    issued = coach_service.issue_coach_invite(db, "analytics-consent-missed-coach", actor="test")
+    assert issued["ok"]
+    assert client.post(
+        "/coach/invite/redeem", headers=coach_headers, json={"token": issued["token"]}
+    ).status_code == 200
+    assert client.put(
+        "/coach/profile",
+        headers=coach_headers,
+        json={"display_name": "Coach", "bio": "", "specialization": "", "capacity": 5},
+    ).status_code == 200
+    invite = client.post("/coach/assignments/invites", headers=coach_headers)
+    assert invite.status_code == 200, invite.text
+
+    frozen = started
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen if tz is None else frozen.astimezone(tz)
+
+    monkeypatch.setattr(assignment_service, "datetime", FrozenDateTime)
+    sink.events.clear()
+    consent = client.post(
+        "/assignments/invites/redeem",
+        headers=player_headers,
+        json={"token": invite.json()["token"], "consent": True},
+    )
+    assert consent.status_code == 200, consent.text
+    events = [event for event in sink.events if event["event"] == "coach_alert_created"]
+    assert len(events) == 1
+    assert events[0]["distinct_id"] == db.get_active_account_by_username("analytics-consent-missed-coach")["account_id"]
+    assert events[0]["properties"]["alert_kind"] == "missed_expected_days"
+    assert db.get_active_account_by_username("analytics-consent-missed-player")["account_id"] == player_id
+
+
+def test_check_in_event_precedes_follow_up_failure_and_created_alert_keeps_client_context(
+    analytics_api, monkeypatch
+):
+    client, db, sink = analytics_api
+    player_headers = _register(client, "analytics-follow-up-player")
+    coach_headers, assignment_id = _assigned_analytics_player(client, db, player_headers)
+    coach_id = db.get_active_account_by_username("analytics-coach")["account_id"]
+    started = datetime.now(UTC) - timedelta(days=20)
+    db.catalog_conn.execute(
+        "UPDATE assignments SET started_at = ? WHERE assignment_id = ?",
+        (started.isoformat(), assignment_id),
+    )
+    db.catalog_conn.commit()
+    headers = {**coach_headers, "X-MAYOS-Client": "web/3.2.1"}
+    checked_in_on = (datetime.now(UTC).date() - timedelta(days=12)).isoformat()
+    sink.events.clear()
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/check-ins",
+        headers=headers,
+        json={"checked_in_on": checked_in_on, "channel": "phone", "note": "private"},
+    )
+    assert response.status_code == 200, response.text
+    check_in_event = _event(sink, "check_in_recorded")
+    follow_up_event = next(
+        event
+        for event in sink.events
+        if event["event"] == "coach_alert_created"
+        and event["properties"]["alert_kind"] == "follow_up_due"
+    )
+    assert check_in_event["distinct_id"] == follow_up_event["distinct_id"] == coach_id
+    assert check_in_event["properties"]["platform"] == "web"
+    assert follow_up_event["properties"]["platform"] == "web"
+    assert follow_up_event["properties"]["app_version"] == "3.2.1"
+    assert "private" not in repr(check_in_event)
+
+    import service.check_ins as check_in_service
+
+    def fail_follow_up(*_args, **_kwargs):
+        raise RuntimeError("follow-up reconciliation failed")
+
+    monkeypatch.setattr(check_in_service, "evaluate_follow_up", fail_follow_up)
+    with pytest.raises(RuntimeError, match="follow-up reconciliation failed"):
+        client.post(
+            f"/coach/assignments/{assignment_id}/check-ins",
+            headers=headers,
+            json={"checked_in_on": datetime.now(UTC).date().isoformat(), "channel": "phone"},
+        )
+    assert len([event for event in sink.events if event["event"] == "check_in_recorded"]) == 2

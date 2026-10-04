@@ -177,7 +177,7 @@ def test_sweep_creates_one_alert_and_notice_for_a_two_day_streak(api):
     assert summary["alerts_new"] == 2
 
 
-def test_sweep_is_idempotent_and_does_not_duplicate_the_notice(api):
+def test_sweep_is_idempotent_and_does_not_duplicate_the_notice(api, recording_analytics):
     client, db = api
     _, _, assignment_id, coach_account_id = _assign(api)
     now = datetime.now(UTC)
@@ -205,6 +205,14 @@ def test_sweep_is_idempotent_and_does_not_duplicate_the_notice(api):
     assert len(alerts) == 1
     assert alerts[0]["alert_id"] == alert_id
     assert len(_notices(db, coach_account_id)) == 1
+    created_events = [
+        event
+        for event in recording_analytics.events
+        if event["event"] == "coach_alert_created"
+        and event["properties"]["alert_kind"] == "missed_expected_days"
+    ]
+    assert len(created_events) == 1
+    assert created_events[0]["distinct_id"] == coach_account_id
 
 
 def test_longer_streak_extends_the_same_alert(api):

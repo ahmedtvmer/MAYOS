@@ -79,6 +79,16 @@ and capture can lose an event.
   Historical events attributed to a surviving Player retain the deleted
   Coach's opaque `coach_id` property; deleting the Coach person does not rewrite
   another Account's event properties.
+- Coach alert events include only the alert kind and bounded time-open duration;
+  check-in events include only the coaching-action flag and are emitted as soon
+  as the check-in row commits, before follow-up reconciliation. Check-in notes,
+  alert explanations, Player ids, and Assignment ids are never event properties.
+- Coach alert and Player history views have catalog-side daily deduplication
+  markers. The hourly sweep prunes markers older than 30 days, and account
+  deletion removes markers owned by the deleted Coach or tied to their
+  Assignments. System-resolved alerts do not emit `coach_alert_resolved`; that
+  event records only a Coach's committed resolution. A resolution reason is
+  reserved for a future `not_useful` value and is not currently sent.
 - Event UUIDs are UUID5 values derived from the event name and its domain key.
   Assignment events use the assignment or invite identity; Coach capability
   transitions use the Account id and committed timestamp; failed redemption
@@ -141,6 +151,11 @@ registry.
 | `account_created` | server | A password or Google registration has committed and its account ledger is ready. | `role`, `platform`, `app_version`, `env`, `signup_phase`, `invite_used` |
 | `coach_capability_granted` | server | A Coach invite redemption has committed and granted Coach capability. | `role`, `platform`, `app_version`, `env` |
 | `coach_capability_disabled` | server | A Coach has explicitly disabled Coach capability after any active Assignments end. | `role`, `platform`, `app_version`, `env` |
+| `coach_alert_created` | server | A new Coach alert row has committed. Retries of the same alert do not emit again. | `role`, `platform`, `app_version`, `env`, `alert_kind` |
+| `coach_alerts_viewed` | server | A Coach's alert list contains at least one new alert. Emitted once per Coach and UTC day. | `role`, `platform`, `app_version`, `env` |
+| `coach_alert_acknowledged` | server | A Coach's new alert has committed the acknowledged transition. Idempotent repeats and system changes do not emit. Coaching action. | `role`, `platform`, `app_version`, `env`, `time_open_seconds`, `is_coaching_action` |
+| `coach_alert_resolved` | server | A Coach's open alert has committed the resolved transition. System resolutions do not emit. Coaching action. | `role`, `platform`, `app_version`, `env`, `time_open_seconds`, `is_coaching_action` |
+| `check_in_recorded` | server | A Coach's check-in row has committed. Emitted before follow-up reconciliation. Coaching action; check-in details are excluded. | `role`, `platform`, `app_version`, `env`, `is_coaching_action` |
 | `onboarding_started` | server | The first committed onboarding write: disclosure, first named answer, or legacy start/answer. Reads do not create this event. | `role`, `platform`, `app_version`, `env` |
 | `onboarding_completed` | server | The first successful onboarding completion has committed and its completion time is persisted. Retries and replayed confirmation do not create another event. | `role`, `platform`, `app_version`, `env`, `duration_seconds`, `prefilled_fields_count` |
 | `onboarding_step_viewed` | client | A Player is shown one onboarding step. Sent on each display of that step; answer values are excluded. | `role`, `platform`, `app_version`, `env`, `step` |
@@ -153,6 +168,7 @@ registry.
 | `program_exercise_swapped` | server | A Player swaps or undoes an exercise swap, or a Coach applies an exercise-substitution request after the new program version commits. The `role` identifies who acted. | `role`, `platform`, `app_version`, `env` |
 | `program_request_created` | server | A Player's program request has committed to the registry. | `role`, `platform`, `app_version`, `env`, `kind` |
 | `program_request_resolved` | server | A Coach applies or declines a request, or a Player cancels it, after the registry transition commits. Coach resolutions are coaching actions. | `role`, `platform`, `app_version`, `env`, `outcome`, `time_open_seconds`, `is_coaching_action` |
+| `player_history_viewed` | server | A Coach history or checkpoint-review endpoint successfully reads an assigned Player's history after the ADR 025 catalog gate passes. Emitted once per Coach, Assignment and UTC day. | `role`, `platform`, `app_version`, `env` |
 | `workout_completed` | server | A workout commit has succeeded. An idempotent replay emits nothing; the client session id determines the event UUID when present, with the committed session id as the fallback. | `role`, `platform`, `app_version`, `env`, `set_count`, `exercise_count`, `load_complete_set_count`, `reps_complete_set_count`, `rir_complete_set_count`, `divergence_count`, `unplanned_exercise_count`, `captured_offline`, `sync_delay_seconds`, `is_first_workout`, `program_provenance`, `coached` |
 | `performed_date_corrected` | server | A committed workout's performed date has changed and the correction row is stored. A no-op correction emits nothing. | `role`, `platform`, `app_version`, `env` |
 | `training_schedule_set` | server | A new Training schedule version has committed. | `role`, `platform`, `app_version`, `env`, `days_per_week` |
@@ -192,10 +208,11 @@ registry.
 | `trigger` | `onboarding`, `profile_rebuild`, `player_request`, `synthesized`, or `coach_request` | Why a program version was generated. |
 | `day_count` | Integer from 0 to 100 | Number of days in the saved program. Program names and exercise names are never sent. |
 | `first_for_assignment` | Boolean | Whether this is the first coach publication since the active Assignment began. |
-| `is_coaching_action` | Boolean | True for a recorded coaching action. Coach publication and request resolution by a Coach are true; Player cancellation is false. |
-| `kind` | `exercise_substitution` or `split_change` | Program request category. Request reason and split preference are never sent. |
+| `is_coaching_action` | Boolean | True for a recorded coaching action. Coach publication, request resolution, alert acknowledgement or resolution, and check-in recording are true; Player cancellation is false. |
+| `kind` | `exercise_substitution` or `split_change` | Program request category. Request reasons and split preference are never sent. |
+| `alert_kind` | `missed_expected_days`, `follow_up_due`, `profile_change`, `stall`, `deload_recommended`, or `performance_regression` | Coach alert category. Alert explanations are never sent. |
 | `outcome` | `applied`, `declined`, or `cancelled` | Program request's committed resolution. A decline response is never sent. |
-| `time_open_seconds` | Bounded nonnegative integer | Whole seconds between request creation and resolution, capped at one year. |
+| `time_open_seconds` | Bounded nonnegative integer | Whole seconds between request or alert creation and resolution, or alert creation and acknowledgement, capped at one year. |
 | `set_count` | Integer from 0 to 1000 | Number of logged working sets, capped at 1000; Warm-up sets are excluded. |
 | `exercise_count` | Integer from 0 to 100 | Number of distinct exercises with a logged working set, capped at 100. Exercise ids and names are never sent. |
 | `load_complete_set_count` | Integer from 0 to 1000 | Working sets with a recorded load, capped at 1000. The load values are never sent. |

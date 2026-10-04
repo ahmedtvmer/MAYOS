@@ -153,9 +153,9 @@ class RegistryCoachAlertsMixin:
             self._commit_catalog()
             return int(cursor.rowcount)
 
-    def acknowledge_coach_alert(
+    def acknowledge_coach_alert_transition(
         self, alert_id: str, coach_account_id: str, now_iso: str
-    ) -> dict[str, Any] | None:
+    ) -> tuple[dict[str, Any] | None, bool]:
         """Moves ``new`` → ``acknowledged``; already-acknowledged and resolved are left as-is.
 
         Returns the alert for its owning coach, or ``None`` when it does not
@@ -169,17 +169,19 @@ class RegistryCoachAlertsMixin:
                 " WHERE alert_id = ? AND coach_account_id = ? AND state = 'new'",
                 (now_iso, str(alert_id), str(coach_account_id)),
             )
-            self.catalog_conn.commit()
+            transitioned = cursor.rowcount == 1
+            self._commit_catalog()
             cursor.execute(
                 f"SELECT {self._COACH_ALERT_COLUMNS} FROM coach_alerts"
                 " WHERE alert_id = ? AND coach_account_id = ?",
                 (str(alert_id), str(coach_account_id)),
             )
-            return self._coach_alert_from_row(cursor.fetchone())
+            alert = self._coach_alert_from_row(cursor.fetchone())
+            return alert, transitioned
 
-    def resolve_coach_alert(
+    def resolve_coach_alert_transition(
         self, alert_id: str, coach_account_id: str, now_iso: str, resolved_by: str
-    ) -> dict[str, Any] | None:
+    ) -> tuple[dict[str, Any] | None, bool]:
         """Moves ``new``/``acknowledged`` → ``resolved``; already-resolved is left as-is.
 
         Returns the alert for its owning coach, or ``None`` when it does not
@@ -193,13 +195,15 @@ class RegistryCoachAlertsMixin:
                 " WHERE alert_id = ? AND coach_account_id = ? AND state IN ('new', 'acknowledged')",
                 (now_iso, str(resolved_by), str(alert_id), str(coach_account_id)),
             )
-            self.catalog_conn.commit()
+            transitioned = cursor.rowcount == 1
+            self._commit_catalog()
             cursor.execute(
                 f"SELECT {self._COACH_ALERT_COLUMNS} FROM coach_alerts"
                 " WHERE alert_id = ? AND coach_account_id = ?",
                 (str(alert_id), str(coach_account_id)),
             )
-            return self._coach_alert_from_row(cursor.fetchone())
+            alert = self._coach_alert_from_row(cursor.fetchone())
+            return alert, transitioned
 
     def resolve_open_coach_alerts_for_assignment(
         self,
