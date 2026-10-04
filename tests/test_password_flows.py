@@ -154,7 +154,10 @@ def test_recovery_email_set_get_and_conflict(api):
     }
     saved = client.post("/auth/email", json={"email": "Alice@Example.com"}, headers=_authed(alice))
     assert saved.status_code == 200, saved.text
-    assert saved.json() == {"email": "alice@example.com", "verified": False}
+    assert saved.json() == {
+        "email": "alice@example.com",
+        "verified": False,
+    }
     assert client.get("/auth/email", headers=_authed(alice)).json() == {
         "email": "alice@example.com",
         "verified": False,
@@ -296,11 +299,436 @@ def test_console_sender_logs_code_without_recovery_address(api, monkeypatch, cap
     delivered = email_sender.send_recovery_email_verification_code(
         "private@example.com", "654321", "en", account_id="account-alice"
     )
+    notice_delivered = email_sender.send_recovery_email_changed_notice(
+        "private@example.com", "n***@example.com", "en", account_id="account-alice"
+    )
 
-    assert delivered is True
+    assert delivered is notice_delivered is True
     assert "654321" in caplog.text
     assert "private@example.com" not in caplog.text
+    assert "n***@example.com" not in caplog.text
     assert db.catalog_conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0] == 0
+
+
+def _set_and_verify_recovery_email(client, token, deliveries, email="old@example.com"):
+    _set_recovery_email(client, token, email)
+    sent = client.post("/auth/email/verification-code", headers=_authed(token))
+    assert sent.status_code == 200, sent.text
+    code = _verification_code(deliveries[-1])
+    verified = client.post("/auth/email/verify", json={"code": code}, headers=_authed(token))
+    assert verified.status_code == 200, verified.text
+
+
+@pytest.mark.parametrize(
+    ("display_language", "notice_copy"),
+    [
+        ("en", "The recovery email for your MAYOS account was changed."),
+        ("ar", "تم تغيير البريد الإلكتروني للاسترداد"),
+    ],
+)
+def test_recovery_email_change_keeps_old_address_until_verified_and_notifies_in_display_language(
+    api, monkeypatch, display_language, notice_copy
+):
+    client, db = api
+    token = _register(client, "alice", display_language=display_language)
+    deliveries = _capture_verification_deliveries(monkeypatch)
+    _set_and_verify_recovery_email(client, token, deliveries)
+    account_id = db.get_active_account_by_username("alice")["account_id"]
+    headers = _authed(token)
+
+    requested = client.post(
+        "/auth/email/change", json={"email": "x@example.com"}, headers=headers
+    )
+
+    assert requested.status_code == 200, requested.text
+    code = _verification_code(deliveries[-1])
+    assert deliveries[-1][0] == "x@example.com"
+    current = client.get("/auth/email", headers=headers)
+    assert current.json() == {
+        "email": "old@example.com",
+        "verified": True,
+        "pending_email": "x@example.com",
+    }
+
+    reset = client.post("/auth/forgot-password", json={"email": "old@example.com"})
+    assert reset.status_code == 202
+    reset_delivery = next(item for item in deliveries if item[3].purpose == "password_reset")
+    assert reset_delivery[0] == "old@example.com"
+
+    verified = client.post(
+        "/auth/email/change/verify", json={"code": code}, headers=headers
+    )
+    assert verified.status_code == 200, verified.text
+    assert client.get("/auth/email", headers=headers).json() == {
+        "email": "x@example.com",
+        "verified": True,
+    }
+    notice = next(item for item in deliveries if item[3].purpose == "recovery_email_changed_notice")
+    assert notice[0] == "old@example.com"
+    assert notice_copy in notice[2]
+    assert "*@example.com" in notice[2]
+    assert "x@example.com" not in notice[2]
+    assert db.get_pending_recovery_email(account_id) is None
+    assert db.catalog_conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0] == 0
+
+
+def test_forgot_password_does_not_send_to_a_pending_recovery_address(api, monkeypatch):
+    from service import password_reset
+
+    client, _ = api
+    token = _register(client, "alice")
+    deliveries = _capture_verification_deliveries(monkeypatch)
+    _set_and_verify_recovery_email(client, token, deliveries)
+    requested = client.post(
+        "/auth/email/change",
+        json={"email": "pending@example.com"},
+        headers=_authed(token),
+    )
+    assert requested.status_code == 200, requested.text
+    sent_before_forgot = len(deliveries)
+
+    forgot = client.post(
+        "/auth/forgot-password", json={"email": "pending@example.com"}
+    )
+
+    assert forgot.status_code == 202
+    assert forgot.json() == {"message": password_reset.GENERIC_REQUEST_MESSAGE}
+    assert len(deliveries) == sent_before_forgot
+
+
+def test_expired_pending_address_forgot_password_uses_unknown_address_notice(api, monkeypatch):
+    client, db = api
+    token = _register(client, "alice")
+    deliveries = _capture_verification_deliveries(monkeypatch)
+    _set_and_verify_recovery_email(client, token, deliveries)
+    change = client.post(
+        "/auth/email/change",
+        json={"email": "expired-pending@example.com"},
+        headers=_authed(token),
+    )
+    assert change.status_code == 200, change.text
+    db.catalog_conn.execute(
+        "UPDATE email_verification_codes SET expires_at = ? WHERE purpose = ?",
+        ("2000-01-01T00:00:00+00:00", "recovery_email_change"),
+    )
+    db.catalog_conn.commit()
+
+    forgot = client.post(
+        "/auth/forgot-password", json={"email": "expired-pending@example.com"}
+    )
+
+    assert forgot.status_code == 202
+    assert forgot.json() == {
+        "message": "If this email is linked to a ledger, a reset link is on its way."
+    }
+    notice = next(
+        item for item in deliveries if item[3].purpose == "no_account_notice"
+    )
+    assert notice[0] == "expired-pending@example.com"
+
+
+def test_recovery_email_change_wrong_expired_and_reused_codes_are_generic_and_atomic(api, monkeypatch):
+    client, db = api
+    token = _register(client, "alice")
+    deliveries = _capture_verification_deliveries(monkeypatch)
+    _set_and_verify_recovery_email(client, token, deliveries)
+    headers = _authed(token)
+
+    requested = client.post(
+        "/auth/email/change", json={"email": "new@example.com"}, headers=headers
+    )
+    assert requested.status_code == 200, requested.text
+    code = _verification_code(deliveries[-1])
+    wrong = client.post(
+        "/auth/email/change/verify", json={"code": "000000"}, headers=headers
+    )
+    assert wrong.status_code == 400
+    assert wrong.json() == {"detail": GENERIC_VERIFICATION_ERROR}
+    assert client.get("/auth/email", headers=headers).json() == {
+        "email": "old@example.com",
+        "verified": True,
+        "pending_email": "new@example.com",
+    }
+
+    db.catalog_conn.execute(
+        "UPDATE email_verification_codes SET expires_at = '2000-01-01T00:00:00+00:00'"
+    )
+    db.catalog_conn.commit()
+    expired = client.post(
+        "/auth/email/change/verify", json={"code": code}, headers=headers
+    )
+    assert expired.status_code == 400
+    assert expired.json() == {"detail": GENERIC_VERIFICATION_ERROR}
+    assert client.get("/auth/email", headers=headers).json()["email"] == "old@example.com"
+
+    replacement = client.post(
+        "/auth/email/change", json={"email": "fresh@example.com"}, headers=headers
+    )
+    assert replacement.status_code == 200, replacement.text
+    fresh_code = _verification_code(deliveries[-1])
+    accepted = client.post(
+        "/auth/email/change/verify", json={"code": fresh_code}, headers=headers
+    )
+    assert accepted.status_code == 200, accepted.text
+    reused = client.post(
+        "/auth/email/change/verify", json={"code": fresh_code}, headers=headers
+    )
+    assert reused.status_code == 400
+    assert reused.json() == {"detail": GENERIC_VERIFICATION_ERROR}
+    assert client.get("/auth/email", headers=headers).json() == {
+        "email": "fresh@example.com",
+        "verified": True,
+    }
+
+
+def test_new_recovery_email_change_replaces_pending_code(api, monkeypatch):
+    from service import email_verification
+
+    client, _ = api
+    token = _register(client, "alice")
+    deliveries = _capture_verification_deliveries(monkeypatch)
+    _set_and_verify_recovery_email(client, token, deliveries)
+    codes = iter((111111, 222222))
+    monkeypatch.setattr(email_verification.secrets, "randbelow", lambda _: next(codes))
+    headers = _authed(token)
+
+    first = client.post(
+        "/auth/email/change", json={"email": "first@example.com"}, headers=headers
+    )
+    first_code = _verification_code(deliveries[-1])
+    second = client.post(
+        "/auth/email/change", json={"email": "second@example.com"}, headers=headers
+    )
+    second_code = _verification_code(deliveries[-1])
+
+    assert first.status_code == second.status_code == 200
+    stale = client.post(
+        "/auth/email/change/verify", json={"code": first_code}, headers=headers
+    )
+    assert stale.status_code == 400
+    assert stale.json() == {"detail": GENERIC_VERIFICATION_ERROR}
+    assert client.get("/auth/email", headers=headers).json() == {
+        "email": "old@example.com",
+        "verified": True,
+        "pending_email": "second@example.com",
+    }
+    accepted = client.post(
+        "/auth/email/change/verify", json={"code": second_code}, headers=headers
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert client.get("/auth/email", headers=headers).json()["email"] == "second@example.com"
+
+
+def test_recovery_email_change_refuses_address_linked_to_another_account_without_sending(
+    api, monkeypatch
+):
+    client, _ = api
+    alice = _register(client, "alice")
+    bob = _register(client, "bob")
+    deliveries = _capture_verification_deliveries(monkeypatch)
+    _set_and_verify_recovery_email(client, alice, deliveries, "alice@example.com")
+    _set_and_verify_recovery_email(client, bob, deliveries, "bob@example.com")
+    sent_before = len(deliveries)
+
+    refused = client.post(
+        "/auth/email/change",
+        json={"email": "bob@example.com"},
+        headers=_authed(alice),
+    )
+
+    assert refused.status_code == 400
+    assert len(deliveries) == sent_before
+    assert client.get("/auth/email", headers=_authed(alice)).json() == {
+        "email": "alice@example.com",
+        "verified": True,
+    }
+
+
+def test_two_accounts_can_pending_the_same_address_but_only_one_can_verify(api, monkeypatch):
+    client, _ = api
+    alice = _register(client, "alice")
+    bob = _register(client, "bob")
+    deliveries = _capture_verification_deliveries(monkeypatch)
+    _set_and_verify_recovery_email(client, alice, deliveries, "alice@example.com")
+    _set_and_verify_recovery_email(client, bob, deliveries, "bob@example.com")
+    alice_headers = _authed(alice)
+    bob_headers = _authed(bob)
+
+    alice_request = client.post(
+        "/auth/email/change",
+        json={"email": "shared@example.com"},
+        headers=alice_headers,
+    )
+    alice_code = _verification_code(deliveries[-1])
+    bob_request = client.post(
+        "/auth/email/change",
+        json={"email": "shared@example.com"},
+        headers=bob_headers,
+    )
+    bob_code = _verification_code(deliveries[-1])
+
+    assert alice_request.status_code == bob_request.status_code == 200
+    assert client.post(
+        "/auth/email/change/verify", json={"code": alice_code}, headers=alice_headers
+    ).status_code == 200
+    bob_verify = client.post(
+        "/auth/email/change/verify", json={"code": bob_code}, headers=bob_headers
+    )
+
+    assert bob_verify.status_code == 400
+    assert bob_verify.json() == {"detail": GENERIC_VERIFICATION_ERROR}
+    assert client.get("/auth/email", headers=alice_headers).json() == {
+        "email": "shared@example.com",
+        "verified": True,
+    }
+    assert client.get("/auth/email", headers=bob_headers).json() == {
+        "email": "bob@example.com",
+        "verified": True,
+        "pending_email": "shared@example.com",
+    }
+
+
+def test_existing_pending_email_unique_constraint_is_removed(api):
+    _, db = api
+    with db.catalog_transaction(immediate=True):
+        db.catalog_conn.execute("DROP TABLE pending_recovery_emails")
+        db.catalog_conn.execute(
+            "CREATE TABLE pending_recovery_emails ("
+            "account_id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, updated_at TEXT NOT NULL)"
+        )
+        db.catalog_conn.execute(
+            "INSERT INTO pending_recovery_emails VALUES (?, ?, ?)",
+            ("account-a", "shared@example.com", "2026-10-04T00:00:00+00:00"),
+        )
+
+    db._account_schema_ready = False
+    db.ensure_account_schema()
+
+    indexes = db.catalog_conn.execute(
+        "PRAGMA index_list(pending_recovery_emails)"
+    ).fetchall()
+    unique_email_indexes = []
+    for index in indexes:
+        if index[2]:
+            columns = db.catalog_conn.execute(
+                f"PRAGMA index_info({index[1]})"
+            ).fetchall()
+            if [str(column[2]) for column in columns] == ["email"]:
+                unique_email_indexes.append(index[1])
+    assert unique_email_indexes == []
+    assert db.get_pending_recovery_email("account-a") == "shared@example.com"
+    with db.catalog_transaction(immediate=True):
+        db.catalog_conn.execute(
+            "INSERT INTO pending_recovery_emails VALUES (?, ?, ?)",
+            ("account-b", "shared@example.com", "2026-10-04T00:00:00+00:00"),
+        )
+
+
+def test_gate_writer_rechecks_verified_address_after_concurrent_swap(api, monkeypatch):
+    from service import password_reset
+
+    client, db = api
+    token = _register(client, "alice")
+    deliveries = _capture_verification_deliveries(monkeypatch)
+    _set_and_verify_recovery_email(client, token, deliveries)
+    change = client.post(
+        "/auth/email/change",
+        json={"email": "new@example.com"},
+        headers=_authed(token),
+    )
+    assert change.status_code == 200, change.text
+    change_code = _verification_code(deliveries[-1])
+    write_email = db.set_account_email
+
+    def swap_before_gate_write(account_id, email):
+        assert password_reset.verify_recovery_email_change_code(
+            db, account_id, change_code
+        )
+        return write_email(account_id, email)
+
+    monkeypatch.setattr(db, "set_account_email", swap_before_gate_write)
+    refused = client.post(
+        "/auth/email", json={"email": "old@example.com"}, headers=_authed(token)
+    )
+
+    assert refused.status_code == 400
+    assert client.get("/auth/email", headers=_authed(token)).json() == {
+        "email": "new@example.com",
+        "verified": True,
+    }
+
+
+def test_change_notice_targets_address_replaced_inside_verification_transaction(api, monkeypatch):
+    client, db = api
+    token = _register(client, "alice")
+    deliveries = _capture_verification_deliveries(monkeypatch)
+    _set_and_verify_recovery_email(client, token, deliveries)
+    change = client.post(
+        "/auth/email/change",
+        json={"email": "new@example.com"},
+        headers=_authed(token),
+    )
+    assert change.status_code == 200, change.text
+    change_code = _verification_code(deliveries[-1])
+    consume = db._consume_email_verification_code_with_previous_address
+
+    def interleave_address_change(check):
+        with db.catalog_transaction(immediate=True):
+            db.catalog_conn.execute(
+                "UPDATE trainee_emails SET email = ? WHERE trainee_id = ?",
+                ("interleaved@example.com", check.identity.account_id),
+            )
+        return consume(check)
+
+    monkeypatch.setattr(
+        db,
+        "_consume_email_verification_code_with_previous_address",
+        interleave_address_change,
+    )
+    verified = client.post(
+        "/auth/email/change/verify",
+        json={"code": change_code},
+        headers=_authed(token),
+    )
+
+    assert verified.status_code == 200, verified.text
+    notice = next(item for item in deliveries if item[3].purpose == "recovery_email_changed_notice")
+    assert notice[0] == "interleaved@example.com"
+    assert client.get("/auth/email", headers=_authed(token)).json()["email"] == "new@example.com"
+
+
+def test_verified_recovery_email_cannot_be_replaced_through_gate_endpoint(api, monkeypatch):
+    client, _ = api
+    token = _register(client, "alice")
+    deliveries = _capture_verification_deliveries(monkeypatch)
+    _set_and_verify_recovery_email(client, token, deliveries)
+
+    refused = client.post(
+        "/auth/email", json={"email": "bypass@example.com"}, headers=_authed(token)
+    )
+
+    assert refused.status_code == 400
+    assert client.get("/auth/email", headers=_authed(token)).json()["email"] == "old@example.com"
+
+
+def test_recovery_email_change_uses_reset_rate_limit(api, monkeypatch):
+    client, _ = api
+    token = _register(client, "alice")
+    deliveries = _capture_verification_deliveries(monkeypatch)
+    _set_and_verify_recovery_email(client, token, deliveries)
+    headers = _authed(token)
+
+    statuses = [
+        client.post(
+            "/auth/email/change",
+            json={"email": f"new-{index}@example.com"},
+            headers=headers,
+        ).status_code
+        for index in range(4)
+    ]
+
+    assert statuses == [200, 200, 200, 429]
+    assert len(deliveries) == 4
 
 
 def test_wrong_recovery_code_has_generic_error(api, monkeypatch):

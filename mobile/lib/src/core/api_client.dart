@@ -34,6 +34,12 @@ class ApiException implements Exception {
   String toString() => 'ApiException($statusCode): $message';
 }
 
+typedef RecoveryEmailDetails = ({
+  String? email,
+  bool verified,
+  String? pendingEmail,
+});
+
 /// The result of `POST /workouts/sessions`, carrying whether this call created
 /// the session (201) or replayed an already-committed one (200).
 class WorkoutCommitResult {
@@ -1061,10 +1067,15 @@ class ApiClient {
     );
   }
 
-  /// The account's recovery email, or null when none is set (ADR 007).
-  Future<String?> recoveryEmail() async {
+  /// Reads the current verified address and any address awaiting verification.
+  Future<RecoveryEmailDetails> recoveryEmailDetails() async {
     final response = await _send(() => _dio.get<dynamic>('/auth/email'));
-    return (response.data as Map<String, dynamic>)['email'] as String?;
+    final Map<String, dynamic> body = response.data as Map<String, dynamic>;
+    return (
+      email: body['email'] as String?,
+      verified: body['verified'] as bool? ?? false,
+      pendingEmail: body['pending_email'] as String?,
+    );
   }
 
   /// Sets the recovery email and returns its normalized value and verification state.
@@ -1097,6 +1108,23 @@ class ApiClient {
     await _send(
       () => _dio.post<dynamic>(
         '/auth/email/verify',
+        data: <String, dynamic>{'code': code},
+      ),
+    );
+  }
+
+  /// Starts a verified recovery-email swap by sending a code to the new address.
+  Future<void> requestRecoveryEmailChange(String email) async {
+    await _send(
+      () => _dio.post<dynamic>('/auth/email/change', data: {'email': email}),
+    );
+  }
+
+  /// Consumes the code for the pending recovery address and completes the swap.
+  Future<void> verifyRecoveryEmailChange(String code) async {
+    await _send(
+      () => _dio.post<dynamic>(
+        '/auth/email/change/verify',
         data: <String, dynamic>{'code': code},
       ),
     );

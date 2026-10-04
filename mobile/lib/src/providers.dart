@@ -72,6 +72,11 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
   return client;
 });
 
+final recoveryEmailDetailsProvider =
+    FutureProvider.autoDispose<RecoveryEmailDetails>(
+  (ref) => ref.watch(apiClientProvider).recoveryEmailDetails(),
+);
+
 final Provider<AuthRepository> authRepositoryProvider =
     Provider<AuthRepository>(
   (ref) => AuthRepository(

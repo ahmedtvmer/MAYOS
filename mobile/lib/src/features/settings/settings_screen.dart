@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/config.dart';
 import '../../core/api_client.dart';
+import '../../core/config.dart';
 import '../../core/display_language/catalog.dart';
 import '../../core/display_language/controller.dart';
 import '../../core/display_language/settings_copy.dart';
@@ -38,6 +38,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   int _selectorRevision = 0;
   bool _savingLanguage = false;
 
+  Future<void> _openRecoveryEmail() async {
+    await context.push(recoveryEmailSettingsPath);
+    if (mounted) ref.invalidate(recoveryEmailDetailsProvider);
+  }
+
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
@@ -47,6 +52,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final bool hasPlayerProfile = session?.account.capabilities.player ?? false;
     final bool offlineDrafts = ref.watch(offlineWorkoutDraftsEnabledProvider);
     final String language = ref.watch(displayLanguageProvider);
+    final AsyncValue<RecoveryEmailDetails> recoveryEmail =
+        ref.watch(recoveryEmailDetailsProvider);
     final MayosCopy copy = MayosCopy(language);
     final SettingsCopy ui = SettingsCopy(language);
 
@@ -115,6 +122,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   title: ui.plan,
                   subtitle: ui.planSubtitle,
                   onTap: () => context.push(planPath),
+                ),
+                Divider(height: 1, color: c.border),
+                MayosSettingsTile(
+                  key: const Key('recovery_email_settings_entry'),
+                  icon: Icons.email_outlined,
+                  title: ui.recoveryEmail,
+                  subtitle: _recoveryEmailSubtitle(ui, recoveryEmail),
+                  subtitleTextDirection: recoveryEmail.valueOrNull?.email != null
+                      ? TextDirection.ltr
+                      : null,
+                  trailing: Text(
+                    ui.change,
+                    style: Theme.of(context)
+                        .textTheme
+                        .labelLarge
+                        ?.copyWith(color: c.accent),
+                  ),
+                  onTap: _openRecoveryEmail,
                 ),
               ],
             ),
@@ -250,6 +275,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
   }
+
+  String _recoveryEmailSubtitle(
+    SettingsCopy ui,
+    AsyncValue<RecoveryEmailDetails> recoveryEmail,
+  ) => recoveryEmail.when(
+        loading: () => ui.recoveryEmailLoading,
+        error: (Object error, StackTrace stack) => ui.recoveryEmailLoadFailed,
+        data: (RecoveryEmailDetails details) {
+          final String? email = details.email;
+          if (email == null || email.isEmpty) return ui.recoveryEmailNotSet;
+          final String verification = details.verified
+              ? ui.recoveryEmailVerified
+              : ui.recoveryEmailNotVerified;
+          final String? pending = details.pendingEmail;
+          if (pending != null) {
+            return '$email · $verification\n${ui.recoveryEmailPendingChange}: $pending';
+          }
+          return '$email · $verification';
+        },
+      );
 
   Future<void> _saveDisplayLanguage(
     String value, {

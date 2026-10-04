@@ -17,6 +17,51 @@ class SettingsCopy {
   String get personalization => isArabic ? 'التخصيص' : 'Personalization';
   String get assistantStyle => isArabic ? 'أسلوب المساعد' : 'Assistant style';
   String get account => isArabic ? 'الحساب' : 'Account';
+  String get recoveryEmail => isArabic ? 'البريد الإلكتروني للاسترداد' : 'Recovery email';
+  String get recoveryEmailVerified => isArabic ? 'تم التحقق' : 'Verified';
+  String get recoveryEmailNotVerified => isArabic ? 'لم يتم التحقق' : 'Not verified';
+  String get recoveryEmailNotSet => isArabic ? 'لم يُضف بريد إلكتروني' : 'Not set';
+  String get recoveryEmailPendingChange =>
+      isArabic ? 'بانتظار التحقق' : 'Awaiting verification';
+  String get recoveryEmailLoading => isArabic ? 'جارٍ التحميل…' : 'Loading…';
+  String get recoveryEmailLoadFailed => isArabic
+      ? 'تعذر تحميل البريد الإلكتروني للاسترداد.'
+      : 'Could not load the recovery email.';
+  String get change => isArabic ? 'تغيير' : 'Change';
+  String get changeRecoveryEmail =>
+      isArabic ? 'تغيير البريد الإلكتروني للاسترداد' : 'Change recovery email';
+  String get currentRecoveryEmail =>
+      isArabic ? 'البريد الإلكتروني الحالي' : 'Current recovery email';
+  String get newRecoveryEmail =>
+      isArabic ? 'البريد الإلكتروني الجديد' : 'New recovery email';
+  String get sendRecoveryEmailCode =>
+      isArabic ? 'إرسال رمز التحقق' : 'Send verification code';
+  String get recoveryEmailCodeLead => isArabic
+      ? 'سنرسل رمزًا من 6 أرقام إلى البريد الإلكتروني الجديد. سيظل البريد الحالي للاسترداد حتى تؤكد التغيير.'
+      : 'We will send a 6-digit code to the new address. Your current recovery email stays in use until you confirm the change.';
+  String get recoveryEmailCodeSent => isArabic
+      ? 'أرسلنا رمزًا إلى البريد الإلكتروني الجديد.'
+      : 'We sent a code to the new recovery email.';
+  String get pendingRecoveryEmail =>
+      isArabic ? 'البريد الإلكتروني قيد التحقق' : 'Address awaiting verification';
+  String get recoveryEmailCode =>
+      isArabic ? 'رمز التحقق المكوّن من 6 أرقام' : '6-digit verification code';
+  String get verifyAndChangeRecoveryEmail =>
+      isArabic ? 'تأكيد التغيير' : 'Verify and change email';
+  String get useDifferentRecoveryEmail =>
+      isArabic ? 'استخدام بريد إلكتروني آخر' : 'Use a different email';
+  String get recoveryEmailChanged => isArabic
+      ? 'تم تغيير البريد الإلكتروني للاسترداد.'
+      : 'Recovery email changed.';
+  String get recoveryEmailChangeFailed => isArabic
+      ? 'تعذر تغيير البريد الإلكتروني للاسترداد. تحقق من العنوان والرمز وحاول مرة أخرى.'
+      : 'Could not change the recovery email. Check the address or code and try again.';
+  String get recoveryEmailAlreadyLinked => isArabic
+      ? 'هذا البريد الإلكتروني مرتبط بحساب آخر.'
+      : 'This email is already linked to another account.';
+  String get recoveryEmailChangeSuccessLead => isArabic
+      ? 'أصبح البريد الإلكتروني الجديد عنوانك الموثق للاسترداد.'
+      : 'The new address is now your verified recovery email.';
   String get profile => isArabic ? 'الملف الشخصي' : 'Profile';
   String get profileSubtitle => isArabic
       ? 'تفضيلات التدريب والجدول والحساب'

@@ -711,6 +711,7 @@ class EmailUpdateIn(BaseModel):
 class RecoveryEmailOut(BaseModel):
     email: str | None = None
     verified: bool = False
+    pending_email: str | None = None
 
 
 class ForgotPasswordIn(BaseModel):

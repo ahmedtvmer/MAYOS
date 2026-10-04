@@ -339,7 +339,7 @@ class AuthRepository {
   Future<AccountSession> _currentSession() async {
     final Account account = await _api.currentAccount();
     final bool onboarded = await _api.hasProfile();
-    final String? email = await _api.recoveryEmail();
+    final String? email = (await _api.recoveryEmailDetails()).email;
     return AccountSession(
       account: account,
       onboarded: onboarded,

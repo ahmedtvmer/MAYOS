@@ -109,6 +109,7 @@ Recovery identity lives in the **shared catalog** (`db/catalog.db`), not in per-
 | Table | Columns | Purpose |
 | :--- | :--- | :--- |
 | `trainee_emails` | `trainee_id` (PK, **immutable account id** for live rows), `email` (UNIQUE), `updated_at`, `verified` | Current recovery address and verification state |
+| `pending_recovery_emails` | `account_id` (PK), `email`, `updated_at` | Address awaiting verification for a Settings change; multiple accounts may stage the same address |
 | `password_reset_tokens` | `token_hash` (PK), `trainee_id` (**immutable account id** for live rows), `expires_at`, `used_at`, `created_at` | Single-use reset tokens |
 | `email_verification_codes` | `code_id`, keyed `code_hash`, `account_id`, keyed `address_hash`, `purpose`, `expires_at`, `used_at`, `failed_attempts`, `created_at` | Short-lived address-verification codes; no address or raw code |
 
@@ -118,7 +119,9 @@ Live recovery rows are keyed by the immutable account id; **legacy username-keye
 
 `GET /auth/me` includes `recovery_email_verified`, which the Flutter router uses to gate dashboard, Coach mode, and onboarding. The API also provides `GET /auth/email`, `POST /auth/email`, `POST /auth/email/verification-code`, and `POST /auth/email/verify`. The blocking app gate accepts or corrects an address, sends a code, and remains closed until verification succeeds. Existing saved addresses start unverified and reach code entry on the next authenticated session.
 
-Verification codes are six digits, expire after `EMAIL_VERIFICATION_CODE_TTL_MINUTES` (default 10, clamped 5–60), and are stored only as a purpose-separated keyed hash bound to the immutable account id and keyed address hash. Each code allows at most five failed attempts; each account and purpose may issue at most five codes per rolling hour. Both limits are enforced in catalog transactions. Sending a replacement invalidates previous unused codes. The send endpoint uses the reset rate limit, while verify uses the password rate limit (10/minute); all wrong, expired, used, and unknown codes return the same generic 400. The code email uses the account's Display language and the shared email sender. Its console-dev backend prints the code for local development.
+Settings changes use `POST /auth/email/change` to stage a new address and send a code to it, then `POST /auth/email/change/verify` to confirm the code. Until confirmation, the pending address is unused and the current verified address remains the recovery address. The swap and pending-row removal are atomic; a request for another change replaces the prior pending address and code. A pending address is not reserved, so separate accounts may stage the same address; the first successful verification links it, and later attempts fail generically. After a successful swap, the old address receives a notice in the account's Display language that shows the new address only masked.
+
+Verification codes are six digits, expire after `EMAIL_VERIFICATION_CODE_TTL_MINUTES` (default 10, clamped 5–60), and are stored only as a purpose-separated keyed hash bound to the immutable account id and keyed address hash. Each code allows at most five failed attempts; each account and purpose may issue at most five codes per rolling hour. Both limits are enforced in catalog transactions. Sending a replacement invalidates previous unused codes. The send endpoint uses the reset rate limit, while verify uses the password rate limit (10/minute); all wrong, expired, used, and unknown codes return the same generic 400. Code emails use the account's Display language and the shared email sender. Its console-dev backend prints the code for local development; configured mail backends and ordinary logs do not.
 
 ```mermaid
 flowchart LR
@@ -130,6 +133,9 @@ flowchart LR
     Send -- "POST /auth/email/verification-code" --> Verify["Enter code"]
     Verify -- "POST /auth/email/verify succeeds" --> Dashboard
     Verify -- "resend or correct address" --> Send
+    Dashboard --> Settings["Settings"]
+    Settings -- "POST /auth/email/change" --> ChangeCode["Code sent to new address; current address stays active"]
+    ChangeCode -- "POST /auth/email/change/verify succeeds" --> Changed["Current address swapped; old address gets masked notice"]
     Check -- "401 expired" --> Login
     Check -- "404 stale service" --> Ops["'Restart service' message"]
 ```

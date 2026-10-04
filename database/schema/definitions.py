@@ -322,6 +322,11 @@ class SchemaMixin:
                     updated_at TEXT NOT NULL,
                     verified INTEGER NOT NULL DEFAULT 0 CHECK (verified IN (0, 1))
                 );
+                CREATE TABLE IF NOT EXISTS pending_recovery_emails (
+                    account_id TEXT PRIMARY KEY,
+                    email TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS password_reset_tokens (
                     token_hash TEXT PRIMARY KEY,
                     trainee_id TEXT NOT NULL,
@@ -675,6 +680,7 @@ class SchemaMixin:
             self._create_coach_alerts_schema()
             self._ensure_recovery_email_verified_column()
             self._ensure_email_verification_attempts_column()
+            self._ensure_pending_recovery_email_address_is_not_unique()
             self._ensure_accounts_last_seen_at()
             self._ensure_accounts_display_language()
             self._ensure_roster_attendance_timezone()
@@ -686,6 +692,37 @@ class SchemaMixin:
             self._ensure_coach_invites_revoked_at()
             self._commit_catalog()
             self._account_schema_ready = True
+
+    def _ensure_pending_recovery_email_address_is_not_unique(self) -> None:
+        cursor = self.catalog_conn.cursor()
+        indexes = cursor.execute("PRAGMA index_list(pending_recovery_emails)").fetchall()
+        for index in indexes:
+            if not index[2]:
+                continue
+            indexed_columns = [
+                str(column[2])
+                for column in cursor.execute(f"PRAGMA index_info({index[1]})").fetchall()
+            ]
+            if indexed_columns == ["email"]:
+                self._rebuild_pending_recovery_emails_without_email_unique()
+                return
+
+    def _rebuild_pending_recovery_emails_without_email_unique(self) -> None:
+        with self.catalog_transaction(immediate=True):
+            cursor = self.catalog_conn.cursor()
+            cursor.execute("DROP TABLE IF EXISTS pending_recovery_emails_new")
+            cursor.execute(
+                "CREATE TABLE pending_recovery_emails_new ("
+                "account_id TEXT PRIMARY KEY, email TEXT NOT NULL, updated_at TEXT NOT NULL)"
+            )
+            cursor.execute(
+                "INSERT INTO pending_recovery_emails_new (account_id, email, updated_at) "
+                "SELECT account_id, email, updated_at FROM pending_recovery_emails"
+            )
+            cursor.execute("DROP TABLE pending_recovery_emails")
+            cursor.execute(
+                "ALTER TABLE pending_recovery_emails_new RENAME TO pending_recovery_emails"
+            )
 
     def _ensure_recovery_email_verified_column(self) -> None:
         """Adds verification state to legacy recovery addresses, which start unverified."""

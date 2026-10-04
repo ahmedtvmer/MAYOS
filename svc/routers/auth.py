@@ -507,7 +507,7 @@ async def delete_account(
     return MessageOut(message="Account deleted. All sessions have been ended.")
 
 
-@router.get("/email", response_model=RecoveryEmailOut)
+@router.get("/email", response_model=RecoveryEmailOut, response_model_exclude_unset=True)
 async def read_recovery_email(
     player: Annotated[VerifiedPlayer, Depends(get_verified_player)], db: Annotated[Any, Depends(get_db)]
 ):
@@ -515,13 +515,17 @@ async def read_recovery_email(
         return (
             reset_service.get_recovery_email(db, player.account_id),
             db.is_recovery_email_verified(player.account_id),
+            db.get_pending_recovery_email(player.account_id),
         )
 
-    email, verified = await asyncio.to_thread(_run)
-    return RecoveryEmailOut(email=email, verified=verified)
+    email, verified, pending_email = await asyncio.to_thread(_run)
+    response = RecoveryEmailOut(email=email, verified=verified)
+    if pending_email is not None:
+        response.pending_email = pending_email
+    return response
 
 
-@router.post("/email", response_model=RecoveryEmailOut)
+@router.post("/email", response_model=RecoveryEmailOut, response_model_exclude_unset=True)
 @limiter.limit(PASSWORD_LIMIT)
 async def set_recovery_email(
     request: Request,
@@ -537,6 +541,25 @@ async def set_recovery_email(
 
     email, verified = await asyncio.to_thread(_run)
     return RecoveryEmailOut(email=email, verified=verified)
+
+
+@router.post("/email/change", response_model=MessageOut)
+@limiter.limit(RESET_LIMIT)
+async def request_recovery_email_change(
+    request: Request,
+    body: EmailUpdateIn,
+    player: Annotated[VerifiedPlayer, Depends(get_verified_player)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    result = await asyncio.to_thread(
+        reset_service.request_recovery_email_change,
+        db,
+        player.account_id,
+        body.email,
+    )
+    if not result["ok"]:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
+    return MessageOut(message="A verification code has been sent.")
 
 
 @router.post("/email/verification-code", response_model=MessageOut)
@@ -576,6 +599,28 @@ async def verify_recovery_email(
     if not verified:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=GENERIC_CODE_ERROR)
     return MessageOut(message="Recovery email verified.")
+
+
+@router.post("/email/change/verify", response_model=MessageOut)
+@limiter.limit(PASSWORD_LIMIT)
+async def verify_recovery_email_change(
+    request: Request,
+    player: Annotated[VerifiedPlayer, Depends(get_verified_player)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    try:
+        body = json.loads(await request.body())
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=GENERIC_CODE_ERROR) from None
+    code = body.get("code") if isinstance(body, dict) else None
+    if not isinstance(code, str):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=GENERIC_CODE_ERROR)
+    verified = await asyncio.to_thread(
+        reset_service.verify_recovery_email_change_code, db, player.account_id, code
+    )
+    if not verified:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=GENERIC_CODE_ERROR)
+    return MessageOut(message="Recovery email changed.")
 
 
 @router.post("/forgot-password", response_model=MessageOut, status_code=status.HTTP_202_ACCEPTED)

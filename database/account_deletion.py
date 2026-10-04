@@ -212,6 +212,10 @@ class AccountDeletionMixin:
                 (account_id, legacy_key),
             )
             cursor.execute(
+                "DELETE FROM pending_recovery_emails WHERE account_id = ?",
+                (account_id,),
+            )
+            cursor.execute(
                 "DELETE FROM password_reset_tokens WHERE trainee_id = ? OR trainee_id = ?",
                 (account_id, legacy_key),
             )

@@ -22,6 +22,7 @@ from service.email_hash_keys import derive_email_hash_key
 from service.email_sender import (
     PURPOSE_NO_ACCOUNT_NOTICE,
     PURPOSE_PASSWORD_RESET,
+    send_recovery_email_changed_notice,
     DeliveryContext,
     build_reset_link,
     build_signup_link,
@@ -31,10 +32,12 @@ from service.email_sender import (
     send_recovery_email_verification_code,
 )
 from service.email_verification import (
+    CODE_PURPOSE_RECOVERY_EMAIL_CHANGE,
     CODE_PURPOSE_RECOVERY_EMAIL,
     EmailVerificationIdentity,
     issue_code,
     verify_code,
+    verify_code_and_get_previous_address,
 )
 
 logger = logging.getLogger(__name__)
@@ -268,11 +271,11 @@ def get_recovery_email(db: Any, account_id: str) -> str | None:
 
 
 def set_recovery_email(db: Any, account_id: str, email: str) -> dict[str, Any]:
-    """Authenticated: link (or replace) the recovery email for the caller's account.
+    """Authenticated: links or updates an unverified recovery email for the caller.
 
     Resolves the immutable ``account_id`` from the verified JWT and refuses a
-    deleted or non-player account, so a stale request cannot rebind a reused
-    username's new account.
+    deleted or non-player account. Verified recovery emails use the two-step
+    change flow so they stay active until the replacement is confirmed.
     """
     account = db.get_account(account_id)
     if not db.is_live_account(account) or not account["is_player"] or not db.ledger_exists(account["ledger_id"]):
@@ -280,11 +283,94 @@ def set_recovery_email(db: Any, account_id: str, email: str) -> dict[str, Any]:
     normalized = normalize_email(email)
     if normalized is None:
         return {"ok": False, "error": "Enter a valid email address."}
+    current_email = normalize_email(db.get_account_email(account_id))
+    if db.is_recovery_email_verified(account_id) and current_email != normalized:
+        return {"ok": False, "error": "Use Settings to change a verified recovery email."}
     try:
         db.set_account_email(account["account_id"], normalized)
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
     return {"ok": True, "trainee_id": account["ledger_id"], "email": normalized}
+
+
+def request_recovery_email_change(db: Any, account_id: str, email: Any) -> dict[str, Any]:
+    """Stages a new recovery address and emails its single-use verification code."""
+    account = _live_reset_account(db, account_id)
+    if account is None:
+        return {"ok": False, "error": "Account not found."}
+    normalized = normalize_email(email)
+    if normalized is None:
+        return {"ok": False, "error": "Enter a valid email address."}
+    error = _recovery_email_change_error(db, account_id, normalized)
+    if error is not None:
+        return {"ok": False, "error": error}
+    sent = _issue_recovery_email_change_code(db, account, normalized)
+    if not sent:
+        return {"ok": False, "error": "Could not send a verification code."}
+    return {"ok": True, "pending_email": normalized}
+
+
+def _recovery_email_change_error(db: Any, account_id: str, new_email: str) -> str | None:
+    current = normalize_email(db.get_account_email(account_id))
+    if current is None or not db.is_recovery_email_verified(account_id):
+        return "Verify the current recovery email first."
+    if current == new_email:
+        return "Enter a different email address."
+    linked_account = db.get_account_by_email(new_email)
+    if linked_account is not None and linked_account != account_id:
+        return "This email is already linked to another account."
+    return None
+
+
+def _issue_recovery_email_change_code(
+    db: Any, account: dict[str, Any], new_email: str
+) -> bool:
+    account_id = account["account_id"]
+    return issue_code(
+        db,
+        EmailVerificationIdentity(account_id, new_email, CODE_PURPOSE_RECOVERY_EMAIL_CHANGE),
+        account.get("display_language", "en"),
+        lambda address, code, language: send_recovery_email_verification_code(
+            address, code, language, account_id=account_id
+        ),
+    )
+
+
+def verify_recovery_email_change_code(db: Any, account_id: str, code: str) -> bool:
+    """Consumes the pending-address code, swaps the verified address, then notifies the old one."""
+    account = _live_reset_account(db, account_id)
+    pending_email = normalize_email(db.get_pending_recovery_email(account_id))
+    if account is None or pending_email is None:
+        return False
+    old_email = verify_code_and_get_previous_address(
+        db,
+        EmailVerificationIdentity(
+            account_id, pending_email, CODE_PURPOSE_RECOVERY_EMAIL_CHANGE
+        ),
+        code,
+    )
+    if old_email is None:
+        return False
+    _notify_old_recovery_email(account, old_email, pending_email)
+    return True
+
+
+def _notify_old_recovery_email(
+    account: dict[str, Any], old_email: str, new_email: str
+) -> None:
+    from service.admin_accounts import mask_recovery_email
+
+    delivered = send_recovery_email_changed_notice(
+        old_email,
+        mask_recovery_email(new_email),
+        account.get("display_language", "en"),
+        account_id=account["account_id"],
+    )
+    if not delivered:
+        logger.error(
+            "Recovery-email change notice delivery failed for account %s",
+            account["account_id"],
+        )
 
 
 def _current_unverified_recovery_email(db: Any, account_id: str) -> tuple[dict[str, Any], str] | None:
@@ -413,6 +499,8 @@ def request_password_reset(
     account = _live_player_account(db, recovery_key) if recovery_key else None
     claims_pruned = _prune_expired_notice_claims(db, now)
     if account is None:
+        if normalized is not None and db.is_recovery_email_pending(normalized):
+            return generic_response
         notice_claimed = (
             _claim_no_account_notice(db, notice_hash, now)
             if normalized is not None and notice_hash is not None and claims_pruned

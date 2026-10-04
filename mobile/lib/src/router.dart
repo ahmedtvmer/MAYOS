@@ -34,6 +34,7 @@ import 'features/player/workout/logger_top_bar.dart';
 import 'features/player/workout/workout_drafts_screen.dart';
 import 'features/player/workout/workout_logger_screen.dart';
 import 'features/settings/personalization_screen.dart';
+import 'features/settings/recovery_email_settings_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shared/not_found_screen.dart';
 import 'features/shared/splash_screen.dart';
@@ -48,6 +49,7 @@ const String recoveryEmailPath = '/recovery-email';
 const String onboardingPath = '/onboarding';
 const String homePath = '/home';
 const String settingsPath = '/settings';
+const String recoveryEmailSettingsPath = '/settings/recovery-email';
 const String personalizationPath = '/personalization';
 const String planPath = '/plan';
 const String profilePath = '/profile';
@@ -384,6 +386,14 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: settingsPath,
         builder: (BuildContext context, GoRouterState state) =>
             const SettingsScreen(),
+      ),
+      GoRoute(
+        path: recoveryEmailSettingsPath,
+        builder: (BuildContext context, GoRouterState state) =>
+            _localizedPlayerPage(
+          title: (String languageCode) => SettingsCopy(languageCode).recoveryEmail,
+          body: const RecoveryEmailSettingsScreen(),
+        ),
       ),
       GoRoute(
         path: personalizationPath,

@@ -33,8 +33,12 @@ class FakeMayosApi {
   bool profileExists = false;
   String? recoveryEmail;
   bool recoveryEmailVerified = true;
+  String? pendingRecoveryEmail;
   String? currentRecoveryEmailCode;
   int recoveryEmailCodesSent = 0;
+  String? currentRecoveryEmailChangeCode;
+  int recoveryEmailChangeRequests = 0;
+  final Set<String> recoveryEmailsLinkedElsewhere = <String>{};
   // Password recovery (#38).
   String resetConfirmation =
       'If this email is linked to a ledger, a reset link is on its way.';
@@ -427,6 +431,10 @@ class FakeMayosApi {
         return _updateDisplayLanguage(request);
       case '/auth/email':
         return _recoveryEmail(request);
+      case '/auth/email/change':
+        return _requestRecoveryEmailChange(request);
+      case '/auth/email/change/verify':
+        return _verifyRecoveryEmailChange(request);
       case '/auth/email/verification-code':
         return _sendRecoveryEmailCode(request);
       case '/auth/email/verify':
@@ -788,6 +796,7 @@ class FakeMayosApi {
       return FakeResponse(200, <String, dynamic>{
         'email': recoveryEmail,
         'verified': recoveryEmail != null && recoveryEmailVerified,
+        'pending_email': pendingRecoveryEmail,
       });
     }
     final String? raw = request.body['email'] as String?;
@@ -808,6 +817,48 @@ class FakeMayosApi {
       'email': normalized,
       'verified': recoveryEmailVerified,
     });
+  }
+
+  FakeResponse _requestRecoveryEmailChange(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    final String? raw = request.body['email'] as String?;
+    final String? normalized = raw?.trim().toLowerCase();
+    if (normalized == null || !normalized.contains('@') || !normalized.contains('.')) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'Enter a valid email address.'});
+    }
+    if (recoveryEmailsLinkedElsewhere.contains(normalized)) {
+      return const FakeResponse(400, <String, dynamic>{
+        'detail': 'This email is already linked to another account.'
+      });
+    }
+    pendingRecoveryEmail = normalized;
+    recoveryEmailChangeRequests++;
+    currentRecoveryEmailChangeCode =
+        recoveryEmailChangeRequests.toString().padLeft(6, '0');
+    return const FakeResponse(
+        200, <String, dynamic>{'message': 'A verification code has been sent.'});
+  }
+
+  FakeResponse _verifyRecoveryEmailChange(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (pendingRecoveryEmail == null ||
+        request.body['code'] != currentRecoveryEmailChangeCode) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'Invalid or expired verification code.'});
+    }
+    recoveryEmail = pendingRecoveryEmail;
+    pendingRecoveryEmail = null;
+    recoveryEmailVerified = true;
+    currentRecoveryEmailChangeCode = null;
+    return const FakeResponse(
+        200, <String, dynamic>{'message': 'Recovery email changed.'});
   }
 
   FakeResponse _sendRecoveryEmailCode(FakeRequest request) {

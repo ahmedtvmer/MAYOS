@@ -25,10 +25,14 @@ _EMAIL_ADDRESS_TOKEN = re.compile(
     r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?"
     r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+(?![A-Za-z0-9.-])"
 )
+_MASKED_EMAIL_TOKEN = re.compile(
+    r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]\*{2,}@[A-Za-z0-9.-]+"
+)
 
 PURPOSE_PASSWORD_RESET = "password_reset"
 PURPOSE_COACH_INVITE = "coach_invite"
 PURPOSE_RECOVERY_EMAIL_VERIFICATION = "recovery_email_verification"
+PURPOSE_RECOVERY_EMAIL_CHANGED_NOTICE = "recovery_email_changed_notice"
 PURPOSE_NO_ACCOUNT_NOTICE = "no_account_notice"
 PURPOSE_ASSIGNMENT_NOTICE = "assignment_notice"
 PURPOSE_PROGRAM_REQUEST_NOTICE = "program_request_notice"
@@ -124,6 +128,7 @@ def _console_send(
     to_email: str, subject: str, body: str, delivery: DeliveryContext
 ) -> bool:
     safe_body = _EMAIL_ADDRESS_TOKEN.sub("[redacted email]", body)
+    safe_body = _MASKED_EMAIL_TOKEN.sub("[redacted email]", safe_body)
     details = [f"purpose={delivery.purpose}"]
     recipient_ref = _recipient_reference(delivery)
     if recipient_ref:
@@ -362,6 +367,45 @@ def send_recovery_email_verification_code(
         body,
         delivery=DeliveryContext(PURPOSE_RECOVERY_EMAIL_VERIFICATION, account_id, to_email),
     )
+
+
+def send_recovery_email_changed_notice(
+    to_email: str,
+    masked_new_email: str,
+    display_language: str,
+    *,
+    account_id: str | None = None,
+) -> bool:
+    """Notifies the previous address after a verified recovery-email swap."""
+    subject, body = _recovery_email_changed_notice_copy(
+        masked_new_email, display_language
+    )
+    return _deliver(
+        to_email,
+        subject,
+        body,
+        delivery=DeliveryContext(PURPOSE_RECOVERY_EMAIL_CHANGED_NOTICE, account_id, to_email),
+    )
+
+
+def _recovery_email_changed_notice_copy(
+    masked_new_email: str, display_language: str
+) -> tuple[str, str]:
+    if display_language == "ar":
+        subject = "تم تغيير البريد الإلكتروني للاسترداد في MAYOS"
+        body = (
+            "تم تغيير البريد الإلكتروني للاسترداد لحساب MAYOS الخاص بك.\n\n"
+            f"العنوان الجديد: \u2066{masked_new_email}\u2069\n\n"
+            "إذا لم تطلب هذا التغيير، فأمّن حسابك بتغيير كلمة المرور."
+        )
+    else:
+        subject = "Your MAYOS recovery email was changed"
+        body = (
+            "The recovery email for your MAYOS account was changed.\n\n"
+            f"New address: {masked_new_email}\n\n"
+            "If you did not make this change, secure your account by changing your password."
+        )
+    return subject, body
 
 
 def _recovery_email_verification_copy(

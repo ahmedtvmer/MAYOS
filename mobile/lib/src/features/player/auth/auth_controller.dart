@@ -681,6 +681,22 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
+  /// Updates the local account summary after Settings completes a verified swap.
+  void recoveryEmailChanged(String email) {
+    final AccountSession? session = state.session;
+    if (!state.isAuthenticated || session == null) return;
+    state = AuthState.authenticated(
+      AccountSession(
+        account: session.account.copyWith(
+          recoveryEmailVerified: true,
+        ),
+        onboarded: session.onboarded,
+        hasRecoveryEmail: true,
+        recoveryEmail: email,
+      ),
+    );
+  }
+
   /// Called after `POST /onboarding/complete` succeeds.
   void markOnboarded() {
     final AccountSession? session = state.session;
