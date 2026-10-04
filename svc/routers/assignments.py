@@ -17,14 +17,15 @@ import asyncio
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
-from agent.ProgramState import GeneratedProgramSchema
+from agent.ProgramState import GeneratedProgramSchema, PersistedProgramSchema
 from service import assignments as assignment_service
 from service import check_ins as check_ins_service
 from service import checkpoint_reviews as checkpoint_reviews_service
 from service import coach_history as coach_history_service
 from service import coach_programs as coach_programs_service
+from service import coach_program_drafts as coach_program_drafts_service
 from service import program_requests as program_requests_service
 from svc.dependencies import (
     VerifiedPlayer,
@@ -57,6 +58,8 @@ from svc.schemas import (
     CoachCheckInCreateOut,
     CheckpointReviewListItemOut,
     CheckpointReviewOut,
+    CoachProgramDraftIn,
+    CoachProgramDraftOut,
     CoachCheckInListOut,
     CoachCrossRosterProgramRequestListOut,
     CoachCrossRosterProgramRequestOut,
@@ -99,6 +102,13 @@ def _assignment_out(assignment: dict[str, Any]) -> AssignmentOut:
         started_at=assignment["started_at"],
         status=assignment["status"],
     )
+
+
+async def _run_program_draft_action(action, *args):
+    try:
+        return await asyncio.to_thread(action, *args)
+    except coach_program_drafts_service.ProgramDraftNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 # --------------------------------------------------------------------------
@@ -372,6 +382,108 @@ async def publish_assigned_player_program(
         return published
 
     return await asyncio.to_thread(_run)
+
+
+@coach_router.post("/{assignment_id}/program-draft", response_model=CoachProgramDraftOut)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def create_assigned_player_program_draft(
+    request: Request,
+    assignment_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+    body: CoachProgramDraftIn | None = None,
+):
+    def _run():
+        initial_draft = (body or CoachProgramDraftIn()).model_dump()
+        try:
+            created = coach_program_drafts_service.create_program_draft(
+                db, coach.account_id, assignment_id, initial_draft
+            )
+        except coach_program_drafts_service.ProgramDraftAlreadyExists as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        if created is None:
+            raise _no_active_assignment()
+        return created
+
+    return await asyncio.to_thread(_run)
+
+
+@coach_router.get("/{assignment_id}/program-draft", response_model=CoachProgramDraftOut)
+async def read_assigned_player_program_draft(
+    assignment_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    draft = await _run_program_draft_action(
+        coach_program_drafts_service.read_program_draft, db, coach.account_id, assignment_id
+    )
+    if draft is None:
+        raise _no_active_assignment()
+    return draft
+
+
+@coach_router.put("/{assignment_id}/program-draft", response_model=CoachProgramDraftOut)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def replace_assigned_player_program_draft(
+    request: Request,
+    assignment_id: str,
+    body: CoachProgramDraftIn,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    replaced = await _run_program_draft_action(
+        coach_program_drafts_service.replace_program_draft,
+        db,
+        coach.account_id,
+        assignment_id,
+        body.model_dump(),
+    )
+    if replaced is None:
+        raise _no_active_assignment()
+    return replaced
+
+
+@coach_router.delete("/{assignment_id}/program-draft", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def discard_assigned_player_program_draft(
+    request: Request,
+    assignment_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    discarded = await asyncio.to_thread(
+        coach_program_drafts_service.discard_program_draft, db, coach.account_id, assignment_id
+    )
+    if discarded is None:
+        raise _no_active_assignment()
+    if not discarded:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Program draft not found.")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@coach_router.post("/{assignment_id}/program-draft/publish", response_model=PersistedProgramSchema)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def publish_assigned_player_program_draft(
+    request: Request,
+    assignment_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    try:
+        published = await _run_program_draft_action(
+            coach_program_drafts_service.publish_program_draft,
+            db,
+            coach.account_id,
+            assignment_id,
+        )
+    except coach_program_drafts_service.ProgramDraftValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"errors": exc.issues},
+        ) from exc
+    if published is None:
+        raise _no_active_assignment()
+    return published
 
 
 @coach_roster_router.get("/program-requests", response_model=CoachCrossRosterProgramRequestListOut)

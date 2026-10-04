@@ -313,7 +313,13 @@ class RegistryAssignmentsMixin:
                 self.catalog_conn.rollback()
                 return {"ok": False, "reason": "already_ended"}
             self.catalog_conn.commit()
-            return {"ok": True, "assignment_id": str(assignment_id), "ended_at": now_iso, "ended_by": str(ended_by)}
+            return {
+                "ok": True,
+                "assignment_id": str(assignment_id),
+                "player_account_id": str(row[1]),
+                "ended_at": now_iso,
+                "ended_by": str(ended_by),
+            }
 
     def disable_coach_account(self, coach_account_id: str, now_iso: str, ended_by: str) -> dict[str, Any]:
         """Ends every active assignment and clears the coach capability in one transaction.
@@ -338,6 +344,15 @@ class RegistryAssignmentsMixin:
                     conn.rollback()
                     return {"ok": False}
                 cursor.execute(
+                    "SELECT assignment_id, player_account_id FROM assignments"
+                    " WHERE coach_account_id = ? AND status = 'active'",
+                    (str(coach_account_id),),
+                )
+                ended_assignment_details = [
+                    {"assignment_id": str(row[0]), "player_account_id": str(row[1])}
+                    for row in cursor.fetchall()
+                ]
+                cursor.execute(
                     "UPDATE assignments SET status = 'ended', ended_at = ?, ended_by = ?"
                     " WHERE coach_account_id = ? AND status = 'active'",
                     (now_iso, str(ended_by), str(coach_account_id)),
@@ -352,7 +367,11 @@ class RegistryAssignmentsMixin:
             except sqlite3.Error:
                 conn.rollback()
                 raise
-            return {"ok": True, "ended_assignments": ended}
+            return {
+                "ok": True,
+                "ended_assignments": ended,
+                "ended_assignment_details": ended_assignment_details,
+            }
 
     def create_assignment_notice(
         self, account_id: str, assignment_id: str | None, kind: str, message: str, now_iso: str

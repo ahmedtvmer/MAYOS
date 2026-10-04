@@ -142,6 +142,11 @@ class FakeMayosApi {
   int _publishedVersion = 0;
   int? programVersion;
   String? programPublishedByCoachAccountId;
+  Map<String, dynamic>? programDraft;
+  Map<String, dynamic>? programDraftPublishError;
+  String? _programNameOverride;
+  String? _splitTypeOverride;
+  int? _weeklyFrequencyOverride;
   bool repeatBenchPressOnOtherDays = false;
   List<Map<String, dynamic>>? programDaysOverride;
   final List<Map<String, dynamic>> programSubstitutionRequests =
@@ -380,6 +385,9 @@ class FakeMayosApi {
     }
     if (path.startsWith('/coach/assignments/') && path.endsWith('/check-ins')) {
       return _coachCheckIns(request);
+    }
+    if (path.startsWith('/coach/assignments/') && path.contains('/program-draft')) {
+      return _coachProgramDraft(request);
     }
     if (path.startsWith('/coach/assignments/') &&
         path.contains('/program-requests')) {
@@ -1785,6 +1793,87 @@ class FakeMayosApi {
     return FakeResponse(200, _activeProgramBody());
   }
 
+  FakeResponse _coachProgramDraft(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    final List<String> segments = request.path.split('/');
+    final String assignmentId = segments[3];
+    final bool owned = assignments.any(
+      (Map<String, dynamic> entry) => entry['assignment_id'] == assignmentId,
+    );
+    if (!owned) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'No active assignment.'});
+    }
+    if (request.path.endsWith('/publish')) {
+      if (programDraft == null) {
+        return const FakeResponse(
+            404, <String, dynamic>{'detail': 'Program draft not found.'});
+      }
+      if (programDraftPublishError != null) {
+        return FakeResponse(
+          400,
+          <String, dynamic>{'detail': programDraftPublishError},
+        );
+      }
+      _publishProgramDraft(assignmentId);
+      return FakeResponse(200, _activeProgramBody());
+    }
+    if (request.method == 'GET' && programDraft == null) {
+      return const FakeResponse(
+          404, <String, dynamic>{'detail': 'Program draft not found.'});
+    }
+    if (request.method == 'POST') programDraft ??= request.body;
+    if (request.method == 'PUT') programDraft = request.body;
+    if (request.method == 'DELETE') {
+      programDraft = null;
+      return const FakeResponse(204);
+    }
+    return FakeResponse(200, <String, dynamic>{
+      'assignment_id': assignmentId,
+      'draft': programDraft,
+      'created_at': '2026-10-04T10:00:00Z',
+      'updated_at': '2026-10-04T10:00:00Z',
+    });
+  }
+
+  void _publishProgramDraft(String assignmentId) {
+    final Map<String, dynamic> draft = programDraft!;
+    _programNameOverride = draft['program_name'] as String?;
+    _splitTypeOverride = draft['split_type'] as String?;
+    _weeklyFrequencyOverride = (draft['weekly_frequency'] as num?)?.toInt();
+    programDaysOverride = (draft['days'] as List<dynamic>).map((dynamic rawDay) {
+      final Map<String, dynamic> day = Map<String, dynamic>.from(rawDay as Map);
+      day['exercises'] = (day['exercises'] as List<dynamic>).map((dynamic rawExercise) {
+        final Map<String, dynamic> exercise =
+            Map<String, dynamic>.from(rawExercise as Map);
+        exercise['target_rpe'] =
+            10 - (exercise.remove('target_rir') as num).toDouble();
+        return exercise;
+      }).toList(growable: false);
+      return day;
+    }).toList(growable: false);
+    _publishedVersion++;
+    programVersion = _publishedVersion;
+    programPublishedByCoachAccountId = 'account-$currentUsername';
+    coachControlsProgram = true;
+    playerNotices.insert(0, <String, dynamic>{
+      'notice_id': 'notice-$_publishedVersion',
+      'assignment_id': assignmentId,
+      'kind': 'program_published',
+      'message': 'Your coach published program version $programVersion.',
+      'created_at': '2026-09-24T11:00:00Z',
+      'read_at': null,
+    });
+    programDraft = null;
+  }
+
   FakeResponse _playerProgramRequests(FakeRequest request) {
     if (!_authorized(request)) {
       return const FakeResponse(
@@ -2667,11 +2756,11 @@ class FakeMayosApi {
   }
 
   Map<String, dynamic> _activeProgramBody() => <String, dynamic>{
-        'program_name': _profileProgramRevision == 0
+        'program_name': _programNameOverride ?? (_profileProgramRevision == 0
             ? 'Upper/Lower 4x'
-            : 'Rebuilt program $_profileProgramRevision',
-        'split_type': 'Upper/Lower',
-        'weekly_frequency': 4,
+            : 'Rebuilt program $_profileProgramRevision'),
+        'split_type': _splitTypeOverride ?? 'Upper/Lower',
+        'weekly_frequency': _weeklyFrequencyOverride ?? 4,
         'instructions': '',
         'days': programDaysOverride ??
             <Map<String, dynamic>>[
@@ -3526,6 +3615,10 @@ class FakeMayosApi {
       _publishedVersion = 0;
       programVersion = null;
       programPublishedByCoachAccountId = null;
+      programDraft = null;
+      _programNameOverride = null;
+      _splitTypeOverride = null;
+      _weeklyFrequencyOverride = null;
       activeProgramFails = false;
       coachControlsProgram = false;
       noActiveProgram = false;

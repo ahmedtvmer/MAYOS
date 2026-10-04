@@ -1,6 +1,16 @@
 from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, Field
+from agent.program_prescription import (
+    DEFAULT_TARGET_SETS,
+    MAX_REPS,
+    MAX_EXERCISES_PER_DAY,
+    MAX_GENERATED_TARGET_SETS,
+    MIN_REPS,
+    MIN_GENERATED_EXERCISES_PER_DAY,
+    MIN_GENERATED_TARGET_RPE,
+    MIN_GENERATED_TARGET_SETS,
+)
 
 # --- Pydantic Output Contracts ---
 
@@ -16,10 +26,20 @@ class ProgramExerciseSchema(BaseModel):
     equipment: str | None = Field(default=None, description="Exercise library equipment")
     slot_key: str | None = Field(default=None, description="Movement slot that produced this exercise")
     warmup_sets: int = Field(default=0, ge=0, le=4, description="Ramped warm-up sets before working sets")
-    target_sets: int = Field(default=2, ge=1, le=4, description="Working sets count (1 to 4)")
-    target_reps_min: int = Field(ge=4, le=30, description="Lower bound of rep window")
-    target_reps_max: int = Field(ge=4, le=30, description="Upper bound of rep window")
-    target_rpe: float = Field(default=8.5, ge=7.0, le=10.0, description="Proximity to failure (7.0 to 10.0)")
+    target_sets: int = Field(
+        default=DEFAULT_TARGET_SETS,
+        ge=MIN_GENERATED_TARGET_SETS,
+        le=MAX_GENERATED_TARGET_SETS,
+        description="Working sets count",
+    )
+    target_reps_min: int = Field(ge=MIN_REPS, le=MAX_REPS, description="Lower bound of rep window")
+    target_reps_max: int = Field(ge=MIN_REPS, le=MAX_REPS, description="Upper bound of rep window")
+    target_rpe: float = Field(
+        default=8.5,
+        ge=MIN_GENERATED_TARGET_RPE,
+        le=10.0,
+        description="Proximity to failure (7.0 to 10.0)",
+    )
     rest_seconds: int = Field(default=180, description="Rest period in seconds")
     notes: str | None = Field(default=None, description="Execution steps from the exercise catalog (or a chat-supplied cue)")
     image_path: str | None = Field(default=None, description="Local path or URL to demonstration image")
@@ -49,7 +69,9 @@ class ProgramDaySchema(BaseModel):
         default_factory=list, description="2-3 general preparation movements performed before the session"
     )
     exercises: list[ProgramExerciseSchema] = Field(
-        min_length=3, max_length=14, description="6 to 12 high-yield movement slots per session"
+        min_length=MIN_GENERATED_EXERCISES_PER_DAY,
+        max_length=MAX_EXERCISES_PER_DAY,
+        description="Ordered exercises prescribed for the training day",
     )
     cardio: str | None = Field(default=None, description="Optional cardio finisher note")
 
@@ -75,6 +97,29 @@ class GeneratedProgramSchema(BaseModel):
     created_at: str | None = Field(
         default=None, description="Ledger creation timestamp; set when loaded from storage"
     )
+
+
+class PersistedProgramExerciseSchema(ProgramExerciseSchema):
+    """A stored prescription, including coach-authored set and effort ranges."""
+
+    target_sets: int = Field(default=DEFAULT_TARGET_SETS, ge=1, description="Working sets count")
+    target_rpe: float = Field(default=8.5, ge=5.0, le=10.0, description="Proximity to failure")
+
+
+class PersistedProgramDaySchema(BaseModel):
+    day_name: str = Field(description="e.g., 'Upper 1', 'Lower 1'")
+    day_order: int = Field(ge=1, le=5)
+    warmup_exercises: list[WarmupExerciseSchema] = Field(default_factory=list)
+    exercises: list[PersistedProgramExerciseSchema] = Field(
+        min_length=1, max_length=MAX_EXERCISES_PER_DAY
+    )
+    cardio: str | None = None
+
+
+class PersistedProgramSchema(GeneratedProgramSchema):
+    """A saved program; coach-authored prescriptions may use the broader range."""
+
+    days: list[PersistedProgramDaySchema]
 
 
 # --- LangGraph Node State ---

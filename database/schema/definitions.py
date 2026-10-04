@@ -15,6 +15,7 @@ from database.migration_manager import DELOAD_CHOICES_DDL
 from database.migration_manager import INTAKE_DDL
 from database.migration_manager import ONBOARDING_ANALYTICS_DDL
 from database.migration_manager import PERFORMED_DATE_CORRECTIONS_DDL
+from database.migration_manager import PROGRAM_DRAFTS_DDL
 from database.migration_manager import SESSION_CARDIO_DDL
 from database.migration_manager import SESSION_WARMUP_SETS_DDL
 from database.migration_manager import get_ledger_schema_version
@@ -293,6 +294,7 @@ class SchemaMixin:
                 *SESSION_CARDIO_DDL,
                 *CHECKPOINT_REVIEWS_DDL,
                 *DELOAD_CHOICES_DDL,
+                *PROGRAM_DRAFTS_DDL,
                 *EQUIPMENT_ACCESS_DDL,
             )
         ))

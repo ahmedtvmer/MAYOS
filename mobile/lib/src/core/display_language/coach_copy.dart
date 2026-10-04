@@ -1,5 +1,6 @@
 import 'arabic_count.dart';
 import '../personal_records.dart';
+import '../program_prescription.dart';
 
 /// App-owned coach mode labels. Server supplied notices, alert descriptions,
 /// player notes, assistant replies, and checkpoint prose are rendered as sent.
@@ -212,6 +213,60 @@ class CoachCopy {
 
   String get publishProgram =>
       isArabic ? 'نشر برنامج تدريبي' : 'Publish program';
+  String get writeProgram =>
+      isArabic ? 'اكتب برنامجًا تدريبيًا' : 'Write program';
+  String get trainingDay => isArabic ? 'يوم التدريب' : 'Training day';
+  String get firstTrainingDay => isArabic ? 'اليوم 1' : 'Day 1';
+  String get customProgram =>
+      isArabic ? 'برنامج تدريبي مخصص' : 'Custom program';
+  String get dayName => isArabic ? 'اسم اليوم' : 'Day name';
+  String get addExercise => isArabic ? 'إضافة تمرين' : 'Add exercise';
+  String get removeExercise => isArabic ? 'حذف التمرين' : 'Remove exercise';
+  String get workingSets => isArabic ? 'مجموعات العمل' : 'Working sets';
+  String get repsOrRange => isArabic ? 'التكرارات أو النطاق' : 'Reps or range';
+  String get targetRir => isArabic ? 'RIR المستهدف' : 'Target RIR';
+  String get saveDraft => isArabic ? 'حفظ المسودة' : 'Save draft';
+  String get publishDraft => isArabic ? 'نشر البرنامج' : 'Publish program';
+  String get confirmPublishDraft => isArabic
+      ? 'نشر البرنامج التدريبي للاعب الآن؟ سيصبح البرنامج النشط.'
+      : 'Publish this Training program now? It will become the active program.';
+  String get discardDraft => isArabic ? 'حذف المسودة' : 'Discard draft';
+  String get confirmDiscardDraft => isArabic
+      ? 'حذف مسودة البرنامج التدريبي؟ لا يمكن التراجع عن ذلك.'
+      : 'Discard this Program draft? This cannot be undone.';
+  String get draftSaved => isArabic ? 'تم حفظ المسودة.' : 'Draft saved.';
+  String get invalidSetCount => isArabic
+      ? 'أدخل مجموعة عمل واحدة على الأقل لكل تمرين.'
+      : 'Enter at least one working set for each exercise.';
+  String get invalidRepTarget => isArabic
+      ? 'أدخل عددًا من ${_ltr('${ProgramDraftPrescription.minReps}')} إلى ${_ltr('${ProgramDraftPrescription.maxReps}')} أو نطاقًا مثل 6-8.'
+      : 'Enter ${ProgramDraftPrescription.minReps}–${ProgramDraftPrescription.maxReps} reps or a range such as 6-8.';
+  String get invalidRirTarget => isArabic
+      ? 'يجب أن يكون RIR المستهدف بين ${_ltr('${ProgramDraftPrescription.minRir.toInt()}')} و${_ltr('${ProgramDraftPrescription.maxRir.toInt()}')}.'
+      : 'Target RIR must be from ${ProgramDraftPrescription.minRir.toInt()} to ${ProgramDraftPrescription.maxRir.toInt()}.';
+  String programDraftValidationMessage(String code) => switch (code) {
+        'invalid_sets' => invalidSetCount,
+        'invalid_reps' => invalidRepTarget,
+        'invalid_rir' => invalidRirTarget,
+        'unknown_exercise' => isArabic
+            ? 'اختر تمرينًا من مكتبة التمارين.'
+            : 'Choose an exercise from the Exercise library.',
+        'empty_day' => isArabic
+            ? 'أضف تمرينًا واحدًا على الأقل إلى يوم التدريب.'
+            : 'Add at least one exercise to this training day.',
+        'too_many_exercises' => isArabic
+            ? 'يمكن أن يحتوي يوم التدريب على 14 تمرينًا كحد أقصى.'
+            : 'A training day can have at most 14 exercises.',
+        'invalid_warmup_sets' => isArabic
+            ? 'يجب أن تكون مجموعات الإحماء من 0 إلى 4.'
+            : 'Warm-up sets must be from 0 to 4.',
+        'invalid_day_order' || 'invalid_weekly_frequency' => isArabic
+            ? 'راجع ترتيب أيام التدريب وعددها أسبوعيًا.'
+            : 'Check the training day order and weekly frequency.',
+        _ => isArabic
+            ? 'راجع هذا الحقل في البرنامج التدريبي.'
+            : 'Check this Training program field.',
+      };
   String get splitOverrideOptional =>
       isArabic ? 'تقسيمة مخصصة (اختيارية)' : 'Split override (optional)';
   String get repPreference => isArabic ? 'تفضيل التكرارات' : 'Rep preference';

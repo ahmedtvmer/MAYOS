@@ -30,6 +30,7 @@ from service.email_sender import (
     send_assignment_redemption_email,
 )
 from service.roster_order import roster_urgency_key
+from database.program_drafts import discard_assignment_program_draft
 
 logger = logging.getLogger(__name__)
 
@@ -307,6 +308,9 @@ def end_assignment(db: Any, account_id: str, assignment_id: Any, ended_by: str) 
         if reason == "already_ended":
             return {"ok": False, "error": "This assignment has already ended."}
         return {"ok": False, "error": "Assignment not found."}
+    discard_assignment_program_draft(
+        db, assignment_id, result["player_account_id"], best_effort=True
+    )
     return {"ok": True, "assignment_id": assignment_id, "status": "ended", "ended_at": result["ended_at"]}
 
 
@@ -384,4 +388,11 @@ def disable_coach_capability(db: Any, coach_account_id: str) -> dict[str, Any]:
     )
     if not result["ok"]:
         return {"ok": False, "error": "Coach capability required."}
+    for assignment in result["ended_assignment_details"]:
+        discard_assignment_program_draft(
+            db,
+            assignment["assignment_id"],
+            assignment["player_account_id"],
+            best_effort=True,
+        )
     return {"ok": True, "ended_assignments": result["ended_assignments"]}

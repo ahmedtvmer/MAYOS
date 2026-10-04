@@ -227,6 +227,281 @@ def test_second_publish_increments_version_and_keeps_first_stable(api, monkeypat
     assert all(row[1] == coach_account_id for row in rows)
 
 
+def _program_draft_path(assignment_id):
+    return f"/coach/assignments/{assignment_id}/program-draft"
+
+
+def _one_day_draft(exercise_id="sq", **exercise_fields):
+    exercise = {
+        "exercise_id": exercise_id,
+        "target_sets": 3,
+        "target_reps_min": 6,
+        "target_reps_max": 8,
+        "target_rir": 2,
+        **exercise_fields,
+    }
+    return {
+        "program_name": "Handwritten plan",
+        "split_type": "Full Body",
+        "weekly_frequency": 1,
+        "instructions": "Keep the reps controlled.",
+        "days": [{"day_name": "Full A", "day_order": 1, "exercises": [exercise]}],
+    }
+
+
+def test_program_draft_is_assignment_gated_and_one_per_assignment(api):
+    client, _, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+
+    created = client.post(path, headers=coach_headers, json=_one_day_draft())
+    repeated = client.post(path, headers=coach_headers, json=_one_day_draft("bp"))
+    assert created.status_code == 200, created.text
+    assert repeated.status_code == 409, repeated.text
+    assert "already exists" in repeated.json()["detail"]
+    assert client.get(path, headers=coach_headers).status_code == 200
+    assert client.get("/programs/active", headers=player_headers).json() is None
+
+    replaced = client.put(path, headers=coach_headers, json=_one_day_draft("row"))
+    assert replaced.status_code == 200, replaced.text
+    assert replaced.json()["draft"]["days"][0]["exercises"][0]["exercise_id"] == "row"
+    assert client.get(path, headers=player_headers).status_code == 403
+
+    discarded = client.delete(path, headers=coach_headers)
+    assert discarded.status_code == 204
+    assert client.get(path, headers=coach_headers).status_code == 404
+
+
+def test_program_draft_can_be_created_empty(api):
+    client, _, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+
+    created = client.post(_program_draft_path(assignment_id), headers=coach_headers)
+
+    assert created.status_code == 200, created.text
+    assert created.json()["draft"]["days"] == []
+
+
+def test_program_draft_strips_client_ids_and_publication_metadata(api):
+    client, _, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+    supplied = _one_day_draft()
+    supplied.update(id="old-program", created_at="2001-01-01", version=99)
+    supplied["published_by_coach_account_id"] = "foreign-coach"
+    supplied["days"][0].update(id="old-day", created_at="2001-01-02")
+    supplied["days"][0]["exercises"][0].update(id="old-exercise", created_at="2001-01-03")
+
+    created = client.post(_program_draft_path(assignment_id), headers=coach_headers, json=supplied)
+
+    assert created.status_code == 200, created.text
+    response = created.json()
+    assert "id" not in response["draft"]
+    assert "created_at" not in response["draft"]
+    assert "version" not in response["draft"]
+    assert "published_by_coach_account_id" not in response["draft"]
+    assert "id" not in response["draft"]["days"][0]
+    assert "id" not in response["draft"]["days"][0]["exercises"][0]
+
+
+def test_program_draft_write_that_races_assignment_end_is_discarded(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, _, assignment_id, _, player_account_id = _assigned_player(api)
+    original_lookup = db.get_active_assignment_for_coach
+    lookups = 0
+
+    def end_after_authorization(coach_account_id, requested_assignment_id):
+        nonlocal lookups
+        lookups += 1
+        if lookups == 1:
+            return original_lookup(coach_account_id, requested_assignment_id)
+        return None
+
+    monkeypatch.setattr(db, "get_active_assignment_for_coach", end_after_authorization)
+
+    response = client.post(
+        _program_draft_path(assignment_id), headers=coach_headers, json=_one_day_draft()
+    )
+
+    assert response.status_code == 403
+    player = db.get_account(player_account_id)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        assert ledger.get_program_draft(assignment_id) is None
+
+
+def test_program_draft_denies_unknown_foreign_and_ended_assignments_identically(api):
+    client, _, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    other_headers = _make_coach(client, api[1], "other")
+    path = _program_draft_path(assignment_id)
+    foreign = client.get(path, headers=other_headers)
+    unknown = client.get(_program_draft_path("missing"), headers=other_headers)
+    ended = client.post("/assignments/me/end", headers=player_headers)
+    assert ended.status_code == 200
+    revoked = client.get(path, headers=coach_headers)
+    assert [response.status_code for response in (foreign, unknown, revoked)] == [403, 403, 403]
+    assert foreign.json() == unknown.json() == revoked.json()
+
+
+@pytest.mark.parametrize(
+    ("draft", "code", "field"),
+    [
+        ({"days": []}, "no_days", "days"),
+        (_one_day_draft("missing"), "unknown_exercise", "exercise_id"),
+        (_one_day_draft(target_sets=0), "invalid_sets", "target_sets"),
+        (_one_day_draft(target_reps_min=31, target_reps_max=31), "invalid_reps", "target_reps_min"),
+        (_one_day_draft(target_reps_min=10, target_reps_max=8), "invalid_reps", "target_reps_min"),
+        (_one_day_draft(target_rir=6), "invalid_rir", "target_rir"),
+        (_one_day_draft(warmup_sets=5), "invalid_warmup_sets", "warmup_sets"),
+        (
+            {
+                **_one_day_draft(),
+                "days": [
+                    {
+                        "day_name": "Full A",
+                        "day_order": 1,
+                        "exercises": [
+                            _one_day_draft()["days"][0]["exercises"][0] for _ in range(15)
+                        ],
+                    }
+                ],
+            },
+            "too_many_exercises",
+            "exercises",
+        ),
+    ],
+)
+def test_program_draft_publish_rejects_invalid_structure(api, draft, code, field):
+    client, _, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+    assert client.post(path, headers=coach_headers, json=draft).status_code == 200
+
+    published = client.post(f"{path}/publish", headers=coach_headers)
+
+    assert published.status_code == 400
+    issues = published.json()["detail"]["errors"]
+    assert any(issue["code"] == code for issue in issues)
+    matching = next(issue for issue in issues if issue["code"] == code)
+    assert matching["location"]["field"] == field
+    assert matching["message"]
+
+
+def test_coach_publication_loads_broader_prescription_range(api):
+    client, _, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+    draft = _one_day_draft(target_sets=5)
+
+    assert client.post(path, headers=coach_headers, json=draft).status_code == 200
+    published = client.post(f"{path}/publish", headers=coach_headers)
+
+    assert published.status_code == 200, published.text
+    assert published.json()["days"][0]["exercises"][0]["target_sets"] == 5
+    active = client.get("/programs/active", headers=player_headers)
+    assert active.status_code == 200, active.text
+    assert active.json()["days"][0]["exercises"][0]["target_sets"] == 5
+
+
+def test_manual_program_publish_sets_rir_provenance_version_notice_and_authority(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+    assert client.post(path, headers=coach_headers, json=_one_day_draft(target_rir=5)).status_code == 200
+    before_usage = db.catalog_conn.execute(
+        "SELECT COUNT(*) FROM model_usage WHERE account_id = ?", (coach_account_id,)
+    ).fetchone()[0]
+    monkeypatch.setattr("svc.llm.run_inference_sync", lambda *args, **kwargs: pytest.fail("AI called"))
+
+    published = client.post(f"{path}/publish", headers=coach_headers)
+
+    assert published.status_code == 200, published.text
+    assert published.json()["version"] == 1
+    assert published.json()["published_by_coach_account_id"] == coach_account_id
+    exercise = published.json()["days"][0]["exercises"][0]
+    assert exercise["target_rpe"] == 5
+    assert client.get(path, headers=coach_headers).status_code == 404
+    active = client.get("/programs/active", headers=player_headers).json()
+    assert active["version"] == 1
+    assert active["player_controls_program"] is False
+    active_exercise = active["days"][0]["exercises"][0]
+    assert active_exercise["exercise_id"] == "sq"
+    assert active_exercise["target_sets"] == 3
+    assert active_exercise["target_reps_min"] == 6
+    assert active_exercise["target_reps_max"] == 8
+    assert active_exercise["target_rpe"] == 5
+    notices = client.get("/assignments/notices", headers=player_headers).json()["notices"]
+    assert notices[0]["kind"] == "program_published"
+    assert db.catalog_conn.execute(
+        "SELECT COUNT(*) FROM model_usage WHERE account_id = ?", (coach_account_id,)
+    ).fetchone()[0] == before_usage
+
+
+def test_program_draft_preserves_fractional_rir_as_target_rpe(api):
+    client, _, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+    assert client.post(path, headers=coach_headers, json=_one_day_draft(target_rir=1.5)).status_code == 200
+
+    published = client.post(f"{path}/publish", headers=coach_headers)
+
+    assert published.status_code == 200, published.text
+    assert published.json()["days"][0]["exercises"][0]["target_rpe"] == 8.5
+
+
+def test_ending_assignment_discards_program_draft(api):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, player_account_id = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+    assert client.post(path, headers=coach_headers, json=_one_day_draft()).status_code == 200
+
+    assert client.post("/assignments/me/end", headers=player_headers).status_code == 200
+    player = db.get_account(player_account_id)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        assert ledger.get_program_draft(assignment_id) is None
+
+
+def test_assignment_end_succeeds_when_post_commit_draft_cleanup_fails(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    assert client.post(
+        _program_draft_path(assignment_id), headers=coach_headers, json=_one_day_draft()
+    ).status_code == 200
+
+    original_open_ledger = db.open_ledger
+    open_calls = 0
+
+    def fail_cleanup_open_ledger(ledger_id):
+        nonlocal open_calls
+        open_calls += 1
+        if open_calls == 1:
+            return original_open_ledger(ledger_id)
+        raise OSError("temporary player ledger failure")
+
+    monkeypatch.setattr(db, "open_ledger", fail_cleanup_open_ledger)
+    ended = client.post("/assignments/me/end", headers=player_headers)
+
+    assert ended.status_code == 200, ended.text
+    assignment = db.catalog_conn.execute(
+        "SELECT status FROM assignments WHERE assignment_id = ?", (assignment_id,)
+    ).fetchone()
+    assert assignment[0] == "ended"
+
+
+def test_disabling_coach_capability_discards_assignment_program_drafts(api):
+    client, db, _ = api
+    coach_headers, _, assignment_id, _, player_account_id = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+    assert client.post(path, headers=coach_headers, json=_one_day_draft()).status_code == 200
+
+    disabled = client.post("/coach/capability/disable", headers=coach_headers)
+
+    assert disabled.status_code == 200, disabled.text
+    assert disabled.json()["ended_assignments"] == 1
+    player = db.get_account(player_account_id)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        assert ledger.get_program_draft(assignment_id) is None
+
+
 # --------------------------------------------------------------------------
 # Program authority
 # --------------------------------------------------------------------------

@@ -427,6 +427,8 @@ def test_deleted_coach_becomes_former_coach_and_returns_program_authority(api, m
     ).status_code == 200
     monkeypatch.setattr("service.coach_programs.generate_program_pipeline", _fake_coach_generator(db))
     assert client.post(f"/coach/assignments/{assignment_id}/program", headers=coach_headers, json={}).status_code == 200
+    with db.open_ledger("bob") as ledger:
+        ledger.create_program_draft(assignment_id, {"program_name": "Unpublished plan"})
 
     # While assigned, the coach owns the program.
     with db.open_ledger("bob") as ledger:
@@ -444,6 +446,7 @@ def test_deleted_coach_becomes_former_coach_and_returns_program_authority(api, m
         active = ledger.get_active_program()
         assert active.published_by_coach_account_id == coach_id
         assert programs_service.player_controls_program(db, ledger, player_id) is True
+        assert ledger.get_program_draft(assignment_id) is None
 
     # The player can now regenerate self-service (no coach model call needed).
     def fake_player_generation(**kwargs):

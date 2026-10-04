@@ -98,6 +98,94 @@ Future<void> _openSettings(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('coach builds one training day and publishes a Program draft',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await tester.tap(find.byKey(const Key('player_page_actions')));
+    await _pumpUntilFound(tester, find.text('Write program'));
+    await tester.tap(find.text('Write program'));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_exercise')));
+    await tester.enterText(find.byKey(const Key('program_draft_day_name')), 'Full A');
+
+    await tester.tap(find.byKey(const Key('program_draft_add_exercise')));
+    await _pumpUntilFound(tester, find.text('Search'));
+    await tester.enterText(find.byType(TextField).last, 'Bench Press');
+    await tester.tap(find.text('Search').last);
+    await _pumpUntilFound(tester, find.text('Bench Press'));
+    await tester.tap(find.text('Bench Press').last);
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_sets_0')));
+    await tester.enterText(find.byKey(const Key('program_draft_sets_0')), '3');
+    await tester.enterText(find.byKey(const Key('program_draft_reps_0')), '6-8');
+    await tester.enterText(find.byKey(const Key('program_draft_rir_0')), '1');
+    await tester.tap(find.byKey(const Key('program_draft_publish')));
+    await _pumpUntilFound(tester,
+        find.text('Publish this Training program now? It will become the active program.'));
+    await tester.tap(find.text('Publish').last);
+    await _pumpUntilFound(tester, find.text('Published program version 1'));
+
+    expect(fake.programVersion, 1);
+    expect(fake.programPublishedByCoachAccountId, 'account-alice');
+    expect(fake.programDraft, isNull);
+    expect(fake.programDaysOverride!.single['day_name'], 'Full A');
+    final Map<String, dynamic> exercise =
+        (fake.programDaysOverride!.single['exercises'] as List<dynamic>).single
+            as Map<String, dynamic>;
+    expect(exercise['target_sets'], 3);
+    expect(exercise['target_reps_min'], 6);
+    expect(exercise['target_reps_max'], 8);
+    expect(exercise['target_rpe'], 9);
+  });
+
+  testWidgets('coach sees localized server validation beside the exercise field',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..programDraftPublishError = <String, dynamic>{
+        'errors': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'code': 'invalid_reps',
+            'message': 'Reps must be from 4 to 30.',
+            'location': <String, dynamic>{
+              'day_index': 0,
+              'exercise_index': 0,
+              'field': 'target_reps_min',
+            },
+          },
+        ],
+      };
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await tester.tap(find.byKey(const Key('player_page_actions')));
+    await _pumpUntilFound(tester, find.text('Write program'));
+    await tester.tap(find.text('Write program'));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_exercise')));
+    await tester.tap(find.byKey(const Key('program_draft_add_exercise')));
+    await _pumpUntilFound(tester, find.text('Search'));
+    await tester.enterText(find.byType(TextField).last, 'Bench Press');
+    await tester.tap(find.text('Search').last);
+    await _pumpUntilFound(tester, find.text('Bench Press'));
+    await tester.tap(find.text('Bench Press').last);
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_reps_0')));
+    await tester.tap(find.byKey(const Key('program_draft_publish')));
+    await _pumpUntilFound(
+      tester,
+      find.text('Publish this Training program now? It will become the active program.'),
+    );
+    await tester.tap(find.text('Publish').last);
+
+    await _pumpUntilFound(
+      tester,
+      find.text('Enter 4–30 reps or a range such as 6-8.'),
+    );
+    expect(find.text('Enter 4–30 reps or a range such as 6-8.'), findsOneWidget);
+    expect(find.byKey(const Key('program_draft_reps_0')), findsOneWidget);
+  });
+
   testWidgets('coach publishes a program and sees the published version',
       (tester) async {
     final FakeMayosApi fake = _coachFake();

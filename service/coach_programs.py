@@ -55,25 +55,25 @@ def publish_program(
         if published is None:
             raise RuntimeError("Published program is missing from the player ledger after save.")
 
-        # A new Program version closes any previous Stalling episode.
-        try:
-            stall_alerts.resolve_for_assignment(
-                db, context["assignment"]["assignment_id"], datetime.now(UTC)
-            )
-        except Exception:
-            logger.warning("Stall alert resolution failed after program publication", exc_info=True)
-
-        db.create_assignment_notice(
-            context["player"]["account_id"],
-            context["assignment"]["assignment_id"],
-            "program_published",
-            f"Your coach published program version {published.version}.",
-            datetime.now(UTC).isoformat(),
-        )
-        # This path never runs the attendance evaluation, so refresh the roster
-        # row's cached program name here: the next roster read stays catalog-side
-        # (ADR 025/030, #120).
-        db.set_roster_program_name(
-            context["assignment"]["assignment_id"], published.program_name
-        )
+        record_program_publication(db, context, published)
         return published
+
+
+def record_program_publication(db: Any, context: dict[str, Any], published: Any) -> None:
+    """Records the shared catalog effects of activating a coach program."""
+    assignment_id = context["assignment"]["assignment_id"]
+    player_account_id = context["player"]["account_id"]
+    now = datetime.now(UTC)
+    try:
+        stall_alerts.resolve_for_assignment(db, assignment_id, now)
+    except Exception:
+        logger.warning("Stall alert resolution failed after program publication", exc_info=True)
+    db.create_assignment_notice(
+        player_account_id,
+        assignment_id,
+        "program_published",
+        f"Your coach published program version {published.version}.",
+        now.isoformat(),
+    )
+    # Attendance evaluation is not run here, so refresh the roster's cached name.
+    db.set_roster_program_name(assignment_id, published.program_name)

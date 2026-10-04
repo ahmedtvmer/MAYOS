@@ -4,7 +4,22 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from agent.ProgramState import GeneratedProgramSchema, ProgramExerciseSchema
+from agent.ProgramState import (
+    GeneratedProgramSchema,
+    PersistedProgramSchema,
+    ProgramExerciseSchema,
+    SuggestedSubstitute,
+)
+from agent.program_prescription import (
+    DEFAULT_TARGET_REPS_MAX,
+    DEFAULT_TARGET_REPS_MIN,
+    DEFAULT_TARGET_RIR,
+    DEFAULT_TARGET_SETS,
+    MAX_REPS,
+    MAX_TARGET_RIR,
+    MIN_REPS,
+    MIN_TARGET_RIR,
+)
 from agent.prompts import ASSISTANT_STYLE_KEYS, MAX_ASSISTANT_STYLE_INSTRUCTIONS
 AssistantStyleKey = Literal[*ASSISTANT_STYLE_KEYS]
 
@@ -61,6 +76,10 @@ __all__ = [
     "CoachProfileOut",
     "CoachProfileUpdate",
     "CoachProgramRequestListOut",
+    "CoachProgramDraftIn",
+    "CoachProgramDraftOut",
+    "ProgramDraftDayIn",
+    "ProgramDraftExerciseIn",
     "CoachRosterEntryOut",
     "EmailUpdateIn",
     "ExerciseSetsIn",
@@ -853,6 +872,82 @@ class ProgramGenerateIn(BaseModel):
     user_split_override: str | None = None
 
 
+class ProgramDraftExerciseIn(BaseModel):
+    exercise_id: str = Field(min_length=1, max_length=200)
+    exercise_name: str = ""
+    equipment: str | None = None
+    slot_key: str | None = None
+    warmup_sets: int = 0
+    target_sets: int = DEFAULT_TARGET_SETS
+    target_reps_min: int = Field(
+        default=DEFAULT_TARGET_REPS_MIN,
+        description=f"Lower rep bound, from {MIN_REPS} to {MAX_REPS}.",
+    )
+    target_reps_max: int = Field(
+        default=DEFAULT_TARGET_REPS_MAX,
+        description=f"Upper rep bound, from {MIN_REPS} to {MAX_REPS}.",
+    )
+    target_rir: float = Field(
+        default=DEFAULT_TARGET_RIR,
+        description=f"Target RIR, from {MIN_TARGET_RIR:g} to {MAX_TARGET_RIR:g}.",
+    )
+    rest_seconds: int = 180
+    notes: str | None = None
+    image_path: str | None = None
+    gif_path: str | None = None
+    suggested_substitutes: list[SuggestedSubstitute] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_target_rpe(cls, fields: Any) -> Any:
+        if not isinstance(fields, dict):
+            return fields
+        normalized = dict(fields)
+        if "target_rir" not in normalized and "target_rpe" in normalized:
+            try:
+                normalized["target_rir"] = 10 - float(normalized["target_rpe"])
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError("target_rpe must be numeric") from exc
+        normalized.pop("target_rpe", None)
+        return normalized
+
+
+class ProgramDraftWarmupExerciseIn(BaseModel):
+    exercise_id: str | None = None
+    equipment: str | None = None
+    exercise_name: str
+    sets: int = 2
+    reps: int = 10
+    rest_seconds: int = 45
+    notes: str | None = None
+    image_path: str | None = None
+    gif_path: str | None = None
+
+
+class ProgramDraftDayIn(BaseModel):
+
+    day_name: str = Field(default="Day 1", min_length=1, max_length=100)
+    day_order: int = Field(default=1, ge=1, le=5)
+    warmup_exercises: list[ProgramDraftWarmupExerciseIn] = Field(default_factory=list)
+    exercises: list[ProgramDraftExerciseIn] = Field(default_factory=list)
+    cardio: str | None = None
+
+
+class CoachProgramDraftIn(BaseModel):
+    program_name: str = Field(default="Custom program", min_length=1, max_length=120)
+    split_type: str = "custom"
+    weekly_frequency: int = Field(default=1, ge=1, le=5)
+    instructions: str = ""
+    days: list[ProgramDraftDayIn] = Field(default_factory=list)
+
+
+class CoachProgramDraftOut(BaseModel):
+    assignment_id: str
+    draft: CoachProgramDraftIn
+    created_at: str
+    updated_at: str
+
+
 class ProgramSubstitutionIn(BaseModel):
     """One permanent slot swap in the player's active program."""
 
@@ -868,13 +963,13 @@ class ProgramSubstitutionUndoIn(BaseModel):
     expected_active_version: int = Field(ge=1)
 
 
-class ActiveProgramOut(GeneratedProgramSchema):
+class ActiveProgramOut(PersistedProgramSchema):
     """An active program plus the server's current Program-authority decision."""
 
     player_controls_program: bool
 
 
-class ProgramSubstitutionOut(GeneratedProgramSchema):
+class ProgramSubstitutionOut(PersistedProgramSchema):
     previous_version: int
     player_controls_program: bool
 

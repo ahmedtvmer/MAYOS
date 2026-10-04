@@ -6,9 +6,9 @@ Extracted from DatabaseManager; behaviour is unchanged.
 import json
 import uuid
 from datetime import UTC, datetime
-from agent.ProgramState import GeneratedProgramSchema
-from agent.ProgramState import ProgramDaySchema
-from agent.ProgramState import ProgramExerciseSchema
+from agent.ProgramState import PersistedProgramDaySchema
+from agent.ProgramState import PersistedProgramExerciseSchema
+from agent.ProgramState import PersistedProgramSchema
 from agent.ProgramState import WarmupExerciseSchema
 
 from utils.logger import MyosLogger
@@ -122,7 +122,7 @@ class LedgerTrainingProgramMixin:
                 self.conn.rollback()
             raise RuntimeError(f"Database error while saving program: {e}")
 
-    def _load_program(self, where_sql: str, params: tuple = ()) -> GeneratedProgramSchema | None:
+    def _load_program(self, where_sql: str, params: tuple = ()) -> PersistedProgramSchema | None:
         """Loads one stored program, its days and exercises, by an arbitrary predicate.
 
         Shared by ``get_active_program`` and ``get_program_by_version`` so the
@@ -216,7 +216,7 @@ class LedgerTrainingProgramMixin:
                         except (TypeError, ValueError):
                             logger.warning("Skipping malformed Staple substitute list on %s", r[1])
                     exercises.append(
-                        ProgramExerciseSchema(
+                        PersistedProgramExerciseSchema(
                             exercise_id=str(r[0]),
                             exercise_name=r[1],
                             target_sets=int(r[2]),
@@ -242,7 +242,7 @@ class LedgerTrainingProgramMixin:
                         logger.warning(f"Skipping malformed warm-up block on day '{d_name}': {exc}")
 
                 days.append(
-                    ProgramDaySchema(
+                    PersistedProgramDaySchema(
                         day_name=d_name,
                         day_order=d_order,
                         warmup_exercises=warmup_exercises,
@@ -251,7 +251,7 @@ class LedgerTrainingProgramMixin:
                     )
                 )
 
-            return GeneratedProgramSchema(
+            return PersistedProgramSchema(
                 program_name=prog_name,
                 weekly_frequency=int(freq),
                 split_type=split_type or "custom",
@@ -287,10 +287,10 @@ class LedgerTrainingProgramMixin:
         row = cursor.fetchone()
         return str(row[0]) if row and row[0] else None
 
-    def get_active_program(self) -> GeneratedProgramSchema | None:
+    def get_active_program(self) -> PersistedProgramSchema | None:
         return self._load_program("is_active = 1")
 
-    def get_program_by_version(self, version: int) -> GeneratedProgramSchema | None:
+    def get_program_by_version(self, version: int) -> PersistedProgramSchema | None:
         """The player's program with this stable version, active or historical (ADR 034).
 
         Publishing a new program only flips ``is_active``; older rows and their
@@ -298,6 +298,48 @@ class LedgerTrainingProgramMixin:
         version resolves to the exact prescription it trained against.
         """
         return self._load_program("version = ?", (int(version),))
+
+    def get_program_draft(self, assignment_id: str) -> dict | None:
+        cursor = self.conn.execute(
+            "SELECT draft_json, created_at, updated_at FROM program_drafts WHERE assignment_id = ?",
+            (str(assignment_id),),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            "assignment_id": str(assignment_id),
+            "draft": json.loads(row[0]),
+            "created_at": str(row[1]),
+            "updated_at": str(row[2]),
+        }
+
+    def create_program_draft(self, assignment_id: str, draft: dict) -> dict | None:
+        now = datetime.now(UTC).isoformat()
+        cursor = self.conn.execute(
+            "INSERT OR IGNORE INTO program_drafts (assignment_id, draft_json, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?)",
+            (str(assignment_id), json.dumps(draft, ensure_ascii=False), now, now),
+        )
+        self._commit_ledger()
+        if cursor.rowcount != 1:
+            return None
+        return self.get_program_draft(assignment_id)
+
+    def replace_program_draft(self, assignment_id: str, draft: dict) -> dict | None:
+        self.conn.execute(
+            "UPDATE program_drafts SET draft_json = ?, updated_at = ? WHERE assignment_id = ?",
+            (json.dumps(draft, ensure_ascii=False), datetime.now(UTC).isoformat(), str(assignment_id)),
+        )
+        self._commit_ledger()
+        return self.get_program_draft(assignment_id)
+
+    def discard_program_draft(self, assignment_id: str) -> bool:
+        cursor = self.conn.execute(
+            "DELETE FROM program_drafts WHERE assignment_id = ?", (str(assignment_id),)
+        )
+        self._commit_ledger()
+        return cursor.rowcount == 1
 
     def update_player_frequency(self, frequency: int) -> None:
         cursor = self.conn.cursor()

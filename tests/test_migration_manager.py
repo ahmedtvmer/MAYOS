@@ -65,7 +65,7 @@ def test_v18_upgrade_adds_deload_choice(temp_db_env):
         default_ledger_id="v18lifter",
     )
     try:
-        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 22
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 23
         assert migrated.ledger.conn.execute(
             "SELECT started_at FROM onboarding_analytics WHERE id = 1"
         ).fetchone() is None
@@ -123,7 +123,7 @@ def test_v20_upgrade_allows_most_reps_records_without_backfilling(temp_db_env):
 
     apply_lazy_migrations(conn, "v20player", db.ledgers_dir, backups_dir)
 
-    assert get_ledger_schema_version(conn) == 22
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 23
     assert conn.execute(
         "SELECT id, record_type, value FROM personal_records"
     ).fetchall() == [("old", "max_weight", 100.0)]
@@ -134,6 +134,19 @@ def test_v20_upgrade_allows_most_reps_records_without_backfilling(temp_db_env):
     assert conn.execute(
         "SELECT record_type, value FROM personal_records WHERE id = 'new'"
     ).fetchone() == ("most_reps", 12.0)
+    conn.close()
+
+
+def test_v22_upgrade_adds_program_drafts(temp_db_env):
+    db, _, backups_dir = temp_db_env
+    conn = sqlite3.connect(":memory:")
+    conn.execute("PRAGMA user_version = 22")
+
+    apply_lazy_migrations(conn, "v22player", db.ledgers_dir, backups_dir)
+
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(program_drafts)")}
+    assert columns == {"assignment_id", "draft_json", "created_at", "updated_at"}
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 23
     conn.close()
 
 

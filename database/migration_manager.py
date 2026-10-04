@@ -16,7 +16,16 @@ from utils.equipment_access import (
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 22
+CURRENT_LEDGER_SCHEMA_VERSION: int = 23
+
+PROGRAM_DRAFTS_DDL: tuple[str, ...] = (
+    "CREATE TABLE IF NOT EXISTS program_drafts ("
+    " assignment_id TEXT PRIMARY KEY,"
+    " draft_json TEXT NOT NULL,"
+    " created_at TEXT NOT NULL,"
+    " updated_at TEXT NOT NULL"
+    ")",
+)
 
 _EQUIPMENT_ACCESS_NOT_IN = "NEW.equipment_access NOT IN (" + ", ".join(
     "'" + value.replace("'", "''") + "'" for value in EQUIPMENT_ACCESS_VALUES
@@ -581,6 +590,12 @@ def _migrate_v21_to_v22(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE onboarding_analytics ADD COLUMN completed_at TEXT")
 
 
+def _migrate_v22_to_v23(conn: sqlite3.Connection) -> None:
+    """Adds the assignment-keyed Program draft table (ADR 062)."""
+    for statement in PROGRAM_DRAFTS_DDL:
+        conn.execute(statement)
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -688,6 +703,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     19: _migrate_v19_to_v20,
     20: _migrate_v20_to_v21,
     21: _migrate_v21_to_v22,
+    22: _migrate_v22_to_v23,
 }
 
 

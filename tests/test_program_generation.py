@@ -56,7 +56,7 @@ from unittest.mock import MagicMock
 from pydantic import ValidationError
 
 from agent import program_generator
-from agent.ProgramState import GeneratedProgramSchema, ProgramSchema
+from agent.ProgramState import GeneratedProgramSchema, PersistedProgramSchema, ProgramSchema
 from agent.UserState import PlayerProfileSchema
 
 
@@ -111,6 +111,46 @@ def test_frequency_schema_bounds(schema, frequency):
     field = schema.model_json_schema()["properties"]["weekly_frequency"]
     assert field["minimum"] == 1
     assert field["maximum"] == 5
+
+
+def _program_output(exercise_count=3, working_sets=2):
+    return {
+        "program_name": "Generated",
+        "split_type": "custom",
+        "weekly_frequency": 1,
+        "days": [
+            {
+                "day_name": "Day 1",
+                "day_order": 1,
+                "exercises": [
+                    {
+                        "exercise_id": f"exercise-{index}",
+                        "exercise_name": f"Exercise {index}",
+                        "target_sets": working_sets,
+                        "target_reps_min": 8,
+                        "target_reps_max": 12,
+                    }
+                    for index in range(exercise_count)
+                ],
+            }
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    "program",
+    [_program_output(working_sets=5), _program_output(exercise_count=2)],
+)
+def test_generated_program_output_keeps_blueprint_set_and_day_guards(program):
+    with pytest.raises(ValidationError):
+        GeneratedProgramSchema.model_validate(program)
+
+
+def test_persisted_program_schema_accepts_coach_authored_prescription():
+    program = PersistedProgramSchema.model_validate(_program_output(exercise_count=1, working_sets=5))
+
+    assert len(program.days[0].exercises) == 1
+    assert program.days[0].exercises[0].target_sets == 5
 
 
 if __name__ == "__main__":

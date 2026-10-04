@@ -25,6 +25,7 @@ import '../../providers.dart';
 import '../../router.dart';
 import 'coach_assistant_screen.dart';
 import 'coach_check_in_sheet.dart';
+import 'coach_program_draft_screen.dart';
 import 'coach_request_sheet.dart';
 import 'coach_shared.dart';
 
@@ -865,6 +866,8 @@ class _CoachPlayerHistoryScreenState
                     icon: const Icon(Icons.more_vert),
                     onSelected: (_PlayerAction action) {
                       switch (action) {
+                        case _PlayerAction.writeProgram:
+                          _openProgramDraft();
                         case _PlayerAction.publishProgram:
                           if (!_publishing) {
                             _openPublishDialog();
@@ -875,6 +878,11 @@ class _CoachPlayerHistoryScreenState
                     },
                     itemBuilder: (BuildContext context) =>
                         <PopupMenuEntry<_PlayerAction>>[
+                      PopupMenuItem<_PlayerAction>(
+                        key: const Key('write_program_action'),
+                        value: _PlayerAction.writeProgram,
+                        child: Text(copy.writeProgram),
+                      ),
                       PopupMenuItem<_PlayerAction>(
                         key: const Key('publish_program_action'),
                         value: _PlayerAction.publishProgram,
@@ -909,6 +917,27 @@ class _CoachPlayerHistoryScreenState
         builder: (BuildContext context) => CoachAssistantScreen(entry: _entry),
       ),
     );
+  }
+
+  void _openProgramDraft() {
+    Navigator.of(context)
+        .push<TrainingProgram>(
+      MaterialPageRoute<TrainingProgram>(
+        builder: (BuildContext context) => CoachProgramDraftScreen(
+          assignmentId: _entry.assignmentId,
+          playerUsername: _entry.playerUsername,
+        ),
+      ),
+    )
+        .then((TrainingProgram? program) {
+      if (program == null || !mounted) return;
+      ref.read(coachRosterRevisionProvider.notifier).state++;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(coachCopyOf(context).programPublished(program.version)),
+        ),
+      );
+    });
   }
 
   /// One open coach alert with its actions (#120): acknowledge and resolve
@@ -1102,6 +1131,7 @@ enum _PlayerSegment {
 
 /// The player page's overflow actions (#G).
 enum _PlayerAction {
+  writeProgram,
   publishProgram,
   askAssistant,
 }

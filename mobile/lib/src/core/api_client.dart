@@ -19,6 +19,7 @@ class ApiException implements Exception {
     this.statusCode,
     this.errorCode,
     this.failureMessage,
+    this.serverDetails,
   });
 
   final String message;
@@ -29,6 +30,9 @@ class ApiException implements Exception {
 
   /// Keeps app failures typed and server `detail` values explicitly raw.
   final FailureMessage? failureMessage;
+
+  /// Structured validation detail returned by the service, when present.
+  final Map<String, dynamic>? serverDetails;
 
   @override
   String toString() => 'ApiException($statusCode): $message';
@@ -121,6 +125,8 @@ class ApiClient {
       'The service returned invalid checkpoint review data.';
   static const String _invalidProgram =
       'The service returned invalid program data.';
+  static const String _invalidCoachProgramDraft =
+      'The service returned invalid Program draft data.';
   static const String _invalidNotices =
       'The service returned invalid assignment notices.';
   static const String _invalidProgramRequests =
@@ -219,6 +225,19 @@ class ApiClient {
           statusCode: status,
           errorCode: _machineCode(body),
           failureMessage: ServerFailureMessage(detail),
+        );
+      }
+      if (body['detail'] is Map) {
+        final Map<String, dynamic> details =
+            Map<String, dynamic>.from(body['detail'] as Map);
+        final String code = details['code'] is String
+            ? details['code'] as String
+            : 'validation_failed';
+        return ApiException(
+          'The request contains invalid fields.',
+          statusCode: status,
+          errorCode: code,
+          serverDetails: details,
         );
       }
       if (body['error'] is String) {
@@ -779,6 +798,69 @@ class ApiClient {
       ),
     );
     return _parseBody(response.data, TrainingProgram.fromJson, _invalidProgram);
+  }
+
+  Future<Map<String, dynamic>> coachCreateProgramDraft(
+    String assignmentId, {
+    Map<String, dynamic>? draft,
+  }) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/assignments/$assignmentId/program-draft',
+        data: draft,
+      ),
+    );
+    return _parseCoachProgramDraft(response.data);
+  }
+
+  Future<Map<String, dynamic>> coachReadProgramDraft(String assignmentId) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/coach/assignments/$assignmentId/program-draft',
+      ),
+    );
+    return _parseCoachProgramDraft(response.data);
+  }
+
+  Future<Map<String, dynamic>> coachReplaceProgramDraft(
+    String assignmentId,
+    Map<String, dynamic> draft,
+  ) async {
+    final response = await _send(
+      () => _dio.put<dynamic>(
+        '/coach/assignments/$assignmentId/program-draft',
+        data: draft,
+      ),
+    );
+    return _parseCoachProgramDraft(response.data);
+  }
+
+  Future<void> coachDiscardProgramDraft(String assignmentId) async {
+    await _send(
+      () => _dio.delete<dynamic>(
+        '/coach/assignments/$assignmentId/program-draft',
+      ),
+    );
+  }
+
+  Future<TrainingProgram> coachPublishProgramDraft(String assignmentId) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/assignments/$assignmentId/program-draft/publish',
+      ),
+    );
+    return _parseBody(response.data, TrainingProgram.fromJson, _invalidProgram);
+  }
+
+  Map<String, dynamic> _parseCoachProgramDraft(dynamic responseData) {
+    if (responseData is Map<String, dynamic> &&
+        responseData['draft'] is Map<String, dynamic>) {
+      return responseData;
+    }
+    throw ApiException(
+      _invalidCoachProgramDraft,
+      failureMessage: _invalidServiceDataFailure(_invalidCoachProgramDraft),
+    );
   }
 
   /// Lists the player's assignment notices, newest-first.

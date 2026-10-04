@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from database.backup import remove_ledger_from_daily_backups
+from database.program_drafts import discard_assignment_program_draft
 from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
@@ -183,11 +184,14 @@ class AccountDeletionMixin:
             legacy_username = str(username_row[0]) if username_row is not None else account_id
             # The account's assignments, collected before anything is removed.
             cursor.execute(
-                "SELECT assignment_id FROM assignments"
+                "SELECT assignment_id, player_account_id FROM assignments"
                 " WHERE coach_account_id = ? OR player_account_id = ?",
                 (account_id, account_id),
             )
-            assignment_ids = [str(row[0]) for row in cursor.fetchall()]
+            assignment_details = [
+                (str(row[0]), str(row[1])) for row in cursor.fetchall()
+            ]
+            assignment_ids = [assignment_id for assignment_id, _ in assignment_details]
             cursor.execute(
                 "UPDATE accounts SET status = 'deleted', deleted_at = ?,"
                 " session_epoch = CASE WHEN deleted_at IS NULL THEN session_epoch + 1 ELSE session_epoch END,"
@@ -287,6 +291,16 @@ class AccountDeletionMixin:
                 "DELETE FROM coach_alerts WHERE coach_account_id = ? OR player_account_id = ?",
                 (account_id, account_id),
             )
+        self._discard_assignment_program_drafts(account_id, assignment_details)
+
+    def _discard_assignment_program_drafts(
+        self, deleted_account_id: str, assignment_details: list[tuple[str, str]]
+    ) -> None:
+        """Account deletion bypasses the normal assignment-end cleanup service."""
+        for assignment_id, player_account_id in assignment_details:
+            if player_account_id == deleted_account_id:
+                continue
+            discard_assignment_program_draft(self, assignment_id, player_account_id)
 
     def _ledger_owned_by_live_account(self, ledger_id: str) -> bool:
         """True when a live account currently maps to ``ledger_id``.
